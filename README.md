@@ -23,6 +23,12 @@ Constant product AMM (x·y=k) — create liquidity pools, deposit and withdraw l
 
 [⚓ Anchor](./tokens/token-swap/anchor) [💫 Quasar](./tokens/token-swap/quasar)
 
+### Central Limit Order Book
+
+Order-book exchange — users post limit bids and asks at chosen prices, tokens are locked in program vaults, and orders can be cancelled and funds settled back. A minimal teaching example of the mechanics behind Openbook and Phoenix.
+
+[⚓ Anchor](./defi/clob/anchor)
+
 ### Escrow
 
 Peer-to-peer OTC trade — one user deposits token A and specifies how much token B they want. A counterparty fulfils the offer and both sides receive their tokens atomically.
