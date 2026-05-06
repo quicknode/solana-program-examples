@@ -58,7 +58,7 @@ pub struct InitializeExtraAccountMetaList {
     pub mint: UncheckedAccount,
     #[account(mut)]
     pub counter_account: UncheckedAccount,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 #[inline(always)]

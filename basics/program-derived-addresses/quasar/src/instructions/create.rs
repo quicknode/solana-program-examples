@@ -9,9 +9,9 @@ use {
 pub struct CreatePageVisits {
     #[account(mut)]
     pub payer: Signer,
-    #[account(mut, init, payer = payer, seeds = PageVisits::seeds(payer), bump)]
+    #[account(mut, init, payer = payer, address = PageVisits::seeds(payer.address()))]
     pub page_visits: Account<PageVisits>,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 #[inline(always)]

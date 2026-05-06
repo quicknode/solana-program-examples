@@ -50,7 +50,7 @@ pub struct Mint {
     /// mpl-bubblegum program.
     #[account(address = MPL_BUBBLEGUM_ID)]
     pub bubblegum_program: UncheckedAccount,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 pub fn handle_mint(accounts: &mut Mint, data: &[u8]) -> Result<(), ProgramError> {

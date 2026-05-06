@@ -58,7 +58,7 @@ pub struct InitializeExtraAccountMetaList {
     /// Whitelist PDA: ["white_list"]
     #[account(mut)]
     pub white_list: UncheckedAccount,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 #[inline(always)]

@@ -7,7 +7,7 @@ pub struct CreateSystemAccount {
     pub payer: Signer,
     #[account(mut)]
     pub new_account: Signer,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 #[inline(always)]

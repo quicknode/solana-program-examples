@@ -1,7 +1,8 @@
-use quasar_lang::prelude::*;
-use quasar_spl::{
-    metadata::{MetadataCpi, MetadataProgram},
-    Mint, Token, TokenCpi,
+use {
+    crate::MintAuthorityPda,
+    quasar_lang::prelude::*,
+    quasar_metadata::prelude::*,
+    quasar_spl::prelude::*,
 };
 
 /// Accounts for minting an individual NFT with a collection reference.
@@ -9,10 +10,25 @@ use quasar_spl::{
 pub struct MintNft {
     #[account(mut)]
     pub owner: Signer,
-    #[account(mut, init, payer = owner, mint::decimals = 0, mint::authority = mint_authority, mint::freeze_authority = mint_authority)]
+    #[account(
+        mut,
+        init,
+        payer = owner,
+        mint(
+            decimals = 0,
+            authority = mint_authority,
+            freeze_authority = Some(mint_authority),
+            token_program = token_program,
+        ),
+    )]
     pub mint: Account<Mint>,
     /// Token account to hold the NFT.
-    #[account(mut, init_if_needed, payer = owner, token::mint = mint, token::authority = owner)]
+    #[account(
+        mut,
+        init(idempotent),
+        payer = owner,
+        token(mint = mint, authority = owner, token_program = token_program),
+    )]
     pub destination: Account<Token>,
     /// Metadata PDA — initialised by the Metaplex program.
     #[account(mut)]
@@ -21,14 +37,14 @@ pub struct MintNft {
     #[account(mut)]
     pub master_edition: UncheckedAccount,
     /// PDA used as mint authority and update authority.
-    #[account(seeds = [b"authority"], bump)]
+    #[account(address = MintAuthorityPda::seeds())]
     pub mint_authority: UncheckedAccount,
     /// The collection mint (must already exist).
     #[account(mut)]
     pub collection_mint: Account<Mint>,
-    pub system_program: Program<System>,
-    pub token_program: Program<Token>,
-    pub token_metadata_program: MetadataProgram,
+    pub system_program: Program<SystemProgram>,
+    pub token_program: Program<TokenProgram>,
+    pub token_metadata_program: Program<MetadataProgram>,
     pub rent: Sysvar<Rent>,
 }
 
@@ -64,7 +80,7 @@ pub fn handle_mint_nft(accounts: &mut MintNft, bumps: &MintNftBumps) -> Result<(
             0,    // seller_fee_basis_points
             true, // is_mutable
             true, // update_authority_is_signer
-        )
+        )?
         .invoke_signed(seeds)?;
 
     // Create master edition.

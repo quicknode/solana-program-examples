@@ -67,7 +67,7 @@ pub struct ConfigureAdmin {
     pub new_admin: UncheckedAccount,
     #[account(mut)]
     pub admin_config: UncheckedAccount,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 #[inline(always)]
@@ -131,7 +131,7 @@ pub struct InitializeExtraAccountMetas {
     pub token_mint: UncheckedAccount,
     #[account(mut)]
     pub extra_account_metas_list: UncheckedAccount,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 #[inline(always)]
@@ -196,7 +196,7 @@ pub struct Switch {
     pub admin_config: UncheckedAccount,
     #[account(mut)]
     pub wallet_switch: UncheckedAccount,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 #[inline(always)]

@@ -1,4 +1,4 @@
-use quasar_lang::cpi::DynCpiCall;
+use quasar_lang::cpi::CpiDynamic;
 use quasar_lang::prelude::*;
 use quasar_lang::sysvars::Sysvar;
 
@@ -13,7 +13,7 @@ pub struct ChangeMode {
     #[account(mut)]
     pub mint: UncheckedAccount,
     pub token_program: Program<Token2022>,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 #[inline(always)]
@@ -87,7 +87,7 @@ fn emit_update_field(
     pos += value.len();
 
     let _ = (mint_key, auth_key);
-    let mut cpi = DynCpiCall::<2, MAX_META_IX>::new(token_prog);
+    let mut cpi = CpiDynamic::<2, MAX_META_IX>::new(token_prog);
     // mint: writable, not signer
     cpi.push_account(ctx.mint.to_account_view(), false, true)?;
     // authority: signer, not writable

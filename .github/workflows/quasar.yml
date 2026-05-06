@@ -199,7 +199,16 @@ jobs:
         with:
           solana-cli-version: stable
       - name: Install Quasar CLI
-        run: cargo install --git https://github.com/blueshift-gg/quasar quasar-cli --locked
+        # Pinned to quasar rev 3d6fb0d8 (the HEAD this migration was written
+        # against, immediately after PRs #195 + #196). The next merged PR
+        # (#198 "idl-redesign-clean", rev 096c8f7c) regressed `quasar build`
+        # for flat-layout projects: the new IDL flow chdirs to
+        # `crate_path.parent()` which evaluates to an empty PathBuf when
+        # the program crate is at the project root (src/lib.rs in `.`),
+        # causing posix_spawn child chdir("") to fail with ENOENT before
+        # any compilation begins. Symptom in CI is a bare "Anyhow error".
+        # Unpin once upstream lands a fix that handles the flat layout.
+        run: cargo install --git https://github.com/blueshift-gg/quasar --rev 3d6fb0d8 quasar-cli --locked
       - name: Build and Test with Stable
         run: |
           source build_and_test.sh

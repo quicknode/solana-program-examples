@@ -1,10 +1,8 @@
 #![cfg_attr(not(test), no_std)]
 
 use quasar_lang::prelude::*;
-use quasar_spl::{
-    metadata::{MetadataCpi, MetadataProgram},
-    Mint, Token, TokenCpi,
-};
+use quasar_metadata::prelude::*;
+use quasar_spl::prelude::*;
 
 #[cfg(test)]
 mod tests;
@@ -17,12 +15,14 @@ declare_id!("22222222222222222222222222222222222222222222");
 mod quasar_nft_minter {
     use super::*;
 
+    // Metaplex Token Metadata limits: name ≤ 32, symbol ≤ 10, uri ≤ 200.
+    // PR #195 made the capacity bound on `String<N>` mandatory.
     #[instruction(discriminator = 0)]
     pub fn mint_nft(
         ctx: Ctx<MintNft>,
-        nft_name: String,
-        nft_symbol: String,
-        nft_uri: String,
+        nft_name: String<32>,
+        nft_symbol: String<10>,
+        nft_uri: String<200>,
     ) -> Result<(), ProgramError> {
         handle_mint_nft(&mut ctx.accounts, &nft_name, &nft_symbol, &nft_uri)
     }
@@ -34,25 +34,43 @@ pub struct MintNft {
     #[account(mut)]
     pub payer: Signer,
 
-    /// Metadata PDA — initialised by the Metaplex program.
+    /// Metadata PDA — initialised via the Metaplex program by an explicit
+    /// CPI below; stays an UncheckedAccount because the new
+    /// `metadata(...)` behaviour only accepts compile-time literals for
+    /// name / symbol / uri.
     #[account(mut)]
     pub metadata_account: UncheckedAccount,
 
-    /// Master edition PDA — initialised by the Metaplex program.
+    /// Master edition PDA — initialised via the Metaplex program below.
     #[account(mut)]
     pub edition_account: UncheckedAccount,
 
     /// NFT mint (decimals = 0).
-    #[account(mut, init, payer = payer, mint::decimals = 0, mint::authority = payer, mint::freeze_authority = payer)]
+    #[account(
+        mut,
+        init,
+        payer = payer,
+        mint(
+            decimals = 0,
+            authority = payer,
+            freeze_authority = Some(payer),
+            token_program = token_program,
+        ),
+    )]
     pub mint_account: Account<Mint>,
 
     /// Token account holding the NFT.
-    #[account(mut, init_if_needed, payer = payer, token::mint = mint_account, token::authority = payer)]
+    #[account(
+        mut,
+        init(idempotent),
+        payer = payer,
+        token(mint = mint_account, authority = payer, token_program = token_program),
+    )]
     pub associated_token_account: Account<Token>,
 
-    pub token_program: Program<Token>,
-    pub token_metadata_program: MetadataProgram,
-    pub system_program: Program<System>,
+    pub token_program: Program<TokenProgram>,
+    pub token_metadata_program: Program<MetadataProgram>,
+    pub system_program: Program<SystemProgram>,
     pub rent: Sysvar<Rent>,
 }
 
@@ -91,7 +109,7 @@ fn handle_mint_nft(
             0,     // seller_fee_basis_points
             false, // is_mutable
             true,  // update_authority_is_signer
-        )
+        )?
         .invoke()?;
 
     // 3. Create master edition (makes it a verified NFT).

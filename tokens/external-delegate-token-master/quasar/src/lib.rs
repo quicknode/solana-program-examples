@@ -1,7 +1,7 @@
 #![cfg_attr(not(test), no_std)]
 
 use quasar_lang::prelude::*;
-use quasar_spl::{Token, TokenCpi};
+use quasar_spl::prelude::*;
 
 #[cfg(test)]
 mod tests;
@@ -9,11 +9,19 @@ mod tests;
 declare_id!("22222222222222222222222222222222222222222222");
 
 /// User account storing the Solana authority and linked Ethereum address.
-#[account(discriminator = 1)]
+#[account(discriminator = 1, set_inner)]
 pub struct UserAccount {
     pub authority: Address,
     pub ethereum_address: [u8; 20],
 }
+
+/// Marker carrying the seeds for the per-user PDA: just the user account
+/// address (no string prefix). Required since PR #195 because inline
+/// `seeds = [...]` is gone — derivation now happens through a
+/// `#[derive(Seeds)]` type referenced by `address = T::seeds(...)`.
+#[derive(Seeds)]
+#[seeds(b"", user_account: Address)]
+pub struct UserPda;
 
 /// External delegate token master: allows transfers authorised either by
 /// the Solana authority or by an Ethereum signature (secp256k1).
@@ -67,13 +75,16 @@ pub struct Initialize {
     pub user_account: Account<UserAccount>,
     #[account(mut)]
     pub authority: Signer,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 #[inline(always)]
 fn handle_initialize(accounts: &mut Initialize) -> Result<(), ProgramError> {
     accounts.user_account
-        .set_inner(*accounts.authority.address(), [0u8; 20]);
+        .set_inner(UserAccountInner {
+            authority: *accounts.authority.address(),
+            ethereum_address: [0u8; 20],
+        });
     Ok(())
 }
 
@@ -104,9 +115,9 @@ pub struct TransferTokens {
     #[account(mut)]
     pub recipient_token_account: Account<Token>,
     /// PDA derived from user_account address.
-    #[account(seeds = [user_account], bump)]
+    #[account(address = UserPda::seeds(user_account.address()))]
     pub user_pda: UncheckedAccount,
-    pub token_program: Program<Token>,
+    pub token_program: Program<TokenProgram>,
 }
 
 #[inline(always)]
@@ -150,9 +161,9 @@ pub struct AuthorityTransfer {
     #[account(mut)]
     pub recipient_token_account: Account<Token>,
     /// PDA derived from user_account address.
-    #[account(seeds = [user_account], bump)]
+    #[account(address = UserPda::seeds(user_account.address()))]
     pub user_pda: UncheckedAccount,
-    pub token_program: Program<Token>,
+    pub token_program: Program<TokenProgram>,
 }
 
 #[inline(always)]

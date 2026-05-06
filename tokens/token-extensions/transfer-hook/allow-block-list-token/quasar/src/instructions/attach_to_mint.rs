@@ -13,7 +13,7 @@ pub struct AttachToMint {
     pub mint: UncheckedAccount,
     #[account(mut)]
     pub extra_metas_account: UncheckedAccount,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
     pub token_program: Program<Token2022>,
 }
 

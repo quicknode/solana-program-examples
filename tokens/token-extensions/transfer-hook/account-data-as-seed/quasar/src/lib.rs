@@ -56,7 +56,7 @@ pub struct InitializeExtraAccountMetaList {
     /// Counter PDA: ["counter", payer_key]
     #[account(mut)]
     pub counter_account: UncheckedAccount,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 #[inline(always)]

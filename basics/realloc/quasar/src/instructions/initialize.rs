@@ -11,7 +11,7 @@ pub struct Initialize {
     pub payer: Signer,
     #[account(mut, init, payer = payer)]
     pub message_account: Account<MessageAccount>,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 #[inline(always)]

@@ -39,7 +39,7 @@ pub fn handle_pull_lever(accounts: &PullLever, name: &str) -> Result<(), Program
         i += 1;
     }
 
-    let mut cpi = DynCpiCall::<1, 128>::new(accounts.lever_program.address());
+    let mut cpi = CpiDynamic::<1, 128>::new(accounts.lever_program.address());
     cpi.push_account(accounts.power.to_account_view(), false, true)?;
     cpi.set_data(&data[..data_len])?;
     cpi.invoke()

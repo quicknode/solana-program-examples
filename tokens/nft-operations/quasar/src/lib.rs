@@ -9,6 +9,14 @@ mod tests;
 
 declare_id!("22222222222222222222222222222222222222222222");
 
+/// Marker carrying the seeds for the shared PDA mint authority used as
+/// both mint and update authority. PR #195 removed inline
+/// `seeds = [...]`; derivation now happens through a `#[derive(Seeds)]`
+/// type referenced by `address = T::seeds()`.
+#[derive(Seeds)]
+#[seeds(b"authority")]
+pub struct MintAuthorityPda;
+
 /// NFT operations: create a collection, mint NFTs into it, and verify
 /// collection membership.
 ///

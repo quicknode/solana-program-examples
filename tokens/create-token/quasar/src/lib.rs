@@ -1,7 +1,7 @@
 #![cfg_attr(not(test), no_std)]
 
 use quasar_lang::prelude::*;
-use quasar_spl::{Mint, Token, TokenCpi};
+use quasar_spl::prelude::*;
 
 #[cfg(test)]
 mod tests;
@@ -10,9 +10,10 @@ declare_id!("22222222222222222222222222222222222222222222");
 
 /// Creates a token mint and mints initial tokens to the creator's token account.
 ///
-/// The Anchor version uses Metaplex for onchain metadata. Quasar does not have
-/// a Metaplex integration crate, so this example focuses on the core SPL Token
-/// operations: creating a mint and minting tokens.
+/// The Anchor version uses Metaplex for onchain metadata. Quasar's metadata
+/// crate is demonstrated in the `nft-minter` and `spl-token-minter` examples;
+/// this example focuses on the core SPL Token operations: creating a mint and
+/// minting tokens.
 #[program]
 mod quasar_create_token {
     use super::*;
@@ -36,11 +37,16 @@ mod quasar_create_token {
 pub struct CreateToken {
     #[account(mut)]
     pub payer: Signer,
-    #[account(mut, init, payer = payer, mint::decimals = 9, mint::authority = payer)]
+    #[account(
+        mut,
+        init,
+        payer = payer,
+        mint(decimals = 9, authority = payer, freeze_authority = None, token_program = token_program),
+    )]
     pub mint: Account<Mint>,
     pub rent: Sysvar<Rent>,
-    pub token_program: Program<Token>,
-    pub system_program: Program<System>,
+    pub token_program: Program<TokenProgram>,
+    pub system_program: Program<SystemProgram>,
 }
 
 /// Accounts for minting tokens to an existing token account.
@@ -52,7 +58,7 @@ pub struct MintTokens {
     pub mint: Account<Mint>,
     #[account(mut)]
     pub token_account: Account<Token>,
-    pub token_program: Program<Token>,
+    pub token_program: Program<TokenProgram>,
 }
 
 #[inline(always)]

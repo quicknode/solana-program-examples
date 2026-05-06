@@ -1,7 +1,10 @@
 use {
-    crate::state::{Amm, Pool},
+    crate::{
+        state::{Amm, Pool},
+        AmmPda, LiquidityMintPda, PoolAuthorityPda, PoolPda,
+    },
     quasar_lang::prelude::*,
-    quasar_spl::{Mint, Token, TokenCpi},
+    quasar_spl::prelude::*,
 };
 
 /// Accounts for depositing liquidity into a pool.
@@ -10,16 +13,16 @@ use {
 /// must be provided as separate account inputs.
 #[derive(Accounts)]
 pub struct DepositLiquidity {
-    #[account(seeds = [b"amm"], bump)]
+    #[account(address = AmmPda::seeds())]
     pub amm: Account<Amm>,
-    #[account(seeds = [amm, mint_a, mint_b], bump)]
+    #[account(address = PoolPda::seeds(amm.address(), mint_a.address(), mint_b.address()))]
     pub pool: Account<Pool>,
     /// Pool authority PDA.
-    #[account(seeds = [amm, mint_a, mint_b, crate::AUTHORITY_SEED], bump)]
+    #[account(address = PoolAuthorityPda::seeds(amm.address(), mint_a.address(), mint_b.address()))]
     pub pool_authority: UncheckedAccount,
     /// Depositor (must be signer to authorise transfers).
     pub depositor: Signer,
-    #[account(mut, seeds = [amm, mint_a, mint_b, crate::LIQUIDITY_SEED], bump)]
+    #[account(mut, address = LiquidityMintPda::seeds(amm.address(), mint_a.address(), mint_b.address()))]
     pub mint_liquidity: Account<Mint>,
     pub mint_a: Account<Mint>,
     pub mint_b: Account<Mint>,
@@ -30,7 +33,12 @@ pub struct DepositLiquidity {
     #[account(mut)]
     pub pool_account_b: Account<Token>,
     /// Depositor's LP token account.
-    #[account(mut, init_if_needed, payer = payer, token::mint = mint_liquidity, token::authority = depositor)]
+    #[account(
+        mut,
+        init(idempotent),
+        payer = payer,
+        token(mint = mint_liquidity, authority = depositor, token_program = token_program),
+    )]
     pub depositor_account_liquidity: Account<Token>,
     /// Depositor's token A account.
     #[account(mut)]
@@ -40,8 +48,8 @@ pub struct DepositLiquidity {
     pub depositor_account_b: Account<Token>,
     #[account(mut)]
     pub payer: Signer,
-    pub token_program: Program<Token>,
-    pub system_program: Program<System>,
+    pub token_program: Program<TokenProgram>,
+    pub system_program: Program<SystemProgram>,
 }
 
 /// Integer square root via Newton's method.
@@ -117,12 +125,13 @@ pub fn handle_deposit_liquidity(
         .invoke()?;
 
     // Mint LP tokens to the depositor (signed by pool authority).
+    // Seed order matches PoolAuthorityPda: [b"authority", amm, mint_a, mint_b, bump].
     let bump = [bumps.pool_authority];
     let seeds: &[Seed] = &[
+        Seed::from(crate::AUTHORITY_SEED),
         Seed::from(accounts.amm.address().as_ref()),
         Seed::from(accounts.mint_a.address().as_ref()),
         Seed::from(accounts.mint_b.address().as_ref()),
-        Seed::from(crate::AUTHORITY_SEED),
         Seed::from(&bump as &[u8]),
     ];
 

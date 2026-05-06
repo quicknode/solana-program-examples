@@ -1,5 +1,8 @@
-use quasar_lang::prelude::*;
-use quasar_spl::metadata::{MetadataCpi, MetadataProgram};
+use {
+    crate::MintAuthorityPda,
+    quasar_lang::prelude::*,
+    quasar_metadata::prelude::*,
+};
 
 /// Accounts for verifying an NFT as part of a collection.
 ///
@@ -17,7 +20,7 @@ pub struct VerifyCollectionMint {
     #[account(mut)]
     pub metadata: UncheckedAccount,
     /// PDA used as collection authority.
-    #[account(seeds = [b"authority"], bump)]
+    #[account(address = MintAuthorityPda::seeds())]
     pub mint_authority: UncheckedAccount,
     /// The collection mint.
     pub collection_mint: UncheckedAccount,
@@ -26,8 +29,8 @@ pub struct VerifyCollectionMint {
     pub collection_metadata: UncheckedAccount,
     /// The collection's master edition account.
     pub collection_master_edition: UncheckedAccount,
-    pub system_program: Program<System>,
-    pub token_metadata_program: MetadataProgram,
+    pub system_program: Program<SystemProgram>,
+    pub token_metadata_program: Program<MetadataProgram>,
 }
 
 #[inline(always)]

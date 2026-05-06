@@ -1,7 +1,7 @@
 #![cfg_attr(not(test), no_std)]
 
 use quasar_lang::{prelude::*, sysvars::Sysvar};
-use quasar_spl::{initialize_mint2, Mint, Token, TokenCpi};
+use quasar_spl::{initialize_mint2, prelude::*};
 
 #[cfg(test)]
 mod tests;
@@ -10,6 +10,12 @@ declare_id!("22222222222222222222222222222222222222222222");
 
 /// SPL Mint account size in bytes.
 const MINT_SPACE: usize = 82;
+
+/// Marker for the PDA at seeds = ["mint"]; used by the new
+/// `address = MintPda::seeds()` form (post-PR-#195) to derive the mint PDA.
+#[derive(Seeds)]
+#[seeds(b"mint")]
+pub struct MintPda;
 
 /// Demonstrates using a PDA as the mint authority for an SPL token.
 ///
@@ -34,16 +40,16 @@ mod quasar_pda_mint_authority {
 }
 
 /// Create the mint at a PDA. Manually created and initialized to avoid
-/// a borrow conflict from `mint::authority = mint` in the init constraint.
+/// a borrow conflict from `mint(authority = mint)` in the init constraint.
 #[derive(Accounts)]
 pub struct CreateMint {
     #[account(mut)]
     pub payer: Signer,
     /// The PDA that will become the mint (and its own authority).
-    #[account(mut, seeds = [b"mint"], bump)]
+    #[account(mut, address = MintPda::seeds())]
     pub mint: UncheckedAccount,
-    pub token_program: Program<Token>,
-    pub system_program: Program<System>,
+    pub token_program: Program<TokenProgram>,
+    pub system_program: Program<SystemProgram>,
 }
 
 #[inline(always)]
@@ -84,12 +90,12 @@ pub struct MintTokens {
     #[account(mut)]
     pub payer: Signer,
     /// The PDA mint whose authority is itself.
-    #[account(mut, seeds = [b"mint"], bump)]
+    #[account(mut, address = MintPda::seeds())]
     pub mint: Account<Mint>,
     /// Recipient token account (must already exist).
     #[account(mut)]
     pub token_account: Account<Token>,
-    pub token_program: Program<Token>,
+    pub token_program: Program<TokenProgram>,
 }
 
 #[inline(always)]

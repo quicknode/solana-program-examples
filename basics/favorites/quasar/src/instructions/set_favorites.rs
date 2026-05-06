@@ -9,9 +9,9 @@ use {
 pub struct SetFavorites {
     #[account(mut)]
     pub user: Signer,
-    #[account(mut, init_if_needed, payer = user, seeds = Favorites::seeds(user), bump)]
+    #[account(mut, init(idempotent), payer = user, address = Favorites::seeds(user.address()))]
     pub favorites: Account<Favorites>,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 #[inline(always)]

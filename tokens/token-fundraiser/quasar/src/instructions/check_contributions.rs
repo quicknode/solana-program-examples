@@ -1,7 +1,7 @@
 use {
     crate::state::Fundraiser,
     quasar_lang::prelude::*,
-    quasar_spl::{Token, TokenCpi},
+    quasar_spl::prelude::*,
 };
 
 #[derive(Accounts)]
@@ -10,17 +10,16 @@ pub struct CheckContributions {
     pub maker: Signer,
     #[account(
         mut,
-        has_one = maker,
-        close = maker,
-        seeds = Fundraiser::seeds(maker),
-        bump = fundraiser.bump
+        has_one(maker),
+        close(dest = maker),
+        address = Fundraiser::seeds(maker.address()),
     )]
     pub fundraiser: Account<Fundraiser>,
     #[account(mut)]
     pub vault: Account<Token>,
     #[account(mut)]
     pub maker_ta: Account<Token>,
-    pub token_program: Program<Token>,
+    pub token_program: Program<TokenProgram>,
 }
 
 #[inline(always)]
@@ -31,7 +30,15 @@ pub fn handle_check_contributions(accounts: &mut CheckContributions, bumps: &Che
         ProgramError::Custom(0) // TargetNotMet
     );
 
-    let seeds = accounts.fundraiser_seeds(bumps);
+    // Build PDA signer seeds for the fundraiser:
+    // ["fundraiser", maker, bump]. Inline rather than via a helper because
+    // post-PR-#195 the derive no longer emits a `<struct>_seeds()` method.
+    let bump = [bumps.fundraiser];
+    let seeds = [
+        Seed::from(b"fundraiser" as &[u8]),
+        Seed::from(accounts.maker.address().as_ref()),
+        Seed::from(bump.as_ref()),
+    ];
 
     // Transfer all vault funds to the maker
     let vault_amount = accounts.vault.amount();

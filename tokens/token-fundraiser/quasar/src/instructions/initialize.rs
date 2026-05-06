@@ -1,7 +1,7 @@
 use {
     crate::state::{Fundraiser, FundraiserInner},
     quasar_lang::prelude::*,
-    quasar_spl::{Mint, Token},
+    quasar_spl::prelude::*,
 };
 
 #[derive(Accounts)]
@@ -9,13 +9,18 @@ pub struct Initialize {
     #[account(mut)]
     pub maker: Signer,
     pub mint_to_raise: Account<Mint>,
-    #[account(mut, init, payer = maker, seeds = Fundraiser::seeds(maker), bump)]
+    #[account(mut, init, payer = maker, address = Fundraiser::seeds(maker.address()))]
     pub fundraiser: Account<Fundraiser>,
-    #[account(mut, init_if_needed, payer = maker, token::mint = mint_to_raise, token::authority = fundraiser)]
+    #[account(
+        mut,
+        init(idempotent),
+        payer = maker,
+        token(mint = mint_to_raise, authority = fundraiser, token_program = token_program),
+    )]
     pub vault: Account<Token>,
     pub rent: Sysvar<Rent>,
-    pub token_program: Program<Token>,
-    pub system_program: Program<System>,
+    pub token_program: Program<TokenProgram>,
+    pub system_program: Program<SystemProgram>,
 }
 
 #[inline(always)]

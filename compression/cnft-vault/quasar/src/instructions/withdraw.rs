@@ -17,7 +17,7 @@ pub struct Withdraw {
     #[account(mut)]
     pub tree_authority: UncheckedAccount,
     /// Vault PDA that owns the cNFT — signs the transfer via invoke_signed.
-    #[account(seeds = [b"cNFT-vault"], bump)]
+    #[account(address = crate::VaultPda::seeds())]
     pub leaf_owner: UncheckedAccount,
     /// New owner to receive the cNFT.
     pub new_leaf_owner: UncheckedAccount,
@@ -32,7 +32,7 @@ pub struct Withdraw {
     /// mpl-bubblegum program.
     #[account(address = MPL_BUBBLEGUM_ID)]
     pub bubblegum_program: UncheckedAccount,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 /// Build mpl-bubblegum Transfer instruction data from raw args.

@@ -1,13 +1,16 @@
-use quasar_lang::prelude::*;
-use quasar_spl::{
-    metadata::{MetadataCpi, MetadataProgram},
-    Mint, Token,
+use {
+    quasar_lang::prelude::*,
+    quasar_metadata::prelude::*,
+    quasar_spl::prelude::*,
 };
 
 /// Accounts for creating a new token mint with Metaplex metadata.
 ///
 /// The mint is initialised via Quasar's `#[account(init)]`. The metadata
-/// PDA is created by CPI-ing into the Metaplex Token Metadata program.
+/// PDA is created by an explicit CPI to the Metaplex Token Metadata program
+/// because the new `metadata(...)` derive behaviour only accepts compile-time
+/// constants for `name` / `symbol` / `uri`; this instruction takes them at
+/// runtime.
 #[derive(Accounts)]
 pub struct CreateToken {
     #[account(mut)]
@@ -16,17 +19,20 @@ pub struct CreateToken {
         mut,
         init,
         payer = payer,
-        mint::decimals = 9,
-        mint::authority = payer,
-        mint::freeze_authority = payer,
+        mint(
+            decimals = 9,
+            authority = payer,
+            freeze_authority = Some(payer),
+            token_program = token_program,
+        ),
     )]
     pub mint_account: Account<Mint>,
     /// The metadata PDA — will be initialised by the Metaplex program.
     #[account(mut)]
     pub metadata_account: UncheckedAccount,
-    pub token_program: Program<Token>,
-    pub token_metadata_program: MetadataProgram,
-    pub system_program: Program<System>,
+    pub token_program: Program<TokenProgram>,
+    pub token_metadata_program: Program<MetadataProgram>,
+    pub system_program: Program<SystemProgram>,
     pub rent: Sysvar<Rent>,
 }
 
@@ -54,7 +60,7 @@ pub fn handle_create_token(
             0,     // seller_fee_basis_points
             false, // is_mutable
             true,  // update_authority_is_signer
-        )
+        )?
         .invoke()?;
 
     log("Token created successfully.");

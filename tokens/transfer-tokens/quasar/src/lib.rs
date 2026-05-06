@@ -1,7 +1,7 @@
 #![cfg_attr(not(test), no_std)]
 
 use quasar_lang::prelude::*;
-use quasar_spl::{Mint, Token, TokenCpi};
+use quasar_spl::prelude::*;
 
 #[cfg(test)]
 mod tests;
@@ -40,7 +40,7 @@ pub struct MintTokens {
     /// The recipient's token account. Must already exist.
     #[account(mut)]
     pub recipient_token_account: Account<Token>,
-    pub token_program: Program<Token>,
+    pub token_program: Program<TokenProgram>,
 }
 
 #[inline(always)]
@@ -59,7 +59,7 @@ pub struct TransferTokens {
     pub sender_token_account: Account<Token>,
     #[account(mut)]
     pub recipient_token_account: Account<Token>,
-    pub token_program: Program<Token>,
+    pub token_program: Program<TokenProgram>,
 }
 
 #[inline(always)]

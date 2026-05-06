@@ -39,7 +39,7 @@ pub struct Initialize {
     pub token_account: Signer,
     pub mint_account: UncheckedAccount,
     pub token_program: Program<Token2022Program>,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 #[inline(always)]

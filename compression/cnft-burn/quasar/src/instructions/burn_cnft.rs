@@ -27,7 +27,7 @@ pub struct BurnCnft {
     /// mpl-bubblegum program.
     #[account(address = MPL_BUBBLEGUM_ID)]
     pub bubblegum_program: UncheckedAccount,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 pub fn handle_burn_cnft(accounts: &mut BurnCnft, data: &[u8], remaining: RemainingAccounts<'_>) -> Result<(), ProgramError> {

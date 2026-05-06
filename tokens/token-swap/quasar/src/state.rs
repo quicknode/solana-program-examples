@@ -3,7 +3,7 @@ use quasar_lang::prelude::*;
 /// Automated Market Maker configuration.
 ///
 /// Stores the AMM identifier, admin, and fee (in basis points).
-#[account(discriminator = 100)]
+#[account(discriminator = 100, set_inner)]
 pub struct Amm {
     /// Unique identifier for this AMM.
     pub id: Address,
@@ -14,7 +14,7 @@ pub struct Amm {
 }
 
 /// Liquidity pool linking an AMM to a pair of token mints.
-#[account(discriminator = 101)]
+#[account(discriminator = 101, set_inner)]
 pub struct Pool {
     /// The AMM this pool belongs to.
     pub amm: Address,

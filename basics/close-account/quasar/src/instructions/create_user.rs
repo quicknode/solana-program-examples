@@ -8,9 +8,9 @@ use {
 pub struct CreateUser {
     #[account(mut)]
     pub user: Signer,
-    #[account(mut, init, payer = user, seeds = UserState::seeds(user), bump)]
+    #[account(mut, init, payer = user, address = UserState::seeds(user.address()))]
     pub user_account: Account<UserState>,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 #[inline(always)]

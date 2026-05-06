@@ -1,7 +1,7 @@
 use {
     crate::state::{Contributor, Fundraiser},
     quasar_lang::prelude::*,
-    quasar_spl::{Token, TokenCpi},
+    quasar_spl::prelude::*,
 };
 
 #[derive(Accounts)]
@@ -16,7 +16,7 @@ pub struct Contribute {
     pub contributor_ta: Account<Token>,
     #[account(mut)]
     pub vault: Account<Token>,
-    pub token_program: Program<Token>,
+    pub token_program: Program<TokenProgram>,
 }
 
 #[inline(always)]

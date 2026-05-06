@@ -1,4 +1,7 @@
-use quasar_lang::{prelude::*, sysvars::Sysvar};
+use {
+    crate::instructions::init_rent_vault::RentVault,
+    quasar_lang::{prelude::*, sysvars::Sysvar},
+};
 
 /// Accounts for creating a new account funded by the rent vault PDA.
 /// The rent vault signs the create_account CPI via PDA seeds.
@@ -6,9 +9,9 @@ use quasar_lang::{prelude::*, sysvars::Sysvar};
 pub struct CreateNewAccount {
     #[account(mut)]
     pub new_account: Signer,
-    #[account(mut, seeds = [b"rent_vault"], bump)]
+    #[account(mut, address = RentVault::seeds())]
     pub rent_vault: UncheckedAccount,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 #[inline(always)]

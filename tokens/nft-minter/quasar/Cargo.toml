@@ -22,8 +22,11 @@ client = []
 debug = []
 
 [dependencies]
-quasar-lang = { git = "https://github.com/blueshift-gg/quasar" }
-quasar-spl = { git = "https://github.com/blueshift-gg/quasar", branch = "master", features = ["metadata"] }
+# All quasar deps share branch = "master" so trait impls resolve consistently.
+quasar-lang = { git = "https://github.com/blueshift-gg/quasar", branch = "master" }
+quasar-spl = { git = "https://github.com/blueshift-gg/quasar", branch = "master" }
+# Metaplex metadata moved out of quasar-spl into a dedicated crate (PR #196).
+quasar-metadata = { git = "https://github.com/blueshift-gg/quasar", branch = "master" }
 solana-instruction = { version = "3.2.0" }
 
 [dev-dependencies]

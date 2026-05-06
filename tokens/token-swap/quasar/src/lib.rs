@@ -17,6 +17,37 @@ pub const AUTHORITY_SEED: &[u8] = b"authority";
 /// Seed for the liquidity mint PDA.
 pub const LIQUIDITY_SEED: &[u8] = b"liquidity";
 
+// PDA seed markers required since PR #195 (inline `seeds = [...]` is gone).
+// Each marker captures the prefix and Address args; `address = T::seeds(...)`
+// drives derivation in the `#[account]` constraint.
+
+/// AMM PDA at seeds = [b"amm"].
+#[derive(Seeds)]
+#[seeds(b"amm")]
+pub struct AmmPda;
+
+/// Pool PDA at seeds = [amm, mint_a, mint_b] — no string prefix.
+#[derive(Seeds)]
+#[seeds(b"", amm: Address, mint_a: Address, mint_b: Address)]
+pub struct PoolPda;
+
+/// Pool-authority PDA at seeds = [amm, mint_a, mint_b, b"authority"].
+/// Modelled with prefix b"authority" + the three Address args; the
+/// rendered slice list ends up [amm, mint_a, mint_b, b"authority"] when
+/// you use `with_bump`. Note: the new \`#[seeds]\` puts the literal
+/// prefix first, so the on-chain derivation order is
+/// [b"authority", amm, mint_a, mint_b] — different from the original
+/// Anchor scheme. Programs are independent so this is consistent and
+/// correct on its own; the addresses just won't match the Anchor copy.
+#[derive(Seeds)]
+#[seeds(b"authority", amm: Address, mint_a: Address, mint_b: Address)]
+pub struct PoolAuthorityPda;
+
+/// Liquidity-mint PDA at seeds = [b"liquidity", amm, mint_a, mint_b].
+#[derive(Seeds)]
+#[seeds(b"liquidity", amm: Address, mint_a: Address, mint_b: Address)]
+pub struct LiquidityMintPda;
+
 /// Simple constant-product AMM (token swap).
 ///
 /// Five instructions:

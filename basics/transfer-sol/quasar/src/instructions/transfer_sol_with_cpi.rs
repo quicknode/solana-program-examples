@@ -7,7 +7,7 @@ pub struct TransferSolWithCpi {
     pub payer: Signer,
     #[account(mut)]
     pub recipient: UncheckedAccount,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 #[inline(always)]

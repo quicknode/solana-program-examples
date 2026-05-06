@@ -14,7 +14,7 @@ pub struct InitWallet {
     pub wallet: UncheckedAccount,
     #[account(mut)]
     pub ab_wallet: UncheckedAccount,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 #[inline(always)]

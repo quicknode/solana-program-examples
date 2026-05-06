@@ -3,7 +3,7 @@ use quasar_lang::prelude::*;
 /// Demonstrates Quasar's account type constraints:
 /// - `Signer`: automatically verified as a transaction signer
 /// - `UncheckedAccount`: no runtime checks (opt-in unchecked access)
-/// - `Program<System>`: verified as the system program (executable + address check)
+/// - `Program<SystemProgram>`: verified as the system program (executable + address check)
 ///
 /// Note: Anchor's `#[account(owner = id())]` owner constraint is not directly available
 /// in Quasar. Owner checks can be done manually in the instruction body if needed.
@@ -18,7 +18,7 @@ pub struct CheckAccounts {
     #[account(mut)]
     pub account_to_change: UncheckedAccount,
     /// Checks the account is executable and matches the system program address.
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 #[inline(always)]

@@ -22,8 +22,13 @@ client = []
 debug = []
 
 [dependencies]
-quasar-lang = { git = "https://github.com/blueshift-gg/quasar" }
-quasar-spl = { git = "https://github.com/blueshift-gg/quasar", branch = "master", features = ["metadata"] }
+# All quasar deps share one source-id (branch = "master") so trait-impls
+# resolve consistently — mixing `{ git = ... }` with `{ git = ..., branch = "master" }`
+# was treated by Cargo as two distinct sources of the same crate.
+quasar-lang = { git = "https://github.com/blueshift-gg/quasar", branch = "master" }
+quasar-spl = { git = "https://github.com/blueshift-gg/quasar", branch = "master" }
+# Metaplex metadata moved out of quasar-spl into its own crate (PR #196).
+quasar-metadata = { git = "https://github.com/blueshift-gg/quasar", branch = "master" }
 solana-instruction = { version = "3.2.0" }
 
 [dev-dependencies]

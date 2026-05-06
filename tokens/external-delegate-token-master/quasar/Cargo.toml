@@ -22,8 +22,10 @@ client = []
 debug = []
 
 [dependencies]
-quasar-lang = { git = "https://github.com/blueshift-gg/quasar" }
-quasar-spl = { git = "https://github.com/blueshift-gg/quasar" }
+# Pin both quasar deps to the same source-id (branch = "master") so trait
+# impls resolve consistently.
+quasar-lang = { git = "https://github.com/blueshift-gg/quasar", branch = "master" }
+quasar-spl = { git = "https://github.com/blueshift-gg/quasar", branch = "master" }
 solana-instruction = { version = "3.2.0" }
 solana-define-syscall = "4.0"
 solana-keccak-hasher = "3.1"

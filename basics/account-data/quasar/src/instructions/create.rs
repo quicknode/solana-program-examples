@@ -8,9 +8,9 @@ use {
 pub struct CreateAddressInfo {
     #[account(mut)]
     pub payer: Signer,
-    #[account(mut, init, payer = payer, seeds = AddressInfo::seeds(payer), bump)]
+    #[account(mut, init, payer = payer, address = AddressInfo::seeds(payer.address()))]
     pub address_info: Account<AddressInfo>,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 #[inline(always)]

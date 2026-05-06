@@ -11,7 +11,7 @@ pub struct InitConfig {
     pub payer: Signer,
     #[account(mut)]
     pub config: UncheckedAccount,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 #[inline(always)]

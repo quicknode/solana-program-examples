@@ -18,7 +18,7 @@ pub struct WithdrawTwo {
     #[account(mut)]
     pub tree_authority1: UncheckedAccount,
     /// Vault PDA that owns the cNFTs — signs both transfers.
-    #[account(seeds = [b"cNFT-vault"], bump)]
+    #[account(address = crate::VaultPda::seeds())]
     pub leaf_owner: UncheckedAccount,
     /// Recipient for cNFT 1.
     pub new_leaf_owner1: UncheckedAccount,
@@ -41,7 +41,7 @@ pub struct WithdrawTwo {
     /// mpl-bubblegum program.
     #[account(address = MPL_BUBBLEGUM_ID)]
     pub bubblegum_program: UncheckedAccount,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 #[allow(clippy::too_many_lines)]

@@ -1,4 +1,7 @@
-use {crate::state::Amm, quasar_lang::prelude::*};
+use {
+    crate::{state::{Amm, AmmInner}, AmmPda},
+    quasar_lang::prelude::*,
+};
 
 /// Accounts for creating a new AMM.
 ///
@@ -7,13 +10,13 @@ use {crate::state::Amm, quasar_lang::prelude::*};
 /// macro seeds reference account addresses, not instruction data.
 #[derive(Accounts)]
 pub struct CreateAmm {
-    #[account(mut, init, payer = payer, seeds = [b"amm"], bump)]
+    #[account(mut, init, payer = payer, address = AmmPda::seeds())]
     pub amm: Account<Amm>,
     /// Admin authority for the AMM.
     pub admin: UncheckedAccount,
     #[account(mut)]
     pub payer: Signer,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 #[inline(always)]
@@ -21,6 +24,10 @@ pub fn handle_create_amm(accounts: &mut CreateAmm, id: Address, fee: u16) -> Res
     if fee >= 10000 {
         return Err(ProgramError::InvalidArgument);
     }
-    accounts.amm.set_inner(id, *accounts.admin.address(), fee);
+    accounts.amm.set_inner(AmmInner {
+        id,
+        admin: *accounts.admin.address(),
+        fee: fee.into(),
+    });
     Ok(())
 }

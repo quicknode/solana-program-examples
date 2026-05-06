@@ -1,5 +1,5 @@
 use quasar_lang::prelude::*;
-use quasar_spl::{Mint, Token, TokenCpi};
+use quasar_spl::prelude::*;
 
 /// Accounts for minting tokens to a recipient's token account.
 #[derive(Accounts)]
@@ -9,10 +9,15 @@ pub struct MintToken {
     pub recipient: UncheckedAccount,
     #[account(mut)]
     pub mint_account: Account<Mint>,
-    #[account(mut, init_if_needed, payer = mint_authority, token::mint = mint_account, token::authority = recipient)]
+    #[account(
+        mut,
+        init(idempotent),
+        payer = mint_authority,
+        token(mint = mint_account, authority = recipient, token_program = token_program),
+    )]
     pub associated_token_account: Account<Token>,
-    pub token_program: Program<Token>,
-    pub system_program: Program<System>,
+    pub token_program: Program<TokenProgram>,
+    pub system_program: Program<SystemProgram>,
 }
 
 #[inline(always)]

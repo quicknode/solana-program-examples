@@ -1,5 +1,12 @@
 use quasar_lang::prelude::*;
 
+/// PDA seed marker for the rent-vault account. With the new derive grammar
+/// (`address = <expr>`) we need a `Seeds` impl to validate the address;
+/// `seeds = [b"rent_vault"]` is no longer accepted.
+#[derive(Seeds)]
+#[seeds(b"rent_vault")]
+pub struct RentVault;
+
 /// Accounts for funding the rent vault PDA.
 /// Transfers lamports from the payer to the vault via system program CPI.
 /// When lamports are sent to a new address, the system program creates
@@ -8,9 +15,9 @@ use quasar_lang::prelude::*;
 pub struct InitRentVault {
     #[account(mut)]
     pub payer: Signer,
-    #[account(mut, seeds = [b"rent_vault"], bump)]
+    #[account(mut, address = RentVault::seeds())]
     pub rent_vault: UncheckedAccount,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 #[inline(always)]

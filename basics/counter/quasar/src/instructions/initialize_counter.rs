@@ -7,9 +7,9 @@ use quasar_lang::prelude::*;
 pub struct InitializeCounter {
     #[account(mut)]
     pub payer: Signer,
-    #[account(mut, init, payer = payer, seeds = Counter::seeds(payer), bump)]
+    #[account(mut, init, payer = payer, address = Counter::seeds(payer.address()))]
     pub counter: Account<Counter>,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 #[inline(always)]

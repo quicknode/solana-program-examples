@@ -1,4 +1,4 @@
-use quasar_lang::cpi::{CpiCall, DynCpiCall, InstructionAccount, Seed};
+use quasar_lang::cpi::{CpiCall, CpiDynamic, InstructionAccount, Seed};
 use quasar_lang::prelude::*;
 use quasar_lang::sysvars::Sysvar;
 
@@ -24,7 +24,7 @@ pub struct InitMint {
     /// ExtraAccountMetaList PDA: ["extra-account-metas", mint]
     #[account(mut)]
     pub extra_metas_account: UncheckedAccount,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
     pub token_program: Program<Token2022>,
 }
 
@@ -159,7 +159,7 @@ pub fn handle_init_mint(
     pos += uri.len();
 
     {
-        let mut cpi = DynCpiCall::<3, MAX_META_IX>::new(token_prog);
+        let mut cpi = CpiDynamic::<3, MAX_META_IX>::new(token_prog);
         cpi.push_account(accounts.mint.to_account_view(), false, true)?;
         cpi.push_account(accounts.payer.to_account_view(), true, false)?;
         cpi.push_account(accounts.payer.to_account_view(), true, false)?;
@@ -216,7 +216,7 @@ fn emit_update_field_cpi(ctx: &InitMint, key: &[u8], value: &[u8]) -> Result<(),
     pos += value.len();
 
     let _ = (mint_key, payer_key);
-    let mut cpi = DynCpiCall::<2, MAX_META_IX>::new(token_prog);
+    let mut cpi = CpiDynamic::<2, MAX_META_IX>::new(token_prog);
     cpi.push_account(ctx.mint.to_account_view(), false, true)?;
     cpi.push_account(ctx.payer.to_account_view(), true, false)?;
     cpi.set_data(&buf[..pos])?;
