@@ -55,7 +55,12 @@ pub fn handle_verify(accounts: &mut Verify, data: &[u8], remaining: RemainingAcc
     ix_data[40..72].copy_from_slice(&leaf_hash);
     ix_data[72..76].copy_from_slice(&index.to_le_bytes());
 
-    // Collect proof nodes
+    // Collect proof nodes.
+    //
+    // `remaining.iter()` yields `Result<RemainingAccount, _>` in newer
+    // quasar-lang. Reach the inner `AccountView` via the unchecked accessor
+    // — we only read addresses/views to forward to the compression CPI as
+    // proof nodes; no aliased data access.
     let placeholder = accounts.compression_program.to_account_view().clone();
     let mut proof_views: [AccountView; MAX_PROOF_NODES] =
         core::array::from_fn(|_| placeholder.clone());
@@ -64,7 +69,9 @@ pub fn handle_verify(accounts: &mut Verify, data: &[u8], remaining: RemainingAcc
         if proof_count >= MAX_PROOF_NODES {
             break;
         }
-        proof_views[proof_count] = result?;
+        let account = result?;
+        // SAFETY: Only reads address and forwards an immutable view to CPI.
+        proof_views[proof_count] = unsafe { account.as_account_view_unchecked() }.clone();
         proof_count += 1;
     }
 

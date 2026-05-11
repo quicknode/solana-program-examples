@@ -50,7 +50,12 @@ pub fn handle_withdraw_cnft(accounts: &mut Withdraw, data: &[u8], remaining: Rem
 
     let ix_data = build_transfer_data(&data[0..TRANSFER_ARGS_LEN]);
 
-    // Collect proof nodes
+    // Collect proof nodes.
+    //
+    // `remaining.iter()` yields `Result<RemainingAccount, _>` in newer
+    // quasar-lang. Reach the inner `AccountView` via the unchecked accessor
+    // — we only read addresses/views to forward to the bubblegum CPI as
+    // proof nodes; no aliased data access.
     let placeholder = accounts.system_program.to_account_view().clone();
     let mut proof_views: [AccountView; MAX_PROOF_NODES] =
         core::array::from_fn(|_| placeholder.clone());
@@ -59,7 +64,9 @@ pub fn handle_withdraw_cnft(accounts: &mut Withdraw, data: &[u8], remaining: Rem
         if proof_count >= MAX_PROOF_NODES {
             break;
         }
-        proof_views[proof_count] = result?;
+        let account = result?;
+        // SAFETY: Only reads address and forwards an immutable view to CPI.
+        proof_views[proof_count] = unsafe { account.as_account_view_unchecked() }.clone();
         proof_count += 1;
     }
 
