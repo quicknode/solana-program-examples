@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::{
     associated_token::AssociatedToken,
-    token::{self, Burn, Mint, Token, TokenAccount, Transfer},
+    token::{self, Burn, Mint, Token, TokenAccount, TransferChecked},
 };
 use fixed::types::I64F64;
 
@@ -31,17 +31,20 @@ pub fn handle_withdraw_liquidity(context: Context<WithdrawLiquidity>, amount: u6
         .unwrap()
         .floor()
         .to_num::<u64>();
-    token::transfer(
+    // transfer_checked verifies the mint + decimals at the token program.
+    token::transfer_checked(
         CpiContext::new_with_signer(
             context.accounts.token_program.key(),
-            Transfer {
+            TransferChecked {
                 from: context.accounts.pool_account_a.to_account_info(),
+                mint: context.accounts.mint_a.to_account_info(),
                 to: context.accounts.depositor_account_a.to_account_info(),
                 authority: context.accounts.pool_authority.to_account_info(),
             },
             signer_seeds,
         ),
         amount_a,
+        context.accounts.mint_a.decimals,
     )?;
 
     let amount_b = I64F64::from_num(amount)
@@ -53,17 +56,19 @@ pub fn handle_withdraw_liquidity(context: Context<WithdrawLiquidity>, amount: u6
         .unwrap()
         .floor()
         .to_num::<u64>();
-    token::transfer(
+    token::transfer_checked(
         CpiContext::new_with_signer(
             context.accounts.token_program.key(),
-            Transfer {
+            TransferChecked {
                 from: context.accounts.pool_account_b.to_account_info(),
+                mint: context.accounts.mint_b.to_account_info(),
                 to: context.accounts.depositor_account_b.to_account_info(),
                 authority: context.accounts.pool_authority.to_account_info(),
             },
             signer_seeds,
         ),
         amount_b,
+        context.accounts.mint_b.decimals,
     )?;
 
     // Burn the liquidity tokens
