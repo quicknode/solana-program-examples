@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-use crate::state::ride;
+use crate::{error::CarnivalError, state::ride};
 
 // Instruction Data
 
@@ -18,6 +18,9 @@ pub fn get_on_ride(ix: GetOnRideInstructionData) -> Result<()> {
         if ix.ride.eq(&ride.name) {
             msg!("You're about to ride the {}!", ride.name);
 
+            // Refuse service: failures used to log + return Ok(()), which made
+            // them indistinguishable from a successful ride for callers and
+            // tests. Return a real error instead.
             if ix.rider_ticket_count < ride.tickets {
                 msg!(
                     "  Sorry {}, you need {} tickets to ride the {}!",
@@ -25,7 +28,7 @@ pub fn get_on_ride(ix: GetOnRideInstructionData) -> Result<()> {
                     ride.tickets,
                     ride.name
                 );
-                return Ok(());
+                return Err(CarnivalError::NotEnoughTickets.into());
             };
 
             if ix.rider_height < ride.min_height {
@@ -35,7 +38,7 @@ pub fn get_on_ride(ix: GetOnRideInstructionData) -> Result<()> {
                     ride.min_height,
                     ride.name
                 );
-                return Ok(());
+                return Err(CarnivalError::RiderTooShort.into());
             };
 
             msg!("  Welcome aboard the {}!", ride.name);

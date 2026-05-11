@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-use crate::state::food;
+use crate::{error::CarnivalError, state::food};
 
 // Instruction Data
 
@@ -24,10 +24,12 @@ pub fn eat_food(ix: EatFoodInstructionData) -> Result<()> {
                     food_stand.food_type,
                     food_stand.tickets
                 );
-            } else {
-                msg!("  Enjoy your {}!", food_stand.food_type);
-            };
+                // Refuse service rather than logging and returning Ok(()), so
+                // callers can distinguish a sale from a refusal.
+                return Err(CarnivalError::NotEnoughTickets.into());
+            }
 
+            msg!("  Enjoy your {}!", food_stand.food_type);
             return Ok(());
         }
     }
