@@ -138,6 +138,7 @@ jobs:
       - uses: heyAyushh/setup-anchor@v4.999
         with:
           anchor-version: 1.0.0
+          # Sometimes Anza's stable resolves to a release whose binaries aren't published yet
           solana-cli-version: stable
       - name: Install Surfpool
         run: curl -sL https://run.surfpool.run/ | bash

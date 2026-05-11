@@ -197,6 +197,7 @@ jobs:
       - name: Setup Solana Stable
         uses: heyAyushh/setup-solana@v5.9
         with:
+          # Sometimes Anza's stable resolves to a release whose binaries aren't published yet
           solana-cli-version: stable
       - name: Install Quasar CLI
         # Pinned to quasar rev 3d6fb0d8 (the HEAD this migration was written

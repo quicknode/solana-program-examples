@@ -222,6 +222,7 @@ jobs:
       - name: Setup Solana Stable
         uses: heyAyushh/setup-solana@v5.9
         with:
+          # Sometimes Anza's stable resolves to a release whose binaries aren't published yet
           solana-cli-version: stable
       - name: Build and Test with Stable
         run: |
