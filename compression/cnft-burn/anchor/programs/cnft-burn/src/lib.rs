@@ -143,7 +143,11 @@ pub struct BurnCnft<'info> {
     /// CHECK: This account is neither written to nor read from.
     pub log_wrapper: UncheckedAccount<'info>,
     pub compression_program: Program<'info, SPLCompression>,
-    /// CHECK: This account is neither written to nor read from.
+    // Pin the bubblegum program account to the known mpl-bubblegum id. Without
+    // this constraint the caller could pass any account and a malicious one
+    // could short-circuit the CPI in unexpected ways.
+    /// CHECK: address constrained to the mpl-bubblegum program id.
+    #[account(address = MPL_BUBBLEGUM_ID)]
     pub bubblegum_program: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
 }
