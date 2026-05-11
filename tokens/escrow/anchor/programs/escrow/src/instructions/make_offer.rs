@@ -30,6 +30,19 @@ pub struct MakeOffer<'info> {
     )]
     pub maker_token_account_a: InterfaceAccount<'info, TokenAccount>,
 
+    // The maker's token-B ATA used to be init_if_needed on the taker side, which
+    // meant the taker paid the maker's rent. Initialize it here (paid by the
+    // maker) so the rent burden lives with the party who chose to open the
+    // offer.
+    #[account(
+        init_if_needed,
+        payer = maker,
+        associated_token::mint = token_mint_b,
+        associated_token::authority = maker,
+        associated_token::token_program = token_program
+    )]
+    pub maker_token_account_b: InterfaceAccount<'info, TokenAccount>,
+
     #[account(
         init,
         payer = maker,

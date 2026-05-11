@@ -41,9 +41,11 @@ pub struct TakeOffer<'info> {
     )]
     pub taker_token_account_b: Box<InterfaceAccount<'info, TokenAccount>>,
 
+    // The maker's token-B ATA is initialized in make_offer (paid by the maker),
+    // so the taker no longer pays its rent. Treat it as a plain existing account
+    // here.
     #[account(
-        init_if_needed,
-        payer = taker,
+        mut,
         associated_token::mint = token_mint_b,
         associated_token::authority = maker,
         associated_token::token_program = token_program,
