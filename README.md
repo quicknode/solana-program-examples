@@ -24,7 +24,7 @@ Constant product AMM (x·y=k) — create liquidity pools, deposit and withdraw l
 
 ### Asset Leasing
 
-Fixed-term leasing of SPL tokens with SPL collateral, per-second rent, and Pyth-priced liquidation — lessors list tokens, lessees post collateral, keepers liquidate undercollateralised positions.
+Directional token lending with token collateral, per-second lease fees, and Pyth-priced liquidation. Holders rent out token inventory to short sellers, who post stable-asset collateral and borrow the asset they want to short; keepers liquidate undercollateralised positions.
 
 [⚓ Anchor](./defi/asset-leasing/anchor)
 
