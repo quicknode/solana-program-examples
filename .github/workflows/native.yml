@@ -222,7 +222,16 @@ jobs:
       - name: Setup Solana Stable
         uses: heyAyushh/setup-solana@v5.9
         with:
-          solana-cli-version: stable
+          # Pinned to 3.1.10 (not `stable`) because heyAyushh/setup-solana's
+          # `stable` resolver intermittently returns an empty version string,
+          # which makes the action curl https://release.anza.xyz/v/install and
+          # 404. 3.1.10 is the version recommended by Anchor 1.0.0's release
+          # notes; we use it here too to keep the matrix consistent across
+          # frameworks. The `beta` step below intentionally stays floating —
+          # it's the channel-tracking job and is already marked
+          # continue-on-error. See upstream issue tracking the brittle `stable`
+          # behaviour.
+          solana-cli-version: 3.1.10
       - name: Build and Test with Stable
         run: |
           source build_and_test.sh

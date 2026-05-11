@@ -138,7 +138,14 @@ jobs:
       - uses: heyAyushh/setup-anchor@v4.999
         with:
           anchor-version: 1.0.0
-          solana-cli-version: stable
+          # Pinned to 3.1.10 (not `stable`) because heyAyushh/setup-anchor's
+          # `stable` resolver intermittently returns an empty version string,
+          # which makes the action curl https://release.anza.xyz/v/install and
+          # 404. 3.1.10 is the version recommended by Anchor 1.0.0's release
+          # notes and pinned by Anchor's own CI in 1.0.0-rc.5+. Bump in lockstep
+          # with anchor-version above. See upstream issue tracking the brittle
+          # `stable` behaviour.
+          solana-cli-version: 3.1.10
       - name: Install Surfpool
         run: curl -sL https://run.surfpool.run/ | bash
       - name: Display Versions

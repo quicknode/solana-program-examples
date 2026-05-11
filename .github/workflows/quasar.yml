@@ -197,7 +197,13 @@ jobs:
       - name: Setup Solana Stable
         uses: heyAyushh/setup-solana@v5.9
         with:
-          solana-cli-version: stable
+          # Pinned to 3.1.10 (not `stable`) because heyAyushh/setup-solana's
+          # `stable` resolver intermittently returns an empty version string,
+          # which makes the action curl https://release.anza.xyz/v/install and
+          # 404. 3.1.10 is the version recommended by Anchor 1.0.0's release
+          # notes; using it here keeps the matrix consistent across frameworks.
+          # See upstream issue tracking the brittle `stable` behaviour.
+          solana-cli-version: 3.1.10
       - name: Install Quasar CLI
         # Pinned to quasar rev 3d6fb0d8 (the HEAD this migration was written
         # against, immediately after PRs #195 + #196). The next merged PR
