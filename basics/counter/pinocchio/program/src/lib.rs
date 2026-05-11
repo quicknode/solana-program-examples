@@ -21,6 +21,10 @@ pub fn process_instruction(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
+    if instruction_data.is_empty() {
+        log!("Error: instruction data is empty");
+        return Err(ProgramError::InvalidInstructionData);
+    }
     let (instruction_discriminant, instruction_data_inner) = instruction_data.split_at(1);
     match instruction_discriminant[0] {
         0 => {
@@ -28,7 +32,11 @@ pub fn process_instruction(
             process_increment_counter(accounts, instruction_data_inner)?;
         }
         _ => {
+            // Previously this branch logged a message and returned Ok(()), which let
+            // unknown discriminants succeed silently. Return InvalidInstructionData
+            // so callers get a real failure.
             log!("Error: unknown instruction");
+            return Err(ProgramError::InvalidInstructionData);
         }
     }
     Ok(())
