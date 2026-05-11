@@ -3,6 +3,7 @@ use anchor_spl::token_interface::{
     transfer_checked, Mint, TokenAccount, TokenInterface, TransferChecked,
 };
 
+use crate::errors::ErrorCode;
 use crate::state::{Market, UserAccount, MARKET_SEED, USER_ACCOUNT_SEED};
 
 pub fn handle_settle_funds(context: Context<SettleFunds>) -> Result<()> {
@@ -64,7 +65,19 @@ pub fn handle_settle_funds(context: Context<SettleFunds>) -> Result<()> {
 
 #[derive(Accounts)]
 pub struct SettleFunds<'info> {
-    #[account(mut)]
+    // `has_one` constraints bind these vaults/mints to the addresses stored
+    // on the Market PDA at initialise_market time. Without them a caller
+    // could substitute the fee_vault (same mint + same authority as
+    // quote_vault) for `quote_vault` and drain accumulated taker fees,
+    // since transfer_checked only verifies mint + authority on the source
+    // account, not its identity.
+    #[account(
+        mut,
+        has_one = base_vault @ ErrorCode::InvalidBaseVault,
+        has_one = quote_vault @ ErrorCode::InvalidQuoteVault,
+        has_one = base_mint @ ErrorCode::InvalidBaseMint,
+        has_one = quote_mint @ ErrorCode::InvalidQuoteMint,
+    )]
     pub market: Account<'info, Market>,
 
     #[account(

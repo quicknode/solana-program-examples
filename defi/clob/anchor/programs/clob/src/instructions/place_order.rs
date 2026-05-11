@@ -422,9 +422,19 @@ pub fn handle_place_order<'info>(
 #[derive(Accounts)]
 #[instruction(side: OrderSide, price: u64, quantity: u64)]
 pub struct PlaceOrder<'info> {
+    // `has_one` ties every market-owned account on this struct to the
+    // addresses recorded on the Market PDA. Crucially, without
+    // has_one on base_vault / quote_vault / base_mint / quote_mint a caller
+    // could swap fee_vault in for quote_vault (same mint, same authority)
+    // and steer the per-fill fee transfer to drain real fees instead of
+    // routing them in.
     #[account(
         mut,
         has_one = fee_vault @ ErrorCode::InvalidFeeVault,
+        has_one = base_vault @ ErrorCode::InvalidBaseVault,
+        has_one = quote_vault @ ErrorCode::InvalidQuoteVault,
+        has_one = base_mint @ ErrorCode::InvalidBaseMint,
+        has_one = quote_mint @ ErrorCode::InvalidQuoteMint,
     )]
     pub market: Account<'info, Market>,
 
