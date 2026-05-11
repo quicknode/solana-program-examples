@@ -107,19 +107,25 @@ fn process_instruction(
         ],
     )?;
 
-    // Update the Default Account State to Initialized
+    // Update the Default Account State to Initialized.
+    //
+    // The freeze authority set in initialize_mint above is `mint_authority`, so
+    // the update_default_account_state CPI must be signed by mint_authority -
+    // not by payer. The previous version passed payer.key here, which only
+    // worked when the caller happened to use the same account for both, and
+    // silently rejected any caller who didn't.
     invoke(
         &update_default_account_state(
             token_program.key,
             mint_account.key,
-            payer.key,
-            &[payer.key],
+            mint_authority.key,
+            &[mint_authority.key],
             &AccountState::Initialized,
         )
         .unwrap(),
         &[
             mint_account.clone(),
-            payer.clone(),
+            mint_authority.clone(),
             token_program.clone(),
             system_program.clone(),
         ],
