@@ -99,8 +99,7 @@ fn test_go_on_ride_rejects_insufficient_tickets() {
     let (mut svm, payer) = setup();
     // Tilt-a-Whirl costs 3 tickets; Bob only has 1.
     let ix = go_on_ride_ix(&payer, "Bob", 49, 1, "Tilt-a-Whirl");
-    let result =
-        send_transaction_from_instructions(&mut svm, vec![ix], &[&payer], &payer.pubkey());
+    let result = send_transaction_from_instructions(&mut svm, vec![ix], &[&payer], &payer.pubkey());
     assert!(result.is_err(), "ride must reject insufficient tickets");
 }
 
@@ -111,8 +110,7 @@ fn test_go_on_ride_rejects_too_short() {
     // Ferris Wheel requires 55" min height; Jimmy is 36" tall but has plenty
     // of tickets.
     let ix = go_on_ride_ix(&payer, "Jimmy", 36, 15, "Ferris Wheel");
-    let result =
-        send_transaction_from_instructions(&mut svm, vec![ix], &[&payer], &payer.pubkey());
+    let result = send_transaction_from_instructions(&mut svm, vec![ix], &[&payer], &payer.pubkey());
     assert!(result.is_err(), "ride must reject riders below min height");
 }
 
@@ -121,8 +119,7 @@ fn test_go_on_ride_rejects_too_short() {
 fn test_go_on_ride_rejects_unknown_ride() {
     let (mut svm, payer) = setup();
     let ix = go_on_ride_ix(&payer, "Alice", 60, 100, "Quantum Coaster");
-    let result =
-        send_transaction_from_instructions(&mut svm, vec![ix], &[&payer], &payer.pubkey());
+    let result = send_transaction_from_instructions(&mut svm, vec![ix], &[&payer], &payer.pubkey());
     assert!(result.is_err(), "unknown ride must be rejected");
 }
 
@@ -139,8 +136,7 @@ fn test_play_game_rejects_insufficient_tickets() {
     let (mut svm, payer) = setup();
     // Ring Toss costs 3 tickets; Mary only has 1.
     let ix = play_game_ix(&payer, "Mary", 1, "Ring Toss");
-    let result =
-        send_transaction_from_instructions(&mut svm, vec![ix], &[&payer], &payer.pubkey());
+    let result = send_transaction_from_instructions(&mut svm, vec![ix], &[&payer], &payer.pubkey());
     assert!(result.is_err(), "game must reject insufficient tickets");
 }
 
@@ -157,7 +153,9 @@ fn test_eat_food_rejects_insufficient_tickets() {
     let (mut svm, payer) = setup();
     // Larry's Pizza costs 3 tickets; Mary has 1.
     let ix = eat_food_ix(&payer, "Mary", 1, "Larry's Pizza");
-    let result =
-        send_transaction_from_instructions(&mut svm, vec![ix], &[&payer], &payer.pubkey());
-    assert!(result.is_err(), "food stand must reject insufficient tickets");
+    let result = send_transaction_from_instructions(&mut svm, vec![ix], &[&payer], &payer.pubkey());
+    assert!(
+        result.is_err(),
+        "food stand must reject insufficient tickets"
+    );
 }

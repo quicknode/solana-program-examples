@@ -13,8 +13,7 @@ use solana_transaction::Transaction;
 // `cargo build-sbf --sbf-out-dir=./tests/fixtures` from the package root). Run
 // that script (or `cargo build-sbf` with --sbf-out-dir set accordingly) before
 // `cargo test`.
-const PROGRAM_SO: &[u8] =
-    include_bytes!("../../tests/fixtures/counter_solana_native.so");
+const PROGRAM_SO: &[u8] = include_bytes!("../../tests/fixtures/counter_solana_native.so");
 
 fn setup_with_counter() -> (LiteSVM, Pubkey, Keypair, Keypair) {
     let program_id = Pubkey::new_unique();
