@@ -916,6 +916,83 @@ fn cancel_and_settle_bid_refunds_full_quote() {
     );
 }
 
+// Regression test for the fee-drain attack on settle_funds. Pre-fix,
+// `SettleFunds` did not bind `quote_vault` to `market.quote_vault` via
+// `has_one`, so a caller could pass `market.fee_vault` (same mint and
+// same authority) where `quote_vault` was expected and drain accumulated
+// taker fees while spending their own unsettled_quote credit. The
+// has_one constraint now bound on the `market` field must surface this
+// as `ConstraintHasOne` (anchor error 2001) before any transfer runs.
+#[test]
+fn settle_funds_rejects_fee_vault_substituted_for_quote_vault() {
+    let mut sc = full_setup();
+    initialize_market_and_users(&mut sc);
+
+    // Earn the buyer some unsettled_quote: place a bid (locks quote in
+    // the real quote_vault) and immediately cancel it (credits the
+    // buyer's unsettled_quote). settle_funds would normally drain the
+    // quote_vault to the buyer's ATA.
+    let bid_order_id = 1u64;
+    let place_ix = build_place_order_ix(
+        &sc,
+        &sc.buyer,
+        sc.buyer_user_account,
+        sc.buyer_base_ata,
+        sc.buyer_quote_ata,
+        clob::state::OrderSide::Bid,
+        bid_order_id,
+        BID_PRICE,
+        BID_QUANTITY,
+    );
+    let cancel_ix = build_cancel_order_ix(
+        &sc,
+        &sc.buyer.pubkey(),
+        sc.buyer_user_account,
+        bid_order_id,
+    );
+    send_transaction_from_instructions(
+        &mut sc.svm,
+        vec![place_ix, cancel_ix],
+        &[&sc.buyer],
+        &sc.buyer.pubkey(),
+    )
+    .unwrap();
+
+    // Build a settle_funds ix but swap fee_vault in for quote_vault.
+    // Everything else (base_vault, mints, user accounts, owner) stays
+    // correct, so the only thing that should reject this is the new
+    // has_one constraint on the market PDA.
+    let attack_ix = Instruction::new_with_bytes(
+        sc.program_id,
+        &clob::instruction::SettleFunds {}.data(),
+        clob::accounts::SettleFunds {
+            market: sc.market,
+            user_account: sc.buyer_user_account,
+            base_vault: sc.base_vault.pubkey(),
+            // Attack: route the quote-side transfer at the fee_vault.
+            quote_vault: sc.fee_vault.pubkey(),
+            user_base_account: sc.buyer_base_ata,
+            user_quote_account: sc.buyer_quote_ata,
+            base_mint: sc.base_mint,
+            quote_mint: sc.quote_mint,
+            owner: sc.buyer.pubkey(),
+            token_program: token_program_id(),
+        }
+        .to_account_metas(None),
+    );
+
+    let result = send_transaction_from_instructions(
+        &mut sc.svm,
+        vec![attack_ix],
+        &[&sc.buyer],
+        &sc.buyer.pubkey(),
+    );
+    assert!(
+        result.is_err(),
+        "settle_funds must reject fee_vault substituted for quote_vault"
+    );
+}
+
 #[test]
 fn initialize_market_rejects_zero_tick_size() {
     let mut sc = full_setup();

@@ -41,6 +41,18 @@ pub enum ErrorCode {
     #[msg("Fee vault does not match the market's fee vault")]
     InvalidFeeVault,
 
+    #[msg("Base vault does not match the market's base vault")]
+    InvalidBaseVault,
+
+    #[msg("Quote vault does not match the market's quote vault")]
+    InvalidQuoteVault,
+
+    #[msg("Base mint does not match the market's base mint")]
+    InvalidBaseMint,
+
+    #[msg("Quote mint does not match the market's quote mint")]
+    InvalidQuoteMint,
+
     #[msg("Maker account provided does not correspond to a resting order on the book")]
     MakerAccountMismatch,
 
