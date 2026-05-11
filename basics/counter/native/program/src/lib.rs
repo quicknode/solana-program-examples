@@ -20,24 +20,34 @@ use solana_program::entrypoint;
 entrypoint!(process_instruction);
 
 pub fn process_instruction(
-    _program_id: &Pubkey,
+    program_id: &Pubkey,
     accounts: &[AccountInfo],
     instruction_data: &[u8],
 ) -> ProgramResult {
+    // Reject empty instruction data explicitly rather than panicking via split_at.
+    if instruction_data.is_empty() {
+        msg!("Error: instruction data is empty");
+        return Err(ProgramError::InvalidInstructionData);
+    }
     let (instruction_discriminant, instruction_data_inner) = instruction_data.split_at(1);
     match instruction_discriminant[0] {
         0 => {
             msg!("Instruction: Increment");
-            process_increment_counter(accounts, instruction_data_inner)?;
+            process_increment_counter(program_id, accounts, instruction_data_inner)?;
         }
         _ => {
-            msg!("Error: unknown instruction")
+            // Previously this branch logged a message and returned Ok(()), which let
+            // unknown discriminants succeed silently. Return InvalidInstructionData
+            // so callers get a real failure.
+            msg!("Error: unknown instruction");
+            return Err(ProgramError::InvalidInstructionData);
         }
     }
     Ok(())
 }
 
 pub fn process_increment_counter(
+    program_id: &Pubkey,
     accounts: &[AccountInfo],
     _instruction_data: &[u8],
 ) -> Result<(), ProgramError> {
@@ -48,6 +58,13 @@ pub fn process_increment_counter(
         counter_account.is_writable,
         "Counter account must be writable"
     );
+
+    // Owner check: without this the program would happily decode any 8 bytes of
+    // data as a Counter, even when the account belongs to a different program.
+    if counter_account.owner != program_id {
+        msg!("Error: counter account is not owned by this program");
+        return Err(ProgramError::IncorrectProgramId);
+    }
 
     let mut counter = Counter::try_from_slice(&counter_account.try_borrow_mut_data()?)?;
     counter.count += 1;

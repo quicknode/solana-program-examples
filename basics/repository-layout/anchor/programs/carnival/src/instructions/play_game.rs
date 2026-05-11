@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-use crate::state::game;
+use crate::{error::CarnivalError, state::game};
 
 // Instruction Data
 
@@ -24,14 +24,17 @@ pub fn play_game(ix: PlayGameInstructionData) -> Result<()> {
                     game.tickets,
                     game.name
                 );
-            } else {
-                msg!("  Let's see what you got!");
-                msg!(
-                    "  You get {} attempts and the prize is a {}!",
-                    game.tries,
-                    game.prize
-                );
-            };
+                // Refuse service rather than logging and returning Ok(()), so
+                // callers can tell a successful play from a refusal.
+                return Err(CarnivalError::NotEnoughTickets.into());
+            }
+
+            msg!("  Let's see what you got!");
+            msg!(
+                "  You get {} attempts and the prize is a {}!",
+                game.tries,
+                game.prize
+            );
 
             return Ok(());
         }

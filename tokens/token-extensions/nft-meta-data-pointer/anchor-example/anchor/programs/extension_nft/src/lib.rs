@@ -7,6 +7,13 @@ pub mod instructions;
 pub mod state;
 use instructions::*;
 
+// WARNING: This example depends on the `session-keys` crate, which has not
+// been independently audited. It is included here purely for educational
+// purposes - demonstrating how a game might let a player sign with a
+// short-lived session token instead of their main wallet. Do not ship this
+// crate (or this program) to mainnet in its current form: review the upstream
+// `session-keys` source, get an audit, and harden the session-token issuance
+// and expiry handling first.
 declare_id!("9aZZ7TJ2fQZxY8hMtWXywp5y6BgqC4N2BPcr9FDT47sW");
 
 #[program]

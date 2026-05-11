@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::{
     associated_token::AssociatedToken,
-    token::{self, Mint, Token, TokenAccount, Transfer},
+    token::{self, Mint, Token, TokenAccount, TransferChecked},
 };
 use fixed::types::I64F64;
 
@@ -17,14 +17,18 @@ pub fn handle_swap_exact_tokens_for_tokens(
     input_amount: u64,
     min_output_amount: u64,
 ) -> Result<()> {
-    // Prevent depositing assets the depositor does not own
-    let input = if swap_a && input_amount > context.accounts.trader_account_a.amount {
-        context.accounts.trader_account_a.amount
-    } else if !swap_a && input_amount > context.accounts.trader_account_b.amount {
-        context.accounts.trader_account_b.amount
-    } else {
-        input_amount
-    };
+    // Fail fast if the trader lacks the requested input balance. Previously this
+    // silently clamped to the available balance, which broke slippage protection
+    // for callers - their min_output_amount is computed against the requested
+    // input, not the clamped one, so the trade could succeed with worse terms
+    // than expected.
+    if swap_a && input_amount > context.accounts.trader_account_a.amount {
+        return err!(TutorialError::InsufficientBalance);
+    }
+    if !swap_a && input_amount > context.accounts.trader_account_b.amount {
+        return err!(TutorialError::InsufficientBalance);
+    }
+    let input = input_amount;
 
     // Apply trading fee, used to compute the output
     let amm = &context.accounts.amm;
@@ -72,53 +76,64 @@ pub fn handle_swap_exact_tokens_for_tokens(
         &[authority_bump],
     ];
     let signer_seeds = &[&authority_seeds[..]];
+    // Use transfer_checked so the mint + decimals are verified at the token
+    // program. This protects callers from decimal-mismatch bugs and is the
+    // modern recommended path.
     if swap_a {
-        token::transfer(
+        token::transfer_checked(
             CpiContext::new(
                 context.accounts.token_program.key(),
-                Transfer {
+                TransferChecked {
                     from: context.accounts.trader_account_a.to_account_info(),
+                    mint: context.accounts.mint_a.to_account_info(),
                     to: context.accounts.pool_account_a.to_account_info(),
                     authority: context.accounts.trader.to_account_info(),
                 },
             ),
             input,
+            context.accounts.mint_a.decimals,
         )?;
-        token::transfer(
+        token::transfer_checked(
             CpiContext::new_with_signer(
                 context.accounts.token_program.key(),
-                Transfer {
+                TransferChecked {
                     from: context.accounts.pool_account_b.to_account_info(),
+                    mint: context.accounts.mint_b.to_account_info(),
                     to: context.accounts.trader_account_b.to_account_info(),
                     authority: context.accounts.pool_authority.to_account_info(),
                 },
                 signer_seeds,
             ),
             output,
+            context.accounts.mint_b.decimals,
         )?;
     } else {
-        token::transfer(
+        token::transfer_checked(
             CpiContext::new_with_signer(
                 context.accounts.token_program.key(),
-                Transfer {
+                TransferChecked {
                     from: context.accounts.pool_account_a.to_account_info(),
+                    mint: context.accounts.mint_a.to_account_info(),
                     to: context.accounts.trader_account_a.to_account_info(),
                     authority: context.accounts.pool_authority.to_account_info(),
                 },
                 signer_seeds,
             ),
             input,
+            context.accounts.mint_a.decimals,
         )?;
-        token::transfer(
+        token::transfer_checked(
             CpiContext::new(
                 context.accounts.token_program.key(),
-                Transfer {
+                TransferChecked {
                     from: context.accounts.trader_account_b.to_account_info(),
+                    mint: context.accounts.mint_b.to_account_info(),
                     to: context.accounts.pool_account_b.to_account_info(),
                     authority: context.accounts.trader.to_account_info(),
                 },
             ),
             output,
+            context.accounts.mint_b.decimals,
         )?;
     }
 

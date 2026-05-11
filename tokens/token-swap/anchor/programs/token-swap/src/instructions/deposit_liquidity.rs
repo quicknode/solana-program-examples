@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::{
     associated_token::AssociatedToken,
-    token::{self, Mint, MintTo, Token, TokenAccount, Transfer},
+    token::{self, Mint, MintTo, Token, TokenAccount, TransferChecked},
 };
 use fixed::types::I64F64;
 
@@ -16,17 +16,17 @@ pub fn handle_deposit_liquidity(
     amount_a: u64,
     amount_b: u64,
 ) -> Result<()> {
-    // Prevent depositing assets the depositor does not own
-    let mut amount_a = if amount_a > context.accounts.depositor_account_a.amount {
-        context.accounts.depositor_account_a.amount
-    } else {
-        amount_a
-    };
-    let mut amount_b = if amount_b > context.accounts.depositor_account_b.amount {
-        context.accounts.depositor_account_b.amount
-    } else {
-        amount_b
-    };
+    // Fail fast if the depositor lacks the requested balance. Previously this
+    // silently clamped to the available balance, which broke slippage protection
+    // for callers building on top - they expected their input amount to be the
+    // amount actually deposited.
+    if amount_a > context.accounts.depositor_account_a.amount
+        || amount_b > context.accounts.depositor_account_b.amount
+    {
+        return err!(TutorialError::InsufficientBalance);
+    }
+    let mut amount_a = amount_a;
+    let mut amount_b = amount_b;
 
     // Making sure they are provided in the same proportion as existing liquidity
     let pool_a = &context.accounts.pool_account_a;
@@ -75,28 +75,34 @@ pub fn handle_deposit_liquidity(
         liquidity -= MINIMUM_LIQUIDITY;
     }
 
-    // Transfer tokens to the pool
-    token::transfer(
+    // Transfer tokens to the pool using transfer_checked. transfer_checked
+    // includes the mint and decimals in the CPI, which guards callers against
+    // decimal-mismatch bugs (and is the modern recommended path).
+    token::transfer_checked(
         CpiContext::new(
             context.accounts.token_program.key(),
-            Transfer {
+            TransferChecked {
                 from: context.accounts.depositor_account_a.to_account_info(),
+                mint: context.accounts.mint_a.to_account_info(),
                 to: context.accounts.pool_account_a.to_account_info(),
                 authority: context.accounts.depositor.to_account_info(),
             },
         ),
         amount_a,
+        context.accounts.mint_a.decimals,
     )?;
-    token::transfer(
+    token::transfer_checked(
         CpiContext::new(
             context.accounts.token_program.key(),
-            Transfer {
+            TransferChecked {
                 from: context.accounts.depositor_account_b.to_account_info(),
+                mint: context.accounts.mint_b.to_account_info(),
                 to: context.accounts.pool_account_b.to_account_info(),
                 authority: context.accounts.depositor.to_account_info(),
             },
         ),
         amount_b,
+        context.accounts.mint_b.decimals,
     )?;
 
     // Mint the liquidity to user

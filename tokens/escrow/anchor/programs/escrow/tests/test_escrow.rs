@@ -135,6 +135,7 @@ fn test_make_offer() {
             token_mint_a: es.mint_a,
             token_mint_b: es.mint_b,
             maker_token_account_a: es.alice_ata_a,
+            maker_token_account_b: es.alice_ata_b,
             offer: offer_pda,
             vault,
             associated_token_program: ata_program_id(),
@@ -201,6 +202,7 @@ fn test_take_offer() {
             token_mint_a: es.mint_a,
             token_mint_b: es.mint_b,
             maker_token_account_a: es.alice_ata_a,
+            maker_token_account_b: es.alice_ata_b,
             offer: offer_pda,
             vault,
             associated_token_program: ata_program_id(),
@@ -275,5 +277,182 @@ fn test_take_offer() {
     assert!(
         es.svm.get_account(&offer_pda).is_none(),
         "Offer should be closed after take_offer"
+    );
+}
+
+#[test]
+fn test_cancel_offer() {
+    let mut es = full_setup();
+
+    let offer_id: u64 = 3;
+    let token_a_offered_amount: u64 = 500_000;
+    let token_b_wanted_amount: u64 = 1_000_000;
+
+    let (offer_pda, _bump) = Pubkey::find_program_address(
+        &[
+            b"offer",
+            es.alice.pubkey().as_ref(),
+            &offer_id.to_le_bytes(),
+        ],
+        &es.program_id,
+    );
+    let vault = derive_ata(&offer_pda, &es.mint_a);
+
+    // Snapshot Alice's token-A balance before the offer.
+    let alice_a_before = get_token_account_balance(&es.svm, &es.alice_ata_a).unwrap();
+
+    // Alice makes the offer.
+    let make_offer_ix = Instruction::new_with_bytes(
+        es.program_id,
+        &escrow::instruction::MakeOffer {
+            id: offer_id,
+            token_a_offered_amount,
+            token_b_wanted_amount,
+        }
+        .data(),
+        escrow::accounts::MakeOffer {
+            maker: es.alice.pubkey(),
+            token_mint_a: es.mint_a,
+            token_mint_b: es.mint_b,
+            maker_token_account_a: es.alice_ata_a,
+            maker_token_account_b: es.alice_ata_b,
+            offer: offer_pda,
+            vault,
+            associated_token_program: ata_program_id(),
+            token_program: token_program_id(),
+            system_program: system_program::id(),
+        }
+        .to_account_metas(None),
+    );
+    send_transaction_from_instructions(
+        &mut es.svm,
+        vec![make_offer_ix],
+        &[&es.payer, &es.alice],
+        &es.payer.pubkey(),
+    )
+    .unwrap();
+
+    assert_eq!(
+        get_token_account_balance(&es.svm, &vault).unwrap(),
+        token_a_offered_amount
+    );
+
+    // Alice cancels the offer.
+    let cancel_offer_ix = Instruction::new_with_bytes(
+        es.program_id,
+        &escrow::instruction::CancelOffer {}.data(),
+        escrow::accounts::CancelOffer {
+            maker: es.alice.pubkey(),
+            token_mint_a: es.mint_a,
+            maker_token_account_a: es.alice_ata_a,
+            offer: offer_pda,
+            vault,
+            associated_token_program: ata_program_id(),
+            token_program: token_program_id(),
+            system_program: system_program::id(),
+        }
+        .to_account_metas(None),
+    );
+    send_transaction_from_instructions(
+        &mut es.svm,
+        vec![cancel_offer_ix],
+        &[&es.payer, &es.alice],
+        &es.payer.pubkey(),
+    )
+    .unwrap();
+
+    // The offer and vault accounts should be closed.
+    assert!(
+        es.svm.get_account(&offer_pda).is_none(),
+        "Offer should be closed after cancel"
+    );
+    assert!(
+        es.svm.get_account(&vault).is_none(),
+        "Vault should be closed after cancel"
+    );
+
+    // Alice should have her token-A back to its pre-make balance.
+    let alice_a_after = get_token_account_balance(&es.svm, &es.alice_ata_a).unwrap();
+    assert_eq!(alice_a_after, alice_a_before);
+}
+
+#[test]
+fn test_cancel_offer_rejects_non_maker() {
+    let mut es = full_setup();
+
+    let offer_id: u64 = 4;
+    let token_a_offered_amount: u64 = 500_000;
+    let token_b_wanted_amount: u64 = 1_000_000;
+
+    let (offer_pda, _bump) = Pubkey::find_program_address(
+        &[
+            b"offer",
+            es.alice.pubkey().as_ref(),
+            &offer_id.to_le_bytes(),
+        ],
+        &es.program_id,
+    );
+    let vault = derive_ata(&offer_pda, &es.mint_a);
+
+    // Alice makes the offer.
+    let make_offer_ix = Instruction::new_with_bytes(
+        es.program_id,
+        &escrow::instruction::MakeOffer {
+            id: offer_id,
+            token_a_offered_amount,
+            token_b_wanted_amount,
+        }
+        .data(),
+        escrow::accounts::MakeOffer {
+            maker: es.alice.pubkey(),
+            token_mint_a: es.mint_a,
+            token_mint_b: es.mint_b,
+            maker_token_account_a: es.alice_ata_a,
+            maker_token_account_b: es.alice_ata_b,
+            offer: offer_pda,
+            vault,
+            associated_token_program: ata_program_id(),
+            token_program: token_program_id(),
+            system_program: system_program::id(),
+        }
+        .to_account_metas(None),
+    );
+    send_transaction_from_instructions(
+        &mut es.svm,
+        vec![make_offer_ix],
+        &[&es.payer, &es.alice],
+        &es.payer.pubkey(),
+    )
+    .unwrap();
+
+    // Bob tries to cancel Alice's offer - the has_one = maker / signer + seeds
+    // constraints should reject this.
+    let bob_ata_a =
+        create_associated_token_account(&mut es.svm, &es.bob.pubkey(), &es.mint_a, &es.payer)
+            .unwrap();
+    let cancel_offer_ix = Instruction::new_with_bytes(
+        es.program_id,
+        &escrow::instruction::CancelOffer {}.data(),
+        escrow::accounts::CancelOffer {
+            maker: es.bob.pubkey(),
+            token_mint_a: es.mint_a,
+            maker_token_account_a: bob_ata_a,
+            offer: offer_pda,
+            vault,
+            associated_token_program: ata_program_id(),
+            token_program: token_program_id(),
+            system_program: system_program::id(),
+        }
+        .to_account_metas(None),
+    );
+    let result = send_transaction_from_instructions(
+        &mut es.svm,
+        vec![cancel_offer_ix],
+        &[&es.payer, &es.bob],
+        &es.payer.pubkey(),
+    );
+    assert!(
+        result.is_err(),
+        "Bob must not be able to cancel Alice's offer"
     );
 }
