@@ -188,8 +188,10 @@ jobs:
       - name: Setup Solana Stable
         uses: heyAyushh/setup-solana@v5.9
         with:
-          # Sometimes Anza's stable resolves to a release whose binaries aren't published yet
-          solana-cli-version: stable
+          # Pinned because setup-anchor's resolver for 'stable' hits the
+          # unauthenticated GitHub API and frequently 429s, leaving CI without
+          # solana installed. Bump alongside anchor-version.
+          solana-cli-version: 3.1.14
       - name: Build and Test with Stable
         run: |
           source build_and_test.sh
