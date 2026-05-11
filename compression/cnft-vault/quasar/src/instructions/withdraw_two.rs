@@ -65,7 +65,12 @@ pub fn handle_withdraw_two_cnfts(accounts: &mut WithdrawTwo, data: &[u8], remain
     ];
     let signer = Signer::from(&seeds as &[Seed]);
 
-    // Collect all remaining accounts (proof1 ++ proof2)
+    // Collect all remaining accounts (proof1 ++ proof2).
+    //
+    // `remaining.iter()` yields `Result<RemainingAccount, _>` in newer
+    // quasar-lang. Reach the inner `AccountView` via the unchecked accessor
+    // — we only read addresses/views to forward to the bubblegum CPIs as
+    // proof nodes; no aliased data access.
     let placeholder = accounts.system_program.to_account_view().clone();
     let mut all_proofs: [AccountView; MAX_PROOF_NODES * 2] =
         core::array::from_fn(|_| placeholder.clone());
@@ -74,7 +79,9 @@ pub fn handle_withdraw_two_cnfts(accounts: &mut WithdrawTwo, data: &[u8], remain
         if total_proofs >= MAX_PROOF_NODES * 2 {
             break;
         }
-        all_proofs[total_proofs] = result?;
+        let account = result?;
+        // SAFETY: Only reads address and forwards an immutable view to CPI.
+        all_proofs[total_proofs] = unsafe { account.as_account_view_unchecked() }.clone();
         total_proofs += 1;
     }
 

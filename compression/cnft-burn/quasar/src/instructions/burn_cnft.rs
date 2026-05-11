@@ -43,7 +43,12 @@ pub fn handle_burn_cnft(accounts: &mut BurnCnft, data: &[u8], remaining: Remaini
     ix_data[0..8].copy_from_slice(&BURN_DISCRIMINATOR);
     ix_data[8..116].copy_from_slice(&data[0..108]);
 
-    // Collect remaining accounts (proof nodes) into a stack buffer
+    // Collect remaining accounts (proof nodes) into a stack buffer.
+    //
+    // `remaining.iter()` yields `Result<RemainingAccount, _>` in newer
+    // quasar-lang. Reach the inner `AccountView` via the unchecked accessor
+    // — this CPI only reads proof addresses and views, never touching the
+    // accounts' data, so the aliasing/borrow invariants are upheld.
     let placeholder = accounts.system_program.to_account_view().clone();
     let mut proof_views: [AccountView; MAX_PROOF_NODES] =
         core::array::from_fn(|_| placeholder.clone());
@@ -52,7 +57,10 @@ pub fn handle_burn_cnft(accounts: &mut BurnCnft, data: &[u8], remaining: Remaini
         if proof_count >= MAX_PROOF_NODES {
             break;
         }
-        proof_views[proof_count] = result?;
+        let account = result?;
+        // SAFETY: We only read the AccountView's address and pass an immutable
+        // view to the bubblegum CPI as a proof node; no aliased data access.
+        proof_views[proof_count] = unsafe { account.as_account_view_unchecked() }.clone();
         proof_count += 1;
     }
 

@@ -22,8 +22,15 @@ pub struct DepositLiquidity {
     pub pool_authority: UncheckedAccount,
     /// Depositor (must be signer to authorise transfers).
     pub depositor: Signer,
+    /// LP mint at the LiquidityMintPda.
+    ///
+    /// Typed as `InterfaceAccount<Mint>` rather than `Account<Mint>` because
+    /// newer quasar-lang requires `T: Discriminator` when combining `address =`
+    /// with `Account<T>` (it reads `T::BUMP_OFFSET`). SPL `Mint` doesn't
+    /// implement `Discriminator`; `InterfaceAccount` takes the generic
+    /// existing-account verifier path that doesn't need it.
     #[account(mut, address = LiquidityMintPda::seeds(amm.address(), mint_a.address(), mint_b.address()))]
-    pub mint_liquidity: Account<Mint>,
+    pub mint_liquidity: InterfaceAccount<Mint>,
     pub mint_a: Account<Mint>,
     pub mint_b: Account<Mint>,
     /// Pool's token A vault.

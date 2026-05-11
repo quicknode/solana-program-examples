@@ -138,7 +138,8 @@ jobs:
       - uses: heyAyushh/setup-anchor@v4.999
         with:
           anchor-version: 1.0.0
-          solana-cli-version: stable
+          # setup-anchor resolves tags like stable by querying GitHub API for latest release which can fail with 429 errors
+          solana-cli-version: 3.1.14
       - name: Install Surfpool
         run: curl -sL https://run.surfpool.run/ | bash
       - name: Display Versions

@@ -103,6 +103,12 @@ jobs:
       failed_projects: ${{ steps.set-failed.outputs.failed_projects }}
     steps:
       - uses: actions/checkout@v4
+      # The previous `npm install --global pnpm` step picked up a pnpm release that
+      # treats ignored build scripts (bufferutil, utf-8-validate) as a hard error and
+      # fails `pnpm install --frozen-lockfile`. The other workflows (anchor, native,
+      # pinocchio, typescript) use pnpm/action-setup@v4, which pins a known-good pnpm
+      # release (10.33.0 at time of writing) that only warns. Match that here.
+      - uses: pnpm/action-setup@v4
       - name: Use Node.js
         uses: actions/setup-node@v4
         with:
@@ -180,15 +186,16 @@ jobs:
           # Make the script executable
           chmod +x build_and_test.sh
 
-          # Install pnpm
-          npm install --global pnpm
+          # pnpm is installed by pnpm/action-setup@v4 above. Avoid `npm install --global pnpm`
+          # here because that resolves to pnpm 10+, which errors on ignored build scripts.
 
           # Install sbpf assembler
           cargo install --git https://github.com/blueshift-gg/sbpf.git
       - name: Setup Solana Stable
         uses: heyAyushh/setup-solana@v5.9
         with:
-          solana-cli-version: stable
+          # setup-anchor resolves tags like stable by querying GitHub API for latest release which can fail with 429 errors
+          solana-cli-version: 3.1.14
       - name: Build and Test with Stable
         run: |
           source build_and_test.sh
