@@ -90,8 +90,14 @@ pub struct MintTokens {
     #[account(mut)]
     pub payer: Signer,
     /// The PDA mint whose authority is itself.
+    ///
+    /// Typed as `InterfaceAccount<Mint>` rather than `Account<Mint>` because
+    /// newer quasar-lang requires `T: Discriminator` when combining `address =`
+    /// with `Account<T>` (it reads `T::BUMP_OFFSET`). SPL `Mint` doesn't
+    /// implement `Discriminator`; `InterfaceAccount` takes the generic
+    /// existing-account verifier path that doesn't need it.
     #[account(mut, address = MintPda::seeds())]
-    pub mint: Account<Mint>,
+    pub mint: InterfaceAccount<Mint>,
     /// Recipient token account (must already exist).
     #[account(mut)]
     pub token_account: Account<Token>,
