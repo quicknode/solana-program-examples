@@ -10,6 +10,7 @@ Each example is available in one or more of the following frameworks:
 - [💫 Quasar](https://quasar-lang.com/docs) — a newer, more performant framework with Anchor-compatible ergonomics. Run `pnpm test` to execute tests.
 - [🤥 Pinocchio](https://github.com/febo/pinocchio) — a zero-copy, zero-allocation library for Solana programs. Run `pnpm test` to execute tests.
 - [🦀 Native Rust](https://docs.solana.com/) — vanilla Rust using Solana's native crates. Run `pnpm test` to execute tests.
+- [🧬 ASM](https://github.com/blueshift-gg/sbpf) — hand-written sBPF assembly via the `sbpf` toolchain, for maximum control and minimum compute. Build with `sbpf build`, test with `pnpm test`.
 
 > [!NOTE]
 > You don't need to write your own program for basic tasks like creating accounts, transferring SOL, or minting tokens. These are handled by existing programs like the System Program and Token Program.
