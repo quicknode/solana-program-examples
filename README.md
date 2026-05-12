@@ -10,6 +10,7 @@ Each example is available in one or more of the following frameworks:
 - [💫 Quasar](https://quasar-lang.com/docs) — a newer, more performant framework with Anchor-compatible ergonomics. Run `pnpm test` to execute tests.
 - [🤥 Pinocchio](https://github.com/febo/pinocchio) — a zero-copy, zero-allocation library for Solana programs. Run `pnpm test` to execute tests.
 - [🦀 Native Rust](https://docs.solana.com/) — vanilla Rust using Solana's native crates. Run `pnpm test` to execute tests.
+- [🧬 ASM](https://github.com/blueshift-gg/sbpf) — hand-written sBPF assembly built with the `sbpf` toolchain. Run `pnpm build-and-test` to build and test.
 
 > [!NOTE]
 > You don't need to write your own program for basic tasks like creating accounts, transferring SOL, or minting tokens. These are handled by existing programs like the System Program and Token Program.
@@ -46,7 +47,7 @@ Read offchain price data onchain using the Pyth oracle network.
 
 A minimal program that logs a greeting.
 
-[⚓ Anchor](./basics/hello-solana/anchor) [💫 Quasar](./basics/hello-solana/quasar) [🤥 Pinocchio](./basics/hello-solana/pinocchio) [🦀 Native](./basics/hello-solana/native)
+[⚓ Anchor](./basics/hello-solana/anchor) [💫 Quasar](./basics/hello-solana/quasar) [🤥 Pinocchio](./basics/hello-solana/pinocchio) [🦀 Native](./basics/hello-solana/native) [🧬 ASM](./basics/hello-solana/asm)
 
 ### Account Data
 
@@ -70,7 +71,7 @@ Save and update per-user state, ensuring users can only modify their own data.
 
 Validate that accounts provided in incoming instructions meet specific criteria.
 
-[⚓ Anchor](./basics/checking-accounts/anchor) [💫 Quasar](./basics/checking-accounts/quasar) [🤥 Pinocchio](./basics/checking-accounts/pinocchio) [🦀 Native](./basics/checking-accounts/native)
+[⚓ Anchor](./basics/checking-accounts/anchor) [💫 Quasar](./basics/checking-accounts/quasar) [🤥 Pinocchio](./basics/checking-accounts/pinocchio) [🦀 Native](./basics/checking-accounts/native) [🧬 ASM](./basics/checking-accounts/asm)
 
 ### Close Account
 
@@ -82,7 +83,7 @@ Close an account and reclaim its lamports.
 
 Create new accounts on the blockchain.
 
-[⚓ Anchor](./basics/create-account/anchor) [💫 Quasar](./basics/create-account/quasar) [🤥 Pinocchio](./basics/create-account/pinocchio) [🦀 Native](./basics/create-account/native)
+[⚓ Anchor](./basics/create-account/anchor) [💫 Quasar](./basics/create-account/quasar) [🤥 Pinocchio](./basics/create-account/pinocchio) [🦀 Native](./basics/create-account/native) [🧬 ASM](./basics/create-account/asm)
 
 ### Cross-Program Invocation
 
@@ -130,7 +131,7 @@ Structure a larger Solana program across multiple files and modules.
 
 Send SOL between two accounts.
 
-[⚓ Anchor](./basics/transfer-sol/anchor) [💫 Quasar](./basics/transfer-sol/quasar) [🤥 Pinocchio](./basics/transfer-sol/pinocchio) [🦀 Native](./basics/transfer-sol/native)
+[⚓ Anchor](./basics/transfer-sol/anchor) [💫 Quasar](./basics/transfer-sol/quasar) [🤥 Pinocchio](./basics/transfer-sol/pinocchio) [🦀 Native](./basics/transfer-sol/native) [🧬 ASM](./basics/transfer-sol/asm)
 
 ## Tokens
 
