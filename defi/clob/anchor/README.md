@@ -19,7 +19,7 @@ This README is a teaching document. Every term specific to the program
 — order book, bid/ask, maker/taker, tick size, unsettled balance — is
 defined inline when it first appears. Solana-level terminology
 (account, PDA, CPI, bump, discriminator) is defined at
-<https://solana.com/docs/terminology>.
+<https://solana.com/docs/references/terminology>.
 
 If you already know what an order book, a limit order, and a taker fee
 are, skip to [Accounts and PDAs](#2-accounts-and-pdas) or
@@ -139,7 +139,7 @@ everything above describes the program mechanically.
 - **No circuit breakers, no oracles, no price bands.**
 
 Solana terminology (account, PDA, CPI, bump, discriminator, signer,
-lamport, ATA) is defined at <https://solana.com/docs/terminology>.
+lamport, ATA) is defined at <https://solana.com/docs/references/terminology>.
 Terms specific to this program are explained inline when they first
 appear; a few extra definitions appear below where useful.
 
