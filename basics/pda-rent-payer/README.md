@@ -1,5 +1,5 @@
 # PDA Rent-Payer
 
-This examples demonstrates how to use a PDA to pay the rent for the creation of a new account.   
-   
-The key here is accounts on Solana are automatically created under ownership of the System Program when you transfer lamports to them. So, you can just transfer lamports from your PDA to the new account's public key!
+Use a PDA to pay rent for a new account.
+
+Accounts on Solana are created under ownership of the System Program when you transfer lamports to them, so you can pay for a new account simply by transferring lamports from your PDA to the new account's public key.

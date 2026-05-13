@@ -1,22 +1,17 @@
-## What is Pyth ?
+# Pyth Price Feeds
 
-Pyth is an Oracle that offers onchain low-latency market data from institutional sources.
-This means you can use prices from real-life assets in your Solana programs.
+[Pyth](https://pyth.network/) is an oracle that publishes low-latency market data from institutional sources onchain. You can use it to read real-world asset prices from Solana programs.
 
-The price for each asset will be represented inside of a Solana account. We call those accounts price feeds.
+Each asset's price lives in its own Solana account — a **price feed**.
 
-For example, the price feed for SOL/USD on mainnet is represented on this account address: `H6ARHf6YXhGYeQfUzQNGk6rDNnLBQKrenN712K4AQJEG`.
+For example, the SOL/USD price feed on mainnet lives at `H6ARHf6YXhGYeQfUzQNGk6rDNnLBQKrenN712K4AQJEG`.
 
-You can find more of these price feeds [here](https://pyth.network/price-feeds?cluster=mainnet-beta).
+You can find more feeds in the [Pyth feed list](https://pyth.network/price-feeds?cluster=mainnet-beta).
 
-To use such a price feed, you need to pass its account into your instructions context. 
+To use a feed, pass its account into your instruction handler's context, then read the account's data. A feed contains:
 
-You can get an asset's information by reading the account's data. The feed will consist of:
+- A price.
+- A confidence interval.
+- An exponent.
 
-- A price
-- A confidence interval
-- An exponent
-
-To read more about Pyth, please navigate to [the Pyth documentation](https://docs.pyth.network/solana-price-feeds).
-
-
+See the [Pyth Solana docs](https://docs.pyth.network/price-feeds/core/use-real-time-data/pull-integration/solana) for the full data layout and integration guide.

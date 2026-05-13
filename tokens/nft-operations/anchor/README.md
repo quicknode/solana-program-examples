@@ -1,14 +1,12 @@
 # NFT Operations
 
-This example demonstrates how to create a NFT collection, how to mint a NFT and how to verify a NFT as part of a collection.
+Create an NFT collection, mint an NFT, and verify an NFT as part of a collection — all using Metaplex Token Metadata.
 
----
+## Program setup
 
-## Program Setup
+This example clones the Metaplex Token Metadata program from mainnet. See `Anchor.toml`:
 
-For this program example we will be cloning the Metaplex Token Metadata program from mainnet. You can find this in the Anchor.toml file
-
-```rust
+```toml
 [test.validator]
 url = "https://api.mainnet-beta.solana.com"
 
@@ -16,13 +14,11 @@ url = "https://api.mainnet-beta.solana.com"
 address = "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
 ```
 
-We will need this program to perform CPIs to create the Metadata Accounts, Master Edition Accounts and to Verify NFTs as part of collections
+The program is needed for CPIs that create metadata accounts and master edition accounts, and to verify NFTs as part of a collection.
 
----
+## Create an NFT collection
 
-## Create a NFT Collection:
-
-The accounts needed to create a NFT Collection are the following:
+The accounts needed to create an NFT collection are:
 
 ```rust
 #[derive(Accounts)]
@@ -63,29 +59,21 @@ pub struct CreateCollection<'info> {
 }
 ```
 
-### Let's break down these accounts:
+### Account breakdown
 
-- user: the account that is creating the collection NFT and the owner of the destination token account
+- `user`: the account creating the collection NFT and the owner of the destination token account.
+- `mint`: the collection NFT mint account. Initialized with 0 decimals; the mint authority and freeze authority are set to `mint_authority`.
+- `mint_authority`: the PDA authority used to mint tokens from the collection mint.
+- `metadata`: the metadata account of the collection NFT.
+- `master_edition`: the master edition account of the collection NFT.
+- `destination`: the token account that receives the collection NFT.
+- `system_program`: initializes new accounts.
+- `token_program` / `associated_token_program`: create new ATAs and mint tokens.
+- `token_metadata_program`: the MPL Token Metadata program, used to create the metadata and master edition accounts.
 
-- mint: the collection NFT Mint account. We will be initializing this account with 0 decimals and giving the mint authority and freeze authority to the mint_authority account
+Both `metadata` and `master_edition` are `UncheckedAccount` because they are uninitialized at the start of the instruction — the Token Metadata program initializes them via CPI.
 
-- mint_authority: the account with authority to mint tokens from the collection NFT mint account
-
-- metadata: the metadata account of the collection NFT
-
-- master_edition: the master edition account of the collection NFT
-
-- destination: the token account where the collection NFT will minted to. We will be initializing this account and verifying the correct mint and authority
-
-- system_program: Program resposible for the initialization of any new account
-
-- token_program and associated_token_program: We are creating new ATAs and minting tokens
-
-- token_metadata_program: MPL token metadata program that will be used to create the metadata and master edition accounts
-
-To note in here, that both the metadata account and the master_edition account are Unchecked Accounts. That is due to the fact that they are not initialized, and the initialization will be performed by the token_metadata_program when we perform a CPI (cross program invocation) to initialize both accounts.
-
-If we had something like:
+Had we written:
 
 ```rust
 #[derive(Accounts)]
@@ -97,11 +85,11 @@ pub struct CreateCollection<'info> {
 }
 ```
 
-our instruction would fail because it would expect the accounts to be already initialized.
+the instruction would fail because Anchor would expect the accounts to already be initialized.
 
-However, if the account was already initialized (you'll see that while we verify collections), you should use the specific account types
+When an account *is* already initialized (as in the verify-collection flow below), use the specific account types.
 
-### We then implement some functionality for our CreateCollection context:
+### Implementation for `CreateCollection`
 
 ```rust
 impl<'info> CreateCollection<'info> {
@@ -197,22 +185,17 @@ impl<'info> CreateCollection<'info> {
 }
 ```
 
-The create collection method consists of 3 steps:
+Three steps:
 
-- Mint one token to the destination token account by performing a CPI to the Token Program
+1. Mint one token to the destination token account via a CPI to the Token Program.
+2. Create a metadata account for the mint via a CPI to the Token Metadata program. The mint authority signs the CPI, so we use `invoke_signed` with the authority PDA's seeds.
+3. Create a master edition account for the mint via a CPI to the Token Metadata program. This enforces the NFT-specific constraints and transfers both the mint authority and freeze authority to the Master Edition PDA. Again, the mint authority signs.
 
-- Create a metadata account for the mint account to store standardized data that can be understood by apps and marketplaces. This is achieved by performing a CPI to the Token Metadata Program. The mint authority needs to sign that CPI, therefore we use "invoke_signed" and pass in the seeds of our authority PDA
+More on Token Metadata: <https://developers.metaplex.com/token-metadata>
 
-- Create a master edition account for the mint account by performing a CPI to the Token Metadata Program. That will ensure that the special characteristics on Non-Fungible Tokens are met. It will also transfer both the mint authority and the freeze authority to the Master Edition PDA. The mint authority needs to sign that CPI, therefore we use "invoke_signed" and pass in the seeds of our authority PDA
+## Mint an NFT
 
-
-More information on Token Metadata can be found at https://developers.metaplex.com/token-metadata
-
----
-
-## Mint a NFT:
-
-The accounts needed to create a NFT Collection are the following:
+The accounts needed to mint an NFT:
 
 ```rust
 #[derive(Accounts)]
@@ -255,36 +238,22 @@ pub struct MintNFT<'info> {
 }
 ```
 
-### Let's break down these accounts:
+### Account breakdown
 
-- owner: the account that is creating the NFT and the owner of the destination token account
+- `owner`: the account minting the NFT and the owner of the destination token account.
+- `mint`: the NFT mint account. 0 decimals; mint authority and freeze authority are the PDA.
+- `destination`: the token account that receives the NFT.
+- `metadata`: the metadata account.
+- `master_edition`: the master edition account.
+- `mint_authority`: the PDA authority used to mint tokens.
+- `collection_mint`: the collection the NFT belongs to.
+- `system_program`, `token_program`, `associated_token_program`, `token_metadata_program`: as above.
 
-- mint: the collection NFT Mint account. We will be initializing this account with 0 decimals and giving the mint authority and freeze authority to the mint_authority account
+Apart from `collection_mint`, the accounts are the same as the collection creation flow. A collection is just a regular NFT with the `collection_details` field set and the `collection` field on `data` set to `None`. An NFT belonging to a collection has `collection_details` set to `None` and the `collection` field on `data` set to a `Collection` struct with the collection's key and a `verified` boolean. `verified` starts false and flips to true once the NFT is verified as part of the collection.
 
-- destination: the token account where the collection NFT will minted to. We will be initializing this account and verifying the correct mint and authority
+That's where the `collection` account comes from — it provides the address that goes into the `Collection` struct on the NFT's metadata.
 
-- metadata: the metadata account of the collection NFT
-
-- master_edition: the master edition account of the collection NFT
-
-- mint_authority: the account with authority to mint tokens from the collection NFT mint account
-
-- collection_mint: the collection account that the NFT that we are minting should be part of
-
-- system_program: Program resposible for the initialization of any new account
-
-- token_program and associated_token_program: We are creating new ATAs and minting tokens
-
-- token_metadata_program: MPL token metadata program that will be used to create the metadata and master edition accounts
-
-If you take a closer look, you will see that the accounts (apart from "collection_mint") are the same.
-This is due to the fact that the a collection is basically just a regular NFT but, the "collection_details" field will be set with a CollectionDetails struct and the "collection" field under "data" set to None.
-
-On the other hand, a NFT will have "collection_details" field set to None and with a CollectionDetails and the "collection" field under "data" set to a Collection struct, containing the key of the collection it belongs to and a verified boolean (set to False, it will be automatically set to True once the NFT gets verified as part of the collection)
-
-This is actually where the "collection" account comes from. This account is used to set the the address of the Collection struct when we are creating the NFT metadata account
-
-### We then implement some functionality for our MintNFT context:
+### Implementation for `MintNFT`
 
 ```rust
 impl<'info> MintNFT<'info> {
@@ -378,18 +347,15 @@ impl<'info> MintNFT<'info> {
 }
 ```
 
-Since a collection NFT is just a regular NFT with "special" metadata, again you can see that the same is happening as when created the Collection NFT.
+Because a collection NFT is just a regular NFT with special metadata, the implementation mirrors `CreateCollection`. The same three steps:
 
-- Mint one token to the destination token account by performing a CPI to the Token Program
+1. Mint one token to the destination via a Token Program CPI.
+2. Create a metadata account via a Token Metadata CPI (signed with the PDA seeds).
+3. Create a master edition account via a Token Metadata CPI (signed with the PDA seeds).
 
-- Create a metadata account for the mint account to store standardized data that can be understood by apps and marketplaces. This is achieved by performing a CPI to the Token Metadata Program. The mint authority needs to sign that CPI, therefore we use "invoke_signed" and pass in the seeds of our authority PDA
+The difference is in the data on the metadata account.
 
-- Create a master edition account for the mint account by performing a CPI to the Token Metadata Program. That will ensure that the special characteristics on Non-Fungible Tokens are met. It will also transfer both the mint authority and the freeze authority to the Master Edition PDA. The mint authority needs to sign that CPI, therefore we use "invoke_signed" and pass in the seeds of our authority PDA
-
-
-The difference is in the data of our metadata account.
-
-for our collection NFT, we have
+For the collection NFT:
 ```rust
 CreateMetadataAccountV3InstructionArgs {
     data: DataV2 {
@@ -409,10 +375,9 @@ CreateMetadataAccountV3InstructionArgs {
     )
 }
 ```
-where we set the "collection_details" field
+We set `collection_details`.
 
-
-for our "regular" NFT we have
+For a regular NFT:
 ```rust
 CreateMetadataAccountV3InstructionArgs {
     data: DataV2 {
@@ -431,15 +396,11 @@ CreateMetadataAccountV3InstructionArgs {
     collection_details: None,
 }
 ```
-where we set the "collection" field with the key of the collection account.
+We set the `collection` field with the key of the collection. `verified` starts false until the NFT is verified.
 
-Again, we set the "verified" boolean to false, since this NFT has not yet been verified as part of the desired collection
+## Verify an NFT as part of a collection
 
----
-
-## Verify a NFT as part of a collection:
-
-The accounts needed to verify a NFT as part of a collection are the following:
+The accounts needed to verify an NFT as part of a collection:
 
 ```rust
 #[derive(Accounts)]
@@ -466,33 +427,22 @@ pub struct VerifyCollectionMint<'info> {
 }
 ```
 
-### Let's break down these accounts:
+### Account breakdown
 
-- authority: signer of the transaction. This can be used to restrict the address that can execute the verify collection method, by adding constraints
+- `authority`: signer of the transaction. You can add constraints to restrict who can verify a collection.
+- `metadata`: the metadata account of the NFT being verified.
+- `mint`: the NFT mint being verified.
+- `mint_authority`: the mint authority of the collection NFT.
+- `collection_mint`: the mint account of the collection NFT.
+- `collection_metadata`: the metadata account of the collection NFT.
+- `collection_master_edition`: the master edition account of the collection NFT.
+- `system_program`: as above.
+- `sysvar_instruction`: provides access to the serialized instruction data for the running transaction.
+- `token_metadata_program`: MPL Token Metadata, used to perform the verification CPI.
 
-- metadata: the metadata account of the NFT that we want to verify
+Only the NFT and collection NFT metadata accounts need to be mutable — both are updated. The NFT metadata gets its `verified` boolean flipped to true, and the collection NFT metadata has its collection size incremented.
 
-- mint: the NFT that we want to verify
-
-- mint_authority: the mint_authority of the Collection NFT
-
-- collection_mint: the mint account of the Collection NFT
-
-- collection_metadata: the metadata account of the Collection NFT
-
-- collection_master_edition: the master edition account of the Collection NFT
-
-- system_program: program resposible for the initialization of any new account
-
-- sysvar_instruction: the instructions sysvar provides access to the serialized instruction data
-for the currently-running transaction
-
-- token_metadata_program: MPL token metadata program that will be used to verify the NFT as part of the desired collection
-
-Note that the only account that need to be mutable in here, are the NFT and Colelction NFT metadata accounts.
-This is due to the fact that both will be updated. The NFT metadata account will have the "verified" boolean set to true, and the Collection NFT metadata account will have the colelction size incremented
-
-### We then implement some functionality for our VerifyCollectionMint context:
+### Implementation for `VerifyCollectionMint`
 
 ```rust
 impl<'info> VerifyCollectionMint<'info> {
@@ -534,8 +484,6 @@ impl<'info> VerifyCollectionMint<'info> {
 }
 ```
 
-In this "verify_collection" method, we simply create a CPI to the to the Token Metadata Program with the appropriate accounts to verify the NFT as part of a collection. Since the authority of the Collection NFT will sign that CPI, the NFT will be verified as part of the collection.
+`verify_collection` performs a CPI to the Token Metadata program with the right accounts. The collection NFT's mint authority signs the CPI, and the NFT is verified as part of the collection.
 
----
-
-With this examples, you will be able to adjust / adapt it to your needs and create Collections, Mint NFTs, and verify NFTs as part of collections
+Use this as a starting point for your own collections, NFTs, and verification flows.

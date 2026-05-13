@@ -2,7 +2,7 @@
 
 This example contains **two separate Quasar programs** that work together:
 
-- **`lever/`** — A program with onchain `PowerStatus` state and a `switch_power` instruction that toggles a boolean.
+- **`lever/`** — A program with onchain `PowerStatus` state and a `switch_power` instruction handler that toggles a boolean.
 - **`hand/`** — A program that calls the lever program's `switch_power` via CPI.
 
 ## Building
@@ -14,7 +14,7 @@ cd lever && quasar build
 cd hand && quasar build
 ```
 
-The hand program must be built **after** the lever, since its tests load the lever's compiled `.so` file.
+Build the hand program **after** the lever, since its tests load the lever's compiled `.so` file.
 
 ## Testing
 
@@ -25,12 +25,12 @@ cd hand && cargo test
 
 The hand tests load **both** programs into `QuasarSvm` and verify that the CPI correctly toggles the lever's power state.
 
-## CPI Pattern
+## CPI pattern
 
 Quasar doesn't have a `declare_program!` equivalent for importing arbitrary program instruction types (unlike Anchor). Instead, the hand program:
 
-1. Defines a **marker type** (`LeverProgram`) that implements the `Id` trait with the lever's program address
-2. Uses `Program<LeverProgram>` in the accounts struct for compile-time address + executable validation
-3. Builds the CPI instruction data **manually** using `BufCpiCall`, constructing the lever's wire format directly
+1. Defines a **marker type** (`LeverProgram`) that implements the `Id` trait with the lever's program address.
+2. Uses `Program<LeverProgram>` in the accounts struct for compile-time address and executable validation.
+3. Builds the CPI instruction data **manually** using `BufCpiCall`, constructing the lever's wire format directly.
 
 This is lower-level than Anchor's CPI pattern but gives full control and works with any program.

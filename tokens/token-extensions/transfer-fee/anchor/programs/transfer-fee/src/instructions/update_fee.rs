@@ -12,7 +12,7 @@ pub struct UpdateFee<'info> {
 
 // Note that there is a 2 epoch delay from when new fee updates take effect
 // This is a safely feature built into the extension
-// https://github.com/solana-labs/solana-program-library/blob/master/token/program-2022/src/extension/transfer_fee/processor.rs#L92-L109
+// https://github.com/solana-program/token-2022/blob/2d18d97f083627d3f13ce43b16fa4305cbfac4de/program/src/extension/transfer_fee/processor.rs#L92-L109
 pub fn handle_process_update_fee(
     context: Context<UpdateFee>,
     transfer_fee_basis_points: u16,

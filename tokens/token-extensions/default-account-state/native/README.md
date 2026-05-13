@@ -1,8 +1,8 @@
-## Token22 with default account state
+# Token-2022 with Default Account State
 
-This extension makes it possible to set a default state for all underlying Token accounts of a certain Mint.
+This extension sets a default state for all token accounts of a given mint.
 
-These account states can be:
+Account states:
 
-- initialized: normal token account that can perform actions like transfers
-- frozen: the owner of this token account will not be able to perform any actions with his token.
+- **initialized:** a normal token account that can transfer, etc.
+- **frozen:** the owner cannot perform any token actions until the account is unfrozen.

@@ -1,7 +1,7 @@
 # Recommended Program Layout
 
-This is the typical layout for a Solana program as it grows in size and begins to require multiple Rust files. You'll notice a lot of the programs in the [Solana Program Library](https://github.com/solana-labs/solana-program-library) follow this format.
+A typical layout for a Solana program as it grows in size and starts to need multiple Rust files. Many programs follow this shape.
 
-> Note: You can structure your Rust `src` folder however you wish - provided you follow Cargo's repository structure standards. You don't have to follow this pattern, but it's here so you can recognize other programs, too.
+> You can structure your `src` folder however you like, as long as it follows Cargo's conventions. This layout is shown so that the patterns in other programs are recognizable.
 
-You can see that the structure for a `native` repository is very similar to that of the `anchor` repository. The only difference is the inclusion of a `processor.rs` in the `native` setup - one of the many things Anchor abstracts away for you!
+The `native` and `anchor` layouts are similar. The main difference is the `processor.rs` file in the `native` setup — one of the things Anchor abstracts away for you.

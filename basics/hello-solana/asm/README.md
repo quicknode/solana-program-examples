@@ -1,3 +1,3 @@
 # hello-solana-asm-program
 
-Created with [sbpf](https://github.com/blueshift-gg/sbpf)
+A Solana SBPF assembly implementation, scaffolded with [sbpf](https://github.com/blueshift-gg/sbpf).

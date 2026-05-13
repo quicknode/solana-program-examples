@@ -1,13 +1,9 @@
 # Checking Accounts
 
-Solana Programs should perform checks on instructions to ensure security and that required invariants
-are not being violated.
+Solana programs should check the instructions they receive to ensure security and to make sure required invariants hold.
 
-These checks vary and depend on the exact task of the Solana Program.
+The exact checks depend on what the program does. Common ones include:
 
-In this example we see some of the common checks a Solana Program can perform:
-
-- checking the program ID from the instruction is the program ID of your program
-- checking that the order and number of accounts are correct
-- checking the initialization state of an account
-- etc.
+- Verifying that the `program_id` on the instruction matches your own program.
+- Verifying the order and number of accounts.
+- Checking the initialization state of an account.

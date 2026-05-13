@@ -1,51 +1,41 @@
-# AllowBlockList Token
+# Allow/Block-List Token
 
-An example of a allow / block list token using token extensions.
+A Token-2022 example that gates transfers through an allow/block list managed by a separate authority. The list is consumed by a transfer hook.
+
+One list authority can manage lists for many mints — useful when an issuer wants a third-party-managed list or wants to share a single list across a set of assets.
 
 ## Features
 
-Allows the creation of an allow block list with a list authority.
-The allow/block list is then consumed by a transfer-hook.
+New tokens are created with several configuration options:
 
-The list is managed by a single authority and can be used by several token mints. This enables a separation of concerns between token management and allow/block list management, ideal for scenarios where an issuer wants a 3rd party managed allow/block list or wants to share the same list across a group of assets.
-
-
-Initializes new tokens with several configuration options:
 - Permanent delegate
 - Allow list
 - Block list
 - Metadata
 - Authorities
 
-The issuer can configure the allow and block list with 3 distinct configurations:
-- Force Allow: requires everyone receiving tokens to be explicitly allowed in
-- Block: allows everyone to receive tokens unless explicitly blocked
-- Threshold Allow: allows everyone to receive tokens unless explicitly blocked up until a given transfer amount threshold. Transfers larger than the threshold require explicitly allow
+The issuer can choose one of three list modes:
 
-These configurations are saved in the token mint metadata.
+- **Force Allow:** everyone receiving tokens must be explicitly allow-listed.
+- **Block:** anyone can receive tokens unless they're block-listed.
+- **Threshold Allow:** anyone can receive tokens unless block-listed *up to* a configurable threshold. Transfers above the threshold require explicit allow-listing.
 
-This repo includes a UI to manage the allow/block list based on the `legacy-next-tailwind-basic` template. It also allows creating new token mints on the spot with transfer-hook enabled along with token transfers given that most wallets fail to fetch transfer-hook dependencies on devnet and locally.
+These configurations are stored in the token mint's metadata.
+
+The repo includes a UI (based on the `legacy-next-tailwind-basic` template) to manage allow/block lists. It also lets you create transfer-hook-enabled mints and perform transfers, since most wallets don't currently fetch transfer-hook dependencies on devnet or locally.
 
 ## Setup
 
-Install dependencies:
-`yarn install`
-
-Compile the program (make sure to replace your program ID):
-`anchor build`
-
-Compile the UI:
-`yarn run build`
-
-Serve the UI:
-`yarn run dev`
+```bash
+pnpm install
+anchor build       # replace your program ID first
+pnpm run build     # build the UI
+pnpm run dev       # serve the UI
+```
 
 ### Local testing
 
-There are a couple scripts to manage the local validator and deployment.
+Scripts manage the local validator and deployment:
 
-To start the local validator and deploy the program (uses the anchor CLI and default anchor keypair):
-`./scripts/start.sh`
-
-To stop the local validator:
-`./scripts/stop.sh`
+- `./scripts/start.sh` — start the local validator and deploy the program (uses the Anchor CLI and the default Anchor keypair).
+- `./scripts/stop.sh` — stop the local validator.

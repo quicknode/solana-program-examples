@@ -8,8 +8,8 @@ Each example is available in one or more of the following frameworks:
 
 - [⚓ Anchor](https://www.anchor-lang.com/) — the most popular framework for Solana development. Build with `anchor build`, test with `pnpm test` as defined in `Anchor.toml`.
 - [💫 Quasar](https://quasar-lang.com/docs) — a newer, more performant framework with Anchor-compatible ergonomics. Run `pnpm test` to execute tests.
-- [🤥 Pinocchio](https://github.com/febo/pinocchio) — a zero-copy, zero-allocation library for Solana programs. Run `pnpm test` to execute tests.
-- [🦀 Native Rust](https://docs.solana.com/) — vanilla Rust using Solana's native crates. Run `pnpm test` to execute tests.
+- [🤥 Pinocchio](https://github.com/anza-xyz/pinocchio) — a zero-copy, zero-allocation library for Solana programs. Run `pnpm test` to execute tests.
+- [🦀 Native Rust](https://docs.anza.xyz/) — vanilla Rust using Solana's native crates. Run `pnpm test` to execute tests.
 - [🧬 ASM](https://github.com/blueshift-gg/sbpf) — hand-written sBPF assembly built with the `sbpf` toolchain. Run `pnpm build-and-test` to build and test.
 
 > [!NOTE]
@@ -25,7 +25,7 @@ Constant product AMM (x·y=k) — create liquidity pools, deposit and withdraw l
 
 ### Escrow
 
-Peer-to-peer OTC trade — one user deposits token A and specifies how much token B they want. A counterparty fulfils the offer and both sides receive their tokens atomically.
+Peer-to-peer OTC trade — one user deposits token A and specifies how much token B they want. A counterparty fulfills the offer and both sides receive their tokens atomically.
 
 [⚓ Anchor](./tokens/escrow/anchor) [💫 Quasar](./tokens/escrow/quasar) [🦀 Native](./tokens/escrow/native)
 

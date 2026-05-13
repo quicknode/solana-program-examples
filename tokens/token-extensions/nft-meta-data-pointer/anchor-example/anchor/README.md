@@ -1,18 +1,15 @@
-# Anchor Solana Program
+# Anchor Program
 
-```shell
+```bash
 anchor build
 anchor deploy
 ```
 
-Copy the **program ID** from the output logs; paste it in `Anchor.toml` & `lib.rs`.
+Copy the **program ID** from the output logs and paste it into `Anchor.toml` and `lib.rs`. Then rebuild, redeploy, and run the tests:
 
-```shell
+```bash
 anchor build
 anchor deploy
-
-yarn install
-yarn add ts-mocha
-
-anchor run test
+pnpm install
+pnpm test
 ```

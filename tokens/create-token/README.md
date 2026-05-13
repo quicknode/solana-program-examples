@@ -1,50 +1,50 @@
 # Create an SPL Token
 
-This example demonstrates how to create an SPL Token on Solana with some metadata such as a token symbol and icon.
+Create an SPL Token on Solana with metadata such as a symbol and an icon.
 
----
-All tokens - including Non-Fungible Tokens (NFTs) are SPL Tokens on Solana.   
-   
-They follow the SPL Token standard (similar to ERC-20).   
-   
-```text
-Default SPL Tokens  :   9 decimals
-NFTs                :   0 decimals
-```
-### How Decimals Work
-```text
-Consider token JOE with 9 decimals:
+All tokens on Solana — including NFTs — are SPL Tokens. They follow the SPL Token standard (similar in spirit to ERC-20).
 
-    1 JOE = quantity * 10 ^ (-1 * decimals) = 1 * 10 ^ (-1 * 9) = 0.000000001
+```text
+Default SPL Tokens : 9 decimals
+NFTs               : 0 decimals
 ```
-### Mint & Metadata
-SPL Tokens on Solana are referred to as a Mint.   
-   
-A Mint is defined by a specific type of account on Solana that describes information about a token:
-```TypeScript
+
+## How decimals work
+
+For a token JOE with 9 decimals:
+
+```text
+1 JOE = quantity * 10^(-decimals) = 1 * 10^(-9) = 0.000000001
+```
+
+## Mint and metadata
+
+An SPL Token is represented onchain by a **Mint Account**:
+
+```typescript
 {
     isInitialized,
-    supply,             // The current supply of this token mint on Solana
-    decimals,           // The number of decimals this mint breaks down to
-    mintAuthority,      // The account who can authorize minting of new tokens
-    freezeAuthority,    // The account who can authorize freezing of tokens
+    supply,             // Current supply of this mint
+    decimals,           // Number of decimals
+    mintAuthority,      // Account that can authorise minting
+    freezeAuthority,    // Account that can authorise freezing
 }
 ```
-Any metadata about this Mint - such as a nickname, symbol, or image - is stored in a **separate** account called a Metadata Account:
-```TypeScript
+
+Metadata about a mint — name, symbol, image URI — lives in a separate **Metadata Account**:
+
+```typescript
 {
     title,
     symbol,
-    uri,                // The URI to the hosted image
+    uri,                // URI to the hosted image / off-asset metadata
 }
 ```
 
+> Metaplex is the de facto standard for SPL Token metadata on Solana. The [Metaplex Token Metadata Program](https://docs.metaplex.com/) is what creates these metadata accounts.
 
-> Project Metaplex is the standard for SPL Token metadata on Solana   
-> You can use [Metaplex's Token Metadata Program](https://docs.metaplex.com/) to create metadata for your token.
+## Steps to create an SPL Token
 
-
-### Steps to Create an SPL Token
-1. Create an account for the Mint.
+1. Create an account for the mint.
 2. Initialize that account as a Mint Account.
-3. Create a metadata account associated with that Mint Account.
+3. Create a metadata account associated with the mint.
