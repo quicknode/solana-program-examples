@@ -1,5 +1,5 @@
 # Anchor Counter
 
-Anchor enforces init constraints that enforces good programming paradigms.
+Anchor enforces `init` constraints that nudge you towards good programming patterns.
 
-This means this program has an additional initialization instruction for `Counter`s that the Solana native program does not.
+This program has an additional initialization handler for `Counter`s that the Solana native equivalent does not.

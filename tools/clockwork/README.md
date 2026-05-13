@@ -1,3 +1,5 @@
-Clockwork is an automation infrastructure for Solana. It allows you to schedule transactions and build automated, event driven programs.
+# Clockwork
 
-Here is a link to the Clockwork Program Examples repository: [Clockwork](https://github.com/clockwork-xyz/clockwork)
+[Clockwork](https://github.com/clockwork-xyz/clockwork) is automation infrastructure for Solana. It lets you schedule transactions and build automated, event-driven programs.
+
+See the upstream [Clockwork repository](https://github.com/clockwork-xyz/clockwork) for examples and documentation.

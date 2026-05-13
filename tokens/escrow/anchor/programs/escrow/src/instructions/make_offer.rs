@@ -9,7 +9,7 @@ use crate::Offer;
 
 use super::transfer_tokens;
 
-// See https://www.anchor-lang.com/docs/account-constraints#instruction-attribute
+// See https://www.anchor-lang.com/docs/references/account-constraints#instruction-attribute
 #[derive(Accounts)]
 #[instruction(id: u64)]
 pub struct MakeOffer<'info> {

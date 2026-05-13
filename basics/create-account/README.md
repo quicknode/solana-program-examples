@@ -1,17 +1,17 @@
 # Create Account
 
-:wrench: We're going to create a Solana account. :wrench:   
-   
-This account is going to be a **system account** - meaning it will be owned by the System Program. In short, this means only the System Program will be allowed to modify it's data.   
+Create a Solana account.
 
-In the test, we use two methods for creating the accounts. One of the methods uses Cross program invocation and the other calls the System Program directly. 
+The account is a **system account** — owned by the System Program, which means only the System Program can modify its data. In this example, the account simply holds some SOL.
 
-Cross program invocation means that we send the transaction to create the account first to our deployed Solana Program, which then calls the System Program. See [here](https://github.com/solana-developers/program-examples/tree/main/basics/cross-program-invocation) for more Cross Program Invocation examples. 
+The tests cover two ways to create the account:
 
-Calling the System Program directly means that the client sends the transaction to create the account directly to the Solana Program
-   
-In this example, this account will simply hold some SOL.
+1. **Via cross-program invocation (CPI):** the client sends a transaction to our deployed program, which in turn calls the System Program.
+2. **Directly:** the client sends the create-account transaction straight to the System Program.
 
-### Links:
-- [Solana Cookbook - How to Create a System Account](https://solanacookbook.com/references/accounts.html#how-to-create-a-system-account)
-- [Rust Docs - solana_program::system_instruction::create_account](https://docs.rs/solana-program/latest/solana_program/system_instruction/fn.create_account.html)
+See [cross-program-invocation](../cross-program-invocation) for more CPI examples.
+
+## Links
+
+- [Solana Cookbook — How to Create a System Account](https://solana.com/developers/cookbook/accounts/create-account)
+- [Rust Docs — `solana_system_interface::instruction::create_account`](https://docs.rs/solana-system-interface/latest/solana_system_interface/instruction/fn.create_account.html)

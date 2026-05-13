@@ -1,14 +1,14 @@
 # Counter: Solana Pinocchio
 
-This example program is written in Solana using only the Solana toolsuite.
+Counter written using the Pinocchio framework, with only the Solana toolchain.
 
 ## Setup
 
-1. Build the program with `cargo build-sbf`
-2. Run tests + local validator with `yarn test`
+1. Build the program: `cargo build-sbf`
+2. Run the tests: `pnpm test`
 
 ## Debugging
 
-1. Start test validator with `yarn start-validator`
-2. Start listening to program logs with `solana config set -ul && solana logs`
-3. Run tests with `yarn run-tests`
+1. Start a test validator: `pnpm start-validator`
+2. Listen to program logs: `solana config set -ul && solana logs`
+3. Run the tests: `pnpm run-tests`

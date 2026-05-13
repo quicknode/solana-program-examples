@@ -1,26 +1,24 @@
 # cnft-burn
 
-This repository contains the cnft-burn program, a Solana Anchor program that allows you to burn compressed NFTs (cNFTs) in your collection. The program interacts with the Metaplex Bubblegum program through CPI to burn cNFTs.
+An Anchor program that burns compressed NFTs (cNFTs) in your collection. The program performs a CPI into the Metaplex Bubblegum program to do the burn.
 
 ## Components
 
-- programs: Contains the anchor program
-- tests: Contains the tests for the anchor program
+- `programs/` — the Anchor program.
+- `tests/` — tests for the program.
 
 ## Deployment
 
-The program is deployed on devnet at `FbeHkUEevbhKmdk5FE5orcTaJkCYn5drwZoZXaxQXXNn`. You can deploy it yourself by changing the respective values in lib.rs and Anchor.toml.
+The program is deployed on devnet at `FbeHkUEevbhKmdk5FE5orcTaJkCYn5drwZoZXaxQXXNn`. To deploy your own copy, change the program ID in `lib.rs` and `Anchor.toml`.
 
 ## How to run
 
-1. Configure RPC path in cnft-burn.ts. Personal preference: Helius RPCs.
-2. run `anchor build` at the root of the project i.e cnft-burn in this case.
-3. run `anchor deploy` to deploy and test the program on your own cluster.
-4. run `anchor test` to run the tests.
+1. Configure the RPC endpoint in `cnft-burn.ts`.
+2. `anchor build` from the example root.
+3. `anchor deploy` to deploy to your chosen cluster.
+4. `pnpm test` to run the tests.
 
 ## Acknowledgements
 
-This Example program would not have been possible without the work of:
-
-- [Metaplex](https://github.com/metaplex-foundation/) for providing the Bubblegum program with ix builders.
-- [@nickfrosty](https://twitter.com/nickfrosty) for providing the sample code for fetching and creating cNFTs.
+- [Metaplex](https://github.com/metaplex-foundation/) for the Bubblegum program and instruction builders.
+- [@nickfrosty](https://twitter.com/nickfrosty) for the sample code that fetches and creates cNFTs.

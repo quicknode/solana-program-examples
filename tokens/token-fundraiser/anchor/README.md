@@ -1,12 +1,8 @@
 # Token Fundraiser
 
-This example demonstrates how to create a fundraiser for SPL Tokens.
+Create a fundraiser for SPL Tokens. A user creates a fundraiser account, specifies the mint they want to collect, the target amount, and a duration. Other users contribute. If the target is reached, the maker can claim the funds; if it isn't reached within the duration, contributors can refund.
 
-In this example, a user will be able to create a fundraiser account, where he will be specify the mint he wants to collect and the fundraising target.
-
----
-
-## Let's walk through the architecture:
+## Architecture
 
 A fundraising account consists of:
 
@@ -40,11 +36,11 @@ pub struct Fundraiser {
 
 - bump: since our Fundraiser account will be a PDA (Program Derived Address), we will store the bump of the account
 
-We use InitSpace derive macro to implement the space triat that will calculate the amount of space that our account will use on-chain (without taking the anchor discriminator into consideration)
+The `InitSpace` derive macro implements the `Space` trait, which calculates the size of the account (not counting the Anchor discriminator).
 
----
+### Creating a Fundraiser
 
-### The user will be able to create new Fundraiser accounts. For that, we create the following context:
+Users create Fundraiser accounts via this context:
 
 ```rust
 #[derive(Accounts)]
@@ -73,22 +69,16 @@ pub struct Initialize<'info> {
 }
 ```
 
-Let´s have a closer look at the accounts that we are passing in this context:
+Account breakdown:
 
-- maker: will be the person starting the fundraising. He will be a signer of the transaction, and we mark his account as mutable as we will be deducting lamports from this account
+- `maker`: the person starting the fundraiser. Signs the transaction; mutable so we can deduct lamports from it.
+- `mint_to_raise`: the mint the maker wants to receive.
+- `fundraiser`: the state account being initialized. The Fundraiser PDA is derived from `b"fundraiser"` and the maker's public key; Anchor calculates the canonical bump and stores it in the struct.
+- `vault`: the ATA that receives contributions, derived from `mint_to_raise` and the Fundraiser account.
+- `system_program`: initializes new accounts.
+- `token_program`, `associated_token_program`: create new ATAs.
 
-- mint_to_raise: The mint that the user wants to receive. This will be a Mint Account, that we will use to store the mint address
-
-- fundraiser: will be the state account that we will initialize and the maker will be paying for the initialization of the account.
-We derive the Fundraiser PDA from the byte representation of the word "fundraiser" and the reference of the maker public key. Anchor will calculate the canonical bump (the first bump that throws that address out of the ed25519 eliptic curve) and save it for us in a struct
-
-- vault: We will initialize a vault (ATA) to receive the contributions. This account will be derived from the mint that the user wants to receive, and the fundraiser account that we are just creating
-
-- system_program: Program resposible for the initialization of any new account
-
-- token_program and associated_token_program: We are creating new ATAs
-
-### We then implement some functionality for our Initialize context:
+### Implementation for `Initialize`
 
 ```rust
 impl<'info> Initialize<'info> {
@@ -116,11 +106,9 @@ impl<'info> Initialize<'info> {
 }
 ```
 
-In here, we basically just set the data of our Fundraiser account if the amount to raise is bigger than 3 (minimum amount)
+Set the data on the Fundraiser account if the target amount meets the minimum.
 
----
-
-### Users will be able to contribute to a fundraising
+### Contributing
 
 A contribution account consists of:
 
@@ -132,7 +120,7 @@ pub struct Contributor {
 }
 ```rust
 
-In this account we will only store the total amount contributed by a specific contributor
+Stores the total amount contributed by a specific contributor.
 
 #[derive(Accounts)]
 pub struct Contribute<'info> {
@@ -171,23 +159,17 @@ pub struct Contribute<'info> {
 }
 ```
 
-In this context, we are passing all the accounts needed to contribute to a fundraising campaign:
+Account breakdown:
 
-- contributor: The address of the person that is contributing
+- `contributor`: the contributor.
+- `mint_to_raise`: the mint being collected.
+- `fundraiser`: an initialized Fundraiser account; constraints check the mint, seeds, and bump.
+- `contributor_account`: initialized if needed; tracks the contributor's running total.
+- `contributor_ata`: the ATA tokens are transferred *from*. Mint and authority are checked; mutable.
+- `vault`: the ATA tokens are transferred *to*. Mint and authority are checked; mutable.
+- `token_program`: used for token transfers.
 
-- mint_to_raise: the mint that the maker is expecting to receive as contributions
-
-- fundraiser: An initialized Fundraiser account where appropriate checks will be performed, such as the appropriate mint, the seeds and the bump of the Fundraiser PDA
-
-- contributor account: We initialize (if needed) a contributor account that will store the total amount that a specific contributor has contributed with so far
-
-- contributor_ata: The ata where we will be transfering tokens from. We make sure that the authority and mint of the ATA are correct (mint_to_raise and contributor address), and we mark it as mutable since we will be deducting tokens from that account
-
-- vault: The ata where we will be depositing tokens to. We make sure that the authority and mint of the ATA are correct (mint_to_raise and Fundraiser account), and we mark it as mutable since we will be depositing tokens in that account
-
-- token_program: We will performing CPIs (Cross Program Invocations) to the token program to transfer tokens
-
-### We then implement some functionality for our Contribute context:
+### Implementation for `Contribute`
 
 ```rust
 impl<'info> Contribute<'info> {
@@ -245,23 +227,16 @@ impl<'info> Contribute<'info> {
     }
 }
 ```
-In here, we make some checks:
-- We check that the user is depositing at least one token
+Checks performed:
 
-- We Check that the user is not contributing with more than 10% of the target amount
+- Contribution is at least one token.
+- Contribution is at most 10% of the target.
+- Total contribution from this contributor doesn't exceed 10% of the target.
+- Fundraising duration has not elapsed.
 
-- We check that the total contributions of the user do not exceed a total of 10% of the target amount
+A CPI to the token program transfers tokens from the contributor's ATA to the vault. The contributor signs (they own the source ATA). Finally, state accounts are updated.
 
-- We check that the fundraising duration has not elapsed
-
-After, we create a CPI to the token program, to transfer a certain amount of SPL tokens from the Contributor ATA to the vault.
-We pass the authority of the account where the tokens are being deducted from (In this case is the contributor, as he is the authority of the contributor ata).
-
-Lastly, we update our state acounts with the right amounts
-
----
-
-### User will be able to claim the tokens once the fundraising target has been reached
+### Claiming
 
 ```rust
 #[derive(Accounts)]
@@ -295,24 +270,17 @@ pub struct CheckContributions<'info> {
 }
 ```
 
-In this context, we are passing all the accounts needed for a user to claim the raised tokens:
+Account breakdown:
 
-- maker: The address of the person raising the the funds. We mark it as mutable since the maker will be paying for initialization fees and will receive lamports from rent back
+- `maker`: the fundraiser owner. Mutable; pays initialization fees and receives rent back when the Fundraiser account closes.
+- `mint_to_raise`: the mint being collected.
+- `fundraiser`: the initialized Fundraiser account.
+- `vault`: the ATA tokens are transferred *from*.
+- `maker_ata`: the ATA tokens are transferred *to*. Initialized if needed (the maker pays).
+- `system_program`, `associated_token_program`: needed to initialize the maker's ATA if necessary.
+- `token_program`: used for the transfer.
 
-- mint_to_raise: the mint that the maker is expecting to receive as contributions
-
-- fundraiser: An initialized Fundraiser account where appropriate checks will be performed, such as the appropriate mint, the seeds and the bump of the Fundraiser PDA
-
-- vault: The ata where we will be transfering tokens from. We make sure that the authority and mint of the ATA are correct (mint_to_raise and fundraiser account), and we mark it as mutable since we will be deducting tokens from that account
-
-- maker_ata: The ata where we will be depositing tokens to. We make sure that the authority and mint of the ATA are correct (mint_to_raise and maker account), and we mark it as mutable since we will be depositing tokens in that account.
-In case we need to initialize this ATA, the maker will be paying for the initialization fees
-
-- system_program and associated_token_program: Since we are initializing new ATAs
-
-- token_program: We will performing CPIs (Cross Program Invocations) to the token program to transfer tokens
-
-### We then implement some functionality for our Contribute context:
+### Implementation for `CheckContributions`
 
 ```rust
 impl<'info> CheckContributions<'info> {
@@ -353,15 +321,11 @@ impl<'info> CheckContributions<'info> {
 }
 ```
 
-In this implementation, we check if the amount of tokens in the vault is equal or bigger then the fundraising campaign target.
-If it is, then we perform a CPI to the token program to transfer the funds from the vault to the maker ATA. Since the vault is an ATA, we need to create our CPI context with a signer and use the seeds and bump from the PDA (We are signing with our program on behalf of that PDA).
+Check the vault holds at least the target amount; if so, CPI into the token program to transfer the vault's balance to the maker's ATA. The vault is owned by the Fundraiser PDA, so the CPI uses `new_with_signer` with the PDA seeds.
 
-Finally, we close our Fundraiser account and send the lamports from the rent back to the maker (done with the "close" constraint int the Fundraiser account).
+Finally, the Fundraiser account is closed (via the `close` constraint) and its rent is refunded to the maker.
 
-
----
-
-### Users will be able to refund their contributions, if the duration of the fundraising has elapsed and the target has not reached
+### Refunding
 
 ```rust
 #[derive(Accounts)]
@@ -401,25 +365,18 @@ pub struct Refund<'info> {
 }
 ```
 
-In this context, we are passing all the accounts needed for a contributor to refund their tokens:
+Account breakdown:
 
-- contributor: The address of the person that is contributing
+- `contributor`: the contributor being refunded.
+- `maker`: the fundraiser owner.
+- `mint_to_raise`: the mint being collected.
+- `fundraiser`: the Fundraiser account.
+- `contributor_account`: the Contributor account.
+- `contributor_ata`: the ATA the refund goes *to*.
+- `vault`: the ATA the refund comes *from*.
+- `token_program`: used for the transfer.
 
-- maker: The address of the person raising the the funds.
-
-- mint_to_raise: the mint that the maker is expecting to receive as contributions
-
-- fundraiser: An initialized Fundraiser account where appropriate checks will be performed, such as the appropriate mint, the seeds and the bump of the Fundraiser PDA
-
-- contributor account: An initialized Contributor account that will store the total amount that a specific contributor has contributed with so far
-
-- contributor_ata: The ata where we will be transfering tokens to. We make sure that the authority and mint of the ATA are correct (mint_to_raise and contributor address), and we mark it as mutable since we will be depositing tokens to that account
-
-- vault: The ata where we will be withdrawing tokens from. We make sure that the authority and mint of the ATA are correct (mint_to_raise and Fundraiser account), and we mark it as mutable since we will be withdrawing tokens from that account
-
-- token_program: We will performing CPIs (Cross Program Invocations) to the token program to transfer tokens
-
-### We then implement some functionality for our Refund context:
+### Implementation for `Refund`
 
 ```rust
 impl<'info> Refund<'info> {
@@ -470,5 +427,4 @@ impl<'info> Refund<'info> {
 }
 ```
 
-In here, we will check if the fundrasing has already met the target and if it passed the duration time.
-After doing the proper checks, we transfer the donated funds from the vault back to the contributor
+Verify the fundraising duration has elapsed and the target was not met, then transfer the contributor's tokens from the vault back to their ATA.

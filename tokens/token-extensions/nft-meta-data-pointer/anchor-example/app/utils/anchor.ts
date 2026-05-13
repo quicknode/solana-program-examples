@@ -11,7 +11,8 @@ export const CONNECTION = new WrappedConnection(
   },
 );
 
-export const METAPLEX_READAPI = "https://devnet.helius-rpc.com/?api-key=78065db3-87fb-431c-8d43-fcd190212125";
+// Reads NEXT_PUBLIC_METAPLEX_READAPI_RPC from .env.local; see .env.local.example for setup.
+export const METAPLEX_READAPI = process.env.NEXT_PUBLIC_METAPLEX_READAPI_RPC ?? "";
 
 // Here you can basically use what ever seed you want. For example one per level or city or whatever.
 export const GAME_DATA_SEED = "level_2";

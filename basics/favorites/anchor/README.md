@@ -1,9 +1,9 @@
 # Favorites
 
-This is a basic Anchor app using PDAs to store data for a user, and Anchor's account checks to ensure each user is only allowed to modify their own data.
+A basic Anchor app that uses PDAs to store per-user data, and Anchor account constraints to ensure each user can only modify their own data.
 
-It's used by the [https://github.com/solana-developers/professional-education](Solana Professional Education) course.
+Used by the [Solana Professional Education](https://github.com/solana-developers/professional-education) course.
 
 ## Usage
 
-`anchor test`, `anchor deploy` etc.
+Run the tests with `pnpm test` (as configured in `Anchor.toml`). Deploy with `anchor deploy`.
