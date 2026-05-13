@@ -48,11 +48,11 @@ The hook that is executed during token transfers.
 
 ### Smart Contract
 
-A pinocchio based Block List smart contract under the [program](program/) folder.
+A pinocchio based Block List smart contract under the [pinocchio/program](pinocchio/program/) folder.
 
 ### SDKs
 
-Codama generated rust and ts [SDKs](sdk/). 
+Codama generated rust and ts [SDKs](pinocchio/sdk/).
 
 ### CLI
 
@@ -60,8 +60,11 @@ A rust CLI to interact with the contract.
 
 ## Building
 
+All commands below should be run from the [pinocchio](pinocchio/) directory.
+
 First install dependencies:
 ```
+cd pinocchio
 pnpm install
 ```
 
