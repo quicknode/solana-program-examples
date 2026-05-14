@@ -91,103 +91,86 @@ When an account *is* already initialized (as in the verify-collection flow below
 
 ### Implementation for `CreateCollection`
 
+Each instruction handler is a free function (`pub fn handler(accounts: &mut X, bumps: &XBumps)`) called from the `#[program]` module in `lib.rs`. The account-validation struct lives in the same file as the handler.
+
 ```rust
-impl<'info> CreateCollection<'info> {
-    pub fn create_collection(&mut self, bumps: &CreateCollectionBumps) -> Result<()> {
+pub fn handler(accounts: &mut CreateCollection, bumps: &CreateCollectionBumps) -> Result<()> {
 
-        let metadata = &self.metadata.to_account_info();
-        let master_edition = &self.master_edition.to_account_info();
-        let mint = &self.mint.to_account_info();
-        let authority = &self.mint_authority.to_account_info();
-        let payer = &self.user.to_account_info();
-        let system_program = &self.system_program.to_account_info();
-        let spl_token_program = &self.token_program.to_account_info();
-        let spl_metadata_program = &self.token_metadata_program.to_account_info();
+    let metadata = &accounts.metadata.to_account_info();
+    let master_edition = &accounts.master_edition.to_account_info();
+    let mint = &accounts.mint.to_account_info();
+    let authority = &accounts.mint_authority.to_account_info();
+    let payer = &accounts.user.to_account_info();
+    let system_program = &accounts.system_program.to_account_info();
+    let spl_token_program = &accounts.token_program.to_account_info();
+    let spl_metadata_program = &accounts.token_metadata_program.to_account_info();
 
-        let seeds = &[
-            &b"authority"[..], 
-            &[bumps.mint_authority]
-        ];
-        let signer_seeds = &[&seeds[..]];
+    let seeds = &[&b"authority"[..], &[bumps.mint_authority]];
+    let signer_seeds = &[&seeds[..]];
 
-        let cpi_program = self.token_program.to_account_info();
-        let cpi_accounts = MintTo {
-            mint: self.mint.to_account_info(),
-            to: self.destination.to_account_info(),
-            authority: self.mint_authority.to_account_info(),
-        };
-        let cpi_ctx = CpiContext::new_with_signer(cpi_program, cpi_accounts, signer_seeds);
-        mint_to(cpi_ctx, 1)?;
-        msg!("Collection NFT minted!");
+    let cpi_accounts = MintTo {
+        mint: accounts.mint.to_account_info(),
+        to: accounts.destination.to_account_info(),
+        authority: accounts.mint_authority.to_account_info(),
+    };
+    let cpi_ctx = CpiContext::new_with_signer(accounts.token_program.key(), cpi_accounts, signer_seeds);
+    mint_to(cpi_ctx, 1)?;
+    msg!("Collection NFT minted!");
 
-        let creator = vec![
-            Creator {
-                address: self.mint_authority.key().clone(),
-                verified: true,
-                share: 100,
+    let creator = vec![Creator {
+        address: accounts.mint_authority.key().clone(),
+        verified: true,
+        share: 100,
+    }];
+
+    let metadata_account = CreateMetadataAccountV3Cpi::new(
+        spl_metadata_program,
+        CreateMetadataAccountV3CpiAccounts {
+            metadata, mint, mint_authority: authority, payer,
+            update_authority: (authority, true),
+            system_program,
+            rent: None,
+        },
+        CreateMetadataAccountV3InstructionArgs {
+            data: DataV2 {
+                name: "DummyCollection".to_owned(),
+                symbol: "DC".to_owned(),
+                uri: "".to_owned(),
+                seller_fee_basis_points: 0,
+                creators: Some(creator),
+                collection: None,
+                uses: None,
             },
-        ];
-        
-        let metadata_account = CreateMetadataAccountV3Cpi::new(
-            spl_metadata_program, 
-            CreateMetadataAccountV3CpiAccounts {
-                metadata,
-                mint,
-                mint_authority: authority,
-                payer,
-                update_authority: (authority, true),
-                system_program,
-                rent: None,
-            },
-            CreateMetadataAccountV3InstructionArgs {
-                data: DataV2 {
-                    name: "DummyCollection".to_owned(),
-                    symbol: "DC".to_owned(),
-                    uri: "".to_owned(),
-                    seller_fee_basis_points: 0,
-                    creators: Some(creator),
-                    collection: None,
-                    uses: None,
-                },
-                is_mutable: true,
-                collection_details: Some(
-                    CollectionDetails::V1 { 
-                        size: 0 
-                    }
-                )
-            }
-        );
-        metadata_account.invoke_signed(signer_seeds)?;
-        msg!("Metadata Account created!");
+            is_mutable: true,
+            collection_details: Some(CollectionDetails::V1 { size: 0 }),
+        },
+    );
+    metadata_account.invoke_signed(signer_seeds)?;
+    msg!("Metadata Account created!");
 
-        let master_edition_account = CreateMasterEditionV3Cpi::new(
-            spl_metadata_program,
-            CreateMasterEditionV3CpiAccounts {
-                edition: master_edition,
-                update_authority: authority,
-                mint_authority: authority,
-                mint,
-                payer,
-                metadata,
-                token_program: spl_token_program,
-                system_program,
-                rent: None,
-            },
-            CreateMasterEditionV3InstructionArgs {
-                max_supply: Some(0),
-            }
-        );
-        master_edition_account.invoke_signed(signer_seeds)?;
-        msg!("Master Edition Account created");
-        
-        Ok(())
-    }
+    let master_edition_account = CreateMasterEditionV3Cpi::new(
+        spl_metadata_program,
+        CreateMasterEditionV3CpiAccounts {
+            edition: master_edition,
+            update_authority: authority,
+            mint_authority: authority,
+            mint, payer, metadata,
+            token_program: spl_token_program,
+            system_program,
+            rent: None,
+        },
+        CreateMasterEditionV3InstructionArgs { max_supply: Some(0) },
+    );
+    master_edition_account.invoke_signed(signer_seeds)?;
+    msg!("Master Edition Account created");
+
+    Ok(())
 }
 ```
 
 Three steps:
 
-1. Mint one token to the destination token account via a CPI to the Token Program.
+1. Mint one token to the destination token account via a CPI to the Classic Token Program.
 2. Create a metadata account for the mint via a CPI to the Token Metadata program. The mint authority signs the CPI, so we use `invoke_signed` with the authority PDA's seeds.
 3. Create a master edition account for the mint via a CPI to the Token Metadata program. This enforces the NFT-specific constraints and transfers both the mint authority and freeze authority to the Master Edition PDA. Again, the mint authority signs.
 
@@ -256,100 +239,84 @@ That's where the `collection` account comes from — it provides the address tha
 ### Implementation for `MintNFT`
 
 ```rust
-impl<'info> MintNFT<'info> {
-    pub fn mint_nft(&mut self, bumps: &MintNFTBumps) -> Result<()> {
+pub fn handler(accounts: &mut MintNFT, bumps: &MintNFTBumps) -> Result<()> {
 
-        let metadata = &self.metadata.to_account_info();
-        let master_edition = &self.master_edition.to_account_info();
-        let mint = &self.mint.to_account_info();
-        let authority = &self.mint_authority.to_account_info();
-        let payer = &self.owner.to_account_info();
-        let system_program = &self.system_program.to_account_info();
-        let spl_token_program = &self.token_program.to_account_info();
-        let spl_metadata_program = &self.token_metadata_program.to_account_info();
+    let metadata = &accounts.metadata.to_account_info();
+    let master_edition = &accounts.master_edition.to_account_info();
+    let mint = &accounts.mint.to_account_info();
+    let authority = &accounts.mint_authority.to_account_info();
+    let payer = &accounts.owner.to_account_info();
+    let system_program = &accounts.system_program.to_account_info();
+    let spl_token_program = &accounts.token_program.to_account_info();
+    let spl_metadata_program = &accounts.token_metadata_program.to_account_info();
 
-        let seeds = &[
-            &b"authority"[..], 
-            &[bumps.mint_authority]
-        ];
-        let signer_seeds = &[&seeds[..]];
+    let seeds = &[&b"authority"[..], &[bumps.mint_authority]];
+    let signer_seeds = &[&seeds[..]];
 
-        let cpi_program = self.token_program.to_account_info();
-        let cpi_accounts = MintTo {
-            mint: self.mint.to_account_info(),
-            to: self.destination.to_account_info(),
-            authority: self.mint_authority.to_account_info(),
-        };
-        let cpi_ctx = CpiContext::new_with_signer(cpi_program, cpi_accounts, signer_seeds);
-        mint_to(cpi_ctx, 1)?;
-        msg!("Collection NFT minted!");
+    let cpi_accounts = MintTo {
+        mint: accounts.mint.to_account_info(),
+        to: accounts.destination.to_account_info(),
+        authority: accounts.mint_authority.to_account_info(),
+    };
+    let cpi_ctx = CpiContext::new_with_signer(accounts.token_program.key(), cpi_accounts, signer_seeds);
+    mint_to(cpi_ctx, 1)?;
+    msg!("Collection NFT minted!");
 
-        let creator = vec![
-            Creator {
-                address: self.mint_authority.key(),
-                verified: true,
-                share: 100,
+    let creator = vec![Creator {
+        address: accounts.mint_authority.key(),
+        verified: true,
+        share: 100,
+    }];
+
+    let metadata_account = CreateMetadataAccountV3Cpi::new(
+        spl_metadata_program,
+        CreateMetadataAccountV3CpiAccounts {
+            metadata, mint, mint_authority: authority, payer,
+            update_authority: (authority, true),
+            system_program,
+            rent: None,
+        },
+        CreateMetadataAccountV3InstructionArgs {
+            data: DataV2 {
+                name: "Mint Test".to_string(),
+                symbol: "YAY".to_string(),
+                uri: "".to_string(),
+                seller_fee_basis_points: 0,
+                creators: Some(creator),
+                collection: Some(Collection {
+                    verified: false,
+                    key: accounts.collection_mint.key(),
+                }),
+                uses: None,
             },
-        ];
+            is_mutable: true,
+            collection_details: None,
+        },
+    );
+    metadata_account.invoke_signed(signer_seeds)?;
 
-        let metadata_account = CreateMetadataAccountV3Cpi::new(
-            spl_metadata_program,
-            CreateMetadataAccountV3CpiAccounts {
-                metadata,
-                mint,
-                mint_authority: authority,
-                payer,
-                update_authority: (authority, true),
-                system_program,
-                rent: None,
-            }, 
-            CreateMetadataAccountV3InstructionArgs {
-                data: DataV2 {
-                    name: "Mint Test".to_string(),
-                    symbol: "YAY".to_string(),
-                    uri: "".to_string(),
-                    seller_fee_basis_points: 0,
-                    creators: Some(creator),
-                    collection: Some(Collection {
-                        verified: false,
-                        key: self.collection_mint.key(),
-                    }),
-                    uses: None
-                },
-                is_mutable: true,
-                collection_details: None,
-            }
-        );
-        metadata_account.invoke_signed(signer_seeds)?;
+    let master_edition_account = CreateMasterEditionV3Cpi::new(
+        spl_metadata_program,
+        CreateMasterEditionV3CpiAccounts {
+            edition: master_edition,
+            update_authority: authority,
+            mint_authority: authority,
+            mint, payer, metadata,
+            token_program: spl_token_program,
+            system_program,
+            rent: None,
+        },
+        CreateMasterEditionV3InstructionArgs { max_supply: Some(0) },
+    );
+    master_edition_account.invoke_signed(signer_seeds)?;
 
-        let master_edition_account = CreateMasterEditionV3Cpi::new(
-            spl_metadata_program,
-            CreateMasterEditionV3CpiAccounts {
-                edition: master_edition,
-                update_authority: authority,
-                mint_authority: authority,
-                mint,
-                payer,
-                metadata,
-                token_program: spl_token_program,
-                system_program,
-                rent: None,
-            },
-            CreateMasterEditionV3InstructionArgs {
-                max_supply: Some(0),
-            }
-        );
-        master_edition_account.invoke_signed(signer_seeds)?;
-
-        Ok(())
-        
-    }
+    Ok(())
 }
 ```
 
 Because a collection NFT is just a regular NFT with special metadata, the implementation mirrors `CreateCollection`. The same three steps:
 
-1. Mint one token to the destination via a Token Program CPI.
+1. Mint one token to the destination via a Classic Token Program CPI.
 2. Create a metadata account via a Token Metadata CPI (signed with the PDA seeds).
 3. Create a master edition account via a Token Metadata CPI (signed with the PDA seeds).
 
@@ -420,7 +387,7 @@ pub struct VerifyCollectionMint<'info> {
     pub collection_metadata: Account<'info, MetadataAccount>,
     pub collection_master_edition: Account<'info, MasterEditionAccount>,
     pub system_program: Program<'info, System>,
-    #[account(address = INSTRUCTIONS_ID)]
+    #[account(address = INSTRUCTIONS_SYSVAR_ID)]
     /// CHECK: Sysvar instruction account that is being checked with an address constraint
     pub sysvar_instruction: UncheckedAccount<'info>,
     pub token_metadata_program: Program<'info, Metadata>,
@@ -445,44 +412,40 @@ Only the NFT and collection NFT metadata accounts need to be mutable — both ar
 ### Implementation for `VerifyCollectionMint`
 
 ```rust
-impl<'info> VerifyCollectionMint<'info> {
-    pub fn verify_collection(&mut self, bumps: &VerifyCollectionMintBumps) -> Result<()> {
-        let metadata = &self.metadata.to_account_info();
-        let authority = &self.mint_authority.to_account_info();
-        let collection_mint = &self.collection_mint.to_account_info();
-        let collection_metadata = &self.collection_metadata.to_account_info();
-        let collection_master_edition = &self.collection_master_edition.to_account_info();
-        let system_program = &self.system_program.to_account_info();
-        let sysvar_instructions = &self.sysvar_instruction.to_account_info();
-        let spl_metadata_program = &self.token_metadata_program.to_account_info();
+pub fn handler(accounts: &mut VerifyCollectionMint, bumps: &VerifyCollectionMintBumps) -> Result<()> {
+    let metadata = &accounts.metadata.to_account_info();
+    let authority = &accounts.mint_authority.to_account_info();
+    let collection_mint = &accounts.collection_mint.to_account_info();
+    let collection_metadata = &accounts.collection_metadata.to_account_info();
+    let collection_master_edition = &accounts.collection_master_edition.to_account_info();
+    let system_program = &accounts.system_program.to_account_info();
+    let sysvar_instructions = &accounts.sysvar_instruction.to_account_info();
+    let spl_metadata_program = &accounts.token_metadata_program.to_account_info();
 
-        let seeds = &[
-            &b"authority"[..], 
-            &[bumps.mint_authority]
-        ];
-        let signer_seeds = &[&seeds[..]];
+    let seeds = &[&b"authority"[..], &[bumps.mint_authority]];
+    let signer_seeds = &[&seeds[..]];
 
-        let verify_collection = VerifyCollectionV1Cpi::new(
-            spl_metadata_program,
-            VerifyCollectionV1CpiAccounts {
-                authority,
-                delegate_record: None,
-                metadata,
-                collection_mint,
-                collection_metadata: Some(collection_metadata),
-                collection_master_edition: Some(collection_master_edition),
-                system_program,
-                sysvar_instructions,
-            }
-        );
-        verify_collection.invoke_signed(signer_seeds)?;
+    let verify_collection = VerifyCollectionV1Cpi::new(
+        spl_metadata_program,
+        VerifyCollectionV1CpiAccounts {
+            authority,
+            delegate_record: None,
+            metadata,
+            collection_mint,
+            collection_metadata: Some(collection_metadata),
+            collection_master_edition: Some(collection_master_edition),
+            system_program,
+            sysvar_instructions,
+        },
+    );
+    verify_collection.invoke_signed(signer_seeds)?;
 
-        msg!("Collection Verified!");
-        
-        Ok(())
-    }
+    msg!("Collection Verified!");
+    Ok(())
 }
 ```
+
+> `INSTRUCTIONS_SYSVAR_ID` is the well-known sysvar address `Sysvar1nstructions1111111111111111111111111`, defined directly in [`verify_collection.rs`](programs/mint-nft/src/instructions/verify_collection.rs) because `sysvar::instructions::ID` moved in Anchor 1.0.
 
 `verify_collection` performs a CPI to the Token Metadata program with the right accounts. The collection NFT's mint authority signs the CPI, and the NFT is verified as part of the collection.
 

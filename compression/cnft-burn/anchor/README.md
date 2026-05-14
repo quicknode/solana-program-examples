@@ -4,19 +4,16 @@ An Anchor program that burns compressed NFTs (cNFTs) in your collection. The pro
 
 ## Components
 
-- `programs/` — the Anchor program.
-- `tests/` — tests for the program.
+- `programs/cnft-burn/` — the Anchor program.
+- `migrations/` — deployment script.
+
+There is no `tests/` directory in this example today. The program is intended to be deployed and exercised against a real cluster.
 
 ## Deployment
 
-The program is deployed on devnet at `FbeHkUEevbhKmdk5FE5orcTaJkCYn5drwZoZXaxQXXNn`. To deploy your own copy, change the program ID in `lib.rs` and `Anchor.toml`.
+The program ID declared in [`programs/cnft-burn/src/lib.rs`](programs/cnft-burn/src/lib.rs) is `C6qxH8n6mZxrrbtMtYWYSp8JR8vkQ55X1o4EBg7twnMv`. Whether this address is currently deployed on any cluster is not tracked in this repo — verify with `solana program show <id>` against the cluster you care about.
 
-## How to run
-
-1. Configure the RPC endpoint in `cnft-burn.ts`.
-2. `anchor build` from the example root.
-3. `anchor deploy` to deploy to your chosen cluster.
-4. `pnpm test` to run the tests.
+To deploy your own copy, change the program ID in `lib.rs` and `Anchor.toml`, then run `anchor build && anchor deploy`.
 
 ## Acknowledgements
 

@@ -1,8 +1,8 @@
-# SPL Token Minter
+# Token Minter
 
-Minting SPL Tokens is conceptually straightforward. The only subtle part is understanding how Solana tracks per-user token balances.
+Minting tokens is conceptually straightforward. The subtle part is understanding how Solana tracks per-user token balances.
 
-Every account on Solana tracks its own balance of SOL. It can't possibly also track its own balance of every SPL Token on the network. Instead, balances for SPL Tokens are held in separate accounts that are specific to a given mint and a given owner. These are called **Associated Token Accounts (ATAs)**.
+Every account on Solana tracks its own balance of SOL. It can't possibly also track its own balance of every token on the network. Instead, token balances are held in separate accounts that are specific to a given mint and a given owner. These are called **Associated Token Accounts (ATAs)**.
 
 To know what someone's balance of token JOE is, you would:
 

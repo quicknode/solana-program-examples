@@ -1,6 +1,6 @@
-# Token Extension Metadata-Pointer NFT
+# Token Extensions Metadata-Pointer NFT
 
-An Anchor program that mints an NFT using the Token-2022 metadata-pointer extension. The mint itself stores its own metadata via the metadata extension, so no separate Metaplex metadata account is needed.
+An Anchor program that mints an NFT using the Token Extensions metadata-pointer extension. The mint itself stores its own metadata via the metadata extension, so no separate Metaplex metadata account is needed.
 
 This is particularly useful for games — you get arbitrary key/value metadata stored onchain that you can use to record character state. In this example, the player's level and collected wood are stored on the NFT.
 
@@ -39,7 +39,7 @@ Creating an NFT this way:
 7. Mint one token to the ATA.
 8. Remove the mint authority — irreversible, makes it an NFT.
 
-See `programs/extension-nft/src/instructions/mint_nft.rs` for the Rust implementation.
+See `programs/extension_nft/src/instructions/mint_nft.rs` for the Rust implementation.
 
 ## Energy system (example onchain game)
 
@@ -47,7 +47,7 @@ The program includes a simple energy system: a player initializes a `PlayerData`
 
 ```rust
 const TIME_TO_REFILL_ENERGY: i64 = 60; // seconds per energy point
-const MAX_ENERGY: u64 = 10;
+const MAX_ENERGY: u64 = 100;
 ```
 
 The JS client subscribes to the player account via WebSocket and runs the same energy calculation locally to show a countdown timer.
@@ -55,11 +55,12 @@ The JS client subscribes to the player account via WebSocket and runs the same e
 ## Project structure
 
 ```text
-anchor/programs/extension-nft/src/
+anchor/programs/extension_nft/src/
 ├── instructions/
 │   ├── chop_tree.rs
 │   ├── init_player.rs
-│   └── update_energy.rs
+│   ├── mint_nft.rs
+│   └── mod.rs
 ├── state/
 │   ├── game_data.rs
 │   ├── mod.rs
@@ -68,6 +69,8 @@ anchor/programs/extension-nft/src/
 ├── errors.rs
 └── lib.rs
 ```
+
+`PlayerData::update_energy` (in `state/player_data.rs`) is where the lazy refill is computed; there is no separate `update_energy.rs` instruction handler.
 
 ## Session keys
 

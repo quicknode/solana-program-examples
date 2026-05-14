@@ -26,14 +26,22 @@ In the `lever` crate's `Cargo.toml`:
 no-entrypoint = []
 ```
 
-Then, in the `hand` crate, import `lever` with that feature enabled:
+In this example each crate also defines a `cpi` feature that depends on `no-entrypoint`, so callers can pick the more descriptive name:
+
+```toml
+[features]
+no-entrypoint = []
+cpi = ["no-entrypoint"]
+```
+
+Then, in the `hand` crate, import `lever` with the `cpi` feature enabled:
 
 ```toml
 [dependencies]
-lever = { path = "../lever", features = ["no-entrypoint"] }
+cross-program-invocatio-native-lever = { path = "../lever", features = ["cpi"] }
 ```
 
-In the `lever` crate, gate the `entrypoint!` macro on the feature being absent:
+In the `lever` crate, gate the `entrypoint!` macro on the `no-entrypoint` feature being absent:
 
 ```rust
 #[cfg(not(feature = "no-entrypoint"))]

@@ -1,6 +1,6 @@
 # Allow/Block-List Token
 
-A Token-2022 example that gates transfers through an allow/block list managed by a separate authority. The list is consumed by a transfer hook.
+A Token Extensions example that gates transfers through an allow/block list managed by a separate authority. The list is consumed by a transfer hook.
 
 One list authority can manage lists for many mints — useful when an issuer wants a third-party-managed list or wants to share a single list across a set of assets.
 

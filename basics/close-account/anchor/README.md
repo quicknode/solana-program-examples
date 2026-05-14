@@ -1,30 +1,40 @@
-# Destroy an Account
+# Close Account
 
-1. A `PDA` is created using the [create_user.rs](programs/destroy-an-account/src/instructions/create_user.rs) instruction.
+Two instruction handlers: `create_user` initializes a PDA `UserState` account, and `close_user` closes it and returns the rent to the user.
+
+1. `create_user` initializes the PDA with Anchor's `init` constraint:
 
    ```rust
    #[account(
        init,
-       seeds = [User::PREFIX.as_bytes(), user.key().as_ref()],
        payer = user,
-       space = User::SIZE,
+       space = UserState::DISCRIMINATOR.len() + UserState::INIT_SPACE,
+       seeds = [b"USER", user.key().as_ref()],
        bump,
    )]
-   pub user_account: Box<Account<'info, User>>,
+   pub user_account: Account<'info, UserState>,
    ```
 
-2. The account is closed in [destroy_user.rs](programs/destroy-an-account/src/instructions/destroy_user.rs), using Anchor's `close` helper on the account info:
+   See [`programs/close-account/src/instructions/create_user.rs`](programs/close-account/src/instructions/create_user.rs).
+
+2. `close_user` closes the account using Anchor's `close` constraint, which returns lamports to the given account:
 
    ```rust
-   user_account.close(user.to_account_info())?;
+   #[account(
+       mut,
+       seeds = [b"USER", user.key().as_ref()],
+       bump = user_account.bump,
+       close = user, // close account and return lamports to user
+   )]
+   pub user_account: Account<'info, UserState>,
    ```
 
-3. The test [destroy-an-account.ts](tests/destroy-an-account.ts) verifies that the account is null both before creation and after closing, via `fetchNullable`:
+   See [`programs/close-account/src/instructions/close_user.rs`](programs/close-account/src/instructions/close_user.rs).
 
-   ```typescript
-   const userAccountBefore = await program.account.user.fetchNullable(userAccountAddress, "processed");
-   assert.equal(userAccountBefore, null);
-   // ...
-   const userAccountAfter = await program.account.user.fetchNullable(userAccountAddress, "processed");
-   assert.notEqual(userAccountAfter, null);
-   ```
+## Tests
+
+Tests live in [`programs/close-account/tests/test_close_account.rs`](programs/close-account/tests/test_close_account.rs) and run against litesvm. `Anchor.toml`'s `scripts.test` is `cargo test`, so `anchor test` builds the program and runs the Rust tests:
+
+```bash
+anchor test
+```

@@ -1,5 +1,5 @@
 # Transfer Hook — Whitelist (Anchor)
 
-A simple whitelist enforced by a Token-2022 transfer hook.
+A whitelist enforced by a Token Extensions transfer hook. The whitelist is stored inline on a single account.
 
-This approach doesn't scale to large whitelists: it eventually runs out of account space. A better approach for larger lists is to store entries in external PDAs (one PDA per whitelisted wallet) — see the [`pblock-list`](../../pblock-list/) example for that pattern.
+This approach doesn't scale: the whitelist eventually runs out of account space. For larger lists, store entries in external PDAs (one PDA per whitelisted wallet) — see the [`block-list`](../../block-list/) example for that pattern.

@@ -1,8 +1,8 @@
 # NFT Minter
 
-Minting NFTs is the same as [minting any SPL Token on Solana](../spl-token-minter/), with one extra step at the end.
+Minting NFTs is the same as [minting any token on Solana](../spl-token-minter/), with one extra step at the end.
 
-When you mint SPL Tokens, you can in most cases continue to mint more tokens later, growing the supply. An NFT is supposed to have a supply of **one**. So we need to make sure no more can ever be minted.
+When you mint tokens, you can in most cases continue to mint more later, growing the supply. An NFT is supposed to have a supply of **one**, so no more can ever be minted.
 
 The way to do that is to remove the mint authority from the mint:
 
