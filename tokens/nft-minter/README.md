@@ -2,11 +2,11 @@
 
 Minting NFTs is the same as [minting any token on Solana](../token-minter/), with one extra step at the end.
 
-When you mint tokens, you can in most cases continue to mint more later, growing the supply. An NFT is supposed to have a supply of **one**, so no more can ever be minted.
+When you [mint](https://solana.com/docs/terminology#token-mint) tokens, you can in most cases continue to mint more later, growing the supply. An NFT is supposed to have a supply of **one**, so no more can ever be minted.
 
 The way to do that is to remove the mint authority from the mint:
 
-> The Mint Authority is the account allowed to mint new tokens into supply.
+> The Mint Authority is the [account](https://solana.com/docs/terminology#account) allowed to mint new tokens into supply.
 
 Setting the mint authority to `null` permanently disables minting. **This is irreversible.**
 

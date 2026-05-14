@@ -1,8 +1,8 @@
 # Close Account
 
-Two instruction handlers: `create_user` initializes a PDA `UserState` account, and `close_user` closes it and returns the rent to the user.
+Two [instruction handlers](https://solana.com/docs/terminology#instruction-handler): `create_user` initializes a [PDA](https://solana.com/docs/terminology#program-derived-address-pda) `UserState` [account](https://solana.com/docs/terminology#account), and `close_user` closes it and returns the [rent](https://solana.com/docs/terminology#rent) to the user.
 
-1. `create_user` initializes the PDA with Anchor's `init` constraint:
+1. `create_user` initializes the PDA with [Anchor](https://solana.com/docs/terminology#anchor)'s `init` constraint:
 
    ```rust
    #[account(
@@ -17,7 +17,7 @@ Two instruction handlers: `create_user` initializes a PDA `UserState` account, a
 
    See [`programs/close-account/src/instructions/create_user.rs`](programs/close-account/src/instructions/create_user.rs).
 
-2. `close_user` closes the account using Anchor's `close` constraint, which returns lamports to the given account:
+2. `close_user` closes the account using Anchor's `close` constraint, which returns [lamports](https://solana.com/docs/terminology#lamport) to the given account:
 
    ```rust
    #[account(
@@ -33,7 +33,7 @@ Two instruction handlers: `create_user` initializes a PDA `UserState` account, a
 
 ## Tests
 
-Tests live in [`programs/close-account/tests/test_close_account.rs`](programs/close-account/tests/test_close_account.rs) and run against litesvm. `Anchor.toml`'s `scripts.test` is `cargo test`, so `anchor test` builds the program and runs the Rust tests:
+Tests live in [`programs/close-account/tests/test_close_account.rs`](programs/close-account/tests/test_close_account.rs) and run against litesvm. `Anchor.toml`'s `scripts.test` is `cargo test`, so `anchor test` builds the [program](https://solana.com/docs/terminology#program) and runs the Rust tests:
 
 ```bash
 anchor test

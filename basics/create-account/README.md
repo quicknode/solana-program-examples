@@ -1,12 +1,12 @@
 # Create Account
 
-Create a Solana account.
+Create a Solana [account](https://solana.com/docs/terminology#account).
 
 The account is a **system account** — owned by the System Program, which means only the System Program can modify its data. In this example, the account simply holds some SOL.
 
 The tests cover two ways to create the account:
 
-1. **Via cross-program invocation (CPI):** the client sends a transaction to our deployed program, which in turn calls the System Program.
+1. **Via [cross-program invocation](https://solana.com/docs/terminology#cross-program-invocation-cpi) (CPI):** the client sends a transaction to our deployed [program](https://solana.com/docs/terminology#program), which in turn calls the System Program.
 2. **Directly:** the client sends the create-account transaction straight to the System Program.
 
 See [cross-program-invocation](../cross-program-invocation) for more CPI examples.

@@ -1,8 +1,8 @@
 # cNFT Vault
 
-Example code for working with Metaplex compressed NFTs (cNFTs) inside Solana Anchor programs.
+Example code for working with Metaplex compressed NFTs (cNFTs) inside Solana [Anchor](https://solana.com/docs/terminology#anchor) [programs](https://solana.com/docs/terminology#program).
 
-The program keeps a PDA-owned vault. You send cNFTs to the vault, then withdraw them via the program's instruction handlers.
+The program keeps a PDA-owned vault. You send cNFTs to the vault, then withdraw them via the program's [instruction handlers](https://solana.com/docs/terminology#instruction-handler).
 
 Two handlers:
 

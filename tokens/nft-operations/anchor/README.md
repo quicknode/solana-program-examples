@@ -4,7 +4,7 @@ Create an NFT collection, mint an NFT, and verify an NFT as part of a collection
 
 ## Program setup
 
-This example clones the Metaplex Token Metadata program from mainnet. See `Anchor.toml`:
+This example clones the Metaplex Token Metadata [program](https://solana.com/docs/terminology#program) from mainnet. See `Anchor.toml`:
 
 ```toml
 [test.validator]
@@ -14,7 +14,7 @@ url = "https://api.mainnet-beta.solana.com"
 address = "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
 ```
 
-The program is needed for CPIs that create metadata accounts and master edition accounts, and to verify NFTs as part of a collection.
+The program is needed for [CPIs](https://solana.com/docs/terminology#cross-program-invocation-cpi) that create metadata [accounts](https://solana.com/docs/terminology#account) and master edition accounts, and to verify NFTs as part of a collection.
 
 ## Create an NFT collection
 
@@ -61,17 +61,17 @@ pub struct CreateCollection<'info> {
 
 ### Account breakdown
 
-- `user`: the account creating the collection NFT and the owner of the destination token account.
-- `mint`: the collection NFT mint account. Initialized with 0 decimals; the mint authority and freeze authority are set to `mint_authority`.
-- `mint_authority`: the PDA authority used to mint tokens from the collection mint.
+- `user`: the account creating the collection NFT and the owner of the destination [token account](https://solana.com/docs/terminology#token-account).
+- `mint`: the collection NFT [mint account](https://solana.com/docs/terminology#token-mint). Initialized with 0 decimals; the mint authority and freeze authority are set to `mint_authority`.
+- `mint_authority`: the [PDA](https://solana.com/docs/terminology#program-derived-address-pda) authority used to mint tokens from the collection mint.
 - `metadata`: the metadata account of the collection NFT.
 - `master_edition`: the master edition account of the collection NFT.
 - `destination`: the token account that receives the collection NFT.
 - `system_program`: initializes new accounts.
-- `token_program` / `associated_token_program`: create new ATAs and mint tokens.
+- `token_program` / `associated_token_program`: create new [ATAs](https://solana.com/docs/terminology#associated-token-account-ata) and mint tokens.
 - `token_metadata_program`: the MPL Token Metadata program, used to create the metadata and master edition accounts.
 
-Both `metadata` and `master_edition` are `UncheckedAccount` because they are uninitialized at the start of the instruction — the Token Metadata program initializes them via CPI.
+Both `metadata` and `master_edition` are `UncheckedAccount` because they are uninitialized at the start of the [instruction](https://solana.com/docs/terminology#instruction) — the Token Metadata program initializes them via CPI.
 
 Had we written:
 
@@ -85,13 +85,13 @@ pub struct CreateCollection<'info> {
 }
 ```
 
-the instruction would fail because Anchor would expect the accounts to already be initialized.
+the instruction would fail because [Anchor](https://solana.com/docs/terminology#anchor) would expect the accounts to already be initialized.
 
 When an account *is* already initialized (as in the verify-collection flow below), use the specific account types.
 
 ### Implementation for `CreateCollection`
 
-Each instruction handler is a free function (`pub fn handler(accounts: &mut X, bumps: &XBumps)`) called from the `#[program]` module in `lib.rs`. The account-validation struct lives in the same file as the handler.
+Each [instruction handler](https://solana.com/docs/terminology#instruction-handler) is a free function (`pub fn handler(accounts: &mut X, bumps: &XBumps)`) called from the `#[program]` module in `lib.rs`. The account-validation struct lives in the same file as the handler.
 
 ```rust
 pub fn handler(accounts: &mut CreateCollection, bumps: &CreateCollectionBumps) -> Result<()> {
@@ -170,7 +170,7 @@ pub fn handler(accounts: &mut CreateCollection, bumps: &CreateCollectionBumps) -
 
 Three steps:
 
-1. Mint one token to the destination token account via a CPI to the Classic Token Program.
+1. Mint one token to the destination token account via a CPI to the [Classic Token Program](https://solana.com/docs/terminology#token-program).
 2. Create a metadata account for the mint via a CPI to the Token Metadata program. The mint authority signs the CPI, so we use `invoke_signed` with the authority PDA's seeds.
 3. Create a master edition account for the mint via a CPI to the Token Metadata program. This enforces the NFT-specific constraints and transfers both the mint authority and freeze authority to the Master Edition PDA. Again, the mint authority signs.
 

@@ -2,7 +2,7 @@
 
 Minting tokens is conceptually straightforward. The subtle part is understanding how Solana tracks per-user token balances.
 
-Every account on Solana tracks its own balance of SOL. It can't possibly also track its own balance of every token on the network. Instead, token balances are held in separate accounts that are specific to a given mint and a given owner. These are called **Associated Token Accounts (ATAs)**.
+Every [account](https://solana.com/docs/terminology#account) on Solana tracks its own balance of SOL. It can't possibly also track its own balance of every token on the network. Instead, token balances are held in separate accounts that are specific to a given [mint](https://solana.com/docs/terminology#token-mint) and a given owner. These are called **[Associated Token Accounts](https://solana.com/docs/terminology#associated-token-account-ata) (ATAs)**.
 
 To know what someone's balance of token JOE is, you would:
 
