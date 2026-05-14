@@ -50,8 +50,35 @@ jobs:
           ignore_pattern=$(grep -v '^#' .github/.ghaignore | grep -v '^$' | tr '\n' '|' | sed 's/|$//')
           echo "Ignore pattern: $ignore_pattern"
 
+          # Single source of truth for "what is a framework project": a directory
+          # whose name is exactly "anchor". `find -type d -name anchor` gives us
+          # that by construction — no substring matching, no path-segment trickery,
+          # so siblings like "anchor-example/" or nested files such as
+          # "anchor-example/app/pages/api/foo.ts" can never enter the build list.
           function get_projects() {
             find . -type d -name "anchor" | grep -vE "$ignore_pattern" | sort
+          }
+
+          # Filter the full project list down to projects touched by the given
+          # changed files. A file "touches" a project iff it lives inside that
+          # project directory (prefix match on "<project>/"). This is an
+          # intersection against get_projects(), so the result is always a subset
+          # of the authoritative project list.
+          function filter_by_changes() {
+            local all_projects="$1"
+            shift
+            local changed_files=("$@")
+            echo "$all_projects" | while read -r project; do
+              [ -z "$project" ] && continue
+              # Strip leading ./ so prefix comparison matches git's output
+              local project_prefix="${project#./}/"
+              for file in "${changed_files[@]}"; do
+                if [[ "$file" == "$project_prefix"* ]]; then
+                  echo "$project"
+                  break
+                fi
+              done
+            done | sort -u
           }
 
           # Determine which projects to build and test
@@ -60,15 +87,15 @@ jobs:
             projects=$(get_projects)
           elif [[ "${{ github.event_name }}" == "push" ]]; then
             # On push, only build projects with changes since parent commit
-            changed_files=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "")
-            if [ -z "$changed_files" ]; then
+            mapfile -t changed_files < <(git diff --name-only HEAD~1 HEAD 2>/dev/null || true)
+            if [ ${#changed_files[@]} -eq 0 ]; then
               projects=$(get_projects)
             else
-              projects=$(echo "$changed_files" | while read file; do dirname "$file" | grep anchor | sed 's#/anchor/.*#/anchor#g'; done | grep -vE "$ignore_pattern" | sort -u)
+              projects=$(filter_by_changes "$(get_projects)" "${changed_files[@]}")
             fi
           elif [[ "${{ steps.changes.outputs.anchor }}" == "true" ]]; then
             changed_files=(${{ steps.changes.outputs.anchor_files }})
-            projects=$(for file in "${changed_files[@]}"; do dirname "${file}" | grep anchor | sed 's#/anchor/.*#/anchor#g'; done | grep -vE "$ignore_pattern" | sort -u)
+            projects=$(filter_by_changes "$(get_projects)" "${changed_files[@]}")
           else
             projects=""
           fi
