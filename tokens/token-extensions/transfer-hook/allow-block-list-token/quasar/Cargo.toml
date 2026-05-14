@@ -19,8 +19,14 @@ client = []
 debug = []
 
 [dependencies]
-quasar-lang = { git = "https://github.com/blueshift-gg/quasar", branch = "master" }
-quasar-spl = { git = "https://github.com/blueshift-gg/quasar", branch = "master" }
+# quasar pin rationale: master HEAD currently fails to compile because zeropod 0.3.x
+# auto-generates accessor methods that conflict with hand-written ones in quasar-spl
+# (E0592 duplicate definitions for delegate / close_authority / mint_authority /
+# freeze_authority). Upstream fix is on the zeropod branch (skip_accessor + bump),
+# not yet merged to master. 623bb70 is the last working rev on master before zeropod
+# 0.3 was bumped. Unpin (back to branch = "master") once upstream merges the fix.
+quasar-lang = { git = "https://github.com/blueshift-gg/quasar", rev = "623bb70" }
+quasar-spl = { git = "https://github.com/blueshift-gg/quasar", rev = "623bb70" }
 solana-instruction = { version = "3.2.0" }
 
 [dev-dependencies]
