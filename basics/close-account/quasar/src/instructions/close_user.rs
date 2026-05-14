@@ -1,4 +1,4 @@
-use {crate::state::UserState, quasar_lang::prelude::*};
+use {crate::state::User, quasar_lang::prelude::*};
 
 /// Accounts for closing a user account.
 /// The `close(dest = user)` attribute mirrors Anchor's `close = user`: at the
@@ -9,7 +9,7 @@ pub struct CloseUser {
     #[account(mut)]
     pub user: Signer,
     #[account(mut, close(dest = user))]
-    pub user_account: Account<UserState>,
+    pub user_account: Account<User>,
 }
 
 #[inline(always)]

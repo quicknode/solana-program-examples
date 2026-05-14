@@ -4,7 +4,7 @@ use quasar_lang::prelude::*;
 /// Fixed fields (bump, user) must precede dynamic fields (name).
 #[account(discriminator = 1, set_inner)]
 #[seeds(b"USER", user: Address)]
-pub struct UserState {
+pub struct User {
     pub bump: u8,
     pub user: Address,
     pub name: String<50>,

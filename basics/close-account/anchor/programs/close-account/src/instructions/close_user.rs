@@ -15,7 +15,7 @@ pub struct CloseUserContext<'info> {
         bump = user_account.bump,
         close = user, // close account and return lamports to user
     )]
-    pub user_account: Account<'info, UserState>,
+    pub user_account: Account<'info, User>,
 }
 
 pub fn handle_close_user(_context: Context<CloseUserContext>) -> Result<()> {

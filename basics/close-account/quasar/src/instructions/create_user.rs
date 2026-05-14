@@ -1,5 +1,5 @@
 use {
-    crate::state::{UserState, UserStateInner},
+    crate::state::{User, UserInner},
     quasar_lang::{prelude::*, sysvars::Sysvar},
 };
 
@@ -8,8 +8,8 @@ use {
 pub struct CreateUser {
     #[account(mut)]
     pub user: Signer,
-    #[account(mut, init, payer = user, address = UserState::seeds(user.address()))]
-    pub user_account: Account<UserState>,
+    #[account(mut, init, payer = user, address = User::seeds(user.address()))]
+    pub user_account: Account<User>,
     pub system_program: Program<SystemProgram>,
 }
 
@@ -22,7 +22,7 @@ pub fn handle_create_user(
     let user_address = *accounts.user.to_account_view().address();
     let rent = Rent::get()?;
     accounts.user_account.set_inner(
-        UserStateInner { bump, user: user_address, name },
+        UserInner { bump, user: user_address, name },
         accounts.user.to_account_view(),
         rent.lamports_per_byte(),
         rent.exemption_threshold_raw(),
