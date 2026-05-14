@@ -1,14 +1,14 @@
 # Cross-Program Invocation (CPI)
 
-A cross-program invocation is calling one program from another. You use CPIs when your program needs to compose with other onchain programs to do its work.
+A [cross-program invocation](https://solana.com/docs/terminology#cross-program-invocation-cpi) is calling one [program](https://solana.com/docs/terminology#program) from another. You use CPIs when your program needs to compose with other [onchain](https://solana.com/docs/terminology#onchain) programs to do its work.
 
 Whether a given operation should be done via a CPI or via separate RPC calls from the client is a design choice. The main reason to use a CPI is a **dependent operation** that must happen atomically with the rest of your logic.
 
-Consider this sequence in a token mint program:
+Consider this sequence in a token [mint](https://solana.com/docs/terminology#token-mint) program:
 
 1. Create and initialize the mint.
-2. Create a metadata account for the mint.
-3. Create and initialize a user's token account for the mint.
+2. Create a metadata [account](https://solana.com/docs/terminology#account) for the mint.
+3. Create and initialize a user's [token account](https://solana.com/docs/terminology#token-account) for the mint.
 4. Mint some tokens to the user's token account.
 
 You cannot create a metadata account without first having the mint. Once you decide that steps 1 and 4 must be onchain, the only sensible option is to also do steps 2 and 3 onchain — you cannot pause a program mid-flight to let the client do work.
@@ -56,4 +56,4 @@ See the [Features chapter of the Cargo Book](https://doc.rust-lang.org/cargo/ref
 
 <img src="istockphoto-1303616086-612x612.jpeg" alt="lever" width="128" align="center"/>
 
-The `hand` program's `pull_lever` instruction handler does a CPI into the `lever` program's `switch_power` instruction handler. Pull the lever, switch the power.
+The `hand` program's `pull_lever` [instruction handler](https://solana.com/docs/terminology#instruction-handler) does a CPI into the `lever` program's `switch_power` instruction handler. Pull the lever, switch the power.

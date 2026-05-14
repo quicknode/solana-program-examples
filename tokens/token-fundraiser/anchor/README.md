@@ -1,6 +1,6 @@
 # Token Fundraiser
 
-Create a fundraiser that collects tokens. A user creates a fundraiser account, specifies the mint they want to receive, the target amount, and a duration. Other users contribute. If the target is reached, the maker can claim the funds; if it isn't reached within the duration, contributors can refund.
+Create a fundraiser that collects tokens. A user creates a fundraiser [account](https://solana.com/docs/terminology#account), specifies the [mint](https://solana.com/docs/terminology#token-mint) they want to receive, the target amount, and a duration. Other users contribute. If the target is reached, the maker can claim the funds; if it isn't reached within the duration, contributors can refund.
 
 ## Architecture
 
@@ -28,9 +28,9 @@ Fields:
 - `current_amount` — total amount currently contributed.
 - `time_started` — when the fundraiser was created.
 - `duration` — fundraising window in days.
-- `bump` — canonical bump for the Fundraiser PDA.
+- `bump` — canonical bump for the Fundraiser [PDA](https://solana.com/docs/terminology#program-derived-address-pda).
 
-The `InitSpace` derive macro implements the `Space` trait, which calculates the size of the account (not counting the Anchor discriminator).
+The `InitSpace` derive macro implements the `Space` trait, which calculates the size of the account (not counting the [Anchor](https://solana.com/docs/terminology#anchor) discriminator).
 
 A per-contributor record:
 
@@ -63,7 +63,7 @@ pub const PERCENTAGE_SCALER: u64 = 100;
 
 ### Code layout
 
-Each instruction handler is a free function (`pub fn handle_<name>(accounts: &mut <Context>, ...)`) called from the `#[program]` module in `lib.rs`. Account-validation structs sit in the same file as the handler.
+Each [instruction handler](https://solana.com/docs/terminology#instruction-handler) is a free function (`pub fn handle_<name>(accounts: &mut <Context>, ...)`) called from the `#[program]` module in `lib.rs`. Account-validation structs sit in the same file as the handler.
 
 ## Instruction handlers
 
@@ -100,10 +100,10 @@ pub struct Initialize<'info> {
 
 Account breakdown:
 
-- `maker` — the person starting the fundraiser. Signs; mutable so we can deduct lamports.
+- `maker` — the person starting the fundraiser. Signs; mutable so we can deduct [lamports](https://solana.com/docs/terminology#lamport).
 - `mint_to_raise` — the mint the maker wants to receive.
 - `fundraiser` — the state account. Derived from `b"fundraiser"` and the maker's public key; Anchor calculates the canonical bump and stores it in the struct.
-- `vault` — the ATA that receives contributions, owned by the Fundraiser PDA.
+- `vault` — the [ATA](https://solana.com/docs/terminology#associated-token-account-ata) that receives contributions, owned by the Fundraiser PDA.
 - `system_program`, `token_program`, `associated_token_program` — needed to initialize the new accounts.
 
 The handler requires `amount >= MIN_AMOUNT_TO_RAISE.pow(mint.decimals)` and initializes the Fundraiser state.
@@ -119,13 +119,13 @@ Account-validation struct: see source. The handler performs four `require!` chec
 3. `fundraiser.duration <= (current_time - time_started) / SECONDS_TO_DAYS` — see the [duration semantics note](#duration-check-semantics) below.
 4. Cumulative contributor cap: this contributor's running total (existing + new) must not exceed 10% of the target.
 
-If all four checks pass, tokens are transferred from `contributor_ata` to `vault` via a CPI to the Classic Token Program, and both `Fundraiser.current_amount` and `Contributor.amount` are updated.
+If all four checks pass, tokens are transferred from `contributor_ata` to `vault` via a [CPI](https://solana.com/docs/terminology#cross-program-invocation-cpi) to the [Classic Token Program](https://solana.com/docs/terminology#token-program), and both `Fundraiser.current_amount` and `Contributor.amount` are updated.
 
 ### `check_contributions`
 
 [`programs/fundraiser/src/instructions/checker.rs`](programs/fundraiser/src/instructions/checker.rs).
 
-Lets the maker claim the funds. Requires `vault.amount >= amount_to_raise`. The CPI uses `new_with_signer` with the Fundraiser PDA's seeds because the vault is owned by the PDA. The Fundraiser account is closed (via the `close = maker` constraint) and its rent is refunded to the maker.
+Lets the maker claim the funds. Requires `vault.amount >= amount_to_raise`. The CPI uses `new_with_signer` with the Fundraiser PDA's seeds because the vault is owned by the PDA. The Fundraiser account is closed (via the `close = maker` constraint) and its [rent](https://solana.com/docs/terminology#rent) is refunded to the maker.
 
 ### `refund`
 

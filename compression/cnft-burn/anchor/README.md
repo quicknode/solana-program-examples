@@ -1,6 +1,6 @@
 # cnft-burn
 
-An Anchor program that burns compressed NFTs (cNFTs) in your collection. The program performs a CPI into the Metaplex Bubblegum program to do the burn.
+An [Anchor](https://solana.com/docs/terminology#anchor) [program](https://solana.com/docs/terminology#program) that burns compressed NFTs (cNFTs) in your collection. The program performs a [CPI](https://solana.com/docs/terminology#cross-program-invocation-cpi) into the Metaplex Bubblegum program to do the burn.
 
 ## Components
 
@@ -17,5 +17,5 @@ To deploy your own copy, change the program ID in `lib.rs` and `Anchor.toml`, th
 
 ## Acknowledgements
 
-- [Metaplex](https://github.com/metaplex-foundation/) for the Bubblegum program and instruction builders.
+- [Metaplex](https://github.com/metaplex-foundation/) for the Bubblegum program and [instruction](https://solana.com/docs/terminology#instruction) builders.
 - [@nickfrosty](https://twitter.com/nickfrosty) for the sample code that fetches and creates cNFTs.

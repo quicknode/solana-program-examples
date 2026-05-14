@@ -4,7 +4,7 @@ A Solana-native counter built using the MPL (Metaplex) stack.
 
 ## Setup
 
-1. Build the program: `cargo build-sbf`
+1. Build the [program](https://solana.com/docs/terminology#program): `cargo build-sbf`
 2. Build the IDL: `shank build`
 3. Build the TypeScript SDK: `pnpm solita`
    - Temporary workaround: edit `ts/generated/accounts/Counter.ts` line 58 to

@@ -1,8 +1,8 @@
 # Allow/Block-List Token
 
-A Token Extensions example that gates transfers through an allow/block list managed by a separate authority. The list is consumed by a transfer hook.
+A [Token Extensions](https://solana.com/docs/terminology#token-extensions-program) example that gates transfers through an allow/block list managed by a separate authority. The list is consumed by a transfer hook.
 
-One list authority can manage lists for many mints — useful when an issuer wants a third-party-managed list or wants to share a single list across a set of assets.
+One list authority can manage lists for many [mints](https://solana.com/docs/terminology#token-mint) — useful when an issuer wants a third-party-managed list or wants to share a single list across a set of assets.
 
 ## Features
 
@@ -37,5 +37,5 @@ pnpm run dev       # serve the UI
 
 Scripts manage the local validator and deployment:
 
-- `./scripts/start.sh` — start the local validator and deploy the program (uses the Anchor CLI and the default Anchor keypair).
+- `./scripts/start.sh` — start the local validator and deploy the [program](https://solana.com/docs/terminology#program) (uses the [Anchor](https://solana.com/docs/terminology#anchor) CLI and the default Anchor keypair).
 - `./scripts/stop.sh` — stop the local validator.
