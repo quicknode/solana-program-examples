@@ -1,6 +1,6 @@
 # Token Swap (AMM)
 
-A Constant Product Automated Market Maker (AMM) in Anchor — the model popularized by Uniswap V2.
+A Constant Product Automated Market Maker (AMM) in [Anchor](https://solana.com/docs/terminology#anchor) — the model popularized by Uniswap V2.
 
 The pool keeps `x * y = K` invariant: if `x` is the reserve of token A and `y` is the reserve of token B, then `x * y` stays constant for a given liquidity quantity.
 
@@ -13,7 +13,7 @@ Other bonding-curve designs exist:
 - **Uniswap V3 Concentrated Liquidity AMM (CLAMM):** splits the curve into buckets; LPs supply liquidity to specific price ranges.
 - **Trader Joe CLAMM:** like Uniswap V3, but each bucket is a CSAMM.
 
-A CPAMM is the simplest and the cheapest to keep in account state — one pool, one mint, easy to reason about. That's what this example implements.
+A CPAMM is the simplest and the cheapest to keep in [account](https://solana.com/docs/terminology#account) state — one pool, one [mint](https://solana.com/docs/terminology#token-mint), easy to reason about. That's what this example implements.
 
 ## Design
 
@@ -21,19 +21,19 @@ Requirements:
 
 - **Fee distribution.** Every pool charges a trading fee, paid in the traded token, that rewards LPs. To stay consistent across pools, the fee is shared.
 - **Single pool per asset pair.** Avoids liquidity fragmentation.
-- **LP accounting.** The program tracks each LP's deposits.
+- **LP accounting.** The [program](https://solana.com/docs/terminology#program) tracks each LP's deposits.
 
 Implementation choices:
 
 - **Shared parameters.** A single AMM account stores the shared trading-fee config and admin. Each pool then has its own account.
-- **Unique pools.** Each pool is a PDA seeded from the AMM, `mint_a`, and `mint_b` (in that order, with `mint_a < mint_b`).
+- **Unique pools.** Each pool is a [PDA](https://solana.com/docs/terminology#program-derived-address-pda) seeded from the AMM, `mint_a`, and `mint_b` (in that order, with `mint_a < mint_b`).
 - **LP accounting via tokens.** LP positions are tracked as tokens (the `mint_liquidity` mint), so they're composable with any wallet or downstream protocol.
 
 ## Onchain-design principles applied here
 
 - **Store keys in the account.** Even for PDAs, storing the parent keys in the account state makes lookups easier (you can rebuild the PDA without consulting external data) and works well with Anchor's `has_one` constraint.
 - **Keep seeds simple.** Start with the parent's seeds, then the current object's identifiers in alphabetical order. For the pool, that means `[amm, mint_a, mint_b]`.
-- **Keep instruction scope small.** Smaller instructions touch fewer accounts, leaving room in the transaction and improving composability and security.
+- **Keep [instruction](https://solana.com/docs/terminology#instruction) scope small.** Smaller instructions touch fewer accounts, leaving room in the transaction and improving composability and security.
 
 ## File structure
 
@@ -76,7 +76,7 @@ Initializes an `Amm` account with the supplied `id`, `admin`, and `fee`. Enforce
 
 ### `create_pool`
 
-Initializes a `Pool` account, an LP mint (`mint_liquidity`), and the two pool ATAs (`pool_account_a`, `pool_account_b`). Enforces `mint_a < mint_b` for canonical pool addressing.
+Initializes a `Pool` account, an LP mint (`mint_liquidity`), and the two pool [ATAs](https://solana.com/docs/terminology#associated-token-account-ata) (`pool_account_a`, `pool_account_b`). Enforces `mint_a < mint_b` for canonical pool addressing.
 
 ### `deposit_liquidity`
 

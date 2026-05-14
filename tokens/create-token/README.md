@@ -2,7 +2,7 @@
 
 Create a token on Solana with metadata such as a symbol and an icon.
 
-All fungible assets and NFTs on Solana are tokens. They follow the Classic Token Program standard (similar in spirit to ERC-20), or the newer Token Extensions standard.
+All fungible assets and NFTs on Solana are tokens. They follow the [Classic Token Program](https://solana.com/docs/terminology#token-program) standard (similar in spirit to ERC-20), or the newer [Token Extensions](https://solana.com/docs/terminology#token-extensions-program) standard.
 
 ```text
 Typical fungible tokens : 9 decimals
@@ -19,7 +19,7 @@ For a token JOE with 9 decimals:
 
 ## Mint and metadata
 
-A token is represented onchain by a **Mint Account**:
+A token is represented [onchain](https://solana.com/docs/terminology#onchain) by a **[Mint Account](https://solana.com/docs/terminology#token-mint)**:
 
 ```typescript
 {
@@ -31,7 +31,7 @@ A token is represented onchain by a **Mint Account**:
 }
 ```
 
-Metadata about a mint — name, symbol, image URI — lives in a separate **Metadata Account**:
+Metadata about a mint — name, symbol, image URI — lives in a separate **Metadata [Account](https://solana.com/docs/terminology#account)**:
 
 ```typescript
 {

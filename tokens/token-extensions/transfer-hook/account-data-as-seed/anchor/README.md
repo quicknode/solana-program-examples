@@ -1,6 +1,6 @@
 # Using Token Account Data as a Seed in a Transfer Hook
 
-Sometimes you want to use account data to derive additional accounts in the extra-account-metas. For example, you might want to use the token account's owner as a seed for a PDA.
+Sometimes you want to use [account](https://solana.com/docs/terminology#account) data to derive additional accounts in the extra-account-metas. For example, you might want to use the [token account](https://solana.com/docs/terminology#token-account)'s owner as a seed for a [PDA](https://solana.com/docs/terminology#program-derived-address-pda).
 
 When creating an `ExtraAccountMeta`, the data of any account can be used as an extra seed. In this example we derive a counter account from the token account owner and the literal `"counter"`. The counter records how many times that owner has transferred tokens.
 
@@ -26,7 +26,7 @@ impl<'info> InitializeExtraAccountMetaList<'info> {
 }
 ```
 
-The token account layout is what makes `data_index: 32, length: 32` mean "the owner field". Bytes 0..32 are the mint and bytes 32..64 are the owner:
+The token account layout is what makes `data_index: 32, length: 32` mean "the owner field". Bytes 0..32 are the [mint](https://solana.com/docs/terminology#token-mint) and bytes 32..64 are the owner:
 
 ```rust
 /// Token account data.
@@ -80,7 +80,7 @@ pub struct InitializeExtraAccountMetaList<'info> {
 }
 ```
 
-The counter account also has to appear on the `TransferHook` struct — the program needs to know about every account passed in by the runtime:
+The counter account also has to appear on the `TransferHook` struct — the [program](https://solana.com/docs/terminology#program) needs to know about every account passed in by the runtime:
 
 ```rust
 #[derive(Accounts)]

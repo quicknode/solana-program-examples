@@ -1,12 +1,12 @@
 # Block List
 
-A block-list program that implements the Token Extensions transfer-hook `execute` instruction.
+A block-list [program](https://solana.com/docs/terminology#program) that implements the [Token Extensions](https://solana.com/docs/terminology#token-extensions-program) transfer-hook `execute` [instruction](https://solana.com/docs/terminology#instruction).
 
 A central authority maintains a block list — a collection of blocked wallets. Token issuers (transfer-hook extension authorities) can wire this program in as their hook and choose an operation mode: filter the source wallet only, or both source and destination.
 
 ## Operation modes
 
-The mode depends on whether the block list is empty, plus the issuer's choice. Each mode corresponds to a different `extra-account-metas` account built for the mint (see `setup_extra_metas` below). When the list goes from empty to non-empty, the issuer must call `setup_extra_metas` again.
+The mode depends on whether the block list is empty, plus the issuer's choice. Each mode corresponds to a different `extra-account-metas` [account](https://solana.com/docs/terminology#account) built for the [mint](https://solana.com/docs/terminology#token-mint) (see `setup_extra_metas` below). When the list goes from empty to non-empty, the issuer must call `setup_extra_metas` again.
 
 - **Empty extra metas** — default when the config counter is 0.
 - **Check source** — default when the config counter is > 0.

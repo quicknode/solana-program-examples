@@ -1,11 +1,11 @@
 # cNFT Utils
 
-Example code for working with Metaplex compressed NFTs (cNFTs) inside Solana Anchor programs.
+Example code for working with Metaplex compressed NFTs (cNFTs) inside Solana [Anchor](https://solana.com/docs/terminology#anchor) [programs](https://solana.com/docs/terminology#program).
 
-This program shows how to add custom logic around the Bubblegum mint via CPI. Two handlers:
+This program shows how to add custom logic around the Bubblegum [mint](https://solana.com/docs/terminology#token-mint) via [CPI](https://solana.com/docs/terminology#cross-program-invocation-cpi). Two handlers:
 
-1. `mint` — mints a cNFT to your collection by CPI'ing Bubblegum. You can also initialize your own program-specific PDA in this handler.
-2. `verify` — verifies that the owner of a given cNFT actually invoked the instruction. Useful as a building block for permissioned cNFT-gated logic.
+1. `mint` — mints a cNFT to your collection by CPI'ing Bubblegum. You can also initialize your own program-specific [PDA](https://solana.com/docs/terminology#program-derived-address-pda) in this handler.
+2. `verify` — verifies that the owner of a given cNFT actually invoked the [instruction](https://solana.com/docs/terminology#instruction). Useful as a building block for permissioned cNFT-gated logic.
 
 Use this as a reference for working with cNFTs in your own programs.
 

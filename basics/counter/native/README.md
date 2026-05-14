@@ -4,7 +4,7 @@ Counter written in Solana native, using only the Solana toolchain.
 
 ## Setup
 
-1. Build the program: `cargo build-sbf`
+1. Build the [program](https://solana.com/docs/terminology#program): `cargo build-sbf`
 2. Run the tests: `pnpm test`
 
 ## Debugging

@@ -1,12 +1,12 @@
 # Shank and Solita
 
-The Metaplex team built **Shank** and **Solita** so that native Solana programs can have serialization and IDL support similar to Anchor.
+The Metaplex team built **Shank** and **Solita** so that native Solana [programs](https://solana.com/docs/terminology#program) can have serialization and IDL support similar to [Anchor](https://solana.com/docs/terminology#anchor).
 
 ## Shank
 
 [Shank](https://github.com/metaplex-foundation/shank) is a Rust crate that generates an IDL for your program.
 
-Mark a struct as an account:
+Mark a struct as an [account](https://solana.com/docs/terminology#account):
 
 ```rust
 #[derive(BorshDeserialize, BorshSerialize, Clone, ShankAccount)]
@@ -17,7 +17,7 @@ pub struct Car {
 }
 ```
 
-Mark an enum as your instruction set:
+Mark an enum as your [instruction](https://solana.com/docs/terminology#instruction) set:
 
 ```rust
 #[derive(BorshDeserialize, BorshSerialize, Clone, ShankInstruction)]

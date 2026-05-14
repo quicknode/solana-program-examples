@@ -1,8 +1,8 @@
 # Token Extensions Metadata-Pointer NFT
 
-An Anchor program that mints an NFT using the Token Extensions metadata-pointer extension. The mint itself stores its own metadata via the metadata extension, so no separate Metaplex metadata account is needed.
+An Anchor [program](https://solana.com/docs/terminology#program) that mints an NFT using the [Token Extensions](https://solana.com/docs/terminology#token-extensions-program) metadata-pointer extension. The mint itself stores its own metadata via the metadata extension, so no separate Metaplex metadata [account](https://solana.com/docs/terminology#account) is needed.
 
-This is particularly useful for games — you get arbitrary key/value metadata stored onchain that you can use to record character state. In this example, the player's level and collected wood are stored on the NFT.
+This is particularly useful for games — you get arbitrary key/value metadata stored [onchain](https://solana.com/docs/terminology#onchain) that you can use to record character state. In this example, the player's level and collected wood are stored on the NFT.
 
 When marketplaces support additional metadata, NFTs can be filtered or ranked by those fields, e.g. by character level.
 
@@ -30,12 +30,12 @@ pnpm dev
 
 Creating an NFT this way:
 
-1. Create the mint account.
+1. Create the [mint account](https://solana.com/docs/terminology#token-mint).
 2. Initialize the metadata pointer (must happen *before* initializing the mint).
 3. Initialize the mint with 0 decimals.
 4. Initialize the metadata extension on the mint itself.
 5. Add any custom fields (e.g. `level`).
-6. Create the player's Associated Token Account.
+6. Create the player's [Associated Token Account](https://solana.com/docs/terminology#associated-token-account-ata).
 7. Mint one token to the ATA.
 8. Remove the mint authority — irreversible, makes it an NFT.
 
@@ -70,11 +70,11 @@ anchor/programs/extension_nft/src/
 └── lib.rs
 ```
 
-`PlayerData::update_energy` (in `state/player_data.rs`) is where the lazy refill is computed; there is no separate `update_energy.rs` instruction handler.
+`PlayerData::update_energy` (in `state/player_data.rs`) is where the lazy refill is computed; there is no separate `update_energy.rs` [instruction handler](https://solana.com/docs/terminology#instruction-handler).
 
 ## Session keys
 
-The example uses [Gum session keys](https://github.com/magicblock-labs/session-keys) to auto-approve transactions: a local keypair is topped up with a small amount of SOL and is allowed to sign specific program instructions for a limited window (currently 23h). When it expires, the SOL is returned and a new session can be created.
+The example uses [Gum session keys](https://github.com/magicblock-labs/session-keys) to auto-approve transactions: a local keypair is topped up with a small amount of SOL and is allowed to sign specific program [instructions](https://solana.com/docs/terminology#instruction) for a limited window (currently 23h). When it expires, the SOL is returned and a new session can be created.
 
 Neither the program nor the session-keys library has been audited. Use at your own risk.
 

@@ -1,6 +1,6 @@
 # Quicknode Solana Program Examples
 
-> A fork of the [Solana Foundation program examples](https://github.com/solana-developers/program-examples) with current versions, more programs, and additional frameworks.
+> A fork of the [Solana Foundation program examples](https://github.com/solana-developers/program-examples) with current versions, more [programs](https://solana.com/docs/terminology#program), and additional frameworks.
 
 [![Anchor](../../actions/workflows/anchor.yml/badge.svg)](../../actions/workflows/anchor.yml) [![Quasar](../../actions/workflows/quasar.yml/badge.svg)](../../actions/workflows/quasar.yml) [![Pinocchio](../../actions/workflows/pinocchio.yml/badge.svg)](../../actions/workflows/pinocchio.yml) [![Native](../../actions/workflows/native.yml/badge.svg)](../../actions/workflows/native.yml) [![ASM](../../actions/workflows/solana-asm.yml/badge.svg)](../../actions/workflows/solana-asm.yml)
 
@@ -13,7 +13,7 @@ Each example is available in one or more of the following frameworks:
 - [🧬 ASM](https://github.com/blueshift-gg/sbpf) — hand-written sBPF assembly built with the `sbpf` toolchain. Run `pnpm build-and-test` to build and test.
 
 > [!NOTE]
-> You don't need to write your own program for basic tasks like creating accounts, transferring SOL, or minting tokens. These are handled by existing programs like the System Program and Token Program.
+> You don't need to write your own program for basic tasks like creating [accounts](https://solana.com/docs/terminology#account), transferring SOL, or minting tokens. These are handled by existing programs like the System Program and Token Program.
 
 ## Financial Software
 
@@ -37,7 +37,7 @@ Create a fundraiser specifying a target mint and amount. Contributors deposit to
 
 ### Pyth Price Feeds
 
-Read offchain price data onchain using the Pyth oracle network.
+Read offchain price data [onchain](https://solana.com/docs/terminology#onchain) using the Pyth oracle network.
 
 [⚓ Anchor](./oracles/pyth/anchor) [💫 Quasar](./oracles/pyth/quasar)
 
@@ -57,7 +57,7 @@ Store and retrieve data using Solana accounts.
 
 ### Counter
 
-Use a PDA to store global state — a counter that increments when called.
+Use a [PDA](https://solana.com/docs/terminology#program-derived-address-pda) to store global state — a counter that increments when called.
 
 [⚓ Anchor](./basics/counter/anchor) [💫 Quasar](./basics/counter/quasar) [🤥 Pinocchio](./basics/counter/pinocchio) [🦀 Native](./basics/counter/native)
 
@@ -69,13 +69,13 @@ Save and update per-user state, ensuring users can only modify their own data.
 
 ### Checking Accounts
 
-Validate that accounts provided in incoming instructions meet specific criteria.
+Validate that accounts provided in incoming [instructions](https://solana.com/docs/terminology#instruction) meet specific criteria.
 
 [⚓ Anchor](./basics/checking-accounts/anchor) [💫 Quasar](./basics/checking-accounts/quasar) [🤥 Pinocchio](./basics/checking-accounts/pinocchio) [🦀 Native](./basics/checking-accounts/native) [🧬 ASM](./basics/checking-accounts/asm)
 
 ### Close Account
 
-Close an account and reclaim its lamports.
+Close an account and reclaim its [lamports](https://solana.com/docs/terminology#lamport).
 
 [⚓ Anchor](./basics/close-account/anchor) [💫 Quasar](./basics/close-account/quasar) [🤥 Pinocchio](./basics/close-account/pinocchio) [🦀 Native](./basics/close-account/native)
 
@@ -93,13 +93,13 @@ Call one program from another — the hand program invokes the lever program to 
 
 ### PDA Rent Payer
 
-Use a PDA to pay rent for creating a new account.
+Use a PDA to pay [rent](https://solana.com/docs/terminology#rent) for creating a new account.
 
 [⚓ Anchor](./basics/pda-rent-payer/anchor) [💫 Quasar](./basics/pda-rent-payer/quasar) [🤥 Pinocchio](./basics/pda-rent-payer/pinocchio) [🦀 Native](./basics/pda-rent-payer/native)
 
 ### Processing Instructions
 
-Add parameters to an instruction handler and use them.
+Add parameters to an [instruction handler](https://solana.com/docs/terminology#instruction-handler) and use them.
 
 [⚓ Anchor](./basics/processing-instructions/anchor) [💫 Quasar](./basics/processing-instructions/quasar) [🤥 Pinocchio](./basics/processing-instructions/pinocchio) [🦀 Native](./basics/processing-instructions/native)
 
@@ -155,7 +155,7 @@ Create an NFT collection, mint NFTs, and verify NFTs as part of a collection usi
 
 ### Token Minter
 
-Mint tokens from inside your own program using the Classic Token Program.
+Mint tokens from inside your own program using the [Classic Token Program](https://solana.com/docs/terminology#token-program).
 
 [⚓ Anchor](./tokens/token-minter/anchor) [💫 Quasar](./tokens/token-minter/quasar) [🦀 Native](./tokens/token-minter/native)
 
@@ -181,19 +181,19 @@ Control token transfers using an external secp256k1 delegate signature.
 
 ### Basics
 
-Create token mints, mint tokens, and transfer tokens using Token Extensions.
+Create token mints, mint tokens, and transfer tokens using [Token Extensions](https://solana.com/docs/terminology#token-extensions-program).
 
 [⚓ Anchor](./tokens/token-extensions/basics/anchor) [💫 Quasar](./tokens/token-extensions/basics/quasar)
 
 ### CPI Guard
 
-Prevent certain token actions from occurring within cross-program invocations.
+Prevent certain token actions from occurring within [cross-program invocations](https://solana.com/docs/terminology#cross-program-invocation-cpi).
 
 [⚓ Anchor](./tokens/token-extensions/cpi-guard/anchor) [💫 Quasar](./tokens/token-extensions/cpi-guard/quasar)
 
 ### Default Account State
 
-Create new token accounts that are frozen by default.
+Create new [token accounts](https://solana.com/docs/terminology#token-account) that are frozen by default.
 
 [⚓ Anchor](./tokens/token-extensions/default-account-state/anchor) [💫 Quasar](./tokens/token-extensions/default-account-state/quasar) [🦀 Native](./tokens/token-extensions/default-account-state/native)
 
@@ -223,7 +223,7 @@ Require all transfers to include a descriptive memo.
 
 ### Onchain Metadata
 
-Store metadata directly inside the token mint account, without needing additional programs.
+Store metadata directly inside the token [mint account](https://solana.com/docs/terminology#token-mint), without needing additional programs.
 
 [⚓ Anchor](./tokens/token-extensions/metadata/anchor)
 
