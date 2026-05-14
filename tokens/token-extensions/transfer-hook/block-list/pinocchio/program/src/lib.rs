@@ -15,7 +15,7 @@ pub mod error;
 pub use error::*;
 pub mod state;
 pub use state::*;
-mod token2022_utils;
+mod token_extensions_utils;
 
 declare_id!("BLoCKLSG2qMQ9YxEyrrKKAQzthvW4Lu8Eyv74axF6mf");
 

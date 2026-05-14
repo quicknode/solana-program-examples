@@ -8,15 +8,21 @@
   },
   "scripts": {
     "generate-sdks": "pnpx tsx codama.ts",
-    "test": "mocha --import=tsx ./tests/test.spec.ts"
+    "test": "node ./tests/run-mocha-with-retry.mjs",
+    "build-and-test": "cargo build-sbf --manifest-path=./program/Cargo.toml --sbf-out-dir=./tests/fixtures && pnpm test",
+    "build": "cargo build-sbf --manifest-path=./program/Cargo.toml --sbf-out-dir=./program/target/so"
   },
   "dependencies": {
     "@codama/renderers": "^1.0.19",
+    "@solana/spl-token": "^0.4.13",
+    "@solana/web3.js": "^1.98.4",
+    "@types/chai": "^4.3.20",
     "@types/mocha": "^10.0.10",
+    "chai": "^4.3.10",
     "codama": "^1.2.11",
-    "litesvm": "^0.2.0",
+    "litesvm": "^0.3.0",
     "mocha": "^11.1.0",
-    "solana-bankrun": "^0.4.0",
+    "ts-mocha": "^11.1.0",
     "tsx": "^4.19.3"
   },
   "devDependencies": {
