@@ -157,7 +157,7 @@ Create an NFT collection, mint NFTs, and verify NFTs as part of a collection usi
 
 Mint tokens from inside your own program using the Classic Token Program.
 
-[⚓ Anchor](./tokens/spl-token-minter/anchor) [💫 Quasar](./tokens/spl-token-minter/quasar) [🦀 Native](./tokens/spl-token-minter/native)
+[⚓ Anchor](./tokens/token-minter/anchor) [💫 Quasar](./tokens/token-minter/quasar) [🦀 Native](./tokens/token-minter/native)
 
 ### Transfer Tokens
 

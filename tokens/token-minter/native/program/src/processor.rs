@@ -9,7 +9,7 @@ use crate::instructions::{
 };
 
 #[derive(BorshSerialize, BorshDeserialize, Debug)]
-enum SplMinterIntstruction {
+enum MinterInstruction {
     Create(CreateTokenArgs),
     Mint(MintToArgs),
 }
@@ -19,10 +19,10 @@ pub fn process_instruction(
     accounts: &[AccountInfo],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    let instruction = SplMinterIntstruction::try_from_slice(instruction_data)?;
+    let instruction = MinterInstruction::try_from_slice(instruction_data)?;
 
     match instruction {
-        SplMinterIntstruction::Create(args) => create_token(accounts, args),
-        SplMinterIntstruction::Mint(args) => mint_to(accounts, args),
+        MinterInstruction::Create(args) => create_token(accounts, args),
+        MinterInstruction::Mint(args) => mint_to(accounts, args),
     }
 }

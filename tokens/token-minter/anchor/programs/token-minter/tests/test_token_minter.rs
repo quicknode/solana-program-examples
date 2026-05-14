@@ -57,10 +57,10 @@ fn derive_ata(wallet: &Pubkey, mint: &Pubkey) -> Pubkey {
 }
 
 fn setup() -> (LiteSVM, Pubkey, Keypair) {
-    let program_id = spl_token_minter::id();
+    let program_id = token_minter::id();
     let mut svm = LiteSVM::new();
 
-    let program_bytes = include_bytes!("../../../target/deploy/spl_token_minter.so");
+    let program_bytes = include_bytes!("../../../target/deploy/token_minter.so");
     svm.add_program(program_id, program_bytes).unwrap();
 
     let metadata_bytes = include_bytes!("../../../tests/fixtures/mpl_token_metadata.so");
@@ -79,13 +79,13 @@ fn test_create_token() {
 
     let create_ix = Instruction::new_with_bytes(
         program_id,
-        &spl_token_minter::instruction::CreateToken {
+        &token_minter::instruction::CreateToken {
             token_name: "Solana Gold".to_string(),
             token_symbol: "GOLDSOL".to_string(),
             token_uri: "https://example.com/token.json".to_string(),
         }
         .data(),
-        spl_token_minter::accounts::CreateToken {
+        token_minter::accounts::CreateToken {
             payer: payer.pubkey(),
             mint_account: mint_keypair.pubkey(),
             metadata_account,
@@ -126,13 +126,13 @@ fn test_create_and_mint_tokens() {
     // 1. Create token
     let create_ix = Instruction::new_with_bytes(
         program_id,
-        &spl_token_minter::instruction::CreateToken {
+        &token_minter::instruction::CreateToken {
             token_name: "Solana Gold".to_string(),
             token_symbol: "GOLDSOL".to_string(),
             token_uri: "https://example.com/token.json".to_string(),
         }
         .data(),
-        spl_token_minter::accounts::CreateToken {
+        token_minter::accounts::CreateToken {
             payer: payer.pubkey(),
             mint_account: mint_keypair.pubkey(),
             metadata_account,
@@ -157,8 +157,8 @@ fn test_create_and_mint_tokens() {
 
     let mint_ix = Instruction::new_with_bytes(
         program_id,
-        &spl_token_minter::instruction::MintToken { amount: 100 }.data(),
-        spl_token_minter::accounts::MintToken {
+        &token_minter::instruction::MintToken { amount: 100 }.data(),
+        token_minter::accounts::MintToken {
             mint_authority: payer.pubkey(),
             recipient: payer.pubkey(),
             mint_account: mint_keypair.pubkey(),

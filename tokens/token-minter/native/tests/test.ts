@@ -12,13 +12,13 @@ import {
   TransactionInstruction,
 } from "@solana/web3.js";
 import { BN } from "bn.js";
-import { borshSerialize, CreateTokenArgsSchema, MintToArgsSchema, SplMinterInstruction } from "./instructions";
+import { borshSerialize, CreateTokenArgsSchema, MinterInstruction, MintToArgsSchema } from "./instructions";
 
 function createKeypairFromFile(path: string): Keypair {
   return Keypair.fromSecretKey(Uint8Array.from(JSON.parse(require("node:fs").readFileSync(path, "utf-8"))));
 }
 
-describe("SPL Token Minter", async () => {
+describe("Token Minter", async () => {
   // const connection = new Connection(`http://localhost:8899`, 'confirmed');
   const connection = new Connection("https://api.devnet.solana.com/", "confirmed");
   const payer = createKeypairFromFile(`${require("node:os").homedir()}/.config/solana/id.json`);
@@ -26,14 +26,14 @@ describe("SPL Token Minter", async () => {
 
   const mintKeypair: Keypair = Keypair.generate();
 
-  it("Create an SPL Token!", async () => {
+  it("Create a token", async () => {
     const metadataAddress = PublicKey.findProgramAddressSync(
       [Buffer.from("metadata"), TOKEN_METADATA_PROGRAM_ID.toBuffer(), mintKeypair.publicKey.toBuffer()],
       TOKEN_METADATA_PROGRAM_ID,
     )[0];
 
     const instructionData = borshSerialize(CreateTokenArgsSchema, {
-      instruction: SplMinterInstruction.Create,
+      instruction: MinterInstruction.Create,
       token_title: "Solana Gold",
       token_symbol: "GOLDSOL",
       token_uri:
@@ -70,7 +70,7 @@ describe("SPL Token Minter", async () => {
     const associatedTokenAccountAddress = await getAssociatedTokenAddress(mintKeypair.publicKey, payer.publicKey);
 
     const instructionData = borshSerialize(MintToArgsSchema, {
-      instruction: SplMinterInstruction.Mint,
+      instruction: MinterInstruction.Mint,
       quantity: new BN(150),
     });
 

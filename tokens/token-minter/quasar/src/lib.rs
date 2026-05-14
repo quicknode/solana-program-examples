@@ -9,13 +9,13 @@ mod tests;
 
 declare_id!("22222222222222222222222222222222222222222222");
 
-/// SPL token minter with Metaplex metadata.
+/// Token minter with Metaplex metadata.
 ///
 /// Two instructions:
 /// - `create_token` — creates a mint and associated Metaplex metadata account
 /// - `mint_token` — mints tokens to a recipient's associated token account
 #[program]
-mod quasar_spl_token_minter {
+mod quasar_token_minter {
     use super::*;
 
     // String capacities follow Metaplex Token Metadata limits:

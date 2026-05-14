@@ -11,7 +11,7 @@ declare_id!("22222222222222222222222222222222222222222222");
 /// Creates a token mint and mints initial tokens to the creator's token account.
 ///
 /// The Anchor version uses Metaplex for onchain metadata. Quasar's metadata
-/// crate is demonstrated in the `nft-minter` and `spl-token-minter` examples;
+/// crate is demonstrated in the `nft-minter` and `token-minter` examples;
 /// this example focuses on the core SPL Token operations: creating a mint and
 /// minting tokens.
 #[program]

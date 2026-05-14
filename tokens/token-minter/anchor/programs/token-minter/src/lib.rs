@@ -6,7 +6,7 @@ use instructions::*;
 declare_id!("3of89Z9jwek9zrFgpCWc9jZvQvitpVMxpZNsrAD2vQUD");
 
 #[program]
-pub mod spl_token_minter {
+pub mod token_minter {
     use super::*;
 
     pub fn create_token(
