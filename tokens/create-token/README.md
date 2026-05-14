@@ -1,12 +1,12 @@
-# Create an SPL Token
+# Create a Token
 
-Create an SPL Token on Solana with metadata such as a symbol and an icon.
+Create a token on Solana with metadata such as a symbol and an icon.
 
-All tokens on Solana — including NFTs — are SPL Tokens. They follow the SPL Token standard (similar in spirit to ERC-20).
+All fungible assets and NFTs on Solana are tokens. They follow the Classic Token Program standard (similar in spirit to ERC-20), or the newer Token Extensions standard.
 
 ```text
-Default SPL Tokens : 9 decimals
-NFTs               : 0 decimals
+Typical fungible tokens : 9 decimals
+NFTs                    : 0 decimals
 ```
 
 ## How decimals work
@@ -19,7 +19,7 @@ For a token JOE with 9 decimals:
 
 ## Mint and metadata
 
-An SPL Token is represented onchain by a **Mint Account**:
+A token is represented onchain by a **Mint Account**:
 
 ```typescript
 {
@@ -41,9 +41,11 @@ Metadata about a mint — name, symbol, image URI — lives in a separate **Meta
 }
 ```
 
-> Metaplex is the de facto standard for SPL Token metadata on Solana. The [Metaplex Token Metadata Program](https://docs.metaplex.com/) is what creates these metadata accounts.
+> Metaplex is the de facto standard for token metadata on Solana with the Classic Token Program. The [Metaplex Token Metadata Program](https://docs.metaplex.com/) creates these metadata accounts.
+>
+> Tokens using the Token Extensions metadata extension store metadata directly on the mint and don't need a separate Metaplex account.
 
-## Steps to create an SPL Token
+## Steps to create a token
 
 1. Create an account for the mint.
 2. Initialize that account as a Mint Account.

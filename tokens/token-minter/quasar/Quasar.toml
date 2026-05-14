@@ -1,5 +1,5 @@
 [project]
-name = "quasar_spl_token_minter"
+name = "quasar_token_minter"
 
 [toolchain]
 type = "solana"

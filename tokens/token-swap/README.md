@@ -27,7 +27,7 @@ Implementation choices:
 
 - **Shared parameters.** A single AMM account stores the shared trading-fee config and admin. Each pool then has its own account.
 - **Unique pools.** Each pool is a PDA seeded from the AMM, `mint_a`, and `mint_b` (in that order, with `mint_a < mint_b`).
-- **LP accounting via SPL Token.** The LP positions are tracked as SPL Tokens (the `mint_liquidity` mint), so they're composable with any wallet or downstream protocol.
+- **LP accounting via tokens.** LP positions are tracked as tokens (the `mint_liquidity` mint), so they're composable with any wallet or downstream protocol.
 
 ## Onchain-design principles applied here
 

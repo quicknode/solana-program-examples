@@ -1,5 +1,5 @@
 [package]
-name = "quasar-spl-token-minter"
+name = "quasar-token-minter"
 version = "0.1.0"
 edition = "2021"
 

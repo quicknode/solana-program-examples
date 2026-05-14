@@ -7,7 +7,7 @@ use {
 };
 
 fn setup() -> QuasarSvm {
-    let elf = std::fs::read("target/deploy/quasar_spl_token_minter.so").unwrap();
+    let elf = std::fs::read("target/deploy/quasar_token_minter.so").unwrap();
     QuasarSvm::new()
         .with_program(&crate::ID, &elf)
         .with_token_program()

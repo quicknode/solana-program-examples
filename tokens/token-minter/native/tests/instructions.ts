@@ -1,6 +1,6 @@
 import * as borsh from "borsh";
 
-export enum SplMinterInstruction {
+export enum MinterInstruction {
   Create = 0,
   Mint = 1,
 }

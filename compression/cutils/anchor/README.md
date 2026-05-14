@@ -11,33 +11,19 @@ Use this as a reference for working with cNFTs in your own programs.
 
 ## Components
 
-- `programs/` — the Anchor program. The setup uses a `validate`/`actuate` pattern via Anchor's `access_control` macro; this pairs well with the cNFT verification logic.
-- `tests/` — TypeScript tests.
-  - `setup.ts` — run first if you don't already have a collection with a merkle tree.
-  - `tests.ts` — individual minting and verification tests.
+- `programs/cutils/` — the Anchor program. The setup uses a `validate`/`actuate` pattern via Anchor's `access_control` macro; this pairs well with the cNFT verification logic.
+
+There is no `tests/` directory in this example today. The program is intended to be deployed and exercised against a real cluster.
 
 ## Deployment
 
-Deployed on devnet at `burZc1SfqbrAP35XG63YZZ82C9Zd22QUwhCXoEUZWNF`. To deploy your own, change the program ID in `lib.rs` and `Anchor.toml`.
+The program ID declared in [`programs/cutils/src/lib.rs`](programs/cutils/src/lib.rs) is `BuFyrgRYzg2nPhqYrxZ7d9uYUs4VXtxH71U8EcoAfTQZ`. Whether this address is currently deployed on any cluster is not tracked in this repo — verify with `solana program show <id>` against the cluster you care about.
+
+To deploy your own copy, change the program ID in `lib.rs` and `Anchor.toml`, then run `anchor build && anchor deploy`.
 
 ## Limitations
 
 Reference implementation only.
-
-**This example pins Anchor 0.26.0** because of mpl-bubblegum dependency constraints at the time of writing.
-
-## How to run
-
-1. Configure the RPC endpoint in `utils/readAPI.ts`.
-2. `cd` to the example root.
-3. `pnpm install`.
-4. (Optional) `npx tsx tests/setup.ts` to create an NFT collection and its merkle tree.
-5. Comment out the tests you don't want to run in `tests/tests.ts`.
-6. If minting, set your NFT URI.
-7. If verifying, set the asset ID (cNFT mint address) you want to verify.
-8. Run `anchor test --skip-build --skip-deploy --skip-local-validator`.
-9. View your cNFTs on devnet via the Solflare wallet.
-10. You may also want to change the wallet path in `Anchor.toml`.
 
 ## Acknowledgements
 

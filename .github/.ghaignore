@@ -9,7 +9,7 @@ tools/shank-and-solita/native
 tokens/pda-mint-authority/native
 tokens/nft-minter/native
 tokens/transfer-tokens/native
-tokens/spl-token-minter/native
+tokens/token-minter/native
 tokens/create-token/native
 
 tokens/token-swap/anchor
@@ -68,6 +68,6 @@ basics/transfer-sol/steel
 tokens/escrow/steel
 
 tokens/pda-mint-authority/steel
-tokens/spl-token-minter/steel
+tokens/token-minter/steel
 tokens/token-swap/steel
 tokens/transfer-tokens/steel

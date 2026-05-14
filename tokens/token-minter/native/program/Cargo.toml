@@ -1,5 +1,5 @@
 [package]
-name = "spl-token-minter-native-program"
+name = "token-minter-native-program"
 version = "0.1.0"
 edition = "2021"
 

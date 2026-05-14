@@ -13,13 +13,15 @@ Use this as a reference for working with cNFTs in your own programs.
 
 ## Components
 
-- `programs/` — the Anchor program.
-- `tests/` — TypeScript client-side tests.
-- `tests/scripts/` — standalone scripts you can run individually. `withdrawWithLookup.ts` demonstrates using the program with Address Lookup Tables.
+- `programs/cnft-vault/` — the Anchor program.
+
+There is no `tests/` directory in this example today. The program is intended to be deployed and exercised against a real cluster.
 
 ## Deployment
 
-Deployed on devnet at `CNftyK7T8udPwYRzZUMWzbh79rKrz9a5GwV2wv7iEHpk`. To deploy your own, change the program ID in `lib.rs` and `Anchor.toml`.
+The program ID declared in [`programs/cnft-vault/src/lib.rs`](programs/cnft-vault/src/lib.rs) is `Fd4iwpPWaCU8BNwGQGtvvrcvG4Tfizq3RgLm8YLBJX6D`. Whether this address is currently deployed on any cluster is not tracked in this repo — verify with `solana program show <id>` against the cluster you care about.
+
+To deploy your own copy, change the program ID in `lib.rs` and `Anchor.toml`, then run `anchor build && anchor deploy`.
 
 ## Limitations
 

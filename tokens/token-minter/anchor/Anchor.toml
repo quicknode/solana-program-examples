@@ -6,7 +6,7 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-spl_token_minter = "3of89Z9jwek9zrFgpCWc9jZvQvitpVMxpZNsrAD2vQUD"
+token_minter = "3of89Z9jwek9zrFgpCWc9jZvQvitpVMxpZNsrAD2vQUD"
 
 # [registry] section removed — no longer used in Anchor 1.0
 

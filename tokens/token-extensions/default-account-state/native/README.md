@@ -1,4 +1,4 @@
-# Token-2022 with Default Account State
+# Token Extensions — Default Account State
 
 This extension sets a default state for all token accounts of a given mint.
 

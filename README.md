@@ -153,11 +153,11 @@ Create an NFT collection, mint NFTs, and verify NFTs as part of a collection usi
 
 [⚓ Anchor](./tokens/nft-operations/anchor) [💫 Quasar](./tokens/nft-operations/quasar)
 
-### SPL Token Minter
+### Token Minter
 
-Mint tokens from inside your own program using the Token program.
+Mint tokens from inside your own program using the Classic Token Program.
 
-[⚓ Anchor](./tokens/spl-token-minter/anchor) [💫 Quasar](./tokens/spl-token-minter/quasar) [🦀 Native](./tokens/spl-token-minter/native)
+[⚓ Anchor](./tokens/token-minter/anchor) [💫 Quasar](./tokens/token-minter/quasar) [🦀 Native](./tokens/token-minter/native)
 
 ### Transfer Tokens
 
