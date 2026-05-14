@@ -18,19 +18,19 @@ mod quasar_escrow {
     use super::*;
 
     #[instruction(discriminator = 0)]
-    pub fn make(ctx: Ctx<Make>, deposit: u64, receive: u64) -> Result<(), ProgramError> {
-        instructions::make::handle_make_escrow(&mut ctx.accounts, receive, &ctx.bumps)?;
-        instructions::make::handle_deposit_tokens(&mut ctx.accounts, deposit)
+    pub fn make_offer(ctx: Ctx<MakeOffer>, deposit: u64, receive: u64) -> Result<(), ProgramError> {
+        instructions::make_offer::handle_make_offer(&mut ctx.accounts, receive, &ctx.bumps)?;
+        instructions::make_offer::handle_deposit_tokens(&mut ctx.accounts, deposit)
     }
 
     #[instruction(discriminator = 1)]
-    pub fn take(ctx: Ctx<Take>) -> Result<(), ProgramError> {
-        instructions::take::handle_transfer_tokens(&mut ctx.accounts)?;
-        instructions::take::handle_withdraw_tokens_and_close_take(&mut ctx.accounts, &ctx.bumps)
+    pub fn take_offer(ctx: Ctx<TakeOffer>) -> Result<(), ProgramError> {
+        instructions::take_offer::handle_transfer_tokens(&mut ctx.accounts)?;
+        instructions::take_offer::handle_withdraw_tokens_and_close_take(&mut ctx.accounts, &ctx.bumps)
     }
 
     #[instruction(discriminator = 2)]
-    pub fn refund(ctx: Ctx<Refund>) -> Result<(), ProgramError> {
-        instructions::refund::handle_withdraw_tokens_and_close_refund(&mut ctx.accounts, &ctx.bumps)
+    pub fn cancel_offer(ctx: Ctx<CancelOffer>) -> Result<(), ProgramError> {
+        instructions::cancel_offer::handle_withdraw_tokens_and_close_cancel_offer(&mut ctx.accounts, &ctx.bumps)
     }
 }
