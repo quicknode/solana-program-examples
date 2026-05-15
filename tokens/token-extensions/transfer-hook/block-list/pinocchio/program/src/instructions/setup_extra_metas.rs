@@ -1,6 +1,6 @@
 use pinocchio::{account_info::AccountInfo, instruction::Signer, memory::sol_memcpy, pubkey::find_program_address, seeds, sysvars::{rent::Rent, Sysvar}, ProgramResult};
 
-use crate::{load, token2022_utils::{get_transfer_hook_authority, EXTRA_METAS_SEED, is_token_2022_mint}, BlockListError, Config, Discriminator};
+use crate::{load, token_extensions_utils::{get_transfer_hook_authority, EXTRA_METAS_SEED, is_token_extensions_mint}, BlockListError, Config, Discriminator};
 
 
 pub struct SetupExtraMetas<'a> {
@@ -28,7 +28,7 @@ impl<'a> TryFrom<&'a [AccountInfo]> for SetupExtraMetas<'a> {
             return Err(BlockListError::InvalidAuthority);
         }
 
-        if !is_token_2022_mint(mint) {
+        if !is_token_extensions_mint(mint) {
             return Err(BlockListError::InvalidMint);
         }
 
@@ -79,7 +79,7 @@ impl<'a> SetupExtraMetas<'a> {
             let auth_lamports = self.authority.lamports();
 
             // just resize
-            self.extra_metas.realloc(data.len(), false)?;
+            self.extra_metas.resize(data.len())?;
 
             if current_lamports < min_lamports {
                 // transfer to extra

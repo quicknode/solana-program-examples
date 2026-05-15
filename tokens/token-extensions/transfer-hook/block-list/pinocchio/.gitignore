@@ -1,3 +1,7 @@
 target/
 test-ledger/
 node_modules/
+# The compiled program is built into tests/fixtures by `pnpm build-and-test`
+# (and by CI on every run) so we don't track it.
+tests/fixtures/*.so
+tests/fixtures/*-keypair.json

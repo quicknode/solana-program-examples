@@ -1,7 +1,6 @@
 use pinocchio::{account_info::AccountInfo, pubkey::Pubkey, ProgramResult};
-use pinocchio_log::logger::Logger;
 
-use crate::{load, token2022_utils::has_immutable_owner_extension, BlockListError, WalletBlock};
+use crate::{load, token_extensions_utils::has_immutable_owner_extension, BlockListError, WalletBlock};
 
 ///
 /// SECURITY ASSUMPTIONS OVER TX-HOOK
@@ -36,9 +35,6 @@ impl<'a> TxHook<'a> {
             // without the immutable owner extension, TA owners could bypass wallet blocks
             // by changing the owner to a different wallet controlled by the same entity
             if !has_immutable_owner_extension(source_data) {
-                let mut logger = Logger::<64>::default();
-                logger.append("Transfer Blocked: Source TA - ImmutableOwnerExtensionMissing");
-                logger.log();
                 return Err(BlockListError::ImmutableOwnerExtensionMissing.into());
             }
 
@@ -55,9 +51,6 @@ impl<'a> TxHook<'a> {
                 let delegate = unsafe { &*(source_data[76..108].as_ptr() as *const Pubkey) };
 
                 if owner.eq(self.authority.key()) || delegate.eq(self.authority.key()) {
-                    let mut logger = Logger::<64>::default();
-                    logger.append("Transfer Blocked:  Source TA - AccountBlocked");
-                    logger.log();
                     return Err(BlockListError::AccountBlocked.into());
                 }
                 
@@ -69,20 +62,11 @@ impl<'a> TxHook<'a> {
         if let Some(destination_wallet_block) = self.destination_wallet_block {
 
             if !has_immutable_owner_extension(unsafe {self.destination.borrow_data_unchecked()}) {
-                let mut logger = Logger::<64>::default();
-                logger.append("Transfer Blocked: Destination TA - ImmutableOwnerExtensionMissing");
-                logger.log();
                 return Err(BlockListError::ImmutableOwnerExtensionMissing.into());
             }
 
             if !destination_wallet_block.data_is_empty() {
-
                 let _ = unsafe { load::<WalletBlock>(destination_wallet_block.borrow_data_unchecked())? };
-                
-                let mut logger = Logger::<64>::default();
-                logger.append("Transfer Blocked:  Destination TA - AccountBlocked");
-                logger.log();
-
                 return Err(BlockListError::AccountBlocked.into());
             }
 
