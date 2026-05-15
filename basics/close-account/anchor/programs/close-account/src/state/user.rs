@@ -2,7 +2,7 @@ use anchor_lang::prelude::*;
 
 #[account]
 #[derive(InitSpace)] // automatically calculate the space required for the struct
-pub struct UserState {
+pub struct User {
     pub bump: u8,     // 1 byte
     pub user: Pubkey, // 32 bytes
     #[max_len(50)] // set a max length for the string

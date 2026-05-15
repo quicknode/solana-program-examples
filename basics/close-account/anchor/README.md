@@ -1,6 +1,6 @@
 # Close Account
 
-Two [instruction handlers](https://solana.com/docs/terminology#instruction-handler): `create_user` initializes a [PDA](https://solana.com/docs/terminology#program-derived-address-pda) `UserState` [account](https://solana.com/docs/terminology#account), and `close_user` closes it and returns the [rent](https://solana.com/docs/terminology#rent) to the user.
+Two [instruction handlers](https://solana.com/docs/terminology#instruction-handler): `create_user` initializes a [PDA](https://solana.com/docs/terminology#program-derived-address-pda) `User` [account](https://solana.com/docs/terminology#account), and `close_user` closes it and returns the [rent](https://solana.com/docs/terminology#rent) to the user.
 
 1. `create_user` initializes the PDA with [Anchor](https://solana.com/docs/terminology#anchor)'s `init` constraint:
 
@@ -8,11 +8,11 @@ Two [instruction handlers](https://solana.com/docs/terminology#instruction-handl
    #[account(
        init,
        payer = user,
-       space = UserState::DISCRIMINATOR.len() + UserState::INIT_SPACE,
+       space = User::DISCRIMINATOR.len() + User::INIT_SPACE,
        seeds = [b"USER", user.key().as_ref()],
        bump,
    )]
-   pub user_account: Account<'info, UserState>,
+   pub user_account: Account<'info, User>,
    ```
 
    See [`programs/close-account/src/instructions/create_user.rs`](programs/close-account/src/instructions/create_user.rs).
@@ -26,7 +26,7 @@ Two [instruction handlers](https://solana.com/docs/terminology#instruction-handl
        bump = user_account.bump,
        close = user, // close account and return lamports to user
    )]
-   pub user_account: Account<'info, UserState>,
+   pub user_account: Account<'info, User>,
    ```
 
    See [`programs/close-account/src/instructions/close_user.rs`](programs/close-account/src/instructions/close_user.rs).
