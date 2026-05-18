@@ -1,0 +1,49 @@
+[package]
+name = "asset-leasing"
+version = "0.1.0"
+description = "Fixed-term token leasing with collateral and Pyth-priced liquidation"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "asset_leasing"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
+anchor-debug = []
+custom-heap = []
+custom-panic = []
+
+[dependencies]
+# `init-if-needed` is required because several instructions lazily create the
+# counterparty's associated token accounts (keeper's collateral associated token account on first liquidation, holder's
+# leased associated token account on first return, etc.). Anchor forces an opt-in to make us
+# re-affirm that we verify ownership on every touch — which we do via the
+# `associated_token::authority = ...` constraints.
+anchor-lang = { version = "1.0.0", features = ["init-if-needed"] }
+anchor-spl = "1.0.0"
+# Note: we intentionally do NOT depend on `pyth-solana-receiver-sdk` here.
+# Version 1.1.0 currently pulls in a transitive `borsh` conflict with
+# `anchor-lang` 1.0.0 (see program-examples/.github/.ghaignore — the
+# oracles/pyth/anchor example is flagged "not building" for the same reason).
+# Instead we parse the fixed layout of the Pyth Receiver `PriceUpdateV2`
+# account by hand in `instructions/liquidate.rs`, matching the published
+# onchain schema.
+
+[dev-dependencies]
+# Match the test stack used by tokens/escrow and tokens/token-fundraiser so
+# contributors can move between examples without version drift.
+litesvm = "0.11.0"
+solana-signer = "3.0.0"
+solana-keypair = "3.0.1"
+solana-account = "3.0.0"
+solana-kite = "0.3.0"
+borsh = "1.6.1"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }
