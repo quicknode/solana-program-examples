@@ -27,7 +27,7 @@ pub struct CancelPrize<'info> {
 
     #[account(
         has_one = authority,
-        seeds = [b"hackathon", authority.key().as_ref(), super::name_seed(&hackathon.name).as_ref()],
+        seeds = [b"hackathon", authority.key().as_ref(), hackathon.name_seed.as_ref()],
         bump = hackathon.bump,
     )]
     pub hackathon: Account<'info, Hackathon>,

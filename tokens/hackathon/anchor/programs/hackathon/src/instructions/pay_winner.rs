@@ -16,7 +16,7 @@ pub struct PayWinner<'info> {
     pub caller: Signer<'info>,
 
     #[account(
-        seeds = [b"hackathon", hackathon.authority.as_ref(), super::name_seed(&hackathon.name).as_ref()],
+        seeds = [b"hackathon", hackathon.authority.as_ref(), hackathon.name_seed.as_ref()],
         bump = hackathon.bump,
     )]
     pub hackathon: Account<'info, Hackathon>,

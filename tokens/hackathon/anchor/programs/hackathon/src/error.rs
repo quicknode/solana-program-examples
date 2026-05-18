@@ -20,4 +20,6 @@ pub enum HackathonError {
     PrizeCounterOverflow,
     #[msg("Cannot close hackathon: at least one prize is still active")]
     PrizesStillActive,
+    #[msg("name_seed argument does not match sha256(name)")]
+    NameSeedMismatch,
 }

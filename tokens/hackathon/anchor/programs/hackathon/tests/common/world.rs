@@ -369,6 +369,7 @@ pub fn create_hackathon_instruction(
     hackathon: &Pubkey,
     name: String,
 ) -> Instruction {
+    let name_seed = hackathon_name_seed(&name);
     Instruction {
         program_id: hackathon::id(),
         accounts: hackathon::accounts::CreateHackathon {
@@ -378,7 +379,7 @@ pub fn create_hackathon_instruction(
             system_program: anchor_lang::solana_program::system_program::ID,
         }
         .to_account_metas(None),
-        data: hackathon::instruction::CreateHackathon { name }.data(),
+        data: hackathon::instruction::CreateHackathon { name, name_seed }.data(),
     }
 }
 
@@ -529,7 +530,7 @@ pub fn prize_vault_address(prize: &Pubkey, mint: &Pubkey) -> Pubkey {
 
 // Local mirror of the program's `name_seed` so tests can derive the PDA
 // without depending on the program's private `instructions::shared` module.
-fn hackathon_name_seed(name: &str) -> [u8; 32] {
+pub fn hackathon_name_seed(name: &str) -> [u8; 32] {
     use sha2::{Digest, Sha256};
     let mut hasher = Sha256::new();
     hasher.update(name.as_bytes());

@@ -28,8 +28,16 @@ pub mod hackathon {
     // Create a hackathon controlled by `authority` (in practice a Squads vault
     // PDA). The hackathon's name is hashed into the PDA seeds so the same
     // authority can run multiple hackathons.
-    pub fn create_hackathon(context: Context<CreateHackathon>, name: String) -> Result<()> {
-        instructions::create_hackathon::handle_create_hackathon(context, name)
+    //
+    // `name_seed` must equal `sha256(name)` — passed as a separate argument
+    // because Anchor's IDL builder does not support function calls inside
+    // `seeds = [...]` constraints. The handler enforces the binding.
+    pub fn create_hackathon(
+        context: Context<CreateHackathon>,
+        name: String,
+        name_seed: [u8; 32],
+    ) -> Result<()> {
+        instructions::create_hackathon::handle_create_hackathon(context, name, name_seed)
     }
 
     // Register a new prize under an existing hackathon. The mint and target
