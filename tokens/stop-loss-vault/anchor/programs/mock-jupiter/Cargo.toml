@@ -1,0 +1,24 @@
+[package]
+name = "mock-jupiter"
+version = "0.1.0"
+description = "Teaching mock of Jupiter v6's swap aggregator. Implements a SINGLE instruction with the same discriminator and account layout as Jupiter v6's `shared_accounts_route`, but performs a deterministic price-multiply instead of a real swap. NOT FOR PRODUCTION."
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "mock_jupiter"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
+
+[dependencies]
+anchor-lang = "1.0.0-rc.5"
+anchor-spl = "1.0.0-rc.5"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }

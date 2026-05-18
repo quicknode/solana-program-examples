@@ -1,7 +1,7 @@
 [package]
 name = "stop-loss-vault"
 version = "0.1.0"
-description = "Created with Anchor"
+description = "Onchain stop-loss vault: permissionlessly converts a volatile SPL token into a stable SPL token when a Switchboard On-Demand price feed drops below a user-set threshold."
 edition = "2021"
 
 [lib]
@@ -14,7 +14,8 @@ cpi = ["no-entrypoint"]
 no-entrypoint = []
 no-idl = []
 no-log-ix-name = []
-idl-build = ["anchor-lang/idl-build"]
+# anchor-spl's `idl-build` is required so anchor-spl account types resolve in the IDL.
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
 anchor-debug = []
 custom-heap = []
 custom-panic = []
@@ -22,6 +23,13 @@ custom-panic = []
 
 [dependencies]
 anchor-lang = "1.0.0-rc.5"
+anchor-spl = "1.0.0-rc.5"
+# The vault's `convert_if_triggered` CPIs into Jupiter v6's
+# `shared_accounts_route` instruction. For tests we use a mock with the same
+# external layout, and we depend on the mock's crate so the instruction
+# discriminator stays in sync. In production this dependency is swapped for a
+# tiny crate (or hardcoded const) that exposes Jupiter v6's real discriminator.
+mock-jupiter = { path = "../mock-jupiter", features = ["no-entrypoint"] }
 
 [dev-dependencies]
 litesvm = "0.10.0"
@@ -29,7 +37,8 @@ solana-message = "3.0.1"
 solana-transaction = "3.0.2"
 solana-signer = "3.0.0"
 solana-keypair = "3.0.1"
-
+borsh = "1.5.1"
+mock-switchboard = { path = "../mock-switchboard", features = ["no-entrypoint"] }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }

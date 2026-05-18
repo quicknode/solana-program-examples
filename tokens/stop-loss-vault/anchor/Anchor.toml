@@ -6,7 +6,9 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-stop_loss_vault = "Hc3STUtyD3fQJgZ2qek8GGddY3TRTdtaapwXFFP1gsYj"
+mock_jupiter = "DSMyed6WZ2US8nfwLQtF7en9jcd9exn7c4qQd52Nffx1"
+mock_switchboard = "GAbm8tcMimkhYsQZm24N3Ev1kuWbTKXkTQ1gQEpfJ9Gg"
+stop_loss_vault = "BSzhyK5soR2T3T1LCjwYVybff2D9NowwfFHdVsAwnkmG"
 
 [provider]
 cluster = "localnet"
