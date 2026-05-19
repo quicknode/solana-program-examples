@@ -1,4 +1,4 @@
-# Terminology Rules — CLOB
+# Terminology Rules — Order Book
 
 Project-wide rules for the README and code comments in this crate. Applies
 throughout, not just one section. Audit for these before opening / merging
@@ -15,7 +15,7 @@ A wrong or ambiguous statement is worse than no statement.
 
 ### "balance" — most important
 
-`balance` is ambiguous in a CLOB context: it can mean token balance,
+`balance` is ambiguous in an order-book context: it can mean token balance,
 account balance, **or** the tree-balancing property (the critbit
 slab is balanced-by-construction). Pick one of:
 

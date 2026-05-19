@@ -2,7 +2,7 @@
 // MIT-licensed. See LICENSE-OPENBOOK in this directory.
 //
 // Trimmed from the upstream nodes.rs:
-//   - dropped oracle-pegged price helpers (this CLOB is fixed-price only)
+//   - dropped oracle-pegged price helpers (this order book is fixed-price only)
 //   - dropped time-in-force / expiry tracking (no IOC/post-only here)
 //   - dropped client_order_id and owner_slot (the on-chain `Order` PDA
 //     already owns that bookkeeping)

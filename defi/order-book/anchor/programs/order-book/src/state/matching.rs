@@ -29,7 +29,7 @@ pub struct Fill {
     pub fill_quantity: u64,
 
     /// Price at which the fill clears. Always the resting (maker) order's
-    /// price — standard CLOB rule: maker's posted price wins; the taker
+    /// price — standard order-book rule: maker's posted price wins; the taker
     /// gets price improvement vs their limit on bids, and a higher payout
     /// vs their limit on asks. Also the high 64 bits of the tree key when
     /// we look the leaf up again at apply time.

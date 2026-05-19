@@ -3,7 +3,7 @@
 This is an **order book** — specifically, a **central limit order
 book (CLOB)**, the standard piece of market infrastructure used by
 NYSE, NASDAQ, LSE, CME, and every major crypto venue. An Anchor
-program that runs an onchain CLOB for a single pair of token mints:
+program that runs an onchain order book for a single pair of token mints:
 users post buy or sell offers at the prices they want, the program
 matches crossing offers in price-time priority, and settles the
 resulting token movements.
@@ -1106,8 +1106,8 @@ From [`errors.rs`](programs/order-book/src/errors.rs):
 - **Matching applies at the maker's price, not the taker's.** The
   fill price is always the resting order's price. Takers that cross
   deeper into the book get price improvement, refunded to
-  `unsettled_quote` (for taker bids). This is the standard CLOB
-  rule.
+  `unsettled_quote` (for taker bids). This is the standard
+  order-book rule.
 
 - **Fees come out of the gross.** The maker receives `gross - fee`,
   not `gross`; the fee lives on for a while in `quote_vault` before
@@ -1144,11 +1144,11 @@ From [`errors.rs`](programs/order-book/src/errors.rs):
   check happens at the end. A bid that clears enough asks to free
   up 3 slots can then rest its own 1-slot remainder even on a
   previously-full book — matching the "liquidity-positive" spirit
-  of a CLOB.
+  of an order book.
 
 ### 6.3 Things this example does *not* do
 
-A production CLOB would add:
+A production order book would add:
 
 - **Zero-copy OrderBook.** 100 entries per side deserialised every
   call limits both throughput and maximum book size.
@@ -1328,12 +1328,12 @@ Ordered by difficulty.
 
 The current example stores each side of the book as a `Vec<OrderEntry>`
 sorted by price. That's fine for a teaching example with a few dozen
-resting orders. For a production CLOB it's wrong, and the reason is
+resting orders. For a production order book it's wrong, and the reason is
 worth understanding before the "Zero-copy slabs" bullet below.
 
 **Tree balancing must be guaranteed, not assumed.** A plain binary
 search tree only keeps a roughly-balanced shape when its inputs arrive
-in random order. In a CLOB an attacker chooses the inputs — the prices
+in random order. In an order book an attacker chooses the inputs — the prices
 of their orders — so nothing they choose can be allowed to determine
 the tree's shape. A *balanced-by-construction* tree (red-black,
 critbit / binary radix trie, AVL, …) enforces a bounded shape via

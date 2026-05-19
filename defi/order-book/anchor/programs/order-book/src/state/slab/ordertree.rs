@@ -245,7 +245,7 @@ impl OrderTreeNodes {
     /// Insert `new_leaf` into the tree rooted at `root`.
     ///
     /// Returns the handle of the new leaf and, when a duplicate key collided,
-    /// the leaf that got overwritten. (Callers in this CLOB embed a
+    /// the leaf that got overwritten. (Callers in this order book embed a
     /// monotonically increasing seq_num in every key, so collisions cannot
     /// actually happen — the case is kept just to match the upstream API.)
     pub fn insert_leaf(

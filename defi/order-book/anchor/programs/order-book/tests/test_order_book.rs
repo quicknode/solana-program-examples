@@ -1,4 +1,4 @@
-//! LiteSVM tests for the CLOB program.
+//! LiteSVM tests for the order-book program.
 //!
 //! Covers the full lifecycle that the program supports: initialise a market,
 //! create user accounts, place bids/asks (locking the appropriate vault),
@@ -152,7 +152,7 @@ fn full_setup() -> Scenario {
     let quote_mint = create_token_mint(&mut svm, &authority, MINT_DECIMALS, None).unwrap();
 
     // Create and fund every trader's ATAs up-front so individual tests do
-    // not need to worry about mint/ATA side effects, only about CLOB state.
+    // not need to worry about mint/ATA side effects, only about order-book state.
     let buyer_base_ata =
         create_associated_token_account(&mut svm, &buyer.pubkey(), &base_mint, &payer).unwrap();
     let buyer_quote_ata =
@@ -219,7 +219,7 @@ fn full_setup() -> Scenario {
 
 /// Build the `system_program::CreateAccount` instruction the client must run
 /// to allocate the ~180 KB OrderBook account before calling
-/// `initialize_market`. The new account is owned by the CLOB program and
+/// `initialize_market`. The new account is owned by the order-book program and
 /// zero-initialized; the program then runs `load_init` against it in the
 /// next instruction.
 ///
@@ -331,7 +331,7 @@ fn build_place_order_ix(
 }
 
 /// Build a `place_order` instruction with maker (order, market_user) PDA
-/// pairs appended as remaining accounts. The CLOB expects them in the same
+/// pairs appended as remaining accounts. The order-book program expects them in the same
 /// order the resting book will be walked — best-priced first (lowest ask
 /// for a taker bid, highest bid for a taker ask), and within a price level
 /// earliest-first. Every maker pair must be writable: the program mutates
