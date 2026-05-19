@@ -1,93 +1,92 @@
-//! Matching engine helpers. Pure logic (no CPIs) that decides which resting
-//! orders an incoming taker order would cross. The caller (place_order)
-//! turns these decisions into token movements and account mutations.
+//! Matching engine helpers. Pure logic (no CPIs) that walks the resting side
+//! of the book in price-time priority and produces a list of fills the
+//! caller should apply.
 //!
-//! Price-time priority is implicit in the OrderBook's sorted Vecs:
-//! - asks are sorted ascending (best ask first)
-//! - bids are sorted descending (best bid first)
-//! so "walk from index 0" is the correct price priority; and within a price
-//! level, insertion order gives time priority (first-in fills first).
+//! Walking the tree returns leaves in best-price-first order (asks
+//! ascending, bids descending), and within a single price level the leaf
+//! key's seq_num half preserves time priority, so a straight `next()` walk
+//! is the right traversal for matching. Stop as soon as either the taker is
+//! exhausted or the next leaf no longer crosses the taker's limit price.
 
-use crate::state::{OrderBook, OrderEntry, OrderSide};
+use crate::state::slab::OrderTreeIter;
+use crate::state::{OrderBook, OrderSide};
 
 /// One matched fill between the incoming taker order and a resting maker
-/// order. `taker_remaining_after` is the taker's quantity after this fill
-/// has been applied; matching stops when it reaches 0.
+/// order. `place_order` turns these into token movements and account
+/// mutations.
+///
+/// Deliberately does NOT carry the slab handle of the maker leaf: removing
+/// any leaf rebalances the tree, which invalidates other handles in the
+/// same plan. We look the leaf up by its tree key (built from price +
+/// order_id) at apply time instead.
 pub struct Fill {
-    /// Index into `order_book.asks` (taker Bid) or `order_book.bids`
-    /// (taker Ask) that this fill applies to. Kept so place_order can look
-    /// the same entry up again to update its `quantity` on the book.
-    pub resting_index: usize,
-
-    /// order_id of the resting order being hit. place_order uses this to
-    /// sanity-check the maker Order account passed as a remaining account.
-    pub resting_order_id: u64,
+    /// order_id of the resting order being filled. Used both to sanity-
+    /// check the maker `Order` PDA the caller passed in remaining_accounts,
+    /// and to reconstruct the tree key for the apply-time lookup.
+    pub maker_order_id: u64,
 
     /// Quantity filled (in base tokens).
     pub fill_quantity: u64,
 
-    /// Price at which the fill occurs (always the resting order's price —
-    /// standard CLOB: maker's posted price wins; taker may get price
-    /// improvement vs their limit).
+    /// Price at which the fill clears. Always the resting (maker) order's
+    /// price — standard CLOB rule: maker's posted price wins; the taker
+    /// gets price improvement vs their limit on bids, and a higher payout
+    /// vs their limit on asks. Also the high 64 bits of the tree key when
+    /// we look the leaf up again at apply time.
     pub fill_price: u64,
 }
 
 /// Walk the opposite side of the book and produce the list of fills that
-/// should occur for the incoming taker order. Does not mutate the book;
-/// place_order applies the results. `resting_quantities` is indexed in
-/// parallel with the resting side's Vec and gives each entry's current
-/// quantity-remaining (which place_order tracks externally because the
-/// book entry itself is just {order_id, price, owner} today — we pass it
-/// in rather than storing it on OrderEntry so the existing on-chain layout
-/// doesn't change).
+/// should occur for the incoming taker order. Does not mutate the book.
 ///
-/// Returns (fills, taker_remaining). taker_remaining is what's left over
-/// that should rest on the book at the taker's limit price.
+/// Returns `(fills, taker_remaining)` — `taker_remaining` is what's left
+/// over after crossing, to be rested on the book at the taker's limit price.
 pub fn plan_fills(
     order_book: &OrderBook,
-    resting_quantities: &[u64],
     incoming_side: OrderSide,
     incoming_price: u64,
     incoming_quantity: u64,
 ) -> (Vec<Fill>, u64) {
-    let resting_entries: &Vec<OrderEntry> = match incoming_side {
-        OrderSide::Bid => &order_book.asks,
-        OrderSide::Ask => &order_book.bids,
+    // Resting side is the opposite of the taker's side.
+    let (root, nodes) = match incoming_side {
+        OrderSide::Bid => (&order_book.asks_root, &order_book.asks),
+        OrderSide::Ask => (&order_book.bids_root, &order_book.bids),
     };
 
     let mut fills: Vec<Fill> = Vec::new();
     let mut taker_remaining = incoming_quantity;
 
-    for (index, resting) in resting_entries.iter().enumerate() {
+    for (_handle, leaf) in OrderTreeIter::new(nodes, root) {
         if taker_remaining == 0 {
             break;
         }
 
-        // Crossing condition: bid matches if incoming >= resting; ask
-        // matches if incoming <= resting.
+        // Crossing condition: bid takes when its limit is >= the resting
+        // ask's price; ask takes when its limit is <= the resting bid's
+        // price. The tree walk is in best-price-first order on the resting
+        // side, so the first leaf that fails to cross means every
+        // subsequent leaf also fails — break, don't continue.
+        let resting_price = leaf.price();
         let crosses = match incoming_side {
-            OrderSide::Bid => incoming_price >= resting.price,
-            OrderSide::Ask => incoming_price <= resting.price,
+            OrderSide::Bid => incoming_price >= resting_price,
+            OrderSide::Ask => incoming_price <= resting_price,
         };
         if !crosses {
-            // Sides are sorted by price-priority, so once we fail to cross
-            // we'll fail to cross every subsequent entry too.
             break;
         }
 
-        let resting_remaining = resting_quantities[index];
-        if resting_remaining == 0 {
-            // Defensive: shouldn't happen because fully-filled orders are
-            // removed from the book, but skip rather than crash.
+        if leaf.quantity == 0 {
+            // Defensive: fully-filled leaves are removed, but if one ever
+            // slips through with zero quantity, skip it rather than emit a
+            // zero-size fill.
             continue;
         }
 
-        let fill_quantity = taker_remaining.min(resting_remaining);
+        let fill_quantity = taker_remaining.min(leaf.quantity);
         fills.push(Fill {
-            resting_index: index,
-            resting_order_id: resting.order_id,
+            maker_order_id: leaf.order_id,
             fill_quantity,
-            fill_price: resting.price,
+            fill_price: resting_price,
         });
         taker_remaining = taker_remaining.saturating_sub(fill_quantity);
     }

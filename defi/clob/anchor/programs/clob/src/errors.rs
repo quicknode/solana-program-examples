@@ -20,7 +20,7 @@ pub enum ErrorCode {
     #[msg("Order book is full")]
     OrderBookFull,
 
-    #[msg("User account has too many open orders")]
+    #[msg("MarketUser has too many open orders")]
     TooManyOpenOrders,
 
     #[msg("Price does not align with tick size")]
@@ -59,9 +59,12 @@ pub enum ErrorCode {
     #[msg("Not enough maker accounts supplied to cross the incoming order")]
     MissingMakerAccounts,
 
-    #[msg("Maker order and maker user account owner mismatch")]
+    #[msg("Maker order and maker MarketUser owner mismatch")]
     MakerOwnerMismatch,
 
     #[msg("Only the market authority can withdraw fees")]
     NotMarketAuthority,
+
+    #[msg("Order book account does not match the market's order book")]
+    InvalidOrderBook,
 }

@@ -2,7 +2,7 @@ use anchor_lang::prelude::*;
 use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
 
 use crate::errors::ErrorCode;
-use crate::state::{Market, OrderBook, MARKET_SEED, ORDER_BOOK_SEED};
+use crate::state::{Market, OrderBook, MARKET_SEED};
 
 // Basis points are hundredths of a percent; 10000 bps == 100%. Fees above 100%
 // would be nonsensical, so we cap here.
@@ -35,13 +35,12 @@ pub fn handle_initialize_market(
     market.is_active = true;
     market.bump = context.bumps.market;
 
-    let order_book = &mut context.accounts.order_book;
-    order_book.market = context.accounts.market.key();
-    order_book.bids = Vec::new();
-    order_book.asks = Vec::new();
-    // Start at 1 so order_id == 0 can stand for "no order" in clients if needed.
-    order_book.next_order_id = 1;
-    order_book.bump = context.bumps.order_book;
+    // Zero-copy account: initialize the slab in place. `load_init` is the
+    // first-write path — every subsequent handler uses `load` / `load_mut`.
+    // The order book is not a PDA (see the comment on the `order_book`
+    // account below), so `bump` is unused and stored as 0.
+    let mut order_book = context.accounts.order_book.load_init()?;
+    order_book.initialize(context.accounts.market.key(), 0);
 
     Ok(())
 }
@@ -57,14 +56,24 @@ pub struct InitializeMarket<'info> {
     )]
     pub market: Account<'info, Market>,
 
-    #[account(
-        init,
-        payer = authority,
-        space = OrderBook::DISCRIMINATOR.len() + OrderBook::INIT_SPACE,
-        seeds = [ORDER_BOOK_SEED, market.key().as_ref()],
-        bump
-    )]
-    pub order_book: Account<'info, OrderBook>,
+    // The order book is a zero-copy account (~180 KB: two 1024-slot critbit
+    // slabs back to back). Solana's BPF runtime caps inner-CPI account
+    // allocations at 10 KB, so we can't use Anchor's `init` here — the
+    // client must call system_program::create_account directly before this
+    // instruction, sizing the account to ORDER_BOOK_ACCOUNT_SIZE, owned by
+    // this program, and zero-initialized.
+    //
+    // `#[account(zero)]` verifies the account is owned by this program
+    // and has its discriminator unset, which is exactly what a freshly
+    // create_account-d account looks like. The handler then stamps the
+    // discriminator + struct via `load_init()`.
+    //
+    // The account is passed in as a regular Signer (created by the client),
+    // not a PDA. The README documents the (program_id, MARKET_SEED + market)
+    // PDA derivation that clients should still use for the account address
+    // — we just have to allocate it ourselves.
+    #[account(zero)]
+    pub order_book: AccountLoader<'info, OrderBook>,
 
     pub base_mint: InterfaceAccount<'info, Mint>,
 

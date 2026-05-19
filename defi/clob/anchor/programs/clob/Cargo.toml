@@ -22,6 +22,12 @@ custom-panic = []
 [dependencies]
 anchor-lang = "1.0.0"
 anchor-spl = "1.0.0"
+# Used by the ported Openbook slab — `bytemuck::Pod` / `Zeroable` on every node
+# variant + `min_const_generics` so `[AnyNode; 1024]` can derive Pod without
+# hitting bytemuck's default-32 array cap. `static_assertions` keeps the slab
+# layout asserts (node size, alignment) compile-time, matching upstream.
+bytemuck = { version = "1.18", features = ["derive", "min_const_generics"] }
+static_assertions = "1.1"
 
 [dev-dependencies]
 # Match the test stack used by tokens/escrow, defi/asset-leasing, and the
