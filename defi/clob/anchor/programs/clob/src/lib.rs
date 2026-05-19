@@ -31,8 +31,8 @@ pub mod clob {
 
     /// Create a per-user, per-market account that tracks a user's open orders
     /// and unsettled balances.
-    pub fn create_user_account(context: Context<CreateUserAccount>) -> Result<()> {
-        instructions::create_user_account::handle_create_user_account(context)
+    pub fn create_market_user(context: Context<CreateMarketUser>) -> Result<()> {
+        instructions::create_market_user::handle_create_market_user(context)
     }
 
     /// Place a bid or ask. Locks the required funds (quote for bids, base

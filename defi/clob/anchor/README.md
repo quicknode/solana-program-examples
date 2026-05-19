@@ -81,7 +81,7 @@ call `settle_funds` to pull their balances out.
 - An **OrderBook** PDA — two sorted lists (bids best-first, asks
   best-first) of lightweight `OrderEntry` records, each pointing at a
   full `Order` account.
-- A **UserAccount** PDA — one per `(market, wallet)` pair. Tracks the
+- A **MarketUser** PDA — one per `(market, wallet)` pair. Tracks the
   order_ids this user has open and two running tallies
   (`unsettled_base`, `unsettled_quote`) of tokens owed back to this
   user from fills or cancellations.
@@ -169,7 +169,7 @@ resting price on the opposite side, the fill happens at the resting
 (maker's) price. The taker gets a better deal than they named; the
 difference is refunded to the taker's `unsettled_quote`.
 
-**Unsettled balance.** Two `u64` counters on each `UserAccount`:
+**Unsettled balance.** Two `u64` counters on each `MarketUser`:
 `unsettled_base` and `unsettled_quote`. Fills, price-improvement
 rebates, and cancellations all increase these counters. The physical
 tokens still sit in the market's vaults. `settle_funds` moves them
@@ -197,7 +197,7 @@ order.
 | `Market` | yes | `["market", base_mint, quote_mint]` | program | fee rate, tick size, min order size, base/quote mint pubkeys, vault pubkeys, order book pubkey, `authority` wallet (allowed to withdraw fees) |
 | `OrderBook` | yes | `["order_book", market]` | program | two `Vec<OrderEntry>` (bids best-first, asks best-first), `next_order_id` |
 | `Order` | yes | `["order", market, order_id.to_le_bytes()]` | program | owner, side, price, original_quantity, filled_quantity, status, timestamp |
-| `UserAccount` | yes | `["user", market, owner]` | program | `unsettled_base`, `unsettled_quote`, `open_orders: Vec<u64>` (max 20) |
+| `MarketUser` | yes | `["user", market, owner]` | program | `unsettled_base`, `unsettled_quote`, `open_orders: Vec<u64>` (max 20) |
 
 ### Token accounts (owned by the Token Program, authority = Market PDA)
 
@@ -252,10 +252,10 @@ pub struct Order {
 `remaining_quantity(order) = original_quantity - filled_quantity`. Used
 by `cancel_order` to decide how much to credit back to the user.
 
-### `UserAccount` state
+### `MarketUser` state
 
 ```rust
-pub struct UserAccount {
+pub struct MarketUser {
     pub market: Pubkey,
     pub owner: Pubkey,
     pub unsettled_base: u64,
@@ -268,6 +268,30 @@ pub struct UserAccount {
 The `open_orders` cap (20 per user) is mirrored by a
 `MAX_OPEN_ORDERS_PER_USER` check in `place_order`. One user cannot
 flood the book.
+
+**Why per-(user, market) and not per-user?** A `MarketUser` is keyed
+by both the human `owner` and the `market`, not by `owner` alone.
+Three reasons:
+
+1. **Unsettled balances are per-market by definition.** Different
+   markets use different `base_mint` / `quote_mint` pairs, so the
+   scalar `unsettled_base` / `unsettled_quote` fields can't be
+   shared across markets — they'd refer to different tokens.
+
+2. **Open-order indexing is local to one book.** `open_orders`
+   holds `order_id`s that index into a specific market's
+   `OrderBook`. Mixing ids from different books would force a
+   per-entry market discriminator and a wider lookup path.
+
+3. **Lock-contention isolation.** A user trading on multiple
+   markets in parallel would otherwise serialise every
+   `place_order` / `settle_funds` on a single shared account.
+   Per-(user, market) lets independent markets run independently.
+
+This matches the standard pattern: Openbook v2 calls it
+`OpenOrdersAccount`, Phoenix calls it `Trader`, Serum called it
+`OpenOrders`. We named ours `MarketUser` to be explicit about what
+it actually scopes to.
 
 ### How vault balances evolve
 
@@ -296,7 +320,7 @@ The program has six instruction handlers. The order a user encounters
 them is:
 
 1. `initialize_market` (market operator — once)
-2. `create_user_account` (every user, once per market)
+2. `create_market_user` (every user, once per market)
 3. `place_order` (a user — as many times as they want)
 4. `cancel_order` (a user — to remove a resting order)
 5. `settle_funds` (a user — to collect winnings)
@@ -358,7 +382,7 @@ addresses are chosen by the caller (typically fresh keypairs) and
 captured on the market's state so later instruction handlers can
 validate them.
 
-### 3.2 `create_user_account`
+### 3.2 `create_market_user`
 
 **Who calls it:** every user, exactly once per market they want to
 trade on.
@@ -369,17 +393,17 @@ trade on.
 
 - `owner` (signer, mut — pays rent)
 - `market` (read-only)
-- `user_account` (PDA, **init**, seeds `["user", market, owner]`)
+- `market_user` (PDA, **init**, seeds `["user", market, owner]`)
 - `system_program`
 
 **Token movements:** none.
 
-**State changes:** new `UserAccount` with all counters zero and no
+**State changes:** new `MarketUser` with all counters zero and no
 open orders.
 
 ### 3.3 `place_order`
 
-**Who calls it:** anyone with a `UserAccount` for this market.
+**Who calls it:** anyone with a `MarketUser` for this market.
 
 **Signers:** `owner`.
 
@@ -400,7 +424,7 @@ pub fn place_order<'info>(
 - `order_book` (mut, PDA seeds-checked)
 - `order` (PDA, **init**, seeds
   `["order", market, next_order_id.to_le_bytes()]`)
-- `user_account` (mut, PDA seeds-checked)
+- `market_user` (mut, PDA seeds-checked)
 - `base_vault`, `quote_vault`, `fee_vault` (all mut, boxed)
 - `user_base_account`, `user_quote_account` (mut — the caller's ATAs)
 - `base_mint`, `quote_mint` (read-only)
@@ -414,7 +438,7 @@ order:
 
 ```
 remaining_accounts[2*i]     = maker_order_pda (Order account)
-remaining_accounts[2*i + 1] = maker_user_account_pda (UserAccount)
+remaining_accounts[2*i + 1] = maker_user_account_pda (MarketUser)
 ```
 
 If the caller doesn't pass any pairs, the order is treated as
@@ -436,8 +460,8 @@ resting order.
 - Maker order's `order_id` exists in the relevant book side →
   `MakerAccountMismatch`
 - Maker order's `market == market.key()` → `MakerAccountMismatch`
-- Maker pair index == book position (i.e. caller walked the book in
-  order) → `MakerAccountMismatch`
+- Maker pair index == the maker's slot position on the book
+  (i.e. caller walked the book sorted by price) → `MakerAccountMismatch`
 
 **Checks (per fill, during execution):**
 
@@ -469,8 +493,8 @@ For an **ask**:
 
 The full lock happens regardless of whether the order will fully fill
 immediately. That keeps the vault invariant simple: the token account
-always holds *exactly* what's needed to fulfil every open position
-plus every unsettled balance.
+always holds *exactly* what's needed to fulfil every open trading
+position plus every unsettled balance.
 
 **Token movements (during matching, per fill):** see
 [§4. The matching engine — step by step](#4-the-matching-engine--step-by-step).
@@ -490,7 +514,7 @@ Summary:
   ```
 
 No user's ATA is touched during matching — all movements happen
-between vaults or inside `UserAccount` counters. Physical payouts wait
+between vaults or inside `MarketUser` counters. Physical payouts wait
 for `settle_funds`.
 
 **PDAs created:** `order` (always; even fully-crossed takers get an
@@ -499,7 +523,7 @@ indexers).
 
 **State changes:**
 
-On the taker's `UserAccount`:
+On the taker's `MarketUser`:
 
 - `unsettled_base += sum of fill.fill_quantity` (taker bid side)
 - `unsettled_quote += sum of price_improvement_rebate`
@@ -511,7 +535,7 @@ On each maker's `Order` (via `Account::try_from` + `exit`):
 - `filled_quantity += fill.fill_quantity`
 - `status = PartiallyFilled` or `Filled`
 
-On each maker's `UserAccount`:
+On each maker's `MarketUser`:
 
 - `unsettled_quote += gross - fee` (maker was an ask)
 - `unsettled_base += fill.fill_quantity` (maker was a bid)
@@ -542,7 +566,7 @@ On the caller's new `order`:
 - `market`
 - `order_book` (mut)
 - `order` (mut, PDA seeds-checked via stored bump)
-- `user_account` (mut)
+- `market_user` (mut)
 - `owner` (signer)
 
 **Checks:**
@@ -562,7 +586,7 @@ On the caller's new `order`:
   owner).
 - For a cancelled ask: `unsettled_base += remaining_quantity`.
 - Remove from `order_book.bids` or `order_book.asks`.
-- Remove from `user_account.open_orders`.
+- Remove from `market_user.open_orders`.
 - `order.status = Cancelled`.
 
 The actual token move happens on the next `settle_funds` call.
@@ -577,7 +601,7 @@ zero, so it is safe to call on a heartbeat/cron.
 **Accounts in:**
 
 - `market` (mut)
-- `user_account` (mut)
+- `market_user` (mut)
 - `base_vault`, `quote_vault` (mut, boxed)
 - `user_base_account`, `user_quote_account` (mut, boxed — caller's
   ATAs; caller must create them before calling)
@@ -591,8 +615,8 @@ mint checks on token accounts, PDA seeds).
 **Token movements:**
 
 ```
-  base_vault  --[user_account.unsettled_base of base_mint]--> user_base_account
-  quote_vault --[user_account.unsettled_quote of quote_mint]--> user_quote_account
+  base_vault  --[market_user.unsettled_base of base_mint]--> user_base_account
+  quote_vault --[market_user.unsettled_quote of quote_mint]--> user_quote_account
 ```
 
 Both transfers are CPIs to the Token program, signed by the
@@ -600,8 +624,8 @@ Both transfers are CPIs to the Token program, signed by the
 
 **State changes:**
 
-- `user_account.unsettled_base = 0`
-- `user_account.unsettled_quote = 0`
+- `market_user.unsettled_base = 0`
+- `market_user.unsettled_quote = 0`
 
 ### 3.6 `withdraw_fees`
 
@@ -653,21 +677,22 @@ read more easily once you've gone through this section.
 2. The handler locks the required funds into the vault (done up
    front, before any matching — see §3.3).
 3. **Plan the fills** (pure logic, no mutations): walk the opposite
-   side of the book in price order. For each entry whose price
+   side of the book sorted by price (best price first). For each
+   entry whose price
    crosses the taker's limit, record a `Fill { resting_index,
    resting_order_id, fill_quantity, fill_price }`. Stop when either
    the taker's quantity is exhausted or the next entry fails to
    cross.
 4. **Apply the fills** (mutate state): for each fill, update the
    maker's `Order` (increment `filled_quantity`, flip status), update
-   the maker's `UserAccount` (credit `unsettled_base` or
+   the maker's `MarketUser` (credit `unsettled_base` or
    `unsettled_quote`), and accumulate deltas for the taker.
 5. **Clean the book**: remove fully-filled makers from the relevant
    side of `order_book.bids`/`asks`, in reverse-index order.
 6. **Pay the fee**: one batched CPI from `quote_vault` to `fee_vault`
    for the sum of per-fill fees.
 7. **Apply the taker deltas**: single mutation of the taker's
-   `UserAccount`.
+   `MarketUser`.
 8. **Rest the remainder**: if `taker_remaining > 0`, insert the
    new `Order` into the book at the taker's limit price, add its
    `order_id` to the taker's `open_orders`, set status to
@@ -760,21 +785,21 @@ Start with an empty book. Fees 10 bps (0.1%). Tick size 1.
    For Fill 0 (Dan):
    - gross = 900 * 5 = 4500; fee = 4500 * 10 / 10 000 = 4;
      net_to_maker = 4496.
-   - `dan_user_account.unsettled_quote += 4496`
-   - `faye_user_account.unsettled_base += 5`
+   - `dan_market_user.unsettled_quote += 4496`
+   - `faye_market_user.unsettled_base += 5`
    - Faye's rebate = 1000*5 − 4500 = 500.
-     `faye_user_account.unsettled_quote += 500`
+     `faye_market_user.unsettled_quote += 500`
    - `dan_order.filled_quantity = 5`, status = Filled,
-     remove from `dan_user_account.open_orders`.
+     remove from `dan_market_user.open_orders`.
 
    For Fill 1 (Erin):
    - gross = 950 * 2 = 1900; fee = 1; net_to_maker = 1899.
-   - `erin_user_account.unsettled_quote += 1899`
-   - `faye_user_account.unsettled_base += 2`
+   - `erin_market_user.unsettled_quote += 1899`
+   - `faye_market_user.unsettled_base += 2`
    - Faye's rebate = 1000*2 − 1900 = 100.
-     `faye_user_account.unsettled_quote += 100`
+     `faye_market_user.unsettled_quote += 100`
    - `erin_order.filled_quantity = 2`, status = PartiallyFilled
-     (original 5, filled 2), **stays** in `erin_user_account.open_orders`.
+     (original 5, filled 2), **stays** in `erin_market_user.open_orders`.
 
    Step D — clean book. Dan's ask was fully filled → drop index 0.
    Erin's ask was only partially filled → stays. `order_book.asks =
@@ -790,8 +815,8 @@ Start with an empty book. Fees 10 bps (0.1%). Tick size 1.
    quote_vault --[5 quote]--> fee_vault
    ```
 
-   Step F — apply Faye's deltas. `faye_user_account.unsettled_base =
-   0 + 7 = 7`. `faye_user_account.unsettled_quote = 0 + (500 + 100) =
+   Step F — apply Faye's deltas. `faye_market_user.unsettled_base =
+   0 + 7 = 7`. `faye_market_user.unsettled_quote = 0 + (500 + 100) =
    600`.
 
    Step G — rest the remainder. `taker_remaining = 0` → Faye's new
@@ -842,13 +867,13 @@ maker pairs passed). The bid rests.
   quote_vault. `order_book.bids = [(4, 910)]`.
 - Step B–F: no fills, no fee, no maker mutations.
 - Step G: `taker_remaining = 4 = quantity` → status `Open`, added
-  to the book, `gael_user_account.open_orders = [4]`.
+  to the book, `gael_market_user.open_orders = [4]`.
 
 Gael decides to cancel. `cancel_order` on order_id 4:
 
 - `remaining_quantity(order) = 4 - 0 = 4`.
-- `gael_user_account.unsettled_quote += 910 * 4 = 3640`.
-- `order_book.bids` cleared. `gael_user_account.open_orders = []`.
+- `gael_market_user.unsettled_quote += 910 * 4 = 3640`.
+- `order_book.bids` cleared. `gael_market_user.open_orders = []`.
 - `order.status = Cancelled`.
 
 No tokens moved — `quote_vault.balance` still holds the 3640.
@@ -856,7 +881,7 @@ No tokens moved — `quote_vault.balance` still holds the 3640.
 Gael calls `settle_funds`:
 
 - `quote_vault --[3640 quote]--> gael_user_quote_account`
-- `gael_user_account.unsettled_quote = 0`.
+- `gael_market_user.unsettled_quote = 0`.
 
 Net effect: Gael's balance sheet is exactly where it started; the
 program earned nothing (no fill means no fee).
@@ -884,7 +909,7 @@ Cast: **Maria** (market authority + Alice/Bob's broker), **Alice**
 
 1. `initialize_market` — Maria runs it. Rent for five accounts comes
    out of her wallet. Market is now `is_active`.
-2. `create_user_account` — Alice and Bob each run it once.
+2. `create_market_user` — Alice and Bob each run it once.
 3. Alice posts an ask: `place_order(Ask, 1000, 5)`, no
    remaining_accounts (empty book).
    - Lock: `alice_base_account --[5 base]--> base_vault`.
@@ -892,7 +917,7 @@ Cast: **Maria** (market authority + Alice/Bob's broker), **Alice**
    - Rest: new Order PDA with `original_quantity = 5`, status `Open`,
      added to `order_book.asks` at index 0. `alice.open_orders = [1]`.
 4. Bob posts a bid: `place_order(Bid, 1000, 5)`, with Alice's Order
-   and UserAccount as remaining_accounts.
+   and MarketUser as remaining_accounts.
    - Lock: `bob_quote_account --[5 * 1000 = 5000 quote]-->
      quote_vault`.
    - Plan: one fill at (resting_index 0, order_id 1, qty 5, price
@@ -948,7 +973,7 @@ Cast: Alice (ask maker), Bob (bid maker, then remainder rests), Carol
 (new taker).
 
 1. `initialize_market` by Maria (same config).
-2. `create_user_account` × 3.
+2. `create_market_user` × 3.
 3. Alice posts `Ask, 1000, 3`. Locks 3 base.
 4. Bob posts `Bid, 1100, 10` with Alice's pair as a maker.
    - Lock: `10 * 1100 = 11_000 quote` from Bob to quote_vault.
@@ -978,7 +1003,7 @@ Cast: Alice (ask maker), Bob (bid maker, then remainder rests), Carol
 5. Alice settles: `quote_vault --[2985]--> alice_quote_account`.
    `quote_vault = 10985 − 2985 = 8000` (= 7700 Bob-lock + 300
    Bob-rebate).
-6. Carol posts `Ask, 1100, 4` with Bob's Order/UserAccount as a
+6. Carol posts `Ask, 1100, 4` with Bob's Order/MarketUser as a
    maker pair.
    - Lock: 4 base from Carol to base_vault.
    - Plan: fill at (index 0, order_id 2, qty min(4, 7) = 4, price
@@ -1010,7 +1035,7 @@ Cast: Alice (ask maker), Bob (bid maker, then remainder rests), Carol
 
 Cast: Alice (bid maker), nobody else.
 
-1. `initialize_market`, `create_user_account(Alice)`.
+1. `initialize_market`, `create_market_user(Alice)`.
 2. Alice posts `Bid, 900, 10` — rests on an empty book.
    - Lock: 9000 quote from Alice to quote_vault.
    - No fills. `alice.open_orders = [1]`. `bids = [(1, 900)]`.
@@ -1054,7 +1079,7 @@ From [`errors.rs`](programs/clob/src/errors.rs):
 | `InvalidFeeVault` | `market.fee_vault` on the struct does not match the passed `fee_vault` (Anchor `has_one`) |
 | `MakerAccountMismatch` | Wrong number of maker accounts, wrong order, wrong market, or caller walked the book out of order |
 | `MissingMakerAccounts` | `remaining_accounts.len()` not a multiple of 2 |
-| `MakerOwnerMismatch` | Maker Order and UserAccount have different owners |
+| `MakerOwnerMismatch` | Maker Order and MarketUser have different owners |
 | `NotMarketAuthority` | `withdraw_fees` called by wrong signer |
 
 ### 6.2 Guarded design choices worth knowing
@@ -1187,7 +1212,7 @@ test authority_can_withdraw_fees_after_match ... ok
 test cancel_and_settle_bid_refunds_full_quote ... ok
 test cancel_ask_credits_unsettled_base ... ok
 test cancel_order_rejects_non_owner ... ok
-test create_user_account_tracks_market_and_owner ... ok
+test create_market_user_tracks_market_and_owner ... ok
 test fee_vault_receives_exactly_bps_of_taker_gross ... ok
 test initialize_market_rejects_oversized_fee ... ok
 test initialize_market_rejects_zero_tick_size ... ok
@@ -1215,7 +1240,7 @@ test taker_partially_fills_resting_order_rest_stays_on_book ... ok
 | Test | Exercises |
 |---|---|
 | `initialize_market_sets_market_and_order_book` | PDA creation, vault setup, initial field values |
-| `create_user_account_tracks_market_and_owner` | Per-user PDA derivation and zero-initialised counters |
+| `create_market_user_tracks_market_and_owner` | Per-user PDA derivation and zero-initialised counters |
 | `place_bid_locks_quote_in_vault` | Fund lock on bid |
 | `place_ask_locks_base_in_vault` | Fund lock on ask |
 | `settle_funds_moves_unsettled_base_to_user` | Vault → user ATA transfer via market PDA signer |
@@ -1299,11 +1324,62 @@ Ordered by difficulty.
   serialisation simple; avoids the 10 KB deserialisation cost per
   call.
 
+### Why a balanced tree (critbit)?
+
+The current example stores each side of the book as a `Vec<OrderEntry>`
+sorted by price. That's fine for a teaching example with a few dozen
+resting orders. For a production CLOB it's wrong, and the reason is
+worth understanding before the "Zero-copy slabs" bullet below.
+
+**Tree balancing must be guaranteed, not assumed.** A plain binary
+search tree only keeps a roughly-balanced shape when its inputs arrive
+in random order. In a CLOB an attacker chooses the inputs — the prices
+of their orders — so nothing they choose can be allowed to determine
+the tree's shape. A *balanced-by-construction* tree (red-black,
+critbit / binary radix trie, AVL, …) enforces a bounded shape via
+invariants maintained on every insert and delete, regardless of input
+order.
+
+**Concrete attack on a plain BST.** An attacker posts orders at
+monotonically increasing prices ($100, $101, $102, $103, …;
+"monotonically increasing" just means "always going up"). Each new
+price is greater than every previous one, so each new node attaches as
+the right child of the previous one. After N such orders the tree has
+degenerated into a linked list of length N — same worst-case shape as
+the unbounded `Vec` we'd be moving away from. Lookups, inserts, and
+matches all walk O(N) instead of O(log N).
+
+**Why this matters on Solana specifically.** Solana transactions have
+a ~1.4M compute-unit budget. If `place_order` walks an unbalanced book
+and exceeds CU mid-match, the transaction aborts and the placer pays
+fees for nothing. Worse, *legitimate users' orders fail to place
+because an adversary skewed the tree shape*. A balanced-by-construction
+tree bounds every operation at O(log N) regardless of input, so the
+attack is structurally impossible.
+
+**Why critbit specifically.** Critbit (a binary radix trie keyed on
+the price bits) is balanced-by-construction in a different way from a
+red-black tree: tree depth is bounded by the *bit width of the sort
+key* (128 bits here — price in the high 64, sequence number in the
+low 64), not by insertion order. Inserts and deletes don't need
+rotations or recolouring; the trie shape is a deterministic function
+of which keys are present. Openbook v2's slab is a critbit, which is
+why the upstream port lands on critbit rather than red-black.
+
+For *this* example the `Vec`-based book is kept on purpose: it makes
+the matching logic readable in one sitting. The takeaway is the
+property, not the data structure — the order book has to stay
+balanced no matter what order traders submit prices in, and that
+requirement is what makes the matching engine fast and DoS-resistant
+in production.
+
 ### Harder
 
-- **Zero-copy slabs.** Rewrite the order book as a red-black tree in
-  a zero-copy account. This is what Openbook v2 and Phoenix use in
-  production.
+- **Zero-copy slabs.** Rewrite the order book as a critbit tree in
+  a zero-copy account, ported from Openbook v2's slab. This is what
+  Openbook v2 and Phoenix use in production; see the
+  "Why a balanced tree (critbit)?" subsection above for the
+  motivation.
 
 - **Event queue.** Mirror Openbook's `EventQueue` — `place_order`
   writes "fill" events, and a separate `consume_events` instruction
@@ -1336,7 +1412,7 @@ defi/clob/anchor/
     │   ├── instructions/
     │   │   ├── mod.rs
     │   │   ├── initialize_market.rs
-    │   │   ├── create_user_account.rs
+    │   │   ├── create_market_user.rs
     │   │   ├── place_order.rs        (matching engine lives here)
     │   │   ├── cancel_order.rs
     │   │   ├── settle_funds.rs
@@ -1346,7 +1422,7 @@ defi/clob/anchor/
     │       ├── market.rs
     │       ├── order.rs
     │       ├── order_book.rs
-    │       ├── user_account.rs
+    │       ├── market_user.rs
     │       └── matching.rs           (pure fill-planning logic)
     └── tests/
         └── test_clob.rs              LiteSVM tests

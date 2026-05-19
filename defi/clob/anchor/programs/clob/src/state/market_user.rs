@@ -1,13 +1,13 @@
 use anchor_lang::prelude::*;
 
-pub const USER_ACCOUNT_SEED: &[u8] = b"user";
+pub const MARKET_USER_SEED: &[u8] = b"market_user";
 
 // Per-user, per-market account. Tracks open order ids and amounts owed back
 // to the user (unsettled_*). Settlement moves those amounts from the vaults
 // to the user's token accounts in settle_funds.
 #[derive(InitSpace)]
 #[account]
-pub struct UserAccount {
+pub struct MarketUser {
     pub market: Pubkey,
 
     pub owner: Pubkey,
@@ -25,13 +25,13 @@ pub struct UserAccount {
     pub bump: u8,
 }
 
-pub fn add_open_order(account: &mut UserAccount, order_id: u64) {
+pub fn add_open_order(account: &mut MarketUser, order_id: u64) {
     if !account.open_orders.contains(&order_id) {
         account.open_orders.push(order_id);
     }
 }
 
-pub fn remove_open_order(account: &mut UserAccount, order_id: u64) {
+pub fn remove_open_order(account: &mut MarketUser, order_id: u64) {
     if let Some(position) = account.open_orders.iter().position(|&id| id == order_id) {
         account.open_orders.remove(position);
     }

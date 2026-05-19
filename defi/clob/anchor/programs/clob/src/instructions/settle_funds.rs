@@ -4,14 +4,14 @@ use anchor_spl::token_interface::{
 };
 
 use crate::errors::ErrorCode;
-use crate::state::{Market, UserAccount, MARKET_SEED, USER_ACCOUNT_SEED};
+use crate::state::{Market, MarketUser, MARKET_SEED, MARKET_USER_SEED};
 
 pub fn handle_settle_funds(context: Context<SettleFunds>) -> Result<()> {
-    let user_account = &mut context.accounts.user_account;
+    let market_user = &mut context.accounts.market_user;
     let market = &context.accounts.market;
 
-    let base_amount = user_account.unsettled_base;
-    let quote_amount = user_account.unsettled_quote;
+    let base_amount = market_user.unsettled_base;
+    let quote_amount = market_user.unsettled_quote;
 
     // Seeds to sign as the market PDA (the authority of both vaults). Built
     // once and reused for the two possible transfers.
@@ -39,7 +39,7 @@ pub fn handle_settle_funds(context: Context<SettleFunds>) -> Result<()> {
             base_amount,
             context.accounts.base_mint.decimals,
         )?;
-        user_account.unsettled_base = 0;
+        market_user.unsettled_base = 0;
     }
 
     if quote_amount > 0 {
@@ -57,7 +57,7 @@ pub fn handle_settle_funds(context: Context<SettleFunds>) -> Result<()> {
             quote_amount,
             context.accounts.quote_mint.decimals,
         )?;
-        user_account.unsettled_quote = 0;
+        market_user.unsettled_quote = 0;
     }
 
     Ok(())
@@ -82,10 +82,10 @@ pub struct SettleFunds<'info> {
 
     #[account(
         mut,
-        seeds = [USER_ACCOUNT_SEED, market.key().as_ref(), owner.key().as_ref()],
-        bump = user_account.bump
+        seeds = [MARKET_USER_SEED, market.key().as_ref(), owner.key().as_ref()],
+        bump = market_user.bump
     )]
-    pub user_account: Account<'info, UserAccount>,
+    pub market_user: Account<'info, MarketUser>,
 
     // Boxed for the same reason as in PlaceOrder —
     // InterfaceAccount is too large to keep on the BPF stack in bulk.
