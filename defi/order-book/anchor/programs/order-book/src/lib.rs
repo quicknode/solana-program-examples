@@ -9,7 +9,7 @@ use instructions::*;
 declare_id!("C69UJ8irfmHq5ysyLek7FKApHR86FBeupiz4JnoyPzzx");
 
 #[program]
-pub mod clob {
+pub mod order_book {
     use super::*;
 
     /// Create a new market for a (base, quote) pair. Deploys the market PDA,

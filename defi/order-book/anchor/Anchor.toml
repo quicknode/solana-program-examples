@@ -8,13 +8,13 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-clob = "C69UJ8irfmHq5ysyLek7FKApHR86FBeupiz4JnoyPzzx"
+order_book = "C69UJ8irfmHq5ysyLek7FKApHR86FBeupiz4JnoyPzzx"
 
 [provider]
 cluster = "Localnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
-# LiteSVM Rust tests live under `programs/clob/tests/` and include the built
+# LiteSVM Rust tests live under `programs/order-book/tests/` and include the built
 # `.so` via `include_bytes!`, so a fresh `anchor build` must run first.
 test = "cargo test"

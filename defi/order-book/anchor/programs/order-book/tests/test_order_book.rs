@@ -28,7 +28,7 @@ use {
     solana_signer::Signer,
 };
 
-// Keep test-side seeds in sync with `programs/clob/src/state/*`. Duplicated
+// Keep test-side seeds in sync with `programs/order_book/src/state/*`. Duplicated
 // rather than imported so tests stay self-contained and exercise the same
 // byte strings a client SDK would use.
 const MARKET_SEED: &[u8] = b"market";
@@ -36,12 +36,12 @@ const ORDER_SEED: &[u8] = b"order";
 const MARKET_USER_SEED: &[u8] = b"market_user";
 
 // Size of the zero-copy OrderBook account, including Anchor's 8-byte
-// discriminator. Mirrors `clob::state::ORDER_BOOK_ACCOUNT_SIZE` — duplicated
+// discriminator. Mirrors `order_book::state::ORDER_BOOK_ACCOUNT_SIZE` — duplicated
 // here so tests are self-contained and stay closer to what an SDK does.
 // Two 1024-leaf critbit slabs at 88 bytes per node, plus header. If you
 // change this, bump the constant in `state/order_book.rs` too — the
 // `#[account(zero)]` check fails if the account size is wrong.
-const ORDER_BOOK_ACCOUNT_SIZE: u64 = clob::state::ORDER_BOOK_ACCOUNT_SIZE as u64;
+const ORDER_BOOK_ACCOUNT_SIZE: u64 = order_book::state::ORDER_BOOK_ACCOUNT_SIZE as u64;
 
 // Six decimals matches USDC and keeps "1 token" == 1_000_000 base units,
 // which keeps the arithmetic in the assertions easy to read.
@@ -136,9 +136,9 @@ struct Scenario {
 }
 
 fn full_setup() -> Scenario {
-    let program_id = clob::id();
+    let program_id = order_book::id();
     let mut svm = LiteSVM::new();
-    let program_bytes = include_bytes!("../../../target/deploy/clob.so");
+    let program_bytes = include_bytes!("../../../target/deploy/order_book.so");
     svm.add_program(program_id, program_bytes).unwrap();
 
     // 100 SOL for the payer is overkill, but rent + a few init-ATA hops add
@@ -252,13 +252,13 @@ fn build_initialize_market_ix(
 ) -> Instruction {
     Instruction::new_with_bytes(
         sc.program_id,
-        &clob::instruction::InitializeMarket {
+        &order_book::instruction::InitializeMarket {
             fee_basis_points,
             tick_size,
             min_order_size,
         }
         .data(),
-        clob::accounts::InitializeMarket {
+        order_book::accounts::InitializeMarket {
             market: sc.market,
             order_book: sc.order_book.pubkey(),
             base_mint: sc.base_mint,
@@ -278,8 +278,8 @@ fn build_create_market_user_ix(sc: &Scenario, owner: &Pubkey) -> Instruction {
     let market_user = market_user_pda(&sc.program_id, &sc.market, owner);
     Instruction::new_with_bytes(
         sc.program_id,
-        &clob::instruction::CreateMarketUser {}.data(),
-        clob::accounts::CreateMarketUser {
+        &order_book::instruction::CreateMarketUser {}.data(),
+        order_book::accounts::CreateMarketUser {
             market_user,
             market: sc.market,
             owner: *owner,
@@ -296,7 +296,7 @@ fn build_place_order_ix(
     market_user: Pubkey,
     user_base_account: Pubkey,
     user_quote_account: Pubkey,
-    side: clob::state::OrderSide,
+    side: order_book::state::OrderSide,
     order_id: u64,
     price: u64,
     quantity: u64,
@@ -304,13 +304,13 @@ fn build_place_order_ix(
     let order = order_pda(&sc.program_id, &sc.market, order_id);
     Instruction::new_with_bytes(
         sc.program_id,
-        &clob::instruction::PlaceOrder {
+        &order_book::instruction::PlaceOrder {
             side,
             price,
             quantity,
         }
         .data(),
-        clob::accounts::PlaceOrder {
+        order_book::accounts::PlaceOrder {
             market: sc.market,
             order_book: sc.order_book.pubkey(),
             order,
@@ -344,7 +344,7 @@ fn build_place_order_with_makers_ix(
     market_user: Pubkey,
     user_base_account: Pubkey,
     user_quote_account: Pubkey,
-    side: clob::state::OrderSide,
+    side: order_book::state::OrderSide,
     order_id: u64,
     price: u64,
     quantity: u64,
@@ -379,8 +379,8 @@ fn build_withdraw_fees_ix(
 ) -> Instruction {
     Instruction::new_with_bytes(
         sc.program_id,
-        &clob::instruction::WithdrawFees {}.data(),
-        clob::accounts::WithdrawFees {
+        &order_book::instruction::WithdrawFees {}.data(),
+        order_book::accounts::WithdrawFees {
             market: sc.market,
             fee_vault: sc.fee_vault.pubkey(),
             authority_quote_account,
@@ -401,8 +401,8 @@ fn build_cancel_order_ix(
     let order = order_pda(&sc.program_id, &sc.market, order_id);
     Instruction::new_with_bytes(
         sc.program_id,
-        &clob::instruction::CancelOrder {}.data(),
-        clob::accounts::CancelOrder {
+        &order_book::instruction::CancelOrder {}.data(),
+        order_book::accounts::CancelOrder {
             market: sc.market,
             order_book: sc.order_book.pubkey(),
             order,
@@ -422,8 +422,8 @@ fn build_settle_funds_ix(
 ) -> Instruction {
     Instruction::new_with_bytes(
         sc.program_id,
-        &clob::instruction::SettleFunds {}.data(),
-        clob::accounts::SettleFunds {
+        &order_book::instruction::SettleFunds {}.data(),
+        order_book::accounts::SettleFunds {
             market: sc.market,
             market_user,
             base_vault: sc.base_vault.pubkey(),
@@ -518,7 +518,7 @@ fn initialize_market_sets_market_and_order_book() {
     // The 8-byte discriminator should now be set (init handler ran).
     assert_eq!(
         &order_book_account.data[..8],
-        clob::state::OrderBook::DISCRIMINATOR
+        order_book::state::OrderBook::DISCRIMINATOR
     );
 
     // Vaults were created with the market as authority; easiest check is
@@ -582,7 +582,7 @@ fn place_bid_locks_quote_in_vault() {
         sc.buyer_market_user,
         sc.buyer_base_ata,
         sc.buyer_quote_ata,
-        clob::state::OrderSide::Bid,
+        order_book::state::OrderSide::Bid,
         bid_order_id,
         BID_PRICE,
         BID_QUANTITY,
@@ -627,7 +627,7 @@ fn place_ask_locks_base_in_vault() {
         sc.seller_market_user,
         sc.seller_base_ata,
         sc.seller_quote_ata,
-        clob::state::OrderSide::Ask,
+        order_book::state::OrderSide::Ask,
         ask_order_id,
         ASK_PRICE,
         ASK_QUANTITY,
@@ -662,7 +662,7 @@ fn place_order_rejects_zero_price() {
         sc.buyer_market_user,
         sc.buyer_base_ata,
         sc.buyer_quote_ata,
-        clob::state::OrderSide::Bid,
+        order_book::state::OrderSide::Bid,
         order_id,
         // Price 0 trips InvalidPrice before tick-size is even considered.
         0,
@@ -718,7 +718,7 @@ fn place_order_rejects_unaligned_tick() {
         sc.buyer_market_user,
         sc.buyer_base_ata,
         sc.buyer_quote_ata,
-        clob::state::OrderSide::Bid,
+        order_book::state::OrderSide::Bid,
         1,
         unaligned_price,
         BID_QUANTITY,
@@ -774,7 +774,7 @@ fn place_order_rejects_below_min_order_size() {
         sc.seller_market_user,
         sc.seller_base_ata,
         sc.seller_quote_ata,
-        clob::state::OrderSide::Ask,
+        order_book::state::OrderSide::Ask,
         1,
         ASK_PRICE,
         too_small_quantity,
@@ -805,7 +805,7 @@ fn cancel_ask_credits_unsettled_base() {
         sc.seller_market_user,
         sc.seller_base_ata,
         sc.seller_quote_ata,
-        clob::state::OrderSide::Ask,
+        order_book::state::OrderSide::Ask,
         ask_order_id,
         ASK_PRICE,
         ASK_QUANTITY,
@@ -859,7 +859,7 @@ fn cancel_order_rejects_non_owner() {
         sc.buyer_market_user,
         sc.buyer_base_ata,
         sc.buyer_quote_ata,
-        clob::state::OrderSide::Bid,
+        order_book::state::OrderSide::Bid,
         bid_order_id,
         BID_PRICE,
         BID_QUANTITY,
@@ -903,7 +903,7 @@ fn settle_funds_moves_unsettled_base_to_user() {
         sc.seller_market_user,
         sc.seller_base_ata,
         sc.seller_quote_ata,
-        clob::state::OrderSide::Ask,
+        order_book::state::OrderSide::Ask,
         ask_order_id,
         ASK_PRICE,
         ASK_QUANTITY,
@@ -960,7 +960,7 @@ fn cancel_and_settle_bid_refunds_full_quote() {
         sc.buyer_market_user,
         sc.buyer_base_ata,
         sc.buyer_quote_ata,
-        clob::state::OrderSide::Bid,
+        order_book::state::OrderSide::Bid,
         bid_order_id,
         BID_PRICE,
         BID_QUANTITY,
@@ -1020,7 +1020,7 @@ fn settle_funds_rejects_fee_vault_substituted_for_quote_vault() {
         sc.buyer_market_user,
         sc.buyer_base_ata,
         sc.buyer_quote_ata,
-        clob::state::OrderSide::Bid,
+        order_book::state::OrderSide::Bid,
         bid_order_id,
         BID_PRICE,
         BID_QUANTITY,
@@ -1045,8 +1045,8 @@ fn settle_funds_rejects_fee_vault_substituted_for_quote_vault() {
     // has_one constraint on the market PDA.
     let attack_ix = Instruction::new_with_bytes(
         sc.program_id,
-        &clob::instruction::SettleFunds {}.data(),
-        clob::accounts::SettleFunds {
+        &order_book::instruction::SettleFunds {}.data(),
+        order_book::accounts::SettleFunds {
             market: sc.market,
             market_user: sc.buyer_market_user,
             base_vault: sc.base_vault.pubkey(),
@@ -1136,7 +1136,7 @@ fn initialize_market_rejects_oversized_fee() {
 // ---------------------------------------------------------------------------
 
 // MarketUser field offsets after the 8-byte Anchor discriminator. Layout
-// (see programs/clob/src/state/market_user.rs):
+// (see programs/order_book/src/state/market_user.rs):
 //   market: Pubkey         (32)
 //   owner:  Pubkey         (32)
 //   unsettled_base: u64    (8)
@@ -1220,7 +1220,7 @@ fn taker_bid_fully_crosses_best_ask() {
         sc.seller_market_user,
         sc.seller_base_ata,
         sc.seller_quote_ata,
-        clob::state::OrderSide::Ask,
+        order_book::state::OrderSide::Ask,
         MAKER_ASK_ID,
         PRICE,
         QUANTITY,
@@ -1241,7 +1241,7 @@ fn taker_bid_fully_crosses_best_ask() {
         sc.buyer_market_user,
         sc.buyer_base_ata,
         sc.buyer_quote_ata,
-        clob::state::OrderSide::Bid,
+        order_book::state::OrderSide::Bid,
         TAKER_BID_ID,
         PRICE,
         QUANTITY,
@@ -1297,7 +1297,7 @@ fn taker_ask_fully_crosses_best_bid() {
         sc.buyer_market_user,
         sc.buyer_base_ata,
         sc.buyer_quote_ata,
-        clob::state::OrderSide::Bid,
+        order_book::state::OrderSide::Bid,
         MAKER_BID_ID,
         PRICE,
         QUANTITY,
@@ -1317,7 +1317,7 @@ fn taker_ask_fully_crosses_best_bid() {
         sc.seller_market_user,
         sc.seller_base_ata,
         sc.seller_quote_ata,
-        clob::state::OrderSide::Ask,
+        order_book::state::OrderSide::Ask,
         TAKER_ASK_ID,
         PRICE,
         QUANTITY,
@@ -1363,7 +1363,7 @@ fn taker_partially_fills_resting_order_rest_stays_on_book() {
         sc.seller_market_user,
         sc.seller_base_ata,
         sc.seller_quote_ata,
-        clob::state::OrderSide::Ask,
+        order_book::state::OrderSide::Ask,
         MAKER_ASK_ID,
         PRICE,
         MAKER_ASK_QUANTITY,
@@ -1383,7 +1383,7 @@ fn taker_partially_fills_resting_order_rest_stays_on_book() {
         sc.buyer_market_user,
         sc.buyer_base_ata,
         sc.buyer_quote_ata,
-        clob::state::OrderSide::Bid,
+        order_book::state::OrderSide::Bid,
         TAKER_BID_ID,
         PRICE,
         TAKER_BID_QUANTITY,
@@ -1438,7 +1438,7 @@ fn taker_partially_filled_remainder_rests_on_book() {
         sc.seller_market_user,
         sc.seller_base_ata,
         sc.seller_quote_ata,
-        clob::state::OrderSide::Ask,
+        order_book::state::OrderSide::Ask,
         MAKER_ASK_ID,
         PRICE,
         MAKER_ASK_QUANTITY,
@@ -1458,7 +1458,7 @@ fn taker_partially_filled_remainder_rests_on_book() {
         sc.buyer_market_user,
         sc.buyer_base_ata,
         sc.buyer_quote_ata,
-        clob::state::OrderSide::Bid,
+        order_book::state::OrderSide::Bid,
         TAKER_BID_ID,
         PRICE,
         TAKER_BID_QUANTITY,
@@ -1523,7 +1523,7 @@ fn taker_crosses_multiple_resting_orders_best_price_first() {
         sc.seller_market_user,
         sc.seller_base_ata,
         sc.seller_quote_ata,
-        clob::state::OrderSide::Ask,
+        order_book::state::OrderSide::Ask,
         BEST_ASK_ID,
         BEST_ASK_PRICE,
         BEST_ASK_QUANTITY,
@@ -1541,7 +1541,7 @@ fn taker_crosses_multiple_resting_orders_best_price_first() {
         sc.seller_market_user,
         sc.seller_base_ata,
         sc.seller_quote_ata,
-        clob::state::OrderSide::Ask,
+        order_book::state::OrderSide::Ask,
         SECOND_ASK_ID,
         SECOND_ASK_PRICE,
         SECOND_ASK_QUANTITY,
@@ -1561,7 +1561,7 @@ fn taker_crosses_multiple_resting_orders_best_price_first() {
         sc.buyer_market_user,
         sc.buyer_base_ata,
         sc.buyer_quote_ata,
-        clob::state::OrderSide::Bid,
+        order_book::state::OrderSide::Bid,
         TAKER_BID_ID,
         TAKER_BID_PRICE,
         TAKER_BID_QUANTITY,
@@ -1653,7 +1653,7 @@ fn resting_orders_at_same_price_fill_by_time_priority() {
             sc.seller_market_user,
             sc.seller_base_ata,
             sc.seller_quote_ata,
-            clob::state::OrderSide::Ask,
+            order_book::state::OrderSide::Ask,
             FIRST_ASK_ID,
             ASK_PRICE_SHARED,
             ASK_QUANTITY_EACH,
@@ -1667,7 +1667,7 @@ fn resting_orders_at_same_price_fill_by_time_priority() {
             second_seller_market_user,
             second_seller_base_ata,
             second_seller_quote_ata,
-            clob::state::OrderSide::Ask,
+            order_book::state::OrderSide::Ask,
             SECOND_ASK_ID,
             ASK_PRICE_SHARED,
             ASK_QUANTITY_EACH,
@@ -1683,7 +1683,7 @@ fn resting_orders_at_same_price_fill_by_time_priority() {
         sc.buyer_market_user,
         sc.buyer_base_ata,
         sc.buyer_quote_ata,
-        clob::state::OrderSide::Bid,
+        order_book::state::OrderSide::Bid,
         TAKER_BID_ID,
         ASK_PRICE_SHARED,
         ASK_QUANTITY_EACH,
@@ -1723,7 +1723,7 @@ fn taker_bid_gets_price_improvement_from_resting_ask() {
             sc.seller_market_user,
             sc.seller_base_ata,
             sc.seller_quote_ata,
-            clob::state::OrderSide::Ask,
+            order_book::state::OrderSide::Ask,
             MAKER_ASK_ID,
             MAKER_ASK_PRICE,
             QUANTITY,
@@ -1739,7 +1739,7 @@ fn taker_bid_gets_price_improvement_from_resting_ask() {
         sc.buyer_market_user,
         sc.buyer_base_ata,
         sc.buyer_quote_ata,
-        clob::state::OrderSide::Bid,
+        order_book::state::OrderSide::Bid,
         TAKER_BID_ID,
         TAKER_BID_PRICE,
         QUANTITY,
@@ -1788,7 +1788,7 @@ fn fee_vault_receives_exactly_bps_of_taker_gross() {
             sc.seller_market_user,
             sc.seller_base_ata,
             sc.seller_quote_ata,
-            clob::state::OrderSide::Ask,
+            order_book::state::OrderSide::Ask,
             MAKER_ASK_ID,
             PRICE,
             QUANTITY,
@@ -1803,7 +1803,7 @@ fn fee_vault_receives_exactly_bps_of_taker_gross() {
             sc.buyer_market_user,
             sc.buyer_base_ata,
             sc.buyer_quote_ata,
-            clob::state::OrderSide::Bid,
+            order_book::state::OrderSide::Bid,
             TAKER_BID_ID,
             PRICE,
             QUANTITY,
@@ -1845,7 +1845,7 @@ fn authority_can_withdraw_fees_after_match() {
             sc.seller_market_user,
             sc.seller_base_ata,
             sc.seller_quote_ata,
-            clob::state::OrderSide::Ask,
+            order_book::state::OrderSide::Ask,
             MAKER_ASK_ID,
             PRICE,
             QUANTITY,
@@ -1860,7 +1860,7 @@ fn authority_can_withdraw_fees_after_match() {
             sc.buyer_market_user,
             sc.buyer_base_ata,
             sc.buyer_quote_ata,
-            clob::state::OrderSide::Bid,
+            order_book::state::OrderSide::Bid,
             TAKER_BID_ID,
             PRICE,
             QUANTITY,
@@ -1916,7 +1916,7 @@ fn settle_funds_after_match_pays_out_both_unsettled_balances() {
             sc.seller_market_user,
             sc.seller_base_ata,
             sc.seller_quote_ata,
-            clob::state::OrderSide::Ask,
+            order_book::state::OrderSide::Ask,
             MAKER_ASK_ID,
             PRICE,
             QUANTITY,
@@ -1930,7 +1930,7 @@ fn settle_funds_after_match_pays_out_both_unsettled_balances() {
             sc.buyer_market_user,
             sc.buyer_base_ata,
             sc.buyer_quote_ata,
-            clob::state::OrderSide::Bid,
+            order_book::state::OrderSide::Bid,
             TAKER_BID_ID,
             PRICE,
             QUANTITY,

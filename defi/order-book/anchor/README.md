@@ -1,15 +1,15 @@
-# CLOB — Central Limit Order Book
+# Order Book — Central Limit Order Book (CLOB)
 
-An Anchor program that runs an **onchain central limit order book**
-(CLOB) for a single pair of token mints. Users post buy or sell offers
-at the prices they want, the program matches crossing offers in
-price-time priority, and settles the resulting token movements.
+This is an **order book** — specifically, a **central limit order
+book (CLOB)**, the standard piece of market infrastructure used by
+NYSE, NASDAQ, LSE, CME, and every major crypto venue. An Anchor
+program that runs an onchain CLOB for a single pair of token mints:
+users post buy or sell offers at the prices they want, the program
+matches crossing offers in price-time priority, and settles the
+resulting token movements.
 
-A CLOB is the standard piece of financial-market infrastructure: NYSE,
-NASDAQ, LSE, and CME all run on one, and every major crypto venue
-(Binance, Coinbase, Openbook, Phoenix) implements the same idea. This
-program is a simplified, onchain version of that mechanism. Two simple
-Solana CLOBs you can read alongside it:
+This program is a simplified, onchain version of that mechanism. Two
+production Solana CLOBs to read alongside it:
 [Openbook v2](https://github.com/openbook-dex/openbook-v2) and
 [Phoenix](https://github.com/Ellipsis-Labs/phoenix-v1). Both use
 zero-copy slabs for scale; this example uses plain `Vec`s so the
@@ -232,7 +232,7 @@ just needs enough to pick what to cross next and re-derive the PDA.
 
 ### `Order` state
 
-From [`state/order.rs`](programs/clob/src/state/order.rs):
+From [`state/order.rs`](programs/order-book/src/state/order.rs):
 
 ```rust
 pub struct Order {
@@ -666,8 +666,8 @@ zero as a side effect of the transfer).
 
 This is the heart of the program. Everything in `place_order` after
 the initial fund lock is matching-engine work. Follow along with
-[`place_order.rs`](programs/clob/src/instructions/place_order.rs) and
-[`state/matching.rs`](programs/clob/src/state/matching.rs) — it'll
+[`place_order.rs`](programs/order-book/src/instructions/place_order.rs) and
+[`state/matching.rs`](programs/order-book/src/state/matching.rs) — it'll
 read more easily once you've gone through this section.
 
 ### 4.1 The plan
@@ -1060,7 +1060,7 @@ imagine a future instruction handler to reclaim its rent — see §8).
 
 ### 6.1 What the program refuses to do
 
-From [`errors.rs`](programs/clob/src/errors.rs):
+From [`errors.rs`](programs/order-book/src/errors.rs):
 
 | Error | When |
 |---|---|
@@ -1178,9 +1178,9 @@ A production CLOB would add:
 ## 7. Running the tests
 
 All tests are LiteSVM Rust integration tests under
-[`programs/clob/tests/test_clob.rs`](programs/clob/tests/test_clob.rs).
+[`programs/order-book/tests/test_order_book.rs`](programs/order-book/tests/test_order_book.rs).
 They load the built `.so` via
-`include_bytes!("../../../target/deploy/clob.so")`, so a build must
+`include_bytes!("../../../target/deploy/order_book.so")`, so a build must
 run first.
 
 ### Prerequisites
@@ -1191,14 +1191,14 @@ run first.
 
 ### Commands
 
-From `defi/clob/anchor/`:
+From `defi/order-book/anchor/`:
 
 ```bash
-# 1. Build the .so — target/deploy/clob.so
+# 1. Build the .so — target/deploy/order_book.so
 anchor build
 
 # 2. Run the LiteSVM tests
-cargo test --manifest-path programs/clob/Cargo.toml
+cargo test --manifest-path programs/order-book/Cargo.toml
 
 # Or equivalently (Anchor.toml scripts.test = "cargo test"):
 anchor test --skip-local-validator
@@ -1400,11 +1400,11 @@ in production.
 ## Code layout
 
 ```
-defi/clob/anchor/
+defi/order-book/anchor/
 ├── Anchor.toml
 ├── Cargo.toml
 ├── README.md              (this file)
-└── programs/clob/
+└── programs/order-book/
     ├── Cargo.toml
     ├── src/
     │   ├── errors.rs
@@ -1425,5 +1425,5 @@ defi/clob/anchor/
     │       ├── market_user.rs
     │       └── matching.rs           (pure fill-planning logic)
     └── tests/
-        └── test_clob.rs              LiteSVM tests
+        └── test_order_book.rs              LiteSVM tests
 ```

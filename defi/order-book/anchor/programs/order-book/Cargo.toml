@@ -1,12 +1,12 @@
 [package]
-name = "clob"
+name = "order_book"
 version = "0.1.0"
-description = "Central limit order book on Solana"
+description = "Order book example (CLOB) on Solana"
 edition = "2021"
 
 [lib]
 crate-type = ["cdylib", "lib"]
-name = "clob"
+name = "order_book"
 
 [features]
 default = []
