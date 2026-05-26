@@ -1,7 +1,7 @@
 use {
     crate::{
-        state::{Amm, Pool},
-        AmmPda, LiquidityMintPda, PoolAuthorityPda, PoolPda,
+        state::{Config, PoolConfig},
+        ConfigPda, LiquidityMintPda, PoolAuthorityPda, PoolPda,
     },
     quasar_lang::prelude::*,
     quasar_spl::prelude::*,
@@ -9,16 +9,16 @@ use {
 
 /// Accounts for depositing liquidity into a pool.
 ///
-/// Seeds reference the amm, mint_a, and mint_b account addresses — these
+/// Seeds reference the config, mint_a, and mint_b account addresses — these
 /// must be provided as separate account inputs.
 #[derive(Accounts)]
-pub struct DepositLiquidity {
-    #[account(address = AmmPda::seeds())]
-    pub amm: Account<Amm>,
-    #[account(address = PoolPda::seeds(amm.address(), mint_a.address(), mint_b.address()))]
-    pub pool: Account<Pool>,
+pub struct DepositLiquidityAccounts {
+    #[account(address = ConfigPda::seeds())]
+    pub config: Account<Config>,
+    #[account(address = PoolPda::seeds(config.address(), mint_a.address(), mint_b.address()))]
+    pub pool_config: Account<PoolConfig>,
     /// Pool authority PDA.
-    #[account(address = PoolAuthorityPda::seeds(amm.address(), mint_a.address(), mint_b.address()))]
+    #[account(address = PoolAuthorityPda::seeds(config.address(), mint_a.address(), mint_b.address()))]
     pub pool_authority: UncheckedAccount,
     /// Depositor (must be signer to authorise transfers).
     pub depositor: Signer,
@@ -29,30 +29,30 @@ pub struct DepositLiquidity {
     /// with `Account<T>` (it reads `T::BUMP_OFFSET`). SPL `Mint` doesn't
     /// implement `Discriminator`; `InterfaceAccount` takes the generic
     /// existing-account verifier path that doesn't need it.
-    #[account(mut, address = LiquidityMintPda::seeds(amm.address(), mint_a.address(), mint_b.address()))]
-    pub mint_liquidity: InterfaceAccount<Mint>,
+    #[account(mut, address = LiquidityMintPda::seeds(config.address(), mint_a.address(), mint_b.address()))]
+    pub liquidity_provider_mint: InterfaceAccount<Mint>,
     pub mint_a: Account<Mint>,
     pub mint_b: Account<Mint>,
-    /// Pool's token A vault.
+    /// Pool's token A reserve.
     #[account(mut)]
-    pub pool_account_a: Account<Token>,
-    /// Pool's token B vault.
+    pub pool_a: Account<Token>,
+    /// Pool's token B reserve.
     #[account(mut)]
-    pub pool_account_b: Account<Token>,
+    pub pool_b: Account<Token>,
     /// Depositor's LP token account.
     #[account(
         mut,
         init(idempotent),
         payer = payer,
-        token(mint = mint_liquidity, authority = depositor, token_program = token_program),
+        token(mint = liquidity_provider_mint, authority = depositor, token_program = token_program),
     )]
-    pub depositor_account_liquidity: Account<Token>,
+    pub liquidity_provider_token: Account<Token>,
     /// Depositor's token A account.
     #[account(mut)]
-    pub depositor_account_a: Account<Token>,
+    pub token_a: Account<Token>,
     /// Depositor's token B account.
     #[account(mut)]
-    pub depositor_account_b: Account<Token>,
+    pub token_b: Account<Token>,
     #[account(mut)]
     pub payer: Signer,
     pub token_program: Program<TokenProgram>,
@@ -75,19 +75,22 @@ fn isqrt(n: u128) -> u64 {
 
 #[inline(always)]
 pub fn handle_deposit_liquidity(
-    accounts: &mut DepositLiquidity,
+    accounts: &mut DepositLiquidityAccounts,
     amount_a: u64,
     amount_b: u64,
-    bumps: &DepositLiquidityBumps,
+    bumps: &DepositLiquidityAccountsBumps,
 ) -> Result<(), ProgramError> {
     // Clamp to what the depositor actually has.
-    let depositor_a = accounts.depositor_account_a.amount();
-    let depositor_b = accounts.depositor_account_b.amount();
+    let depositor_a = accounts.token_a.amount();
+    let depositor_b = accounts.token_b.amount();
     let mut amount_a = if amount_a > depositor_a { depositor_a } else { amount_a };
     let mut amount_b = if amount_b > depositor_b { depositor_b } else { amount_b };
 
-    let pool_a_amount = accounts.pool_account_a.amount();
-    let pool_b_amount = accounts.pool_account_b.amount();
+    // LP curve runs on *effective* reserves (vault balance minus admin's
+    // accumulated fee claim). The admin's owed slice is a fixed obligation,
+    // not LP-claimable capital, so it must not affect the deposit ratio.
+    let pool_a_amount = accounts.pool_a.amount() - accounts.pool_config.admin_fees_owed_a();
+    let pool_b_amount = accounts.pool_b.amount() - accounts.pool_config.admin_fees_owed_b();
     let pool_creation = pool_a_amount == 0 && pool_b_amount == 0;
 
     if !pool_creation {
@@ -123,20 +126,20 @@ pub fn handle_deposit_liquidity(
 
     // Transfer token A to the pool.
     accounts.token_program
-        .transfer(&accounts.depositor_account_a, &accounts.pool_account_a, &accounts.depositor, amount_a)
+        .transfer(&accounts.token_a, &accounts.pool_a, &accounts.depositor, amount_a)
         .invoke()?;
 
     // Transfer token B to the pool.
     accounts.token_program
-        .transfer(&accounts.depositor_account_b, &accounts.pool_account_b, &accounts.depositor, amount_b)
+        .transfer(&accounts.token_b, &accounts.pool_b, &accounts.depositor, amount_b)
         .invoke()?;
 
     // Mint LP tokens to the depositor (signed by pool authority).
-    // Seed order matches PoolAuthorityPda: [b"authority", amm, mint_a, mint_b, bump].
+    // Seed order matches PoolAuthorityPda: [b"authority", config, mint_a, mint_b, bump].
     let bump = [bumps.pool_authority];
     let seeds: &[Seed] = &[
         Seed::from(crate::AUTHORITY_SEED),
-        Seed::from(accounts.amm.address().as_ref()),
+        Seed::from(accounts.config.address().as_ref()),
         Seed::from(accounts.mint_a.address().as_ref()),
         Seed::from(accounts.mint_b.address().as_ref()),
         Seed::from(&bump as &[u8]),
@@ -144,8 +147,8 @@ pub fn handle_deposit_liquidity(
 
     accounts.token_program
         .mint_to(
-            &accounts.mint_liquidity,
-            &accounts.depositor_account_liquidity,
+            &accounts.liquidity_provider_mint,
+            &accounts.liquidity_provider_token,
             &accounts.pool_authority,
             liquidity,
         )

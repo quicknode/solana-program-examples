@@ -1,7 +1,7 @@
 use {
     crate::{
-        state::{Amm, Pool},
-        AmmPda, LiquidityMintPda, PoolAuthorityPda, PoolPda,
+        state::{Config, PoolConfig},
+        ConfigPda, LiquidityMintPda, PoolAuthorityPda, PoolPda,
     },
     quasar_lang::prelude::*,
     quasar_spl::prelude::*,
@@ -9,13 +9,13 @@ use {
 
 /// Accounts for withdrawing liquidity from a pool.
 #[derive(Accounts)]
-pub struct WithdrawLiquidity {
-    #[account(address = AmmPda::seeds())]
-    pub amm: Account<Amm>,
-    #[account(address = PoolPda::seeds(amm.address(), mint_a.address(), mint_b.address()))]
-    pub pool: Account<Pool>,
+pub struct WithdrawLiquidityAccounts {
+    #[account(address = ConfigPda::seeds())]
+    pub config: Account<Config>,
+    #[account(address = PoolPda::seeds(config.address(), mint_a.address(), mint_b.address()))]
+    pub pool_config: Account<PoolConfig>,
     /// Pool authority PDA.
-    #[account(address = PoolAuthorityPda::seeds(amm.address(), mint_a.address(), mint_b.address()))]
+    #[account(address = PoolAuthorityPda::seeds(config.address(), mint_a.address(), mint_b.address()))]
     pub pool_authority: UncheckedAccount,
     pub depositor: Signer,
     /// LP mint at the LiquidityMintPda.
@@ -25,32 +25,32 @@ pub struct WithdrawLiquidity {
     /// with `Account<T>` (it reads `T::BUMP_OFFSET`). SPL `Mint` doesn't
     /// implement `Discriminator`; `InterfaceAccount` takes the generic
     /// existing-account verifier path that doesn't need it.
-    #[account(mut, address = LiquidityMintPda::seeds(amm.address(), mint_a.address(), mint_b.address()))]
-    pub mint_liquidity: InterfaceAccount<Mint>,
+    #[account(mut, address = LiquidityMintPda::seeds(config.address(), mint_a.address(), mint_b.address()))]
+    pub liquidity_provider_mint: InterfaceAccount<Mint>,
     #[account(mut)]
     pub mint_a: Account<Mint>,
     #[account(mut)]
     pub mint_b: Account<Mint>,
     #[account(mut)]
-    pub pool_account_a: Account<Token>,
+    pub pool_a: Account<Token>,
     #[account(mut)]
-    pub pool_account_b: Account<Token>,
+    pub pool_b: Account<Token>,
     #[account(mut)]
-    pub depositor_account_liquidity: Account<Token>,
+    pub liquidity_provider_token: Account<Token>,
     #[account(
         mut,
         init(idempotent),
         payer = payer,
         token(mint = mint_a, authority = depositor, token_program = token_program),
     )]
-    pub depositor_account_a: Account<Token>,
+    pub token_a: Account<Token>,
     #[account(
         mut,
         init(idempotent),
         payer = payer,
         token(mint = mint_b, authority = depositor, token_program = token_program),
     )]
-    pub depositor_account_b: Account<Token>,
+    pub token_b: Account<Token>,
     #[account(mut)]
     pub payer: Signer,
     pub token_program: Program<TokenProgram>,
@@ -59,48 +59,54 @@ pub struct WithdrawLiquidity {
 
 #[inline(always)]
 pub fn handle_withdraw_liquidity(
-    accounts: &mut WithdrawLiquidity,
+    accounts: &mut WithdrawLiquidityAccounts,
     amount: u64,
-    bumps: &WithdrawLiquidityBumps,
+    bumps: &WithdrawLiquidityAccountsBumps,
 ) -> Result<(), ProgramError> {
-    // Seed order matches PoolAuthorityPda: [b"authority", amm, mint_a, mint_b, bump].
+    // Seed order matches PoolAuthorityPda: [b"authority", config, mint_a, mint_b, bump].
     let bump = [bumps.pool_authority];
     let seeds: &[Seed] = &[
         Seed::from(crate::AUTHORITY_SEED),
-        Seed::from(accounts.amm.address().as_ref()),
+        Seed::from(accounts.config.address().as_ref()),
         Seed::from(accounts.mint_a.address().as_ref()),
         Seed::from(accounts.mint_b.address().as_ref()),
         Seed::from(&bump as &[u8]),
     ];
 
-    // Compute proportional amounts.
-    let total_liquidity = accounts.mint_liquidity.supply() + crate::MINIMUM_LIQUIDITY;
+    // Compute proportional amounts. LPs withdraw a share of the *effective*
+    // reserves (vault balance minus the admin's accumulated fee claim).
+    // The admin's owed slice physically stays in the vaults but is not
+    // distributed to exiting LPs - it's swept separately via
+    // `claim_admin_fees`.
+    let effective_pool_a = accounts.pool_a.amount() - accounts.pool_config.admin_fees_owed_a();
+    let effective_pool_b = accounts.pool_b.amount() - accounts.pool_config.admin_fees_owed_b();
+    let total_liquidity = accounts.liquidity_provider_mint.supply() + crate::MINIMUM_LIQUIDITY;
 
     let amount_a = (amount as u128)
-        .checked_mul(accounts.pool_account_a.amount() as u128)
+        .checked_mul(effective_pool_a as u128)
         .ok_or(ProgramError::ArithmeticOverflow)?
         .checked_div(total_liquidity as u128)
         .ok_or(ProgramError::ArithmeticOverflow)? as u64;
 
     let amount_b = (amount as u128)
-        .checked_mul(accounts.pool_account_b.amount() as u128)
+        .checked_mul(effective_pool_b as u128)
         .ok_or(ProgramError::ArithmeticOverflow)?
         .checked_div(total_liquidity as u128)
         .ok_or(ProgramError::ArithmeticOverflow)? as u64;
 
     // Transfer token A from pool to depositor.
     accounts.token_program
-        .transfer(&accounts.pool_account_a, &accounts.depositor_account_a, &accounts.pool_authority, amount_a)
+        .transfer(&accounts.pool_a, &accounts.token_a, &accounts.pool_authority, amount_a)
         .invoke_signed(seeds)?;
 
     // Transfer token B from pool to depositor.
     accounts.token_program
-        .transfer(&accounts.pool_account_b, &accounts.depositor_account_b, &accounts.pool_authority, amount_b)
+        .transfer(&accounts.pool_b, &accounts.token_b, &accounts.pool_authority, amount_b)
         .invoke_signed(seeds)?;
 
     // Burn LP tokens.
     accounts.token_program
-        .burn(&accounts.depositor_account_liquidity, &accounts.mint_liquidity, &accounts.depositor, amount)
+        .burn(&accounts.liquidity_provider_token, &accounts.liquidity_provider_mint, &accounts.depositor, amount)
         .invoke()?;
 
     Ok(())

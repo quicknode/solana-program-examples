@@ -1,7 +1,7 @@
 use {
     crate::{
-        state::{Amm, Pool, PoolInner},
-        AmmPda, LiquidityMintPda, PoolAuthorityPda, PoolPda,
+        state::{Config, PoolConfig, PoolConfigInner},
+        ConfigPda, LiquidityMintPda, PoolAuthorityPda, PoolPda,
     },
     quasar_lang::prelude::*,
     quasar_spl::prelude::*,
@@ -9,28 +9,28 @@ use {
 
 /// Accounts for creating a new liquidity pool.
 ///
-/// Seeds are based on account addresses: pool = [amm, mint_a, mint_b],
-/// pool_authority = [b"authority", amm, mint_a, mint_b],
-/// mint_liquidity = [b"liquidity", amm, mint_a, mint_b].
+/// Seeds are based on account addresses: pool_config = [config, mint_a, mint_b],
+/// pool_authority = [b"authority", config, mint_a, mint_b],
+/// liquidity_provider_mint = [b"liquidity", config, mint_a, mint_b].
 ///
 /// Note: post-PR-#195 the seed prefix is always emitted first by
-/// `#[derive(Seeds)]`, so pool_authority/mint_liquidity now derive with
+/// `#[derive(Seeds)]`, so pool_authority/liquidity_provider_mint now derive with
 /// the literal prefix in front (different on-chain addresses than the
 /// Anchor sibling, but internally consistent within this program).
 #[derive(Accounts)]
-pub struct CreatePool {
-    #[account(address = AmmPda::seeds())]
-    pub amm: Account<Amm>,
+pub struct CreatePoolAccounts {
+    #[account(address = ConfigPda::seeds())]
+    pub config: Account<Config>,
     #[account(
         mut,
         init,
         payer = payer,
-        address = PoolPda::seeds(amm.address(), mint_a.address(), mint_b.address()),
+        address = PoolPda::seeds(config.address(), mint_a.address(), mint_b.address()),
     )]
-    pub pool: Account<Pool>,
+    pub pool_config: Account<PoolConfig>,
     /// Pool authority PDA — signs for pool token operations.
     #[account(
-        address = PoolAuthorityPda::seeds(amm.address(), mint_a.address(), mint_b.address()),
+        address = PoolAuthorityPda::seeds(config.address(), mint_a.address(), mint_b.address()),
     )]
     pub pool_authority: UncheckedAccount,
     /// Liquidity token mint — created at a PDA.
@@ -38,28 +38,28 @@ pub struct CreatePool {
         mut,
         init,
         payer = payer,
-        address = LiquidityMintPda::seeds(amm.address(), mint_a.address(), mint_b.address()),
+        address = LiquidityMintPda::seeds(config.address(), mint_a.address(), mint_b.address()),
         mint(decimals = 6, authority = pool_authority, freeze_authority = None, token_program = token_program),
     )]
-    pub mint_liquidity: Account<Mint>,
+    pub liquidity_provider_mint: Account<Mint>,
     pub mint_a: Account<Mint>,
     pub mint_b: Account<Mint>,
-    /// Pool's token A account.
+    /// Pool's token A reserve.
     #[account(
         mut,
         init(idempotent),
         payer = payer,
         token(mint = mint_a, authority = pool_authority, token_program = token_program),
     )]
-    pub pool_account_a: Account<Token>,
-    /// Pool's token B account.
+    pub pool_a: Account<Token>,
+    /// Pool's token B reserve.
     #[account(
         mut,
         init(idempotent),
         payer = payer,
         token(mint = mint_b, authority = pool_authority, token_program = token_program),
     )]
-    pub pool_account_b: Account<Token>,
+    pub pool_b: Account<Token>,
     #[account(mut)]
     pub payer: Signer,
     pub token_program: Program<TokenProgram>,
@@ -68,11 +68,16 @@ pub struct CreatePool {
 }
 
 #[inline(always)]
-pub fn handle_create_pool(accounts: &mut CreatePool) -> Result<(), ProgramError> {
-    accounts.pool.set_inner(PoolInner {
-        amm: *accounts.amm.address(),
+pub fn handle_create_pool(accounts: &mut CreatePoolAccounts) -> Result<(), ProgramError> {
+    accounts.pool_config.set_inner(PoolConfigInner {
+        config: *accounts.config.address(),
         mint_a: *accounts.mint_a.address(),
         mint_b: *accounts.mint_b.address(),
+        // No swaps have happened yet, so the admin has no fee claim. These
+        // accumulators are written by `swap_tokens` and zeroed by
+        // `claim_admin_fees`.
+        admin_fees_owed_a: 0,
+        admin_fees_owed_b: 0,
     });
     Ok(())
 }

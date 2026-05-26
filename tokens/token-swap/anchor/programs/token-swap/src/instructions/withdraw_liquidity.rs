@@ -3,17 +3,22 @@ use anchor_spl::{
     associated_token::AssociatedToken,
     token::{self, Burn, Mint, Token, TokenAccount, TransferChecked},
 };
-use fixed::types::I64F64;
 
 use crate::{
-    constants::{AUTHORITY_SEED, LIQUIDITY_SEED, MINIMUM_LIQUIDITY},
-    state::{Amm, Pool},
+    constants::{AUTHORITY_SEED, CONFIG_SEED, LIQUIDITY_SEED, MINIMUM_LIQUIDITY},
+    errors::AmmError,
+    state::{Config, PoolConfig},
 };
 
-pub fn handle_withdraw_liquidity(context: Context<WithdrawLiquidity>, amount: u64) -> Result<()> {
+pub fn handle_withdraw_liquidity(
+    context: Context<WithdrawLiquidityAccounts>,
+    amount: u64,
+    minimum_token_a_out: u64,
+    minimum_token_b_out: u64,
+) -> Result<()> {
     let authority_bump = context.bumps.pool_authority;
     let authority_seeds = &[
-        &context.accounts.pool.amm.to_bytes(),
+        &context.accounts.pool_config.config.to_bytes(),
         &context.accounts.mint_a.key().to_bytes(),
         &context.accounts.mint_b.key().to_bytes(),
         AUTHORITY_SEED,
@@ -21,24 +26,67 @@ pub fn handle_withdraw_liquidity(context: Context<WithdrawLiquidity>, amount: u6
     ];
     let signer_seeds = &[&authority_seeds[..]];
 
-    // Transfer tokens from the pool
-    let amount_a = I64F64::from_num(amount)
-        .checked_mul(I64F64::from_num(context.accounts.pool_account_a.amount))
-        .unwrap()
-        .checked_div(I64F64::from_num(
-            context.accounts.mint_liquidity.supply + MINIMUM_LIQUIDITY,
-        ))
-        .unwrap()
-        .floor()
-        .to_num::<u64>();
+    // LPs withdraw a proportional share of the *effective* reserves
+    // (vault balance minus the admin's accumulated fee claim). The admin's
+    // owed slice physically remains in the vaults but is not distributed to
+    // exiting LPs - it's claimed separately via `claim_admin_fees`.
+    let pool_config = &context.accounts.pool_config;
+    let effective_pool_a = context.accounts.pool_a.amount - pool_config.admin_fees_owed_a;
+    let effective_pool_b = context.accounts.pool_b.amount - pool_config.admin_fees_owed_b;
+
+    // Proportional-withdraw formula:
+    //   amount_out = lp_amount * effective_reserve / (lp_supply + MINIMUM_LIQUIDITY)
+    // The `+ MINIMUM_LIQUIDITY` accounts for the bootstrap floor that was
+    // locked away on the first deposit and is *not* part of the LP supply
+    // counter (mint::supply doesn't include it) but *is* part of the
+    // reserves — so the divisor needs the same adjustment to keep shares
+    // honest.
+    //
+    // u128 + checked: `lp_amount * reserve` can fill the full u128 (both
+    // factors are u64). Multiply before divide to preserve precision; floor
+    // is protocol-favouring (sub-base-unit rounding stays with the pool,
+    // grows LP value for everyone still in).
+    //
+    // Both amounts are computed up-front (before the slippage checks) so
+    // the LP gets a consistent error regardless of which side trips first,
+    // and so we don't transfer one side then revert.
+    let divisor = (context.accounts.liquidity_provider_mint.supply as u128)
+        .checked_add(MINIMUM_LIQUIDITY as u128)
+        .ok_or(AmmError::MathOverflow)?;
+    let amount_a_u128 = (amount as u128)
+        .checked_mul(effective_pool_a as u128)
+        .ok_or(AmmError::MathOverflow)?
+        .checked_div(divisor)
+        .ok_or(AmmError::MathOverflow)?;
+    let amount_a: u64 = u64::try_from(amount_a_u128).map_err(|_| AmmError::MathOverflow)?;
+    let amount_b_u128 = (amount as u128)
+        .checked_mul(effective_pool_b as u128)
+        .ok_or(AmmError::MathOverflow)?
+        .checked_div(divisor)
+        .ok_or(AmmError::MathOverflow)?;
+    let amount_b: u64 = u64::try_from(amount_b_u128).map_err(|_| AmmError::MathOverflow)?;
+
+    // LP's slippage protection: if the pool ratio shifted between the LP
+    // quoting their exit and this tx landing (e.g. a big swap drained one
+    // side), the proportional share comes back with a different mix than
+    // expected. Revert so the LP can bail / requote.
+    require!(
+        amount_a >= minimum_token_a_out,
+        AmmError::WithdrawalBelowMinimum
+    );
+    require!(
+        amount_b >= minimum_token_b_out,
+        AmmError::WithdrawalBelowMinimum
+    );
+
     // transfer_checked verifies the mint + decimals at the token program.
     token::transfer_checked(
         CpiContext::new_with_signer(
             context.accounts.token_program.key(),
             TransferChecked {
-                from: context.accounts.pool_account_a.to_account_info(),
+                from: context.accounts.pool_a.to_account_info(),
                 mint: context.accounts.mint_a.to_account_info(),
-                to: context.accounts.depositor_account_a.to_account_info(),
+                to: context.accounts.token_a.to_account_info(),
                 authority: context.accounts.pool_authority.to_account_info(),
             },
             signer_seeds,
@@ -47,22 +95,13 @@ pub fn handle_withdraw_liquidity(context: Context<WithdrawLiquidity>, amount: u6
         context.accounts.mint_a.decimals,
     )?;
 
-    let amount_b = I64F64::from_num(amount)
-        .checked_mul(I64F64::from_num(context.accounts.pool_account_b.amount))
-        .unwrap()
-        .checked_div(I64F64::from_num(
-            context.accounts.mint_liquidity.supply + MINIMUM_LIQUIDITY,
-        ))
-        .unwrap()
-        .floor()
-        .to_num::<u64>();
     token::transfer_checked(
         CpiContext::new_with_signer(
             context.accounts.token_program.key(),
             TransferChecked {
-                from: context.accounts.pool_account_b.to_account_info(),
+                from: context.accounts.pool_b.to_account_info(),
                 mint: context.accounts.mint_b.to_account_info(),
-                to: context.accounts.depositor_account_b.to_account_info(),
+                to: context.accounts.token_b.to_account_info(),
                 authority: context.accounts.pool_authority.to_account_info(),
             },
             signer_seeds,
@@ -77,8 +116,8 @@ pub fn handle_withdraw_liquidity(context: Context<WithdrawLiquidity>, amount: u6
         CpiContext::new(
             context.accounts.token_program.key(),
             Burn {
-                mint: context.accounts.mint_liquidity.to_account_info(),
-                from: context.accounts.depositor_account_liquidity.to_account_info(),
+                mint: context.accounts.liquidity_provider_mint.to_account_info(),
+                from: context.accounts.liquidity_provider_token.to_account_info(),
                 authority: context.accounts.depositor.to_account_info(),
             },
         ),
@@ -89,31 +128,29 @@ pub fn handle_withdraw_liquidity(context: Context<WithdrawLiquidity>, amount: u6
 }
 
 #[derive(Accounts)]
-pub struct WithdrawLiquidity<'info> {
+pub struct WithdrawLiquidityAccounts<'info> {
     #[account(
-        seeds = [
-            amm.id.as_ref()
-        ],
+        seeds = [CONFIG_SEED],
         bump,
     )]
-    pub amm: Account<'info, Amm>,
+    pub config: Account<'info, Config>,
 
     #[account(
         seeds = [
-            pool.amm.as_ref(),
-            pool.mint_a.key().as_ref(),
-            pool.mint_b.key().as_ref(),
+            pool_config.config.as_ref(),
+            pool_config.mint_a.key().as_ref(),
+            pool_config.mint_b.key().as_ref(),
         ],
         bump,
         has_one = mint_a,
         has_one = mint_b,
     )]
-    pub pool: Account<'info, Pool>,
+    pub pool_config: Account<'info, PoolConfig>,
 
     /// CHECK: Read only authority
     #[account(
         seeds = [
-            pool.amm.as_ref(),
+            pool_config.config.as_ref(),
             mint_a.key().as_ref(),
             mint_b.key().as_ref(),
             AUTHORITY_SEED,
@@ -128,14 +165,14 @@ pub struct WithdrawLiquidity<'info> {
     #[account(
         mut,
         seeds = [
-            pool.amm.as_ref(),
+            pool_config.config.as_ref(),
             mint_a.key().as_ref(),
             mint_b.key().as_ref(),
             LIQUIDITY_SEED,
         ],
         bump,
     )]
-    pub mint_liquidity: Box<Account<'info, Mint>>,
+    pub liquidity_provider_mint: Box<Account<'info, Mint>>,
 
     #[account(mut)]
     pub mint_a: Box<Account<'info, Mint>>,
@@ -148,21 +185,21 @@ pub struct WithdrawLiquidity<'info> {
         associated_token::mint = mint_a,
         associated_token::authority = pool_authority,
     )]
-    pub pool_account_a: Box<Account<'info, TokenAccount>>,
+    pub pool_a: Box<Account<'info, TokenAccount>>,
 
     #[account(
         mut,
         associated_token::mint = mint_b,
         associated_token::authority = pool_authority,
     )]
-    pub pool_account_b: Box<Account<'info, TokenAccount>>,
+    pub pool_b: Box<Account<'info, TokenAccount>>,
 
     #[account(
         mut,
-        associated_token::mint = mint_liquidity,
+        associated_token::mint = liquidity_provider_mint,
         associated_token::authority = depositor,
     )]
-    pub depositor_account_liquidity: Box<Account<'info, TokenAccount>>,
+    pub liquidity_provider_token: Box<Account<'info, TokenAccount>>,
 
     #[account(
         init_if_needed,
@@ -170,7 +207,7 @@ pub struct WithdrawLiquidity<'info> {
         associated_token::mint = mint_a,
         associated_token::authority = depositor,
     )]
-    pub depositor_account_a: Box<Account<'info, TokenAccount>>,
+    pub token_a: Box<Account<'info, TokenAccount>>,
 
     #[account(
         init_if_needed,
@@ -178,7 +215,7 @@ pub struct WithdrawLiquidity<'info> {
         associated_token::mint = mint_b,
         associated_token::authority = depositor,
     )]
-    pub depositor_account_b: Box<Account<'info, TokenAccount>>,
+    pub token_b: Box<Account<'info, TokenAccount>>,
 
     /// The account paying for all rents
     #[account(mut)]
