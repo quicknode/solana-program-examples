@@ -50,15 +50,25 @@ pub fn handle_place_order<'info>(
     // (price * quantity); asks lock base (quantity). This always happens —
     // matching consumes from the locked pot (already in the vault), and any
     // unmatched remainder rests as a maker order with its lock still in place.
+    //
+    // The bid lock multiplies two u64s. A plain `u64::checked_mul` would
+    // refuse anything that overflows u64 (~1.8e19) — which is a perfectly
+    // legal lock once you scale by token decimals (e.g. 18-decimal quote
+    // mint * mid-cap price * mid-cap quantity). Promote to u128 for the
+    // multiplication, then narrow back to u64 with try_into so the failure
+    // mode is "can't fit the on-chain transfer" not "silently rejected at
+    // the math step".
     let (source_account, mint_account_info, decimals, transfer_amount, destination_vault) =
         match side {
             OrderSide::Bid => (
                 context.accounts.user_quote_account.to_account_info(),
                 context.accounts.quote_mint.to_account_info(),
                 context.accounts.quote_mint.decimals,
-                price
-                    .checked_mul(quantity)
-                    .ok_or(ErrorCode::NumericalOverflow)?,
+                (price as u128)
+                    .checked_mul(quantity as u128)
+                    .ok_or(ErrorCode::NumericalOverflow)?
+                    .try_into()
+                    .map_err(|_| error!(ErrorCode::NumericalOverflow))?,
                 context.accounts.quote_vault.to_account_info(),
             ),
             OrderSide::Ask => (
@@ -173,10 +183,15 @@ pub fn handle_place_order<'info>(
         // lists. Real CLOBs (Openbook v2, Phoenix) use a similar
         // deduct-from-gross pattern for simplicity; the fee can be thought
         // of as the maker pricing their ask a fraction higher to cover it.
-        let gross_quote: u64 = fill
-            .fill_price
-            .checked_mul(fill.fill_quantity)
-            .ok_or(ErrorCode::NumericalOverflow)?;
+        // fill_price * fill_quantity in u128 to avoid u64-overflow on big
+        // fills (high-decimal mints scale this product fast). Narrow back
+        // to u64 with try_into so the transfer/balance step gets a real
+        // u64 and the failure mode is explicit.
+        let gross_quote: u64 = (fill.fill_price as u128)
+            .checked_mul(fill.fill_quantity as u128)
+            .ok_or(ErrorCode::NumericalOverflow)?
+            .try_into()
+            .map_err(|_| error!(ErrorCode::NumericalOverflow))?;
 
         let fee_quote: u64 = (gross_quote as u128)
             .checked_mul(market.fee_basis_points as u128)
@@ -185,6 +200,12 @@ pub fn handle_place_order<'info>(
             .ok_or(ErrorCode::NumericalOverflow)?
             .try_into()
             .map_err(|_| error!(ErrorCode::NumericalOverflow))?;
+
+        // Defensive invariant: fees are a fraction of gross, never more.
+        // `fee_basis_points <= 10_000` is enforced at market init, so this
+        // should be unreachable — but a stale assumption here would let a
+        // misconfigured market overdraw the maker's net payout. Cheap check.
+        require!(fee_quote <= gross_quote, ErrorCode::NumericalOverflow);
 
         match side {
             // Taker Bid, resting Ask. Taker pays quote, gets base.
@@ -203,9 +224,14 @@ pub fn handle_place_order<'info>(
 
                 // Price improvement: taker locked (price * quantity) but
                 // only needs (fill_price * fill_quantity) for this fill.
-                let locked_for_this_fill: u64 = price
-                    .checked_mul(fill.fill_quantity)
-                    .ok_or(ErrorCode::NumericalOverflow)?;
+                // u128 intermediate for the same reason as the bid lock
+                // and gross_quote above — the original lock is already
+                // bounded to u64, so this product narrows back cleanly.
+                let locked_for_this_fill: u64 = (price as u128)
+                    .checked_mul(fill.fill_quantity as u128)
+                    .ok_or(ErrorCode::NumericalOverflow)?
+                    .try_into()
+                    .map_err(|_| error!(ErrorCode::NumericalOverflow))?;
                 let rebate: u64 = locked_for_this_fill
                     .checked_sub(gross_quote)
                     .ok_or(ErrorCode::NumericalOverflow)?;
@@ -352,7 +378,13 @@ pub fn handle_place_order<'info>(
     order.side = side;
     order.price = price;
     order.original_quantity = quantity;
-    order.filled_quantity = quantity.saturating_sub(taker_remaining);
+    // checked_sub, not saturating_sub: a silent clamp on filled_quantity
+    // would be a real correctness bug (the matching engine should never
+    // hand us a remainder larger than the original). saturating_* belongs
+    // on cosmetic/UX paths, not on a field the matching engine relies on.
+    order.filled_quantity = quantity
+        .checked_sub(taker_remaining)
+        .ok_or(ErrorCode::NumericalOverflow)?;
     order.timestamp = timestamp;
     order.bump = context.bumps.order;
 

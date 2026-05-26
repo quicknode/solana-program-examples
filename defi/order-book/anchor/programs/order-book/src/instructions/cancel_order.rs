@@ -27,10 +27,16 @@ pub fn handle_cancel_order(context: Context<CancelOrder>) -> Result<()> {
         let market_user = &mut context.accounts.market_user;
         match order.side {
             OrderSide::Bid => {
-                let quote_amount = order
-                    .price
-                    .checked_mul(remaining)
-                    .ok_or(ErrorCode::NumericalOverflow)?;
+                // u128 intermediate: the lock was originally taken on a
+                // u64 quote balance, so price * remaining must fit u64
+                // — but the multiplication itself can transiently exceed
+                // u64. Mirror the same pattern as place_order: widen,
+                // multiply, narrow.
+                let quote_amount: u64 = (order.price as u128)
+                    .checked_mul(remaining as u128)
+                    .ok_or(ErrorCode::NumericalOverflow)?
+                    .try_into()
+                    .map_err(|_| error!(ErrorCode::NumericalOverflow))?;
                 market_user.unsettled_quote = market_user
                     .unsettled_quote
                     .checked_add(quote_amount)
