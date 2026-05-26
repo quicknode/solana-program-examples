@@ -476,8 +476,10 @@ resting order.
   `OrderBookFull`
 - Integer math throughout: every multiplication uses
   `checked_mul`; every addition on balances uses `checked_add`;
-  fee division uses `u128` to avoid intermediate overflow →
-  `NumericalOverflow`
+  every product of two `u64` money values is computed in `u128`
+  to avoid intermediate overflow and then narrowed back to `u64`
+  with `try_into` → `NumericalOverflow`. After each per-fill fee
+  calculation an invariant check enforces `fee_quote <= gross_quote`.
 
 **Token movements (up front):**
 
@@ -621,6 +623,13 @@ mint checks on token accounts, PDA seeds).
 
 Both transfers are CPIs to the Token program, signed by the
 `Market` PDA using seeds `["market", base_mint, quote_mint, bump]`.
+
+Order of operations is checks-effects-interactions: the
+`unsettled_*` counters are zeroed *before* the transfer CPIs, then
+the transfers run. Solana CPIs aren't reentrant in the EVM sense,
+but zeroing state first means no future token-program extension or
+transfer hook can observe stale unsettled balances mid-CPI and
+double-withdraw.
 
 **State changes:**
 
