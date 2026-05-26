@@ -10,8 +10,17 @@ pub fn handle_settle_funds(context: Context<SettleFunds>) -> Result<()> {
     let market_user = &mut context.accounts.market_user;
     let market = &context.accounts.market;
 
+    // Snapshot the amounts the user is owed, then zero the counters
+    // BEFORE the token transfers. Checks-effects-interactions: even though
+    // Solana CPIs don't reenter in the EVM sense, if either transfer ever
+    // gained a path that called back into this program (custom token
+    // hooks, transfer-fee extensions with side effects, ...), having stale
+    // unsettled_* values readable mid-transfer would let a re-entry double-
+    // withdraw. Updating state first makes that class of bug impossible.
     let base_amount = market_user.unsettled_base;
     let quote_amount = market_user.unsettled_quote;
+    market_user.unsettled_base = 0;
+    market_user.unsettled_quote = 0;
 
     // Seeds to sign as the market PDA (the authority of both vaults). Built
     // once and reused for the two possible transfers.
@@ -39,7 +48,6 @@ pub fn handle_settle_funds(context: Context<SettleFunds>) -> Result<()> {
             base_amount,
             context.accounts.base_mint.decimals,
         )?;
-        market_user.unsettled_base = 0;
     }
 
     if quote_amount > 0 {
@@ -57,7 +65,6 @@ pub fn handle_settle_funds(context: Context<SettleFunds>) -> Result<()> {
             quote_amount,
             context.accounts.quote_mint.decimals,
         )?;
-        market_user.unsettled_quote = 0;
     }
 
     Ok(())
