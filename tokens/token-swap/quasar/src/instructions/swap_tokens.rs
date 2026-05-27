@@ -7,8 +7,6 @@ use {
     quasar_spl::prelude::*,
 };
 
-/// Accounts for swapping tokens using the constant-product formula.
-///
 /// `pool_config` is mutable because each swap accumulates the admin's slice
 /// of the trading fee into `admin_fees_owed_a` / `admin_fees_owed_b`.
 #[derive(Accounts)]

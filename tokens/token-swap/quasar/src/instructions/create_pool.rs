@@ -7,16 +7,14 @@ use {
     quasar_spl::prelude::*,
 };
 
-/// Accounts for creating a new liquidity pool.
+/// Seeds:
+/// - `pool_config = [config, mint_a, mint_b]`
+/// - `pool_authority = [b"authority", config, mint_a, mint_b]`
+/// - `liquidity_provider_mint = [b"liquidity", config, mint_a, mint_b]`
 ///
-/// Seeds are based on account addresses: pool_config = [config, mint_a, mint_b],
-/// pool_authority = [b"authority", config, mint_a, mint_b],
-/// liquidity_provider_mint = [b"liquidity", config, mint_a, mint_b].
-///
-/// Note: post-PR-#195 the seed prefix is always emitted first by
-/// `#[derive(Seeds)]`, so pool_authority/liquidity_provider_mint now derive with
-/// the literal prefix in front (different on-chain addresses than the
-/// Anchor sibling, but internally consistent within this program).
+/// `pool_authority` and `liquidity_provider_mint` derive at different
+/// on-chain addresses than the Anchor sibling because `#[derive(Seeds)]`
+/// emits the literal prefix first. Internally consistent within this program.
 #[derive(Accounts)]
 pub struct CreatePoolAccounts {
     #[account(address = ConfigPda::seeds())]

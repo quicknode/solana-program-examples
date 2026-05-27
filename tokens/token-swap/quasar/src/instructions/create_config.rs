@@ -3,10 +3,8 @@ use {
     quasar_lang::prelude::*,
 };
 
-/// Accounts for creating the singleton AMM config.
-///
 /// `Config` is a global singleton: one account per deployed program, derived
-/// at the fixed seed `b"config"`. There is no `id` parameter \u2014 calling this
+/// at the fixed seed `b"config"`. There is no `id` parameter — calling this
 /// twice for the same program will fail because the account already exists.
 #[derive(Accounts)]
 pub struct CreateConfigAccounts {

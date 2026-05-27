@@ -7,7 +7,6 @@ use {
     quasar_spl::prelude::*,
 };
 
-/// Accounts for withdrawing liquidity from a pool.
 #[derive(Accounts)]
 pub struct WithdrawLiquidityAccounts {
     #[account(address = ConfigPda::seeds())]

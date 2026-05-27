@@ -7,10 +7,8 @@ use {
     quasar_spl::prelude::*,
 };
 
-/// Accounts for depositing liquidity into a pool.
-///
-/// Seeds reference the config, mint_a, and mint_b account addresses — these
-/// must be provided as separate account inputs.
+/// Seeds reference the `config`, `mint_a`, and `mint_b` account addresses,
+/// which must be provided as separate account inputs.
 #[derive(Accounts)]
 pub struct DepositLiquidityAccounts {
     #[account(address = ConfigPda::seeds())]

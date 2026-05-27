@@ -7,9 +7,6 @@ use {
     quasar_spl::prelude::*,
 };
 
-/// Accounts for sweeping the admin's accumulated trading-fee claim out of a
-/// pool.
-///
 /// Authorisation: `admin` is a `Signer` and must match `Config.admin`. We
 /// enforce that explicitly in the handler since quasar doesn't have an
 /// Anchor-style `has_one` constraint.
