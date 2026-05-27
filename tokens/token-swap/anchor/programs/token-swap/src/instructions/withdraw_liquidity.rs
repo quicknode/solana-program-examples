@@ -118,7 +118,7 @@ pub fn handle_withdraw_liquidity(
             Burn {
                 mint: context.accounts.liquidity_provider_mint.to_account_info(),
                 from: context.accounts.liquidity_provider_token.to_account_info(),
-                authority: context.accounts.depositor.to_account_info(),
+                authority: context.accounts.withdrawer.to_account_info(),
             },
         ),
         amount,
@@ -159,8 +159,7 @@ pub struct WithdrawLiquidityAccounts<'info> {
     )]
     pub pool_authority: AccountInfo<'info>,
 
-    /// The account paying for all rents
-    pub depositor: Signer<'info>,
+    pub withdrawer: Signer<'info>,
 
     #[account(
         mut,
@@ -197,7 +196,7 @@ pub struct WithdrawLiquidityAccounts<'info> {
     #[account(
         mut,
         associated_token::mint = liquidity_provider_mint,
-        associated_token::authority = depositor,
+        associated_token::authority = withdrawer,
     )]
     pub liquidity_provider_token: Box<Account<'info, TokenAccount>>,
 
@@ -205,7 +204,7 @@ pub struct WithdrawLiquidityAccounts<'info> {
         init_if_needed,
         payer = payer,
         associated_token::mint = mint_a,
-        associated_token::authority = depositor,
+        associated_token::authority = withdrawer,
     )]
     pub token_a: Box<Account<'info, TokenAccount>>,
 
@@ -213,7 +212,7 @@ pub struct WithdrawLiquidityAccounts<'info> {
         init_if_needed,
         payer = payer,
         associated_token::mint = mint_b,
-        associated_token::authority = depositor,
+        associated_token::authority = withdrawer,
     )]
     pub token_b: Box<Account<'info, TokenAccount>>,
 

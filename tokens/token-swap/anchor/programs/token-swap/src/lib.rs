@@ -5,7 +5,6 @@ mod errors;
 mod instructions;
 mod state;
 
-// Set the correct key here
 declare_id!("GahM6PrXesrBkHiGJ5no4EskLNnVBCaSwVKbM4UtzyK6");
 
 #[program]

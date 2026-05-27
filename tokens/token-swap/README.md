@@ -64,7 +64,10 @@ programs/token-swap/src/
 │   ├── swap_tokens.rs
 │   └── withdraw_liquidity.rs
 ├── lib.rs
-└── state.rs
+└── state/
+    ├── config.rs
+    ├── mod.rs
+    └── pool_config.rs
 ```
 
 ## State

@@ -7,7 +7,7 @@ use anchor_lang::prelude::*;
 /// practice (e.g. Phoenix and Raydium ship one program per market/AMM, so the
 /// program-level config is global by construction). Parameterising the config
 /// by an `id` was leftover complexity from the original example; removing it
-/// makes the on-chain layout simpler and matches realistic deployment.
+/// makes the onchain layout simpler and matches realistic deployment.
 #[account]
 #[derive(Default, InitSpace)]
 pub struct Config {

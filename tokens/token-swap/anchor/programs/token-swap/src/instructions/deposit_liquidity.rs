@@ -81,23 +81,25 @@ pub fn handle_deposit_liquidity(
         // matches Uniswap V2.
         let amount_b_required = (amount_a as u128)
             .checked_mul(effective_pool_b as u128)
-            .unwrap()
+            .ok_or(AmmError::MathOverflow)?
             .checked_div(effective_pool_a as u128)
-            .unwrap();
+            .ok_or(AmmError::MathOverflow)?;
         if amount_b_required <= amount_b as u128 {
             // The depositor's `amount_b` is enough to cover the ratio; use
             // the full `amount_a` and clamp `amount_b` down.
-            let amount_b_required = u64::try_from(amount_b_required).unwrap();
+            let amount_b_required =
+                u64::try_from(amount_b_required).map_err(|_| AmmError::MathOverflow)?;
             (amount_a, amount_b_required)
         } else {
             // `amount_b` is the binding side; use the full `amount_b` and
             // clamp `amount_a` down to what the ratio needs.
             let amount_a_required = (amount_b as u128)
                 .checked_mul(effective_pool_a as u128)
-                .unwrap()
+                .ok_or(AmmError::MathOverflow)?
                 .checked_div(effective_pool_b as u128)
-                .unwrap();
-            let amount_a_required = u64::try_from(amount_a_required).unwrap();
+                .ok_or(AmmError::MathOverflow)?;
+            let amount_a_required =
+                u64::try_from(amount_a_required).map_err(|_| AmmError::MathOverflow)?;
             (amount_a_required, amount_b)
         }
     };
@@ -165,7 +167,7 @@ pub fn handle_deposit_liquidity(
     }
 
     // Depositor's slippage protection: the caller passes the lowest LP
-    // amount they're willing to receive (computed off-chain at quote time).
+    // amount they're willing to receive (computed offchain at quote time).
     // If the pool ratio shifted between quoting and landing, the clamp will
     // have used a smaller pair of amounts and the LP-mint amount drops.
     // Revert rather than mint fewer LP tokens than the caller expects.

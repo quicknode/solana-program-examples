@@ -27,8 +27,6 @@ pub fn handle_swap_tokens(
     if !input_is_token_a && input_amount > context.accounts.token_b.amount {
         return err!(AmmError::InsufficientBalance);
     }
-    let input = input_amount;
-
     // Split the trading fee between LPs and the admin. The full fee is taken
     // off the input first (this is the standard Uniswap V2 mechanic). The
     // admin's slice is *not* transferred immediately - it accumulates as a
@@ -41,7 +39,7 @@ pub fn handle_swap_tokens(
     // protocol-favouring (the trader pays slightly more fee on rounding,
     // not less).
     let config = &context.accounts.config;
-    let fee_amount = (input as u128)
+    let fee_amount = (input_amount as u128)
         .checked_mul(config.fee as u128)
         .ok_or(AmmError::MathOverflow)?
         .checked_div(10_000)
@@ -61,7 +59,7 @@ pub fn handle_swap_tokens(
     // The LP portion stays in the pool reserves (as today - it's "less output
     // for the same input"), boosting the LP curve. The admin portion is
     // accounted for separately so it does *not* grow LP yield.
-    let taxed_input = input.checked_sub(fee_amount).ok_or(AmmError::MathOverflow)?;
+    let taxed_input = input_amount.checked_sub(fee_amount).ok_or(AmmError::MathOverflow)?;
 
     // Effective reserves = raw vault balance - admin's accumulated claim.
     // The constant-product curve runs on the LP-claimable portion only, so
@@ -100,7 +98,7 @@ pub fn handle_swap_tokens(
     let output: u64 = u64::try_from(output_u128).map_err(|_| AmmError::MathOverflow)?;
 
     // Trader's slippage protection: the caller passes the lowest output
-    // they're willing to accept (computed off-chain at quote time). If the
+    // they're willing to accept (computed offchain at quote time). If the
     // pool shifted between quoting and landing, we revert rather than fill
     // at the worse rate.
     require!(
@@ -143,7 +141,7 @@ pub fn handle_swap_tokens(
                     authority: context.accounts.trader.to_account_info(),
                 },
             ),
-            input,
+            input_amount,
             context.accounts.mint_a.decimals,
         )?;
         token::transfer_checked(
@@ -197,17 +195,17 @@ pub fn handle_swap_tokens(
         pool_config.admin_fees_owed_a = pool_config
             .admin_fees_owed_a
             .checked_add(admin_portion)
-            .unwrap();
+            .ok_or(AmmError::MathOverflow)?;
     } else {
         pool_config.admin_fees_owed_b = pool_config
             .admin_fees_owed_b
             .checked_add(admin_portion)
-            .unwrap();
+            .ok_or(AmmError::MathOverflow)?;
     }
 
     msg!(
         "Traded {} tokens ({} after fees) for {} (admin slice {})",
-        input,
+        input_amount,
         taxed_input,
         output,
         admin_portion

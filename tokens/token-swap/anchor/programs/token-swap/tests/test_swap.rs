@@ -1093,7 +1093,7 @@ fn test_lp_mint_proportional_to_share_of_pool() {
 }
 
 /// Test G: LP-mint correctness after a swap has shifted the pool ratio. The
-/// effective reserves are no longer the seeded ratio; LP minting must use
+/// effective reserves differ from the seeded ratio; LP minting must use
 /// the post-swap effective reserves (vault balance minus admin fees) to
 /// keep shares honest.
 #[test]
@@ -1108,7 +1108,7 @@ fn test_lp_mint_after_swap_uses_effective_reserves() {
     let swap_in = 1_000_000u64;
     swap_a_to_b(&mut ts, swap_in);
 
-    // Read post-swap effective reserves directly from on-chain state.
+    // Read post-swap effective reserves directly from onchain state.
     let pool_a_after_swap = get_token_account_balance(&ts.svm, &ts.pool_a).unwrap();
     let pool_b_after_swap = get_token_account_balance(&ts.svm, &ts.pool_b).unwrap();
     let admin_owed_a: u64 = {

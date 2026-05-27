@@ -61,14 +61,21 @@ pub enum AmmError {
     // (rather than silently no-op'ing) gives the admin a clear signal that the
     // call was wasted, and avoids the litesvm gotcha where two byte-identical
     // claim txs share a signature and the runtime rejects the second as
-    // `AlreadyProcessed`. Callers should check the accumulators off-chain
+    // `AlreadyProcessed`. Callers should check the accumulators offchain
     // before submitting a claim.
     #[msg("No admin fees to claim")]
     NothingToClaim,
 
     // Returned by arithmetic helpers when a checked_* operation overflows or
     // underflows. We treat these as hard failures rather than masking them
-    // with `.unwrap()` so the on-chain logs name the failure mode.
+    // with `.unwrap()` so the onchain logs name the failure mode.
     #[msg("Math overflow")]
     MathOverflow,
+
+    // Returned by `create_pool` when `mint_a >= mint_b`. Requiring a strict
+    // ascending order ensures each (mint_a, mint_b) pair has exactly one
+    // canonical pool PDA — without it, a (X, Y) pool and a (Y, X) pool would
+    // both be valid, fragmenting liquidity.
+    #[msg("mint_a must be less than mint_b for canonical pool ordering")]
+    InvalidMintOrder,
 }

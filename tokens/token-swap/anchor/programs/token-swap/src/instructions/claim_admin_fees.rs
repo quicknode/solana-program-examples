@@ -24,7 +24,7 @@ pub fn handle_claim_admin_fees(context: Context<ClaimAdminFeesAccounts>) -> Resu
     let owed_b = context.accounts.pool_config.admin_fees_owed_b;
 
     // Revert if there's nothing to claim. Two reasons:
-    //   1. It tells the admin off-chain that the call did nothing - silent
+    //   1. It tells the admin offchain that the call did nothing - silent
     //      no-ops mask wasted txs.
     //   2. Under litesvm, two byte-identical claim txs (same payer, same
     //      accounts, same recent_blockhash) produce the same signature and
@@ -81,7 +81,7 @@ pub fn handle_claim_admin_fees(context: Context<ClaimAdminFeesAccounts>) -> Resu
     }
 
     // Reset the accumulators. Done after the transfers so a failed CPI
-    // leaves the on-chain bookkeeping intact (the admin can retry).
+    // leaves the onchain bookkeeping intact (the admin can retry).
     let pool_config = &mut context.accounts.pool_config;
     pool_config.admin_fees_owed_a = 0;
     pool_config.admin_fees_owed_b = 0;
