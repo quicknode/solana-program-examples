@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::{
     associated_token::AssociatedToken,
-    token::{self, Mint, Token, TokenAccount, TransferChecked},
+    token_interface::{self, Mint, TokenAccount, TokenInterface, TransferChecked},
 };
 
 use crate::{
@@ -117,21 +117,42 @@ pub fn handle_swap_tokens(
         .checked_mul(effective_pool_b as u128)
         .ok_or(AmmError::MathOverflow)?;
 
-    // Transfer tokens to the pool
+    // Pre-copy seed bytes before the mutable borrow of pool_config below.
+    // to_bytes() returns an owned [u8; 32] copy so there are no borrow conflicts.
     let authority_bump = context.bumps.pool_authority;
+    let config_bytes = context.accounts.pool_config.config.to_bytes();
+    let mint_a_bytes = context.accounts.mint_a.key().to_bytes();
+    let mint_b_bytes = context.accounts.mint_b.key().to_bytes();
+
+    // Effects: update admin_fees before CPIs (Checks-Effects-Interactions).
+    // The fee always comes off the input side, so the admin's claim accumulates
+    // in the same token.
+    {
+        let pool_config = &mut context.accounts.pool_config;
+        if input_is_token_a {
+            pool_config.admin_fees_owed_a = pool_config
+                .admin_fees_owed_a
+                .checked_add(admin_portion)
+                .ok_or(AmmError::MathOverflow)?;
+        } else {
+            pool_config.admin_fees_owed_b = pool_config
+                .admin_fees_owed_b
+                .checked_add(admin_portion)
+                .ok_or(AmmError::MathOverflow)?;
+        }
+    }
+
+    // Interactions: CPIs after state has been updated.
     let authority_seeds = &[
-        &context.accounts.pool_config.config.to_bytes(),
-        &context.accounts.mint_a.key().to_bytes(),
-        &context.accounts.mint_b.key().to_bytes(),
+        config_bytes.as_ref(),
+        mint_a_bytes.as_ref(),
+        mint_b_bytes.as_ref(),
         AUTHORITY_SEED,
         &[authority_bump],
     ];
     let signer_seeds = &[&authority_seeds[..]];
-    // Use transfer_checked so the mint + decimals are verified at the token
-    // program. This protects callers from decimal-mismatch bugs and is the
-    // modern recommended path.
     if input_is_token_a {
-        token::transfer_checked(
+        token_interface::transfer_checked(
             CpiContext::new(
                 context.accounts.token_program.key(),
                 TransferChecked {
@@ -144,7 +165,7 @@ pub fn handle_swap_tokens(
             input_amount,
             context.accounts.mint_a.decimals,
         )?;
-        token::transfer_checked(
+        token_interface::transfer_checked(
             CpiContext::new_with_signer(
                 context.accounts.token_program.key(),
                 TransferChecked {
@@ -159,7 +180,7 @@ pub fn handle_swap_tokens(
             context.accounts.mint_b.decimals,
         )?;
     } else {
-        token::transfer_checked(
+        token_interface::transfer_checked(
             CpiContext::new_with_signer(
                 context.accounts.token_program.key(),
                 TransferChecked {
@@ -173,7 +194,7 @@ pub fn handle_swap_tokens(
             output,
             context.accounts.mint_a.decimals,
         )?;
-        token::transfer_checked(
+        token_interface::transfer_checked(
             CpiContext::new(
                 context.accounts.token_program.key(),
                 TransferChecked {
@@ -186,21 +207,6 @@ pub fn handle_swap_tokens(
             output,
             context.accounts.mint_b.decimals,
         )?;
-    }
-
-    // The fee always comes off the *input* side, so the admin's claim
-    // accumulates in the same token they paid the fee in.
-    let pool_config = &mut context.accounts.pool_config;
-    if input_is_token_a {
-        pool_config.admin_fees_owed_a = pool_config
-            .admin_fees_owed_a
-            .checked_add(admin_portion)
-            .ok_or(AmmError::MathOverflow)?;
-    } else {
-        pool_config.admin_fees_owed_b = pool_config
-            .admin_fees_owed_b
-            .checked_add(admin_portion)
-            .ok_or(AmmError::MathOverflow)?;
     }
 
     msg!(
@@ -272,46 +278,50 @@ pub struct SwapTokensAccounts<'info> {
     /// The account doing the swap
     pub trader: Signer<'info>,
 
-    pub mint_a: Box<Account<'info, Mint>>,
+    pub mint_a: Box<InterfaceAccount<'info, Mint>>,
 
-    pub mint_b: Box<Account<'info, Mint>>,
+    pub mint_b: Box<InterfaceAccount<'info, Mint>>,
 
     #[account(
         mut,
         associated_token::mint = mint_a,
         associated_token::authority = pool_authority,
+        associated_token::token_program = token_program,
     )]
-    pub pool_a: Box<Account<'info, TokenAccount>>,
+    pub pool_a: Box<InterfaceAccount<'info, TokenAccount>>,
 
     #[account(
         mut,
         associated_token::mint = mint_b,
         associated_token::authority = pool_authority,
+        associated_token::token_program = token_program,
     )]
-    pub pool_b: Box<Account<'info, TokenAccount>>,
+    pub pool_b: Box<InterfaceAccount<'info, TokenAccount>>,
 
     #[account(
         init_if_needed,
         payer = payer,
         associated_token::mint = mint_a,
         associated_token::authority = trader,
+        associated_token::token_program = token_program,
     )]
-    pub token_a: Box<Account<'info, TokenAccount>>,
+    pub token_a: Box<InterfaceAccount<'info, TokenAccount>>,
 
     #[account(
         init_if_needed,
         payer = payer,
         associated_token::mint = mint_b,
         associated_token::authority = trader,
+        associated_token::token_program = token_program,
     )]
-    pub token_b: Box<Account<'info, TokenAccount>>,
+    pub token_b: Box<InterfaceAccount<'info, TokenAccount>>,
 
     /// The account paying for all rents
     #[account(mut)]
     pub payer: Signer<'info>,
 
     /// Solana ecosystem accounts
-    pub token_program: Program<'info, Token>,
+    pub token_program: Interface<'info, TokenInterface>,
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub system_program: Program<'info, System>,
 }

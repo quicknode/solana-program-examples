@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::{
     associated_token::AssociatedToken,
-    token::{self, Burn, Mint, Token, TokenAccount, TransferChecked},
+    token_interface::{self, Burn, Mint, TokenAccount, TokenInterface, TransferChecked},
 };
 
 use crate::{
@@ -80,7 +80,7 @@ pub fn handle_withdraw_liquidity(
     );
 
     // transfer_checked verifies the mint + decimals at the token program.
-    token::transfer_checked(
+    token_interface::transfer_checked(
         CpiContext::new_with_signer(
             context.accounts.token_program.key(),
             TransferChecked {
@@ -95,7 +95,7 @@ pub fn handle_withdraw_liquidity(
         context.accounts.mint_a.decimals,
     )?;
 
-    token::transfer_checked(
+    token_interface::transfer_checked(
         CpiContext::new_with_signer(
             context.accounts.token_program.key(),
             TransferChecked {
@@ -112,7 +112,7 @@ pub fn handle_withdraw_liquidity(
 
     // Burn the liquidity tokens
     // It will fail if the amount is invalid
-    token::burn(
+    token_interface::burn(
         CpiContext::new(
             context.accounts.token_program.key(),
             Burn {
@@ -171,57 +171,62 @@ pub struct WithdrawLiquidityAccounts<'info> {
         ],
         bump,
     )]
-    pub liquidity_provider_mint: Box<Account<'info, Mint>>,
+    pub liquidity_provider_mint: Box<InterfaceAccount<'info, Mint>>,
 
     #[account(mut)]
-    pub mint_a: Box<Account<'info, Mint>>,
+    pub mint_a: Box<InterfaceAccount<'info, Mint>>,
 
     #[account(mut)]
-    pub mint_b: Box<Account<'info, Mint>>,
+    pub mint_b: Box<InterfaceAccount<'info, Mint>>,
 
     #[account(
         mut,
         associated_token::mint = mint_a,
         associated_token::authority = pool_authority,
+        associated_token::token_program = token_program,
     )]
-    pub pool_a: Box<Account<'info, TokenAccount>>,
+    pub pool_a: Box<InterfaceAccount<'info, TokenAccount>>,
 
     #[account(
         mut,
         associated_token::mint = mint_b,
         associated_token::authority = pool_authority,
+        associated_token::token_program = token_program,
     )]
-    pub pool_b: Box<Account<'info, TokenAccount>>,
+    pub pool_b: Box<InterfaceAccount<'info, TokenAccount>>,
 
     #[account(
         mut,
         associated_token::mint = liquidity_provider_mint,
         associated_token::authority = withdrawer,
+        associated_token::token_program = token_program,
     )]
-    pub liquidity_provider_token: Box<Account<'info, TokenAccount>>,
+    pub liquidity_provider_token: Box<InterfaceAccount<'info, TokenAccount>>,
 
     #[account(
         init_if_needed,
         payer = payer,
         associated_token::mint = mint_a,
         associated_token::authority = withdrawer,
+        associated_token::token_program = token_program,
     )]
-    pub token_a: Box<Account<'info, TokenAccount>>,
+    pub token_a: Box<InterfaceAccount<'info, TokenAccount>>,
 
     #[account(
         init_if_needed,
         payer = payer,
         associated_token::mint = mint_b,
         associated_token::authority = withdrawer,
+        associated_token::token_program = token_program,
     )]
-    pub token_b: Box<Account<'info, TokenAccount>>,
+    pub token_b: Box<InterfaceAccount<'info, TokenAccount>>,
 
     /// The account paying for all rents
     #[account(mut)]
     pub payer: Signer<'info>,
 
     /// Solana ecosystem accounts
-    pub token_program: Program<'info, Token>,
+    pub token_program: Interface<'info, TokenInterface>,
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub system_program: Program<'info, System>,
 }

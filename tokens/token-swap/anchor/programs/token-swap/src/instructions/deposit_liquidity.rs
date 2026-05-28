@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::{
     associated_token::AssociatedToken,
-    token::{self, Mint, MintTo, Token, TokenAccount, TransferChecked},
+    token_interface::{self, Mint, MintTo, TokenAccount, TokenInterface, TransferChecked},
 };
 
 use crate::{
@@ -182,7 +182,7 @@ pub fn handle_deposit_liquidity(
     // Transfer tokens to the pool using transfer_checked. transfer_checked
     // includes the mint and decimals in the CPI, which guards callers against
     // decimal-mismatch bugs (and is the modern recommended path).
-    token::transfer_checked(
+    token_interface::transfer_checked(
         CpiContext::new(
             context.accounts.token_program.key(),
             TransferChecked {
@@ -195,7 +195,7 @@ pub fn handle_deposit_liquidity(
         amount_a,
         context.accounts.mint_a.decimals,
     )?;
-    token::transfer_checked(
+    token_interface::transfer_checked(
         CpiContext::new(
             context.accounts.token_program.key(),
             TransferChecked {
@@ -219,7 +219,7 @@ pub fn handle_deposit_liquidity(
         &[authority_bump],
     ];
     let signer_seeds = &[&authority_seeds[..]];
-    token::mint_to(
+    token_interface::mint_to(
         CpiContext::new_with_signer(
             context.accounts.token_program.key(),
             MintTo {
@@ -274,54 +274,59 @@ pub struct DepositLiquidityAccounts<'info> {
         ],
         bump,
     )]
-    pub liquidity_provider_mint: Box<Account<'info, Mint>>,
+    pub liquidity_provider_mint: Box<InterfaceAccount<'info, Mint>>,
 
-    pub mint_a: Box<Account<'info, Mint>>,
+    pub mint_a: Box<InterfaceAccount<'info, Mint>>,
 
-    pub mint_b: Box<Account<'info, Mint>>,
+    pub mint_b: Box<InterfaceAccount<'info, Mint>>,
 
     #[account(
         mut,
         associated_token::mint = mint_a,
         associated_token::authority = pool_authority,
+        associated_token::token_program = token_program,
     )]
-    pub pool_a: Box<Account<'info, TokenAccount>>,
+    pub pool_a: Box<InterfaceAccount<'info, TokenAccount>>,
 
     #[account(
         mut,
         associated_token::mint = mint_b,
         associated_token::authority = pool_authority,
+        associated_token::token_program = token_program,
     )]
-    pub pool_b: Box<Account<'info, TokenAccount>>,
+    pub pool_b: Box<InterfaceAccount<'info, TokenAccount>>,
 
     #[account(
         init_if_needed,
         payer = payer,
         associated_token::mint = liquidity_provider_mint,
         associated_token::authority = depositor,
+        associated_token::token_program = token_program,
     )]
-    pub liquidity_provider_token: Box<Account<'info, TokenAccount>>,
+    pub liquidity_provider_token: Box<InterfaceAccount<'info, TokenAccount>>,
 
     #[account(
         mut,
         associated_token::mint = mint_a,
         associated_token::authority = depositor,
+        associated_token::token_program = token_program,
     )]
-    pub token_a: Box<Account<'info, TokenAccount>>,
+    pub token_a: Box<InterfaceAccount<'info, TokenAccount>>,
 
     #[account(
         mut,
         associated_token::mint = mint_b,
         associated_token::authority = depositor,
+        associated_token::token_program = token_program,
     )]
-    pub token_b: Box<Account<'info, TokenAccount>>,
+    pub token_b: Box<InterfaceAccount<'info, TokenAccount>>,
 
     /// The account paying for all rents
     #[account(mut)]
     pub payer: Signer<'info>,
 
     /// Solana ecosystem accounts
-    pub token_program: Program<'info, Token>,
+    pub token_program: Interface<'info, TokenInterface>,
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub system_program: Program<'info, System>,
 }

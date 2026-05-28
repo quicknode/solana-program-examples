@@ -1,5 +1,5 @@
 use anchor_lang::prelude::*;
-use anchor_spl::token::{self, Mint, Token, TokenAccount, TransferChecked};
+use anchor_spl::token_interface::{self, Mint, TokenAccount, TokenInterface, TransferChecked};
 
 use crate::{
     constants::{AUTHORITY_SEED, CONFIG_SEED},
@@ -34,19 +34,32 @@ pub fn handle_claim_admin_fees(context: Context<ClaimAdminFeesAccounts>) -> Resu
         return err!(AmmError::NothingToClaim);
     }
 
+    // Pre-copy seed bytes before the mutable borrow of pool_config.
     let authority_bump = context.bumps.pool_authority;
+    let config_bytes = context.accounts.pool_config.config.to_bytes();
+    let mint_a_bytes = context.accounts.mint_a.key().to_bytes();
+    let mint_b_bytes = context.accounts.mint_b.key().to_bytes();
+
+    // Effects: zero the accumulators before the CPIs (Checks-Effects-Interactions).
+    // If a CPI fails the whole transaction reverts, so the state reset is safe.
+    {
+        let pool_config = &mut context.accounts.pool_config;
+        pool_config.admin_fees_owed_a = 0;
+        pool_config.admin_fees_owed_b = 0;
+    }
+
+    // Interactions: transfer the owed fees out of the pool reserves.
     let authority_seeds = &[
-        &context.accounts.pool_config.config.to_bytes(),
-        &context.accounts.mint_a.key().to_bytes(),
-        &context.accounts.mint_b.key().to_bytes(),
+        config_bytes.as_ref(),
+        mint_a_bytes.as_ref(),
+        mint_b_bytes.as_ref(),
         AUTHORITY_SEED,
         &[authority_bump],
     ];
     let signer_seeds = &[&authority_seeds[..]];
 
-    // Transfer the owed token-A fees from the pool reserve to the admin.
     if owed_a > 0 {
-        token::transfer_checked(
+        token_interface::transfer_checked(
             CpiContext::new_with_signer(
                 context.accounts.token_program.key(),
                 TransferChecked {
@@ -62,9 +75,8 @@ pub fn handle_claim_admin_fees(context: Context<ClaimAdminFeesAccounts>) -> Resu
         )?;
     }
 
-    // Transfer the owed token-B fees from the pool reserve to the admin.
     if owed_b > 0 {
-        token::transfer_checked(
+        token_interface::transfer_checked(
             CpiContext::new_with_signer(
                 context.accounts.token_program.key(),
                 TransferChecked {
@@ -79,12 +91,6 @@ pub fn handle_claim_admin_fees(context: Context<ClaimAdminFeesAccounts>) -> Resu
             context.accounts.mint_b.decimals,
         )?;
     }
-
-    // Reset the accumulators. Done after the transfers so a failed CPI
-    // leaves the onchain bookkeeping intact (the admin can retry).
-    let pool_config = &mut context.accounts.pool_config;
-    pool_config.admin_fees_owed_a = 0;
-    pool_config.admin_fees_owed_b = 0;
 
     msg!("Admin swept fees: {} of mint_a, {} of mint_b", owed_a, owed_b);
 
@@ -126,9 +132,9 @@ pub struct ClaimAdminFeesAccounts<'info> {
     )]
     pub pool_authority: AccountInfo<'info>,
 
-    pub mint_a: Box<Account<'info, Mint>>,
+    pub mint_a: Box<InterfaceAccount<'info, Mint>>,
 
-    pub mint_b: Box<Account<'info, Mint>>,
+    pub mint_b: Box<InterfaceAccount<'info, Mint>>,
 
     /// The pool's token-A reserve. The admin's owed token-A fees are paid out
     /// of this account.
@@ -136,8 +142,9 @@ pub struct ClaimAdminFeesAccounts<'info> {
         mut,
         associated_token::mint = mint_a,
         associated_token::authority = pool_authority,
+        associated_token::token_program = token_program,
     )]
-    pub pool_a: Box<Account<'info, TokenAccount>>,
+    pub pool_a: Box<InterfaceAccount<'info, TokenAccount>>,
 
     /// The pool's token-B reserve. The admin's owed token-B fees are paid out
     /// of this account.
@@ -145,8 +152,9 @@ pub struct ClaimAdminFeesAccounts<'info> {
         mut,
         associated_token::mint = mint_b,
         associated_token::authority = pool_authority,
+        associated_token::token_program = token_program,
     )]
-    pub pool_b: Box<Account<'info, TokenAccount>>,
+    pub pool_b: Box<InterfaceAccount<'info, TokenAccount>>,
 
     /// Must match the address stored in `Config.admin` (enforced by
     /// `has_one = admin` above).
@@ -159,16 +167,18 @@ pub struct ClaimAdminFeesAccounts<'info> {
         mut,
         token::mint = mint_a,
         token::authority = admin,
+        token::token_program = token_program,
     )]
-    pub admin_token_a: Box<Account<'info, TokenAccount>>,
+    pub admin_token_a: Box<InterfaceAccount<'info, TokenAccount>>,
 
     /// Admin's token-B receiving account. Same constraints as `admin_token_a`.
     #[account(
         mut,
         token::mint = mint_b,
         token::authority = admin,
+        token::token_program = token_program,
     )]
-    pub admin_token_b: Box<Account<'info, TokenAccount>>,
+    pub admin_token_b: Box<InterfaceAccount<'info, TokenAccount>>,
 
-    pub token_program: Program<'info, Token>,
+    pub token_program: Interface<'info, TokenInterface>,
 }
