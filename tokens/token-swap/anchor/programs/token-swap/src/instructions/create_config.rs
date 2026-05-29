@@ -7,7 +7,7 @@ use crate::{
 };
 
 pub fn handle_create_config(
-    mut context: Context<CreateConfigAccounts>,
+    context: Context<CreateConfigAccountConstraints>,
     fee: u16,
     admin_share_bps: u16,
 ) -> Result<()> {
@@ -23,7 +23,7 @@ pub fn handle_create_config(
 
 #[derive(Accounts)]
 #[instruction(fee: u16, admin_share_bps: u16)]
-pub struct CreateConfigAccounts<'info> {
+pub struct CreateConfigAccountConstraints<'info> {
     #[account(
         init,
         payer = payer,
@@ -37,7 +37,7 @@ pub struct CreateConfigAccounts<'info> {
 
     /// The admin of the AMM
     /// CHECK: Read only, delegatable creation
-    pub admin: AccountInfo<'info>,
+    pub admin: UncheckedAccount<'info>,
 
     /// The account paying for all rents
     #[account(mut)]

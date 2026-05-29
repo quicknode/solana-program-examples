@@ -11,7 +11,7 @@ use crate::{
 };
 
 pub fn handle_withdraw_liquidity(
-    context: Context<WithdrawLiquidityAccounts>,
+    context: Context<WithdrawLiquidityAccountConstraints>,
     amount: u64,
     minimum_token_a_out: u64,
     minimum_token_b_out: u64,
@@ -140,7 +140,7 @@ pub fn handle_withdraw_liquidity(
 }
 
 #[derive(Accounts)]
-pub struct WithdrawLiquidityAccounts<'info> {
+pub struct WithdrawLiquidityAccountConstraints<'info> {
     #[account(
         seeds = [CONFIG_SEED],
         bump,
@@ -169,7 +169,7 @@ pub struct WithdrawLiquidityAccounts<'info> {
         ],
         bump,
     )]
-    pub pool_authority: AccountInfo<'info>,
+    pub pool_authority: UncheckedAccount<'info>,
 
     pub withdrawer: Signer<'info>,
 

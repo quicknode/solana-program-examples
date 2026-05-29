@@ -12,6 +12,10 @@ declare_id!("22222222222222222222222222222222222222222222");
 
 /// Minimum liquidity locked on first deposit to prevent manipulation.
 pub const MINIMUM_LIQUIDITY: u64 = 100;
+/// Basis-points denominator (1 bp = 1/10_000). Fees and the admin's fee share
+/// are stored in basis points; dividing by this converts a bp value to a
+/// fraction. Keeps the bare 10_000 out of the math.
+pub const BASIS_POINTS_DIVISOR: u64 = 10_000;
 /// Seed for the global Config PDA (singleton).
 pub const CONFIG_SEED: &[u8] = b"config";
 /// Seed for the pool authority PDA.

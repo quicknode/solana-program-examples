@@ -28,7 +28,7 @@ fn integer_sqrt(n: u128) -> u128 {
 }
 
 pub fn handle_deposit_liquidity(
-    context: Context<DepositLiquidityAccounts>,
+    context: Context<DepositLiquidityAccountConstraints>,
     amount_a: u64,
     amount_b: u64,
     minimum_lp_tokens_out: u64,
@@ -244,7 +244,7 @@ pub fn handle_deposit_liquidity(
 }
 
 #[derive(Accounts)]
-pub struct DepositLiquidityAccounts<'info> {
+pub struct DepositLiquidityAccountConstraints<'info> {
     #[account(
         seeds = [
             pool_config.config.as_ref(),
@@ -267,7 +267,7 @@ pub struct DepositLiquidityAccounts<'info> {
         ],
         bump,
     )]
-    pub pool_authority: AccountInfo<'info>,
+    pub pool_authority: UncheckedAccount<'info>,
 
     /// The account paying for all rents
     pub depositor: Signer<'info>,

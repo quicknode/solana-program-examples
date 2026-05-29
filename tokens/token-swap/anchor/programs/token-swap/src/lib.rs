@@ -13,19 +13,19 @@ pub mod swap_example {
     use super::*;
 
     pub fn create_config(
-        context: Context<CreateConfigAccounts>,
+        context: Context<CreateConfigAccountConstraints>,
         fee: u16,
         admin_share_bps: u16,
     ) -> Result<()> {
         instructions::handle_create_config(context, fee, admin_share_bps)
     }
 
-    pub fn create_pool(context: Context<CreatePoolAccounts>) -> Result<()> {
+    pub fn create_pool(context: Context<CreatePoolAccountConstraints>) -> Result<()> {
         instructions::handle_create_pool(context)
     }
 
     pub fn deposit_liquidity(
-        context: Context<DepositLiquidityAccounts>,
+        context: Context<DepositLiquidityAccountConstraints>,
         amount_a: u64,
         amount_b: u64,
         minimum_lp_tokens_out: u64,
@@ -39,7 +39,7 @@ pub mod swap_example {
     }
 
     pub fn withdraw_liquidity(
-        context: Context<WithdrawLiquidityAccounts>,
+        context: Context<WithdrawLiquidityAccountConstraints>,
         amount: u64,
         minimum_token_a_out: u64,
         minimum_token_b_out: u64,
@@ -53,7 +53,7 @@ pub mod swap_example {
     }
 
     pub fn swap_tokens(
-        context: Context<SwapTokensAccounts>,
+        context: Context<SwapTokensAccountConstraints>,
         input_is_token_a: bool,
         input_amount: u64,
         min_output_amount: u64,
@@ -66,7 +66,7 @@ pub mod swap_example {
         )
     }
 
-    pub fn claim_admin_fees(context: Context<ClaimAdminFeesAccounts>) -> Result<()> {
+    pub fn claim_admin_fees(context: Context<ClaimAdminFeesAccountConstraints>) -> Result<()> {
         instructions::handle_claim_admin_fees(context)
     }
 }

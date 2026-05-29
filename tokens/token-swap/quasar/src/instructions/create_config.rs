@@ -1,5 +1,5 @@
 use {
-    crate::{state::{Config, ConfigInner}, ConfigPda},
+    crate::{state::{Config, ConfigInner}, ConfigPda, BASIS_POINTS_DIVISOR},
     quasar_lang::prelude::*,
 };
 
@@ -23,13 +23,13 @@ pub fn handle_create_config(
     fee: u16,
     admin_share_bps: u16,
 ) -> Result<(), ProgramError> {
-    if fee >= 10000 {
+    if fee as u64 >= BASIS_POINTS_DIVISOR {
         return Err(ProgramError::InvalidArgument);
     }
     // `admin_share_bps` is the basis-points slice of the trading fee that
     // goes to the admin (rest goes to LPs). Anything >= 10_000 is nonsensical
     // (admin can't take more than the whole fee).
-    if admin_share_bps >= 10000 {
+    if admin_share_bps as u64 >= BASIS_POINTS_DIVISOR {
         return Err(ProgramError::InvalidArgument);
     }
     accounts.config.set_inner(ConfigInner {

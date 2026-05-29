@@ -11,7 +11,7 @@ use crate::{
 };
 
 pub fn handle_swap_tokens(
-    context: Context<SwapTokensAccounts>,
+    context: Context<SwapTokensAccountConstraints>,
     input_is_token_a: bool,
     input_amount: u64,
     min_output_amount: u64,
@@ -261,7 +261,7 @@ pub fn handle_swap_tokens(
 }
 
 #[derive(Accounts)]
-pub struct SwapTokensAccounts<'info> {
+pub struct SwapTokensAccountConstraints<'info> {
     #[account(
         seeds = [CONFIG_SEED],
         bump,
@@ -292,7 +292,7 @@ pub struct SwapTokensAccounts<'info> {
         ],
         bump,
     )]
-    pub pool_authority: AccountInfo<'info>,
+    pub pool_authority: UncheckedAccount<'info>,
 
     /// The account doing the swap
     pub trader: Signer<'info>,

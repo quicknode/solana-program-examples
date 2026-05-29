@@ -19,7 +19,7 @@ use crate::{
 /// `Signer` constraint on `admin` together mean only the address stored in
 /// `Config.admin` can call this. Any other signer will be rejected by
 /// Anchor's built-in `has_one` check.
-pub fn handle_claim_admin_fees(context: Context<ClaimAdminFeesAccounts>) -> Result<()> {
+pub fn handle_claim_admin_fees(context: Context<ClaimAdminFeesAccountConstraints>) -> Result<()> {
     let owed_a = context.accounts.pool_config.admin_fees_owed_a;
     let owed_b = context.accounts.pool_config.admin_fees_owed_b;
 
@@ -98,7 +98,7 @@ pub fn handle_claim_admin_fees(context: Context<ClaimAdminFeesAccounts>) -> Resu
 }
 
 #[derive(Accounts)]
-pub struct ClaimAdminFeesAccounts<'info> {
+pub struct ClaimAdminFeesAccountConstraints<'info> {
     #[account(
         seeds = [CONFIG_SEED],
         bump,
@@ -130,7 +130,7 @@ pub struct ClaimAdminFeesAccounts<'info> {
         ],
         bump,
     )]
-    pub pool_authority: AccountInfo<'info>,
+    pub pool_authority: UncheckedAccount<'info>,
 
     pub mint_a: Box<InterfaceAccount<'info, Mint>>,
 

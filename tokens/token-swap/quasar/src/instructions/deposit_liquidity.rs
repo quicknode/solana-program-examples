@@ -78,17 +78,32 @@ pub fn handle_deposit_liquidity(
     amount_b: u64,
     bumps: &DepositLiquidityAccountsBumps,
 ) -> Result<(), ProgramError> {
-    // Clamp to what the depositor actually has.
+    // Fail fast if the depositor lacks the requested balance. Never silently
+    // clamp to the available balance: callers expect their requested amount to
+    // be the amount actually deposited (slippage logic builds on top of it).
     let depositor_a = accounts.token_a.amount();
     let depositor_b = accounts.token_b.amount();
-    let mut amount_a = if amount_a > depositor_a { depositor_a } else { amount_a };
-    let mut amount_b = if amount_b > depositor_b { depositor_b } else { amount_b };
+    if amount_a > depositor_a || amount_b > depositor_b {
+        return Err(ProgramError::InsufficientFunds);
+    }
+    let mut amount_a = amount_a;
+    let mut amount_b = amount_b;
 
     // LP curve runs on *effective* reserves (vault balance minus admin's
     // accumulated fee claim). The admin's owed slice is a fixed obligation,
     // not LP-claimable capital, so it must not affect the deposit ratio.
-    let pool_a_amount = accounts.pool_a.amount() - accounts.pool_config.admin_fees_owed_a();
-    let pool_b_amount = accounts.pool_b.amount() - accounts.pool_config.admin_fees_owed_b();
+    // checked_sub: a raw `-` would wrap silently on a BPF release build if the
+    // owed slice ever exceeded the vault balance.
+    let pool_a_amount = accounts
+        .pool_a
+        .amount()
+        .checked_sub(accounts.pool_config.admin_fees_owed_a())
+        .ok_or(ProgramError::ArithmeticOverflow)?;
+    let pool_b_amount = accounts
+        .pool_b
+        .amount()
+        .checked_sub(accounts.pool_config.admin_fees_owed_b())
+        .ok_or(ProgramError::ArithmeticOverflow)?;
     let pool_creation = pool_a_amount == 0 && pool_b_amount == 0;
 
     if !pool_creation {
@@ -108,18 +123,43 @@ pub fn handle_deposit_liquidity(
         }
     }
 
-    // Compute liquidity = sqrt(amount_a * amount_b).
-    let product = (amount_a as u128)
-        .checked_mul(amount_b as u128)
-        .ok_or(ProgramError::ArithmeticOverflow)?;
-    let mut liquidity = isqrt(product);
-
-    // Lock minimum liquidity on first deposit.
-    if pool_creation {
-        if liquidity < crate::MINIMUM_LIQUIDITY {
+    // LP-mint math, two branches:
+    //   - First deposit: liquidity = sqrt(a * b) - MINIMUM_LIQUIDITY. The
+    //     geometric mean bootstraps the pool; the locked floor is burned
+    //     forever to prevent the first depositor draining the pool later.
+    //   - Subsequent deposit: liquidity = min(a * supply / pool_a,
+    //     b * supply / pool_b), proportional to the depositor's share of each
+    //     reserve. Using sqrt(a * b) for *every* deposit (the previous
+    //     behaviour) breaks proportionality on subsequent deposits.
+    let liquidity: u64 = if pool_creation {
+        let product = (amount_a as u128)
+            .checked_mul(amount_b as u128)
+            .ok_or(ProgramError::ArithmeticOverflow)?;
+        let sqrt = isqrt(product);
+        if sqrt < crate::MINIMUM_LIQUIDITY {
             return Err(ProgramError::InsufficientFunds);
         }
-        liquidity -= crate::MINIMUM_LIQUIDITY;
+        sqrt.checked_sub(crate::MINIMUM_LIQUIDITY)
+            .ok_or(ProgramError::ArithmeticOverflow)?
+    } else {
+        let total_supply = accounts.liquidity_provider_mint.supply() as u128;
+        let from_a = (amount_a as u128)
+            .checked_mul(total_supply)
+            .ok_or(ProgramError::ArithmeticOverflow)?
+            .checked_div(pool_a_amount as u128)
+            .ok_or(ProgramError::ArithmeticOverflow)?;
+        let from_b = (amount_b as u128)
+            .checked_mul(total_supply)
+            .ok_or(ProgramError::ArithmeticOverflow)?
+            .checked_div(pool_b_amount as u128)
+            .ok_or(ProgramError::ArithmeticOverflow)?;
+        u64::try_from(from_a.min(from_b)).map_err(|_| ProgramError::ArithmeticOverflow)?
+    };
+
+    // Reject deposits too small to mint any LP tokens (skill: never mint
+    // zero-priced shares).
+    if liquidity == 0 {
+        return Err(ProgramError::InsufficientFunds);
     }
 
     // Transfer token A to the pool.

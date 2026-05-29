@@ -128,7 +128,7 @@ fn full_setup() -> TestSetup {
     let create_config_ix = Instruction::new_with_bytes(
         program_id,
         &swap_example::instruction::CreateConfig { fee, admin_share_bps }.data(),
-        swap_example::accounts::CreateConfigAccounts {
+        swap_example::accounts::CreateConfigAccountConstraints {
             config: config_key,
             admin: admin.pubkey(),
             payer: payer.pubkey(),
@@ -148,7 +148,7 @@ fn full_setup() -> TestSetup {
     let create_pool_ix = Instruction::new_with_bytes(
         program_id,
         &swap_example::instruction::CreatePool {}.data(),
-        swap_example::accounts::CreatePoolAccounts {
+        swap_example::accounts::CreatePoolAccountConstraints {
             config: config_key,
             pool_config: pool_config_key,
             pool_authority,
@@ -203,7 +203,7 @@ fn test_create_config() {
     let create_config_ix = Instruction::new_with_bytes(
         program_id,
         &swap_example::instruction::CreateConfig { fee, admin_share_bps }.data(),
-        swap_example::accounts::CreateConfigAccounts {
+        swap_example::accounts::CreateConfigAccountConstraints {
             config: config_key,
             admin: admin.pubkey(),
             payer: payer.pubkey(),
@@ -242,7 +242,7 @@ fn test_deposit_liquidity() {
             minimum_lp_tokens_out: 0,
         }
         .data(),
-        swap_example::accounts::DepositLiquidityAccounts {
+        swap_example::accounts::DepositLiquidityAccountConstraints {
             pool_config: ts.pool_config_key,
             pool_authority: ts.pool_authority,
             depositor: ts.admin.pubkey(),
@@ -289,7 +289,7 @@ fn test_swap_a_to_b() {
             minimum_lp_tokens_out: 0,
         }
         .data(),
-        swap_example::accounts::DepositLiquidityAccounts {
+        swap_example::accounts::DepositLiquidityAccountConstraints {
             pool_config: ts.pool_config_key,
             pool_authority: ts.pool_authority,
             depositor: ts.admin.pubkey(),
@@ -328,7 +328,7 @@ fn test_swap_a_to_b() {
             min_output_amount: 100,
         }
         .data(),
-        swap_example::accounts::SwapTokensAccounts {
+        swap_example::accounts::SwapTokensAccountConstraints {
             config: ts.config_key,
             pool_config: ts.pool_config_key,
             pool_authority: ts.pool_authority,
@@ -376,7 +376,7 @@ fn test_withdraw_liquidity() {
             minimum_lp_tokens_out: 0,
         }
         .data(),
-        swap_example::accounts::DepositLiquidityAccounts {
+        swap_example::accounts::DepositLiquidityAccountConstraints {
             pool_config: ts.pool_config_key,
             pool_authority: ts.pool_authority,
             depositor: ts.admin.pubkey(),
@@ -417,7 +417,7 @@ fn test_withdraw_liquidity() {
             minimum_token_b_out: 0,
         }
         .data(),
-        swap_example::accounts::WithdrawLiquidityAccounts {
+        swap_example::accounts::WithdrawLiquidityAccountConstraints {
             config: ts.config_key,
             pool_config: ts.pool_config_key,
             pool_authority: ts.pool_authority,
@@ -462,7 +462,7 @@ fn deposit_and_swap_a_to_b(ts: &mut TestSetup, deposit_a: u64, deposit_b: u64, s
             minimum_lp_tokens_out: 0,
         }
         .data(),
-        swap_example::accounts::DepositLiquidityAccounts {
+        swap_example::accounts::DepositLiquidityAccountConstraints {
             pool_config: ts.pool_config_key,
             pool_authority: ts.pool_authority,
             depositor: ts.admin.pubkey(),
@@ -497,7 +497,7 @@ fn deposit_and_swap_a_to_b(ts: &mut TestSetup, deposit_a: u64, deposit_b: u64, s
             min_output_amount: 1,
         }
         .data(),
-        swap_example::accounts::SwapTokensAccounts {
+        swap_example::accounts::SwapTokensAccountConstraints {
             config: ts.config_key,
             pool_config: ts.pool_config_key,
             pool_authority: ts.pool_authority,
@@ -531,7 +531,7 @@ fn claim_admin_fees_ix(ts: &TestSetup) -> Instruction {
     Instruction::new_with_bytes(
         ts.program_id,
         &swap_example::instruction::ClaimAdminFees {}.data(),
-        swap_example::accounts::ClaimAdminFeesAccounts {
+        swap_example::accounts::ClaimAdminFeesAccountConstraints {
             config: ts.config_key,
             pool_config: ts.pool_config_key,
             pool_authority: ts.pool_authority,
@@ -558,7 +558,7 @@ fn swap_a_to_b(ts: &mut TestSetup, input_amount: u64) {
             min_output_amount: 1,
         }
         .data(),
-        swap_example::accounts::SwapTokensAccounts {
+        swap_example::accounts::SwapTokensAccountConstraints {
             config: ts.config_key,
             pool_config: ts.pool_config_key,
             pool_authority: ts.pool_authority,
@@ -672,7 +672,7 @@ fn test_claim_admin_fees() {
     let claim_ix_again = Instruction::new_with_bytes(
         ts.program_id,
         &swap_example::instruction::ClaimAdminFees {}.data(),
-        swap_example::accounts::ClaimAdminFeesAccounts {
+        swap_example::accounts::ClaimAdminFeesAccountConstraints {
             config: ts.config_key,
             pool_config: ts.pool_config_key,
             pool_authority: ts.pool_authority,
@@ -733,7 +733,7 @@ fn test_claim_admin_fees_rejects_non_admin() {
     let claim_ix = Instruction::new_with_bytes(
         ts.program_id,
         &swap_example::instruction::ClaimAdminFees {}.data(),
-        swap_example::accounts::ClaimAdminFeesAccounts {
+        swap_example::accounts::ClaimAdminFeesAccountConstraints {
             config: ts.config_key,
             pool_config: ts.pool_config_key,
             pool_authority: ts.pool_authority,
@@ -776,7 +776,7 @@ fn deposit_ix(ts: &TestSetup, amount_a: u64, amount_b: u64) -> Instruction {
             minimum_lp_tokens_out: 0,
         }
         .data(),
-        swap_example::accounts::DepositLiquidityAccounts {
+        swap_example::accounts::DepositLiquidityAccountConstraints {
             pool_config: ts.pool_config_key,
             pool_authority: ts.pool_authority,
             depositor: ts.admin.pubkey(),
@@ -950,7 +950,7 @@ fn test_deposit_after_swap_uses_shifted_effective_ratio() {
             min_output_amount: 1,
         }
         .data(),
-        swap_example::accounts::SwapTokensAccounts {
+        swap_example::accounts::SwapTokensAccountConstraints {
             config: ts.config_key,
             pool_config: ts.pool_config_key,
             pool_authority: ts.pool_authority,
@@ -1164,7 +1164,7 @@ fn swap_a_to_b_ix(ts: &TestSetup, input_amount: u64, min_output_amount: u64) -> 
             min_output_amount,
         }
         .data(),
-        swap_example::accounts::SwapTokensAccounts {
+        swap_example::accounts::SwapTokensAccountConstraints {
             config: ts.config_key,
             pool_config: ts.pool_config_key,
             pool_authority: ts.pool_authority,
@@ -1199,7 +1199,7 @@ fn deposit_ix_with_min_lp(
             minimum_lp_tokens_out,
         }
         .data(),
-        swap_example::accounts::DepositLiquidityAccounts {
+        swap_example::accounts::DepositLiquidityAccountConstraints {
             pool_config: ts.pool_config_key,
             pool_authority: ts.pool_authority,
             depositor: ts.admin.pubkey(),
@@ -1235,7 +1235,7 @@ fn withdraw_ix_with_min(
             minimum_token_b_out,
         }
         .data(),
-        swap_example::accounts::WithdrawLiquidityAccounts {
+        swap_example::accounts::WithdrawLiquidityAccountConstraints {
             config: ts.config_key,
             pool_config: ts.pool_config_key,
             pool_authority: ts.pool_authority,

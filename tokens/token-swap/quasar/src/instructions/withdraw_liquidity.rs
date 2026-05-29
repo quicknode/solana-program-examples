@@ -77,9 +77,23 @@ pub fn handle_withdraw_liquidity(
     // The admin's owed slice physically stays in the vaults but is not
     // distributed to exiting LPs - it's swept separately via
     // `claim_admin_fees`.
-    let effective_pool_a = accounts.pool_a.amount() - accounts.pool_config.admin_fees_owed_a();
-    let effective_pool_b = accounts.pool_b.amount() - accounts.pool_config.admin_fees_owed_b();
-    let total_liquidity = accounts.liquidity_provider_mint.supply() + crate::MINIMUM_LIQUIDITY;
+    // checked_sub: admin_fees_owed is an invariant subset of the vault balance;
+    // a raw `-` would wrap silently on a BPF release build if that ever broke.
+    let effective_pool_a = accounts
+        .pool_a
+        .amount()
+        .checked_sub(accounts.pool_config.admin_fees_owed_a())
+        .ok_or(ProgramError::ArithmeticOverflow)?;
+    let effective_pool_b = accounts
+        .pool_b
+        .amount()
+        .checked_sub(accounts.pool_config.admin_fees_owed_b())
+        .ok_or(ProgramError::ArithmeticOverflow)?;
+    let total_liquidity = accounts
+        .liquidity_provider_mint
+        .supply()
+        .checked_add(crate::MINIMUM_LIQUIDITY)
+        .ok_or(ProgramError::ArithmeticOverflow)?;
 
     let amount_a = (amount as u128)
         .checked_mul(effective_pool_a as u128)

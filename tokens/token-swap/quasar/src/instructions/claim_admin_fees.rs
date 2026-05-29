@@ -67,6 +67,21 @@ pub fn handle_claim_admin_fees(
         Seed::from(&bump as &[u8]),
     ];
 
+    // Effects: zero the accumulators before the transfer CPIs
+    // (Checks-Effects-Interactions). If a CPI fails the whole transaction
+    // reverts, so resetting the onchain bookkeeping first is safe.
+    let config_addr = *accounts.pool_config.config();
+    let mint_a_addr = *accounts.pool_config.mint_a();
+    let mint_b_addr = *accounts.pool_config.mint_b();
+    accounts.pool_config.set_inner(PoolConfigInner {
+        config: config_addr,
+        mint_a: mint_a_addr,
+        mint_b: mint_b_addr,
+        admin_fees_owed_a: 0,
+        admin_fees_owed_b: 0,
+    });
+
+    // Interactions: transfer the owed fees out of the pool reserves.
     if owed_a > 0 {
         accounts
             .token_program
@@ -90,19 +105,6 @@ pub fn handle_claim_admin_fees(
             )
             .invoke_signed(seeds)?;
     }
-
-    // Reset the accumulators. Done after the transfers so a failed CPI
-    // leaves the on-chain bookkeeping intact (the admin can retry).
-    let config_addr = *accounts.pool_config.config();
-    let mint_a_addr = *accounts.pool_config.mint_a();
-    let mint_b_addr = *accounts.pool_config.mint_b();
-    accounts.pool_config.set_inner(PoolConfigInner {
-        config: config_addr,
-        mint_a: mint_a_addr,
-        mint_b: mint_b_addr,
-        admin_fees_owed_a: 0,
-        admin_fees_owed_b: 0,
-    });
 
     Ok(())
 }
