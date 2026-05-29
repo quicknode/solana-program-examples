@@ -66,8 +66,16 @@ pub fn handle_deposit_liquidity(
     let pool_a = &context.accounts.pool_a;
     let pool_b = &context.accounts.pool_b;
     let pool_config = &context.accounts.pool_config;
-    let effective_pool_a = pool_a.amount - pool_config.admin_fees_owed_a;
-    let effective_pool_b = pool_b.amount - pool_config.admin_fees_owed_b;
+    // checked_sub: admin_fees_owed is an invariant subset of the vault balance;
+    // a raw `-` would wrap silently on a BPF release build if that ever broke.
+    let effective_pool_a = pool_a
+        .amount
+        .checked_sub(pool_config.admin_fees_owed_a)
+        .ok_or(AmmError::MathOverflow)?;
+    let effective_pool_b = pool_b
+        .amount
+        .checked_sub(pool_config.admin_fees_owed_b)
+        .ok_or(AmmError::MathOverflow)?;
     // Defining pool creation like this allows attackers to frontrun pool creation with bad ratios
     let pool_creation = effective_pool_a == 0 && effective_pool_b == 0;
     (amount_a, amount_b) = if pool_creation {

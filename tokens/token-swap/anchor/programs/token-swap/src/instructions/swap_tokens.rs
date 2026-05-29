@@ -5,7 +5,7 @@ use anchor_spl::{
 };
 
 use crate::{
-    constants::{AUTHORITY_SEED, CONFIG_SEED},
+    constants::{AUTHORITY_SEED, BASIS_POINTS_DIVISOR, CONFIG_SEED},
     errors::*,
     state::{Config, PoolConfig},
 };
@@ -42,12 +42,12 @@ pub fn handle_swap_tokens(
     let fee_amount = (input_amount as u128)
         .checked_mul(config.fee as u128)
         .ok_or(AmmError::MathOverflow)?
-        .checked_div(10_000)
+        .checked_div(BASIS_POINTS_DIVISOR as u128)
         .ok_or(AmmError::MathOverflow)?;
     let admin_portion = fee_amount
         .checked_mul(config.admin_share_bps as u128)
         .ok_or(AmmError::MathOverflow)?
-        .checked_div(10_000)
+        .checked_div(BASIS_POINTS_DIVISOR as u128)
         .ok_or(AmmError::MathOverflow)?;
     // Narrow back to u64 for storage / transfer. The fee can never exceed
     // `input` (`fee_amount <= input * 9999 / 10_000 < input`, and `input`
@@ -68,8 +68,17 @@ pub fn handle_swap_tokens(
     let pool_a = &context.accounts.pool_a;
     let pool_b = &context.accounts.pool_b;
     let pool_config = &context.accounts.pool_config;
-    let effective_pool_a = pool_a.amount - pool_config.admin_fees_owed_a;
-    let effective_pool_b = pool_b.amount - pool_config.admin_fees_owed_b;
+    // checked_sub: admin_fees_owed is an invariant subset of the vault balance,
+    // but a raw `-` would wrap silently on a BPF release build if that invariant
+    // were ever violated, handing the curve a giant effective reserve.
+    let effective_pool_a = pool_a
+        .amount
+        .checked_sub(pool_config.admin_fees_owed_a)
+        .ok_or(AmmError::MathOverflow)?;
+    let effective_pool_b = pool_b
+        .amount
+        .checked_sub(pool_config.admin_fees_owed_b)
+        .ok_or(AmmError::MathOverflow)?;
 
     // Constant-product output formula:
     //   output = taxed_input * other_reserve / (this_reserve + taxed_input)
@@ -231,8 +240,18 @@ pub fn handle_swap_tokens(
     context.accounts.pool_a.reload()?;
     context.accounts.pool_b.reload()?;
     let pool_config = &context.accounts.pool_config;
-    let effective_pool_a_after = context.accounts.pool_a.amount - pool_config.admin_fees_owed_a;
-    let effective_pool_b_after = context.accounts.pool_b.amount - pool_config.admin_fees_owed_b;
+    let effective_pool_a_after = context
+        .accounts
+        .pool_a
+        .amount
+        .checked_sub(pool_config.admin_fees_owed_a)
+        .ok_or(AmmError::MathOverflow)?;
+    let effective_pool_b_after = context
+        .accounts
+        .pool_b
+        .amount
+        .checked_sub(pool_config.admin_fees_owed_b)
+        .ok_or(AmmError::MathOverflow)?;
     let new_invariant = (effective_pool_a_after as u128)
         .checked_mul(effective_pool_b_after as u128)
         .ok_or(AmmError::MathOverflow)?;

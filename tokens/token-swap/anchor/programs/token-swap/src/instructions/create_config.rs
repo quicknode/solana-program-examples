@@ -1,6 +1,10 @@
 use anchor_lang::prelude::*;
 
-use crate::{constants::CONFIG_SEED, errors::*, state::Config};
+use crate::{
+    constants::{BASIS_POINTS_DIVISOR, CONFIG_SEED},
+    errors::*,
+    state::Config,
+};
 
 pub fn handle_create_config(
     mut context: Context<CreateConfigAccounts>,
@@ -26,8 +30,8 @@ pub struct CreateConfigAccounts<'info> {
         space = Config::DISCRIMINATOR.len() + Config::INIT_SPACE,
         seeds = [CONFIG_SEED],
         bump,
-        constraint = fee < 10000 @ AmmError::InvalidFee,
-        constraint = admin_share_bps < 10000 @ AmmError::AdminShareTooHigh,
+        constraint = (fee as u64) < BASIS_POINTS_DIVISOR @ AmmError::InvalidFee,
+        constraint = (admin_share_bps as u64) < BASIS_POINTS_DIVISOR @ AmmError::AdminShareTooHigh,
     )]
     pub config: Account<'info, Config>,
 

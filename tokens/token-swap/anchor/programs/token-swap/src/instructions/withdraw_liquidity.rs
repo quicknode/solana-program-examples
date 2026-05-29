@@ -31,8 +31,20 @@ pub fn handle_withdraw_liquidity(
     // owed slice physically remains in the vaults but is not distributed to
     // exiting LPs - it's claimed separately via `claim_admin_fees`.
     let pool_config = &context.accounts.pool_config;
-    let effective_pool_a = context.accounts.pool_a.amount - pool_config.admin_fees_owed_a;
-    let effective_pool_b = context.accounts.pool_b.amount - pool_config.admin_fees_owed_b;
+    // checked_sub: admin_fees_owed is an invariant subset of the vault balance;
+    // a raw `-` would wrap silently on a BPF release build if that ever broke.
+    let effective_pool_a = context
+        .accounts
+        .pool_a
+        .amount
+        .checked_sub(pool_config.admin_fees_owed_a)
+        .ok_or(AmmError::MathOverflow)?;
+    let effective_pool_b = context
+        .accounts
+        .pool_b
+        .amount
+        .checked_sub(pool_config.admin_fees_owed_b)
+        .ok_or(AmmError::MathOverflow)?;
 
     // Proportional-withdraw formula:
     //   amount_out = lp_amount * effective_reserve / (lp_supply + MINIMUM_LIQUIDITY)
