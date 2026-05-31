@@ -23,3 +23,6 @@ node_modules/
 /target
 deploy
 .claude
+!.claude/SKILL.md
+!.claude/RUST.md
+!.claude/TYPESCRIPT.md
