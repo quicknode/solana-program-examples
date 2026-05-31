@@ -47,6 +47,12 @@ A managed investment fund onchain. Investors deposit USDC and receive shares rep
 
 [⚓ Anchor](./finance/vault-strategy/anchor)
 
+### Perpetual Futures
+
+A perpetual futures exchange — a venue for making leveraged bets on an asset's price without ever owning the asset. Traders post collateral and open a **long** (betting the price rises) or **short** (betting it falls) sized up to several times their collateral; their profit or loss tracks the price move and is paid in the collateral token. Rather than matching buyers to sellers, every trade is against a shared **liquidity pool** that other users fund and that is the counterparty to all of it — the pool pays winners and keeps losers' collateral, and its providers earn the trading and funding fees in return. The price comes from an oracle, positions accrue a funding fee over time, and anyone can **liquidate** a position whose collateral can no longer cover its loss. This is the design behind venues like Jupiter Perpetuals and GMX.
+
+[⚓ Anchor](./finance/perpetual-futures/anchor) [💫 Quasar](./finance/perpetual-futures/quasar)
+
 ## Single concept examples
 
 ### Hello Solana
