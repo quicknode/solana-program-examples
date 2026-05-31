@@ -48,6 +48,10 @@ members = [
     "basics/transfer-sol/anchor/programs/*",
     "basics/transfer-sol/asm",
 
+    # defi
+    "defi/vault-strategy/anchor/programs/vault-strategy",
+    "defi/vault-strategy/anchor/programs/mock-swap-router",
+
     # tokens
     "tokens/token-extensions/mint-close-authority/native/program",
     "tokens/token-extensions/non-transferable/native/program",

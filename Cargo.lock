@@ -370,6 +370,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "anchor-spl"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "300e2e8058e674e8d6ea7c72dfb8be4349609dd9c3760ce729fc6406199624fe"
+dependencies = [
+ "anchor-lang",
+ "spl-associated-token-account-interface",
+ "spl-pod",
+ "spl-token-2022-interface",
+ "spl-token-group-interface",
+ "spl-token-interface",
+ "spl-token-metadata-interface",
+]
+
+[[package]]
 name = "anchor-syn"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2092,6 +2107,19 @@ dependencies = [
  "keccak",
  "rand_core 0.6.4",
  "zeroize",
+]
+
+[[package]]
+name = "mock-swap-router"
+version = "0.1.0"
+dependencies = [
+ "anchor-lang",
+ "anchor-spl",
+ "borsh",
+ "litesvm",
+ "solana-keypair",
+ "solana-kite",
+ "solana-signer",
 ]
 
 [[package]]
@@ -5466,6 +5494,21 @@ checksum = "0200d0fc04d809396c2ad43f3c95da3582a2556eba8d453c1087f4120ee352ff"
 dependencies = [
  "fnv",
  "lazy_static",
+]
+
+[[package]]
+name = "vault-strategy"
+version = "0.1.0"
+dependencies = [
+ "anchor-lang",
+ "anchor-spl",
+ "borsh",
+ "litesvm",
+ "mock-swap-router",
+ "solana-account 3.4.0",
+ "solana-keypair",
+ "solana-kite",
+ "solana-signer",
 ]
 
 [[package]]
