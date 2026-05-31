@@ -1,0 +1,23 @@
+[package]
+name = "mock-switchboard"
+version = "0.1.0"
+description = "Teaching mock of a Switchboard On-Demand feed account. Stores a single i128 price + scale + slot. Real Switchboard On-Demand verifies an Ed25519 signed update; the mock just lets tests set the price directly. NOT FOR PRODUCTION."
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "mock_switchboard"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build"]
+
+[dependencies]
+anchor-lang = "1.0.0"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }
