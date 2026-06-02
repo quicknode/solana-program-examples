@@ -22,4 +22,5 @@ node_modules/
 
 /target
 deploy
-.claude
+.claude/*
+!.claude/skills/
