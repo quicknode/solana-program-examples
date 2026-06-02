@@ -1,4 +1,7 @@
-use anchor_lang::prelude::*;
+// These are plain `pub const`s rather than Anchor `#[constant]`s: `#[constant]`
+// only re-exports a value into the IDL, and anchor's idl-build mis-evaluates a
+// u128 literal this large as i32 ("literal out of range for i32"). None of these
+// need to appear in the IDL, so plain consts both compile and keep the IDL clean.
 
 /// Fixed-point scale for every ratio in the program: interest rates, the
 /// cumulative borrow-rate index, the share-token exchange rate, and obligation
@@ -8,7 +11,6 @@ use anchor_lang::prelude::*;
 /// keeps a single slot's interest — which can be a tiny fraction of the index —
 /// from truncating to zero, while u128's ~3.4e38 ceiling leaves headroom for the
 /// index to grow and for intermediate products before the final narrowing cast.
-#[constant]
 pub const FIXED_POINT_SCALE: u128 = 1_000_000_000_000_000_000;
 
 /// log10(FIXED_POINT_SCALE). Used to fold the price exponent and the fixed-point
@@ -17,12 +19,10 @@ pub const FIXED_POINT_SCALE: u128 = 1_000_000_000_000_000_000;
 pub const FIXED_POINT_SCALE_DECIMALS: i32 = 18;
 
 /// Denominator for every basis-point config value. 100% == 10_000 bps.
-#[constant]
 pub const BPS_DENOMINATOR: u128 = 10_000;
 
 /// Slots per year, for turning an APR (in bps) into a per-slot rate.
 /// Solana targets ~2.5 slots/second: 2.5 * 60 * 60 * 24 * 365 = 78_840_000.
-#[constant]
 pub const SLOTS_PER_YEAR: u128 = 78_840_000;
 
 /// Maximum distinct reserves an obligation may use as collateral, and
@@ -33,7 +33,6 @@ pub const MAX_OBLIGATION_RESERVES: usize = 4;
 /// A price feed older than this many slots is rejected as stale (~10s at 2.5
 /// slots/second). Freshness is measured in slots, not unix time, because the
 /// runtime guarantees slot progression while the timestamp is validator-influenced.
-#[constant]
 pub const MAX_PRICE_STALENESS_SLOTS: u64 = 25;
 
 // PDA seeds.
