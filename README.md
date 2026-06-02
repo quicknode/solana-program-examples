@@ -43,7 +43,7 @@ A crowdfunding campaign onchain. A creator opens a fundraiser by choosing which 
 
 ### Vault Strategy
 
-A managed investment fund onchain. Investors deposit USDC and receive shares representing their slice of the fund. A manager allocates the pooled money across a basket of tokenized assets (here, tokenized stocks like TSLAx and NVDAx), and each share's value tracks the fund's net asset value — its total holdings divided by the number of shares. The manager earns a management fee over time, and investors withdraw a proportional, in-kind slice of the underlying assets. Demonstrates share minting, value-per-share pricing, fee accrual, and calling another program (CPI) to swap assets.
+A managed investment fund onchain. Investors deposit USDC and receive shares representing their slice of the fund. A manager allocates the pooled money across a basket of assets (here, stocks like TSLAx and NVDAx), and each share's value tracks the fund's net asset value — its total holdings divided by the number of shares. The manager earns a management fee over time, and investors withdraw a proportional, in-kind slice of the underlying assets. Demonstrates share minting, value-per-share pricing, fee accrual, and calling another program (CPI) to swap assets.
 
 [⚓ Anchor](./finance/vault-strategy/anchor)
 
