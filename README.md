@@ -17,43 +17,37 @@ Each example is available in one or more of the following frameworks:
 
 ## Financial Software
 
-### Automated Market Maker
-
-Constant product AMM (x·y=k) — create liquidity pools, deposit and withdraw liquidity, swap tokens with fees and slippage protection.
-
-[⚓ Anchor](./tokens/token-swap/anchor) [💫 Quasar](./tokens/token-swap/quasar)
-
-### Central Limit Order Book
-
-Order-book exchange — users post limit bids and asks at chosen prices, tokens are locked in program vaults, and orders cross against the opposing side using price-time priority. Fees route to a dedicated fee vault, maker/taker proceeds land in unsettled balances, and funds are withdrawn via `settle_funds`. A minimal teaching example of the mechanics behind Openbook and Phoenix.
-
-[⚓ Anchor](./defi/order-book/anchor)
-
 ### Escrow
 
-Peer-to-peer OTC trade — one user deposits token A and specifies how much token B they want. A counterparty fulfills the offer and both sides receive their tokens atomically.
+**Start here — this is the best first finance program to learn on Solana.** An escrow is a neutral holding account that lets two people who don't trust each other trade safely. One person (the maker) deposits token A and specifies how much token B they want in return. When a second person (the taker) supplies that token B, the program hands each side what it was promised in a single transaction — so either the whole trade happens, or none of it does. This "all-or-nothing" swap is the core idea behind every onchain exchange, which is why it's the right place to begin.
 
-[⚓ Anchor](./tokens/escrow/anchor) [💫 Quasar](./tokens/escrow/quasar) [🦀 Native](./tokens/escrow/native)
+[⚓ Anchor](./finance/escrow/anchor) [💫 Quasar](./finance/escrow/quasar) [🦀 Native](./finance/escrow/native)
+
+### Order Book based Exchange
+
+An order book is the list of buy and sell offers behind most exchanges. Buyers post **bids** (the price they'll pay), sellers post **asks** (the price they'll accept), and a trade happens when a bid and an ask meet. This program implements that idea: traders post limit orders at chosen prices, their tokens are locked in program-controlled vaults, and orders are matched against the opposite side using **price-time priority** (best price first, and for equal prices, whoever was there first). Trading fees collect in a dedicated fee vault, proceeds wait as unsettled balances, and traders withdraw them with `settle_funds`. A minimal teaching example of the mechanics behind exchanges like Openbook and Phoenix.
+
+[⚓ Anchor](./finance/order-book/anchor)
+
+### AMM based Exchange
+
+An automated market maker (AMM) is an exchange with no order book. Instead of matching buyers with sellers, swaps fill instantly against a shared, onchain liquidity pool that other users fund — those users are **liquidity providers**, and they earn a cut of the trading fees in return. Prices are set algorithmically by the pool's balances and move to reflect demand: buying an asset shrinks its share of the pool and pushes its price up. This program lets anyone create a pool, deposit or withdraw liquidity, and swap one token for another, with fees paid to liquidity providers and slippage protection so a swap can't execute at a worse price than expected. This is how exchanges like Raydium and Orca work.
+
+[⚓ Anchor](./finance/token-swap/anchor) [💫 Quasar](./finance/token-swap/quasar)
 
 ### Token Fundraiser
 
-Create a fundraiser specifying a target mint and amount. Contributors deposit tokens until the goal is reached.
+A crowdfunding campaign onchain. A creator opens a fundraiser by choosing which token they want to raise and a target amount. Contributors deposit that token into the fundraiser's account until the goal is reached — a simple introduction to collecting funds from many people into a single program-controlled account.
 
-[⚓ Anchor](./tokens/token-fundraiser/anchor) [💫 Quasar](./tokens/token-fundraiser/quasar)
-
-### Pyth Price Feeds
-
-Read offchain price data [onchain](https://solana.com/docs/terminology#onchain) using the Pyth oracle network.
-
-[⚓ Anchor](./oracles/pyth/anchor) [💫 Quasar](./oracles/pyth/quasar)
+[⚓ Anchor](./finance/token-fundraiser/anchor) [💫 Quasar](./finance/token-fundraiser/quasar)
 
 ### Vault Strategy
 
-Manager-run investment vault — deposit USDC, manager allocates across a basket of assets (TSLAx, NVDAx), withdraw proportional in-kind assets. Demonstrates share minting, NAV-based pricing, management fee accrual, and CPI to a swap router.
+A managed investment fund onchain. Investors deposit USDC and receive shares representing their slice of the fund. A manager allocates the pooled money across a basket of assets (here, stocks like TSLAx and NVDAx), and each share's value tracks the fund's net asset value — its total holdings divided by the number of shares. The manager earns a management fee over time, and investors withdraw a proportional, in-kind slice of the underlying assets. Demonstrates share minting, value-per-share pricing, fee accrual, and calling another program (CPI) to swap assets.
 
-[⚓ Anchor](./defi/vault-strategy/anchor)
+[⚓ Anchor](./finance/vault-strategy/anchor)
 
-## Basics
+## Single concept examples
 
 ### Hello Solana
 
@@ -144,6 +138,12 @@ Structure a larger Solana program across multiple files and modules.
 Send SOL between two accounts.
 
 [⚓ Anchor](./basics/transfer-sol/anchor) [💫 Quasar](./basics/transfer-sol/quasar) [🤥 Pinocchio](./basics/transfer-sol/pinocchio) [🦀 Native](./basics/transfer-sol/native) [🧬 ASM](./basics/transfer-sol/asm)
+
+### Pyth Price Feeds
+
+Finance programs often need real-world prices — what a dollar, a stock, or another token is worth right now. An **oracle** brings that offchain market data [onchain](https://solana.com/docs/terminology#onchain). [Pyth](https://pyth.network/) is an oracle that publishes low-latency prices from institutional sources, with each asset's price living in its own account called a price feed. This minimal example reads a feed and logs its price, confidence interval, and exponent — the building block a program like an AMM, a lending market, or a vault uses to value assets.
+
+[⚓ Anchor](./basics/pyth/anchor) [💫 Quasar](./basics/pyth/quasar)
 
 ## Tokens
 

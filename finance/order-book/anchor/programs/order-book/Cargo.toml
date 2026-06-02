@@ -30,9 +30,8 @@ bytemuck = { version = "1.18", features = ["derive", "min_const_generics"] }
 static_assertions = "1.1"
 
 [dev-dependencies]
-# Match the test stack used by tokens/escrow, defi/asset-leasing, and the
-# other LiteSVM-based Anchor examples so contributors can move between them
-# without version drift.
+# Match the test stack used by finance/escrow and the other LiteSVM-based
+# Anchor examples so contributors can move between them without version drift.
 litesvm = "0.11.0"
 solana-signer = "3.0.0"
 solana-keypair = "3.0.1"

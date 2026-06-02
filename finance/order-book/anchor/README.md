@@ -1423,7 +1423,7 @@ run first.
 
 ### Commands
 
-From `defi/order-book/anchor/`:
+From `finance/order-book/anchor/`:
 
 ```bash
 # 1. Build the .so — target/deploy/order_book.so
@@ -1605,7 +1605,7 @@ Openbook v2 (`src/state/slab/`).
 ## Code layout
 
 ```
-defi/order-book/anchor/
+finance/order-book/anchor/
 ├── Anchor.toml
 ├── Cargo.toml
 ├── README.md              (this file)

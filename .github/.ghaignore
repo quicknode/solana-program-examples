@@ -12,10 +12,10 @@ tokens/transfer-tokens/native
 tokens/token-minter/native
 tokens/create-token/native
 
-tokens/token-swap/anchor
+finance/token-swap/anchor
 
 # not building
-oracles/pyth/anchor
+basics/pyth/anchor
 
 # not building
 compression/cutils/anchor
@@ -25,7 +25,7 @@ compression/cnft-burn/anchor
 
 # test failing
 # https://github.com/solana-developers/helpers/issues/40
-tokens/escrow/anchor
+finance/escrow/anchor
 
 # not live
 tokens/token-extensions/group/anchor
@@ -65,9 +65,9 @@ basics/realloc/steel
 basics/rent/steel
 basics/transfer-sol/steel
 
-tokens/escrow/steel
+finance/escrow/steel
 
 tokens/pda-mint-authority/steel
 tokens/token-minter/steel
-tokens/token-swap/steel
+finance/token-swap/steel
 tokens/transfer-tokens/steel
