@@ -41,6 +41,12 @@ Read offchain price data [onchain](https://solana.com/docs/terminology#onchain) 
 
 [⚓ Anchor](./oracles/pyth/anchor) [💫 Quasar](./oracles/pyth/quasar)
 
+### Vault Strategy
+
+Manager-run investment vault — deposit USDC, manager allocates across a basket of assets (TSLAx, NVDAx), withdraw proportional in-kind assets. Demonstrates share minting, NAV-based pricing, management fee accrual, and CPI to a swap router.
+
+[⚓ Anchor](./defi/vault-strategy/anchor)
+
 ## Basics
 
 ### Hello Solana
