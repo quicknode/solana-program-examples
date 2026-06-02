@@ -23,6 +23,4 @@ node_modules/
 /target
 deploy
 .claude/*
-# Exception: skills are shared team resources
 !.claude/skills/
-!.claude/skills/**

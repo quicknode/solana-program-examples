@@ -21,8 +21,10 @@ custom-panic = []
 
 [dependencies]
 anchor-lang = { version = "1.0.0", features = ["init-if-needed"] }
-anchor-spl = { version = "1.0.0", features = ["metadata"] }
-fixed = "1.27.0"
+anchor-spl = { version = "1.0.0", features = ["metadata", "spl-token-interface"] }
+# `fixed` removed: all financial math is now u128 + checked_*, matching how
+# production Solana AMMs (Orca, Raydium, Meteora, Saber) do it. Floats /
+# fixed-point types are not used for money in this program.
 
 [dev-dependencies]
 litesvm = "0.11.0"
