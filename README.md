@@ -23,6 +23,12 @@ Constant product AMM (x·y=k) — create liquidity pools, deposit and withdraw l
 
 [⚓ Anchor](./tokens/token-swap/anchor) [💫 Quasar](./tokens/token-swap/quasar)
 
+### Betting Market
+
+Parimutuel (pooled) prediction market — an admin opens an event with multiple outcomes, bettors stake tokens on an outcome, and at settlement the losing pool (minus a protocol fee) is split among winners in proportion to their stake.
+
+[⚓ Anchor](./tokens/betting-market/anchor)
+
 ### Escrow
 
 Peer-to-peer OTC trade — one user deposits token A and specifies how much token B they want. A counterparty fulfills the offer and both sides receive their tokens atomically.
