@@ -48,26 +48,3 @@ tokens/token-extensions/nft-meta-data-pointer/anchor-example/anchor
 tokens/token-extensions/mint-close-authority/native
 tokens/token-extensions/transfer-fee/native
 tokens/token-extensions/non-transferable/native
-
-# all steel projects
-
-basics/account-data/steel
-basics/checking-accounts/steel
-basics/close-account/steel
-basics/counter/steel
-basics/create-account/steel
-basics/cross-program-invocation/steel
-basics/favorites/steel
-basics/pda-rent-payer/steel
-basics/processing-instructions/steel
-basics/program-derived-addresses/steel
-basics/realloc/steel
-basics/rent/steel
-basics/transfer-sol/steel
-
-finance/escrow/steel
-
-tokens/pda-mint-authority/steel
-tokens/token-minter/steel
-finance/token-swap/steel
-tokens/transfer-tokens/steel
