@@ -19,31 +19,31 @@ Each example is available in one or more of the following frameworks:
 
 ### Escrow
 
-**Start here — this is the best first finance program to learn on Solana.** An escrow is a neutral holding account that lets two people who don't trust each other trade safely. One person (the maker) deposits token A and specifies how much token B they want in return. When a second person (the taker) supplies that token B, the program hands each side what it was promised in a single transaction — so either the whole trade happens, or none of it does. This "all-or-nothing" swap is the core idea behind every onchain exchange, which is why it's the right place to begin.
+**Start here — the best first finance program to learn on Solana.** A neutral account that holds funds until both sides deliver, like a real-estate escrow or a lawyer's trust account. The maker deposits token A and names how much token B they want; when a taker supplies token B, the program swaps both in a single all-or-nothing transaction. This swap is the core idea behind every onchain exchange.
 
 [⚓ Anchor](./finance/escrow/anchor) [💫 Quasar](./finance/escrow/quasar) [🦀 Native](./finance/escrow/native)
 
 ### Order Book based Exchange
 
-An order book is the list of buy and sell offers behind most exchanges. Buyers post **bids** (the price they'll pay), sellers post **asks** (the price they'll accept), and a trade happens when a bid and an ask meet. This program implements that idea: traders post limit orders at chosen prices, their tokens are locked in program-controlled vaults, and orders are matched against the opposite side using **price-time priority** (best price first, and for equal prices, whoever was there first). Trading fees collect in a dedicated fee vault, proceeds wait as unsettled balances, and traders withdraw them with `settle_funds`. A minimal teaching example of the mechanics behind exchanges like Openbook and Phoenix.
+A typical NYSE/NASDAQ-style order book-based exchange. Buyers post **bids** (the price they'll pay), sellers post **asks** (the price they'll accept), and a trade happens when a bid and an ask meet. The exchange operator collects fees from trading. Similar to popular Solana exchanges like Openbook and Phoenix.
 
 [⚓ Anchor](./finance/order-book/anchor)
 
 ### AMM based Exchange
 
-An automated market maker (AMM) is an exchange with no order book. Instead of matching buyers with sellers, swaps fill instantly against a shared, onchain liquidity pool that other users fund — those users are **liquidity providers**, and they earn a cut of the trading fees in return. Prices are set algorithmically by the pool's balances and move to reflect demand: buying an asset shrinks its share of the pool and pushes its price up. This program lets anyone create a pool, deposit or withdraw liquidity, and swap one token for another, with fees paid to liquidity providers and slippage protection so a swap can't execute at a worse price than expected. This is how exchanges like Raydium and Orca work.
+An exchange with no order book: swaps fill instantly against a shared liquidity pool funded by **liquidity providers**, who earn a cut of the trading fees. Prices are set algorithmically by the pool's balances. Anyone can create a pool, add or remove liquidity, and swap tokens, with slippage protection on every trade. Similar to Solana exchanges like Raydium and Orca.
 
 [⚓ Anchor](./finance/token-swap/anchor) [💫 Quasar](./finance/token-swap/quasar)
 
 ### Token Fundraiser
 
-A crowdfunding campaign onchain. A creator opens a fundraiser by choosing which token they want to raise and a target amount. Contributors deposit that token into the fundraiser's account until the goal is reached — a simple introduction to collecting funds from many people into a single program-controlled account.
+Onchain crowdfunding, like Kickstarter or GoFundMe. A creator sets a target amount in a chosen token, and contributors deposit into the fundraiser's account until the goal is reached.
 
 [⚓ Anchor](./finance/token-fundraiser/anchor) [💫 Quasar](./finance/token-fundraiser/quasar)
 
 ### Vault Strategy
 
-A managed investment fund onchain. Investors deposit USDC and receive shares representing their slice of the fund. A manager allocates the pooled money across a basket of assets (here, stocks like TSLAx and NVDAx), and each share's value tracks the fund's net asset value — its total holdings divided by the number of shares. The manager earns a management fee over time, and investors withdraw a proportional, in-kind slice of the underlying assets. Demonstrates share minting, value-per-share pricing, fee accrual, and calling another program (CPI) to swap assets.
+A managed investment fund onchain, like an ETF or mutual fund. Investors deposit USDC for shares, a manager allocates the pool across a basket of assets (here, tokenized stocks like TSLAx and NVDAx), and each share's value tracks the fund's net asset value. The manager earns a management fee, and investors redeem a proportional slice of the underlying assets.
 
 [⚓ Anchor](./finance/vault-strategy/anchor)
 
@@ -141,7 +141,7 @@ Send SOL between two accounts.
 
 ### Pyth Price Feeds
 
-Finance programs often need real-world prices — what a dollar, a stock, or another token is worth right now. An **oracle** brings that offchain market data [onchain](https://solana.com/docs/terminology#onchain). [Pyth](https://pyth.network/) is an oracle that publishes low-latency prices from institutional sources, with each asset's price living in its own account called a price feed. This minimal example reads a feed and logs its price, confidence interval, and exponent — the building block a program like an AMM, a lending market, or a vault uses to value assets.
+An **oracle** brings real-world market prices — a dollar, a stock, a token — [onchain](https://solana.com/docs/terminology#onchain), like a Bloomberg terminal feeding live quotes. [Pyth](https://pyth.network/) publishes low-latency prices from institutional sources, each in its own price feed account. This example reads a feed and logs its price, confidence interval, and exponent — the building block an AMM, lending market, or vault uses to value assets.
 
 [⚓ Anchor](./basics/pyth/anchor) [💫 Quasar](./basics/pyth/quasar)
 
