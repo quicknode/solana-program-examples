@@ -9,8 +9,11 @@ use {
         program_pack::Pack,
         pubkey::Pubkey,
     },
-    spl_associated_token_account::instruction as associated_token_account_instruction,
-    spl_token::{instruction as token_instruction, state::Account as TokenAccount},
+    spl_associated_token_account_interface::instruction as associated_token_account_instruction,
+    spl_token_interface::{
+        instruction as token_instruction,
+        state::{Account as TokenAccount, Mint},
+    },
 };
 
 #[derive(BorshDeserialize, BorshSerialize, Debug)]
@@ -141,20 +144,29 @@ impl TakeOffer {
         );
         solana_program::msg!("Taker B Balance Before Transfer: {}", taker_amount_b);
 
-        // taker transfer mint a tokens to vault
+        // `transfer` is deprecated in favour of `transfer_checked`, which also
+        // verifies the mint and its decimals. Read the decimals from the mint
+        // accounts the caller passed in.
+        let mint_a_decimals = Mint::unpack(&token_mint_a.data.borrow())?.decimals;
+        let mint_b_decimals = Mint::unpack(&token_mint_b.data.borrow())?.decimals;
+
+        // taker transfers mint B tokens to the maker
         //
         invoke(
-            &token_instruction::transfer(
+            &token_instruction::transfer_checked(
                 token_program.key,
                 taker_token_account_b.key,
+                token_mint_b.key,
                 maker_token_account_b.key,
                 taker.key,
                 &[taker.key],
                 offer.token_b_wanted_amount,
+                mint_b_decimals,
             )?,
             &[
                 token_program.clone(),
                 taker_token_account_b.clone(),
+                token_mint_b.clone(),
                 maker_token_account_b.clone(),
                 taker.clone(),
             ],
@@ -163,13 +175,15 @@ impl TakeOffer {
         // transfer from vault to taker
         //
         invoke_signed(
-            &token_instruction::transfer(
+            &token_instruction::transfer_checked(
                 token_program.key,
                 vault.key,
+                token_mint_a.key,
                 taker_token_account_a.key,
                 offer_info.key,
                 &[offer_info.key, taker.key],
                 vault_amount_a,
+                mint_a_decimals,
             )?,
             &[
                 token_mint_a.clone(),
@@ -205,7 +219,7 @@ impl TakeOffer {
         // close the vault account
         //
         invoke_signed(
-            &spl_token::instruction::close_account(
+            &token_instruction::close_account(
                 token_program.key,
                 vault.key,
                 taker.key,
@@ -222,9 +236,9 @@ impl TakeOffer {
         **offer_info.lamports.borrow_mut() -= lamports;
         **payer.lamports.borrow_mut() += lamports;
 
-        // Realloc the account to zero
+        // Resize the account to zero
         //
-        offer_info.realloc(0, true)?;
+        offer_info.resize(0)?;
 
         // Assign the account to the System Program
         //
