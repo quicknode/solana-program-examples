@@ -17,7 +17,7 @@
   },
   "packageManager": "pnpm@10.33.0",
   "keywords": [],
-  "author": "Solana Foundation",
+  "author": "Quicknode",
   "license": "MIT",
   "devDependencies": {
     "@biomejs/biome": "2.4.10",
