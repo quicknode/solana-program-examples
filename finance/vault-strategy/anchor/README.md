@@ -2,7 +2,7 @@
 
 A manager-run investment vault on Solana. Users deposit [USDC](https://www.investopedia.com/terms/u/usd-coin-usdc.asp) and receive shares representing proportional ownership of a basket of assets. The manager allocates funds across the basket, earns a fee, and depositors withdraw their proportional slice when they choose.
 
-The example uses two tokenised stocks as the basket assets: **TSLAx** (Tesla) and **NVDAx** (Nvidia) — [xStocks](https://backed.fi/xstocks) issued on Solana by Backed Finance. In tests these are mock [SPL tokens](https://solana.com/docs/terminology#token).
+The example uses two stocks as the basket assets: **TSLAx** (Tesla) and **NVDAx** (Nvidia) — [xStocks](https://backed.fi/xstocks) issued on Solana by Backed Finance. In tests these are mock [tokens](https://solana.com/docs/terminology#token).
 
 ---
 
@@ -276,7 +276,7 @@ In production, replace the router CPIs in `invest` and `rebalance` with [Jupiter
 
 ## Custody and Trust
 
-This is a **manager-custodial** vault. The strategy [PDA](https://solana.com/docs/terminology#program-derived-address-pda) holds all assets; the manager controls `invest` and `rebalance` with no on-chain constraint that they follow the stated allocation. Depositors trust the manager to act in their interest.
+This is a **manager-custodial** vault. The strategy [PDA](https://solana.com/docs/terminology#program-derived-address-pda) holds all assets; the manager controls `invest` and `rebalance` with no onchain constraint that they follow the stated allocation. Depositors trust the manager to act in their interest.
 
 The `manager` field is a plain `Pubkey`. It can be a [Squads](https://squads.so/) multisig address — the vault checks only that the transaction carries a valid signature from that key. Squads handles threshold approval before the transaction reaches the vault. No program changes are required.
 

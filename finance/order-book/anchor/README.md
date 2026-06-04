@@ -187,10 +187,10 @@ This section walks through a complete sequence of trades using four real partici
 
 | Token | What it is | Role on this market |
 |---|---|---|
-| **NVDAx** | A [tokenised](https://www.investopedia.com/terms/t/tokenization.asp) on-chain representation of one NVIDIA share. Its price tracks the underlying stock. | **Base asset** — the thing being bought and sold |
+| **NVDAx** | An onchain NVIDIA share (xStock). Its price tracks the underlying stock. | **Base asset** — the thing being bought and sold |
 | **USDC** | A stablecoin redeemable 1:1 for US dollars | **Quote asset** — the currency used for pricing and payment |
 
-A price of **960** means "960 USDC per NVDAx". The same program logic — identical instruction handlers and account structure — works for any other pair, such as **TSLAx/USDC** (tokenised Tesla shares).
+A price of **960** means "960 USDC per NVDAx". The same program logic — identical instruction handlers and account structure — works for any other pair, such as **TSLAx/USDC** (Tesla xStock).
 
 ### The participants
 

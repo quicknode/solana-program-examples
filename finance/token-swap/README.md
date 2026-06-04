@@ -34,7 +34,7 @@ A CPAMM is the simplest and the cheapest to keep in [account](https://solana.com
 Requirements:
 
 - **Fee distribution.** Every pool charges a trading fee, paid in the traded token, that rewards [liquidity providers (LPs)](https://www.investopedia.com/terms/l/liquidity-provider.asp). To stay consistent across pools, the fee is shared.
-- **Single pool per asset pair.** Avoids liquidity fragmentation. Without a single canonical pool per pair, a [decentralised exchange (DEX)](https://www.investopedia.com/terms/d/decentralized-exchange-dex.asp) would fragment volume across multiple pools, widening spreads — the same problem that motivated the shift away from [order books](https://www.investopedia.com/terms/o/order-book.asp) on-chain.
+- **Single pool per asset pair.** Avoids liquidity fragmentation. Without a single canonical pool per pair, a [decentralised exchange (DEX)](https://www.investopedia.com/terms/d/decentralized-exchange-dex.asp) would fragment volume across multiple pools, widening spreads — the same problem that motivated the shift away from [order books](https://www.investopedia.com/terms/o/order-book.asp) onchain.
 - **LP accounting.** The program tracks each LP's deposits.
 
 Implementation choices:
@@ -150,15 +150,15 @@ Lets the address stored in `Config.admin` sweep their accumulated trading-fee cl
 
 A worked example, end to end, using this program. The example uses three tokens:
 
-- **NVDAx** — a [tokenised](https://www.investopedia.com/terms/t/tokenization.asp) NVIDIA share, priced at ~5 USDC offchain.
-- **TSLAx** — a tokenised Tesla share, priced at ~180 USDC offchain.
+- **NVDAx** — an NVIDIA share (xStock), priced at ~5 USDC offchain.
+- **TSLAx** — a Tesla share (xStock), priced at ~180 USDC offchain.
 - **USDC** — a USD-pegged [stablecoin](https://www.investopedia.com/terms/s/stablecoin.asp) used as the quote currency in both pools.
 
 **Cast:**
 
 - **Alice** — AMM operator. Deploys and runs the exchange. Earns a slice of every trading fee via the admin protocol-fee mechanism; also earns LP [yield](https://www.investopedia.com/terms/y/yield.asp) on her own initial deposits. Wants real usage so fee income compounds. She calls `create_config` to fix the trading fee at 0.3% and sets `admin_share_bps = 1667` so she earns ~1/6 of every trading fee (LPs keep the other ~5/6). She seeds both the NVDAx/USDC pool and the TSLAx/USDC pool herself (eating the locked `MINIMUM_LIQUIDITY` cost) so users have something to trade from day one.
 - **Bob** — yield farmer / [liquidity provider](https://www.investopedia.com/terms/l/liquidity-provider.asp). Has idle capital (NVDAx and USDC) earning nothing. Wants to earn [passive income](https://www.investopedia.com/terms/p/passiveincome.asp) from the swap fees the pool collects, without actively trading.
-- **Carol** — retail trader. Holds USDC and has a bullish [thesis](https://www.investopedia.com/terms/i/investmentthesis.asp) on NVIDIA: she believes NVDAx (a tokenised NVIDIA share) will appreciate. She wants to swap USDC for NVDAx quickly, without a centralised exchange account. She also later buys TSLAx on the TSLAx/USDC pool.
+- **Carol** — retail trader. Holds USDC and has a bullish [thesis](https://www.investopedia.com/terms/i/investmentthesis.asp) on NVIDIA: she believes NVDAx will appreciate. She wants to swap USDC for NVDAx quickly, without a centralised exchange account. She also later buys TSLAx on the TSLAx/USDC pool.
 - **Dave** — [arbitrageur](https://www.investopedia.com/terms/a/arbitrage.asp). Profits by trading the gap between the pool's mid-price and the offchain market price. Side effect: his trades drag the pool price back toward fair value.
 
 ### Step 1 — Alice creates the `Config`
@@ -193,7 +193,7 @@ NVDAx/USDC pool exists; reserves are empty. No one can swap yet.
 
 ### Step 2b — Alice creates the TSLAx/USDC pool
 
-Alice immediately creates a second pool for TSLAx (tokenised Tesla shares, ~180 USDC each). The handler and account shape are identical to Step 2; only the mints differ.
+Alice immediately creates a second pool for TSLAx (Tesla xStock, ~180 USDC each). The handler and account shape are identical to Step 2; only the mints differ.
 
 - **Handler:** `create_pool`
 - **Accounts (`CreatePoolAccounts`):**
