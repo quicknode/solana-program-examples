@@ -9,11 +9,14 @@ use {
         program_pack::Pack,
         pubkey::Pubkey,
         rent::Rent,
-        system_instruction,
         sysvar::Sysvar,
     },
-    spl_associated_token_account::instruction as associated_token_account_instruction,
-    spl_token::{instruction as token_instruction, state::Account as TokenAccount},
+    solana_system_interface::instruction as system_instruction,
+    spl_associated_token_account_interface::instruction as associated_token_account_instruction,
+    spl_token_interface::{
+        instruction as token_instruction,
+        state::{Account as TokenAccount, Mint},
+    },
 };
 
 #[derive(BorshDeserialize, BorshSerialize, Debug)]
@@ -123,18 +126,25 @@ impl MakeOffer {
 
         // transfer Mint A tokens to vault
         //
+        // `transfer` is deprecated in favour of `transfer_checked`, which also
+        // verifies the mint and its decimals. Read the decimals from the mint
+        // account the caller passed in.
+        let mint_a_decimals = Mint::unpack(&token_mint_a.data.borrow())?.decimals;
         invoke(
-            &token_instruction::transfer(
+            &token_instruction::transfer_checked(
                 token_program.key,
                 maker_token_account_a.key,
+                token_mint_a.key,
                 vault.key,
                 maker.key,
                 &[maker.key],
                 args.token_a_offered_amount,
+                mint_a_decimals,
             )?,
             &[
                 token_program.clone(),
                 maker_token_account_a.clone(),
+                token_mint_a.clone(),
                 vault.clone(),
                 maker.clone(),
             ],
