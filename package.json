@@ -3,7 +3,6 @@
   "version": "1.0.0",
   "description": "Solana program (smart contract) examples for Anchor, Pinocchio, and Native Rust.",
   "scripts": {
-    "sync-package-json": "ts-node scripts/sync-package-json.ts",
     "format:fix": "pnpx @biomejs/biome format --write ./",
     "lint:fix": "pnpx @biomejs/biome lint --write ./",
     "lint": "pnpx @biomejs/biome lint ./",
