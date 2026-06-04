@@ -1,4 +1,4 @@
-# Quicknode Solana Program Examples
+# QuickNode Solana Program Examples
 
 > A fork of the [Solana Foundation program examples](https://github.com/solana-developers/program-examples) with current versions, more [programs](https://solana.com/docs/terminology#program), and additional frameworks.
 
