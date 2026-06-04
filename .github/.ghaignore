@@ -12,9 +12,9 @@ tokens/transfer-tokens/native
 tokens/token-minter/native
 tokens/create-token/native
 
-finance/token-swap/anchor
-
-# not building
+# not building: pyth-solana-receiver-sdk 1.1.0 pulls a borsh version that
+# conflicts with Anchor 1.0 / Solana 3.x (PriceUpdateV2 fails BorshDeserialize).
+# Blocked on an upstream SDK release compatible with solana 3.x.
 basics/pyth/anchor
 
 # not building
@@ -23,10 +23,6 @@ compression/cnft-vault/anchor
 # builds but need to test on localhost
 compression/cnft-burn/anchor
 
-# test failing
-# https://github.com/solana-developers/helpers/issues/40
-finance/escrow/anchor
-
 # not live
 tokens/token-extensions/group/anchor
 tokens/token-extensions/group/quasar
@@ -34,10 +30,6 @@ tokens/token-extensions/group/quasar
 # CPI quasar project uses subdirectories (hand/ and lever/) instead of a root Quasar.toml
 basics/cross-program-invocation/quasar
 
-
-
-# error in tests
-tokens/external-delegate-token-master/anchor
 
 # build failed - program outdated
 tokens/token-extensions/metadata/anchor
@@ -48,26 +40,3 @@ tokens/token-extensions/nft-meta-data-pointer/anchor-example/anchor
 tokens/token-extensions/mint-close-authority/native
 tokens/token-extensions/transfer-fee/native
 tokens/token-extensions/non-transferable/native
-
-# all steel projects
-
-basics/account-data/steel
-basics/checking-accounts/steel
-basics/close-account/steel
-basics/counter/steel
-basics/create-account/steel
-basics/cross-program-invocation/steel
-basics/favorites/steel
-basics/pda-rent-payer/steel
-basics/processing-instructions/steel
-basics/program-derived-addresses/steel
-basics/realloc/steel
-basics/rent/steel
-basics/transfer-sol/steel
-
-finance/escrow/steel
-
-tokens/pda-mint-authority/steel
-tokens/token-minter/steel
-finance/token-swap/steel
-tokens/transfer-tokens/steel
