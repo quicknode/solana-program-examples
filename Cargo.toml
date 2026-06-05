@@ -58,6 +58,11 @@ members = [
     "tokens/token-extensions/default-account-state/native/program",
     "tokens/token-extensions/transfer-fee/native/program",
     "tokens/token-extensions/multiple-extensions/native/program",
+    "tokens/create-token/native/program",
+    "tokens/token-minter/native/program",
+    "tokens/transfer-tokens/native/program",
+    "tokens/nft-minter/native/program",
+    "tokens/pda-mint-authority/native/program",
 ]
 resolver = "2"
 
