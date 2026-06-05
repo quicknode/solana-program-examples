@@ -8,11 +8,11 @@
 
 import {
   combineCodec,
-  getEnumDecoder,
-  getEnumEncoder,
   type FixedSizeCodec,
   type FixedSizeDecoder,
   type FixedSizeEncoder,
+  getEnumDecoder,
+  getEnumEncoder,
 } from "@solana/kit";
 
 export enum RentalOrderStatus {
@@ -31,12 +31,6 @@ export function getRentalOrderStatusDecoder(): FixedSizeDecoder<RentalOrderStatu
   return getEnumDecoder(RentalOrderStatus);
 }
 
-export function getRentalOrderStatusCodec(): FixedSizeCodec<
-  RentalOrderStatusArgs,
-  RentalOrderStatus
-> {
-  return combineCodec(
-    getRentalOrderStatusEncoder(),
-    getRentalOrderStatusDecoder(),
-  );
+export function getRentalOrderStatusCodec(): FixedSizeCodec<RentalOrderStatusArgs, RentalOrderStatus> {
+  return combineCodec(getRentalOrderStatusEncoder(), getRentalOrderStatusDecoder());
 }

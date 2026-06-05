@@ -12,7 +12,7 @@ import { readFileSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { rootNodeFromAnchor, type AnchorIdl } from "@codama/nodes-from-anchor";
+import { type AnchorIdl, rootNodeFromAnchor } from "@codama/nodes-from-anchor";
 import { renderVisitor } from "@codama/renderers-js";
 import { createFromRoot } from "codama";
 

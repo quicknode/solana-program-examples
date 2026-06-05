@@ -7,12 +7,20 @@
  */
 
 import {
+  type Account,
+  type Address,
   addDecoderSizePrefix,
   addEncoderSizePrefix,
   assertAccountExists,
   assertAccountsExist,
+  type Codec,
   combineCodec,
+  type Decoder,
   decodeAccount,
+  type EncodedAccount,
+  type Encoder,
+  type FetchAccountConfig,
+  type FetchAccountsConfig,
   fetchEncodedAccount,
   fetchEncodedAccounts,
   getAddressDecoder,
@@ -25,14 +33,6 @@ import {
   getU64Encoder,
   getUtf8Decoder,
   getUtf8Encoder,
-  type Account,
-  type Address,
-  type Codec,
-  type Decoder,
-  type EncodedAccount,
-  type Encoder,
-  type FetchAccountConfig,
-  type FetchAccountsConfig,
   type MaybeAccount,
   type MaybeEncodedAccount,
 } from "@solana/kit";
@@ -99,10 +99,7 @@ export function decodeRentalOrder<TAddress extends string = string>(
 export function decodeRentalOrder<TAddress extends string = string>(
   encodedAccount: EncodedAccount<TAddress> | MaybeEncodedAccount<TAddress>,
 ): Account<RentalOrder, TAddress> | MaybeAccount<RentalOrder, TAddress> {
-  return decodeAccount(
-    encodedAccount as MaybeEncodedAccount<TAddress>,
-    getRentalOrderDecoder(),
-  );
+  return decodeAccount(encodedAccount as MaybeEncodedAccount<TAddress>, getRentalOrderDecoder());
 }
 
 export async function fetchRentalOrder<TAddress extends string = string>(

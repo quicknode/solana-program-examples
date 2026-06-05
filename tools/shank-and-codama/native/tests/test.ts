@@ -13,18 +13,18 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
+  type Address,
   address,
+  appendTransactionMessageInstruction,
+  createTransactionMessage,
+  generateKeyPairSigner,
   getAddressEncoder,
   getProgramDerivedAddress,
-  generateKeyPairSigner,
   getUtf8Encoder,
   lamports,
   pipe,
-  appendTransactionMessageInstruction,
-  createTransactionMessage,
   setTransactionMessageFeePayerSigner,
   signTransactionMessageWithSigners,
-  type Address,
 } from "@solana/kit";
 import { FailedTransactionMetadata, LiteSVM } from "litesvm";
 
@@ -98,11 +98,7 @@ test("car rental service: add_car, book_rental, pick_up_car", async () => {
   const model = "iX1";
   const carAccount = await carPda(programId, make, model);
 
-  await sendIx(
-    svm,
-    payer,
-    getAddCarInstruction({ carAccount, payer, year: 2020, make, model }),
-  );
+  await sendIx(svm, payer, getAddCarInstruction({ carAccount, payer, year: 2020, make, model }));
 
   const carRaw = svm.getAccount(carAccount);
   assert.ok(carRaw?.exists, "car account should exist");
@@ -136,11 +132,7 @@ test("car rental service: add_car, book_rental, pick_up_car", async () => {
   assert.equal(rental.data.status, RentalOrderStatus.Created);
 
   // 3. pick_up_car
-  await sendIx(
-    svm,
-    payer,
-    getPickUpCarInstruction({ rentalAccount, carAccount, payer: payer.address }),
-  );
+  await sendIx(svm, payer, getPickUpCarInstruction({ rentalAccount, carAccount, payer: payer.address }));
 
   rentalRaw = svm.getAccount(rentalAccount);
   assert.ok(rentalRaw?.exists, "rental account should still exist");
