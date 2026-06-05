@@ -1,6 +1,5 @@
 pub use crate::constants::TOKEN_METADATA_EXTENSION_SPACE;
 pub use crate::errors::GameErrorCode;
-pub use crate::errors::ProgramErrorCode;
 pub use crate::state::game_data::GameData;
 use anchor_lang::solana_program::program::{invoke, invoke_signed};
 use anchor_lang::{prelude::*, system_program};
@@ -21,7 +20,7 @@ pub fn handle_mint_nft(context: Context<MintNft>) -> Result<()> {
         match ExtensionType::try_calculate_account_len::<Mint>(&[ExtensionType::MetadataPointer]) {
             Ok(space) => space,
             Err(_) => {
-                return err!(ProgramErrorCode::InvalidMintAccountSpace);
+                return err!(GameErrorCode::InvalidMintAccountSpace);
             }
         };
 
@@ -72,7 +71,7 @@ pub fn handle_mint_nft(context: Context<MintNft>) -> Result<()> {
         ) {
             Ok(ix) => ix,
             Err(_) => {
-                return err!(ProgramErrorCode::CantInitializeMetadataPointer);
+                return err!(GameErrorCode::CantInitializeMetadataPointer);
             }
         };
 
