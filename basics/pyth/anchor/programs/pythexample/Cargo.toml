@@ -22,7 +22,6 @@ custom-panic = []
 
 [dependencies]
 anchor-lang = "1.0.0"
-pyth-solana-receiver-sdk = "1.1.0"
 
 [dev-dependencies]
 litesvm = "0.11.0"
