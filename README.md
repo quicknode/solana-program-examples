@@ -339,4 +339,4 @@ Work with Metaplex compressed NFTs.
 
 ---
 
-**PRs welcome!** Follow the [contributing guidelines](./CONTRIBUTING.md) to keep things consistent.
+**PRs welcome!** Follow the [contributing guidelines](./CONTRIBUTING.md) and see [CHANGELOG.md](./CHANGELOG.md) for release history.
