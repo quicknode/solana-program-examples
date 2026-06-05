@@ -26,7 +26,9 @@ use {
 
 // ---- Program IDs ----------------------------------------------------------
 
-const CNFT_BURN_ID: Pubkey = pubkey!("C6qxH8n6mZxrrbtMtYWYSp8JR8vkQ55X1o4EBg7twnMv");
+// Track the program crate's declared id (CI runs `anchor keys sync`, which
+// rewrites it to a freshly generated keypair before building).
+const CNFT_BURN_ID: Pubkey = cnft_burn::ID;
 const BUBBLEGUM_ID: Pubkey = pubkey!("BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY");
 const COMPRESSION_ID: Pubkey = pubkey!("cmtDvXumGCrqC1Age74AVPhSRVXJMd8PJS91L8KbNCK");
 const NOOP_ID: Pubkey = pubkey!("noopb9bkMVfRPU8AsbpTUg8AQkHtKwMYZiFUjNRtMmV");
