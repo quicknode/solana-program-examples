@@ -58,6 +58,7 @@ members = [
     "tokens/token-extensions/default-account-state/native/program",
     "tokens/token-extensions/transfer-fee/native/program",
     "tokens/token-extensions/multiple-extensions/native/program",
+    "tokens/create-token/native/program",
 ]
 resolver = "2"
 

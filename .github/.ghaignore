@@ -6,7 +6,6 @@ tokens/pda-mint-authority/native
 tokens/nft-minter/native
 tokens/transfer-tokens/native
 tokens/token-minter/native
-tokens/create-token/native
 
 # not building: pyth-solana-receiver-sdk 1.1.0 pulls a borsh version that
 # conflicts with Anchor 1.0 / Solana 3.x (PriceUpdateV2 fails BorshDeserialize).
