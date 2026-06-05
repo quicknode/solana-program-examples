@@ -1,6 +1,3 @@
-# uses generated client from shank, can't rewrite to solana-bankrun
-tools/shank-and-solita/native
-
 # build failed - program outdated
 tokens/token-extensions/metadata/anchor
 
