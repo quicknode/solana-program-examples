@@ -11,7 +11,7 @@ pub struct Emit<'info> {
 
 // Invoke the emit instruction from spl_token_metadata_interface directly
 // There is not an anchor CpiContext for this instruction
-pub fn handle_process_emit(context: Context<Emit>) -> Result<()> {
+pub fn process_emit(context: Context<Emit>) -> Result<()> {
     invoke(
         &emit(
             &context.accounts.token_program.key(), // token program id

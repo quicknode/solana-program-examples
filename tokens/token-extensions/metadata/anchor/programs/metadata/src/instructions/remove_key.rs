@@ -19,13 +19,13 @@ pub struct RemoveKey<'info> {
 
 // Invoke the remove_key instruction from spl_token_metadata_interface directly
 // There is not an anchor CpiContext for this instruction
-pub fn handle_process_remove_key(context: Context<RemoveKey>, key: String) -> Result<()> {
+pub fn process_remove_key(context: Context<RemoveKey>, key: String) -> Result<()> {
     invoke(
         &remove_key(
             &context.accounts.token_program.key(),    // token program id
             &context.accounts.mint_account.key(),     // "metadata" account
             &context.accounts.update_authority.key(), // update authority
-            key,                                  // key to remove
+            key,                                      // key to remove
             true, // idempotent flag, if true transaction will not fail if key does not exist
         ),
         &[

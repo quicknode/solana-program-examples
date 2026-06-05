@@ -23,7 +23,7 @@ pub struct UpdateField<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handle_process_update_field(context: Context<UpdateField>, args: UpdateFieldArgs) -> Result<()> {
+pub fn process_update_field(context: Context<UpdateField>, args: UpdateFieldArgs) -> Result<()> {
     let UpdateFieldArgs { field, value } = args;
 
     // Convert to Field type from spl_token_metadata_interface
@@ -80,7 +80,7 @@ pub fn handle_process_update_field(context: Context<UpdateField>, args: UpdateFi
         CpiContext::new(
             context.accounts.token_program.key(),
             TokenMetadataUpdateField {
-                token_program_id: context.accounts.token_program.to_account_info(),
+                program_id: context.accounts.token_program.to_account_info(),
                 metadata: context.accounts.mint_account.to_account_info(),
                 update_authority: context.accounts.authority.to_account_info(),
             },

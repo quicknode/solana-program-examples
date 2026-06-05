@@ -4,11 +4,11 @@ use {
         InstructionData, ToAccountMetas,
     },
     litesvm::LiteSVM,
+    solana_keypair::Keypair,
     solana_kite::{
         create_wallet, send_transaction_from_instructions,
         token_extensions::TOKEN_EXTENSIONS_PROGRAM_ID,
     },
-    solana_keypair::Keypair,
     solana_signer::Signer,
 };
 
@@ -47,7 +47,13 @@ fn test_metadata_full_flow() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![initialize_ix], &[&payer, &mint_keypair], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        vec![initialize_ix],
+        &[&payer, &mint_keypair],
+        &payer.pubkey(),
+    )
+    .unwrap();
 
     // Verify mint exists
     let mint_account = svm
@@ -75,7 +81,8 @@ fn test_metadata_full_flow() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![update_name_ix], &[&payer], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(&mut svm, vec![update_name_ix], &[&payer], &payer.pubkey())
+        .unwrap();
     svm.expire_blockhash();
 
     // Step 3: Add custom field
@@ -96,7 +103,13 @@ fn test_metadata_full_flow() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![add_custom_field_ix], &[&payer], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        vec![add_custom_field_ix],
+        &[&payer],
+        &payer.pubkey(),
+    )
+    .unwrap();
     svm.expire_blockhash();
 
     // Step 4: Remove custom field
@@ -114,7 +127,8 @@ fn test_metadata_full_flow() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![remove_key_ix], &[&payer], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(&mut svm, vec![remove_key_ix], &[&payer], &payer.pubkey())
+        .unwrap();
     svm.expire_blockhash();
 
     // Step 5: Update authority to None
@@ -130,7 +144,13 @@ fn test_metadata_full_flow() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![update_authority_ix], &[&payer], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        vec![update_authority_ix],
+        &[&payer],
+        &payer.pubkey(),
+    )
+    .unwrap();
     svm.expire_blockhash();
 
     // Step 6: Emit metadata (verify it doesn't fail)
@@ -143,14 +163,12 @@ fn test_metadata_full_flow() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![emit_ix], &[&payer], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(&mut svm, vec![emit_ix], &[&payer], &payer.pubkey())
+        .unwrap();
 
     // Verify mint still exists after all operations
     let mint_account = svm
         .get_account(&mint_keypair.pubkey())
         .expect("Mint account should still exist after all metadata operations");
-    assert!(
-        !mint_account.data.is_empty(),
-        "Mint should still have data"
-    );
+    assert!(!mint_account.data.is_empty(), "Mint should still have data");
 }
