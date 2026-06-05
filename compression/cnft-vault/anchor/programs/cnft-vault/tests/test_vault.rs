@@ -29,7 +29,8 @@ use {
 
 // ---- Program IDs ----------------------------------------------------------
 
-const CNFT_VAULT_ID: Pubkey = pubkey!("Fd4iwpPWaCU8BNwGQGtvvrcvG4Tfizq3RgLm8YLBJX6D");
+// Track the crate's declared id (CI runs `anchor keys sync` before building).
+const CNFT_VAULT_ID: Pubkey = cnft_vault::ID;
 const BUBBLEGUM_ID: Pubkey = pubkey!("BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY");
 const COMPRESSION_ID: Pubkey = pubkey!("cmtDvXumGCrqC1Age74AVPhSRVXJMd8PJS91L8KbNCK");
 const NOOP_ID: Pubkey = pubkey!("noopb9bkMVfRPU8AsbpTUg8AQkHtKwMYZiFUjNRtMmV");

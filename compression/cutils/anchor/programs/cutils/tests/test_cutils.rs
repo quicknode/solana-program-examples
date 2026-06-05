@@ -39,7 +39,8 @@ use {
 
 // ---- Program IDs ----------------------------------------------------------
 
-const CUTILS_ID: Pubkey = pubkey!("BuFyrgRYzg2nPhqYrxZ7d9uYUs4VXtxH71U8EcoAfTQZ");
+// Track the crate's declared id (CI runs `anchor keys sync` before building).
+const CUTILS_ID: Pubkey = cutils::ID;
 const BUBBLEGUM_ID: Pubkey = pubkey!("BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY");
 const COMPRESSION_ID: Pubkey = pubkey!("cmtDvXumGCrqC1Age74AVPhSRVXJMd8PJS91L8KbNCK");
 const NOOP_ID: Pubkey = pubkey!("noopb9bkMVfRPU8AsbpTUg8AQkHtKwMYZiFUjNRtMmV");
