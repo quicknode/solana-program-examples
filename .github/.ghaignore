@@ -19,10 +19,6 @@ compression/cnft-vault/anchor
 # builds but need to test on localhost
 compression/cnft-burn/anchor
 
-# not live
-tokens/token-extensions/group/anchor
-tokens/token-extensions/group/quasar
-
 # CPI quasar project uses subdirectories (hand/ and lever/) instead of a root Quasar.toml
 basics/cross-program-invocation/quasar
 
