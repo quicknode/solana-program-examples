@@ -36,7 +36,3 @@ tokens/token-extensions/metadata/anchor
 
 # dependency issues
 tokens/token-extensions/nft-meta-data-pointer/anchor-example/anchor
-
-tokens/token-extensions/mint-close-authority/native
-tokens/token-extensions/transfer-fee/native
-tokens/token-extensions/non-transferable/native
