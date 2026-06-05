@@ -4,8 +4,6 @@ tools/shank-and-solita/native
 # not building
 compression/cutils/anchor
 compression/cnft-vault/anchor
-# builds but need to test on localhost
-compression/cnft-burn/anchor
 
 
 
