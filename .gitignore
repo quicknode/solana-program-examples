@@ -11,6 +11,8 @@ node_modules/
 # Exception: escrow native is a standalone (non-workspace) crate, so it keeps
 # its Cargo.lock tracked for reproducible builds.
 !finance/escrow/native/Cargo.lock
+# Exception: shank-and-codama native is also a standalone (non-workspace) crate.
+!tools/shank-and-codama/native/program/Cargo.lock
 
 **/*/.anchor
 **/*/.DS_Store
