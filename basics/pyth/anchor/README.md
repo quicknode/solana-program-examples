@@ -13,7 +13,9 @@ See also: [Pyth overview](../README.md) and the [repository catalog](../../../RE
 > error[E0277]: the trait bound `pythnet_sdk::messages::PriceFeedMessage: BorshSerialize` is not satisfied
 > ```
 >
-> No published `pyth-solana-receiver-sdk` targets `anchor-lang` 1.0 (which this repo standardizes on), and no `pythnet-sdk` release has migrated to borsh 1.x — so the dependency can't simply be upgraded. As a workaround, `programs/pythexample/src/lib.rs` mirrors the on-chain `PriceUpdateV2` layout locally (same fields, same 8-byte discriminator, owned by the Pyth Receiver program) so accounts written by Pyth deserialize unchanged. Replace the vendored type with the SDK import once an Anchor 1.0 / borsh 1.x compatible release ships.
+> No published `pyth-solana-receiver-sdk` targets `anchor-lang` 1.0 (which this repo standardizes on), and no `pythnet-sdk` release has migrated to borsh 1.x — so the dependency can't simply be upgraded. Tracked upstream at [pyth-network/pyth-crosschain#3756](https://github.com/pyth-network/pyth-crosschain/issues/3756).
+>
+> As a workaround, `programs/pythexample/src/lib.rs` mirrors the on-chain `PriceUpdateV2` layout locally (same fields, same 8-byte discriminator, owned by the Pyth Receiver program) so accounts written by Pyth deserialize unchanged. Replace the vendored type with the SDK import once an Anchor 1.0 / borsh 1.x compatible release ships.
 
 ## Major concepts
 

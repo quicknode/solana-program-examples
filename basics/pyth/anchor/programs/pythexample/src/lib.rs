@@ -46,7 +46,10 @@ pub struct ReadPrice<'info> {
 //
 // No published `pyth-solana-receiver-sdk` targets `anchor-lang` 1.0 (which this
 // repo standardizes on) and no `pythnet-sdk` release has migrated to borsh 1.x,
-// so the dependency can't simply be upgraded. The fields, order, and 8-byte
+// so the dependency can't simply be upgraded. Tracked upstream at
+// https://github.com/pyth-network/pyth-crosschain/issues/3756
+//
+// The fields, order, and 8-byte
 // discriminator below match the on-chain account exactly, and it is owned by
 // the Pyth Receiver program (see the `Owner` impl), so accounts written by Pyth
 // deserialize unchanged. Replace this with the SDK type once an Anchor 1.0 /
