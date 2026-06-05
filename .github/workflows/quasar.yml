@@ -171,21 +171,48 @@ jobs:
             echo "Building and Testing $project with Solana $solana_version"
             cd "$project" || return 1
 
-            # Build with quasar CLI
-            if ! quasar build; then
-              echo "::error::quasar build failed for $project"
-              echo "$project: quasar build failed with $solana_version" >> $GITHUB_WORKSPACE/failed_projects.txt
+            # Determine the quasar program directories for this project. Normally
+            # the project dir itself holds the Quasar.toml. Some examples (e.g. the
+            # cross-program-invocation CPI demo) instead contain several program
+            # subdirectories (hand/, lever/), each its own Quasar project. In that
+            # case build them all *first*, then test them all, so a program whose
+            # tests load a sibling program's compiled .so (the CPI callee) has it
+            # available regardless of directory order.
+            local prog_dirs=()
+            if [ -f Quasar.toml ]; then
+              prog_dirs=(".")
+            else
+              for d in */; do
+                [ -f "${d}Quasar.toml" ] && prog_dirs+=("${d%/}")
+              done
+            fi
+
+            if [ ${#prog_dirs[@]} -eq 0 ]; then
+              echo "::error::no Quasar.toml found for $project"
+              echo "$project: no Quasar.toml found with $solana_version" >> $GITHUB_WORKSPACE/failed_projects.txt
               cd - > /dev/null
               return 1
             fi
 
-            # Run Rust tests (quasar examples use cargo test with quasar-svm)
-            if ! cargo test; then
-              echo "::error::cargo test failed for $project"
-              echo "$project: cargo test failed with $solana_version" >> $GITHUB_WORKSPACE/failed_projects.txt
-              cd - > /dev/null
-              return 1
-            fi
+            # Build every program first.
+            for d in "${prog_dirs[@]}"; do
+              if ! ( cd "$d" && quasar build ); then
+                echo "::error::quasar build failed for $project ($d)"
+                echo "$project: quasar build failed with $solana_version" >> $GITHUB_WORKSPACE/failed_projects.txt
+                cd - > /dev/null
+                return 1
+              fi
+            done
+
+            # Then run Rust tests (quasar examples use cargo test with quasar-svm).
+            for d in "${prog_dirs[@]}"; do
+              if ! ( cd "$d" && cargo test ); then
+                echo "::error::cargo test failed for $project ($d)"
+                echo "$project: cargo test failed with $solana_version" >> $GITHUB_WORKSPACE/failed_projects.txt
+                cd - > /dev/null
+                return 1
+              fi
+            done
 
             echo "Build and tests succeeded for $project with $solana_version version."
             cd - > /dev/null
