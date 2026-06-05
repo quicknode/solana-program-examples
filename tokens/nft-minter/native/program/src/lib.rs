@@ -2,6 +2,7 @@ use solana_program::{
     account_info::AccountInfo, entrypoint, entrypoint::ProgramResult, pubkey::Pubkey,
 };
 
+pub mod bridge;
 pub mod instructions;
 pub mod processor;
 
