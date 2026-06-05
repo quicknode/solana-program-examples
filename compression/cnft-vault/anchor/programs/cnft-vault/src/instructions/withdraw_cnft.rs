@@ -1,10 +1,7 @@
 use anchor_lang::prelude::*;
-use anchor_lang::solana_program::{
-    instruction::AccountMeta,
-    program::invoke_signed,
-};
+use anchor_lang::solana_program::{instruction::AccountMeta, program::invoke_signed};
 
-use crate::{build_transfer_instruction, TransferArgs, SPLCompression, MPL_BUBBLEGUM_ID};
+use crate::{build_transfer_instruction, SPLCompression, TransferArgs, MPL_BUBBLEGUM_ID};
 
 #[derive(Accounts)]
 pub struct Withdraw<'info> {
