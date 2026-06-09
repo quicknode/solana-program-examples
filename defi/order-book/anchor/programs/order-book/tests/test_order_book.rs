@@ -43,9 +43,11 @@ const MARKET_USER_SEED: &[u8] = b"market_user";
 // `#[account(zero)]` check fails if the account size is wrong.
 const ORDER_BOOK_ACCOUNT_SIZE: u64 = order_book::state::ORDER_BOOK_ACCOUNT_SIZE as u64;
 
-// Six decimals matches USDC and keeps "1 token" == 1_000_000 base units,
-// which keeps the arithmetic in the assertions easy to read.
-const MINT_DECIMALS: u8 = 6;
+// NVDAx has 8 decimals on-chain; USDC has 6. Because the program stores
+// price as raw_quote per raw_base, one tick = 10^(base_dec - quote_dec) = 100
+// USDC/share — the minimum representable price step with these two mints.
+const BASE_DECIMALS: u8 = 8; // NVDAx (https://explorer.solana.com/address/Xsc9qvGR1efVDFGLrVsmkzv3qi45LTBjeUKSPmx9qEh)
+const QUOTE_DECIMALS: u8 = 6; // USDC
 
 // Market parameters used across every test. `tick_size = 1` is permissive
 // enough for most scenarios; a dedicated test overrides it to verify the
@@ -148,8 +150,8 @@ fn full_setup() -> Scenario {
     let buyer = create_wallet(&mut svm, 10_000_000_000).unwrap();
     let seller = create_wallet(&mut svm, 10_000_000_000).unwrap();
 
-    let base_mint = create_token_mint(&mut svm, &authority, MINT_DECIMALS, None).unwrap();
-    let quote_mint = create_token_mint(&mut svm, &authority, MINT_DECIMALS, None).unwrap();
+    let base_mint = create_token_mint(&mut svm, &authority, BASE_DECIMALS, None).unwrap();
+    let quote_mint = create_token_mint(&mut svm, &authority, QUOTE_DECIMALS, None).unwrap();
 
     // Create and fund every trader's ATAs up-front so individual tests do
     // not need to worry about mint/ATA side effects, only about order-book state.
