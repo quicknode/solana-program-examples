@@ -18,7 +18,7 @@ pub struct UpdateAuthority<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handle_process_update_authority(context: Context<UpdateAuthority>) -> Result<()> {
+pub fn process_update_authority(context: Context<UpdateAuthority>) -> Result<()> {
     let new_authority_key = match &context.accounts.new_authority {
         Some(account) => OptionalNonZeroPubkey::try_from(Some(account.key()))?,
         None => OptionalNonZeroPubkey::try_from(None)?,
@@ -29,7 +29,7 @@ pub fn handle_process_update_authority(context: Context<UpdateAuthority>) -> Res
         CpiContext::new(
             context.accounts.token_program.key(),
             TokenMetadataUpdateAuthority {
-                token_program_id: context.accounts.token_program.to_account_info(),
+                program_id: context.accounts.token_program.to_account_info(),
                 metadata: context.accounts.mint_account.to_account_info(),
                 current_authority: context.accounts.current_authority.to_account_info(),
 

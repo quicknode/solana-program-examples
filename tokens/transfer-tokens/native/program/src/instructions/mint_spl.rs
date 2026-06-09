@@ -6,8 +6,8 @@ use {
         msg,
         program::invoke,
     },
-    spl_associated_token_account::instruction as associated_token_account_instruction,
-    spl_token::instruction as token_instruction,
+    spl_associated_token_account_interface::instruction as associated_token_account_instruction,
+    spl_token_interface::instruction as token_instruction,
 };
 
 #[derive(BorshSerialize, BorshDeserialize, Debug)]

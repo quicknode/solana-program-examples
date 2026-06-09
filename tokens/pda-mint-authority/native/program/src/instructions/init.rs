@@ -6,9 +6,9 @@ use solana_program::{
     program::invoke_signed,
     pubkey::Pubkey,
     rent::Rent,
-    system_instruction,
     sysvar::Sysvar,
 };
+use solana_system_interface::instruction as system_instruction;
 
 use crate::state::MintAuthorityPda;
 

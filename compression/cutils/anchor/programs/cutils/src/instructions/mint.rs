@@ -1,6 +1,6 @@
 use crate::bubblegum_types::{
-    Collection, Creator, MetadataArgs, MintToCollectionV1InstructionArgs,
-    TokenProgramVersion, TokenStandard, MINT_TO_COLLECTION_V1_DISCRIMINATOR,
+    Collection, Creator, MetadataArgs, MintToCollectionV1InstructionArgs, TokenProgramVersion,
+    TokenStandard, MINT_TO_COLLECTION_V1_DISCRIMINATOR,
 };
 use crate::*;
 use anchor_lang::solana_program::{
@@ -75,10 +75,10 @@ impl Mint<'_> {
         Ok(())
     }
 
-    pub fn actuate<'info>(
-        context: Context<'info, Mint<'info>>,
-        params: MintParams,
-    ) -> Result<()> {
+    // `with_capacity` + push is intentional here: it documents the exact 16-account
+    // MintToCollectionV1 layout in CPI order, so allow clippy's vec_init_then_push.
+    #[allow(clippy::vec_init_then_push)]
+    pub fn actuate<'info>(context: Context<'info, Mint<'info>>, params: MintParams) -> Result<()> {
         // Build MintToCollectionV1 instruction data
         let args = MintToCollectionV1InstructionArgs {
             metadata: MetadataArgs {
@@ -188,7 +188,10 @@ impl Mint<'_> {
             context.accounts.payer.to_account_info(),
             context.accounts.tree_delegate.to_account_info(),
             context.accounts.collection_authority.to_account_info(),
-            context.accounts.collection_authority_record_pda.to_account_info(),
+            context
+                .accounts
+                .collection_authority_record_pda
+                .to_account_info(),
             context.accounts.collection_mint.to_account_info(),
             context.accounts.collection_metadata.to_account_info(),
             context.accounts.edition_account.to_account_info(),

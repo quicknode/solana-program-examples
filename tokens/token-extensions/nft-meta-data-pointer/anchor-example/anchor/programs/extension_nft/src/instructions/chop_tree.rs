@@ -2,9 +2,10 @@ pub use crate::errors::GameErrorCode;
 pub use crate::state::game_data::GameData;
 use crate::{state::player_data::PlayerData, NftAuthority};
 use anchor_lang::prelude::*;
-use anchor_spl::token_interface::{Token2022};
+use anchor_lang::solana_program::program::invoke_signed;
+use anchor_spl::token_2022_extensions::spl_token_metadata_interface;
+use anchor_spl::token_interface::{spl_token_2022, Token2022};
 use session_keys::{Session, SessionToken};
-use solana_program::program::invoke_signed;
 
 pub fn chop_tree(context: Context<ChopTree>, counter: u16, amount: u64) -> Result<()> {
     // Save game_data bump on first creation (init_if_needed). See init_player.rs
@@ -92,7 +93,7 @@ pub struct ChopTree<'info> {
     pub system_program: Program<'info, System>,
     /// CHECK: Make sure the ata to the mint is actually owned by the signer
     #[account(mut)]
-    pub mint: AccountInfo<'info>,
+    pub mint: UncheckedAccount<'info>,
     #[account(
         init_if_needed,
         seeds = [b"nft_authority".as_ref()],

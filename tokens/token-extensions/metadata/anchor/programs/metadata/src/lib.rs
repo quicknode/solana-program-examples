@@ -1,7 +1,9 @@
+#![allow(clippy::diverging_sub_expression)]
+
 use anchor_lang::prelude::*;
 
 use instructions::*;
-mod instructions;
+pub mod instructions;
 
 declare_id!("BJHEDXSQfD9kBFvhw8ZCGmPFRihzvbMoxoHUKpXdpn4D");
 

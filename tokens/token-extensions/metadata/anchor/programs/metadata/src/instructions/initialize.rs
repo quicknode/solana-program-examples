@@ -1,7 +1,4 @@
 use anchor_lang::prelude::*;
-use anchor_lang::solana_program::rent::{
-    DEFAULT_EXEMPTION_THRESHOLD, DEFAULT_LAMPORTS_PER_BYTE_YEAR,
-};
 use anchor_lang::system_program::{transfer, Transfer};
 use anchor_spl::token_interface::{
     token_metadata_initialize, Mint, Token2022, TokenMetadataInitialize,
@@ -27,7 +24,7 @@ pub struct Initialize<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handle_process_initialize(context: Context<Initialize>, args: TokenMetadataArgs) -> Result<()> {
+pub fn process_initialize(context: Context<Initialize>, args: TokenMetadataArgs) -> Result<()> {
     let TokenMetadataArgs { name, symbol, uri } = args;
 
     // Define token metadata
@@ -42,8 +39,7 @@ pub fn handle_process_initialize(context: Context<Initialize>, args: TokenMetada
     let data_len = 4 + token_metadata.get_packed_len()?;
 
     // Calculate lamports required for the additional metadata
-    let lamports =
-        data_len as u64 * DEFAULT_LAMPORTS_PER_BYTE_YEAR * DEFAULT_EXEMPTION_THRESHOLD as u64;
+    let lamports = Rent::get()?.minimum_balance(data_len);
 
     // Transfer additional lamports to mint account
     transfer(
@@ -62,7 +58,7 @@ pub fn handle_process_initialize(context: Context<Initialize>, args: TokenMetada
         CpiContext::new(
             context.accounts.token_program.key(),
             TokenMetadataInitialize {
-                token_program_id: context.accounts.token_program.to_account_info(),
+                program_id: context.accounts.token_program.to_account_info(),
                 mint: context.accounts.mint_account.to_account_info(),
                 metadata: context.accounts.mint_account.to_account_info(),
                 mint_authority: context.accounts.payer.to_account_info(),

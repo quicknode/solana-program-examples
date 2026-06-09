@@ -1,0 +1,36 @@
+[package]
+name = "vault-strategy"
+version = "0.1.0"
+description = "Manager-run investment vault with NAV-based shares"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "vault_strategy"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
+anchor-debug = []
+custom-heap = []
+custom-panic = []
+
+[dependencies]
+anchor-lang = { version = "1.0.0", features = ["init-if-needed"] }
+anchor-spl = "1.0.0"
+mock-swap-router = { path = "../mock-swap-router", features = ["cpi"] }
+
+[dev-dependencies]
+litesvm = "0.11.0"
+solana-account = "3.0.0"
+solana-signer = "3.0.0"
+solana-keypair = "3.0.1"
+solana-kite = "0.3.0"
+borsh = "1.6.1"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }
