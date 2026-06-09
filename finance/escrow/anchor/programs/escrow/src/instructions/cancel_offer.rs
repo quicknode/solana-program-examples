@@ -2,13 +2,12 @@ use anchor_lang::prelude::*;
 
 use anchor_spl::{
     associated_token::AssociatedToken,
-    token_interface::{
-        close_account, transfer_checked, CloseAccount, Mint, TokenAccount, TokenInterface,
-        TransferChecked,
-    },
+    token_interface::{Mint, TokenAccount, TokenInterface},
 };
 
 use crate::Offer;
+
+use super::{close_token_account, transfer_tokens};
 
 // Cancel an outstanding offer. Without this handler, an abandoned offer would
 // keep the maker's token-A locked in the vault forever (and the offer
@@ -55,45 +54,28 @@ pub struct CancelOffer<'info> {
 pub fn handle_cancel_offer(context: Context<CancelOffer>) -> Result<()> {
     let maker_key = context.accounts.maker.key();
     let id_bytes = context.accounts.offer.id.to_le_bytes();
-    let seeds = &[
-        b"offer".as_ref(),
-        maker_key.as_ref(),
-        id_bytes.as_ref(),
-        &[context.accounts.offer.bump],
-    ];
-    let signer_seeds = [&seeds[..]];
+    let bump = [context.accounts.offer.bump];
+    let offer_seeds: &[&[u8]] = &[b"offer", maker_key.as_ref(), id_bytes.as_ref(), &bump];
 
     // Move all tokens back from the vault to the maker.
-    let vault_amount = context.accounts.vault.amount;
-    let transfer_accounts = TransferChecked {
-        from: context.accounts.vault.to_account_info(),
-        mint: context.accounts.token_mint_a.to_account_info(),
-        to: context.accounts.maker_token_account_a.to_account_info(),
-        authority: context.accounts.offer.to_account_info(),
-    };
-    let cpi_context = CpiContext::new_with_signer(
-        context.accounts.token_program.key(),
-        transfer_accounts,
-        &signer_seeds,
-    );
-    transfer_checked(
-        cpi_context,
-        vault_amount,
-        context.accounts.token_mint_a.decimals,
+    transfer_tokens(
+        &context.accounts.vault,
+        &context.accounts.maker_token_account_a,
+        &context.accounts.vault.amount,
+        &context.accounts.token_mint_a,
+        &context.accounts.offer.to_account_info(),
+        &context.accounts.token_program,
+        Some(offer_seeds),
     )?;
 
     // Close the vault, sending its rent lamports back to the maker.
-    let close_accounts = CloseAccount {
-        account: context.accounts.vault.to_account_info(),
-        destination: context.accounts.maker.to_account_info(),
-        authority: context.accounts.offer.to_account_info(),
-    };
-    let cpi_context = CpiContext::new_with_signer(
-        context.accounts.token_program.key(),
-        close_accounts,
-        &signer_seeds,
-    );
-    close_account(cpi_context)?;
+    close_token_account(
+        &context.accounts.vault,
+        &context.accounts.maker.to_account_info(),
+        &context.accounts.offer.to_account_info(),
+        &context.accounts.token_program,
+        Some(offer_seeds),
+    )?;
 
     // The offer account itself is closed by the `close = maker` constraint
     // above, which refunds its rent to the maker.
