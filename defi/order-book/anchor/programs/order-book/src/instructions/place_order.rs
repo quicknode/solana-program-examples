@@ -67,6 +67,8 @@ pub fn handle_place_order<'info>(
                 (price as u128)
                     .checked_mul(quantity as u128)
                     .ok_or(ErrorCode::NumericalOverflow)?
+                    .checked_mul(market.quote_lot_size as u128)
+                    .ok_or(ErrorCode::NumericalOverflow)?
                     .try_into()
                     .map_err(|_| error!(ErrorCode::NumericalOverflow))?,
                 context.accounts.quote_vault.to_account_info(),
@@ -194,6 +196,8 @@ pub fn handle_place_order<'info>(
         let gross_quote: u64 = (fill.fill_price as u128)
             .checked_mul(fill.fill_quantity as u128)
             .ok_or(ErrorCode::NumericalOverflow)?
+            .checked_mul(market.quote_lot_size as u128)
+            .ok_or(ErrorCode::NumericalOverflow)?
             .try_into()
             .map_err(|_| error!(ErrorCode::NumericalOverflow))?;
 
@@ -238,6 +242,8 @@ pub fn handle_place_order<'info>(
                 // bounded to u64, so this product narrows back cleanly.
                 let locked_for_this_fill: u64 = (price as u128)
                     .checked_mul(fill.fill_quantity as u128)
+                    .ok_or(ErrorCode::NumericalOverflow)?
+                    .checked_mul(market.quote_lot_size as u128)
                     .ok_or(ErrorCode::NumericalOverflow)?
                     .try_into()
                     .map_err(|_| error!(ErrorCode::NumericalOverflow))?;

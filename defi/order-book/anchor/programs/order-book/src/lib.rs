@@ -20,6 +20,7 @@ pub mod order_book {
         fee_basis_points: u16,
         tick_size: u64,
         base_lot_size: u64,
+        quote_lot_size: u64,
         min_order_size: u64,
     ) -> Result<()> {
         instructions::initialize_market::handle_initialize_market(
@@ -27,6 +28,7 @@ pub mod order_book {
             fee_basis_points,
             tick_size,
             base_lot_size,
+            quote_lot_size,
             min_order_size,
         )
     }

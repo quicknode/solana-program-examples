@@ -26,6 +26,9 @@ pub enum ErrorCode {
     #[msg("Base lot size must be greater than zero")]
     InvalidBaseLotSize,
 
+    #[msg("Quote lot size must be greater than zero")]
+    InvalidQuoteLotSize,
+
     #[msg("Quantity is below minimum order size")]
     BelowMinOrderSize,
 
