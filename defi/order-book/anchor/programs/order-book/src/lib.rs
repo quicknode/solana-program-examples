@@ -19,12 +19,14 @@ pub mod order_book {
         context: Context<InitializeMarket>,
         fee_basis_points: u16,
         tick_size: u64,
+        base_lot_size: u64,
         min_order_size: u64,
     ) -> Result<()> {
         instructions::initialize_market::handle_initialize_market(
             context,
             fee_basis_points,
             tick_size,
+            base_lot_size,
             min_order_size,
         )
     }

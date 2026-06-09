@@ -49,11 +49,14 @@ const ORDER_BOOK_ACCOUNT_SIZE: u64 = order_book::state::ORDER_BOOK_ACCOUNT_SIZE 
 const BASE_DECIMALS: u8 = 8; // NVDAx (https://explorer.solana.com/address/Xsc9qvGR1efVDFGLrVsmkzv3qi45LTBjeUKSPmx9qEh)
 const QUOTE_DECIMALS: u8 = 6; // USDC
 
-// Market parameters used across every test. `tick_size = 1` is permissive
-// enough for most scenarios; a dedicated test overrides it to verify the
-// tick check fires.
+// Market parameters used across every test. `tick_size = 1` and
+// `base_lot_size = 100` match the NVDAx/USDC decimal configuration
+// (BASE_DECIMALS=8, QUOTE_DECIMALS=6): price = human USDC/share,
+// tick = $1.00, 1 lot = 100 raw NVDAx. A dedicated test overrides
+// tick_size to verify the tick check fires.
 const FEE_BASIS_POINTS: u16 = 10;
 const TICK_SIZE: u64 = 1;
+const BASE_LOT_SIZE: u64 = 100;
 const MIN_ORDER_SIZE: u64 = 1;
 
 // Funding for each trader's token accounts. Large enough to cover every
@@ -250,6 +253,7 @@ fn build_initialize_market_ix(
     sc: &Scenario,
     fee_basis_points: u16,
     tick_size: u64,
+    base_lot_size: u64,
     min_order_size: u64,
 ) -> Instruction {
     Instruction::new_with_bytes(
@@ -257,6 +261,7 @@ fn build_initialize_market_ix(
         &order_book::instruction::InitializeMarket {
             fee_basis_points,
             tick_size,
+            base_lot_size,
             min_order_size,
         }
         .data(),
@@ -449,7 +454,7 @@ fn initialize_market_and_users(sc: &mut Scenario) {
     // program, zero-initialized) before initialize_market's `#[account(zero)]`
     // check passes.
     let create_ix = build_create_order_book_account_ix(sc, &sc.authority.pubkey());
-    let init_ix = build_initialize_market_ix(sc, FEE_BASIS_POINTS, TICK_SIZE, MIN_ORDER_SIZE);
+    let init_ix = build_initialize_market_ix(sc, FEE_BASIS_POINTS, TICK_SIZE, BASE_LOT_SIZE, MIN_ORDER_SIZE);
     send_transaction_from_instructions(
         &mut sc.svm,
         vec![create_ix, init_ix],
@@ -492,7 +497,7 @@ fn initialize_market_sets_market_and_order_book() {
     let mut sc = full_setup();
 
     let create_ix = build_create_order_book_account_ix(&sc, &sc.authority.pubkey());
-    let ix = build_initialize_market_ix(&sc, FEE_BASIS_POINTS, TICK_SIZE, MIN_ORDER_SIZE);
+    let ix = build_initialize_market_ix(&sc, FEE_BASIS_POINTS, TICK_SIZE, BASE_LOT_SIZE, MIN_ORDER_SIZE);
     send_transaction_from_instructions(
         &mut sc.svm,
         vec![create_ix, ix],
@@ -540,7 +545,7 @@ fn create_market_user_tracks_market_and_owner() {
     let mut sc = full_setup();
 
     let create_ix = build_create_order_book_account_ix(&sc, &sc.authority.pubkey());
-    let init_ix = build_initialize_market_ix(&sc, FEE_BASIS_POINTS, TICK_SIZE, MIN_ORDER_SIZE);
+    let init_ix = build_initialize_market_ix(&sc, FEE_BASIS_POINTS, TICK_SIZE, BASE_LOT_SIZE, MIN_ORDER_SIZE);
     send_transaction_from_instructions(
         &mut sc.svm,
         vec![create_ix, init_ix],
@@ -637,14 +642,14 @@ fn place_ask_locks_base_in_vault() {
     send_transaction_from_instructions(&mut sc.svm, vec![ix], &[&sc.seller], &sc.seller.pubkey())
         .unwrap();
 
-    // An ask locks `quantity` of base tokens in the base vault.
+    // An ask locks quantity * base_lot_size raw base tokens in the base vault.
     assert_eq!(
         get_token_account_balance(&sc.svm, &sc.base_vault.pubkey()).unwrap(),
-        ASK_QUANTITY
+        ASK_QUANTITY * BASE_LOT_SIZE
     );
     assert_eq!(
         get_token_account_balance(&sc.svm, &sc.seller_base_ata).unwrap(),
-        TRADER_STARTING_BALANCE - ASK_QUANTITY
+        TRADER_STARTING_BALANCE - ASK_QUANTITY * BASE_LOT_SIZE
     );
     assert_eq!(
         get_token_account_balance(&sc.svm, &sc.quote_vault.pubkey()).unwrap(),
@@ -688,7 +693,7 @@ fn place_order_rejects_unaligned_tick() {
     let unusual_tick_size: u64 = 50;
     let create_ix = build_create_order_book_account_ix(&sc, &sc.authority.pubkey());
     let init_ix =
-        build_initialize_market_ix(&sc, FEE_BASIS_POINTS, unusual_tick_size, MIN_ORDER_SIZE);
+        build_initialize_market_ix(&sc, FEE_BASIS_POINTS, unusual_tick_size, BASE_LOT_SIZE, MIN_ORDER_SIZE);
     send_transaction_from_instructions(
         &mut sc.svm,
         vec![create_ix, init_ix],
@@ -745,7 +750,7 @@ fn place_order_rejects_below_min_order_size() {
     let elevated_min_order_size: u64 = 10;
     let create_ix = build_create_order_book_account_ix(&sc, &sc.authority.pubkey());
     let init_ix =
-        build_initialize_market_ix(&sc, FEE_BASIS_POINTS, TICK_SIZE, elevated_min_order_size);
+        build_initialize_market_ix(&sc, FEE_BASIS_POINTS, TICK_SIZE, BASE_LOT_SIZE, elevated_min_order_size);
     send_transaction_from_instructions(
         &mut sc.svm,
         vec![create_ix, init_ix],
@@ -838,12 +843,12 @@ fn cancel_ask_credits_unsettled_base() {
     // updates the unsettled balance. Settlement is a separate step.
     assert_eq!(
         get_token_account_balance(&sc.svm, &sc.base_vault.pubkey()).unwrap(),
-        ASK_QUANTITY
+        ASK_QUANTITY * BASE_LOT_SIZE
     );
     // Seller's ATA hasn't received anything back yet.
     assert_eq!(
         get_token_account_balance(&sc.svm, &sc.seller_base_ata).unwrap(),
-        TRADER_STARTING_BALANCE - ASK_QUANTITY
+        TRADER_STARTING_BALANCE - ASK_QUANTITY * BASE_LOT_SIZE
     );
 }
 
@@ -1082,7 +1087,7 @@ fn initialize_market_rejects_zero_tick_size() {
 
     let zero_tick_size: u64 = 0;
     let create_ix = build_create_order_book_account_ix(&sc, &sc.authority.pubkey());
-    let ix = build_initialize_market_ix(&sc, FEE_BASIS_POINTS, zero_tick_size, MIN_ORDER_SIZE);
+    let ix = build_initialize_market_ix(&sc, FEE_BASIS_POINTS, zero_tick_size, BASE_LOT_SIZE, MIN_ORDER_SIZE);
     let result = send_transaction_from_instructions(
         &mut sc.svm,
         vec![create_ix, ix],
@@ -1099,6 +1104,27 @@ fn initialize_market_rejects_zero_tick_size() {
 }
 
 #[test]
+fn initialize_market_rejects_zero_base_lot_size() {
+    let mut sc = full_setup();
+
+    let create_ix = build_create_order_book_account_ix(&sc, &sc.authority.pubkey());
+    let ix = build_initialize_market_ix(&sc, FEE_BASIS_POINTS, TICK_SIZE, 0, MIN_ORDER_SIZE);
+    let result = send_transaction_from_instructions(
+        &mut sc.svm,
+        vec![create_ix, ix],
+        &[
+            &sc.authority,
+            &sc.order_book,
+            &sc.base_vault,
+            &sc.quote_vault,
+            &sc.fee_vault,
+        ],
+        &sc.authority.pubkey(),
+    );
+    assert!(result.is_err(), "base_lot_size == 0 must be rejected");
+}
+
+#[test]
 fn initialize_market_rejects_oversized_fee() {
     let mut sc = full_setup();
 
@@ -1109,6 +1135,7 @@ fn initialize_market_rejects_oversized_fee() {
         &sc,
         over_cap_fee_basis_points,
         TICK_SIZE,
+        BASE_LOT_SIZE,
         MIN_ORDER_SIZE,
     );
     let result = send_transaction_from_instructions(
@@ -1264,7 +1291,7 @@ fn taker_bid_fully_crosses_best_ask() {
     );
 
     let (buyer_base, buyer_quote) = read_user_unsettled(&sc.svm, &sc.buyer_market_user);
-    assert_eq!(buyer_base, QUANTITY);
+    assert_eq!(buyer_base, QUANTITY * BASE_LOT_SIZE);
     // No price improvement here — buyer's limit == maker's price — so no
     // quote rebate lands in the taker's unsettled_quote.
     assert_eq!(buyer_quote, 0);
@@ -1339,7 +1366,7 @@ fn taker_ask_fully_crosses_best_bid() {
     );
     // Maker (buyer) received the base tokens they paid for.
     let (buyer_base, _buyer_quote) = read_user_unsettled(&sc.svm, &sc.buyer_market_user);
-    assert_eq!(buyer_base, QUANTITY);
+    assert_eq!(buyer_base, QUANTITY * BASE_LOT_SIZE);
 
     // Taker (seller) received the net-of-fee quote.
     let (_seller_base, seller_quote) = read_user_unsettled(&sc.svm, &sc.seller_market_user);
@@ -1409,16 +1436,16 @@ fn taker_partially_fills_resting_order_rest_stays_on_book() {
     // what was delivered to the taker's unsettled_base — which never left
     // the vault, just got re-tagged as owed to the buyer).
     //
-    // Total base in vault stays == MAKER_ASK_QUANTITY, because fills are
-    // bucket-accounting inside the single vault.
+    // Total base in vault stays == MAKER_ASK_QUANTITY * BASE_LOT_SIZE, because
+    // fills are bucket-accounting inside the single vault.
     assert_eq!(
         get_token_account_balance(&sc.svm, &sc.base_vault.pubkey()).unwrap(),
-        MAKER_ASK_QUANTITY
+        MAKER_ASK_QUANTITY * BASE_LOT_SIZE
     );
 
-    // Taker received TAKER_BID_QUANTITY base tokens.
+    // Taker received TAKER_BID_QUANTITY lots = TAKER_BID_QUANTITY * BASE_LOT_SIZE raw base tokens.
     let (buyer_base, _) = read_user_unsettled(&sc.svm, &sc.buyer_market_user);
-    assert_eq!(buyer_base, TAKER_BID_QUANTITY);
+    assert_eq!(buyer_base, TAKER_BID_QUANTITY * BASE_LOT_SIZE);
 }
 
 #[test]
@@ -1586,9 +1613,9 @@ fn taker_crosses_multiple_resting_orders_best_price_first() {
     assert_eq!(read_order_fill_and_status(&sc.svm, &order_one).1, ORDER_STATUS_FILLED);
     assert_eq!(read_order_fill_and_status(&sc.svm, &order_two).1, ORDER_STATUS_FILLED);
 
-    // Taker got `TAKER_BID_QUANTITY` base tokens.
+    // Taker got TAKER_BID_QUANTITY lots = TAKER_BID_QUANTITY * BASE_LOT_SIZE raw base tokens.
     let (buyer_base, buyer_quote_rebate) = read_user_unsettled(&sc.svm, &sc.buyer_market_user);
-    assert_eq!(buyer_base, TAKER_BID_QUANTITY);
+    assert_eq!(buyer_base, TAKER_BID_QUANTITY * BASE_LOT_SIZE);
 
     // Price-improvement rebate: taker locked at 1000/unit but 30 units
     // filled at 900. Rebate = (1000 - 900) * 30 = 3_000.
@@ -1767,7 +1794,7 @@ fn taker_bid_gets_price_improvement_from_resting_ask() {
     // price-improvement rebate.
     let expected_rebate: u64 = (TAKER_BID_PRICE - MAKER_ASK_PRICE) * QUANTITY;
     let (buyer_base, buyer_quote) = read_user_unsettled(&sc.svm, &sc.buyer_market_user);
-    assert_eq!(buyer_base, QUANTITY);
+    assert_eq!(buyer_base, QUANTITY * BASE_LOT_SIZE);
     assert_eq!(buyer_quote, expected_rebate);
 }
 

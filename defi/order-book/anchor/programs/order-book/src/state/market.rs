@@ -31,6 +31,19 @@ pub struct Market {
 
     pub tick_size: u64,
 
+    // Number of raw base-token units per lot. Quantities throughout the
+    // program are in lots; this factor converts them to raw token units for
+    // SPL transfers. For a base mint with d_base decimals and quote with
+    // d_quote, set base_lot_size = 10^(d_base - d_quote) so that one raw
+    // quote unit buys exactly one lot of base at price = 1, making `price`
+    // equal to the human-readable USDC-per-token rate.
+    //
+    // Example — NVDAx (8 dec) / USDC (6 dec):
+    //   base_lot_size = 10^(8-6) = 100 raw NVDAx per lot
+    //   price = 130  →  $130.00 per NVDAx share
+    //   tick_size = 1  →  $1.00 minimum price increment
+    pub base_lot_size: u64,
+
     pub min_order_size: u64,
 
     pub is_active: bool,

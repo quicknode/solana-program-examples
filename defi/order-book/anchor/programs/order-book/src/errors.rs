@@ -23,6 +23,9 @@ pub enum ErrorCode {
     #[msg("Price does not align with tick size")]
     InvalidTickSize,
 
+    #[msg("Base lot size must be greater than zero")]
+    InvalidBaseLotSize,
+
     #[msg("Quantity is below minimum order size")]
     BelowMinOrderSize,
 

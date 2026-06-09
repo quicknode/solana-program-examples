@@ -43,9 +43,14 @@ pub fn handle_cancel_order(context: Context<CancelOrder>) -> Result<()> {
                     .ok_or(ErrorCode::NumericalOverflow)?;
             }
             OrderSide::Ask => {
+                let base_amount: u64 = (remaining as u128)
+                    .checked_mul(context.accounts.market.base_lot_size as u128)
+                    .ok_or(ErrorCode::NumericalOverflow)?
+                    .try_into()
+                    .map_err(|_| error!(ErrorCode::NumericalOverflow))?;
                 market_user.unsettled_base = market_user
                     .unsettled_base
-                    .checked_add(remaining)
+                    .checked_add(base_amount)
                     .ok_or(ErrorCode::NumericalOverflow)?;
             }
         }
