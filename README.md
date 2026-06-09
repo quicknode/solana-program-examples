@@ -17,6 +17,13 @@ Each example is available in one or more of the following frameworks:
 
 ## Financial Software
 
+### Betting Market
+
+Parimutuel (pooled) prediction market — an admin opens an event with multiple outcomes, bettors stake tokens on an outcome, and at settlement the losing pool (minus a protocol fee) is split among winners in proportion to their stake.
+
+[⚓ Anchor](./tokens/betting-market/anchor)
+
+
 ### Escrow
 
 **Start here — the best first finance program to learn on Solana.** A neutral account that holds funds until both sides deliver, like a real-estate escrow or a lawyer's trust account. The maker deposits token A and names how much token B they want; when a taker supplies token B, the program swaps both in a single all-or-nothing transaction. This swap is the core idea behind every onchain exchange.
