@@ -11,9 +11,9 @@ fn test_cpi() {
     let hand_program_id = Pubkey::new_unique();
     let lever_program_id = Pubkey::new_unique();
     let hand_program_bytes =
-        include_bytes!("../../../target/deploy/cross_program_invocatio_native_hand.so");
+        include_bytes!("../../../tests/fixtures/cross_program_invocatio_native_hand.so");
     let lever_program_bytes =
-        include_bytes!("../../../target/deploy/cross_program_invocatio_native_lever.so");
+        include_bytes!("../../../tests/fixtures/cross_program_invocatio_native_lever.so");
 
     let payer = Keypair::new();
     let power_account = Keypair::new();

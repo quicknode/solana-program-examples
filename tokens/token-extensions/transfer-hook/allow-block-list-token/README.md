@@ -33,9 +33,12 @@ pnpm run build     # build the UI
 pnpm run dev       # serve the UI
 ```
 
-### Local testing
+### Program tests
 
-Scripts manage the local validator and deployment:
+From `anchor/`:
 
-- `./scripts/start.sh` — start the local validator and deploy the [program](https://solana.com/docs/terminology#program) (uses the [Anchor](https://solana.com/docs/terminology#anchor) CLI and the default Anchor keypair).
-- `./scripts/stop.sh` — stop the local validator.
+```bash
+pnpm test
+```
+
+LiteSVM integration tests run via `cargo test` (see `Anchor.toml`). The UI is optional and targets devnet or your own cluster configuration.

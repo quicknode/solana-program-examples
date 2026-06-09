@@ -17,37 +17,44 @@ Each example is available in one or more of the following frameworks:
 
 ## Financial Software
 
-### Automated Market Maker
-
-Constant product AMM (x·y=k) — create liquidity pools, deposit and withdraw liquidity, swap tokens with fees and slippage protection.
-
-[⚓ Anchor](./tokens/token-swap/anchor) [💫 Quasar](./tokens/token-swap/quasar)
-
-### Central Limit Order Book
-
-Order-book exchange — users post limit bids and asks at chosen prices, tokens are locked in program vaults, and orders cross against the opposing side using price-time priority. Fees route to a dedicated fee vault, maker/taker proceeds land in unsettled balances, and funds are withdrawn via `settle_funds`. A minimal teaching example of the mechanics behind Openbook and Phoenix.
-
-[⚓ Anchor](./defi/order-book/anchor)
-
 ### Escrow
 
-Peer-to-peer OTC trade — one user deposits token A and specifies how much token B they want. A counterparty fulfills the offer and both sides receive their tokens atomically.
+**Start here — the best first finance program to learn on Solana.** A neutral account that holds funds until both sides deliver, like a real-estate escrow or a lawyer's trust account. The maker deposits token A and names how much token B they want; when a taker supplies token B, the program swaps both in a single all-or-nothing transaction. This swap is the core idea behind every onchain exchange.
 
-[⚓ Anchor](./tokens/escrow/anchor) [💫 Quasar](./tokens/escrow/quasar) [🦀 Native](./tokens/escrow/native)
+[⚓ Anchor](./finance/escrow/anchor) [💫 Quasar](./finance/escrow/quasar) [🦀 Native](./finance/escrow/native)
+
+### Order Book based Exchange
+
+A typical NYSE/NASDAQ-style order book-based exchange. Buyers post **bids** (the price they'll pay), sellers post **asks** (the price they'll accept), and a trade happens when a bid and an ask meet. The exchange operator collects fees from trading. Similar to popular Solana exchanges like Openbook and Phoenix.
+
+[⚓ Anchor](./finance/order-book/anchor)
+
+### AMM based Exchange
+
+An exchange with no order book: swaps fill instantly against a shared liquidity pool funded by **liquidity providers**, who earn a cut of the trading fees. Prices are set algorithmically by the pool's balances. Anyone can create a pool, add or remove liquidity, and swap tokens, with slippage protection on every trade. Similar to Solana exchanges like Raydium and Orca.
+
+[⚓ Anchor](./finance/token-swap/anchor) [💫 Quasar](./finance/token-swap/quasar)
 
 ### Token Fundraiser
 
-Create a fundraiser specifying a target mint and amount. Contributors deposit tokens until the goal is reached.
+Onchain crowdfunding, like Kickstarter or GoFundMe. A creator sets a target amount in a chosen token, and contributors deposit into the fundraiser's account until the goal is reached.
 
-[⚓ Anchor](./tokens/token-fundraiser/anchor) [💫 Quasar](./tokens/token-fundraiser/quasar)
+[⚓ Anchor](./finance/token-fundraiser/anchor) [💫 Quasar](./finance/token-fundraiser/quasar)
 
-### Pyth Price Feeds
+### Vault Strategy
 
-Read offchain price data [onchain](https://solana.com/docs/terminology#onchain) using the Pyth oracle network.
+A managed investment fund onchain, like an ETF or mutual fund. Investors deposit USDC for shares, a manager allocates the pool across a basket of assets (here, stocks like TSLAx and NVDAx), and each share's value tracks the fund's net asset value. The manager earns a management fee, and investors redeem a proportional slice of the underlying assets.
 
-[⚓ Anchor](./oracles/pyth/anchor) [💫 Quasar](./oracles/pyth/quasar)
+[⚓ Anchor](./finance/vault-strategy/anchor)
 
-## Basics
+### Betting Market
+
+Parimutuel (pooled) prediction market — an admin opens an event with multiple outcomes, bettors stake tokens on an outcome, and at settlement the losing pool (minus a protocol fee) is split among winners in proportion to their stake.
+
+[⚓ Anchor](./tokens/betting-market/anchor)
+
+
+## Single concept examples
 
 ### Hello Solana
 
@@ -138,6 +145,12 @@ Structure a larger Solana program across multiple files and modules.
 Send SOL between two accounts.
 
 [⚓ Anchor](./basics/transfer-sol/anchor) [💫 Quasar](./basics/transfer-sol/quasar) [🤥 Pinocchio](./basics/transfer-sol/pinocchio) [🦀 Native](./basics/transfer-sol/native) [🧬 ASM](./basics/transfer-sol/asm)
+
+### Pyth Price Feeds
+
+An **oracle** brings real-world market prices — a dollar, a stock, a token — [onchain](https://solana.com/docs/terminology#onchain), like a Bloomberg terminal feeding live quotes. [Pyth](https://pyth.network/) publishes low-latency prices from institutional sources, each in its own price feed account. This example reads a feed and logs its price, confidence interval, and exponent — the building block an AMM, lending market, or vault uses to value assets.
+
+[⚓ Anchor](./basics/pyth/anchor) [💫 Quasar](./basics/pyth/quasar)
 
 ## Tokens
 
@@ -333,4 +346,4 @@ Work with Metaplex compressed NFTs.
 
 ---
 
-**PRs welcome!** Follow the [contributing guidelines](./CONTRIBUTING.md) to keep things consistent.
+**PRs welcome!** Follow the [contributing guidelines](./CONTRIBUTING.md) and see [CHANGELOG.md](./CHANGELOG.md) for release history.

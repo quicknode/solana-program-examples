@@ -14,7 +14,6 @@ members = [
     "basics/counter/native/program",
     "basics/counter/pinocchio/program",
     "basics/counter/anchor/programs/counter_anchor",
-    "basics/counter/mpl-stack",
     "basics/create-account/native/program",
     "basics/create-account/pinocchio/program",
     "basics/create-account/anchor/programs/create-system-account",
@@ -48,12 +47,21 @@ members = [
     "basics/transfer-sol/anchor/programs/*",
     "basics/transfer-sol/asm",
 
+    # finance
+    "finance/vault-strategy/anchor/programs/vault-strategy",
+    "finance/vault-strategy/anchor/programs/mock-swap-router",
+
     # tokens
     "tokens/token-extensions/mint-close-authority/native/program",
     "tokens/token-extensions/non-transferable/native/program",
     "tokens/token-extensions/default-account-state/native/program",
     "tokens/token-extensions/transfer-fee/native/program",
     "tokens/token-extensions/multiple-extensions/native/program",
+    "tokens/create-token/native/program",
+    "tokens/token-minter/native/program",
+    "tokens/transfer-tokens/native/program",
+    "tokens/nft-minter/native/program",
+    "tokens/pda-mint-authority/native/program",
 ]
 resolver = "2"
 

@@ -8,8 +8,11 @@ node_modules/
 **/*/node_modules
 **/*/package-lock.json
 **/*/Cargo.lock
-# Exception: escrow native needs Cargo.lock to pin blake3 (see tokens/escrow/native/Cargo.toml)
-!tokens/escrow/native/Cargo.lock
+# Exception: escrow native is a standalone (non-workspace) crate, so it keeps
+# its Cargo.lock tracked for reproducible builds.
+!finance/escrow/native/Cargo.lock
+# Exception: shank-and-codama native is also a standalone (non-workspace) crate.
+!tools/shank-and-codama/native/program/Cargo.lock
 
 **/*/.anchor
 **/*/.DS_Store
@@ -23,6 +26,4 @@ node_modules/
 /target
 deploy
 .claude/*
-# Exception: skills are shared team resources
 !.claude/skills/
-!.claude/skills/**

@@ -1,3 +1,7 @@
+// The Anchor `#[program]` macro expands to code that clippy flags as a
+// diverging sub-expression; this allow is the accepted workaround in this repo.
+#![allow(clippy::diverging_sub_expression)]
+
 pub use crate::errors::GameErrorCode;
 pub use anchor_lang::prelude::*;
 pub use session_keys::{session_auth_or, Session, SessionError};
@@ -28,12 +32,15 @@ pub mod extension_nft {
     // lets the player either use their session token or their main wallet. (The counter is only
     // there so that the player can do multiple transactions in the same block. Without it multiple transactions
     // in the same block would result in the same signature and therefore fail.)
+    // NOTE: the `#[session_auth_or]` macro injects code that refers to the
+    // context binding by the literal name `ctx`, so this handler's context
+    // parameter must be named `ctx` (not `context`) for the macro to expand.
     #[session_auth_or(
-        context.accounts.player.authority.key() == context.accounts.signer.key(),
+        ctx.accounts.player.authority.key() == ctx.accounts.signer.key(),
         GameErrorCode::WrongAuthority
     )]
-    pub fn chop_tree(context: Context<ChopTree>, _level_seed: String, counter: u16) -> Result<()> {
-        chop_tree::chop_tree(context, counter, 1)
+    pub fn chop_tree(ctx: Context<ChopTree>, _level_seed: String, counter: u16) -> Result<()> {
+        chop_tree::chop_tree(ctx, counter, 1)
     }
 
     pub fn mint_nft(context: Context<MintNft>) -> Result<()> {
