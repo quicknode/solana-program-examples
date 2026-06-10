@@ -3,14 +3,15 @@ use anchor_lang::prelude::*;
 use crate::UserAccount;
 
 #[derive(Accounts)]
-pub struct SetEthereumAddress<'info> {
+pub struct SetEthereumAddressAccountConstraints<'info> {
     #[account(mut, has_one = authority)]
     pub user_account: Account<'info, UserAccount>,
+
     pub authority: Signer<'info>,
 }
 
 pub fn handler(
-    mut context: Context<SetEthereumAddress>,
+    context: Context<SetEthereumAddressAccountConstraints>,
     ethereum_address: [u8; 20],
 ) -> Result<()> {
     let user_account = &mut context.accounts.user_account;

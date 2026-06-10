@@ -13,15 +13,24 @@ declare_id!("22222222222222222222222222222222222222222222");
 pub struct UserAccount {
     pub authority: Address,
     pub ethereum_address: [u8; 20],
+    /// Strictly increasing counter committed into every signed transfer
+    /// authorization, so each Ethereum signature executes exactly once.
+    pub nonce: u64,
 }
 
 /// Marker carrying the seeds for the per-user PDA: just the user account
-/// address (no string prefix). Required since PR #195 because inline
-/// `seeds = [...]` is gone — derivation now happens through a
-/// `#[derive(Seeds)]` type referenced by `address = T::seeds(...)`.
+/// address (no string prefix). Referenced through
+/// `address = UserPda::seeds(...)` in the account constraints.
 #[derive(Seeds)]
 #[seeds(b"", user_account: Address)]
 pub struct UserPda;
+
+#[error_code]
+pub enum ExternalDelegateError {
+    /// Matches the Anchor variant's error codes, which start at 6000.
+    InvalidSignature = 6000,
+    NonceOverflow,
+}
 
 /// External delegate token master: allows transfers authorised either by
 /// the Solana authority or by an Ethereum signature (secp256k1).
@@ -31,14 +40,14 @@ mod quasar_external_delegate_token_master {
 
     /// Initialize a user account with zero Ethereum address.
     #[instruction(discriminator = 0)]
-    pub fn initialize(ctx: Ctx<Initialize>) -> Result<(), ProgramError> {
+    pub fn initialize(ctx: Ctx<InitializeAccountConstraints>) -> Result<(), ProgramError> {
         handle_initialize(&mut ctx.accounts)
     }
 
     /// Set the Ethereum address for signature verification.
     #[instruction(discriminator = 1)]
     pub fn set_ethereum_address(
-        ctx: Ctx<SetEthereumAddress>,
+        ctx: Ctx<SetEthereumAddressAccountConstraints>,
         ethereum_address: [u8; 20],
     ) -> Result<(), ProgramError> {
         handle_set_ethereum_address(&mut ctx.accounts, ethereum_address)
@@ -47,18 +56,17 @@ mod quasar_external_delegate_token_master {
     /// Transfer tokens using an Ethereum signature for authorisation.
     #[instruction(discriminator = 2)]
     pub fn transfer_tokens(
-        ctx: Ctx<TransferTokens>,
+        ctx: Ctx<TransferTokensAccountConstraints>,
         amount: u64,
         signature: [u8; 65],
-        message: [u8; 32],
     ) -> Result<(), ProgramError> {
-        handle_transfer_tokens(&mut ctx.accounts, amount, &signature, &message, &ctx.bumps)
+        handle_transfer_tokens(&mut ctx.accounts, amount, &signature, &ctx.bumps)
     }
 
     /// Transfer tokens using the Solana authority directly.
     #[instruction(discriminator = 3)]
     pub fn authority_transfer(
-        ctx: Ctx<AuthorityTransfer>,
+        ctx: Ctx<AuthorityTransferAccountConstraints>,
         amount: u64,
     ) -> Result<(), ProgramError> {
         handle_authority_transfer(&mut ctx.accounts, amount, &ctx.bumps)
@@ -70,7 +78,7 @@ mod quasar_external_delegate_token_master {
 // ---------------------------------------------------------------------------
 
 #[derive(Accounts)]
-pub struct Initialize {
+pub struct InitializeAccountConstraints {
     #[account(mut, init, payer = authority)]
     pub user_account: Account<UserAccount>,
     #[account(mut)]
@@ -79,24 +87,27 @@ pub struct Initialize {
 }
 
 #[inline(always)]
-fn handle_initialize(accounts: &mut Initialize) -> Result<(), ProgramError> {
-    accounts.user_account
-        .set_inner(UserAccountInner {
-            authority: *accounts.authority.address(),
-            ethereum_address: [0u8; 20],
-        });
+fn handle_initialize(accounts: &mut InitializeAccountConstraints) -> Result<(), ProgramError> {
+    accounts.user_account.set_inner(UserAccountInner {
+        authority: *accounts.authority.address(),
+        ethereum_address: [0u8; 20],
+        nonce: 0,
+    });
     Ok(())
 }
 
 #[derive(Accounts)]
-pub struct SetEthereumAddress {
+pub struct SetEthereumAddressAccountConstraints {
     #[account(mut)]
     pub user_account: Account<UserAccount>,
     pub authority: Signer,
 }
 
 #[inline(always)]
-fn handle_set_ethereum_address(accounts: &mut SetEthereumAddress, ethereum_address: [u8; 20]) -> Result<(), ProgramError> {
+fn handle_set_ethereum_address(
+    accounts: &mut SetEthereumAddressAccountConstraints,
+    ethereum_address: [u8; 20],
+) -> Result<(), ProgramError> {
     require_keys_eq!(
         accounts.user_account.authority,
         *accounts.authority.address(),
@@ -107,9 +118,11 @@ fn handle_set_ethereum_address(accounts: &mut SetEthereumAddress, ethereum_addre
 }
 
 #[derive(Accounts)]
-pub struct TransferTokens {
+pub struct TransferTokensAccountConstraints {
+    #[account(mut)]
     pub user_account: Account<UserAccount>,
     pub authority: Signer,
+    pub mint: Account<Mint>,
     #[account(mut)]
     pub user_token_account: Account<Token>,
     #[account(mut)]
@@ -122,19 +135,39 @@ pub struct TransferTokens {
 
 #[inline(always)]
 fn handle_transfer_tokens(
-    accounts: &mut TransferTokens,
+    accounts: &mut TransferTokensAccountConstraints,
     amount: u64,
     signature: &[u8; 65],
-    message: &[u8; 32],
-    bumps: &TransferTokensBumps,
+    bumps: &TransferTokensAccountConstraintsBumps,
 ) -> Result<(), ProgramError> {
-    if !verify_ethereum_signature(
-        &accounts.user_account.ethereum_address,
-        message,
-        signature,
-    ) {
-        return Err(ProgramError::Custom(1)); // InvalidSignature
+    // The Ethereum signature supplements the Solana-side authority check;
+    // it does not replace it.
+    require_keys_eq!(
+        accounts.user_account.authority,
+        *accounts.authority.address(),
+        ProgramError::MissingRequiredSignature
+    );
+
+    // Rebuild the authorized message onchain so the signature commits to
+    // this exact transfer (amount, recipient, and the current nonce).
+    let nonce: u64 = accounts.user_account.nonce.into();
+    let message = build_transfer_authorization_message(
+        accounts.user_account.address(),
+        amount,
+        accounts.recipient_token_account.address(),
+        nonce,
+    );
+
+    if !verify_ethereum_signature(&accounts.user_account.ethereum_address, &message, signature) {
+        return Err(ExternalDelegateError::InvalidSignature.into());
     }
+
+    // Consume the nonce before the transfer CPI (checks-effects-interactions),
+    // so this signature can never authorize a second execution.
+    let next_nonce = nonce
+        .checked_add(1)
+        .ok_or(ExternalDelegateError::NonceOverflow)?;
+    accounts.user_account.nonce = PodU64::from(next_nonce);
 
     let bump = [bumps.user_pda];
     let seeds: &[Seed] = &[
@@ -142,20 +175,24 @@ fn handle_transfer_tokens(
         Seed::from(&bump as &[u8]),
     ];
 
-    accounts.token_program
-        .transfer(
+    accounts
+        .token_program
+        .transfer_checked(
             &accounts.user_token_account,
+            &accounts.mint,
             &accounts.recipient_token_account,
             &accounts.user_pda,
             amount,
+            accounts.mint.decimals,
         )
         .invoke_signed(seeds)
 }
 
 #[derive(Accounts)]
-pub struct AuthorityTransfer {
+pub struct AuthorityTransferAccountConstraints {
     pub user_account: Account<UserAccount>,
     pub authority: Signer,
+    pub mint: Account<Mint>,
     #[account(mut)]
     pub user_token_account: Account<Token>,
     #[account(mut)]
@@ -167,7 +204,11 @@ pub struct AuthorityTransfer {
 }
 
 #[inline(always)]
-fn handle_authority_transfer(accounts: &mut AuthorityTransfer, amount: u64, bumps: &AuthorityTransferBumps) -> Result<(), ProgramError> {
+fn handle_authority_transfer(
+    accounts: &mut AuthorityTransferAccountConstraints,
+    amount: u64,
+    bumps: &AuthorityTransferAccountConstraintsBumps,
+) -> Result<(), ProgramError> {
     require_keys_eq!(
         accounts.user_account.authority,
         *accounts.authority.address(),
@@ -180,14 +221,57 @@ fn handle_authority_transfer(accounts: &mut AuthorityTransfer, amount: u64, bump
         Seed::from(&bump as &[u8]),
     ];
 
-    accounts.token_program
-        .transfer(
+    accounts
+        .token_program
+        .transfer_checked(
             &accounts.user_token_account,
+            &accounts.mint,
             &accounts.recipient_token_account,
             &accounts.user_pda,
             amount,
+            accounts.mint.decimals,
         )
         .invoke_signed(seeds)
+}
+
+// ---------------------------------------------------------------------------
+// Transfer authorization message
+// ---------------------------------------------------------------------------
+
+/// Byte length of the transfer authorization preimage: program id, user
+/// account, amount, recipient token account, nonce.
+const TRANSFER_AUTHORIZATION_PREIMAGE_LEN: usize =
+    core::mem::size_of::<Address>() * 3 + core::mem::size_of::<u64>() * 2;
+
+/// Reconstructs the message a delegate must sign to authorize one transfer:
+/// keccak256(program id || user account || amount LE || recipient token account || nonce LE).
+///
+/// Because the hash commits to every transfer parameter plus the user
+/// account's stored nonce, a signature is valid for exactly one
+/// (amount, recipient, nonce) execution and cannot be replayed.
+fn build_transfer_authorization_message(
+    user_account: &Address,
+    amount: u64,
+    recipient_token_account: &Address,
+    nonce: u64,
+) -> [u8; 32] {
+    let amount_bytes = amount.to_le_bytes();
+    let nonce_bytes = nonce.to_le_bytes();
+    let parts: [&[u8]; 5] = [
+        ID.as_ref(),
+        user_account.as_ref(),
+        &amount_bytes,
+        recipient_token_account.as_ref(),
+        &nonce_bytes,
+    ];
+
+    let mut preimage = [0u8; TRANSFER_AUTHORIZATION_PREIMAGE_LEN];
+    let mut offset = 0usize;
+    for part in parts {
+        preimage[offset..offset + part.len()].copy_from_slice(part);
+        offset += part.len();
+    }
+    keccak256(&preimage)
 }
 
 // ---------------------------------------------------------------------------
