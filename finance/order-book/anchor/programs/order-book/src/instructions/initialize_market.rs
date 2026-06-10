@@ -12,9 +12,13 @@ pub fn handle_initialize_market(
     context: Context<InitializeMarket>,
     fee_basis_points: u16,
     tick_size: u64,
+    base_lot_size: u64,
+    quote_lot_size: u64,
     min_order_size: u64,
 ) -> Result<()> {
     require!(tick_size > 0, ErrorCode::InvalidTickSize);
+    require!(base_lot_size > 0, ErrorCode::InvalidBaseLotSize);
+    require!(quote_lot_size > 0, ErrorCode::InvalidQuoteLotSize);
     require!(min_order_size > 0, ErrorCode::BelowMinOrderSize);
     require!(
         fee_basis_points <= MAX_FEE_BASIS_POINTS,
@@ -31,6 +35,8 @@ pub fn handle_initialize_market(
     market.order_book = context.accounts.order_book.key();
     market.fee_basis_points = fee_basis_points;
     market.tick_size = tick_size;
+    market.base_lot_size = base_lot_size;
+    market.quote_lot_size = quote_lot_size;
     market.min_order_size = min_order_size;
     market.is_active = true;
     market.bump = context.bumps.market;

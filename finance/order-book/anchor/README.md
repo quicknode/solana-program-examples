@@ -70,8 +70,8 @@ call `settle_funds` to pull their balances out.
   that can withdraw accumulated fees.
 - An **OrderBook** account — two stores: bids sorted highest-first,
   asks sorted lowest-first, each holding up to 1024 entries. Rather
-  than a plain list of orders, each side uses a balanced tree for fast
-  lookup — see [Ensuring fast order matching performance](#ensuring-fast-order-matching-performance).
+  than a plain list of orders, each side uses a depth-bounded tree (a
+  critbit trie) for fast lookup — see [Ensuring fast order matching performance](#ensuring-fast-order-matching-performance).
   Each entry stores enough to drive matching (price, quantity,
   `order_id`); the full `Order` PDA holds the authoritative state.
 - A **MarketUser** PDA — one per `(market, wallet)` pair. Tracks the
@@ -895,9 +895,10 @@ instead of 1 024.
 The specific data structure used here is a
 [critbit tree](https://cr.yp.to/critbit.html) (short for *critical-bit
 tree*) — a compact binary radix trie where each internal node splits on
-the first bit where two keys disagree. It has the same O(log n) bounds
-as other balanced trees but operates on fixed-width integer keys, so no
-rebalancing rotations are needed. This implementation is ported from
+the first bit where two keys disagree. Unlike a self-balancing BST it
+never rotates or recolours nodes; its depth is instead bounded by the
+*bit width of the key* rather than the number of orders, so it stays
+shallow no matter what order keys arrive in. This implementation is ported from
 [Openbook v2](https://github.com/openbook-dex/openbook-v2);
 [Phoenix](https://github.com/Ellipsis-Labs/phoenix-v1) uses the same
 approach. Both are production Solana CLOBs worth reading alongside this
@@ -1550,15 +1551,18 @@ Ordered by difficulty.
   `place_order`, skip resting entries whose `expires_at` is past;
   add a permissionless `sweep_expired` instruction.
 
-### Why a balanced tree (critbit)?
+### Why a depth-bounded tree (critbit)?
 
-**Tree balancing must be guaranteed, not assumed.** A plain binary
+**Worst-case depth must be bounded, not assumed.** A plain binary
 search tree only keeps a roughly-balanced shape when its inputs arrive
 in random order. In an order book an attacker chooses the inputs — the
 prices of their orders — so nothing they choose can be allowed to
-determine the tree's shape. A *balanced-by-construction* tree
-(red-black, critbit, AVL, …) enforces a bounded shape via invariants
-maintained on every insert and delete, regardless of input order.
+inflate the tree's depth. Two families of structure defend against
+this: *self-balancing* BSTs (red-black, AVL, …) that restore a bounded
+height with rotations on every insert and delete, and *radix tries*
+like critbit whose depth is capped by the key's bit width no matter
+which keys are present. Both keep every operation cheap regardless of
+input order; this example uses the second.
 
 **Concrete attack on a plain BST.** An attacker posts orders at
 monotonically increasing prices ($100, $101, $102, $103, …). Each new
@@ -1568,20 +1572,21 @@ degenerated into a linked list of length N. Lookups, inserts, and
 matches all walk O(N) instead of O(log N).
 
 **Why this matters on Solana specifically.** Solana transactions have
-a ~1.4M compute-unit budget. If `place_order` walks an unbalanced book
+a ~1.4M compute-unit budget. If `place_order` walks a degenerate book
 and exceeds the CU limit mid-match, the transaction aborts and the
 placer pays fees for nothing. Worse, *legitimate users' orders fail
-because an adversary skewed the tree shape*. A balanced-by-construction
-tree bounds every operation at O(log N) regardless of input, so the
-attack is structurally impossible.
+because an adversary skewed the tree shape*. A depth-bounded tree keeps
+every operation cheap regardless of input, so the attack is
+structurally impossible.
 
-**Why critbit specifically.** Critbit (a binary radix trie keyed on
-the price bits) is balanced-by-construction in a different way from a
-red-black tree: tree depth is bounded by the *bit width of the sort
-key* (128 bits here — price in the high 64, sequence number in the
-low 64), not by insertion order. Inserts and deletes don't need
-rotations or recolouring; the trie shape is a deterministic function
-of which keys are present. This example uses the critbit slab from
+**Why critbit specifically.** Critbit is a binary radix trie keyed on
+the order's sort bits — *not* a self-balancing BST, so it never rotates
+or recolours nodes. Its shape is a deterministic function of which keys
+are present, and its depth can never exceed the *bit width of the sort
+key* (128 bits here — price in the high 64, sequence number in the low
+64), so it cannot degenerate into a long chain under any insert order.
+An insert splits exactly one leaf and adds exactly one inner node; a
+delete splices one out. This example uses the critbit slab from
 Openbook v2 (`src/state/slab/`).
 
 ### Harder

@@ -67,6 +67,8 @@ pub fn handle_place_order<'info>(
                 (price as u128)
                     .checked_mul(quantity as u128)
                     .ok_or(ErrorCode::NumericalOverflow)?
+                    .checked_mul(market.quote_lot_size as u128)
+                    .ok_or(ErrorCode::NumericalOverflow)?
                     .try_into()
                     .map_err(|_| error!(ErrorCode::NumericalOverflow))?,
                 context.accounts.quote_vault.to_account_info(),
@@ -75,7 +77,11 @@ pub fn handle_place_order<'info>(
                 context.accounts.user_base_account.to_account_info(),
                 context.accounts.base_mint.to_account_info(),
                 context.accounts.base_mint.decimals,
-                quantity,
+                (quantity as u128)
+                    .checked_mul(market.base_lot_size as u128)
+                    .ok_or(ErrorCode::NumericalOverflow)?
+                    .try_into()
+                    .map_err(|_| error!(ErrorCode::NumericalOverflow))?,
                 context.accounts.base_vault.to_account_info(),
             ),
         };
@@ -190,6 +196,8 @@ pub fn handle_place_order<'info>(
         let gross_quote: u64 = (fill.fill_price as u128)
             .checked_mul(fill.fill_quantity as u128)
             .ok_or(ErrorCode::NumericalOverflow)?
+            .checked_mul(market.quote_lot_size as u128)
+            .ok_or(ErrorCode::NumericalOverflow)?
             .try_into()
             .map_err(|_| error!(ErrorCode::NumericalOverflow))?;
 
@@ -218,8 +226,13 @@ pub fn handle_place_order<'info>(
                     .checked_add(net_quote_to_maker)
                     .ok_or(ErrorCode::NumericalOverflow)?;
 
+                let base_from_fill: u64 = (fill.fill_quantity as u128)
+                    .checked_mul(market.base_lot_size as u128)
+                    .ok_or(ErrorCode::NumericalOverflow)?
+                    .try_into()
+                    .map_err(|_| error!(ErrorCode::NumericalOverflow))?;
                 taker_base_received = taker_base_received
-                    .checked_add(fill.fill_quantity)
+                    .checked_add(base_from_fill)
                     .ok_or(ErrorCode::NumericalOverflow)?;
 
                 // Price improvement: taker locked (price * quantity) but
@@ -229,6 +242,8 @@ pub fn handle_place_order<'info>(
                 // bounded to u64, so this product narrows back cleanly.
                 let locked_for_this_fill: u64 = (price as u128)
                     .checked_mul(fill.fill_quantity as u128)
+                    .ok_or(ErrorCode::NumericalOverflow)?
+                    .checked_mul(market.quote_lot_size as u128)
                     .ok_or(ErrorCode::NumericalOverflow)?
                     .try_into()
                     .map_err(|_| error!(ErrorCode::NumericalOverflow))?;
@@ -241,9 +256,14 @@ pub fn handle_place_order<'info>(
             }
             // Taker Ask, resting Bid. Taker gives base, gets quote.
             OrderSide::Ask => {
+                let base_from_fill: u64 = (fill.fill_quantity as u128)
+                    .checked_mul(market.base_lot_size as u128)
+                    .ok_or(ErrorCode::NumericalOverflow)?
+                    .try_into()
+                    .map_err(|_| error!(ErrorCode::NumericalOverflow))?;
                 maker_market_user.unsettled_base = maker_market_user
                     .unsettled_base
-                    .checked_add(fill.fill_quantity)
+                    .checked_add(base_from_fill)
                     .ok_or(ErrorCode::NumericalOverflow)?;
 
                 let net_quote_to_taker = gross_quote
