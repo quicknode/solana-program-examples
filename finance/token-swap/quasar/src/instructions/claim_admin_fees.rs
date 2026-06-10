@@ -19,7 +19,7 @@ pub struct ClaimAdminFeesAccounts {
         address = PoolPda::seeds(config.address(), mint_a.address(), mint_b.address()),
     )]
     pub pool_config: Account<PoolConfig>,
-    /// Pool authority PDA — signs the outbound transfers.
+    /// Pool authority PDA - signs the outbound transfers.
     #[account(address = PoolAuthorityPda::seeds(config.address(), mint_a.address(), mint_b.address()))]
     pub pool_authority: UncheckedAccount,
     pub mint_a: Account<Mint>,

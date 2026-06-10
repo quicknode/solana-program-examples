@@ -16,7 +16,7 @@ pub fn handle_switch_power(accounts: &mut SwitchPower, name: &str) -> Result<(),
     let new_state = !current;
     accounts.power.is_on = PodBool::from(new_state);
 
-    // Quasar's log() takes &str — no format! in no_std.
+    // Quasar's log() takes &str - no format! in no_std.
     // Logging the name verifies the wire format end-to-end: a stale u32
     // length prefix would surface here as a corrupted name (e.g. the
     // first three bytes parsed as zeros, leaving "\0\0\0Al" instead of

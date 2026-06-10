@@ -80,7 +80,7 @@ pub struct InitializeExtraAccountMetaList<'info> {
 }
 ```
 
-The counter account also has to appear on the `TransferHook` struct — the [program](https://solana.com/docs/terminology#program) needs to know about every account passed in by the runtime:
+The counter account also has to appear on the `TransferHook` struct - the [program](https://solana.com/docs/terminology#program) needs to know about every account passed in by the runtime:
 
 ```rust
 #[derive(Accounts)]
@@ -126,4 +126,4 @@ const [counterPDA] = PublicKey.findProgramAddressSync(
 );
 ```
 
-Note: the counter account must exist before a transfer, since the hook reads/writes it. In this example we initialize it alongside the extra-account-metas, so there's only ever one counter — the one for the wallet that initialized the metas. If you want a counter per holder, you'd need to expose an opt-in handler to create it (a "sign up for counter" button in your dapp, for example).
+Note: the counter account must exist before a transfer, since the hook reads/writes it. In this example we initialize it alongside the extra-account-metas, so there's only ever one counter - the one for the wallet that initialized the metas. If you want a counter per holder, you'd need to expose an opt-in handler to create it (a "sign up for counter" button in your dapp, for example).

@@ -7,7 +7,7 @@ edition = "2021"
 crate-type = ["lib", "cdylib"]
 name = "block_list"
 
-# pinocchio 0.9.3 — 0.8.x's `nostd_panic_handler!` macro emits `#[no_mangle]`
+# pinocchio 0.9.3 - 0.8.x's `nostd_panic_handler!` macro emits `#[no_mangle]`
 # on a lang item, which rustc 1.89 (current platform-tools v1.52) rejects.
 # 0.9 fixes that without breaking the surface used here. 0.10 renamed
 # `Pubkey` → `Address`, which would require porting the rest of the code.

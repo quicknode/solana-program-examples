@@ -1,4 +1,4 @@
-# Token Extensions — Permanent Delegate (Quasar)
+# Token Extensions - Permanent Delegate (Quasar)
 
 Permanent delegate retains transfer rights.
 

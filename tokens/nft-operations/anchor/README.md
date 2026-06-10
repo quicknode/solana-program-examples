@@ -1,6 +1,6 @@
 # NFT Operations
 
-Create an NFT collection, mint an NFT, and verify an NFT as part of a collection — all using Metaplex Token Metadata.
+Create an NFT collection, mint an NFT, and verify an NFT as part of a collection - all using Metaplex Token Metadata.
 
 ## Program setup
 
@@ -71,7 +71,7 @@ pub struct CreateCollection<'info> {
 - `token_program` / `associated_token_program`: create new [ATAs](https://solana.com/docs/terminology#associated-token-account-ata) and mint tokens.
 - `token_metadata_program`: the MPL Token Metadata program, used to create the metadata and master edition accounts.
 
-Both `metadata` and `master_edition` are `UncheckedAccount` because they are uninitialized at the start of the [instruction](https://solana.com/docs/terminology#instruction) — the Token Metadata program initializes them via CPI.
+Both `metadata` and `master_edition` are `UncheckedAccount` because they are uninitialized at the start of the [instruction](https://solana.com/docs/terminology#instruction) - the Token Metadata program initializes them via CPI.
 
 Had we written:
 
@@ -234,7 +234,7 @@ pub struct MintNFT<'info> {
 
 Apart from `collection_mint`, the accounts are the same as the collection creation flow. A collection is just a regular NFT with the `collection_details` field set and the `collection` field on `data` set to `None`. An NFT belonging to a collection has `collection_details` set to `None` and the `collection` field on `data` set to a `Collection` struct with the collection's key and a `verified` boolean. `verified` starts false and flips to true once the NFT is verified as part of the collection.
 
-That's where the `collection` account comes from — it provides the address that goes into the `Collection` struct on the NFT's metadata.
+That's where the `collection` account comes from - it provides the address that goes into the `Collection` struct on the NFT's metadata.
 
 ### Implementation for `MintNFT`
 
@@ -407,7 +407,7 @@ pub struct VerifyCollectionMint<'info> {
 - `sysvar_instruction`: provides access to the serialized instruction data for the running transaction.
 - `token_metadata_program`: MPL Token Metadata, used to perform the verification CPI.
 
-Only the NFT and collection NFT metadata accounts need to be mutable — both are updated. The NFT metadata gets its `verified` boolean flipped to true, and the collection NFT metadata has its collection size incremented.
+Only the NFT and collection NFT metadata accounts need to be mutable - both are updated. The NFT metadata gets its `verified` boolean flipped to true, and the collection NFT metadata has its collection size incremented.
 
 ### Implementation for `VerifyCollectionMint`
 

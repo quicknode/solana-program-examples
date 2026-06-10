@@ -30,7 +30,7 @@ mod quasar_transfer_hook_whitelist {
         handle_initialize(&mut ctx.accounts)
     }
 
-    /// Transfer hook handler — checks if the destination is in the whitelist.
+    /// Transfer hook handler - checks if the destination is in the whitelist.
     /// Discriminator = sha256("spl-transfer-hook-interface:execute")[:8]
     #[instruction(discriminator = [105, 37, 101, 197, 75, 251, 102, 26])]
     pub fn transfer_hook(ctx: Ctx<TransferHook>, _amount: u64) -> Result<(), ProgramError> {

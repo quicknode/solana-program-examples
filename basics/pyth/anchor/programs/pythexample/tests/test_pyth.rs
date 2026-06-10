@@ -97,7 +97,7 @@ fn test_read_price() {
     )
     .unwrap();
 
-    // Call read_price — program just reads the account and logs the price info
+    // Call read_price - program just reads the account and logs the price info
     let ix_data = pythexample::instruction::ReadPrice {}.data();
 
     let accounts = pythexample::accounts::ReadPrice {

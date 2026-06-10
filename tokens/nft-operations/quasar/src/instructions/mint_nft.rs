@@ -30,10 +30,10 @@ pub struct MintNft {
         token(mint = mint, authority = owner, token_program = token_program),
     )]
     pub destination: Account<Token>,
-    /// Metadata PDA — initialised by the Metaplex program.
+    /// Metadata PDA - initialised by the Metaplex program.
     #[account(mut)]
     pub metadata: UncheckedAccount,
-    /// Master edition PDA — initialised by the Metaplex program.
+    /// Master edition PDA - initialised by the Metaplex program.
     #[account(mut)]
     pub master_edition: UncheckedAccount,
     /// PDA used as mint authority and update authority.

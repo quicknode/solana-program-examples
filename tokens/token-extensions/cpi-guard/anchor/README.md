@@ -1,4 +1,4 @@
-# Token Extensions — CPI Guard (Anchor)
+# Token Extensions - CPI Guard (Anchor)
 
 Enable CPI Guard so certain token actions cannot run inside a CPI context.
 

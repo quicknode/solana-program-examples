@@ -36,7 +36,7 @@ mod quasar_transfer_hook_cost {
         handle_initialize_extra_account_meta_list(&mut ctx.accounts)
     }
 
-    /// Transfer hook handler — validates the amount and increments the counter.
+    /// Transfer hook handler - validates the amount and increments the counter.
     /// In the full version, this would also charge a WSOL fee via delegate.
     /// Discriminator = sha256("spl-transfer-hook-interface:execute")[:8]
     #[instruction(discriminator = [105, 37, 101, 197, 75, 251, 102, 26])]

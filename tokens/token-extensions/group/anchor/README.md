@@ -1,4 +1,4 @@
-# Token Extensions — Group Pointer (Anchor)
+# Token Extensions - Group Pointer (Anchor)
 
 Link tokens to a group using the Group Pointer extension.
 

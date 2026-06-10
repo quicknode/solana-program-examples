@@ -15,14 +15,14 @@ mod tests;
 
 declare_id!("3ku1ZEGvBEEfhaYsAzBZuecTPEa58ZRhoVqHVGpGxVGi");
 
-/// Allow/Block List Token — a transfer hook program that enforces allow/block
-/// lists on Token-2022 transfers using per-wallet PDA entries and mint
+/// Allow/Block List Token - a transfer hook program that enforces allow/block
+/// lists on Token Extensions transfers using per-wallet PDA entries and mint
 /// metadata to control modes (Allow, Block, Mixed/Threshold).
 #[program]
 mod quasar_abl_token {
     use super::*;
 
-    /// Create a Token-2022 mint with transfer hook, permanent delegate,
+    /// Create a Token Extensions mint with transfer hook, permanent delegate,
     /// metadata pointer, and embedded metadata (including AB mode).
     /// Also initialises the ExtraAccountMetaList PDA.
     ///
@@ -85,7 +85,7 @@ mod quasar_abl_token {
         instructions::handle_attach_to_mint(&mut ctx.accounts)
     }
 
-    /// SPL Transfer Hook execute handler. Called by Token-2022 during
+    /// SPL Transfer Hook execute handler. Called by Token Extensions during
     /// transfers to enforce allow/block/threshold rules.
     /// Discriminator = sha256("spl-transfer-hook-interface:execute")[:8]
     #[instruction(discriminator = [105, 37, 101, 197, 75, 251, 102, 26])]

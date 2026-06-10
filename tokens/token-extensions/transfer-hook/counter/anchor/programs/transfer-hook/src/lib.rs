@@ -60,7 +60,7 @@ pub fn check_is_transferring(context: &Context<TransferHook>) -> Result<()> {
 // Define extra account metas to store on extra_account_meta_list account
 pub fn handle_extra_account_metas() -> Result<Vec<ExtraAccountMeta>> {
     // .map_err() needed because spl-tlv-account-resolution uses solana-program-error 2.x
-    // while anchor-lang 1.0 uses 3.x — structurally identical but different semver types
+    // while anchor-lang 1.0 uses 3.x - structurally identical but different semver types
     Ok(vec![ExtraAccountMeta::new_with_seeds(
         &[Seed::Literal {
             bytes: b"counter".to_vec(),

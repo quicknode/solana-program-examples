@@ -40,7 +40,7 @@ mod quasar_transfer_hook_hello_world {
         handle_initialize(&mut ctx.accounts, decimals)
     }
 
-    /// Create the ExtraAccountMetaList PDA (empty — no extra accounts).
+    /// Create the ExtraAccountMetaList PDA (empty - no extra accounts).
     /// Discriminator = sha256("spl-transfer-hook-interface:initialize-extra-account-metas")[:8]
     #[instruction(discriminator = [43, 34, 13, 49, 167, 88, 235, 235])]
     pub fn initialize_extra_account_meta_list(
@@ -49,7 +49,7 @@ mod quasar_transfer_hook_hello_world {
         handle_initialize_extra_account_meta_list(&mut ctx.accounts)
     }
 
-    /// Transfer hook handler — called automatically by Token-2022 during transfers.
+    /// Transfer hook handler - called automatically by Token Extensions during transfers.
     /// Discriminator = sha256("spl-transfer-hook-interface:execute")[:8]
     #[instruction(discriminator = [105, 37, 101, 197, 75, 251, 102, 26])]
     pub fn transfer_hook(ctx: Ctx<TransferHook>, _amount: u64) -> Result<(), ProgramError> {
@@ -78,7 +78,7 @@ fn handle_initialize(accounts: &mut Initialize, decimals: u8) -> Result<(), Prog
         let mint_size: u64 = 234;
         let lamports = Rent::get()?.try_minimum_balance(mint_size as usize)?;
 
-        // 1. Create account owned by Token-2022
+        // 1. Create account owned by Token Extensions
         accounts.system_program
             .create_account(
                 &accounts.payer,
@@ -228,7 +228,7 @@ pub struct TransferHook {
 #[inline(always)]
 fn handle_transfer_hook(_accounts: &mut TransferHook) -> Result<(), ProgramError> {
         // In production, verify the source token's TransferHookAccount.transferring
-        // flag is set. The Token-2022 program sets this before invoking the hook
+        // flag is set. The Token Extensions program sets this before invoking the hook
         // and clears it after, preventing standalone invocation.
         //
         // For this hello-world example, we simply log a message.

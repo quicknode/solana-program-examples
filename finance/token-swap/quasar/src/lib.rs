@@ -32,7 +32,7 @@ pub const LIQUIDITY_SEED: &[u8] = b"liquidity";
 #[seeds(b"config")]
 pub struct ConfigPda;
 
-/// `PoolConfig` PDA at seeds = [config, mint_a, mint_b] — no string prefix.
+/// `PoolConfig` PDA at seeds = [config, mint_a, mint_b] - no string prefix.
 #[derive(Seeds)]
 #[seeds(b"", config: Address, mint_a: Address, mint_b: Address)]
 pub struct PoolPda;
@@ -41,8 +41,8 @@ pub struct PoolPda;
 /// Modelled with prefix b"authority" + the three Address args; the
 /// rendered slice list ends up [config, mint_a, mint_b, b"authority"] when
 /// you use `with_bump`. Note: the new \`#[seeds]\` puts the literal
-/// prefix first, so the on-chain derivation order is
-/// [b"authority", config, mint_a, mint_b] — different from the original
+/// prefix first, so the onchain derivation order is
+/// [b"authority", config, mint_a, mint_b] - different from the original
 /// Anchor scheme. Programs are independent so this is consistent and
 /// correct on its own; the addresses just won't match the Anchor copy.
 #[derive(Seeds)]
@@ -57,13 +57,13 @@ pub struct LiquidityMintPda;
 /// Simple constant-product AMM (token swap).
 ///
 /// Six instructions:
-/// 1. `create_config` — initialise the singleton AMM config (admin, fee,
+/// 1. `create_config` - initialise the singleton AMM config (admin, fee,
 ///    admin share)
-/// 2. `create_pool` — create a liquidity pool for a token pair
-/// 3. `deposit_liquidity` — add liquidity and receive LP tokens
-/// 4. `withdraw_liquidity` — burn LP tokens and receive pool tokens
-/// 5. `swap_tokens` — swap one token for another
-/// 6. `claim_admin_fees` — admin sweeps accumulated fee slice from a pool
+/// 2. `create_pool` - create a liquidity pool for a token pair
+/// 3. `deposit_liquidity` - add liquidity and receive LP tokens
+/// 4. `withdraw_liquidity` - burn LP tokens and receive pool tokens
+/// 5. `swap_tokens` - swap one token for another
+/// 6. `claim_admin_fees` - admin sweeps accumulated fee slice from a pool
 #[program]
 mod quasar_token_swap {
     use super::*;

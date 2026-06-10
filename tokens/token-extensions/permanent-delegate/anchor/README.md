@@ -1,4 +1,4 @@
-# Token Extensions — Permanent Delegate (Anchor)
+# Token Extensions - Permanent Delegate (Anchor)
 
 Keep a permanent delegate with transfer rights over all token accounts for the mint.
 

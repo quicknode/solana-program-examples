@@ -133,7 +133,7 @@ fn test_transfer_switch() {
     send_transaction_from_instructions(&mut svm, vec![switch_off_ix], &[&payer], &payer.pubkey()).unwrap();
     svm.expire_blockhash();
 
-    // Step 6: Try transfer — should FAIL (switch is off)
+    // Step 6: Try transfer - should FAIL (switch is off)
     let transfer_amount: u64 = 1 * 10u64.pow(decimals as u32);
     let extra_accounts = build_hook_accounts(
         &mint,
@@ -176,7 +176,7 @@ fn test_transfer_switch() {
     send_transaction_from_instructions(&mut svm, vec![switch_on_ix], &[&payer], &payer.pubkey()).unwrap();
     svm.expire_blockhash();
 
-    // Step 8: Transfer — should SUCCEED (switch is on)
+    // Step 8: Transfer - should SUCCEED (switch is on)
     transfer_checked_token_extensions(
         &mut svm,
         &source_ata,

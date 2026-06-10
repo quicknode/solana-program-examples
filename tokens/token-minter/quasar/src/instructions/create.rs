@@ -27,7 +27,7 @@ pub struct CreateToken {
         ),
     )]
     pub mint_account: Account<Mint>,
-    /// The metadata PDA — will be initialised by the Metaplex program.
+    /// The metadata PDA - will be initialised by the Metaplex program.
     #[account(mut)]
     pub metadata_account: UncheckedAccount,
     pub token_program: Program<TokenProgram>,

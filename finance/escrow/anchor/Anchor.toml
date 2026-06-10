@@ -8,8 +8,6 @@ skip-lint = false
 [programs.localnet]
 escrow = "qbuMdeYxYJXBjU6C6qFKjZKjXmrU83eDQomHdrch826"
 
-# [registry] section removed — no longer used in Anchor 1.0
-
 [provider]
 cluster = "Localnet"
 wallet = "~/.config/solana/id.json"

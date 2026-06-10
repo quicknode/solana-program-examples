@@ -1,4 +1,4 @@
-# Token Extensions — Memo Transfer (Anchor)
+# Token Extensions - Memo Transfer (Anchor)
 
 Require a memo on every transfer via the memo-transfer extension.
 

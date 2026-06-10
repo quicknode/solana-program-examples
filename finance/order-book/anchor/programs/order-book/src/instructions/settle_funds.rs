@@ -94,7 +94,7 @@ pub struct SettleFunds<'info> {
     )]
     pub market_user: Account<'info, MarketUser>,
 
-    // Boxed for the same reason as in PlaceOrder —
+    // Boxed for the same reason as in PlaceOrder -
     // InterfaceAccount is too large to keep on the BPF stack in bulk.
     #[account(mut)]
     pub base_vault: Box<InterfaceAccount<'info, TokenAccount>>,

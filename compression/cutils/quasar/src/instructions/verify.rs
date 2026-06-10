@@ -59,7 +59,7 @@ pub fn handle_verify(accounts: &mut Verify, data: &[u8], remaining: RemainingAcc
     //
     // `remaining.iter()` yields `Result<RemainingAccount, _>` in newer
     // quasar-lang. Reach the inner `AccountView` via the unchecked accessor
-    // — we only read addresses/views to forward to the compression CPI as
+    // - we only read addresses/views to forward to the compression CPI as
     // proof nodes; no aliased data access.
     let placeholder = accounts.compression_program.to_account_view().clone();
     let mut proof_views: [AccountView; MAX_PROOF_NODES] =

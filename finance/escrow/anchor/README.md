@@ -2,7 +2,7 @@
 
 ## Introduction
 
-This Solana [program](https://solana.com/docs/terminology#program) is an **escrow** — it lets a user swap a specific amount of one token for a desired amount of another token.
+This Solana [program](https://solana.com/docs/terminology#program) is an **escrow** - it lets a user swap a specific amount of one token for a desired amount of another token.
 
 For example: Alice offers 10 USDC and wants 100 WIF in return.
 
@@ -20,12 +20,12 @@ Based on [Dean Little's Anchor Escrow](https://github.com/deanmlittle/anchor-esc
 
 ### Changes from the original
 
-One challenge when teaching is avoiding ambiguity — names have to be clear and not confused with anything else.
+One challenge when teaching is avoiding ambiguity - names have to be clear and not confused with anything else.
 
 - Several custom handler functions were replaced by helpers from `@solana-developers/helpers` to reduce file size.
 - Shared token-transfer logic now lives in `instructions/shared.rs`.
 - The upstream project uses a custom file layout. This version uses the 'multiple files' [Anchor](https://solana.com/docs/terminology#anchor) layout.
-- Contexts are separate data structures from the functions that use them. There's no need for OO-style `impl` patterns here — no mutable state is stored in the context, and the methods don't mutate it.
+- Contexts are separate data structures from the functions that use them. There's no need for OO-style `impl` patterns here - no mutable state is stored in the context, and the methods don't mutate it.
 - The name 'deposit' was overloaded. `deposit` is both a verb and a noun, which made the code hard to read:
   - deposit #1 → `token_a_offered_amount`
   - deposit #2 (in `make()`) → `send_offered_tokens_to_vault`

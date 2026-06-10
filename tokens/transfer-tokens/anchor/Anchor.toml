@@ -8,14 +8,12 @@ skip-lint = false
 [programs.localnet]
 transfer_tokens = "nHi9DdNjuupjQ3c8AJU9sChB5gLbZvTLsJQouY4hU67"
 
-# [registry] section removed — no longer used in Anchor 1.0
-
 [provider]
 cluster = "localnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
-# Only run bankrun tests — the validator tests (test.ts) need Metaplex Token
+# Only run bankrun tests - the validator tests (test.ts) need Metaplex Token
 # Metadata cloned from mainnet which is too slow/unreliable in CI.
 # bankrun.test.ts uses a local fixture (tests/fixtures/token_metadata.so).
 test = "cargo test"

@@ -2,7 +2,7 @@ use quasar_lang::prelude::*;
 
 /// Accounts for the hand program's pull_lever instruction.
 /// The lever_program uses `Program<LeverProgram>` with a custom marker type
-/// that implements `Id` — this lets Quasar verify the program address and
+/// that implements `Id` - this lets Quasar verify the program address and
 /// the executable flag during account parsing.
 #[derive(Accounts)]
 pub struct PullLever {

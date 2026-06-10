@@ -22,7 +22,7 @@ impl Id for Token2022Program {
 /// Creates a mint with the GroupPointer extension.
 ///
 /// The Token Group and Token Member extensions are not yet fully enabled on
-/// the Token-2022 program. This example demonstrates initializing the
+/// the Token Extensions program. This example demonstrates initializing the
 /// GroupPointer extension on a mint. Actual group/member initialization
 /// is commented out in the Anchor version as well.
 #[program]

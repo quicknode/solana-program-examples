@@ -25,7 +25,7 @@ fn test_create_non_transferable_token() {
         include_bytes!("../../tests/fixtures/token_2022_non_transferable_program.so");
     svm.add_program(program_id, program_bytes).unwrap();
 
-    // litesvm bundles the SPL Token-2022 program by default.
+    // litesvm bundles the Token Extensions program by default.
     let token_program_id = spl_token_2022_interface::id();
 
     let payer = Keypair::new();
@@ -57,7 +57,7 @@ fn test_create_non_transferable_token() {
 
     svm.send_transaction(tx).unwrap();
 
-    // The mint should be owned by Token-2022 and carry the NonTransferable
+    // The mint should be owned by Token Extensions and carry the NonTransferable
     // extension (it has no fields; presence is what we assert).
     let mint_account = svm.get_account(&mint.pubkey()).unwrap();
     assert_eq!(mint_account.owner, token_program_id);

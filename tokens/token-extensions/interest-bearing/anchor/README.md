@@ -1,4 +1,4 @@
-# Token Extensions — Interest Bearing (Anchor)
+# Token Extensions - Interest Bearing (Anchor)
 
 Display balances that accrue interest over time using the interest-bearing extension.
 

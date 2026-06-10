@@ -3,7 +3,7 @@ use quasar_lang::prelude::*;
 use crate::state::ride;
 
 /// Validate rider requirements and log the result.
-/// Quasar's `log()` takes &str — no format! in no_std — so we use static
+/// Quasar's `log()` takes &str - no format! in no_std - so we use static
 /// messages matching the Anchor version's logic without string interpolation.
 pub fn get_on_ride(
     _name: &str,

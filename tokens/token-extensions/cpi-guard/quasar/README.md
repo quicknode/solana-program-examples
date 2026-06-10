@@ -1,4 +1,4 @@
-# Token Extensions — CPI Guard (Quasar)
+# Token Extensions - CPI Guard (Quasar)
 
 Block certain token actions inside CPI contexts.
 

@@ -2,7 +2,7 @@
 
 An Anchor [program](https://solana.com/docs/terminology#program) that mints an NFT using the [Token Extensions](https://solana.com/docs/terminology#token-extensions-program) metadata-pointer extension. The mint itself stores its own metadata via the metadata extension, so no separate Metaplex metadata [account](https://solana.com/docs/terminology#account) is needed.
 
-This is particularly useful for games — you get arbitrary key/value metadata stored [onchain](https://solana.com/docs/terminology#onchain) that you can use to record character state. In this example, the player's level and collected wood are stored on the NFT.
+This is particularly useful for games - you get arbitrary key/value metadata stored [onchain](https://solana.com/docs/terminology#onchain) that you can use to record character state. In this example, the player's level and collected wood are stored on the NFT.
 
 When marketplaces support additional metadata, NFTs can be filtered or ranked by those fields, e.g. by character level.
 
@@ -37,7 +37,7 @@ Creating an NFT this way:
 5. Add any custom fields (e.g. `level`).
 6. Create the player's [Associated Token Account](https://solana.com/docs/terminology#associated-token-account-ata).
 7. Mint one token to the ATA.
-8. Remove the mint authority — irreversible, makes it an NFT.
+8. Remove the mint authority - irreversible, makes it an NFT.
 
 See `programs/extension_nft/src/instructions/mint_nft.rs` for the Rust implementation.
 

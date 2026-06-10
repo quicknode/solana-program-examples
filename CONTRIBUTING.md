@@ -20,28 +20,24 @@ Thank you for considering a contribution to this repository. We welcome new exam
 
 ## Testing
 
-This repo uses an in-process test runtime — no local validator boot, no `solana-test-validator`, no `anchor test --validator legacy`.
+This repo uses an in-process test runtime - no local validator boot, no `solana-test-validator`, no `anchor test --validator legacy`.
 
-For Anchor and Quasar examples, tests are written in TypeScript and run with `node:test` via `tsx`:
-
-```bash
-npx tsx --test --test-reporter=spec tests/*.ts
-```
-
-The conventional `Anchor.toml` `[scripts]` entry is:
+**Anchor examples** are tested in Rust with [LiteSVM](https://www.anchor-lang.com/docs/testing/litesvm). Tests live in `programs/<name>/tests/`, load the compiled program with `include_bytes!("../../../target/deploy/<name>.so")`, and run with `cargo test` (build the `.so` first with `cargo build-sbf` or `anchor build`). The conventional `Anchor.toml` `[scripts]` entry is:
 
 ```toml
 [scripts]
-test = "npx create-codama-clients; npx tsx --test --test-reporter=spec tests/*.ts"
+test = "cargo test"
 ```
 
-The TypeScript tests use:
+Optional helpers come from the [`solana-kite`](https://crates.io/crates/solana-kite) crate (wallet creation, token mint helpers, `send_transaction_from_instructions`).
 
-- [`solana-kite`](https://solanakite.org) for the connection, wallet creation, token mint helpers, PDA derivation, and `sendTransactionFromInstructions`.
-- [`@solana/kit`](https://solanakit.com) for the core types (`KeyPairSigner`, `Address`, `lamports`).
-- A [Codama](https://github.com/codama-idl/codama)-generated client (via `npx create-codama-clients`) for invoking the program instructions. Do **not** use `anchor.workspace` or `program.methods.X().rpc()`.
+**Quasar examples** are tested in Rust with QuasarSVM. Run `quasar build` (which also generates the Rust client crate under `target/client/rust/` that the tests import), then `quasar test` or `cargo test`.
 
-Native and Pinocchio examples may use `litesvm` directly from Rust where appropriate.
+**Native and Pinocchio examples** use `litesvm` directly from Rust, except for a few that keep TypeScript tests (`tsx --test` with [`solana-kite`](https://solanakite.org) and [`@solana/kit`](https://solanakit.com)) where the example is specifically about client-side tooling.
+
+Do not write TypeScript tests for Anchor or Quasar programs, and do not use `anchor.workspace` or `program.methods.X().rpc()`.
+
+Tests must exercise the program for real: initialize accounts, send transactions through the program's instruction handlers, and assert resulting state and balances. Placeholder tests (`assert!(true)`, build-only checks) don't count.
 
 ## Style
 
@@ -54,7 +50,7 @@ Other conventions:
 - Use full words rather than abbreviations (`transaction`, not `tx` or `txn`; `account`, not `acc`).
 - Prefer `async`/`await` over `.then()`/`.catch()`.
 - Use `Array<T>` rather than `T[]` in TypeScript.
-- Avoid magic numbers — name or explain them.
+- Avoid magic numbers - name or explain them.
 - Write "onchain" / "offchain" as single words (no hyphen).
 
 ## Excluding an example from CI

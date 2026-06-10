@@ -39,7 +39,7 @@ pub mod rent_example {
             &context.accounts.system_program.key(),
         )?;
 
-        msg!("Account created succesfully.");
+        msg!("Account created successfully.");
         Ok(())
     }
 }

@@ -4,14 +4,21 @@ An [Anchor](https://solana.com/docs/terminology#anchor) [program](https://solana
 
 ## Components
 
-- `programs/cnft-burn/` — the Anchor program.
-- `migrations/` — deployment script.
+- `programs/cnft-burn/` - the Anchor program.
+- `migrations/` - deployment script.
 
-There is no `tests/` directory in this example today. The program is intended to be deployed and exercised against a real cluster.
+## Testing
+
+A Rust [LiteSVM](https://www.anchor-lang.com/docs/testing/litesvm) integration suite lives in `programs/cnft-burn/tests/`. It loads mainnet-dumped fixture binaries for Bubblegum, SPL Account Compression, and SPL Noop from `tests/fixtures/` (see the README there), so the CPIs run against the real programs in-process.
+
+```bash
+cargo build-sbf
+cargo test
+```
 
 ## Deployment
 
-The program ID declared in [`programs/cnft-burn/src/lib.rs`](programs/cnft-burn/src/lib.rs) is `C6qxH8n6mZxrrbtMtYWYSp8JR8vkQ55X1o4EBg7twnMv`. Whether this address is currently deployed on any cluster is not tracked in this repo — verify with `solana program show <id>` against the cluster you care about.
+The program ID declared in [`programs/cnft-burn/src/lib.rs`](programs/cnft-burn/src/lib.rs) is `C6qxH8n6mZxrrbtMtYWYSp8JR8vkQ55X1o4EBg7twnMv`. Whether this address is currently deployed on any cluster is not tracked in this repo - verify with `solana program show <id>` against the cluster you care about.
 
 To deploy your own copy, change the program ID in `lib.rs` and `Anchor.toml`, then run `anchor build && anchor deploy`.
 

@@ -21,13 +21,9 @@ Prerequisites: [Quasar](https://quasar-lang.com/docs) CLI and [Agave](https://do
 
 ## Testing
 
-In-process tests via **Quasar SVM** (`quasar-svm` in `Quasar.toml`):
+This variant has no automated test suite yet: the instruction handlers CPI into external programs (Bubblegum, SPL Account Compression) and a QuasarSVM harness that loads those fixture binaries has not been written. `quasar build` verifies the program and CPI construction compile.
 
-```bash
-cargo test
-```
-
-Tests invoke instruction handlers and assert onchain state. No local validator.
+The Anchor twin at `../anchor/` has a full LiteSVM integration suite that exercises the same flows against mainnet-dumped fixture programs; use it as the behavioural reference.
 
 ## Usage
 

@@ -1,4 +1,4 @@
-# Transfer Hook — Counter (Anchor)
+# Transfer Hook - Counter (Anchor)
 
 Count how many times tokens have been transferred using hook-side state.
 

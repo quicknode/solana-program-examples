@@ -9,13 +9,8 @@ in the language of your choice.
 This example is a small "car rental service" program. It is annotated with Shank
 macros, Shank extracts the IDL, and Codama renders a TypeScript client
 (`@solana/kit`-based) from that IDL. An in-process [LiteSVM](https://github.com/litesvm/litesvm)
-test then drives the program through the generated client — no validator or
+test then drives the program through the generated client - no validator or
 devnet required, so it runs in CI.
-
-> This example used to use [Solita](https://github.com/metaplex-foundation/solita)
-> to generate the client. Solita is unmaintained and does not work on the current
-> toolchain, so it has been replaced with Codama. The Shank half of the lesson is
-> unchanged.
 
 ## Shank
 
@@ -63,17 +58,16 @@ pnpm generate-idl   # runs: shank idl --crate-root ./program --out-dir ./program
 The IDL lands in `program/idl/car_rental_service.json` (committed to the repo so
 the client can be regenerated without the Rust CLI). Its `metadata.origin` is
 `"shank"`, and each instruction carries an explicit single-byte (`u8`)
-`discriminant` — this is what distinguishes a Shank IDL from an Anchor IDL.
+`discriminant` - this is what distinguishes a Shank IDL from an Anchor IDL.
 
 ### A note on PDAs and `#[seeds(...)]`
 
-Shank 0.0.x used a `#[seeds(...)]` attribute on a `ShankAccount` to *generate*
-`shank_pda` / `shank_seeds_with_bump` helper methods. As of Shank 0.4.x that PDA
+Shank's `#[seeds(...)]` attribute is not used here: on Shank 0.4.x its PDA
 code-generation produces unparsable tokens and fails to compile, and the seeds
-are not emitted into the IDL either. So this example keeps PDA derivation
-explicit in `program/src/state/mod.rs` (`Car::find_pda`, `RentalOrder::find_pda`)
-and no longer uses the `#[seeds(...)]` attribute. `ShankAccount` is still used —
-it is what tells Shank to include the account layout in the IDL.
+are not emitted into the IDL either. This example instead keeps PDA derivation
+explicit in `program/src/state/mod.rs` (`Car::find_pda`, `RentalOrder::find_pda`).
+`ShankAccount` is still used - it is what tells Shank to include the account
+layout in the IDL.
 
 ## Codama
 
@@ -103,7 +97,7 @@ await codama.accept(renderVisitor(outDir, { deleteFolderBeforeRendering: true })
 ```
 
 > Codama also ships `@codama/renderers-rust` if you want a Rust client instead of
-> a TypeScript one — swap `renderVisitor` from `@codama/renderers-js` for the Rust
+> a TypeScript one - swap `renderVisitor` from `@codama/renderers-js` for the Rust
 > renderer.
 
 Generate the client:
@@ -125,4 +119,4 @@ pnpm build-and-test   # build, regenerate the client, then run the LiteSVM test
 The test ([`tests/test.ts`](./tests/test.ts)) loads the compiled `.so` into a
 [LiteSVM](https://github.com/litesvm/litesvm) instance and exercises `add_car`,
 `book_rental`, and `pick_up_car` through the generated client, asserting on the
-resulting on-chain account state.
+resulting onchain account state.

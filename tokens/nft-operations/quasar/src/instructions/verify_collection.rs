@@ -12,7 +12,7 @@ use {
 /// The Anchor version uses typed `MetadataAccount` / `MasterEditionAccount`
 /// wrappers for owner and discriminant validation. In Quasar we use
 /// `UncheckedAccount` and rely on the Metaplex program itself to validate
-/// the accounts during CPI — the onchain program enforces correctness.
+/// the accounts during CPI - the onchain program enforces correctness.
 #[derive(Accounts)]
 pub struct VerifyCollectionMint {
     pub authority: Signer,

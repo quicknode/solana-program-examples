@@ -1,4 +1,4 @@
-# Transfer Hook — Transfer Switch (Quasar)
+# Transfer Hook - Transfer Switch (Quasar)
 
 Globally enable or disable transfers.
 

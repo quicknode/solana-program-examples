@@ -41,7 +41,7 @@ fn handle_check_mint_data(accounts: &mut Initialize) -> Result<()> {
     let mint = &accounts.mint_account.to_account_info();
     let mint_data = mint.data.borrow();
     // .map_err() needed because spl-token-2022 uses solana-program-error 2.x
-    // while anchor-lang 1.0 uses 3.x — structurally identical but different semver types
+    // while anchor-lang 1.0 uses 3.x - structurally identical but different semver types
     let mint_with_extension = StateWithExtensions::<MintState>::unpack(&mint_data)
         .map_err(|_| ProgramError::InvalidAccountData)?;
     let extension_data = mint_with_extension.get_extension::<TransferHookExtension>()

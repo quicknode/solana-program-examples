@@ -50,7 +50,7 @@ pub struct ReadPrice<'info> {
 // https://github.com/pyth-network/pyth-crosschain/issues/3756
 //
 // The fields, order, and 8-byte
-// discriminator below match the on-chain account exactly, and it is owned by
+// discriminator below match the onchain account exactly, and it is owned by
 // the Pyth Receiver program (see the `Owner` impl), so accounts written by Pyth
 // deserialize unchanged. Replace this with the SDK type once an Anchor 1.0 /
 // borsh 1.x compatible `pyth-solana-receiver-sdk` release ships.

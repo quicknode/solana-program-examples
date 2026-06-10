@@ -1,6 +1,6 @@
 # Hello Solana
 
-Our first Solana [program](https://solana.com/docs/terminology#program) — a "hello, world" that logs a greeting. Along the way, a quick look at what's inside a Solana transaction.
+Our first Solana [program](https://solana.com/docs/terminology#program) - a "hello, world" that logs a greeting. Along the way, a quick look at what's inside a Solana transaction.
 
 ## Transactions
 

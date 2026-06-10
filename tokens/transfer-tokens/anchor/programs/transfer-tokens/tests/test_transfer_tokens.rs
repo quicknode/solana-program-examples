@@ -135,7 +135,7 @@ fn test_create_mint_and_transfer() {
     )
     .unwrap();
 
-    // Verify tokens minted — 100 * 10^9 = 100_000_000_000 (9 decimals)
+    // Verify tokens minted - 100 * 10^9 = 100_000_000_000 (9 decimals)
     assert_eq!(
         get_token_account_balance(&svm, &sender_ata).unwrap(),
         100_000_000_000

@@ -11,7 +11,7 @@ pub const ORDER_BOOK_SEED: &[u8] = b"order_book";
 
 /// Per-side capacity. 1024 leaves is enough for any realistic depth a single
 /// market quotes; at 88 bytes per node that's ~90 KB per side, so the whole
-/// OrderBook account fits in ~180 KB — well under Solana's per-account ceiling
+/// OrderBook account fits in ~180 KB - well under Solana's per-account ceiling
 /// and well within the rent budget a market authority is happy to fund once.
 pub const MAX_ORDERS_PER_SIDE: usize = MAX_TREE_NODES;
 
@@ -21,7 +21,7 @@ pub const MAX_ORDERS_PER_SIDE: usize = MAX_TREE_NODES;
 ///
 /// Stored as one `AccountLoader<OrderBook>` (zero-copy). The account is far
 /// larger than Anchor's borsh `Account<T>` would happily deserialize on every
-/// instruction — zero-copy gives us per-field memory access without paying
+/// instruction - zero-copy gives us per-field memory access without paying
 /// the (de)serialization cost.
 #[account(zero_copy(unsafe))]
 #[repr(C)]
@@ -85,7 +85,7 @@ impl OrderBook {
         self._padding = [0; 7];
 
         // Slab regions arrive zeroed (Anchor zero_copy guarantees that on
-        // first init). We only need to write the side tag — every other
+        // first init). We only need to write the side tag - every other
         // field already reads as "empty" (bump_index=0, free_list_len=0,
         // free_list_head=0, all node slots Uninitialized).
         self.bids.order_tree_type = OrderTreeType::Bids as u8;
@@ -130,7 +130,7 @@ impl OrderBook {
     /// and removed on either side.
     pub fn remove(&mut self, order_id: u64) -> bool {
         // We don't know which side the order is on without scanning, so try
-        // both. Tree lookup is O(log N) — much cheaper than the linear Vec
+        // both. Tree lookup is O(log N) - much cheaper than the linear Vec
         // scan the previous implementation did.
         if self.remove_from(OrderSide::Bid, order_id).is_some() {
             return true;
@@ -145,7 +145,7 @@ impl OrderBook {
     /// if found, so callers can read its quantity/owner without re-fetching
     /// the Order account.
     pub fn remove_from(&mut self, side: OrderSide, order_id: u64) -> Option<LeafNode> {
-        // Tree keys embed price in the high 64 bits — we don't have the price
+        // Tree keys embed price in the high 64 bits - we don't have the price
         // at cancellation time, so we can't reconstruct the exact key without
         // scanning. Linear scan to find the full key, then remove by key.
         let (root, nodes) = match side {
@@ -154,7 +154,7 @@ impl OrderBook {
         };
 
         // Linear scan to find the full key (price + seq_num) for this
-        // order_id. Cheap relative to a CPI — and only happens at
+        // order_id. Cheap relative to a CPI - and only happens at
         // cancellation, not in the hot matching path.
         let mut found_key: Option<u128> = None;
         for (_, leaf) in OrderTreeIter::new(nodes, root) {
@@ -195,7 +195,7 @@ impl OrderBook {
     /// against the maker side of the book without reinserting leaves.
     ///
     /// Leaves are looked up by (price, order_id) instead of a cached slab
-    /// handle because removing any leaf rebalances the tree — every other
+    /// handle because removing any leaf rebalances the tree - every other
     /// handle in the same plan would be stale after the first removal.
     /// (price, order_id) reconstructs the exact tree key the leaf was
     /// inserted with, so the tree walk lands on the right slot every time.

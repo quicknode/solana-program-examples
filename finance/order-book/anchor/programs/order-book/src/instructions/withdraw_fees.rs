@@ -7,7 +7,7 @@ use crate::errors::ErrorCode;
 use crate::state::{Market, MARKET_SEED};
 
 /// Drain the market's accumulated taker fees into the authority's token
-/// account. Authority-only — arbitrary callers must not be able to siphon
+/// account. Authority-only - arbitrary callers must not be able to siphon
 /// the fee vault. Transfers the current balance of the fee vault in full;
 /// a partial-withdraw flavour could take an amount parameter, left out here
 /// to keep the example focused.
@@ -21,7 +21,7 @@ pub fn handle_withdraw_fees(context: Context<WithdrawFees>) -> Result<()> {
 
     let fee_balance = context.accounts.fee_vault.amount;
     if fee_balance == 0 {
-        // Nothing to do — exit quietly rather than failing, so this
+        // Nothing to do - exit quietly rather than failing, so this
         // instruction is safe to call on a cron/heartbeat even when there
         // haven't been any fills since the last run.
         return Ok(());

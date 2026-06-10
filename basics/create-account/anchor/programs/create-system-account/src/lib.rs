@@ -30,7 +30,7 @@ pub mod create_system_account {
             &context.accounts.system_program.key(), // Owner Program
         )?;
 
-        msg!("Account created succesfully.");
+        msg!("Account created successfully.");
         Ok(())
     }
 }

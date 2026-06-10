@@ -26,7 +26,7 @@ fn test_create_token_with_multiple_extensions() {
         include_bytes!("../../tests/fixtures/token_2022_multiple_extensions_program.so");
     svm.add_program(program_id, program_bytes).unwrap();
 
-    // litesvm bundles the SPL Token-2022 program by default.
+    // litesvm bundles the Token Extensions program by default.
     let token_program_id = spl_token_2022_interface::id();
 
     let payer = Keypair::new();
@@ -59,7 +59,7 @@ fn test_create_token_with_multiple_extensions() {
 
     svm.send_transaction(tx).unwrap();
 
-    // The mint should now exist, be owned by Token-2022, and carry both the
+    // The mint should now exist, be owned by Token Extensions, and carry both the
     // MintCloseAuthority and NonTransferable extensions.
     let mint_account = svm.get_account(&mint.pubkey()).unwrap();
     assert_eq!(mint_account.owner, token_program_id);

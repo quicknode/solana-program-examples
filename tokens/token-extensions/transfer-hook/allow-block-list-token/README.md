@@ -2,7 +2,7 @@
 
 A [Token Extensions](https://solana.com/docs/terminology#token-extensions-program) example that gates transfers through an allow/block list managed by a separate authority. The list is consumed by a transfer hook.
 
-One list authority can manage lists for many [mints](https://solana.com/docs/terminology#token-mint) — useful when an issuer wants a third-party-managed list or wants to share a single list across a set of assets.
+One list authority can manage lists for many [mints](https://solana.com/docs/terminology#token-mint) - useful when an issuer wants a third-party-managed list or wants to share a single list across a set of assets.
 
 ## Features
 

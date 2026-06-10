@@ -8,8 +8,6 @@ skip-lint = false
 [programs.localnet]
 anchor_realloc = "Fod47xKXjdHVQDzkFPBvfdWLm8gEAV4iMSXkfUzCHiSD"
 
-# [registry] section removed — no longer used in Anchor 1.0
-
 [provider]
 cluster = "Localnet"
 wallet = "~/.config/solana/id.json"

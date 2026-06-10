@@ -9,7 +9,7 @@ mod tests;
 
 declare_id!("Bi5N7SUQhpGknVcqPTzdFFVueQoxoUu8YTLz75J6fT8A");
 
-/// The lever program's ID — used to verify the correct program is passed.
+/// The lever program's ID - used to verify the correct program is passed.
 pub const LEVER_PROGRAM_ID: Address = address!("E64FVeubGC4NPNF2UBJYX4AkrVowf74fRJD9q6YhwstN");
 
 /// Marker type for the lever program, implementing `Id` so it can be used

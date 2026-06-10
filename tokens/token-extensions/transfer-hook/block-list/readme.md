@@ -2,15 +2,15 @@
 
 A block-list [program](https://solana.com/docs/terminology#program) that implements the [Token Extensions](https://solana.com/docs/terminology#token-extensions-program) transfer-hook `execute` [instruction](https://solana.com/docs/terminology#instruction).
 
-A central authority maintains a block list — a collection of blocked wallets. Token issuers (transfer-hook extension authorities) can wire this program in as their hook and choose an operation mode: filter the source wallet only, or both source and destination.
+A central authority maintains a block list - a collection of blocked wallets. Token issuers (transfer-hook extension authorities) can wire this program in as their hook and choose an operation mode: filter the source wallet only, or both source and destination.
 
 ## Operation modes
 
 The mode depends on whether the block list is empty, plus the issuer's choice. Each mode corresponds to a different `extra-account-metas` [account](https://solana.com/docs/terminology#account) built for the [mint](https://solana.com/docs/terminology#token-mint) (see `setup_extra_metas` below). When the list goes from empty to non-empty, the issuer must call `setup_extra_metas` again.
 
-- **Empty extra metas** — default when the config counter is 0.
-- **Check source** — default when the config counter is > 0.
-- **Check both source and destination** — optional behavior when the counter is > 0.
+- **Empty extra metas** - default when the config counter is 0.
+- **Check source** - default when the config counter is > 0.
+- **Check both source and destination** - optional behavior when the counter is > 0.
 
 ## Accounts
 
@@ -136,7 +136,7 @@ target/debug/block-list-cli setup-extra-metas --check-both-wallets <wallet_addre
 
 ## Devnet deployment
 
-The `declare_id!` in [`pinocchio/program/src/lib.rs`](pinocchio/program/src/lib.rs) is `BLoCKLSG2qMQ9YxEyrrKKAQzthvW4Lu8Eyv74axF6mf`. Whether this address is currently deployed on devnet is not tracked in this repo — verify with `solana program show BLoCKLSG2qMQ9YxEyrrKKAQzthvW4Lu8Eyv74axF6mf --url devnet`.
+The `declare_id!` in [`pinocchio/program/src/lib.rs`](pinocchio/program/src/lib.rs) is `BLoCKLSG2qMQ9YxEyrrKKAQzthvW4Lu8Eyv74axF6mf`. Whether this address is currently deployed on devnet is not tracked in this repo - verify with `solana program show BLoCKLSG2qMQ9YxEyrrKKAQzthvW4Lu8Eyv74axF6mf --url devnet`.
 
 ## Disclaimer
 

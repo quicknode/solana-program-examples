@@ -10,7 +10,7 @@ mod tests;
 
 declare_id!("22222222222222222222222222222222222222222222");
 
-/// Correct Token-2022 program ID (quasar-spl 0.0.0 has wrong bytes).
+/// Correct Token Extensions program ID (quasar-spl 0.0.0 has wrong bytes).
 pub struct Token2022Program;
 impl Id for Token2022Program {
     const ID: Address = Address::new_from_array([

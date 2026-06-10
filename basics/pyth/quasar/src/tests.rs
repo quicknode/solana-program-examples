@@ -52,7 +52,7 @@ fn test_read_price() {
         address: price_update,
         lamports: 1_000_000_000,
         data: account_data,
-        owner: Pubkey::new_unique(), // UncheckedAccount — no owner validation
+        owner: Pubkey::new_unique(), // UncheckedAccount - no owner validation
         executable: false,
     };
 

@@ -34,14 +34,14 @@ pub struct MintNft {
     #[account(mut)]
     pub payer: Signer,
 
-    /// Metadata PDA — initialised via the Metaplex program by an explicit
+    /// Metadata PDA - initialised via the Metaplex program by an explicit
     /// CPI below; stays an UncheckedAccount because the new
     /// `metadata(...)` behaviour only accepts compile-time literals for
     /// name / symbol / uri.
     #[account(mut)]
     pub metadata_account: UncheckedAccount,
 
-    /// Master edition PDA — initialised via the Metaplex program below.
+    /// Master edition PDA - initialised via the Metaplex program below.
     #[account(mut)]
     pub edition_account: UncheckedAccount,
 

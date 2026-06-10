@@ -19,7 +19,7 @@ impl Id for Token2022Program {
     ]);
 }
 
-/// Creates a mint with the PermanentDelegate extension — a delegate that
+/// Creates a mint with the PermanentDelegate extension - a delegate that
 /// can transfer or burn any tokens from any account of this mint.
 #[program]
 mod quasar_permanent_delegate {

@@ -31,7 +31,7 @@ A token is represented [onchain](https://solana.com/docs/terminology#onchain) by
 }
 ```
 
-Metadata about a mint — name, symbol, image URI — lives in a separate **Metadata [Account](https://solana.com/docs/terminology#account)**:
+Metadata about a mint - name, symbol, image URI - lives in a separate **Metadata [Account](https://solana.com/docs/terminology#account)**:
 
 ```typescript
 {

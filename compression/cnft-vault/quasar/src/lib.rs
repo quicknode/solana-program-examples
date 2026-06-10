@@ -26,9 +26,9 @@ const SPL_ACCOUNT_COMPRESSION_ID: Address = Address::new_from_array([
 
 declare_id!("Fd4iwpPWaCU8BNwGQGtvvrcvG4Tfizq3RgLm8YLBJX6D");
 
-/// Marker carrying the seeds for the vault PDA. Used by the new
-/// `address = VaultPda::seeds()` derive form (post-PR-#195) since
-/// inline `seeds = [...]` is no longer accepted.
+/// Marker carrying the seeds for the vault PDA. Used by the
+/// `address = VaultPda::seeds()` derive form; Quasar does not accept
+/// inline `seeds = [...]` here.
 #[derive(Seeds)]
 #[seeds(b"cNFT-vault")]
 pub struct VaultPda;

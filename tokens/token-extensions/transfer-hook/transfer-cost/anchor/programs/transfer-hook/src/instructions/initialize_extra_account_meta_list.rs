@@ -15,7 +15,7 @@ pub struct InitializeExtraAccountMetaList<'info> {
         init,
         seeds = [b"extra-account-metas", mint.key().as_ref()],
         bump,
-        // size_of returns Result with spl's ProgramError — unwrap is safe for known-good input
+        // size_of returns Result with spl's ProgramError - unwrap is safe for known-good input
         space = ExtraAccountMetaList::size_of(
             handle_extra_account_metas_count()
         ).unwrap(),

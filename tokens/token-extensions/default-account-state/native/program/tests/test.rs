@@ -26,7 +26,7 @@ fn test_create_token_with_default_account_state() {
         include_bytes!("../../tests/fixtures/token_2022_default_account_state_program.so");
     svm.add_program(program_id, program_bytes).unwrap();
 
-    // litesvm bundles the SPL Token-2022 program by default.
+    // litesvm bundles the Token Extensions program by default.
     let token_program_id = spl_token_2022_interface::id();
 
     let payer = Keypair::new();
@@ -62,7 +62,7 @@ fn test_create_token_with_default_account_state() {
 
     svm.send_transaction(tx).unwrap();
 
-    // The mint should be owned by Token-2022, carry the DefaultAccountState
+    // The mint should be owned by Token Extensions, carry the DefaultAccountState
     // extension, and that default state should have been flipped to
     // Initialized by the program (it starts as Frozen).
     let mint_account = svm.get_account(&mint.pubkey()).unwrap();

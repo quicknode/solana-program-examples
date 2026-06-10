@@ -16,7 +16,7 @@ pub struct Withdraw {
     /// Tree authority PDA (seeds checked by Bubblegum).
     #[account(mut)]
     pub tree_authority: UncheckedAccount,
-    /// Vault PDA that owns the cNFT — signs the transfer via invoke_signed.
+    /// Vault PDA that owns the cNFT - signs the transfer via invoke_signed.
     #[account(address = crate::VaultPda::seeds())]
     pub leaf_owner: UncheckedAccount,
     /// New owner to receive the cNFT.
@@ -54,7 +54,7 @@ pub fn handle_withdraw_cnft(accounts: &mut Withdraw, data: &[u8], remaining: Rem
     //
     // `remaining.iter()` yields `Result<RemainingAccount, _>` in newer
     // quasar-lang. Reach the inner `AccountView` via the unchecked accessor
-    // — we only read addresses/views to forward to the bubblegum CPI as
+    // - we only read addresses/views to forward to the bubblegum CPI as
     // proof nodes; no aliased data access.
     let placeholder = accounts.system_program.to_account_view().clone();
     let mut proof_views: [AccountView; MAX_PROOF_NODES] =

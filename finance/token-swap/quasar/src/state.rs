@@ -25,7 +25,7 @@ pub struct Config {
 ///
 /// Holds the metadata that identifies a single pool: which `Config` it belongs
 /// to and which two mints it trades. The actual pool reserves live in separate
-/// token accounts (`pool_a`, `pool_b`) owned by the pool authority PDA — they
+/// token accounts (`pool_a`, `pool_b`) owned by the pool authority PDA - they
 /// are not stored here. This struct is the pool's *configuration*, not its
 /// state.
 ///

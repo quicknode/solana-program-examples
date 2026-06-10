@@ -1,9 +1,9 @@
-# Cross-Program Invocation — Quasar
+# Cross-Program Invocation - Quasar
 
 This example contains **two separate Quasar [programs](https://solana.com/docs/terminology#program)** that work together:
 
-- **`lever/`** — A program with [onchain](https://solana.com/docs/terminology#onchain) `PowerStatus` state and a `switch_power` [instruction handler](https://solana.com/docs/terminology#instruction-handler) that toggles a boolean.
-- **`hand/`** — A program that calls the lever program's `switch_power` via [CPI](https://solana.com/docs/terminology#cross-program-invocation-cpi).
+- **`lever/`** - A program with [onchain](https://solana.com/docs/terminology#onchain) `PowerStatus` state and a `switch_power` [instruction handler](https://solana.com/docs/terminology#instruction-handler) that toggles a boolean.
+- **`hand/`** - A program that calls the lever program's `switch_power` via [CPI](https://solana.com/docs/terminology#cross-program-invocation-cpi).
 
 ## Building
 

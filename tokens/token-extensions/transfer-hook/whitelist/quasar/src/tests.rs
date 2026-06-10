@@ -79,7 +79,7 @@ fn test_whitelist_flow() {
     result.print_logs();
     assert!(result.is_ok(), "add_to_whitelist failed: {:?}", result.raw_result);
 
-    // 3. Transfer hook with whitelisted destination — should succeed
+    // 3. Transfer hook with whitelisted destination - should succeed
     let source_token = Pubkey::new_unique();
     let owner = Pubkey::new_unique();
 
@@ -107,7 +107,7 @@ fn test_whitelist_flow() {
     assert!(result.is_ok(), "transfer_hook (whitelisted) failed: {:?}", result.raw_result);
     println!("  TRANSFER_HOOK (allowed) CU: {}", result.compute_units_consumed);
 
-    // 4. Transfer hook with non-whitelisted destination — should fail
+    // 4. Transfer hook with non-whitelisted destination - should fail
     let bad_dest = Pubkey::new_unique();
     let mut hook_data2 = vec![105, 37, 101, 197, 75, 251, 102, 26];
     hook_data2.extend_from_slice(&100u64.to_le_bytes());

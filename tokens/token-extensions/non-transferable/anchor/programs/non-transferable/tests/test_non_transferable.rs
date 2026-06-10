@@ -89,7 +89,7 @@ fn test_create_non_transferable_mint_and_attempt_transfer() {
     ).unwrap();
     svm.expire_blockhash();
 
-    // Step 4: Attempt transfer — should fail because mint is NonTransferable
+    // Step 4: Attempt transfer - should fail because mint is NonTransferable
     let result = transfer_checked_token_extensions(
         &mut svm,
         &source_ata,

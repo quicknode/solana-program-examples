@@ -4,7 +4,7 @@ use {
 };
 
 /// Accounts for initialising a new message account.
-/// The message_account is a random keypair (not a PDA) — same as the Anchor version.
+/// The message_account is a random keypair (not a PDA) - same as the Anchor version.
 #[derive(Accounts)]
 pub struct Initialize {
     #[account(mut)]

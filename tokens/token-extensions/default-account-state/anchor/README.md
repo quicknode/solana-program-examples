@@ -1,4 +1,4 @@
-# Token Extensions — Default Account State (Anchor)
+# Token Extensions - Default Account State (Anchor)
 
 New token accounts are frozen by default until thawed.
 

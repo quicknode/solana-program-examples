@@ -11,7 +11,7 @@ use quasar_lang::prelude::*;
 pub struct CheckAccounts {
     /// Checks that this account signed the transaction.
     pub payer: Signer,
-    /// No checks performed — the caller is responsible for validation.
+    /// No checks performed - the caller is responsible for validation.
     #[account(mut)]
     pub account_to_create: UncheckedAccount,
     /// No automatic owner check in Quasar; see note above.

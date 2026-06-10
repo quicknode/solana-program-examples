@@ -1,4 +1,4 @@
-# Token Extensions — Mint Close Authority (Quasar)
+# Token Extensions - Mint Close Authority (Quasar)
 
 Designated account may close the mint.
 

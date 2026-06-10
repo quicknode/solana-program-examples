@@ -802,7 +802,7 @@ fn deposit_ix(ts: &TestSetup, amount_a: u64, amount_b: u64) -> Instruction {
 /// care about the success payload (`Ok` only signals "tx landed"), and the
 /// concrete error type is `solana_kite::SolanaKiteError`. Returning a
 /// `Result<(), String>` keeps tests insulated from the kite crate's error
-/// type — they just need success/failure plus a message for `.expect()`.
+/// type - they just need success/failure plus a message for `.expect()`.
 fn send_deposit(ts: &mut TestSetup, amount_a: u64, amount_b: u64) -> Result<(), String> {
     let ix = deposit_ix(ts, amount_a, amount_b);
     send_transaction_from_instructions(
@@ -1018,7 +1018,7 @@ fn test_deposit_after_swap_uses_shifted_effective_ratio() {
     let used_a = holder_a_before - holder_a_after;
     let used_b = holder_b_before - holder_b_after;
     assert_eq!(used_b, deposit_b, "amount_b should be fully used");
-    // used_a must be close to deposit_a — never the unbounded raw value
+    // used_a must be close to deposit_a - never the unbounded raw value
     // (deposit_a + 10). If the bug were still here we'd see something
     // wildly off (or a transaction failure on transfer_checked).
     assert!(
@@ -1036,7 +1036,7 @@ fn test_deposit_after_swap_uses_shifted_effective_ratio() {
 fn test_deposit_too_small_for_ratio_reverts() {
     let mut ts = full_setup();
 
-    // Seed at 4M:1M (A is "cheaper" — 4 A per 1 B). To force amount_b to
+    // Seed at 4M:1M (A is "cheaper" - 4 A per 1 B). To force amount_b to
     // round down to zero, the depositor must offer < 4 base units of A
     // (so amount_b_required = amount_a * 1M / 4M = 0). We offer 1 base unit
     // of A and a large amount_b.
@@ -1282,7 +1282,7 @@ fn test_swap_reverts_when_output_below_min() {
 
     // Reset and try the same swap with `min_output_amount = actual + 1`. It
     // must revert because the pool can't beat the previous output (in fact
-    // it can't even match it — the first swap shifted the ratio).
+    // it can't even match it - the first swap shifted the ratio).
     let mut ts = full_setup();
     send_deposit(&mut ts, 4_000_000, 1_000_000).expect("seed");
     let too_high = actual_output + 1;
@@ -1320,7 +1320,7 @@ fn test_deposit_reverts_when_lp_below_min() {
     let lp_from_b = (1_000_000u128 * lp_supply as u128) / pool_b_amount as u128;
     let achievable_lp = lp_from_a.min(lp_from_b) as u64;
 
-    // Require *strictly more* than that — the deposit must revert.
+    // Require *strictly more* than that - the deposit must revert.
     let strict_ix =
         deposit_ix_with_min_lp(&ts, 4_000_000, 1_000_000, achievable_lp + 1);
     let result = send_transaction_from_instructions(
@@ -1357,7 +1357,7 @@ fn test_withdraw_reverts_when_below_min() {
 
     // Burning half the LP at a 4M:4M pool returns ~2M of each side, but the
     // exact amount is `lp/2 * 4_000_000 / (lp_supply + MINIMUM_LIQUIDITY)`.
-    // Demand 4M of A out of a half-burn — clearly impossible, must revert.
+    // Demand 4M of A out of a half-burn - clearly impossible, must revert.
     let strict_ix = withdraw_ix_with_min(&ts, lp / 2, 4_000_000, 0);
     let result = send_transaction_from_instructions(
         &mut ts.svm,
@@ -1387,7 +1387,7 @@ fn test_withdraw_reverts_when_below_min() {
 }
 
 /// Slippage test: passing `min_output_amount = 0` is the explicit
-/// "I accept any non-zero output" signal — this is the documented escape
+/// "I accept any non-zero output" signal - this is the documented escape
 /// hatch and must still succeed.
 #[test]
 fn test_swap_with_zero_min_output_still_succeeds() {
@@ -1407,10 +1407,136 @@ fn test_swap_with_zero_min_output_still_succeeds() {
     assert!(after_b > before_b, "B balance should increase");
 }
 
+/// Helper: build a `swap_tokens` ix that trades token B in for token A.
+fn swap_b_to_a_ix(ts: &TestSetup, input_amount: u64, min_output_amount: u64) -> Instruction {
+    Instruction::new_with_bytes(
+        ts.program_id,
+        &swap_example::instruction::SwapTokens {
+            input_is_token_a: false,
+            input_amount,
+            min_output_amount,
+        }
+        .data(),
+        swap_example::accounts::SwapTokensAccountConstraints {
+            config: ts.config_key,
+            pool_config: ts.pool_config_key,
+            pool_authority: ts.pool_authority,
+            trader: ts.admin.pubkey(),
+            mint_a: ts.mint_a,
+            mint_b: ts.mint_b,
+            pool_a: ts.pool_a,
+            pool_b: ts.pool_b,
+            token_a: ts.holder_account_a,
+            token_b: ts.holder_account_b,
+            payer: ts.payer.pubkey(),
+            token_program: token_program_id(),
+            associated_token_program: ata_program_id(),
+            system_program: system_program::id(),
+        }
+        .to_account_metas(None),
+    )
+}
+
+/// B→A regression test: the trader must pay the pool exactly `input_amount`
+/// of token B, not some other quantity. This pins the trader-to-pool transfer
+/// amount in the `input_is_token_a = false` branch, which once shipped a
+/// wrong-variable bug (it transferred `output` of token B instead of
+/// `input_amount`, so the trader underpaid for every B→A swap).
+#[test]
+fn test_swap_b_to_a_trader_pays_full_input() {
+    let mut ts = full_setup();
+    // Seed at 4:1 so the B side is the scarce asset and a B→A swap returns a
+    // multiple of its input in A.
+    send_deposit(&mut ts, 4_000_000, 1_000_000).expect("seed");
+
+    let holder_a_before = get_token_account_balance(&ts.svm, &ts.holder_account_a).unwrap();
+    let holder_b_before = get_token_account_balance(&ts.svm, &ts.holder_account_b).unwrap();
+    let pool_a_before = get_token_account_balance(&ts.svm, &ts.pool_a).unwrap();
+    let pool_b_before = get_token_account_balance(&ts.svm, &ts.pool_b).unwrap();
+
+    let input_amount = 100_000u64;
+    let swap_ix = swap_b_to_a_ix(&ts, input_amount, 1);
+    send_transaction_from_instructions(
+        &mut ts.svm,
+        vec![swap_ix],
+        &[&ts.payer, &ts.admin],
+        &ts.payer.pubkey(),
+    )
+    .expect("B→A swap should succeed");
+
+    let holder_a_after = get_token_account_balance(&ts.svm, &ts.holder_account_a).unwrap();
+    let holder_b_after = get_token_account_balance(&ts.svm, &ts.holder_account_b).unwrap();
+    let pool_a_after = get_token_account_balance(&ts.svm, &ts.pool_a).unwrap();
+    let pool_b_after = get_token_account_balance(&ts.svm, &ts.pool_b).unwrap();
+
+    // The trader pays exactly input_amount of B...
+    assert_eq!(
+        holder_b_before - holder_b_after,
+        input_amount,
+        "trader must pay the pool the full input_amount of token B"
+    );
+    assert_eq!(
+        pool_b_after - pool_b_before,
+        input_amount,
+        "pool must receive the full input_amount of token B"
+    );
+
+    // ...and receives a positive amount of A, conserved against the pool.
+    let output = holder_a_after - holder_a_before;
+    assert!(output > 0, "trader should receive token A");
+    assert_eq!(
+        pool_a_before - pool_a_after,
+        output,
+        "token A out of the pool must equal token A received by the trader"
+    );
+}
+
+/// B→A invariant test: after a fee-paying B→A swap, the effective
+/// (LP-claimable) `k = x * y` must not decrease. Run alongside the A→B
+/// variant so both directions of the symmetric flow are exercised.
+#[test]
+fn test_invariant_holds_after_b_to_a_swap() {
+    let mut ts = full_setup();
+    send_deposit(&mut ts, 4_000_000, 1_000_000).expect("seed");
+
+    let pool_a_before = get_token_account_balance(&ts.svm, &ts.pool_a).unwrap();
+    let pool_b_before = get_token_account_balance(&ts.svm, &ts.pool_b).unwrap();
+    let k_before = (pool_a_before as u128) * (pool_b_before as u128);
+
+    let swap_ix = swap_b_to_a_ix(&ts, 100_000, 1);
+    send_transaction_from_instructions(
+        &mut ts.svm,
+        vec![swap_ix],
+        &[&ts.payer, &ts.admin],
+        &ts.payer.pubkey(),
+    )
+    .expect("B→A swap should succeed");
+
+    let pool_a_after = get_token_account_balance(&ts.svm, &ts.pool_a).unwrap();
+    let pool_b_after = get_token_account_balance(&ts.svm, &ts.pool_b).unwrap();
+    // The swap input was on the B side, so the admin fee accrued on B.
+    // PoolConfig layout: 8 (discriminator) + 32*3 (config, mint_a, mint_b)
+    // + 8 (admin_fees_owed_a) → admin_fees_owed_b starts at byte 112.
+    let admin_owed_b: u64 = {
+        let account = ts.svm.get_account(&ts.pool_config_key).unwrap();
+        let start = 8 + 32 * 3 + 8;
+        u64::from_le_bytes(account.data[start..start + 8].try_into().unwrap())
+    };
+    let effective_a_after = pool_a_after;
+    let effective_b_after = pool_b_after - admin_owed_b;
+    let k_after = (effective_a_after as u128) * (effective_b_after as u128);
+
+    assert!(
+        k_after >= k_before,
+        "effective invariant must not decrease across a B→A swap: \
+         before={k_before}, after={k_after}"
+    );
+}
+
 /// Invariant-check test: a normal swap leaves the effective `k = x * y`
 /// at least as high as before (LP fee adds to LP-claimable reserves; admin
 /// slice is excluded). This is the runtime guard that catches "the math
-/// gave away too much" bugs — verify the happy path doesn't trip it.
+/// gave away too much" bugs - verify the happy path doesn't trip it.
 #[test]
 fn test_invariant_holds_after_normal_swap() {
     let mut ts = full_setup();

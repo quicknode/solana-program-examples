@@ -1,17 +1,17 @@
 //! LiteSVM integration test for the `extension_nft` "chop tree" game program.
 //!
 //! It drives the full happy path against an in-memory validator:
-//! 1. `init_player` — create the player + game-data PDAs.
-//! 2. `mint_nft` — mint a Token-2022 NFT that carries its metadata inline via
+//! 1. `init_player` - create the player + game-data PDAs.
+//! 2. `mint_nft` - mint a Token Extensions NFT that carries its metadata inline via
 //!    the metadata-pointer + token-metadata extensions.
-//! 3. `chop_tree` — gain wood/lose energy and push the new wood total into the
+//! 3. `chop_tree` - gain wood/lose energy and push the new wood total into the
 //!    NFT metadata as an additional field.
 //!
 //! The session-keys lesson (`#[session_auth_or]`) is exercised through its
 //! *fallback* branch: `chop_tree` is signed directly by the player's main
 //! wallet with `session_token = None`, so the macro checks
-//! `player.authority == signer`. This keeps the test self-contained — it does
-//! not need the on-chain session-keys program as a fixture, because the program
+//! `player.authority == signer`. This keeps the test self-contained - it does
+//! not need the onchain session-keys program as a fixture, because the program
 //! never CPIs into it (the session token is only ever read as an account).
 //!
 //! IMPORTANT: CI runs `anchor keys sync` before building, which rewrites the
@@ -30,8 +30,8 @@ use {
     solana_signer::Signer,
 };
 
-// Token-2022 and Associated-Token-Account program ids (the modern, fixed
-// on-chain addresses bundled by LiteSVM).
+// Token Extensions and Associated-Token-Account program ids (the modern, fixed
+// onchain addresses bundled by LiteSVM).
 const TOKEN_2022_ID: Pubkey = Pubkey::from_str_const("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb");
 const ASSOCIATED_TOKEN_ID: Pubkey =
     Pubkey::from_str_const("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
@@ -67,7 +67,7 @@ fn nft_authority_pda(program_id: &Pubkey) -> Pubkey {
     get_pda_and_bump(&[Seed::from(b"nft_authority".as_ref())], program_id).0
 }
 
-/// Derive the associated token account for (wallet, mint) under Token-2022.
+/// Derive the associated token account for (wallet, mint) under Token Extensions.
 fn associated_token_address(wallet: &Pubkey, mint: &Pubkey) -> Pubkey {
     Pubkey::find_program_address(
         &[wallet.as_ref(), TOKEN_2022_ID.as_ref(), mint.as_ref()],
@@ -180,7 +180,7 @@ fn test_init_player_mint_and_chop() {
         "fresh player starts at max energy (100)"
     );
 
-    // 2. mint_nft — the mint account is a fresh keypair (it's a Signer in the
+    // 2. mint_nft - the mint account is a fresh keypair (it's a Signer in the
     //    instruction because the program creates it via a system CPI).
     let mint = Keypair::new();
     send_transaction_from_instructions(
@@ -191,12 +191,12 @@ fn test_init_player_mint_and_chop() {
     )
     .expect("mint_nft should succeed");
 
-    // The mint account is now owned by the Token-2022 program and holds the
+    // The mint account is now owned by the Token Extensions program and holds the
     // inline metadata extension, so it is comfortably larger than a bare mint.
     let mint_account = svm.get_account(&mint.pubkey()).expect("mint exists");
     assert_eq!(
         mint_account.owner, TOKEN_2022_ID,
-        "mint owned by Token-2022"
+        "mint owned by Token Extensions"
     );
     assert!(
         mint_account.data.len() > 82,
@@ -207,9 +207,9 @@ fn test_init_player_mint_and_chop() {
     // The associated token account should exist and hold the single NFT.
     let ata = associated_token_address(&signer, &mint.pubkey());
     let ata_account = svm.get_account(&ata).expect("ATA created");
-    assert_eq!(ata_account.owner, TOKEN_2022_ID, "ATA owned by Token-2022");
+    assert_eq!(ata_account.owner, TOKEN_2022_ID, "ATA owned by Token Extensions");
 
-    // 3. chop_tree — needs the existing mint so it can push the new wood total
+    // 3. chop_tree - needs the existing mint so it can push the new wood total
     //    into the NFT metadata. Signed by the player's main wallet (no session).
     send_transaction_from_instructions(
         &mut svm,

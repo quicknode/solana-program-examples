@@ -1,4 +1,4 @@
-# Token Extensions — Default Account State
+# Token Extensions - Default Account State
 
 This extension sets a default state for all [token accounts](https://solana.com/docs/terminology#token-account) of a given [mint](https://solana.com/docs/terminology#token-mint).
 

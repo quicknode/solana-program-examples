@@ -26,7 +26,7 @@ fn memo_program_id() -> Pubkey {
 }
 
 /// Create a Token Extensions token account (165 bytes, no extra extensions).
-/// Uses explicit keypair — not an ATA — because the test needs multiple
+/// Uses explicit keypair - not an ATA - because the test needs multiple
 /// source accounts for the same owner+mint.
 fn create_token_account_instructions(
     payer: &Pubkey,
@@ -161,7 +161,7 @@ fn test_memo_transfer() {
     ).unwrap();
     svm.expire_blockhash();
 
-    // Step 4: Transfer without memo — should fail
+    // Step 4: Transfer without memo - should fail
     let transfer_ix = transfer_instruction(
         &source_keypair.pubkey(),
         &token_keypair.pubkey(),
@@ -175,7 +175,7 @@ fn test_memo_transfer() {
     );
     svm.expire_blockhash();
 
-    // Step 5: Transfer with memo — should succeed
+    // Step 5: Transfer with memo - should succeed
     let memo_ix = memo_instruction("hello, world", &[&payer.pubkey()]);
     let transfer_ix = transfer_instruction(
         &source_keypair.pubkey(),

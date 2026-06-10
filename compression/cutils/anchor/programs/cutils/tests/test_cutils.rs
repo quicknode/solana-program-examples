@@ -1,9 +1,9 @@
 //! LiteSVM integration test for the `cutils` Anchor program.
 //!
 //! The cutils program exposes two instructions:
-//!   * `mint` — CPIs Bubblegum `MintToCollectionV1` to mint a cNFT into a
+//!   * `mint` - CPIs Bubblegum `MintToCollectionV1` to mint a cNFT into a
 //!     (Token-Metadata) verified collection and a Bubblegum tree.
-//!   * `verify` — recomputes the V1 leaf hash and CPIs SPL account-compression
+//!   * `verify` - recomputes the V1 leaf hash and CPIs SPL account-compression
 //!     `verify_leaf` to prove the leaf is present in the tree.
 //!
 //! Full flow exercised here:
@@ -21,7 +21,7 @@
 //!      them for the minted leaf (note: after MintToCollectionV1 the collection
 //!      is stored *verified*, so the data_hash reflects `verified = true`).
 //!   6. Build the Merkle proof for leaf 0 (all empty-node siblings), read the
-//!      live root from the on-chain tree account, and call cutils `verify`,
+//!      live root from the onchain tree account, and call cutils `verify`,
 //!      asserting success. A second `verify` with a tampered data_hash must
 //!      fail.
 
@@ -98,7 +98,7 @@ struct MetadataArgs {
     edition_nonce: Option<u8>,
     token_standard: Option<u8>, // TokenStandard, variant index (NonFungible = 0)
     collection: Option<Collection>,
-    uses: Option<u8>, // None — Uses, kept absent
+    uses: Option<u8>, // None - Uses, kept absent
     token_program_version: TokenProgramVersion,
     creators: Vec<Creator>,
 }
@@ -169,7 +169,7 @@ fn anchor_disc(name: &str) -> [u8; 8] {
     out
 }
 
-// Minimal SHA-256 (FIPS 180-4) — used only to derive Anchor discriminators,
+// Minimal SHA-256 (FIPS 180-4) - used only to derive Anchor discriminators,
 // avoiding a crypto crate that conflicts with the program's solana version.
 fn sha256(input: &[u8]) -> [u8; 32] {
     const K: [u32; 64] = [
@@ -646,12 +646,12 @@ fn test_cutils_mint_and_verify() {
     // Proof for leaf index 0 in an otherwise-empty tree: empty-node siblings.
     let proof = [empty_node(0), empty_node(1), empty_node(2)];
 
-    // Read the live root from the on-chain tree account.
+    // Read the live root from the onchain tree account.
     let tree_data = svm.get_account(&merkle_tree.pubkey()).unwrap().data;
     let root = read_current_root(&tree_data);
 
     // Sanity: the leaf we computed must equal what the program will recompute,
-    // and the proof must rebuild the on-chain root.
+    // and the proof must rebuild the onchain root.
     let asset_id = get_asset_id(&merkle_tree.pubkey(), 0);
     let leaf = leaf_schema_v1_hash(
         &asset_id,
@@ -673,7 +673,7 @@ fn test_cutils_mint_and_verify() {
     }
     assert_eq!(
         node, root,
-        "locally recomputed root must match the on-chain tree root"
+        "locally recomputed root must match the onchain tree root"
     );
 
     // ---- Call cutils `verify` ----------------------------------------------

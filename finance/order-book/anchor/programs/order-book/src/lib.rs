@@ -73,7 +73,7 @@ pub mod order_book {
     }
 
     /// Drain the fee vault into the market authority's token account.
-    /// Authority-gated — only the market's stored `authority` may call this.
+    /// Authority-gated - only the market's stored `authority` may call this.
     pub fn withdraw_fees(context: Context<WithdrawFees>) -> Result<()> {
         instructions::withdraw_fees::handle_withdraw_fees(context)
     }

@@ -2,7 +2,7 @@ use quasar_lang::prelude::*;
 
 use super::{eat_food, get_on_ride, play_game};
 
-/// Minimal accounts context — a signer submits the transaction.
+/// Minimal accounts context - a signer submits the transaction.
 /// The instructions just process instruction data (no onchain state).
 #[derive(Accounts)]
 pub struct CarnivalContext {

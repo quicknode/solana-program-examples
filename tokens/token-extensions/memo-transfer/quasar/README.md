@@ -1,4 +1,4 @@
-# Token Extensions — Memo Transfer (Quasar)
+# Token Extensions - Memo Transfer (Quasar)
 
 Require a memo on every transfer.
 

@@ -32,7 +32,7 @@ mod quasar_transfer_hook_counter {
         handle_initialize_extra_account_meta_list(&mut ctx.accounts)
     }
 
-    /// Transfer hook handler — increments the counter on each transfer.
+    /// Transfer hook handler - increments the counter on each transfer.
     /// Discriminator = sha256("spl-transfer-hook-interface:execute")[:8]
     #[instruction(discriminator = [105, 37, 101, 197, 75, 251, 102, 26])]
     pub fn transfer_hook(ctx: Ctx<TransferHook>, _amount: u64) -> Result<(), ProgramError> {
@@ -175,7 +175,7 @@ pub struct TransferHook {
     pub owner: UncheckedAccount,
     /// ExtraAccountMetaList PDA
     pub extra_account_meta_list: UncheckedAccount,
-    /// Counter PDA (extra account resolved by Token-2022)
+    /// Counter PDA (extra account resolved by Token Extensions)
     #[account(mut)]
     pub counter_account: UncheckedAccount,
 }

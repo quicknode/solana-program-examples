@@ -3,7 +3,7 @@ use quasar_lang::prelude::*;
 use crate::errors;
 use crate::state::{read_wallet_allowed, MODE_ALLOW, MODE_BLOCK, MODE_MIXED, AB_WALLET_SIZE};
 
-/// Transfer hook handler. Called by Token-2022 during transfers.
+/// Transfer hook handler. Called by Token Extensions during transfers.
 ///
 /// Account layout (fixed by the SPL transfer hook interface):
 ///   [0] source_token_account
@@ -11,7 +11,7 @@ use crate::state::{read_wallet_allowed, MODE_ALLOW, MODE_BLOCK, MODE_MIXED, AB_W
 ///   [2] destination_token_account
 ///   [3] owner_delegate
 ///   [4] extra_account_meta_list
-///   [5] ab_wallet — resolved from extra account metas (PDA for destination owner)
+///   [5] ab_wallet - resolved from extra account metas (PDA for destination owner)
 #[derive(Accounts)]
 pub struct TxHook {
     pub source_token_account: UncheckedAccount,
@@ -82,11 +82,11 @@ enum DecodedWalletMode {
     None,
 }
 
-/// Parse Token-2022 mint account data to extract the mode from embedded
+/// Parse Token Extensions mint account data to extract the mode from embedded
 /// metadata. The metadata is stored as a TLV extension within the mint
 /// account.
 ///
-/// Token-2022 mint layout:
+/// Token Extensions mint layout:
 ///   [0..82]   base Mint state
 ///   [82..164] padding (copy of base)
 ///   [164]     AccountType (2 = Mint)

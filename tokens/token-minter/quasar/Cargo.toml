@@ -3,7 +3,7 @@ name = "quasar-token-minter"
 version = "0.1.0"
 edition = "2021"
 
-# Standalone workspace — not part of the root program-examples workspace.
+# Standalone workspace - not part of the root program-examples workspace.
 # Quasar uses a different resolver and dependency tree.
 [workspace]
 
@@ -23,7 +23,7 @@ debug = []
 
 [dependencies]
 # All quasar deps share one source-id (branch = "master") so trait-impls
-# resolve consistently — mixing `{ git = ... }` with `{ git = ..., branch = "master" }`
+# resolve consistently - mixing `{ git = ... }` with `{ git = ..., branch = "master" }`
 # was treated by Cargo as two distinct sources of the same crate.
 # quasar pin rationale: master HEAD currently fails to compile because zeropod 0.3.x
 # auto-generates accessor methods that conflict with hand-written ones in quasar-spl

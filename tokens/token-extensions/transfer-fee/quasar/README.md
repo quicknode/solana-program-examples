@@ -1,4 +1,4 @@
-# Token Extensions — Transfer Fee (Quasar)
+# Token Extensions - Transfer Fee (Quasar)
 
 Fee charged on each transfer at the mint.
 

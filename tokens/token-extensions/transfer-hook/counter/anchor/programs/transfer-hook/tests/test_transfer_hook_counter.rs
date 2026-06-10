@@ -132,7 +132,7 @@ fn test_transfer_hook_counter() {
     ).unwrap();
     svm.expire_blockhash();
 
-    // Step 5: Try calling transfer_hook directly (should fail — not transferring)
+    // Step 5: Try calling transfer_hook directly (should fail - not transferring)
     let direct_hook_ix = Instruction::new_with_bytes(
         program_id,
         &transfer_hook::instruction::TransferHook { amount: 1 }.data(),

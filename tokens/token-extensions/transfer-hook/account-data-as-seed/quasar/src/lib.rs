@@ -17,7 +17,7 @@ const EXECUTE_DISCRIMINATOR: [u8; 8] = [105, 37, 101, 197, 75, 251, 102, 26];
 
 /// Transfer hook that uses account data as a PDA seed. The counter PDA is
 /// seeded by ["counter", owner_pubkey] where the owner pubkey is read from
-/// the source token account data at runtime by the Token-2022 program.
+/// the source token account data at runtime by the Token Extensions program.
 #[program]
 mod quasar_transfer_hook_account_data_as_seed {
     use super::*;
@@ -33,7 +33,7 @@ mod quasar_transfer_hook_account_data_as_seed {
         handle_initialize_extra_account_meta_list(&mut ctx.accounts)
     }
 
-    /// Transfer hook handler — increments a per-owner counter on each transfer.
+    /// Transfer hook handler - increments a per-owner counter on each transfer.
     /// Discriminator = sha256("spl-transfer-hook-interface:execute")[:8]
     #[instruction(discriminator = [105, 37, 101, 197, 75, 251, 102, 26])]
     pub fn transfer_hook(ctx: Ctx<TransferHook>, _amount: u64) -> Result<(), ProgramError> {
@@ -174,7 +174,7 @@ pub struct TransferHook {
     pub destination_token: UncheckedAccount,
     pub owner: UncheckedAccount,
     pub extra_account_meta_list: UncheckedAccount,
-    /// Counter PDA resolved by Token-2022 using account data seeds
+    /// Counter PDA resolved by Token Extensions using account data seeds
     #[account(mut)]
     pub counter_account: UncheckedAccount,
 }

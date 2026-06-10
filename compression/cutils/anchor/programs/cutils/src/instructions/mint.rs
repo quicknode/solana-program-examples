@@ -134,7 +134,7 @@ impl Mint<'_> {
             context.accounts.collection_authority.key(),
             true,
         ));
-        // collection_authority_record_pda — pass as-is
+        // collection_authority_record_pda - pass as-is
         accounts.push(AccountMeta::new_readonly(
             context.accounts.collection_authority_record_pda.key(),
             false,

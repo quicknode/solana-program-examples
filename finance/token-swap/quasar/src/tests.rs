@@ -354,7 +354,7 @@ fn setup_pool() -> PoolEnv {
     );
     assert!(r.is_ok(), "setup_pool/create_config: {:?}", r.raw_result);
 
-    // Pre-populate mint accounts (no on-chain minting needed for tests).
+    // Pre-populate mint accounts (no onchain minting needed for tests).
     let mint_a = Pubkey::new_unique();
     let mint_b = Pubkey::new_unique();
     svm.set_account(test_mint(mint_a, 6));
@@ -368,7 +368,7 @@ fn setup_pool() -> PoolEnv {
     let pool_a = Pubkey::new_unique();
     let pool_b = Pubkey::new_unique();
 
-    // create_pool — pass empty PDA slots (pool_config, lp_mint) and signer
+    // create_pool - pass empty PDA slots (pool_config, lp_mint) and signer
     // slots for non-PDA token accounts (pool_a, pool_b).  The SVM commits
     // all accounts from the merged list, so every new account must appear here.
     let r = svm.process_instruction(
@@ -404,7 +404,7 @@ fn do_deposit(env: &mut PoolEnv, amount_a: u64, amount_b: u64) -> (Pubkey, Pubke
     env.svm.set_account(ta);
     env.svm.set_account(tb);
 
-    // LP token account will be created by init(idempotent) — pass as signer
+    // LP token account will be created by init(idempotent) - pass as signer
     // because system::create_account CPI requires the new account to sign.
     let lp_token = Pubkey::new_unique();
 
@@ -423,7 +423,7 @@ fn do_deposit(env: &mut PoolEnv, amount_a: u64, amount_b: u64) -> (Pubkey, Pubke
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Tests — create_config (existing)
+// Tests - create_config (existing)
 // ═══════════════════════════════════════════════════════════════════════════════
 
 #[test]
@@ -502,7 +502,7 @@ fn test_create_config_invalid_admin_share() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Tests — create_pool
+// Tests - create_pool
 // ═══════════════════════════════════════════════════════════════════════════════
 
 #[test]
@@ -518,7 +518,7 @@ fn test_create_pool() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Tests — deposit_liquidity
+// Tests - deposit_liquidity
 // ═══════════════════════════════════════════════════════════════════════════════
 
 #[test]
@@ -593,7 +593,7 @@ fn test_deposit_insufficient_funds_rejected() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Tests — withdraw_liquidity
+// Tests - withdraw_liquidity
 // ═══════════════════════════════════════════════════════════════════════════════
 
 #[test]
@@ -638,7 +638,7 @@ fn test_withdraw_liquidity() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Tests — swap_tokens
+// Tests - swap_tokens
 // ═══════════════════════════════════════════════════════════════════════════════
 
 #[test]
@@ -729,7 +729,7 @@ fn test_swap_slippage_rejected() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Tests — claim_admin_fees
+// Tests - claim_admin_fees
 // ═══════════════════════════════════════════════════════════════════════════════
 
 #[test]

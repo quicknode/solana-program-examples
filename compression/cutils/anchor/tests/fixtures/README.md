@@ -1,9 +1,9 @@
-# Test fixtures — mainnet program binaries
+# Test fixtures - mainnet program binaries
 
-These `.so` files are the compiled on-chain programs the cutils test CPIs
+These `.so` files are the compiled onchain programs the cutils test CPIs
 into, dumped from Solana **mainnet-beta** so [LiteSVM](https://github.com/LiteSVM/litesvm)
-can load them locally (LiteSVM only bundles System/Token/Token-2022/ATA). They
-are the real programs — not modified — so accounts they create/verify behave
+can load them locally (LiteSVM only bundles System/Token/Token Extensions/ATA). They
+are the real programs - not modified - so accounts they create/verify behave
 exactly as on mainnet.
 
 `mpl_token_metadata.so` is required because the cutils `mint` instruction CPIs

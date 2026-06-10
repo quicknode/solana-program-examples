@@ -18,9 +18,8 @@ pub fn get_on_ride(ix: GetOnRideInstructionData) -> Result<()> {
         if ix.ride.eq(&ride.name) {
             msg!("You're about to ride the {}!", ride.name);
 
-            // Refuse service: failures used to log + return Ok(()), which made
-            // them indistinguishable from a successful ride for callers and
-            // tests. Return a real error instead.
+            // Refuse service with a real error so callers and tests can
+            // distinguish a refused ride from a successful one.
             if ix.rider_ticket_count < ride.tickets {
                 msg!(
                     "  Sorry {}, you need {} tickets to ride the {}!",

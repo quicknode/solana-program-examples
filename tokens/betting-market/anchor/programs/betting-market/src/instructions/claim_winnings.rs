@@ -65,7 +65,7 @@ pub fn handle_claim_winnings(context: Context<ClaimWinnings>) -> Result<()> {
 
     // Parimutuel split: winners share the losing pool in proportion to their
     // own stake. Work in u128 and divide once, after the multiply, so the
-    // result is floored a single time — dividing first would throw away
+    // result is floored a single time - dividing first would throw away
     // precision. The floor leaves at most a few base units of dust in the vault.
     let losing_pool_share_numerator = stake as u128 * distributable_losing_pool as u128;
     let winnings = (losing_pool_share_numerator / winning_pool as u128) as u64;

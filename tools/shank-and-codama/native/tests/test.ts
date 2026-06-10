@@ -3,7 +3,7 @@
 // Runs entirely in CI with no network: the program `.so` is loaded into a
 // LiteSVM instance and exercised through the Codama-generated client
 // (tests/generated). It creates a car (add_car), books a rental
-// (book_rental) and picks it up (pick_up_car), asserting on-chain account
+// (book_rental) and picks it up (pick_up_car), asserting onchain account
 // state after each step.
 
 import assert from "node:assert/strict";

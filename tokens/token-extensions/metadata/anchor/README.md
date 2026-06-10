@@ -1,4 +1,4 @@
-# Token Extensions — Onchain Metadata (Anchor)
+# Token Extensions - Onchain Metadata (Anchor)
 
 Store token metadata inside the mint account using Token Extensions metadata.
 

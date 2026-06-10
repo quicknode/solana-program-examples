@@ -188,7 +188,7 @@ pub fn handle_init_mint(
     Ok(())
 }
 
-/// Emit a Token-2022 TokenMetadataUpdateField CPI.
+/// Emit a Token Extensions TokenMetadataUpdateField CPI.
 /// Opcode 44, sub-opcode 1, followed by Field::Key (discriminator 2, then borsh
 /// string for key, then borsh string for value).
 fn emit_update_field_cpi(ctx: &InitMint, key: &[u8], value: &[u8]) -> Result<(), ProgramError> {

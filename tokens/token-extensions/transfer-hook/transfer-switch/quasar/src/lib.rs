@@ -43,7 +43,7 @@ mod quasar_transfer_hook_switch {
         handle_switch(&mut ctx.accounts, on != 0)
     }
 
-    /// Transfer hook handler — checks the sender's switch is on.
+    /// Transfer hook handler - checks the sender's switch is on.
     /// Discriminator = sha256("spl-transfer-hook-interface:execute")[:8]
     #[instruction(discriminator = [105, 37, 101, 197, 75, 251, 102, 26])]
     pub fn transfer_hook(ctx: Ctx<TransferHook>, _amount: u64) -> Result<(), ProgramError> {
@@ -170,7 +170,7 @@ fn handle_initialize_extra_account_metas_list(
         data[8..12].copy_from_slice(&39u32.to_le_bytes());
         data[12..16].copy_from_slice(&1u32.to_le_bytes());
 
-        // ExtraAccountMeta: PDA seeded by [AccountKey(index=3)] — the sender/owner
+        // ExtraAccountMeta: PDA seeded by [AccountKey(index=3)] - the sender/owner
         data[16] = 1; // PDA from seeds
         let mut config = [0u8; 32];
         config[0] = 1; // 1 seed
@@ -259,7 +259,7 @@ pub struct TransferHook {
     pub receiver_token_account: UncheckedAccount,
     pub wallet: UncheckedAccount,
     pub extra_account_metas_list: UncheckedAccount,
-    /// Wallet switch PDA resolved by Token-2022
+    /// Wallet switch PDA resolved by Token Extensions
     pub wallet_switch: UncheckedAccount,
 }
 
@@ -269,7 +269,7 @@ fn handle_transfer_hook(accounts: &mut TransferHook) -> Result<(), ProgramError>
     let data = switch_view.try_borrow()?;
 
     if data.len() < 33 {
-        log("Switch not initialized — transfers disabled by default");
+        log("Switch not initialized - transfers disabled by default");
         return Err(ProgramError::UninitializedAccount);
     }
 
@@ -278,6 +278,6 @@ fn handle_transfer_hook(accounts: &mut TransferHook) -> Result<(), ProgramError>
         return Err(ProgramError::InvalidArgument);
     }
 
-    log("Transfer switch is ON — transfer allowed");
+    log("Transfer switch is ON - transfer allowed");
     Ok(())
 }

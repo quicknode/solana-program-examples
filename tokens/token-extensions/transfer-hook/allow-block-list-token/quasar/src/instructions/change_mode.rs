@@ -118,7 +118,7 @@ fn has_threshold_in_metadata(ctx: &ChangeMode) -> Result<bool, ProgramError> {
         }
 
         if ext_type == 18 {
-            // TokenMetadata — parse additional_metadata
+            // TokenMetadata - parse additional_metadata
             let md = &data[pos..pos + ext_len];
             let mut mpos = 64; // skip update_authority + mint
 

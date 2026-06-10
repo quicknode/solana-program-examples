@@ -4,7 +4,7 @@ use {
 };
 
 /// `Config` is a global singleton: one account per deployed program, derived
-/// at the fixed seed `b"config"`. There is no `id` parameter — calling this
+/// at the fixed seed `b"config"`. There is no `id` parameter - calling this
 /// twice for the same program will fail because the account already exists.
 #[derive(Accounts)]
 pub struct CreateConfigAccounts {

@@ -1,4 +1,4 @@
-# Transfer Hook — Allow/Block List (Anchor)
+# Transfer Hook - Allow/Block List (Anchor)
 
 Restrict transfers using an onchain allow/block list enforced by a transfer hook program.
 

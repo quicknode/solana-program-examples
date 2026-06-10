@@ -1,8 +1,8 @@
 use quasar_lang::prelude::*;
 
-/// PDA seed marker for the rent-vault account. With the new derive grammar
-/// (`address = <expr>`) we need a `Seeds` impl to validate the address;
-/// `seeds = [b"rent_vault"]` is no longer accepted.
+/// PDA seed marker for the rent-vault account. Quasar's derive grammar
+/// (`address = <expr>`) needs a `Seeds` impl to validate the address;
+/// inline `seeds = [b"rent_vault"]` is not accepted.
 #[derive(Seeds)]
 #[seeds(b"rent_vault")]
 pub struct RentVault;

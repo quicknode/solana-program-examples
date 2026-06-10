@@ -8,7 +8,7 @@ pub fn handle_init_player(context: Context<InitPlayer>) -> Result<()> {
     context.accounts.player.last_login = Clock::get()?.unix_timestamp;
     context.accounts.player.authority = context.accounts.signer.key();
     context.accounts.player.bump = context.bumps.player;
-    // init_if_needed — only save bump if this is the first init. Subsequent
+    // init_if_needed - only save bump if this is the first init. Subsequent
     // calls reuse the existing account and must not overwrite the stored bump
     // (they'd be equal anyway because PDA derivation is deterministic, but
     // guarding keeps the intent crystal-clear).

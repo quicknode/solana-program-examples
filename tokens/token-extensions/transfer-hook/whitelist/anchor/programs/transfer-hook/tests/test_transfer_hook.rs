@@ -114,7 +114,7 @@ fn test_whitelist_transfer_hook() {
     send_transaction_from_instructions(&mut svm, vec![add_to_whitelist_ix], &[&payer], &payer.pubkey()).unwrap();
     svm.expire_blockhash();
 
-    // Step 5: Transfer — should succeed (destination is whitelisted)
+    // Step 5: Transfer - should succeed (destination is whitelisted)
     let transfer_amount: u64 = 1 * 10u64.pow(decimals as u32);
     let extra_accounts = build_hook_accounts(
         &mint,

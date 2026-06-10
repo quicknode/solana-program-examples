@@ -1,6 +1,6 @@
 # Token Swap (AMM)
 
-A Constant Product [Automated Market Maker (AMM)](https://www.investopedia.com/terms/a/automated-market-maker-amm.asp) in [Anchor](https://solana.com/docs/terminology#anchor) — the model popularized by Uniswap V2.
+A Constant Product [Automated Market Maker (AMM)](https://www.investopedia.com/terms/a/automated-market-maker-amm.asp) in [Anchor](https://solana.com/docs/terminology#anchor) - the model popularized by Uniswap V2.
 
 The pool keeps `x * y = K` invariant: if `x` is the reserve of token A and `y` is the reserve of token B, then `x * y` stays constant for a given [liquidity](https://www.investopedia.com/terms/l/liquidity.asp) quantity.
 
@@ -27,14 +27,14 @@ Other bonding-curve designs exist:
 - **Uniswap V3 Concentrated Liquidity AMM (CLAMM):** splits the curve into buckets; LPs supply liquidity to specific price ranges.
 - **Trader Joe CLAMM:** like Uniswap V3, but each bucket is a CSAMM.
 
-A CPAMM is the simplest and the cheapest to keep in [account](https://solana.com/docs/terminology#account) state — one pool, one [mint](https://solana.com/docs/terminology#token-mint), easy to reason about. That's what this example implements.
+A CPAMM is the simplest and the cheapest to keep in [account](https://solana.com/docs/terminology#account) state - one pool, one [mint](https://solana.com/docs/terminology#token-mint), easy to reason about. That's what this example implements.
 
 ## Design
 
 Requirements:
 
 - **Fee distribution.** Every pool charges a trading fee, paid in the traded token, that rewards [liquidity providers (LPs)](https://www.investopedia.com/terms/l/liquidity-provider.asp). To stay consistent across pools, the fee is shared.
-- **Single pool per asset pair.** Avoids liquidity fragmentation. Without a single canonical pool per pair, a [decentralised exchange (DEX)](https://www.investopedia.com/terms/d/decentralized-exchange-dex.asp) would fragment volume across multiple pools, widening spreads — the same problem that motivated the shift away from [order books](https://www.investopedia.com/terms/o/order-book.asp) onchain.
+- **Single pool per asset pair.** Avoids liquidity fragmentation. Without a single canonical pool per pair, a [decentralised exchange (DEX)](https://www.investopedia.com/terms/d/decentralized-exchange-dex.asp) would fragment volume across multiple pools, widening spreads - the same problem that motivated the shift away from [order books](https://www.investopedia.com/terms/o/order-book.asp) onchain.
 - **LP accounting.** The program tracks each LP's deposits.
 
 Implementation choices:
@@ -74,21 +74,21 @@ programs/token-swap/src/
 
 ### `Config`
 
-Shared configuration for the AMM. **Singleton** — one per deployed program, at PDA seeds `[b"config"]`.
+Shared configuration for the AMM. **Singleton** - one per deployed program, at PDA seeds `[b"config"]`.
 
-- `admin: Pubkey` — the admin authority. Only this address can call `claim_admin_fees`.
-- `fee: u16` — total trading fee in [basis points (bps)](https://www.investopedia.com/terms/b/basispoint.asp) (must be < 10000). Split between LPs and the admin according to `admin_share_bps`.
-- `admin_share_bps: u16` — fraction of the trading fee that goes to the admin, in basis points (must be < 10000). The remainder goes to LPs. Modelled on Uniswap V2 / Raydium: the AMM operator takes a slice of every fee, LPs keep the rest.
+- `admin: Pubkey` - the admin authority. Only this address can call `claim_admin_fees`.
+- `fee: u16` - total trading fee in [basis points (bps)](https://www.investopedia.com/terms/b/basispoint.asp) (must be < 10000). Split between LPs and the admin according to `admin_share_bps`.
+- `admin_share_bps: u16` - fraction of the trading fee that goes to the admin, in basis points (must be < 10000). The remainder goes to LPs. Modelled on Uniswap V2 / Raydium: the AMM operator takes a slice of every fee, LPs keep the rest.
 
 ### `PoolConfig`
 
-Per-pool configuration / identity record. Identifies a single pool by which `Config` it belongs to and which two mints it trades, and tracks the admin's accumulated trading-fee claim for each side. The actual pool reserves live in separate token accounts (`pool_a`, `pool_b`) owned by `pool_authority` — they are *not* stored here.
+Per-pool configuration / identity record. Identifies a single pool by which `Config` it belongs to and which two mints it trades, and tracks the admin's accumulated trading-fee claim for each side. The actual pool reserves live in separate token accounts (`pool_a`, `pool_b`) owned by `pool_authority` - they are *not* stored here.
 
-- `config: Pubkey` — the parent `Config` account.
-- `mint_a: Pubkey` — mint of token A.
-- `mint_b: Pubkey` — mint of token B.
-- `admin_fees_owed_a: u64` — admin's accumulated fee claim on token A, in base units. Sits physically in `pool_a` but is excluded from the LP curve and from LP-withdrawable amounts. Swept by `claim_admin_fees`.
-- `admin_fees_owed_b: u64` — same for token B.
+- `config: Pubkey` - the parent `Config` account.
+- `mint_a: Pubkey` - mint of token A.
+- `mint_b: Pubkey` - mint of token B.
+- `admin_fees_owed_a: u64` - admin's accumulated fee claim on token A, in base units. Sits physically in `pool_a` but is excluded from the LP curve and from LP-withdrawable amounts. Swept by `claim_admin_fees`.
+- `admin_fees_owed_b: u64` - same for token B.
 
 The admin's fees are tracked as *virtual* claims on the existing `pool_a` / `pool_b` reserves rather than as separate vaults. LP-facing math uses **effective reserves** = `pool_X.amount - admin_fees_owed_X` so the admin's owed slice doesn't grow LP [yield](https://www.investopedia.com/terms/y/yield.asp).
 
@@ -106,17 +106,17 @@ Initializes a `PoolConfig` account, an LP mint (`liquidity_provider_mint`), and 
 
 ### `deposit_liquidity`
 
-Transfers token A and token B from the depositor to the pool, then mints LP tokens to the depositor. `amount_a` and `amount_b` are treated as **upper bounds** — the caller's maximum willingness on each side. The contract clamps both numbers down to the largest pair that lies on the current price line, then pulls exactly that pair. `minimum_lp_tokens_out` is the caller's **lower bound** on what they're willing to receive in LP tokens; the handler reverts with `DepositBelowMinimum` if the post-clamp LP mint amount falls below it. Pass `0` to opt out (any non-zero mint is acceptable).
+Transfers token A and token B from the depositor to the pool, then mints LP tokens to the depositor. `amount_a` and `amount_b` are treated as **upper bounds** - the caller's maximum willingness on each side. The contract clamps both numbers down to the largest pair that lies on the current price line, then pulls exactly that pair. `minimum_lp_tokens_out` is the caller's **lower bound** on what they're willing to receive in LP tokens; the handler reverts with `DepositBelowMinimum` if the post-clamp LP mint amount falls below it. Pass `0` to opt out (any non-zero mint is acceptable).
 
-- For the first deposit, both amounts are used as-is and the LP amount is `sqrt(amount_a * amount_b)` — computed with a `u128` integer-sqrt (Newton's method), no floats — with `MINIMUM_LIQUIDITY` locked away forever (to prevent the empty-pool edge case). No admin fees can be owed yet, so this case is unchanged by the admin-fee mechanism.
+- For the first deposit, both amounts are used as-is and the LP amount is `sqrt(amount_a * amount_b)` - computed with a `u128` integer-sqrt (Newton's method), no floats - with `MINIMUM_LIQUIDITY` locked away forever (to prevent the empty-pool edge case). No admin fees can be owed yet, so this case is unchanged by the admin-fee mechanism.
 - For later deposits, the amounts are clamped to the current pool ratio (Uniswap V2's `mint()` pattern):
   1. Compute `amount_b_required = amount_a * effective_pool_b / effective_pool_a`.
-  2. If `amount_b_required ≤ amount_b`, use `(amount_a, amount_b_required)` — the depositor offered enough B, so we take the full A and clamp B down.
-  3. Otherwise, compute `amount_a_required = amount_b * effective_pool_a / effective_pool_b` and use `(amount_a_required, amount_b)` — B is the binding side, so we take the full B and clamp A down.
+  2. If `amount_b_required ≤ amount_b`, use `(amount_a, amount_b_required)` - the depositor offered enough B, so we take the full A and clamp B down.
+  3. Otherwise, compute `amount_a_required = amount_b * effective_pool_a / effective_pool_b` and use `(amount_a_required, amount_b)` - B is the binding side, so we take the full B and clamp A down.
 - All ratio math runs in `u128` with checked arithmetic. No floats are used for money; rounding is always toward the pool (the depositor never gets a sub-base-unit advantage).
 - The ratio is computed on the **effective reserves** (`pool_X.amount - admin_fees_owed_X`). The admin's owed slice isn't LP-claimable capital, so it doesn't shift the deposit ratio.
 - If the clamp rounds one of the amounts down to zero (e.g. a depositor offering a sub-base-unit fraction against a thick pool), the handler reverts with `DepositAmountTooSmall` rather than minting LP shares against a zero contribution.
-- If the computed LP-token amount falls below `minimum_lp_tokens_out`, the handler reverts with `DepositBelowMinimum`. This is the depositor's slippage guard for cases where the pool ratio shifted between off-chain quote time and tx landing.
+- If the computed LP-token amount falls below `minimum_lp_tokens_out`, the handler reverts with `DepositBelowMinimum`. This is the depositor's slippage guard for cases where the pool ratio shifted between offchain quote time and tx landing.
 
 ### `swap_tokens`
 
@@ -124,17 +124,17 @@ Swaps a fixed `input_amount` of one token for as much of the other as possible (
 
 - The total trading fee is taken off the input first: `fee_amount = input * fee / 10_000`.
 - The fee is split between LPs and the admin:
-  - `admin_portion = fee_amount * admin_share_bps / 10_000` — accumulates as a virtual claim on the input-side reserve (`admin_fees_owed_a` or `admin_fees_owed_b`). Not transferred immediately, swept later by `claim_admin_fees`. Saves a CPI per swap.
-  - `lp_portion = fee_amount - admin_portion` — stays physically in the reserves and boosts LP yield ("less output for the same input").
+  - `admin_portion = fee_amount * admin_share_bps / 10_000` - accumulates as a virtual claim on the input-side reserve (`admin_fees_owed_a` or `admin_fees_owed_b`). Not transferred immediately, swept later by `claim_admin_fees`. Saves a CPI per swap.
+  - `lp_portion = fee_amount - admin_portion` - stays physically in the reserves and boosts LP yield ("less output for the same input").
 - `taxed_input = input - fee_amount` is what enters the curve.
 - The output is computed against the **effective reserves** (`pool_X.amount - admin_fees_owed_X`), so the admin's outstanding fees do not contribute to the price. The curve math runs in `u128` with checked arithmetic, multiplying before dividing to keep precision; floor rounding favours the pool (Uniswap V2 convention).
-- The [price impact](https://www.investopedia.com/terms/p/price-impact.asp) of a swap — the difference between the quoted mid-price and the effective execution price — is determined by the size of the trade relative to the pool's effective reserves. Larger trades move the curve further, resulting in higher price impact.
+- The [price impact](https://www.investopedia.com/terms/p/price-impact.asp) of a swap - the difference between the quoted mid-price and the effective execution price - is determined by the size of the trade relative to the pool's effective reserves. Larger trades move the curve further, resulting in higher price impact.
 - If `output < min_output_amount`, the handler reverts with `SlippageExceeded`. This is the trader's slippage guard for cases where the pool shifted between quote time and tx landing.
 - After the transfers, the handler reloads the pool accounts and re-verifies that `effective_pool_a * effective_pool_b` is at least as high as before the trade. This is defence in depth: if the curve math were ever wrong in a way that gave the trader too much, the invariant check would fail and revert the trade. Reverts with `InvariantViolated`.
 
 ### `withdraw_liquidity`
 
-Burns LP tokens and returns a proportional share of the **effective reserves** (`pool_X.amount - admin_fees_owed_X`) to the LP. The proportion is `amount / (liquidity_provider_mint.supply + MINIMUM_LIQUIDITY)`. The admin's owed slice physically remains in the vaults but is not distributed to exiting LPs — it's claimed separately via `claim_admin_fees`. All math is `u128` with checked arithmetic, multiplying before dividing; floor rounding leaves sub-base-unit dust with the pool (grows LP value for everyone still in).
+Burns LP tokens and returns a proportional share of the **effective reserves** (`pool_X.amount - admin_fees_owed_X`) to the LP. The proportion is `amount / (liquidity_provider_mint.supply + MINIMUM_LIQUIDITY)`. The admin's owed slice physically remains in the vaults but is not distributed to exiting LPs - it's claimed separately via `claim_admin_fees`. All math is `u128` with checked arithmetic, multiplying before dividing; floor rounding leaves sub-base-unit dust with the pool (grows LP value for everyone still in).
 
 - `minimum_token_a_out` and `minimum_token_b_out` are the LP's per-side slippage floors. If either computed amount falls below its floor, the handler reverts with `WithdrawalBelowMinimum` *before* any tokens move. Pass `0` on either side to opt out. This protects LPs from withdrawing during a pool imbalance (e.g. a large swap landed just before this tx and skewed the mix).
 
@@ -143,66 +143,66 @@ Burns LP tokens and returns a proportional share of the **effective reserves** (
 Lets the address stored in `Config.admin` sweep their accumulated trading-fee claim out of a pool. Transfers `admin_fees_owed_a` from `pool_a` to the admin's token-A account and `admin_fees_owed_b` from `pool_b` to the admin's token-B account, signed by `pool_authority`. Then resets both accumulators to zero.
 
 - Authorisation: enforced by Anchor's `has_one = admin` constraint on `config` plus the `Signer` constraint on `admin`. Calls from any other signer are rejected.
-- The admin's token accounts (`admin_token_a`, `admin_token_b`) must already exist — this handler doesn't auto-create them (keeps the example small).
+- The admin's token accounts (`admin_token_a`, `admin_token_b`) must already exist - this handler doesn't auto-create them (keeps the example small).
 - Idempotent: calling again with the accumulators at zero is a successful no-op (transfers are skipped when owed = 0).
 
 ## Program flow: Alice, Bob, Carol, and Dave
 
 A worked example, end to end, using this program. The example uses three tokens:
 
-- **NVDAx** — an NVIDIA share (xStock), priced at ~5 USDC offchain.
-- **TSLAx** — a Tesla share (xStock), priced at ~180 USDC offchain.
-- **USDC** — a USD-pegged [stablecoin](https://www.investopedia.com/terms/s/stablecoin.asp) used as the quote currency in both pools.
+- **NVDAx** - an NVIDIA share (xStock), priced at ~5 USDC offchain.
+- **TSLAx** - a Tesla share (xStock), priced at ~180 USDC offchain.
+- **USDC** - a USD-pegged [stablecoin](https://www.investopedia.com/terms/s/stablecoin.asp) used as the quote currency in both pools.
 
 **Cast:**
 
-- **Alice** — AMM operator. Deploys and runs the exchange. Earns a slice of every trading fee via the admin protocol-fee mechanism; also earns LP [yield](https://www.investopedia.com/terms/y/yield.asp) on her own initial deposits. Wants real usage so fee income compounds. She calls `create_config` to fix the trading fee at 0.3% and sets `admin_share_bps = 1667` so she earns ~1/6 of every trading fee (LPs keep the other ~5/6). She seeds both the NVDAx/USDC pool and the TSLAx/USDC pool herself (eating the locked `MINIMUM_LIQUIDITY` cost) so users have something to trade from day one.
-- **Bob** — yield farmer / [liquidity provider](https://www.investopedia.com/terms/l/liquidity-provider.asp). Has idle capital (NVDAx and USDC) earning nothing. Wants to earn [passive income](https://www.investopedia.com/terms/p/passiveincome.asp) from the swap fees the pool collects, without actively trading.
-- **Carol** — retail trader. Holds USDC and has a bullish [thesis](https://www.investopedia.com/terms/i/investmentthesis.asp) on NVIDIA: she believes NVDAx will appreciate. She wants to swap USDC for NVDAx quickly, without a centralised exchange account. She also later buys TSLAx on the TSLAx/USDC pool.
-- **Dave** — [arbitrageur](https://www.investopedia.com/terms/a/arbitrage.asp). Profits by trading the gap between the pool's mid-price and the offchain market price. Side effect: his trades drag the pool price back toward fair value.
+- **Alice** - AMM operator. Deploys and runs the exchange. Earns a slice of every trading fee via the admin protocol-fee mechanism; also earns LP [yield](https://www.investopedia.com/terms/y/yield.asp) on her own initial deposits. Wants real usage so fee income compounds. She calls `create_config` to fix the trading fee at 0.3% and sets `admin_share_bps = 1667` so she earns ~1/6 of every trading fee (LPs keep the other ~5/6). She seeds both the NVDAx/USDC pool and the TSLAx/USDC pool herself (eating the locked `MINIMUM_LIQUIDITY` cost) so users have something to trade from day one.
+- **Bob** - yield farmer / [liquidity provider](https://www.investopedia.com/terms/l/liquidity-provider.asp). Has idle capital (NVDAx and USDC) earning nothing. Wants to earn [passive income](https://www.investopedia.com/terms/p/passiveincome.asp) from the swap fees the pool collects, without actively trading.
+- **Carol** - retail trader. Holds USDC and has a bullish [thesis](https://www.investopedia.com/terms/i/investmentthesis.asp) on NVIDIA: she believes NVDAx will appreciate. She wants to swap USDC for NVDAx quickly, without a centralised exchange account. She also later buys TSLAx on the TSLAx/USDC pool.
+- **Dave** - [arbitrageur](https://www.investopedia.com/terms/a/arbitrage.asp). Profits by trading the gap between the pool's mid-price and the offchain market price. Side effect: his trades drag the pool price back toward fair value.
 
-### Step 1 — Alice creates the `Config`
+### Step 1 - Alice creates the `Config`
 
 The singleton `Config` account is set once per deployed program. Every pool inherits its `fee` and `admin_share_bps`.
 
 - **Handler:** `create_config`
 - **Accounts (`CreateConfigAccounts`):**
-  - `config` (PDA, created) — seeds `[b"config"]`; stores `admin`, `fee`, `admin_share_bps`, `bump`
+  - `config` (PDA, created) - seeds `[b"config"]`; stores `admin`, `fee`, `admin_share_bps`, `bump`
   - `admin` = Alice
   - `payer` = Alice
   - `system_program`
-- **Args:** `fee = 30` (0.3%), `admin_share_bps = 1667` (Uniswap V2's classic 1/6 default — Alice keeps 1/6 of the trading fee; LPs keep 5/6)
+- **Args:** `fee = 30` (0.3%), `admin_share_bps = 1667` (Uniswap V2's classic 1/6 default - Alice keeps 1/6 of the trading fee; LPs keep 5/6)
 
 `Config` exists. No pools yet, no liquidity yet.
 
-### Step 2 — Alice creates the NVDAx/USDC pool
+### Step 2 - Alice creates the NVDAx/USDC pool
 
 - **Handler:** `create_pool`
 - **Accounts (`CreatePoolAccounts`):**
-  - `config` — Alice's `Config`
-  - `pool_config` (PDA, created) — seeds `[config, mint_a, mint_b]`; stores `config`, `mint_a`, `mint_b`, `bump`
-  - `pool_authority` (PDA) — signs for the pool reserves
-  - `liquidity_provider_mint` (created) — the LP-token mint, authority = `pool_authority`
+  - `config` - Alice's `Config`
+  - `pool_config` (PDA, created) - seeds `[config, mint_a, mint_b]`; stores `config`, `mint_a`, `mint_b`, `bump`
+  - `pool_authority` (PDA) - signs for the pool reserves
+  - `liquidity_provider_mint` (created) - the LP-token mint, authority = `pool_authority`
   - `mint_a` = NVDAx mint, `mint_b` = USDC mint (with `mint_a < mint_b`)
-  - `pool_a`, `pool_b` (created, ATAs owned by `pool_authority`) — the NVDAx and USDC reserves
+  - `pool_a`, `pool_b` (created, ATAs owned by `pool_authority`) - the NVDAx and USDC reserves
   - `payer` = Alice
   - token, ATA, system programs
 - **Args:** none
 
 NVDAx/USDC pool exists; reserves are empty. No one can swap yet.
 
-### Step 2b — Alice creates the TSLAx/USDC pool
+### Step 2b - Alice creates the TSLAx/USDC pool
 
 Alice immediately creates a second pool for TSLAx (Tesla xStock, ~180 USDC each). The handler and account shape are identical to Step 2; only the mints differ.
 
 - **Handler:** `create_pool`
 - **Accounts (`CreatePoolAccounts`):**
-  - `config` — Alice's `Config` (same singleton)
-  - `pool_config` (PDA, created) — seeds `[config, mint_a, mint_b]`; stores `config`, `mint_a` = TSLAx mint, `mint_b` = USDC mint, `bump`
-  - `pool_authority` (PDA) — signs for this pool's reserves
-  - `liquidity_provider_mint` (created) — a separate LP-token mint for this pool
+  - `config` - Alice's `Config` (same singleton)
+  - `pool_config` (PDA, created) - seeds `[config, mint_a, mint_b]`; stores `config`, `mint_a` = TSLAx mint, `mint_b` = USDC mint, `bump`
+  - `pool_authority` (PDA) - signs for this pool's reserves
+  - `liquidity_provider_mint` (created) - a separate LP-token mint for this pool
   - `mint_a` = TSLAx mint, `mint_b` = USDC mint (with `mint_a < mint_b`)
-  - `pool_a`, `pool_b` (created, ATAs owned by `pool_authority`) — the TSLAx and USDC reserves
+  - `pool_a`, `pool_b` (created, ATAs owned by `pool_authority`) - the TSLAx and USDC reserves
   - `payer` = Alice
   - token, ATA, system programs
 - **Args:** none
@@ -213,7 +213,7 @@ Alice seeds the TSLAx/USDC pool with **1 TSLAx and 180 USDC** (a 1:180 ratio mat
 
 TSLAx/USDC pool state: **1 TSLAx, 180 USDC**. Mid-price = 180. Alice owns 100% of withdrawable LP supply on this pool.
 
-### Step 3 — Alice seeds initial liquidity in the NVDAx/USDC pool
+### Step 3 - Alice seeds initial liquidity in the NVDAx/USDC pool
 
 Alice picks a 1:5 ratio so the NVDAx/USDC pool launches at ~5 USDC per NVDAx. She deposits **20 NVDAx and 100 USDC**.
 
@@ -223,42 +223,42 @@ Alice picks a 1:5 ratio so the NVDAx/USDC pool launches at ~5 USDC per NVDAx. Sh
   - `depositor` = Alice (signer)
   - `mint_a`, `mint_b`
   - `pool_a`, `pool_b` (the pool's reserves)
-  - `liquidity_provider_token` — Alice's LP-token ATA (created)
-  - `token_a` — Alice's NVDAx ATA, `token_b` — Alice's USDC ATA
+  - `liquidity_provider_token` - Alice's LP-token ATA (created)
+  - `token_a` - Alice's NVDAx ATA, `token_b` - Alice's USDC ATA
   - `payer` = Alice
   - token, ATA, system programs
-- **Args:** `amount_a = 20`, `amount_b = 100`, `minimum_lp_tokens_out = 0` (initial deposit — Alice is the only LP, no slippage risk; production code should still set a floor to guard against frontrun pool-creations)
+- **Args:** `amount_a = 20`, `amount_b = 100`, `minimum_lp_tokens_out = 0` (initial deposit - Alice is the only LP, no slippage risk; production code should still set a floor to guard against frontrun pool-creations)
 
 Math:
 
 - LP tokens minted on the first deposit: `sqrt(20 × 100) = sqrt(2000) ≈ 44.72`.
-- Minus the locked `MINIMUM_LIQUIDITY = 100` floor (base units — negligible at major-unit scale).
+- Minus the locked `MINIMUM_LIQUIDITY = 100` floor (base units - negligible at major-unit scale).
 - Alice receives ~44.72 LP tokens. The 100 base-unit dust is locked forever, owned by no one. Alice eats that cost as the price of bootstrapping.
 
 NVDAx/USDC pool state: **20 NVDAx, 100 USDC**. Mid-price = 5. Alice owns 100% of withdrawable LP supply on this pool.
 
-### Step 4 — Bob adds liquidity
+### Step 4 - Bob adds liquidity
 
 At the current 1:5 ratio, Bob deposits **100 NVDAx and 500 USDC**.
 
 - **Handler:** `deposit_liquidity`
 - **Accounts:** same shape as Step 3, `depositor` = Bob
-- **Args:** `amount_a = 100`, `amount_b = 500`, `minimum_lp_tokens_out = 223_000_000` (Bob quoted ~223.6 LP off-chain and is unwilling to accept less than ~223.0 if the pool shifts before his tx lands; units here are LP base units at the LP mint's decimals)
+- **Args:** `amount_a = 100`, `amount_b = 500`, `minimum_lp_tokens_out = 223_000_000` (Bob quoted ~223.6 LP offchain and is unwilling to accept less than ~223.0 if the pool shifts before his tx lands; units here are LP base units at the LP mint's decimals)
 
 Math: subsequent deposits get `min(amount_a / pool_a, amount_b / pool_b) × current_lp_supply = min(100/20, 500/100) × 44.72 ≈ 223.6` LP tokens.
 
 NVDAx/USDC pool state: **120 NVDAx, 600 USDC**. LP supply ~268.32. Bob owns ~83%, Alice ~17%.
 
-### Step 5 — Carol buys NVDAx with USDC
+### Step 5 - Carol buys NVDAx with USDC
 
 - **Handler:** `swap_tokens`
 - **Accounts (`SwapTokensAccounts`):**
-  - `config` — for the fee
+  - `config` - for the fee
   - `pool_config`, `pool_authority`
   - `trader` = Carol (signer)
   - `mint_a`, `mint_b`
   - `pool_a`, `pool_b` (the pool's reserves)
-  - `token_a` — Carol's NVDAx ATA (created if missing), `token_b` — Carol's USDC ATA
+  - `token_a` - Carol's NVDAx ATA (created if missing), `token_b` - Carol's USDC ATA
   - `payer` = Carol
   - token, ATA, system programs
 - **Args:** `input_is_token_a = false` (input is token B = USDC), `input_amount = 11`, `min_output_amount = 1.9`
@@ -267,19 +267,19 @@ Math (constant product, 0.3% fee from `Config.fee`, fee split per `Config.admin_
 
 - Total fee on the input: `11 × 0.003 = 0.033 USDC`.
 - Fee split:
-  - Admin slice (`admin_share_bps = 1667`): `0.033 × 0.1667 ≈ 0.0055 USDC` — added to `admin_fees_owed_b`.
-  - LP slice: `0.033 − 0.0055 ≈ 0.0275 USDC` — stays in the reserves, boosts LP yield.
+  - Admin slice (`admin_share_bps = 1667`): `0.033 × 0.1667 ≈ 0.0055 USDC` - added to `admin_fees_owed_b`.
+  - LP slice: `0.033 − 0.0055 ≈ 0.0275 USDC` - stays in the reserves, boosts LP yield.
 - Input into the curve: `11 − 0.033 = 10.967 USDC`.
 - Effective reserves before the trade: `effective_pool_a = 120`, `effective_pool_b = 600` (admin owes nothing yet).
 - New effective B: `600 + 10.967 = 610.967` (raw `pool_b.amount` is `611`, minus the new admin slice `0.0055`).
 - New effective A: `(120 × 600) / 610.967 ≈ 117.844`.
 - NVDAx out: `120 − 117.844 ≈ 2.156`.
 
-Carol gets ~2.156 NVDAx. Effective price ~5.10 USDC/NVDAx — worse than mid-price because of the fee plus her own price impact.
+Carol gets ~2.156 NVDAx. Effective price ~5.10 USDC/NVDAx - worse than mid-price because of the fee plus her own price impact.
 
 NVDAx/USDC pool state: **117.844 NVDAx, 611 USDC raw** (`admin_fees_owed_a = 0`, `admin_fees_owed_b ≈ 0.0055`). Mid-price on the effective reserves drifted up to ~5.18.
 
-### Step 6 — Dave arbitrages the NVDAx/USDC pool
+### Step 6 - Dave arbitrages the NVDAx/USDC pool
 
 NVDAx still trades at 5.00 offchain; the NVDAx/USDC pool now says 5.18. There's a profitable trade: buy NVDAx offchain at 5.00, sell it into the pool at ~5.18. Dave does it.
 
@@ -291,8 +291,8 @@ Math:
 
 - Total fee on the input: `2.15 × 0.003 ≈ 0.00645 NVDAx`.
 - Fee split:
-  - Admin slice: `0.00645 × 0.1667 ≈ 0.001075 NVDAx` — added to `admin_fees_owed_a`.
-  - LP slice: `≈ 0.005375 NVDAx` — stays in the reserves.
+  - Admin slice: `0.00645 × 0.1667 ≈ 0.001075 NVDAx` - added to `admin_fees_owed_a`.
+  - LP slice: `≈ 0.005375 NVDAx` - stays in the reserves.
 - Input into the curve: `2.15 − 0.00645 ≈ 2.14355 NVDAx`.
 - Effective reserves before the trade: `effective_pool_a = 117.844` (no A-side admin claim yet), `effective_pool_b ≈ 611 − 0.0055 ≈ 610.9945`.
 - New effective A: `117.844 + 2.14355 ≈ 119.9876`.
@@ -301,21 +301,21 @@ Math:
 
 Dave paid ~10.75 USDC offchain for 2.15 NVDAx, sold into the pool for ~10.92 USDC. Profit ~0.17 USDC, minus gas.
 
-NVDAx/USDC pool state: **119.987 NVDAx, 600.07 USDC raw**, with `admin_fees_owed_a ≈ 0.001075` and `admin_fees_owed_b ≈ 0.0055`. Mid-price on the effective reserves back to ~5.00 — *because* that's the price at which Dave's profit hit zero and he stopped.
+NVDAx/USDC pool state: **119.987 NVDAx, 600.07 USDC raw**, with `admin_fees_owed_a ≈ 0.001075` and `admin_fees_owed_b ≈ 0.0055`. Mid-price on the effective reserves back to ~5.00 - *because* that's the price at which Dave's profit hit zero and he stopped.
 
-### Step 7 — Carol buys TSLAx with USDC
+### Step 7 - Carol buys TSLAx with USDC
 
 Separately, Carol decides to add TSLAx exposure on top of her NVDAx purchase. She swaps USDC for TSLAx on the TSLAx/USDC pool Alice created in Step 2b.
 
 - **Handler:** `swap_tokens`
 - **Accounts (`SwapTokensAccounts`):**
-  - `config` — the same singleton `Config` (fee and admin_share_bps apply to all pools)
-  - `pool_config` — the TSLAx/USDC `PoolConfig` PDA
-  - `pool_authority` — the TSLAx/USDC pool authority PDA
+  - `config` - the same singleton `Config` (fee and admin_share_bps apply to all pools)
+  - `pool_config` - the TSLAx/USDC `PoolConfig` PDA
+  - `pool_authority` - the TSLAx/USDC pool authority PDA
   - `trader` = Carol (signer)
   - `mint_a` = TSLAx mint, `mint_b` = USDC mint
-  - `pool_a`, `pool_b` — the TSLAx/USDC reserves (1 TSLAx, 180 USDC after Alice's seed deposit)
-  - `token_a` — Carol's TSLAx ATA (created if missing), `token_b` — Carol's USDC ATA
+  - `pool_a`, `pool_b` - the TSLAx/USDC reserves (1 TSLAx, 180 USDC after Alice's seed deposit)
+  - `token_a` - Carol's TSLAx ATA (created if missing), `token_b` - Carol's USDC ATA
   - `payer` = Carol
   - token, ATA, system programs
 - **Args:** `input_is_token_a = false` (input is token B = USDC), `input_amount = 180`, `min_output_amount = 0.9`
@@ -324,39 +324,39 @@ Math (constant product, same 0.3% fee and 1667 bps admin share):
 
 - Total fee on the input: `180 × 0.003 = 0.54 USDC`.
 - Fee split:
-  - Admin slice: `0.54 × 0.1667 ≈ 0.09 USDC` — added to `admin_fees_owed_b` on this pool.
-  - LP slice: `0.54 − 0.09 ≈ 0.45 USDC` — stays in the TSLAx/USDC reserves.
+  - Admin slice: `0.54 × 0.1667 ≈ 0.09 USDC` - added to `admin_fees_owed_b` on this pool.
+  - LP slice: `0.54 − 0.09 ≈ 0.45 USDC` - stays in the TSLAx/USDC reserves.
 - Input into the curve: `180 − 0.54 = 179.46 USDC`.
 - Effective reserves before the trade: `effective_pool_a = 1 TSLAx`, `effective_pool_b = 180 USDC`.
 - New effective B: `180 + 179.46 = 359.46` (raw `pool_b.amount` ≈ `360`, minus the new admin slice `≈ 0.09`).
 - New effective A: `(1 × 180) / 359.46 ≈ 0.5008`.
 - TSLAx out: `1 − 0.5008 ≈ 0.4992`.
 
-Carol gets ~0.4992 TSLAx. The large price impact (~50% of the pool's TSLAx reserve) reflects the shallow pool depth at this early stage — in a real deployment, Alice would seed the pool with more liquidity to reduce price impact for traders of this size.
+Carol gets ~0.4992 TSLAx. The large price impact (~50% of the pool's TSLAx reserve) reflects the shallow pool depth at this early stage - in a real deployment, Alice would seed the pool with more liquidity to reduce price impact for traders of this size.
 
 TSLAx/USDC pool state: **~0.5008 TSLAx, ~360 USDC raw** (`admin_fees_owed_b ≈ 0.09`). Mid-price on the effective reserves has roughly doubled to ~358 USDC per TSLAx, illustrating why deep liquidity matters for minimising price impact.
 
-### Step 8 — Alice claims her admin fees
+### Step 8 - Alice claims her admin fees
 
 After trading activity on both pools, Alice sweeps her accumulated slice from the NVDAx/USDC pool.
 
 - **Handler:** `claim_admin_fees`
 - **Accounts (`ClaimAdminFeesAccounts`):**
-  - `config` — Alice's `Config` (the `has_one = admin` constraint enforces that only she can call this)
+  - `config` - Alice's `Config` (the `has_one = admin` constraint enforces that only she can call this)
   - `pool_config`, `pool_authority`
   - `mint_a`, `mint_b`
-  - `pool_a`, `pool_b` (the pool's reserves — the source of the transfers)
+  - `pool_a`, `pool_b` (the pool's reserves - the source of the transfers)
   - `admin` = Alice (signer)
-  - `admin_token_a` — Alice's NVDAx ATA (must already exist)
-  - `admin_token_b` — Alice's USDC ATA (must already exist)
+  - `admin_token_a` - Alice's NVDAx ATA (must already exist)
+  - `admin_token_b` - Alice's USDC ATA (must already exist)
   - `token_program`
 - **Args:** none
 
-She receives her accumulated `admin_fees_owed_a` of NVDAx and `admin_fees_owed_b` of USDC from the NVDAx/USDC pool. Both accumulators reset to zero on the same instruction. From this example's two swaps that's only `~0.001075 NVDAx` and `~0.0055 USDC` — small, because the fee is small and only two trades have happened, but real volume would compound it. She can call `claim_admin_fees` again against the TSLAx/USDC pool (same handler, different `pool_config`) to sweep her ~0.09 USDC slice from Carol's TSLAx trade.
+She receives her accumulated `admin_fees_owed_a` of NVDAx and `admin_fees_owed_b` of USDC from the NVDAx/USDC pool. Both accumulators reset to zero on the same instruction. From this example's two swaps that's only `~0.001075 NVDAx` and `~0.0055 USDC` - small, because the fee is small and only two trades have happened, but real volume would compound it. She can call `claim_admin_fees` again against the TSLAx/USDC pool (same handler, different `pool_config`) to sweep her ~0.09 USDC slice from Carol's TSLAx trade.
 
 NVDAx/USDC pool state: **119.986 NVDAx, 600.065 USDC raw**, with `admin_fees_owed_a = 0` and `admin_fees_owed_b = 0`.
 
-### Step 9 — Bob withdraws
+### Step 9 - Bob withdraws
 
 Later on, Bob exits.
 
@@ -375,7 +375,7 @@ He receives his proportional share of the **effective reserves** (`pool_X.amount
 - **Alice** calls `claim_admin_fees` on NVDAx/USDC, then `claim_admin_fees` on TSLAx/USDC (sweeps her accumulated fee slices from both pools)
 - **Bob** later calls `withdraw_liquidity` on NVDAx/USDC (exits with his fee income)
 
-What makes this work: `x × y = K` on the effective reserves keeps the pool solvent on every swap without anyone quoting prices. LPs are paid in growing effective reserves (their share of the fee, parameterised by `Config.fee` and `Config.admin_share_bps`); the admin earns the other share, accumulated lazily and swept on demand; profit-chasing arbitrageurs incidentally keep the mid-price honest; traders get instant fills against a passive counterparty (the pool). The same `create_pool` handler and the same `swap_tokens` handler work identically for both the NVDAx/USDC and TSLAx/USDC pools — only the mint accounts differ.
+What makes this work: `x × y = K` on the effective reserves keeps the pool solvent on every swap without anyone quoting prices. LPs are paid in growing effective reserves (their share of the fee, parameterised by `Config.fee` and `Config.admin_share_bps`); the admin earns the other share, accumulated lazily and swept on demand; profit-chasing arbitrageurs incidentally keep the mid-price honest; traders get instant fills against a passive counterparty (the pool). The same `create_pool` handler and the same `swap_tokens` handler work identically for both the NVDAx/USDC and TSLAx/USDC pools - only the mint accounts differ.
 
 ## Tests
 

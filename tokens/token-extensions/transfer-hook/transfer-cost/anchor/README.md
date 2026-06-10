@@ -1,4 +1,4 @@
-# Transfer Hook — Transfer Cost (Anchor)
+# Transfer Hook - Transfer Cost (Anchor)
 
 Charge an additional fee on each transfer via hook logic.
 

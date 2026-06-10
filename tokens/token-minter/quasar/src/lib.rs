@@ -12,15 +12,15 @@ declare_id!("22222222222222222222222222222222222222222222");
 /// Token minter with Metaplex metadata.
 ///
 /// Two instructions:
-/// - `create_token` — creates a mint and associated Metaplex metadata account
-/// - `mint_token` — mints tokens to a recipient's associated token account
+/// - `create_token` - creates a mint and associated Metaplex metadata account
+/// - `mint_token` - mints tokens to a recipient's associated token account
 #[program]
 mod quasar_token_minter {
     use super::*;
 
     // String capacities follow Metaplex Token Metadata limits:
     // name ≤ 32, symbol ≤ 10, uri ≤ 200. PodString<N> requires an explicit
-    // capacity since PR #195 — `String` (no <N>) is no longer accepted.
+    // capacity - bare `String` (no <N>) is not accepted.
     #[instruction(discriminator = 0)]
     pub fn create_token(
         ctx: Ctx<CreateToken>,

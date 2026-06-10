@@ -1,4 +1,4 @@
-# Token Extensions — Interest Bearing (Quasar)
+# Token Extensions - Interest Bearing (Quasar)
 
 Balances that reflect accrued interest over time.
 

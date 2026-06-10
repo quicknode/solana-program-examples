@@ -1,4 +1,4 @@
-# Transfer Hook — Allow/Block List (Quasar)
+# Transfer Hook - Allow/Block List (Quasar)
 
 Allow/block list enforced by a transfer hook program.
 

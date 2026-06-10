@@ -90,7 +90,7 @@ fn test_create_token_account_with_immutable_owner() {
         token_data.data.len()
     );
 
-    // Step 3: Attempt to change the account owner — should fail due to immutable owner
+    // Step 3: Attempt to change the account owner - should fail due to immutable owner
     let new_owner = Keypair::new();
     let set_authority_ix = set_authority_instruction(
         &token_keypair.pubkey(),

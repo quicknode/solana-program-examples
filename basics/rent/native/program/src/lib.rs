@@ -43,6 +43,6 @@ fn process_instruction(
         &[payer.clone(), new_account.clone(), system_program.clone()],
     )?;
 
-    msg!("Account created succesfully.");
+    msg!("Account created successfully.");
     Ok(())
 }

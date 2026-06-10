@@ -10,9 +10,9 @@ mod tests;
 
 declare_id!("22222222222222222222222222222222222222222222");
 
-/// Correct Token-2022 program ID.
+/// Correct Token Extensions program ID.
 ///
-/// quasar-spl 0.0.0 ships incorrect bytes for the Token-2022 address
+/// quasar-spl 0.0.0 ships incorrect bytes for the Token Extensions address
 /// (`TokenzSRvw8aVrEuYKv3gLJaYV39h1EWGpCCGYBJPZQ` instead of the real
 /// `TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb`). We define a local
 /// marker with the correct mainnet address until that's fixed upstream.
@@ -25,8 +25,8 @@ impl Id for Token2022Program {
     ]);
 }
 
-/// Demonstrates Token-2022 basics: minting tokens and transferring (checked)
-/// via raw CPI to the Token-2022 program.
+/// Demonstrates Token Extensions basics: minting tokens and transferring (checked)
+/// via raw CPI to the Token Extensions program.
 #[program]
 mod quasar_token_2022_basics {
     use super::*;
@@ -37,14 +37,14 @@ mod quasar_token_2022_basics {
         handle_mint_token(&mut ctx.accounts, amount)
     }
 
-    /// Transfer tokens using transfer_checked (required for Token-2022).
+    /// Transfer tokens using transfer_checked (required for Token Extensions).
     #[instruction(discriminator = 1)]
     pub fn transfer_token(ctx: Ctx<TransferToken>, amount: u64) -> Result<(), ProgramError> {
         handle_transfer_token(&mut ctx.accounts, amount)
     }
 }
 
-/// Accounts for minting tokens via Token-2022.
+/// Accounts for minting tokens via Token Extensions.
 #[derive(Accounts)]
 pub struct MintToken {
     #[account(mut)]
@@ -77,7 +77,7 @@ fn handle_mint_token(accounts: &mut MintToken, amount: u64) -> Result<(), Progra
     .invoke()
 }
 
-/// Accounts for transferring tokens via Token-2022 transfer_checked.
+/// Accounts for transferring tokens via Token Extensions transfer_checked.
 #[derive(Accounts)]
 pub struct TransferToken {
     #[account(mut)]

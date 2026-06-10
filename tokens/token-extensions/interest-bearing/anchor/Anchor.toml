@@ -8,8 +8,6 @@ skip-lint = false
 [programs.localnet]
 interest_bearing = "DMQdkzRJz8uQSN8Kx2QYmQJn6xLKhsu3LcPYxs314MgC"
 
-# [registry] section removed — no longer used in Anchor 1.0
-
 [provider]
 cluster = "Localnet"
 wallet = "~/.config/solana/id.json"

@@ -4,7 +4,7 @@
 //! create user accounts, place bids/asks (locking the appropriate vault),
 //! reject invalid prices / tick-aligned prices / undersized quantities,
 //! cancel orders (which credits unsettled balances), settle funds out of
-//! the vaults, and — in the matching block near the bottom — cross incoming
+//! the vaults, and - in the matching block near the bottom - cross incoming
 //! orders against resting orders using price-time priority, charge the
 //! configured taker fee to a fee vault, and drain the fee vault via
 //! `withdraw_fees`.
@@ -36,14 +36,14 @@ const ORDER_SEED: &[u8] = b"order";
 const MARKET_USER_SEED: &[u8] = b"market_user";
 
 // Size of the zero-copy OrderBook account, including Anchor's 8-byte
-// discriminator. Mirrors `order_book::state::ORDER_BOOK_ACCOUNT_SIZE` — duplicated
+// discriminator. Mirrors `order_book::state::ORDER_BOOK_ACCOUNT_SIZE` - duplicated
 // here so tests are self-contained and stay closer to what an SDK does.
 // Two 1024-leaf critbit slabs at 88 bytes per node, plus header. If you
-// change this, bump the constant in `state/order_book.rs` too — the
+// change this, bump the constant in `state/order_book.rs` too - the
 // `#[account(zero)]` check fails if the account size is wrong.
 const ORDER_BOOK_ACCOUNT_SIZE: u64 = order_book::state::ORDER_BOOK_ACCOUNT_SIZE as u64;
 
-// NVDAx has 8 decimals on-chain; USDC has 6.
+// NVDAx has 8 decimals onchain; USDC has 6.
 const BASE_DECIMALS: u8 = 8; // NVDAx (https://explorer.solana.com/address/Xsc9qvGR1efVDFGLrVsmkzv3qi45LTBjeUKSPmx9qEh)
 const QUOTE_DECIMALS: u8 = 6; // USDC
 
@@ -63,7 +63,7 @@ const MIN_ORDER_SIZE: u64 = 1;
 // order placed in the tests with room to spare.
 const TRADER_STARTING_BALANCE: u64 = 1_000_000_000;
 
-// Shared order sizing — chosen so price * quantity stays well inside u64
+// Shared order sizing - chosen so price * quantity stays well inside u64
 // and the seller's ask sits at the same price as the buyer's bid (matching
 // is not implemented, they just coexist in the book).
 const BID_PRICE: u64 = 100;
@@ -127,7 +127,7 @@ struct Scenario {
     fee_vault: Keypair,
     market: Pubkey,
     // The order book is a ~180 KB zero-copy account owned by the program.
-    // It's NOT a PDA — the BPF runtime caps inner-CPI allocations at 10 KB,
+    // It's NOT a PDA - the BPF runtime caps inner-CPI allocations at 10 KB,
     // so the client must allocate it directly via system_program::CreateAccount
     // and pass it in as a signer. See `build_initialize_market_tx` for the
     // full setup.
@@ -219,7 +219,7 @@ fn full_setup() -> Scenario {
 }
 
 // ---------------------------------------------------------------------------
-// Instruction builders — one per program entry point.
+// Instruction builders - one per program entry point.
 // ---------------------------------------------------------------------------
 
 /// Build the `system_program::CreateAccount` instruction the client must run
@@ -235,7 +235,7 @@ fn build_create_order_book_account_ix(
     payer: &Pubkey,
 ) -> Instruction {
     // LiteSVM uses the default rent schedule; minimum_balance() on the
-    // 180 KB account is around 1.25 SOL — well within the 100 SOL we fund
+    // 180 KB account is around 1.25 SOL - well within the 100 SOL we fund
     // the test payer with in `full_setup`.
     let rent_lamports = sc
         .svm
@@ -341,7 +341,7 @@ fn build_place_order_ix(
 
 /// Build a `place_order` instruction with maker (order, market_user) PDA
 /// pairs appended as remaining accounts. The order-book program expects them in the same
-/// order the resting book will be walked — best-priced first (lowest ask
+/// order the resting book will be walked - best-priced first (lowest ask
 /// for a taker bid, highest bid for a taker ask), and within a price level
 /// earliest-first. Every maker pair must be writable: the program mutates
 /// the maker's Order (filled_quantity, status) and their MarketUser
@@ -452,7 +452,7 @@ fn build_settle_funds_ix(
 // both user-account creations so tests that just want a ready-to-trade
 // market do not have to repeat the boilerplate.
 fn initialize_market_and_users(sc: &mut Scenario) {
-    // Allocate the OrderBook account first — it has to exist (owned by the
+    // Allocate the OrderBook account first - it has to exist (owned by the
     // program, zero-initialized) before initialize_market's `#[account(zero)]`
     // check passes.
     let create_ix = build_create_order_book_account_ix(sc, &sc.authority.pubkey());
@@ -610,7 +610,7 @@ fn place_bid_locks_quote_in_vault() {
         get_token_account_balance(&sc.svm, &sc.buyer_quote_ata).unwrap(),
         TRADER_STARTING_BALANCE - locked_quote
     );
-    // Base vault untouched — bids never move base tokens.
+    // Base vault untouched - bids never move base tokens.
     assert_eq!(
         get_token_account_balance(&sc.svm, &sc.base_vault.pubkey()).unwrap(),
         0
@@ -719,7 +719,7 @@ fn place_order_rejects_unaligned_tick() {
     )
     .unwrap();
 
-    // 75 is not a multiple of 50 — must be rejected by the tick check.
+    // 75 is not a multiple of 50 - must be rejected by the tick check.
     let unaligned_price: u64 = 75;
     let ix = build_place_order_ix(
         &sc,
@@ -841,7 +841,7 @@ fn cancel_ask_credits_unsettled_base() {
     )
     .unwrap();
 
-    // Funds are still in the vault — cancel does not move tokens, it only
+    // Funds are still in the vault - cancel does not move tokens, it only
     // updates the unsettled balance. Settlement is a separate step.
     assert_eq!(
         get_token_account_balance(&sc.svm, &sc.base_vault.pubkey()).unwrap(),
@@ -1258,7 +1258,7 @@ fn taker_bid_fully_crosses_best_ask() {
 
     const MAKER_ASK_ID: u64 = 1;
     // 1000 * 100 = 100_000 quote flows, and 100_000 * 10 bps / 10_000 = 100
-    // fee — big enough to be non-zero after integer division, tiny enough
+    // fee - big enough to be non-zero after integer division, tiny enough
     // that trader starting balances easily cover it.
     const PRICE: u64 = 1000;
     const QUANTITY: u64 = 100;
@@ -1286,7 +1286,7 @@ fn taker_bid_fully_crosses_best_ask() {
     )
     .unwrap();
 
-    // Buyer's taker bid at the same price, same qty — fully crosses.
+    // Buyer's taker bid at the same price, same qty - fully crosses.
     const TAKER_BID_ID: u64 = 2;
     let taker_bid_ix = build_place_order_with_makers_ix(
         &sc,
@@ -1316,7 +1316,7 @@ fn taker_bid_fully_crosses_best_ask() {
 
     let (buyer_base, buyer_quote) = read_user_unsettled(&sc.svm, &sc.buyer_market_user);
     assert_eq!(buyer_base, QUANTITY * BASE_LOT_SIZE);
-    // No price improvement here — buyer's limit == maker's price — so no
+    // No price improvement here - buyer's limit == maker's price - so no
     // quote rebate lands in the taker's unsettled_quote.
     assert_eq!(buyer_quote, 0);
 
@@ -1457,7 +1457,7 @@ fn taker_partially_fills_resting_order_rest_stays_on_book() {
     assert_eq!(status, ORDER_STATUS_PARTIALLY_FILLED);
 
     // Base vault still holds the un-filled portion (seller's lock, minus
-    // what was delivered to the taker's unsettled_base — which never left
+    // what was delivered to the taker's unsettled_base - which never left
     // the vault, just got re-tagged as owed to the buyer).
     //
     // Total base in vault stays == MAKER_ASK_QUANTITY * BASE_LOT_SIZE, because
@@ -1540,7 +1540,7 @@ fn taker_partially_filled_remainder_rests_on_book() {
 
     // The taker's own Order PDA holds the true remaining-on-book quantity
     // (original_quantity - filled_quantity). On-book quantity isn't stored
-    // on OrderEntry directly — see state/order_book.rs — so this is the
+    // on OrderEntry directly - see state/order_book.rs - so this is the
     // source of truth both here and at runtime.
     assert_eq!(
         TAKER_BID_QUANTITY - taker_filled,
@@ -1569,7 +1569,7 @@ fn taker_crosses_multiple_resting_orders_best_price_first() {
     const TAKER_BID_PRICE: u64 = 1000;
     const TAKER_BID_QUANTITY: u64 = BEST_ASK_QUANTITY + SECOND_ASK_QUANTITY;
 
-    // Need to post both asks and both rest — seller places two in sequence.
+    // Need to post both asks and both rest - seller places two in sequence.
     let ask_one_ix = build_place_order_ix(
         &sc,
         &sc.seller,
@@ -1783,7 +1783,7 @@ fn taker_bid_gets_price_improvement_from_resting_ask() {
     send_transaction_from_instructions(&mut sc.svm, vec![__ix4], &[&sc.seller],
         &sc.seller.pubkey()).unwrap();
 
-    // Taker bid — limit 1000.
+    // Taker bid - limit 1000.
     const TAKER_BID_ID: u64 = 2;
     let taker_ix = build_place_order_with_makers_ix(
         &sc,

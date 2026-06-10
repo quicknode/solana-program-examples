@@ -47,7 +47,7 @@ pub fn handle_burn_cnft(accounts: &mut BurnCnft, data: &[u8], remaining: Remaini
     //
     // `remaining.iter()` yields `Result<RemainingAccount, _>` in newer
     // quasar-lang. Reach the inner `AccountView` via the unchecked accessor
-    // — this CPI only reads proof addresses and views, never touching the
+    // - this CPI only reads proof addresses and views, never touching the
     // accounts' data, so the aliasing/borrow invariants are upheld.
     let placeholder = accounts.system_program.to_account_view().clone();
     let mut proof_views: [AccountView; MAX_PROOF_NODES] =

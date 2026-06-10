@@ -56,7 +56,7 @@ pub fn handle_cancel_order(context: Context<CancelOrder>) -> Result<()> {
     }
 
     // Remove the leaf from the slab. The current cancel API doesn't tell us
-    // which side the order is on without reading the Order PDA — which we
+    // which side the order is on without reading the Order PDA - which we
     // already have, so use it.
     let mut order_book = context.accounts.order_book.load_mut()?;
     let removed = order_book.remove_from(order.side, order.order_id).is_some();

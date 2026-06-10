@@ -17,7 +17,7 @@ pub struct WithdrawTwo {
     /// Tree authority PDA for tree 1.
     #[account(mut)]
     pub tree_authority1: UncheckedAccount,
-    /// Vault PDA that owns the cNFTs — signs both transfers.
+    /// Vault PDA that owns the cNFTs - signs both transfers.
     #[account(address = crate::VaultPda::seeds())]
     pub leaf_owner: UncheckedAccount,
     /// Recipient for cNFT 1.
@@ -55,7 +55,7 @@ pub fn handle_withdraw_two_cnfts(accounts: &mut WithdrawTwo, data: &[u8], remain
     let args1 = &data[0..TRANSFER_ARGS_LEN];
     let proof_1_length = data[TRANSFER_ARGS_LEN] as usize;
     let args2 = &data[TRANSFER_ARGS_LEN + 1..TRANSFER_ARGS_LEN * 2 + 1];
-    // _proof_2_length at data[217] — not needed, remaining after proof1 is proof2
+    // _proof_2_length at data[217] - not needed, remaining after proof1 is proof2
 
     // PDA signer seeds
     let bump_bytes = [leaf_owner_bump];
@@ -69,7 +69,7 @@ pub fn handle_withdraw_two_cnfts(accounts: &mut WithdrawTwo, data: &[u8], remain
     //
     // `remaining.iter()` yields `Result<RemainingAccount, _>` in newer
     // quasar-lang. Reach the inner `AccountView` via the unchecked accessor
-    // — we only read addresses/views to forward to the bubblegum CPIs as
+    // - we only read addresses/views to forward to the bubblegum CPIs as
     // proof nodes; no aliased data access.
     let placeholder = accounts.system_program.to_account_view().clone();
     let mut all_proofs: [AccountView; MAX_PROOF_NODES * 2] =

@@ -13,19 +13,26 @@ Use this as a reference for working with cNFTs in your own programs.
 
 ## Components
 
-- `programs/cnft-vault/` — the Anchor program.
+- `programs/cnft-vault/` - the Anchor program.
 
-There is no `tests/` directory in this example today. The program is intended to be deployed and exercised against a real cluster.
+## Testing
+
+A Rust [LiteSVM](https://www.anchor-lang.com/docs/testing/litesvm) integration suite lives in `programs/cnft-vault/tests/`. It loads mainnet-dumped fixture binaries for Bubblegum, SPL Account Compression, and SPL Noop from `tests/fixtures/` (see the README there), so the CPIs run against the real programs in-process.
+
+```bash
+cargo build-sbf
+cargo test
+```
 
 ## Deployment
 
-The program ID declared in [`programs/cnft-vault/src/lib.rs`](programs/cnft-vault/src/lib.rs) is `Fd4iwpPWaCU8BNwGQGtvvrcvG4Tfizq3RgLm8YLBJX6D`. Whether this address is currently deployed on any cluster is not tracked in this repo — verify with `solana program show <id>` against the cluster you care about.
+The program ID declared in [`programs/cnft-vault/src/lib.rs`](programs/cnft-vault/src/lib.rs) is `Fd4iwpPWaCU8BNwGQGtvvrcvG4Tfizq3RgLm8YLBJX6D`. Whether this address is currently deployed on any cluster is not tracked in this repo - verify with `solana program show <id>` against the cluster you care about.
 
 To deploy your own copy, change the program ID in `lib.rs` and `Anchor.toml`, then run `anchor build && anchor deploy`.
 
 ## Limitations
 
-This is a reference implementation. There's no authorization on withdraws — anyone can withdraw any cNFT in the vault. It's not optimized for compute either. Treat it as a proof of concept.
+This is a reference implementation. There's no authorization on withdraws - anyone can withdraw any cNFT in the vault. It's not optimized for compute either. Treat it as a proof of concept.
 
 ## Further resources
 

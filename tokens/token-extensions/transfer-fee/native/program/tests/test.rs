@@ -24,7 +24,7 @@ fn test_create_token_with_transfer_fee() {
     let program_bytes = include_bytes!("../../tests/fixtures/token_2022_transfer_fees_program.so");
     svm.add_program(program_id, program_bytes).unwrap();
 
-    // litesvm bundles the SPL Token-2022 program by default.
+    // litesvm bundles the Token Extensions program by default.
     let token_program_id = spl_token_2022_interface::id();
 
     let payer = Keypair::new();
@@ -60,7 +60,7 @@ fn test_create_token_with_transfer_fee() {
 
     svm.send_transaction(tx).unwrap();
 
-    // The mint should be owned by Token-2022 and carry the TransferFeeConfig
+    // The mint should be owned by Token Extensions and carry the TransferFeeConfig
     // extension. The program initializes a 1% fee, then sets the newer fee to
     // 10% (1000 bps) with a max fee of 5 tokens.
     let mint_account = svm.get_account(&mint.pubkey()).unwrap();

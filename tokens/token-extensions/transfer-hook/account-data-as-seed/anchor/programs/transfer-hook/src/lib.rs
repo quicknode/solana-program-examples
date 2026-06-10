@@ -48,7 +48,7 @@ pub fn check_is_transferring(context: &Context<TransferHook>) -> Result<()> {
     let source_token_info = context.accounts.source_token.to_account_info();
     let mut account_data_ref: RefMut<&mut [u8]> = source_token_info.try_borrow_mut_data()?;
     // .map_err() needed because spl-token-2022 uses solana-program-error 2.x
-    // while anchor-lang 1.0 uses 3.x — structurally identical but different semver types
+    // while anchor-lang 1.0 uses 3.x - structurally identical but different semver types
     let mut account = PodStateWithExtensionsMut::<PodAccount>::unpack(*account_data_ref)
         .map_err(|_| ProgramError::InvalidAccountData)?;
     let account_extension = account.get_extension_mut::<TransferHookAccount>()
@@ -64,7 +64,7 @@ pub fn check_is_transferring(context: &Context<TransferHook>) -> Result<()> {
 // Define extra account metas to store on extra_account_meta_list account
 pub fn handle_extra_account_metas() -> Result<Vec<ExtraAccountMeta>> {
     // .map_err() needed because spl-tlv-account-resolution uses solana-program-error 2.x
-    // while anchor-lang 1.0 uses 3.x — structurally identical but different semver types
+    // while anchor-lang 1.0 uses 3.x - structurally identical but different semver types
     Ok(vec![ExtraAccountMeta::new_with_seeds(
         &[
             Seed::Literal {

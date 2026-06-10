@@ -111,7 +111,7 @@ fn test_update_longer_message() {
     let payer_after_init = result.account(&payer).unwrap().clone();
     let msg_after_init = result.account(&message_account).unwrap().clone();
 
-    // Update with longer message — triggers realloc
+    // Update with longer message - triggers realloc
     let update_ix = Instruction {
         program_id,
         accounts: vec![

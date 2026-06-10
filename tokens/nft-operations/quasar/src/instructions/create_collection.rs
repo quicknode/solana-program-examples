@@ -27,10 +27,10 @@ pub struct CreateCollection {
     /// PDA used as mint authority and update authority.
     #[account(address = MintAuthorityPda::seeds())]
     pub mint_authority: UncheckedAccount,
-    /// Metadata PDA — initialised by the Metaplex program.
+    /// Metadata PDA - initialised by the Metaplex program.
     #[account(mut)]
     pub metadata: UncheckedAccount,
-    /// Master edition PDA — initialised by the Metaplex program.
+    /// Master edition PDA - initialised by the Metaplex program.
     #[account(mut)]
     pub master_edition: UncheckedAccount,
     /// Token account to hold the collection NFT.

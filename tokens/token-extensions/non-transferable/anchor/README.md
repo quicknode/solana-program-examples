@@ -1,4 +1,4 @@
-# Token Extensions — Non-Transferable (Anchor)
+# Token Extensions - Non-Transferable (Anchor)
 
 Create tokens that cannot be transferred between accounts.
 
