@@ -2,6 +2,7 @@
 
 use quasar_lang::prelude::*;
 
+mod error;
 mod instructions;
 use instructions::*;
 mod state;

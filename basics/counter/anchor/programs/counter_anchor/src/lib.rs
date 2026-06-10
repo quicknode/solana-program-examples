@@ -9,11 +9,11 @@ declare_id!("BmDHboaj1kBUoinJKKSRqKfMeRKJqQqEbUj1VgzeQe4A");
 pub mod counter_anchor {
     use super::*;
 
-    pub fn initialize_counter(context: Context<InitializeCounter>) -> Result<()> {
+    pub fn initialize_counter(context: Context<InitializeCounterAccountConstraints>) -> Result<()> {
         instructions::initialize_counter::handler(context)
     }
 
-    pub fn increment(context: Context<Increment>) -> Result<()> {
+    pub fn increment(context: Context<IncrementAccountConstraints>) -> Result<()> {
         instructions::increment::handler(context)
     }
 }
@@ -22,4 +22,10 @@ pub mod counter_anchor {
 #[derive(InitSpace)]
 pub struct Counter {
     count: u64,
+}
+
+#[error_code]
+pub enum CounterError {
+    #[msg("Counter overflowed u64::MAX")]
+    MathOverflow,
 }

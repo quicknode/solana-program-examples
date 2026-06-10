@@ -37,7 +37,7 @@ fn test_create_and_increment_page_visits() {
     let create_ix = Instruction::new_with_bytes(
         program_id,
         &program_derived_addresses_program::instruction::CreatePageVisits {}.data(),
-        program_derived_addresses_program::accounts::CreatePageVisits {
+        program_derived_addresses_program::accounts::CreatePageVisitsAccountConstraints {
             payer: payer.pubkey(),
             page_visits: page_visits_pda,
             system_program: system_program::id(),
@@ -58,7 +58,7 @@ fn test_create_and_increment_page_visits() {
     let increment_ix = Instruction::new_with_bytes(
         program_id,
         &program_derived_addresses_program::instruction::IncrementPageVisits {}.data(),
-        program_derived_addresses_program::accounts::IncrementPageVisits {
+        program_derived_addresses_program::accounts::IncrementPageVisitsAccountConstraints {
             user: payer.pubkey(),
             page_visits: page_visits_pda,
         }
@@ -81,7 +81,7 @@ fn test_create_and_increment_page_visits() {
     let increment_ix2 = Instruction::new_with_bytes(
         program_id,
         &program_derived_addresses_program::instruction::IncrementPageVisits {}.data(),
-        program_derived_addresses_program::accounts::IncrementPageVisits {
+        program_derived_addresses_program::accounts::IncrementPageVisitsAccountConstraints {
             user: payer.pubkey(),
             page_visits: page_visits_pda,
         }
