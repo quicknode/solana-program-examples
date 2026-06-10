@@ -4,7 +4,7 @@ use crate::Message;
 
 #[derive(Accounts)]
 #[instruction(input: String)]
-pub struct Update<'info> {
+pub struct UpdateAccountConstraints<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
 
@@ -18,7 +18,7 @@ pub struct Update<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handler(context: Context<Update>, input: String) -> Result<()> {
+pub fn handler(context: Context<UpdateAccountConstraints>, input: String) -> Result<()> {
     context.accounts.message_account.message = input;
     Ok(())
 }

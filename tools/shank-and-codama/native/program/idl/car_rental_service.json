@@ -9,19 +9,25 @@
           "name": "carAccount",
           "isMut": true,
           "isSigner": false,
-          "docs": ["The account that will represent the Car being created"]
+          "docs": [
+            "The account that will represent the Car being created"
+          ]
         },
         {
           "name": "payer",
           "isMut": true,
-          "isSigner": false,
-          "docs": ["Fee payer"]
+          "isSigner": true,
+          "docs": [
+            "Fee payer"
+          ]
         },
         {
           "name": "systemProgram",
           "isMut": false,
           "isSigner": false,
-          "docs": ["The System Program"]
+          "docs": [
+            "The System Program"
+          ]
         }
       ],
       "args": [
@@ -44,25 +50,33 @@
           "name": "rentalAccount",
           "isMut": true,
           "isSigner": false,
-          "docs": ["The account that will represent the actual order for the rental"]
+          "docs": [
+            "The account that will represent the actual order for the rental"
+          ]
         },
         {
           "name": "carAccount",
           "isMut": false,
           "isSigner": false,
-          "docs": ["The account representing the Car being rented in this order"]
+          "docs": [
+            "The account representing the Car being rented in this order"
+          ]
         },
         {
           "name": "payer",
           "isMut": true,
-          "isSigner": false,
-          "docs": ["Fee payer"]
+          "isSigner": true,
+          "docs": [
+            "Fee payer"
+          ]
         },
         {
           "name": "systemProgram",
           "isMut": false,
           "isSigner": false,
-          "docs": ["The System Program"]
+          "docs": [
+            "The System Program"
+          ]
         }
       ],
       "args": [
@@ -85,19 +99,25 @@
           "name": "rentalAccount",
           "isMut": true,
           "isSigner": false,
-          "docs": ["The account representing the active rental"]
+          "docs": [
+            "The account representing the active rental"
+          ]
         },
         {
           "name": "carAccount",
           "isMut": false,
           "isSigner": false,
-          "docs": ["The account representing the Car being rented in this order"]
+          "docs": [
+            "The account representing the Car being rented in this order"
+          ]
         },
         {
           "name": "payer",
           "isMut": true,
-          "isSigner": false,
-          "docs": ["Fee payer"]
+          "isSigner": true,
+          "docs": [
+            "Fee payer"
+          ]
         }
       ],
       "args": [],
@@ -113,19 +133,25 @@
           "name": "rentalAccount",
           "isMut": true,
           "isSigner": false,
-          "docs": ["The account representing the active rental"]
+          "docs": [
+            "The account representing the active rental"
+          ]
         },
         {
           "name": "carAccount",
           "isMut": false,
           "isSigner": false,
-          "docs": ["The account representing the Car being rented in this order"]
+          "docs": [
+            "The account representing the Car being rented in this order"
+          ]
         },
         {
           "name": "payer",
           "isMut": true,
-          "isSigner": false,
-          "docs": ["Fee payer"]
+          "isSigner": true,
+          "docs": [
+            "Fee payer"
+          ]
         }
       ],
       "args": [],

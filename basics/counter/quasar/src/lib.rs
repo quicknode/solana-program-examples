@@ -9,7 +9,7 @@ mod state;
 #[cfg(test)]
 mod tests;
 
-declare_id!("HYSDBQLVUSMRQKQZxfKJwDy5PPrZb7bvuBLaWfbcYhEP");
+declare_id!("BmDHboaj1kBUoinJKKSRqKfMeRKJqQqEbUj1VgzeQe4A");
 
 #[program]
 mod quasar_counter {

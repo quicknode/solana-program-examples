@@ -11,37 +11,45 @@ declare_id!("22222222222222222222222222222222222222222222");
 /// Creates a token mint and mints initial tokens to the creator's token account.
 ///
 /// The Anchor version uses Metaplex for onchain metadata. Quasar's metadata
-/// crate is demonstrated in the `nft-minter` and `token-minter` examples;
-/// this example focuses on the core SPL Token operations: creating a mint and
-/// minting tokens.
+/// crate is demonstrated in the `nft-operations` example; this example focuses
+/// on the core SPL Token operations: creating a mint and minting tokens.
 #[program]
 mod quasar_create_token {
     use super::*;
 
-    /// Create a new token mint (account init handled by Quasar's `#[account(init)]`).
+    /// Create a new token mint with the caller-supplied number of decimals
+    /// (account init handled by Quasar's `#[account(init)]`).
     #[instruction(discriminator = 0)]
-    pub fn create_token(ctx: Ctx<CreateToken>, _decimals: u8) -> Result<(), ProgramError> {
-        handle_create_token(&mut ctx.accounts)
+    pub fn create_token(
+        ctx: Ctx<CreateTokenAccountConstraints>,
+        decimals: u8,
+    ) -> Result<(), ProgramError> {
+        handle_create_token(&mut ctx.accounts, decimals)
     }
 
-    /// Mint tokens to the creator's token account.
+    /// Mint `amount` minor units to the creator's token account.
     #[instruction(discriminator = 1)]
-    pub fn mint_tokens(ctx: Ctx<MintTokens>, amount: u64) -> Result<(), ProgramError> {
+    pub fn mint_tokens(
+        ctx: Ctx<MintTokensAccountConstraints>,
+        amount: u64,
+    ) -> Result<(), ProgramError> {
         handle_mint_tokens(&mut ctx.accounts, amount)
     }
 }
 
 /// Accounts for creating a new token mint.
-/// Quasar's `#[account(init)]` handles the create_account + initialize_mint CPI.
+/// Quasar's `#[account(init)]` handles the create_account + initialize_mint
+/// CPI; the `decimals` instruction argument is threaded into the mint init.
 #[derive(Accounts)]
-pub struct CreateToken {
+#[instruction(decimals: u8)]
+pub struct CreateTokenAccountConstraints {
     #[account(mut)]
     pub payer: Signer,
     #[account(
         mut,
         init,
         payer = payer,
-        mint(decimals = 9, authority = payer, freeze_authority = None, token_program = token_program),
+        mint(decimals = decimals, authority = payer, freeze_authority = None, token_program = token_program),
     )]
     pub mint: Account<Mint>,
     pub rent: Sysvar<Rent>,
@@ -51,7 +59,7 @@ pub struct CreateToken {
 
 /// Accounts for minting tokens to an existing token account.
 #[derive(Accounts)]
-pub struct MintTokens {
+pub struct MintTokensAccountConstraints {
     #[account(mut)]
     pub authority: Signer,
     #[account(mut)]
@@ -62,14 +70,28 @@ pub struct MintTokens {
 }
 
 #[inline(always)]
-fn handle_create_token(_accounts: &mut CreateToken) -> Result<(), ProgramError> {
-    // Mint account is created and initialised by Quasar's account init.
+fn handle_create_token(
+    _accounts: &mut CreateTokenAccountConstraints,
+    _decimals: u8,
+) -> Result<(), ProgramError> {
+    // Mint account is created and initialised by Quasar's account init, which
+    // reads `decimals` from the instruction data via the struct-level
+    // #[instruction(decimals: u8)] declaration.
     Ok(())
 }
 
 #[inline(always)]
-fn handle_mint_tokens(accounts: &mut MintTokens, amount: u64) -> Result<(), ProgramError> {
-    accounts.token_program
-        .mint_to(&accounts.mint, &accounts.token_account, &accounts.authority, amount)
+fn handle_mint_tokens(
+    accounts: &mut MintTokensAccountConstraints,
+    amount: u64,
+) -> Result<(), ProgramError> {
+    accounts
+        .token_program
+        .mint_to(
+            &accounts.mint,
+            &accounts.token_account,
+            &accounts.authority,
+            amount,
+        )
         .invoke()
 }

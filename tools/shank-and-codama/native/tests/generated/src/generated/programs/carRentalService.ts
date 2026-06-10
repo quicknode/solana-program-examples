@@ -7,23 +7,23 @@
  */
 
 import {
-  type Address,
   assertIsInstructionWithAccounts,
+  containsBytes,
+  extendClient,
+  getU8Encoder,
+  SOLANA_ERROR__PROGRAM_CLIENTS__FAILED_TO_IDENTIFY_INSTRUCTION,
+  SOLANA_ERROR__PROGRAM_CLIENTS__UNRECOGNIZED_INSTRUCTION_TYPE,
+  SolanaError,
+  type Address,
   type ClientWithPayer,
   type ClientWithRpc,
   type ClientWithTransactionPlanning,
   type ClientWithTransactionSending,
-  containsBytes,
-  extendClient,
   type GetAccountInfoApi,
   type GetMultipleAccountsApi,
-  getU8Encoder,
   type Instruction,
   type InstructionWithData,
   type ReadonlyUint8Array,
-  SOLANA_ERROR__PROGRAM_CLIENTS__FAILED_TO_IDENTIFY_INSTRUCTION,
-  SOLANA_ERROR__PROGRAM_CLIENTS__UNRECOGNIZED_INSTRUCTION_TYPE,
-  SolanaError,
 } from "@solana/kit";
 import {
   addSelfFetchFunctions,
@@ -32,29 +32,29 @@ import {
   type SelfPlanAndSendFunctions,
 } from "@solana/program-client-core";
 import {
-  type Car,
-  type CarArgs,
   getCarCodec,
   getRentalOrderCodec,
+  type Car,
+  type CarArgs,
   type RentalOrder,
   type RentalOrderArgs,
 } from "../accounts";
 import {
-  type AddCarInput,
-  type BookRentalInput,
   getAddCarInstruction,
   getBookRentalInstruction,
   getPickUpCarInstruction,
   getReturnCarInstruction,
+  parseAddCarInstruction,
+  parseBookRentalInstruction,
+  parsePickUpCarInstruction,
+  parseReturnCarInstruction,
+  type AddCarInput,
+  type BookRentalInput,
   type ParsedAddCarInstruction,
   type ParsedBookRentalInstruction,
   type ParsedPickUpCarInstruction,
   type ParsedReturnCarInstruction,
   type PickUpCarInput,
-  parseAddCarInstruction,
-  parseBookRentalInstruction,
-  parsePickUpCarInstruction,
-  parseReturnCarInstruction,
   type ReturnCarInput,
 } from "../instructions";
 
@@ -89,10 +89,10 @@ export function identifyCarRentalServiceInstruction(
   if (containsBytes(data, getU8Encoder().encode(3), 0)) {
     return CarRentalServiceInstruction.ReturnCar;
   }
-  throw new SolanaError(SOLANA_ERROR__PROGRAM_CLIENTS__FAILED_TO_IDENTIFY_INSTRUCTION, {
-    instructionData: data,
-    programName: "carRentalService",
-  });
+  throw new SolanaError(
+    SOLANA_ERROR__PROGRAM_CLIENTS__FAILED_TO_IDENTIFY_INSTRUCTION,
+    { instructionData: data, programName: "carRentalService" },
+  );
 }
 
 export type ParsedCarRentalServiceInstruction<
@@ -145,10 +145,13 @@ export function parseCarRentalServiceInstruction<TProgram extends string>(
       };
     }
     default:
-      throw new SolanaError(SOLANA_ERROR__PROGRAM_CLIENTS__UNRECOGNIZED_INSTRUCTION_TYPE, {
-        instructionType: instructionType as string,
-        programName: "carRentalService",
-      });
+      throw new SolanaError(
+        SOLANA_ERROR__PROGRAM_CLIENTS__UNRECOGNIZED_INSTRUCTION_TYPE,
+        {
+          instructionType: instructionType as string,
+          programName: "carRentalService",
+        },
+      );
   }
 }
 
@@ -159,7 +162,8 @@ export type CarRentalServicePlugin = {
 
 export type CarRentalServicePluginAccounts = {
   car: ReturnType<typeof getCarCodec> & SelfFetchFunctions<CarArgs, Car>;
-  rentalOrder: ReturnType<typeof getRentalOrderCodec> & SelfFetchFunctions<RentalOrderArgs, RentalOrder>;
+  rentalOrder: ReturnType<typeof getRentalOrderCodec> &
+    SelfFetchFunctions<RentalOrderArgs, RentalOrder>;
 };
 
 export type CarRentalServicePluginInstructions = {
@@ -177,7 +181,9 @@ export type CarRentalServicePluginInstructions = {
   ) => ReturnType<typeof getReturnCarInstruction> & SelfPlanAndSendFunctions;
 };
 
-export type CarRentalServicePluginRequirements = ClientWithRpc<GetAccountInfoApi & GetMultipleAccountsApi> &
+export type CarRentalServicePluginRequirements = ClientWithRpc<
+  GetAccountInfoApi & GetMultipleAccountsApi
+> &
   ClientWithPayer &
   ClientWithTransactionPlanning &
   ClientWithTransactionSending;
@@ -200,7 +206,7 @@ export function carRentalServiceProgram() {
               client,
               getAddCarInstruction({
                 ...input,
-                payer: input.payer ?? client.payer.address,
+                payer: input.payer ?? client.payer,
               }),
             ),
           bookRental: (input) =>
@@ -208,7 +214,7 @@ export function carRentalServiceProgram() {
               client,
               getBookRentalInstruction({
                 ...input,
-                payer: input.payer ?? client.payer.address,
+                payer: input.payer ?? client.payer,
               }),
             ),
           pickUpCar: (input) =>
@@ -216,7 +222,7 @@ export function carRentalServiceProgram() {
               client,
               getPickUpCarInstruction({
                 ...input,
-                payer: input.payer ?? client.payer.address,
+                payer: input.payer ?? client.payer,
               }),
             ),
           returnCar: (input) =>
@@ -224,7 +230,7 @@ export function carRentalServiceProgram() {
               client,
               getReturnCarInstruction({
                 ...input,
-                payer: input.payer ?? client.payer.address,
+                payer: input.payer ?? client.payer,
               }),
             ),
         },

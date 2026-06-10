@@ -7,7 +7,7 @@ use quasar_spl::prelude::*;
 #[cfg(test)]
 mod tests;
 
-declare_id!("22222222222222222222222222222222222222222222");
+declare_id!("52quezNUzc1Ej6Jh6L4bvtxPW8j6TEFHuLVAWiFvdnsc");
 
 /// NFT minter: creates a mint (decimals = 0), mints 1 token, creates Metaplex
 /// metadata and master edition in a single instruction.

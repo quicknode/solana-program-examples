@@ -117,6 +117,10 @@ pnpm build-and-test   # build, regenerate the client, then run the LiteSVM test
 ```
 
 The test ([`tests/test.ts`](./tests/test.ts)) loads the compiled `.so` into a
-[LiteSVM](https://github.com/litesvm/litesvm) instance and exercises `add_car`,
-`book_rental`, and `pick_up_car` through the generated client, asserting on the
-resulting onchain account state.
+[LiteSVM](https://github.com/litesvm/litesvm) instance and drives the full
+rental lifecycle (`add_car`, `book_rental`, `pick_up_car`, `return_car`)
+through the generated client, asserting on the resulting onchain account
+state. It also asserts the program's account validation: a payer that did not
+sign, a rental account owned by the wrong program, and an out-of-order status
+transition (returning a car that was never picked up) are all rejected with
+the named errors from `program/src/error.rs`.

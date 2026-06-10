@@ -7,35 +7,41 @@
  */
 
 import {
-  type AccountMeta,
-  type Address,
   addDecoderSizePrefix,
   addEncoderSizePrefix,
-  type Codec,
   combineCodec,
-  type Decoder,
-  type Encoder,
   getStructDecoder,
   getStructEncoder,
-  getU8Decoder,
-  getU8Encoder,
   getU32Decoder,
   getU32Encoder,
   getU64Decoder,
   getU64Encoder,
+  getU8Decoder,
+  getU8Encoder,
   getUtf8Decoder,
   getUtf8Encoder,
+  SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
+  SolanaError,
+  transformEncoder,
+  type AccountMeta,
+  type AccountSignerMeta,
+  type Address,
+  type Codec,
+  type Decoder,
+  type Encoder,
   type Instruction,
   type InstructionWithAccounts,
   type InstructionWithData,
   type ReadonlyAccount,
   type ReadonlyUint8Array,
-  SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
-  SolanaError,
-  transformEncoder,
+  type TransactionSigner,
   type WritableAccount,
+  type WritableSignerAccount,
 } from "@solana/kit";
-import { getAccountMetaFactory, type ResolvedInstructionAccount } from "@solana/program-client-core";
+import {
+  getAccountMetaFactory,
+  type ResolvedInstructionAccount,
+} from "@solana/program-client-core";
 import { CAR_RENTAL_SERVICE_PROGRAM_ADDRESS } from "../programs";
 
 export const BOOK_RENTAL_DISCRIMINATOR = 1;
@@ -49,16 +55,26 @@ export type BookRentalInstruction<
   TAccountRentalAccount extends string | AccountMeta<string> = string,
   TAccountCarAccount extends string | AccountMeta<string> = string,
   TAccountPayer extends string | AccountMeta<string> = string,
-  TAccountSystemProgram extends string | AccountMeta<string> = "11111111111111111111111111111111",
+  TAccountSystemProgram extends string | AccountMeta<string> =
+    "11111111111111111111111111111111",
   TRemainingAccounts extends readonly AccountMeta<string>[] = [],
 > = Instruction<TProgram> &
   InstructionWithData<ReadonlyUint8Array> &
   InstructionWithAccounts<
     [
-      TAccountRentalAccount extends string ? WritableAccount<TAccountRentalAccount> : TAccountRentalAccount,
-      TAccountCarAccount extends string ? ReadonlyAccount<TAccountCarAccount> : TAccountCarAccount,
-      TAccountPayer extends string ? WritableAccount<TAccountPayer> : TAccountPayer,
-      TAccountSystemProgram extends string ? ReadonlyAccount<TAccountSystemProgram> : TAccountSystemProgram,
+      TAccountRentalAccount extends string
+        ? WritableAccount<TAccountRentalAccount>
+        : TAccountRentalAccount,
+      TAccountCarAccount extends string
+        ? ReadonlyAccount<TAccountCarAccount>
+        : TAccountCarAccount,
+      TAccountPayer extends string
+        ? WritableSignerAccount<TAccountPayer> &
+            AccountSignerMeta<TAccountPayer>
+        : TAccountPayer,
+      TAccountSystemProgram extends string
+        ? ReadonlyAccount<TAccountSystemProgram>
+        : TAccountSystemProgram,
       ...TRemainingAccounts,
     ]
   >;
@@ -101,8 +117,14 @@ export function getBookRentalInstructionDataDecoder(): Decoder<BookRentalInstruc
   ]);
 }
 
-export function getBookRentalInstructionDataCodec(): Codec<BookRentalInstructionDataArgs, BookRentalInstructionData> {
-  return combineCodec(getBookRentalInstructionDataEncoder(), getBookRentalInstructionDataDecoder());
+export function getBookRentalInstructionDataCodec(): Codec<
+  BookRentalInstructionDataArgs,
+  BookRentalInstructionData
+> {
+  return combineCodec(
+    getBookRentalInstructionDataEncoder(),
+    getBookRentalInstructionDataDecoder(),
+  );
 }
 
 export type BookRentalInput<
@@ -116,7 +138,7 @@ export type BookRentalInput<
   /** The account representing the Car being rented in this order */
   carAccount: Address<TAccountCarAccount>;
   /** Fee payer */
-  payer: Address<TAccountPayer>;
+  payer: TransactionSigner<TAccountPayer>;
   /** The System Program */
   systemProgram?: Address<TAccountSystemProgram>;
   name: BookRentalInstructionDataArgs["name"];
@@ -132,7 +154,12 @@ export function getBookRentalInstruction<
   TAccountSystemProgram extends string,
   TProgramAddress extends Address = typeof CAR_RENTAL_SERVICE_PROGRAM_ADDRESS,
 >(
-  input: BookRentalInput<TAccountRentalAccount, TAccountCarAccount, TAccountPayer, TAccountSystemProgram>,
+  input: BookRentalInput<
+    TAccountRentalAccount,
+    TAccountCarAccount,
+    TAccountPayer,
+    TAccountSystemProgram
+  >,
   config?: { programAddress?: TProgramAddress },
 ): BookRentalInstruction<
   TProgramAddress,
@@ -142,7 +169,8 @@ export function getBookRentalInstruction<
   TAccountSystemProgram
 > {
   // Program address.
-  const programAddress = config?.programAddress ?? CAR_RENTAL_SERVICE_PROGRAM_ADDRESS;
+  const programAddress =
+    config?.programAddress ?? CAR_RENTAL_SERVICE_PROGRAM_ADDRESS;
 
   // Original accounts.
   const originalAccounts = {
@@ -151,14 +179,18 @@ export function getBookRentalInstruction<
     payer: { value: input.payer ?? null, isWritable: true },
     systemProgram: { value: input.systemProgram ?? null, isWritable: false },
   };
-  const accounts = originalAccounts as Record<keyof typeof originalAccounts, ResolvedInstructionAccount>;
+  const accounts = originalAccounts as Record<
+    keyof typeof originalAccounts,
+    ResolvedInstructionAccount
+  >;
 
   // Original args.
   const args = { ...input };
 
   // Resolve default values.
   if (!accounts.systemProgram.value) {
-    accounts.systemProgram.value = "11111111111111111111111111111111" as Address<"11111111111111111111111111111111">;
+    accounts.systemProgram.value =
+      "11111111111111111111111111111111" as Address<"11111111111111111111111111111111">;
   }
 
   const getAccountMeta = getAccountMetaFactory(programAddress, "programId");
@@ -169,7 +201,9 @@ export function getBookRentalInstruction<
       getAccountMeta("payer", accounts.payer),
       getAccountMeta("systemProgram", accounts.systemProgram),
     ],
-    data: getBookRentalInstructionDataEncoder().encode(args as BookRentalInstructionDataArgs),
+    data: getBookRentalInstructionDataEncoder().encode(
+      args as BookRentalInstructionDataArgs,
+    ),
     programAddress,
   } as BookRentalInstruction<
     TProgramAddress,
@@ -198,14 +232,22 @@ export type ParsedBookRentalInstruction<
   data: BookRentalInstructionData;
 };
 
-export function parseBookRentalInstruction<TProgram extends string, TAccountMetas extends readonly AccountMeta[]>(
-  instruction: Instruction<TProgram> & InstructionWithAccounts<TAccountMetas> & InstructionWithData<ReadonlyUint8Array>,
+export function parseBookRentalInstruction<
+  TProgram extends string,
+  TAccountMetas extends readonly AccountMeta[],
+>(
+  instruction: Instruction<TProgram> &
+    InstructionWithAccounts<TAccountMetas> &
+    InstructionWithData<ReadonlyUint8Array>,
 ): ParsedBookRentalInstruction<TProgram, TAccountMetas> {
   if (instruction.accounts.length < 4) {
-    throw new SolanaError(SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS, {
-      actualAccountMetas: instruction.accounts.length,
-      expectedAccountMetas: 4,
-    });
+    throw new SolanaError(
+      SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
+      {
+        actualAccountMetas: instruction.accounts.length,
+        expectedAccountMetas: 4,
+      },
+    );
   }
   let accountIndex = 0;
   const getNextAccount = () => {

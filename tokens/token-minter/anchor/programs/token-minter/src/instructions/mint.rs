@@ -7,13 +7,15 @@ use {
 };
 
 #[derive(Accounts)]
-pub struct MintToken<'info> {
+pub struct MintTokenAccountConstraints<'info> {
     #[account(mut)]
     pub mint_authority: Signer<'info>,
 
     pub recipient: SystemAccount<'info>,
+
     #[account(mut)]
     pub mint_account: Account<'info, Mint>,
+
     #[account(
         init_if_needed,
         payer = mint_authority,
@@ -27,7 +29,15 @@ pub struct MintToken<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handle_mint_token(context: Context<MintToken>, amount: u64) -> Result<()> {
+/// Mints `amount` tokens to the recipient's associated token account.
+///
+/// `amount` is in minor units (the raw integer the token program operates
+/// on). Clients convert from major units, e.g. 1 token with 9 decimals is
+/// `1 * 10u64.pow(9)` minor units.
+pub fn handle_mint_token(
+    context: Context<MintTokenAccountConstraints>,
+    amount: u64,
+) -> Result<()> {
     msg!("Minting tokens to associated token account...");
     msg!("Mint: {}", &context.accounts.mint_account.key());
     msg!(
@@ -45,7 +55,7 @@ pub fn handle_mint_token(context: Context<MintToken>, amount: u64) -> Result<()>
                 authority: context.accounts.mint_authority.to_account_info(),
             },
         ),
-        amount * 10u64.pow(context.accounts.mint_account.decimals as u32), // Mint tokens, adjust for decimals
+        amount,
     )?;
 
     msg!("Token minted successfully.");

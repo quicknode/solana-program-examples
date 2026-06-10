@@ -1,4 +1,4 @@
-use crate::state::Car;
+use crate::{error::CarRentalError, state::Car};
 use {
     borsh::{BorshDeserialize, BorshSerialize},
     solana_program::{
@@ -26,7 +26,9 @@ pub fn add_car(program_id: &Pubkey, accounts: &[AccountInfo], args: AddCarArgs) 
     let system_program = next_account_info(accounts_iter)?;
 
     let (car_account_pda, car_account_bump) = Car::find_pda(program_id, &args.make, &args.model);
-    assert!(&car_account_pda == car_account.key);
+    if &car_account_pda != car_account.key {
+        return Err(CarRentalError::CarAccountAddressMismatch.into());
+    }
 
     let car_data = Car {
         year: args.year,

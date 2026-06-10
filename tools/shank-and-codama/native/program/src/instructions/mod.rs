@@ -21,7 +21,7 @@ pub enum CarRentalServiceInstruction {
         name = "car_account",
         desc = "The account that will represent the Car being created"
     )]
-    #[account(1, writable, name = "payer", desc = "Fee payer")]
+    #[account(1, writable, signer, name = "payer", desc = "Fee payer")]
     #[account(2, name = "system_program", desc = "The System Program")]
     AddCar(AddCarArgs),
 
@@ -36,7 +36,7 @@ pub enum CarRentalServiceInstruction {
         name = "car_account",
         desc = "The account representing the Car being rented in this order"
     )]
-    #[account(2, writable, name = "payer", desc = "Fee payer")]
+    #[account(2, writable, signer, name = "payer", desc = "Fee payer")]
     #[account(3, name = "system_program", desc = "The System Program")]
     BookRental(BookRentalArgs),
 
@@ -51,7 +51,7 @@ pub enum CarRentalServiceInstruction {
         name = "car_account",
         desc = "The account representing the Car being rented in this order"
     )]
-    #[account(2, writable, name = "payer", desc = "Fee payer")]
+    #[account(2, writable, signer, name = "payer", desc = "Fee payer")]
     PickUpCar,
 
     #[account(
@@ -65,6 +65,6 @@ pub enum CarRentalServiceInstruction {
         name = "car_account",
         desc = "The account representing the Car being rented in this order"
     )]
-    #[account(2, writable, name = "payer", desc = "Fee payer")]
+    #[account(2, writable, signer, name = "payer", desc = "Fee payer")]
     ReturnCar,
 }

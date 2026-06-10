@@ -5,12 +5,12 @@ use {
             create_metadata_accounts_v3, mpl_token_metadata::types::DataV2,
             CreateMetadataAccountsV3, Metadata,
         },
-        token::{Mint, Token},
+        token_interface::{Mint, TokenInterface},
     },
 };
 
 #[derive(Accounts)]
-pub struct CreateToken<'info> {
+pub struct CreateTokenAccountConstraints<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
 
@@ -20,9 +20,9 @@ pub struct CreateToken<'info> {
         mint::decimals = 9,
         mint::authority = payer.key(),
         mint::freeze_authority = payer.key(),
-
+        mint::token_program = token_program,
     )]
-    pub mint_account: Account<'info, Mint>,
+    pub mint_account: InterfaceAccount<'info, Mint>,
 
     /// CHECK: Validate address by deriving pda
     #[account(
@@ -33,14 +33,14 @@ pub struct CreateToken<'info> {
     )]
     pub metadata_account: UncheckedAccount<'info>,
 
-    pub token_program: Program<'info, Token>,
+    pub token_program: Interface<'info, TokenInterface>,
     pub token_metadata_program: Program<'info, Metadata>,
     pub system_program: Program<'info, System>,
     pub rent: Sysvar<'info, Rent>,
 }
 
 pub fn handle_create_token(
-    context: Context<CreateToken>,
+    context: Context<CreateTokenAccountConstraints>,
     token_name: String,
     token_symbol: String,
     token_uri: String,

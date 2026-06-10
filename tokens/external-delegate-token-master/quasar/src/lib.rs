@@ -6,7 +6,7 @@ use quasar_spl::prelude::*;
 #[cfg(test)]
 mod tests;
 
-declare_id!("22222222222222222222222222222222222222222222");
+declare_id!("FYPkt5VWMvtyWZDMGCwoKFkE3wXTzphicTpnNGuHWVbD");
 
 /// User account storing the Solana authority and linked Ethereum address.
 #[account(discriminator = 1, set_inner)]

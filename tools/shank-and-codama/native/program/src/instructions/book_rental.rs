@@ -1,4 +1,7 @@
-use crate::state::{RentalOrder, RentalOrderStatus};
+use crate::{
+    error::CarRentalError,
+    state::{RentalOrder, RentalOrderStatus},
+};
 use {
     borsh::{BorshDeserialize, BorshSerialize},
     solana_program::{
@@ -33,7 +36,9 @@ pub fn book_rental(
 
     let (rental_order_account_pda, rental_order_account_bump) =
         RentalOrder::find_pda(program_id, car_account.key, payer.key);
-    assert!(&rental_order_account_pda == rental_order_account.key);
+    if &rental_order_account_pda != rental_order_account.key {
+        return Err(CarRentalError::RentalAccountAddressMismatch.into());
+    }
 
     let rental_order_data = RentalOrder {
         car: *car_account.key,

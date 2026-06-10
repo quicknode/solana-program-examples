@@ -8,7 +8,7 @@ mod state;
 #[cfg(test)]
 mod tests;
 
-declare_id!("22222222222222222222222222222222222222222222");
+declare_id!("qbuMdeYxYJXBjU6C6qFKjZKjXmrU83eDQomHdrch826");
 
 /// Token escrow program: a maker deposits token A into a vault and specifies
 /// how much of token B they want in return. A taker fulfils the offer by

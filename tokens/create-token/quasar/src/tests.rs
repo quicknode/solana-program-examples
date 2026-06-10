@@ -85,7 +85,10 @@ fn test_create_token() {
     let system_program = quasar_svm::system_program::ID;
     let rent = quasar_svm::solana_sdk_ids::sysvar::rent::ID;
 
-    let data = build_create_token_data(9);
+    // Deliberately not 9: proves the decimals instruction argument reaches
+    // the initialize_mint CPI instead of being hardcoded.
+    let requested_decimals = 6u8;
+    let data = build_create_token_data(requested_decimals);
 
     let instruction = Instruction {
         program_id: crate::ID,
@@ -105,6 +108,14 @@ fn test_create_token() {
     );
 
     assert!(result.is_ok(), "create_token failed: {:?}", result.raw_result);
+
+    // The created mint must carry the requested decimals.
+    let mint_account = result.account(&mint_address).expect("mint should exist");
+    let mint_state =
+        <Mint as solana_program_pack::Pack>::unpack(&mint_account.data).expect("valid mint");
+    assert_eq!(mint_state.decimals, requested_decimals);
+    assert_eq!(mint_state.mint_authority, Some(payer).into());
+
     println!("  CREATE TOKEN CU: {}", result.compute_units_consumed);
 }
 

@@ -8,6 +8,7 @@ See also: [Pda Mint Authority overview](../README.md) and the [repository catalo
 
 - PDA mint authority
 - CPI mint_to
+- Amounts: `mint_token` takes `amount` in **minor units**, the raw integer the token program operates on. Clients convert from major units offchain: 1 token with 9 decimals is `1 * 10^9` minor units. The program never scales amounts onchain.
 
 ## Setup
 

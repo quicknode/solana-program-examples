@@ -7,20 +7,12 @@
  */
 
 import {
-  type Account,
-  type Address,
   addDecoderSizePrefix,
   addEncoderSizePrefix,
   assertAccountExists,
   assertAccountsExist,
-  type Codec,
   combineCodec,
-  type Decoder,
   decodeAccount,
-  type EncodedAccount,
-  type Encoder,
-  type FetchAccountConfig,
-  type FetchAccountsConfig,
   fetchEncodedAccount,
   fetchEncodedAccounts,
   getStructDecoder,
@@ -31,6 +23,14 @@ import {
   getU32Encoder,
   getUtf8Decoder,
   getUtf8Encoder,
+  type Account,
+  type Address,
+  type Codec,
+  type Decoder,
+  type EncodedAccount,
+  type Encoder,
+  type FetchAccountConfig,
+  type FetchAccountsConfig,
   type MaybeAccount,
   type MaybeEncodedAccount,
 } from "@solana/kit";
@@ -71,7 +71,10 @@ export function decodeCar<TAddress extends string = string>(
 export function decodeCar<TAddress extends string = string>(
   encodedAccount: EncodedAccount<TAddress> | MaybeEncodedAccount<TAddress>,
 ): Account<Car, TAddress> | MaybeAccount<Car, TAddress> {
-  return decodeAccount(encodedAccount as MaybeEncodedAccount<TAddress>, getCarDecoder());
+  return decodeAccount(
+    encodedAccount as MaybeEncodedAccount<TAddress>,
+    getCarDecoder(),
+  );
 }
 
 export async function fetchCar<TAddress extends string = string>(

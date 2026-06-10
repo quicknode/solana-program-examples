@@ -9,7 +9,7 @@ mod state;
 #[cfg(test)]
 mod tests;
 
-declare_id!("22222222222222222222222222222222222222222222");
+declare_id!("Eoiuq1dXvHxh6dLx3wh9gj8kSAUpga11krTrbfF5XYsC");
 
 /// Token crowdfunding program: a maker creates a fundraiser targeting a specific
 /// SPL token. Contributors deposit tokens into a vault. If the target is met,

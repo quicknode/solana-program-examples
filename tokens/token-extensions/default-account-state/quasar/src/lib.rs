@@ -9,7 +9,7 @@ use quasar_lang::{
 #[cfg(test)]
 mod tests;
 
-declare_id!("22222222222222222222222222222222222222222222");
+declare_id!("5LdYbHiUsFxVG8bfqoeBkhBYMRmWZb3BoLuABgYW7coB");
 
 /// Correct Token Extensions program ID (quasar-spl 0.0.0 has wrong bytes).
 pub struct Token2022Program;

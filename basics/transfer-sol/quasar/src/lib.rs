@@ -26,7 +26,7 @@ mod quasar_transfer_sol {
     /// The payer account must be owned by this program.
     #[instruction(discriminator = 1)]
     pub fn transfer_sol_with_program(
-        ctx: Ctx<TransferSolWithProgram>,
+        ctx: Ctx<TransferSolWithProgramAccountConstraints>,
         amount: u64,
     ) -> Result<(), ProgramError> {
         instructions::handle_transfer_sol_with_program(&mut ctx.accounts, amount)

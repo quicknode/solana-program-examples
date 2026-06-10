@@ -7,27 +7,33 @@
  */
 
 import {
-  type AccountMeta,
-  type Address,
   combineCodec,
-  type FixedSizeCodec,
-  type FixedSizeDecoder,
-  type FixedSizeEncoder,
   getStructDecoder,
   getStructEncoder,
   getU8Decoder,
   getU8Encoder,
+  SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
+  SolanaError,
+  transformEncoder,
+  type AccountMeta,
+  type AccountSignerMeta,
+  type Address,
+  type FixedSizeCodec,
+  type FixedSizeDecoder,
+  type FixedSizeEncoder,
   type Instruction,
   type InstructionWithAccounts,
   type InstructionWithData,
   type ReadonlyAccount,
   type ReadonlyUint8Array,
-  SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
-  SolanaError,
-  transformEncoder,
+  type TransactionSigner,
   type WritableAccount,
+  type WritableSignerAccount,
 } from "@solana/kit";
-import { getAccountMetaFactory, type ResolvedInstructionAccount } from "@solana/program-client-core";
+import {
+  getAccountMetaFactory,
+  type ResolvedInstructionAccount,
+} from "@solana/program-client-core";
 import { CAR_RENTAL_SERVICE_PROGRAM_ADDRESS } from "../programs";
 
 export const PICK_UP_CAR_DISCRIMINATOR = 2;
@@ -46,9 +52,16 @@ export type PickUpCarInstruction<
   InstructionWithData<ReadonlyUint8Array> &
   InstructionWithAccounts<
     [
-      TAccountRentalAccount extends string ? WritableAccount<TAccountRentalAccount> : TAccountRentalAccount,
-      TAccountCarAccount extends string ? ReadonlyAccount<TAccountCarAccount> : TAccountCarAccount,
-      TAccountPayer extends string ? WritableAccount<TAccountPayer> : TAccountPayer,
+      TAccountRentalAccount extends string
+        ? WritableAccount<TAccountRentalAccount>
+        : TAccountRentalAccount,
+      TAccountCarAccount extends string
+        ? ReadonlyAccount<TAccountCarAccount>
+        : TAccountCarAccount,
+      TAccountPayer extends string
+        ? WritableSignerAccount<TAccountPayer> &
+            AccountSignerMeta<TAccountPayer>
+        : TAccountPayer,
       ...TRemainingAccounts,
     ]
   >;
@@ -58,10 +71,10 @@ export type PickUpCarInstructionData = { discriminator: number };
 export type PickUpCarInstructionDataArgs = {};
 
 export function getPickUpCarInstructionDataEncoder(): FixedSizeEncoder<PickUpCarInstructionDataArgs> {
-  return transformEncoder(getStructEncoder([["discriminator", getU8Encoder()]]), (value) => ({
-    ...value,
-    discriminator: PICK_UP_CAR_DISCRIMINATOR,
-  }));
+  return transformEncoder(
+    getStructEncoder([["discriminator", getU8Encoder()]]),
+    (value) => ({ ...value, discriminator: PICK_UP_CAR_DISCRIMINATOR }),
+  );
 }
 
 export function getPickUpCarInstructionDataDecoder(): FixedSizeDecoder<PickUpCarInstructionData> {
@@ -72,7 +85,10 @@ export function getPickUpCarInstructionDataCodec(): FixedSizeCodec<
   PickUpCarInstructionDataArgs,
   PickUpCarInstructionData
 > {
-  return combineCodec(getPickUpCarInstructionDataEncoder(), getPickUpCarInstructionDataDecoder());
+  return combineCodec(
+    getPickUpCarInstructionDataEncoder(),
+    getPickUpCarInstructionDataDecoder(),
+  );
 }
 
 export type PickUpCarInput<
@@ -85,7 +101,7 @@ export type PickUpCarInput<
   /** The account representing the Car being rented in this order */
   carAccount: Address<TAccountCarAccount>;
   /** Fee payer */
-  payer: Address<TAccountPayer>;
+  payer: TransactionSigner<TAccountPayer>;
 };
 
 export function getPickUpCarInstruction<
@@ -94,11 +110,21 @@ export function getPickUpCarInstruction<
   TAccountPayer extends string,
   TProgramAddress extends Address = typeof CAR_RENTAL_SERVICE_PROGRAM_ADDRESS,
 >(
-  input: PickUpCarInput<TAccountRentalAccount, TAccountCarAccount, TAccountPayer>,
+  input: PickUpCarInput<
+    TAccountRentalAccount,
+    TAccountCarAccount,
+    TAccountPayer
+  >,
   config?: { programAddress?: TProgramAddress },
-): PickUpCarInstruction<TProgramAddress, TAccountRentalAccount, TAccountCarAccount, TAccountPayer> {
+): PickUpCarInstruction<
+  TProgramAddress,
+  TAccountRentalAccount,
+  TAccountCarAccount,
+  TAccountPayer
+> {
   // Program address.
-  const programAddress = config?.programAddress ?? CAR_RENTAL_SERVICE_PROGRAM_ADDRESS;
+  const programAddress =
+    config?.programAddress ?? CAR_RENTAL_SERVICE_PROGRAM_ADDRESS;
 
   // Original accounts.
   const originalAccounts = {
@@ -106,7 +132,10 @@ export function getPickUpCarInstruction<
     carAccount: { value: input.carAccount ?? null, isWritable: false },
     payer: { value: input.payer ?? null, isWritable: true },
   };
-  const accounts = originalAccounts as Record<keyof typeof originalAccounts, ResolvedInstructionAccount>;
+  const accounts = originalAccounts as Record<
+    keyof typeof originalAccounts,
+    ResolvedInstructionAccount
+  >;
 
   const getAccountMeta = getAccountMetaFactory(programAddress, "programId");
   return Object.freeze({
@@ -117,7 +146,12 @@ export function getPickUpCarInstruction<
     ],
     data: getPickUpCarInstructionDataEncoder().encode({}),
     programAddress,
-  } as PickUpCarInstruction<TProgramAddress, TAccountRentalAccount, TAccountCarAccount, TAccountPayer>);
+  } as PickUpCarInstruction<
+    TProgramAddress,
+    TAccountRentalAccount,
+    TAccountCarAccount,
+    TAccountPayer
+  >);
 }
 
 export type ParsedPickUpCarInstruction<
@@ -136,14 +170,22 @@ export type ParsedPickUpCarInstruction<
   data: PickUpCarInstructionData;
 };
 
-export function parsePickUpCarInstruction<TProgram extends string, TAccountMetas extends readonly AccountMeta[]>(
-  instruction: Instruction<TProgram> & InstructionWithAccounts<TAccountMetas> & InstructionWithData<ReadonlyUint8Array>,
+export function parsePickUpCarInstruction<
+  TProgram extends string,
+  TAccountMetas extends readonly AccountMeta[],
+>(
+  instruction: Instruction<TProgram> &
+    InstructionWithAccounts<TAccountMetas> &
+    InstructionWithData<ReadonlyUint8Array>,
 ): ParsedPickUpCarInstruction<TProgram, TAccountMetas> {
   if (instruction.accounts.length < 3) {
-    throw new SolanaError(SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS, {
-      actualAccountMetas: instruction.accounts.length,
-      expectedAccountMetas: 3,
-    });
+    throw new SolanaError(
+      SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
+      {
+        actualAccountMetas: instruction.accounts.length,
+        expectedAccountMetas: 3,
+      },
+    );
   }
   let accountIndex = 0;
   const getNextAccount = () => {

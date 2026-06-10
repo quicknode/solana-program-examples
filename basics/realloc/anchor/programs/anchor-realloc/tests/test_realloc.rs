@@ -38,7 +38,7 @@ fn test_initialize() {
             input: "hello".to_string(),
         }
         .data(),
-        anchor_realloc::accounts::Initialize {
+        anchor_realloc::accounts::InitializeAccountConstraints {
             payer: payer.pubkey(),
             message_account: message_keypair.pubkey(),
             system_program: system_program::id(),
@@ -79,7 +79,7 @@ fn test_update_grows() {
             input: "hello".to_string(),
         }
         .data(),
-        anchor_realloc::accounts::Initialize {
+        anchor_realloc::accounts::InitializeAccountConstraints {
             payer: payer.pubkey(),
             message_account: message_keypair.pubkey(),
             system_program: system_program::id(),
@@ -102,7 +102,7 @@ fn test_update_grows() {
             input: "hello world".to_string(),
         }
         .data(),
-        anchor_realloc::accounts::Update {
+        anchor_realloc::accounts::UpdateAccountConstraints {
             payer: payer.pubkey(),
             message_account: message_keypair.pubkey(),
             system_program: system_program::id(),
@@ -136,7 +136,7 @@ fn test_update_shrinks() {
             input: "hello world".to_string(),
         }
         .data(),
-        anchor_realloc::accounts::Initialize {
+        anchor_realloc::accounts::InitializeAccountConstraints {
             payer: payer.pubkey(),
             message_account: message_keypair.pubkey(),
             system_program: system_program::id(),
@@ -159,7 +159,7 @@ fn test_update_shrinks() {
             input: "hi".to_string(),
         }
         .data(),
-        anchor_realloc::accounts::Update {
+        anchor_realloc::accounts::UpdateAccountConstraints {
             payer: payer.pubkey(),
             message_account: message_keypair.pubkey(),
             system_program: system_program::id(),

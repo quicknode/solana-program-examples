@@ -9,7 +9,7 @@ pub mod state;
 #[cfg(test)]
 mod tests;
 
-declare_id!("22222222222222222222222222222222222222222222");
+declare_id!("GahM6PrXesrBkHiGJ5no4EskLNnVBCaSwVKbM4UtzyK6");
 
 /// Minimum liquidity locked on first deposit to prevent manipulation.
 pub const MINIMUM_LIQUIDITY: u64 = 100;

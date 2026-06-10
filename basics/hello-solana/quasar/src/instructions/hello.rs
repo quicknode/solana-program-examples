@@ -12,6 +12,6 @@ pub struct Hello {
 #[inline(always)]
 pub fn handle_hello(_accounts: &mut Hello) -> Result<(), ProgramError> {
     log("Hello, Solana!");
-    log("Our program's Program ID: FLUH9c5oAfXb1eYbkZvdGK9r9SLQJBUi2DZQaBVj7Tzr");
+    log("Our program's Program ID: 2phbC62wekpw95XuBk4i1KX4uA8zBUWmYbiTMhicSuBV");
     Ok(())
 }
