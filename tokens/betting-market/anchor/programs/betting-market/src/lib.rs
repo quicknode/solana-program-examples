@@ -38,7 +38,7 @@ pub mod betting_market {
     }
 
     // A bettor stakes tokens on one outcome. The stake joins the event's pool.
-    pub fn place_bet(context: Context<PlaceBet>, amount: u64) -> Result<()> {
+    pub fn place_bet(context: Context<PlaceBetAccountConstraints>, amount: u64) -> Result<()> {
         instructions::place_bet::handle_place_bet(context, amount)
     }
 
@@ -48,9 +48,16 @@ pub mod betting_market {
         instructions::settle_event::handle_settle_event(context, winning_outcome_index)
     }
 
-    // A winner withdraws their stake plus their pro-rata share of the losing pool.
-    pub fn claim_winnings(context: Context<ClaimWinnings>) -> Result<()> {
+    // A winner withdraws their stake plus their pro-rata share of the losing
+    // pool. The Bet account closes and leaves the bettor's User index.
+    pub fn claim_winnings(context: Context<ClaimWinningsAccountConstraints>) -> Result<()> {
         instructions::claim_winnings::handle_claim_winnings(context)
+    }
+
+    // A loser closes their worthless bet after settlement, reclaiming the
+    // Bet account's rent and freeing the slot in their User index.
+    pub fn close_losing_bet(context: Context<CloseLosingBetAccountConstraints>) -> Result<()> {
+        instructions::close_losing_bet::handle_close_losing_bet(context)
     }
 
     // Admin voids an unresolved market so bettors can be made whole.
@@ -58,8 +65,9 @@ pub mod betting_market {
         instructions::cancel_event::handle_cancel_event(context)
     }
 
-    // After a cancellation, a bettor reclaims their exact stake.
-    pub fn claim_refund(context: Context<ClaimRefund>) -> Result<()> {
+    // After a cancellation, a bettor reclaims their exact stake. The Bet
+    // account closes and leaves the bettor's User index.
+    pub fn claim_refund(context: Context<ClaimRefundAccountConstraints>) -> Result<()> {
         instructions::claim_refund::handle_claim_refund(context)
     }
 }

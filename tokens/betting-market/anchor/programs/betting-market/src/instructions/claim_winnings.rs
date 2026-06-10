@@ -1,12 +1,12 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
 
-use crate::{error::BettingError, Bet, Event, EventStatus};
+use crate::{error::BettingError, Bet, Event, EventStatus, User};
 
 use super::transfer_tokens_from_vault;
 
 #[derive(Accounts)]
-pub struct ClaimWinnings<'info> {
+pub struct ClaimWinningsAccountConstraints<'info> {
     #[account(mut)]
     pub bettor: Signer<'info>,
 
@@ -19,14 +19,24 @@ pub struct ClaimWinnings<'info> {
     )]
     pub event: Account<'info, Event>,
 
+    // Closing the Bet ends the position: the rent goes back to the bettor and
+    // a second claim fails because the account no longer exists.
     #[account(
         mut,
+        close = bettor,
         has_one = bettor,
         has_one = event,
         seeds = [b"bet", bet.outcome.as_ref(), bettor.key().as_ref()],
         bump = bet.bump,
     )]
     pub bet: Account<'info, Bet>,
+
+    #[account(
+        mut,
+        seeds = [b"user", bettor.key().as_ref()],
+        bump = user.bump,
+    )]
+    pub user: Account<'info, User>,
 
     #[account(
         mut,
@@ -47,12 +57,11 @@ pub struct ClaimWinnings<'info> {
     pub token_program: Interface<'info, TokenInterface>,
 }
 
-pub fn handle_claim_winnings(context: Context<ClaimWinnings>) -> Result<()> {
+pub fn handle_claim_winnings(context: Context<ClaimWinningsAccountConstraints>) -> Result<()> {
     require!(
         context.accounts.event.status == EventStatus::Settled,
         BettingError::EventNotSettled
     );
-    require!(!context.accounts.bet.claimed, BettingError::AlreadyClaimed);
     require!(
         context.accounts.bet.outcome_index == context.accounts.event.winning_outcome_index,
         BettingError::NothingToClaim
@@ -66,12 +75,26 @@ pub fn handle_claim_winnings(context: Context<ClaimWinnings>) -> Result<()> {
     // Parimutuel split: winners share the losing pool in proportion to their
     // own stake. Work in u128 and divide once, after the multiply, so the
     // result is floored a single time - dividing first would throw away
-    // precision. The floor leaves at most a few base units of dust in the vault.
-    let losing_pool_share_numerator = stake as u128 * distributable_losing_pool as u128;
-    let winnings = (losing_pool_share_numerator / winning_pool as u128) as u64;
+    // precision. The floor leaves at most a few minor units of dust in the vault.
+    let losing_pool_share_numerator = (stake as u128)
+        .checked_mul(distributable_losing_pool as u128)
+        .ok_or(BettingError::MathOverflow)?;
+    let winnings: u64 = losing_pool_share_numerator
+        .checked_div(winning_pool as u128)
+        .ok_or(BettingError::MathOverflow)?
+        .try_into()
+        .map_err(|_| BettingError::MathOverflow)?;
 
     // Winners always get their own stake back on top of their winnings.
-    let payout = stake + winnings;
+    let payout = stake
+        .checked_add(winnings)
+        .ok_or(BettingError::MathOverflow)?;
+
+    // The position is over, so drop the Bet from the bettor's index before the
+    // transfer (effects before interactions); the Bet account itself closes
+    // when the instruction finishes.
+    let bet_key = context.accounts.bet.key();
+    context.accounts.user.remove_bet(&bet_key)?;
 
     let event_id = context.accounts.event.event_id;
     let event_bump = context.accounts.event.bump;
@@ -86,6 +109,5 @@ pub fn handle_claim_winnings(context: Context<ClaimWinnings>) -> Result<()> {
         event_bump,
     )?;
 
-    context.accounts.bet.claimed = true;
     Ok(())
 }
