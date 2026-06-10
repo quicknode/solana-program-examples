@@ -130,8 +130,9 @@ impl OrderBook {
     /// and removed on either side.
     pub fn remove(&mut self, order_id: u64) -> bool {
         // We don't know which side the order is on without scanning, so try
-        // both. Tree lookup is O(log N) - much cheaper than the linear Vec
-        // scan the previous implementation did.
+        // both. Each side does a linear scan over its node arena to find the
+        // full key (price is not known at cancellation time), then removes
+        // by key - see `remove_from`.
         if self.remove_from(OrderSide::Bid, order_id).is_some() {
             return true;
         }

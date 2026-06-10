@@ -167,7 +167,7 @@ tokens still sit in the market's vaults. `settle_funds` moves them
 to the user's own token accounts and zeroes the counters.
 
 **Fee vault.** A separate token account (quote mint) owned by the
-Market PDA. Every taker fee - `gross * fee_bps / 10_000` per fill -
+Market PDA. Every taker fee - `ceil(gross * fee_bps / 10_000)` per fill -
 moves here in one batched CPI at the end of `place_order`.
 
 **Remaining accounts.** Solana lets the caller pass a tail of extra
@@ -312,8 +312,8 @@ carol_nvdax_ata --[3 NVDAx]--> base_vault
 | Line item | Calculation | Result |
 |---|---|---|
 | Gross quote exchanged | 950 × 3 | 2 850 USDC |
-| Taker fee (25 bps) | 2 850 × 25 / 10 000 | 7 USDC |
-| Carol's net proceeds | 2 850 − 7 | 2 843 USDC → `carol.MarketUser.unsettled_quote` |
+| Taker fee (25 bps) | ceil(2 850 × 25 / 10 000) = ceil(7.125) | 8 USDC |
+| Carol's net proceeds | 2 850 − 8 | 2 842 USDC → `carol.MarketUser.unsettled_quote` |
 | Alice's base received | 3 NVDAx | → `alice.MarketUser.unsettled_base` |
 
 **Accounts changed:**
@@ -321,11 +321,11 @@ carol_nvdax_ata --[3 NVDAx]--> base_vault
 | Account | Change |
 |---|---|
 | `base_vault` | +3 NVDAx (Carol's lock) |
-| `fee_vault` | +7 USDC (fee CPI from quote_vault) |
+| `fee_vault` | +8 USDC (fee CPI from quote_vault) |
 | Alice's `Order` PDA (id=2) | `filled_quantity=3`, `status=PartiallyFilled` |
 | Alice's `MarketUser.unsettled_base` | +3 NVDAx |
 | Alice's `MarketUser.open_orders` | `[2]` (still open - 2 of 5 NVDAx remain) |
-| Carol's `MarketUser.unsettled_quote` | +2 843 USDC |
+| Carol's `MarketUser.unsettled_quote` | +2 842 USDC |
 | New Carol's `Order` PDA (id=3) | `side=Ask, price=945, qty=3, status=Filled` |
 | `OrderBook.bids` | Alice's leaf quantity: 5 → 2 |
 
@@ -351,7 +351,7 @@ base_vault --[3 NVDAx]--> alice_nvdax_ata
 
 **Carol calls `settle_funds`:**
 ```
-quote_vault --[2 843 USDC]--> carol_usdc_ata
+quote_vault --[2 842 USDC]--> carol_usdc_ata
 ```
 `carol.MarketUser.unsettled_quote = 0`
 
@@ -361,7 +361,7 @@ quote_vault --[2 843 USDC]--> carol_usdc_ata
 
 **Maria calls `withdraw_fees`:**
 ```
-fee_vault --[7 USDC]--> maria_usdc_ata
+fee_vault --[8 USDC]--> maria_usdc_ata
 ```
 `fee_vault.balance = 0`
 
@@ -372,9 +372,9 @@ fee_vault --[7 USDC]--> maria_usdc_ata
 | Participant | Paid / locked | Received | Outcome |
 |---|---|---|---|
 | **Alice** | 4 750 USDC (for 5 NVDAx) | 3 NVDAx + 1 900 USDC still in `quote_vault` (2-NVDAx bid resting at 950) | Thesis running; waiting for a seller at 950 to fill the rest |
-| **Carol** | 3 NVDAx (cost 800 each) | 2 843 USDC | Locked in ≈ 148 USDC/NVDAx profit net of fee |
+| **Carol** | 3 NVDAx (cost 800 each) | 2 842 USDC | Locked in ≈ 147 USDC/NVDAx profit net of fee |
 | **Bob** | 10 NVDAx locked | Nothing yet - ask at 965 unfilled | Earns the spread when a buyer at 965 arrives |
-| **Maria** | - | 7 USDC | Fee revenue |
+| **Maria** | - | 8 USDC | Fee revenue |
 
 Alice's remaining 2-NVDAx [bid](https://www.investopedia.com/terms/b/bid.asp) stays on the book. The next seller willing to part with NVDAx at 950 or below will fill it automatically. A **TSLAx/USDC** market runs the same seven steps with different mint addresses.
 
@@ -942,7 +942,7 @@ Per-fill quantities:
 
 ```
 gross       = fill_price * fill_qty                         (quote tokens)
-fee         = gross * fee_bps / 10_000                       (quote tokens)
+fee         = ceil(gross * fee_bps / 10_000)                 (quote tokens)
 net_to_maker = gross - fee                                   (quote tokens)
 locked      = bp * fill_qty                                  (quote tokens the taker had locked for this fill)
 rebate      = locked - gross                                 (quote the taker locked but doesn't need to spend)
@@ -975,7 +975,7 @@ resting **bid** at `bp ≥ ap`:
 fill_qty     = min(taker_remaining, bp_remaining)
 fill_price   = bp
 gross        = bp * fill_qty
-fee          = gross * fee_bps / 10_000
+fee          = ceil(gross * fee_bps / 10_000)
 net_to_taker = gross - fee
 
 Token flows:
@@ -1017,9 +1017,9 @@ Start with an empty book. Fees 10 bps (0.1%). Tick size 1.
    Step C - apply fills:
 
    For Fill 0 (Dan):
-   - gross = 900 * 5 = 4500; fee = 4500 * 10 / 10 000 = 4;
-     net_to_maker = 4496.
-   - `dan_market_user.unsettled_quote += 4496`
+   - gross = 900 * 5 = 4500; fee = ceil(4500 * 10 / 10 000) = ceil(4.5) = 5;
+     net_to_maker = 4495.
+   - `dan_market_user.unsettled_quote += 4495`
    - `faye_market_user.unsettled_base += 5`
    - Faye's rebate = 1000*5 − 4500 = 500.
      `faye_market_user.unsettled_quote += 500`
@@ -1027,8 +1027,8 @@ Start with an empty book. Fees 10 bps (0.1%). Tick size 1.
      remove from `dan_market_user.open_orders`.
 
    For Fill 1 (Erin):
-   - gross = 950 * 2 = 1900; fee = 1; net_to_maker = 1899.
-   - `erin_market_user.unsettled_quote += 1899`
+   - gross = 950 * 2 = 1900; fee = ceil(1.9) = 2; net_to_maker = 1898.
+   - `erin_market_user.unsettled_quote += 1898`
    - `faye_market_user.unsettled_base += 2`
    - Faye's rebate = 1000*2 − 1900 = 100.
      `faye_market_user.unsettled_quote += 100`
@@ -1043,9 +1043,9 @@ Start with an empty book. Fees 10 bps (0.1%). Tick size 1.
    The next taker who wants to hit Erin's ask will pass `order_2` as a
    maker and see `leaf.quantity = 3`.
 
-   Step E - pay the fee. `total_fee_quote = 4 + 1 = 5`. One CPI:
+   Step E - pay the fee. `total_fee_quote = 5 + 2 = 7`. One CPI:
    ```
-   quote_vault --[5 quote]--> fee_vault
+   quote_vault --[7 quote]--> fee_vault
    ```
 
    Step F - apply Faye's deltas. `faye_market_user.unsettled_base =
@@ -1057,13 +1057,13 @@ Start with an empty book. Fees 10 bps (0.1%). Tick size 1.
 
 4. Later, each user calls `settle_funds`:
    - Dan's settle: `base_vault` loses 0 base; `quote_vault` loses
-     4496 quote → Dan's quote ATA gains 4496.
-   - Erin's settle: 1899 quote to Erin's ATA.
+     4495 quote → Dan's quote ATA gains 4495.
+   - Erin's settle: 1898 quote to Erin's ATA.
    - Faye's settle: 7 base to Faye's base ATA; 600 quote refund to
      Faye's quote ATA (unused from her 7000 lock).
 
 5. At some point the market authority calls `withdraw_fees`:
-   `fee_vault.balance = 5` → drained to authority's quote ATA.
+   `fee_vault.balance = 7` → drained to authority's quote ATA.
 
 **Post-settlement invariant check**:
 - `base_vault.balance` should equal sum of remaining ask quantities =

@@ -54,6 +54,12 @@ const QUOTE_DECIMALS: u8 = 6; // USDC
 //   raw_quote = price    × quantity × 1    (= human USDC/share × lots)
 //   tick_size = 1  →  $1.00 minimum price increment
 const FEE_BASIS_POINTS: u16 = 10;
+
+// Mirror of the program's fee rounding: ceiling division so the fee rounds
+// in the protocol's favour (flooring would leak dust to the maker per fill).
+const fn fee_ceil(gross: u64) -> u64 {
+    ((gross as u128 * FEE_BASIS_POINTS as u128 + 9_999) / 10_000) as u64
+}
 const TICK_SIZE: u64 = 1;
 const BASE_LOT_SIZE: u64 = 100;
 const QUOTE_LOT_SIZE: u64 = 1;
@@ -1649,8 +1655,8 @@ fn taker_crosses_multiple_resting_orders_best_price_first() {
     // Seller's net unsettled_quote = sum of (fill_price * fill_qty * quote_lot_size - fee).
     let gross_one: u64 = BEST_ASK_PRICE * BEST_ASK_QUANTITY * QUOTE_LOT_SIZE;
     let gross_two: u64 = SECOND_ASK_PRICE * SECOND_ASK_QUANTITY * QUOTE_LOT_SIZE;
-    let fee_one: u64 = gross_one * FEE_BASIS_POINTS as u64 / 10_000;
-    let fee_two: u64 = gross_two * FEE_BASIS_POINTS as u64 / 10_000;
+    let fee_one: u64 = fee_ceil(gross_one);
+    let fee_two: u64 = fee_ceil(gross_two);
     let expected_seller_quote = (gross_one - fee_one) + (gross_two - fee_two);
     let (_, seller_quote) = read_user_unsettled(&sc.svm, &sc.seller_market_user);
     assert_eq!(seller_quote, expected_seller_quote);
@@ -1807,7 +1813,7 @@ fn taker_bid_gets_price_improvement_from_resting_ask() {
 
     // Maker got 900-per-unit (minus fee), not 1000.
     let gross_to_maker: u64 = MAKER_ASK_PRICE * QUANTITY * QUOTE_LOT_SIZE;
-    let fee: u64 = gross_to_maker * FEE_BASIS_POINTS as u64 / 10_000;
+    let fee: u64 = fee_ceil(gross_to_maker);
     let expected_net_to_maker: u64 = gross_to_maker - fee;
     let (_, seller_quote) = read_user_unsettled(&sc.svm, &sc.seller_market_user);
     assert_eq!(seller_quote, expected_net_to_maker);
@@ -1821,9 +1827,66 @@ fn taker_bid_gets_price_improvement_from_resting_ask() {
 }
 
 #[test]
+fn fee_rounds_up_when_gross_is_not_a_bps_multiple() {
+    // Rounding regression: with fee_bps = 10, a gross of 501 quote tokens
+    // gives 501 * 10 / 10_000 = 0.501, which must round UP to 1 (protocol-
+    // favouring ceiling), not down to 0. A floor here would let makers
+    // fill fee-free with many small orders.
+    let mut sc = full_setup();
+    initialize_market_and_users(&mut sc);
+
+    const MAKER_ASK_ID: u64 = 1;
+    const PRICE: u64 = 501;
+    const QUANTITY: u64 = 1;
+    const GROSS: u64 = PRICE * QUANTITY * QUOTE_LOT_SIZE;
+    const EXPECTED_FEE: u64 = fee_ceil(GROSS);
+    // Prove this case actually exercises the rounding edge.
+    assert!(GROSS * FEE_BASIS_POINTS as u64 % 10_000 != 0);
+    assert_eq!(EXPECTED_FEE, GROSS * FEE_BASIS_POINTS as u64 / 10_000 + 1);
+
+    let maker_ix = build_place_order_ix(
+        &sc,
+        &sc.seller,
+        sc.seller_market_user,
+        sc.seller_base_ata,
+        sc.seller_quote_ata,
+        order_book::state::OrderSide::Ask,
+        MAKER_ASK_ID,
+        PRICE,
+        QUANTITY,
+    );
+    send_transaction_from_instructions(&mut sc.svm, vec![maker_ix], &[&sc.seller],
+        &sc.seller.pubkey()).unwrap();
+
+    const TAKER_BID_ID: u64 = 2;
+    let taker_ix = build_place_order_with_makers_ix(
+        &sc,
+        &sc.buyer,
+        sc.buyer_market_user,
+        sc.buyer_base_ata,
+        sc.buyer_quote_ata,
+        order_book::state::OrderSide::Bid,
+        TAKER_BID_ID,
+        PRICE,
+        QUANTITY,
+        &[(MAKER_ASK_ID, sc.seller_market_user)],
+    );
+    send_transaction_from_instructions(&mut sc.svm, vec![taker_ix], &[&sc.buyer],
+        &sc.buyer.pubkey()).unwrap();
+
+    assert_eq!(
+        get_token_account_balance(&sc.svm, &sc.fee_vault.pubkey()).unwrap(),
+        EXPECTED_FEE
+    );
+    // Maker's unsettled quote is gross minus the rounded-up fee.
+    let (_, seller_quote) = read_user_unsettled(&sc.svm, &sc.seller_market_user);
+    assert_eq!(seller_quote, GROSS - EXPECTED_FEE);
+}
+
+#[test]
 fn fee_vault_receives_exactly_bps_of_taker_gross() {
     // Simpler standalone check of the fee maths: fee_vault must equal
-    // (taker gross quote) * fee_bps / 10_000 after a single fill.
+    // ceil((taker gross quote) * fee_bps / 10_000) after a single fill.
     let mut sc = full_setup();
     initialize_market_and_users(&mut sc);
 
@@ -1831,7 +1894,7 @@ fn fee_vault_receives_exactly_bps_of_taker_gross() {
     const PRICE: u64 = 500;
     const QUANTITY: u64 = 200;
     const GROSS: u64 = PRICE * QUANTITY * QUOTE_LOT_SIZE;
-    const EXPECTED_FEE: u64 = GROSS * FEE_BASIS_POINTS as u64 / 10_000;
+    const EXPECTED_FEE: u64 = fee_ceil(GROSS);
 
     let __ix5 = build_place_order_ix(
             &sc,
@@ -1888,7 +1951,7 @@ fn authority_can_withdraw_fees_after_match() {
     const PRICE: u64 = 2000;
     const QUANTITY: u64 = 50;
     const GROSS: u64 = PRICE * QUANTITY * QUOTE_LOT_SIZE;
-    const EXPECTED_FEE: u64 = GROSS * FEE_BASIS_POINTS as u64 / 10_000;
+    const EXPECTED_FEE: u64 = fee_ceil(GROSS);
 
     let __ix7 = build_place_order_ix(
             &sc,
@@ -1957,7 +2020,7 @@ fn settle_funds_after_match_pays_out_both_unsettled_balances() {
     const PRICE: u64 = 1000;
     const QUANTITY: u64 = 100;
     const GROSS: u64 = PRICE * QUANTITY * QUOTE_LOT_SIZE;
-    const EXPECTED_FEE: u64 = GROSS * FEE_BASIS_POINTS as u64 / 10_000;
+    const EXPECTED_FEE: u64 = fee_ceil(GROSS);
     const EXPECTED_NET_QUOTE_TO_SELLER: u64 = GROSS - EXPECTED_FEE;
 
     // Maker posts and taker crosses.
@@ -2010,23 +2073,24 @@ fn settle_funds_after_match_pays_out_both_unsettled_balances() {
     send_transaction_from_instructions(&mut sc.svm, vec![__ix12], &[&sc.seller],
         &sc.seller.pubkey()).unwrap();
 
-    // Buyer should now hold `QUANTITY` extra base tokens and have paid the
-    // gross quote (starting balance minus gross). No price improvement
-    // here, so nothing else to refund.
+    // Buyer should now hold `QUANTITY` lots of extra base tokens
+    // (QUANTITY * BASE_LOT_SIZE raw minor units) and have paid the gross
+    // quote (starting balance minus gross). No price improvement here, so
+    // nothing else to refund.
     assert_eq!(
         get_token_account_balance(&sc.svm, &sc.buyer_base_ata).unwrap(),
-        QUANTITY
+        QUANTITY * BASE_LOT_SIZE
     );
     assert_eq!(
         get_token_account_balance(&sc.svm, &sc.buyer_quote_ata).unwrap(),
         TRADER_STARTING_BALANCE - GROSS
     );
 
-    // Seller should now hold (starting - QUANTITY) base and
+    // Seller should now hold (starting - QUANTITY lots) base and
     // EXPECTED_NET_QUOTE_TO_SELLER quote.
     assert_eq!(
         get_token_account_balance(&sc.svm, &sc.seller_base_ata).unwrap(),
-        TRADER_STARTING_BALANCE - QUANTITY
+        TRADER_STARTING_BALANCE - QUANTITY * BASE_LOT_SIZE
     );
     assert_eq!(
         get_token_account_balance(&sc.svm, &sc.seller_quote_ata).unwrap(),

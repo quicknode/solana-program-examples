@@ -178,7 +178,7 @@ pub fn handle_place_order<'info>(
         // Fee model (simple, maker-funded, no extra taker deposit):
         //
         //   gross  = fill_price * fill_quantity (quote tokens per fill)
-        //   fee    = gross * fee_bps / 10_000   (rounded down)
+        //   fee    = gross * fee_bps / 10_000   (rounded up)
         //   maker gets gross - fee,
         //   fee_vault gets fee,
         //   taker pays 'gross' net (out of their pre-locked quote).
@@ -201,8 +201,13 @@ pub fn handle_place_order<'info>(
             .try_into()
             .map_err(|_| error!(ErrorCode::NumericalOverflow))?;
 
+        // Ceiling division: round the fee in the protocol's favour. Flooring
+        // would leak up to 1 minor unit of quote per fill to the maker, which
+        // an attacker could industrialise with many tiny fills.
         let fee_quote: u64 = (gross_quote as u128)
             .checked_mul(market.fee_basis_points as u128)
+            .ok_or(ErrorCode::NumericalOverflow)?
+            .checked_add(BASIS_POINTS_DENOMINATOR - 1)
             .ok_or(ErrorCode::NumericalOverflow)?
             .checked_div(BASIS_POINTS_DENOMINATOR)
             .ok_or(ErrorCode::NumericalOverflow)?
