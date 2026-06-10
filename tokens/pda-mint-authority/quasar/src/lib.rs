@@ -26,15 +26,22 @@ pub struct MintPda;
 mod quasar_pda_mint_authority {
     use super::*;
 
-    /// Create a token mint at a PDA. The PDA is its own mint authority.
+    /// Create a token mint at a PDA with the caller-supplied number of
+    /// decimals. The PDA is its own mint authority.
     #[instruction(discriminator = 0)]
-    pub fn create_mint(ctx: Ctx<CreateMint>, _decimals: u8) -> Result<(), ProgramError> {
-        handle_create_mint(&mut ctx.accounts, ctx.bumps.mint)
+    pub fn create_mint(
+        ctx: Ctx<CreateMintAccountConstraints>,
+        decimals: u8,
+    ) -> Result<(), ProgramError> {
+        handle_create_mint(&mut ctx.accounts, decimals, ctx.bumps.mint)
     }
 
-    /// Mint tokens using the PDA mint authority.
+    /// Mint `amount` minor units using the PDA mint authority.
     #[instruction(discriminator = 1)]
-    pub fn mint_tokens(ctx: Ctx<MintTokens>, amount: u64) -> Result<(), ProgramError> {
+    pub fn mint_tokens(
+        ctx: Ctx<MintTokensAccountConstraints>,
+        amount: u64,
+    ) -> Result<(), ProgramError> {
         handle_mint_tokens(&mut ctx.accounts, amount, ctx.bumps.mint)
     }
 }
@@ -42,7 +49,7 @@ mod quasar_pda_mint_authority {
 /// Create the mint at a PDA. Manually created and initialized to avoid
 /// a borrow conflict from `mint(authority = mint)` in the init constraint.
 #[derive(Accounts)]
-pub struct CreateMint {
+pub struct CreateMintAccountConstraints {
     #[account(mut)]
     pub payer: Signer,
     /// The PDA that will become the mint (and its own authority).
@@ -53,7 +60,11 @@ pub struct CreateMint {
 }
 
 #[inline(always)]
-fn handle_create_mint(accounts: &mut CreateMint, bump: u8) -> Result<(), ProgramError> {
+fn handle_create_mint(
+    accounts: &mut CreateMintAccountConstraints,
+    decimals: u8,
+    bump: u8,
+) -> Result<(), ProgramError> {
     let mint_address = *accounts.mint.address();
     let bump_bytes = [bump];
     let seeds: &[Seed] = &[
@@ -77,7 +88,7 @@ fn handle_create_mint(accounts: &mut CreateMint, bump: u8) -> Result<(), Program
     initialize_mint2(
         accounts.token_program.to_account_view(),
         accounts.mint.to_account_view(),
-        9,
+        decimals,
         &mint_address,
         None,
     )
@@ -86,7 +97,7 @@ fn handle_create_mint(accounts: &mut CreateMint, bump: u8) -> Result<(), Program
 
 /// Mint tokens to a token account, signing with the PDA mint authority.
 #[derive(Accounts)]
-pub struct MintTokens {
+pub struct MintTokensAccountConstraints {
     #[account(mut)]
     pub payer: Signer,
     /// The PDA mint whose authority is itself.
@@ -105,7 +116,11 @@ pub struct MintTokens {
 }
 
 #[inline(always)]
-fn handle_mint_tokens(accounts: &mut MintTokens, amount: u64, mint_bump: u8) -> Result<(), ProgramError> {
+fn handle_mint_tokens(
+    accounts: &mut MintTokensAccountConstraints,
+    amount: u64,
+    mint_bump: u8,
+) -> Result<(), ProgramError> {
     let bump = [mint_bump];
     let seeds: &[Seed] = &[
         Seed::from(b"mint" as &[u8]),

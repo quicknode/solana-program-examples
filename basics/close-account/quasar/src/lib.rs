@@ -23,7 +23,7 @@ mod quasar_close_account {
 
     /// Close a user account and return lamports to the user.
     #[instruction(discriminator = 1)]
-    pub fn close_user(ctx: Ctx<CloseUser>) -> Result<(), ProgramError> {
+    pub fn close_user(ctx: Ctx<CloseUserAccountConstraints>) -> Result<(), ProgramError> {
         instructions::handle_close_user(&mut ctx.accounts)
     }
 }

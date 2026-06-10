@@ -76,9 +76,12 @@ fn test_create_mint() {
     let token_program = quasar_svm::SPL_TOKEN_PROGRAM_ID;
     let system_program = quasar_svm::system_program::ID;
 
-    let data = build_create_mint_data(9);
+    // Deliberately not 9: proves the decimals instruction argument reaches
+    // the initialize_mint2 CPI instead of being hardcoded.
+    let requested_decimals = 6u8;
+    let data = build_create_mint_data(requested_decimals);
 
-    // Account order matches the `CreateMint` Accounts struct:
+    // Account order matches the `CreateMintAccountConstraints` struct:
     // payer, mint, token_program, system_program.
     let instruction = Instruction {
         program_id: crate::ID,
@@ -93,6 +96,15 @@ fn test_create_mint() {
 
     let result = svm.process_instruction(&instruction, &[signer(payer), empty(mint_pda)]);
     assert!(result.is_ok(), "create_mint failed: {:?}", result.raw_result);
+
+    // The created mint must carry the requested decimals, and be its own
+    // mint authority.
+    let created_mint = result.account(&mint_pda).expect("mint should exist");
+    let mint_state =
+        <Mint as solana_program_pack::Pack>::unpack(&created_mint.data).expect("valid mint");
+    assert_eq!(mint_state.decimals, requested_decimals);
+    assert_eq!(mint_state.mint_authority, Some(mint_pda).into());
+
     println!("  CREATE MINT CU: {}", result.compute_units_consumed);
 }
 

@@ -17,7 +17,7 @@ mod quasar_carnival {
     /// Ride a carnival ride. Validates height and ticket requirements.
     #[instruction(discriminator = 0)]
     pub fn go_on_ride(
-        ctx: Ctx<CarnivalContext>,
+        ctx: Ctx<CarnivalAccountConstraints>,
         height: u32,
         ticket_count: u32,
         name: String<50>,
@@ -29,7 +29,7 @@ mod quasar_carnival {
     /// Play a carnival game. Validates ticket requirements.
     #[instruction(discriminator = 1)]
     pub fn play_game(
-        ctx: Ctx<CarnivalContext>,
+        ctx: Ctx<CarnivalAccountConstraints>,
         ticket_count: u32,
         name: String<50>,
         game_name: String<50>,
@@ -40,7 +40,7 @@ mod quasar_carnival {
     /// Eat at a carnival food stand. Validates ticket requirements.
     #[instruction(discriminator = 2)]
     pub fn eat_food(
-        ctx: Ctx<CarnivalContext>,
+        ctx: Ctx<CarnivalAccountConstraints>,
         ticket_count: u32,
         name: String<50>,
         food_stand_name: String<50>,

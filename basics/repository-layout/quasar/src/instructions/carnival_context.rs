@@ -5,14 +5,14 @@ use super::{eat_food, get_on_ride, play_game};
 /// Minimal accounts context - a signer submits the transaction.
 /// The instructions just process instruction data (no onchain state).
 #[derive(Accounts)]
-pub struct CarnivalContext {
+pub struct CarnivalAccountConstraints {
     #[allow(dead_code)]
     pub payer: Signer,
 }
 
 #[inline(always)]
 pub fn handle_go_on_ride(
-    _accounts: &mut CarnivalContext,
+    _accounts: &mut CarnivalAccountConstraints,
     name: &str,
     height: u32,
     ticket_count: u32,
@@ -23,7 +23,7 @@ pub fn handle_go_on_ride(
 
 #[inline(always)]
 pub fn handle_play_game(
-    _accounts: &mut CarnivalContext,
+    _accounts: &mut CarnivalAccountConstraints,
     name: &str,
     ticket_count: u32,
     game_name: &str,
@@ -33,7 +33,7 @@ pub fn handle_play_game(
 
 #[inline(always)]
 pub fn handle_eat_food(
-    _accounts: &mut CarnivalContext,
+    _accounts: &mut CarnivalAccountConstraints,
     name: &str,
     ticket_count: u32,
     food_stand_name: &str,

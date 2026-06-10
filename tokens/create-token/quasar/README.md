@@ -1,13 +1,15 @@
 # Create Token (Quasar)
 
-Create a mint with metadata using Token and Metaplex programs.
+Create a token mint and mint tokens to a token account.
+
+The Anchor variant also creates Metaplex metadata; this Quasar variant focuses on the core SPL Token operations. Quasar's metadata crate is demonstrated in the [nft-operations](../../nft-operations/quasar/) example.
 
 See also: [Create Token overview](../README.md) and the [repository catalog](../../../README.md).
 
 ## Major concepts
 
-- Mint + metadata CPI
-- See [tokens/create-token/README.md](../create-token/README.md)
+- `create_token` takes a `decimals` instruction argument and initializes the mint with it (create_account + initialize_mint2 CPIs)
+- `mint_tokens` takes `amount` in minor units, the raw integer the token program operates on
 
 ## Setup
 

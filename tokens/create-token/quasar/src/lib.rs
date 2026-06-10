@@ -1,12 +1,15 @@
 #![cfg_attr(not(test), no_std)]
 
-use quasar_lang::prelude::*;
-use quasar_spl::prelude::*;
+use quasar_lang::{prelude::*, sysvars::Sysvar};
+use quasar_spl::{initialize_mint2, prelude::*};
 
 #[cfg(test)]
 mod tests;
 
 declare_id!("22222222222222222222222222222222222222222222");
+
+/// SPL Mint account size in bytes.
+const MINT_SPACE: usize = 82;
 
 /// Creates a token mint and mints initial tokens to the creator's token account.
 ///
@@ -17,8 +20,7 @@ declare_id!("22222222222222222222222222222222222222222222");
 mod quasar_create_token {
     use super::*;
 
-    /// Create a new token mint with the caller-supplied number of decimals
-    /// (account init handled by Quasar's `#[account(init)]`).
+    /// Create a new token mint with the caller-supplied number of decimals.
     #[instruction(discriminator = 0)]
     pub fn create_token(
         ctx: Ctx<CreateTokenAccountConstraints>,
@@ -38,21 +40,18 @@ mod quasar_create_token {
 }
 
 /// Accounts for creating a new token mint.
-/// Quasar's `#[account(init)]` handles the create_account + initialize_mint
-/// CPI; the `decimals` instruction argument is threaded into the mint init.
+///
+/// The mint is created and initialized in the handler (create_account +
+/// initialize_mint2 CPIs) rather than through Quasar's `mint(...)` init
+/// constraint, because constraint arguments must be account fields or
+/// literals and cannot reference the `decimals` instruction argument.
 #[derive(Accounts)]
-#[instruction(decimals: u8)]
 pub struct CreateTokenAccountConstraints {
     #[account(mut)]
     pub payer: Signer,
-    #[account(
-        mut,
-        init,
-        payer = payer,
-        mint(decimals = decimals, authority = payer, freeze_authority = None, token_program = token_program),
-    )]
-    pub mint: Account<Mint>,
-    pub rent: Sysvar<Rent>,
+    /// The new mint. Must sign (it is a fresh keypair account).
+    #[account(mut)]
+    pub mint: UncheckedAccount,
     pub token_program: Program<TokenProgram>,
     pub system_program: Program<SystemProgram>,
 }
@@ -71,13 +70,33 @@ pub struct MintTokensAccountConstraints {
 
 #[inline(always)]
 fn handle_create_token(
-    _accounts: &mut CreateTokenAccountConstraints,
-    _decimals: u8,
+    accounts: &mut CreateTokenAccountConstraints,
+    decimals: u8,
 ) -> Result<(), ProgramError> {
-    // Mint account is created and initialised by Quasar's account init, which
-    // reads `decimals` from the instruction data via the struct-level
-    // #[instruction(decimals: u8)] declaration.
-    Ok(())
+    let payer_address = *accounts.payer.address();
+
+    let rent = Rent::get()?;
+    let lamports = rent.minimum_balance_unchecked(MINT_SPACE);
+
+    accounts
+        .system_program
+        .create_account(
+            &accounts.payer,
+            &accounts.mint,
+            lamports,
+            MINT_SPACE as u64,
+            accounts.token_program.address(),
+        )
+        .invoke()?;
+
+    initialize_mint2(
+        accounts.token_program.to_account_view(),
+        accounts.mint.to_account_view(),
+        decimals,
+        &payer_address,
+        None,
+    )
+    .invoke()
 }
 
 #[inline(always)]

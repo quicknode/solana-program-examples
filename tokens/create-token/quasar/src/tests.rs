@@ -83,10 +83,9 @@ fn test_create_token() {
     let mint_address = Pubkey::new_unique();
     let token_program = quasar_svm::SPL_TOKEN_PROGRAM_ID;
     let system_program = quasar_svm::system_program::ID;
-    let rent = quasar_svm::solana_sdk_ids::sysvar::rent::ID;
 
     // Deliberately not 9: proves the decimals instruction argument reaches
-    // the initialize_mint CPI instead of being hardcoded.
+    // the initialize_mint2 CPI instead of being hardcoded.
     let requested_decimals = 6u8;
     let data = build_create_token_data(requested_decimals);
 
@@ -95,7 +94,6 @@ fn test_create_token() {
         accounts: vec![
             solana_instruction::AccountMeta::new(payer.into(), true),
             solana_instruction::AccountMeta::new(mint_address.into(), true),
-            solana_instruction::AccountMeta::new_readonly(rent.into(), false),
             solana_instruction::AccountMeta::new_readonly(token_program.into(), false),
             solana_instruction::AccountMeta::new_readonly(system_program.into(), false),
         ],

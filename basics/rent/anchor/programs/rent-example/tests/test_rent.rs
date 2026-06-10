@@ -48,7 +48,7 @@ fn test_create_system_account() {
     let instruction = Instruction::new_with_bytes(
         program_id,
         &ix_data,
-        rent_example::accounts::CreateSystemAccount {
+        rent_example::accounts::CreateSystemAccountAccountConstraints {
             payer: payer.pubkey(),
             new_account: new_account.pubkey(),
             system_program: system_program::id(),

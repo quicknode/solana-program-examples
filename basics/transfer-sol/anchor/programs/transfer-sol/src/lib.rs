@@ -14,7 +14,7 @@ pub mod transfer_sol {
     }
 
     pub fn transfer_sol_with_program(
-        context: Context<TransferSolWithProgram>,
+        context: Context<TransferSolWithProgramAccountConstraints>,
         amount: u64,
     ) -> Result<()> {
         instructions::transfer_sol_with_program::handler(context, amount)

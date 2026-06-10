@@ -66,6 +66,13 @@ fn derive_edition_pda(mint: &Pubkey) -> Pubkey {
     pda
 }
 
+/// Returns true if `haystack` contains `needle` anywhere. Used to check that
+/// caller-supplied metadata strings landed in the Metaplex metadata account
+/// without fully deserializing the Metaplex layout.
+fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
+    haystack.windows(needle.len()).any(|window| window == needle)
+}
+
 fn setup() -> (LiteSVM, Pubkey, Keypair) {
     let program_id = mint_nft::id();
     let mut svm = LiteSVM::new();
@@ -94,8 +101,13 @@ fn test_create_collection() {
 
     let instruction = Instruction::new_with_bytes(
         program_id,
-        &mint_nft::instruction::CreateCollection {}.data(),
-        mint_nft::accounts::CreateCollection {
+        &mint_nft::instruction::CreateCollection {
+            name: "Example Collection".to_string(),
+            symbol: "EXCO".to_string(),
+            uri: "https://example.com/collection.json".to_string(),
+        }
+        .data(),
+        mint_nft::accounts::CreateCollectionAccountConstraints {
             user: payer.pubkey(),
             mint: collection_keypair.pubkey(),
             mint_authority,
@@ -124,11 +136,15 @@ fn test_create_collection() {
         .expect("Collection mint should exist");
     assert!(!mint_account.data.is_empty());
 
-    // Verify metadata exists
+    // Verify metadata exists and carries the caller-supplied name
     let meta_account = svm
         .get_account(&metadata)
         .expect("Metadata should exist");
     assert!(!meta_account.data.is_empty());
+    assert!(
+        contains_bytes(&meta_account.data, b"Example Collection"),
+        "Metadata should contain the caller-supplied collection name"
+    );
 
     // Verify master edition exists
     let edition_account = svm
@@ -155,8 +171,13 @@ fn test_mint_nft_to_collection() {
 
     let create_collection_ix = Instruction::new_with_bytes(
         program_id,
-        &mint_nft::instruction::CreateCollection {}.data(),
-        mint_nft::accounts::CreateCollection {
+        &mint_nft::instruction::CreateCollection {
+            name: "Example Collection".to_string(),
+            symbol: "EXCO".to_string(),
+            uri: "https://example.com/collection.json".to_string(),
+        }
+        .data(),
+        mint_nft::accounts::CreateCollectionAccountConstraints {
             user: payer.pubkey(),
             mint: collection_keypair.pubkey(),
             mint_authority,
@@ -188,8 +209,13 @@ fn test_mint_nft_to_collection() {
 
     let mint_nft_ix = Instruction::new_with_bytes(
         program_id,
-        &mint_nft::instruction::MintNft {}.data(),
-        mint_nft::accounts::MintNFT {
+        &mint_nft::instruction::MintNft {
+            name: "Example NFT #1".to_string(),
+            symbol: "EXNFT".to_string(),
+            uri: "https://example.com/nft-1.json".to_string(),
+        }
+        .data(),
+        mint_nft::accounts::MintNftAccountConstraints {
             owner: payer.pubkey(),
             mint: nft_keypair.pubkey(),
             destination: nft_destination,
@@ -217,11 +243,15 @@ fn test_mint_nft_to_collection() {
     let balance = get_token_account_balance(&svm, &nft_destination).unwrap();
     assert_eq!(balance, 1, "Should have 1 NFT");
 
-    // Verify NFT metadata exists
+    // Verify NFT metadata exists and carries the caller-supplied name
     let nft_meta = svm
         .get_account(&nft_metadata)
         .expect("NFT metadata should exist");
     assert!(!nft_meta.data.is_empty());
+    assert!(
+        contains_bytes(&nft_meta.data, b"Example NFT #1"),
+        "Metadata should contain the caller-supplied NFT name"
+    );
 }
 
 #[test]
@@ -238,8 +268,13 @@ fn test_verify_collection() {
 
     let create_collection_ix = Instruction::new_with_bytes(
         program_id,
-        &mint_nft::instruction::CreateCollection {}.data(),
-        mint_nft::accounts::CreateCollection {
+        &mint_nft::instruction::CreateCollection {
+            name: "Example Collection".to_string(),
+            symbol: "EXCO".to_string(),
+            uri: "https://example.com/collection.json".to_string(),
+        }
+        .data(),
+        mint_nft::accounts::CreateCollectionAccountConstraints {
             user: payer.pubkey(),
             mint: collection_keypair.pubkey(),
             mint_authority,
@@ -271,8 +306,13 @@ fn test_verify_collection() {
 
     let mint_nft_ix = Instruction::new_with_bytes(
         program_id,
-        &mint_nft::instruction::MintNft {}.data(),
-        mint_nft::accounts::MintNFT {
+        &mint_nft::instruction::MintNft {
+            name: "Example NFT #1".to_string(),
+            symbol: "EXNFT".to_string(),
+            uri: "https://example.com/nft-1.json".to_string(),
+        }
+        .data(),
+        mint_nft::accounts::MintNftAccountConstraints {
             owner: payer.pubkey(),
             mint: nft_keypair.pubkey(),
             destination: nft_destination,
@@ -301,7 +341,7 @@ fn test_verify_collection() {
     let verify_ix = Instruction::new_with_bytes(
         program_id,
         &mint_nft::instruction::VerifyCollection {}.data(),
-        mint_nft::accounts::VerifyCollectionMint {
+        mint_nft::accounts::VerifyCollectionMintAccountConstraints {
             authority: payer.pubkey(),
             metadata: nft_metadata,
             mint: nft_keypair.pubkey(),

@@ -77,7 +77,7 @@ fn test_transfer_sol_with_program() {
             amount: LAMPORTS_PER_SOL,
         }
         .data(),
-        transfer_sol::accounts::TransferSolWithProgram {
+        transfer_sol::accounts::TransferSolWithProgramAccountConstraints {
             payer: payer_account.pubkey(),
             recipient: recipient.pubkey(),
         }
@@ -89,4 +89,62 @@ fn test_transfer_sol_with_program() {
 
     let recipient_balance = svm.get_balance(&recipient.pubkey()).unwrap();
     assert_eq!(recipient_balance, LAMPORTS_PER_SOL);
+}
+
+#[test]
+fn test_transfer_sol_with_program_rejects_insufficient_funds() {
+    let program_id = transfer_sol::id();
+    let mut svm = LiteSVM::new();
+    let bytes = include_bytes!("../../../target/deploy/transfer_sol.so");
+    svm.add_program(program_id, bytes).unwrap();
+    let payer = create_wallet(&mut svm, 10 * LAMPORTS_PER_SOL).unwrap();
+
+    // Create an account owned by our program holding 1 SOL.
+    let program_owned_account = Keypair::new();
+    let create_account_ix = anchor_lang::solana_program::system_instruction::create_account(
+        &payer.pubkey(),
+        &program_owned_account.pubkey(),
+        LAMPORTS_PER_SOL,
+        0,
+        &program_id,
+    );
+    send_transaction_from_instructions(
+        &mut svm,
+        vec![create_account_ix],
+        &[&payer, &program_owned_account],
+        &payer.pubkey(),
+    )
+    .unwrap();
+
+    // Ask for more than the account holds: the checked subtraction must
+    // reject the transfer instead of wrapping.
+    svm.expire_blockhash();
+    let recipient = Keypair::new();
+    let instruction = Instruction::new_with_bytes(
+        program_id,
+        &transfer_sol::instruction::TransferSolWithProgram {
+            amount: 2 * LAMPORTS_PER_SOL,
+        }
+        .data(),
+        transfer_sol::accounts::TransferSolWithProgramAccountConstraints {
+            payer: program_owned_account.pubkey(),
+            recipient: recipient.pubkey(),
+        }
+        .to_account_metas(None),
+    );
+
+    let result = send_transaction_from_instructions(
+        &mut svm,
+        vec![instruction],
+        &[&payer],
+        &payer.pubkey(),
+    );
+    assert!(result.is_err(), "overdrawing the payer must fail");
+
+    // Balances are untouched.
+    assert_eq!(
+        svm.get_balance(&program_owned_account.pubkey()).unwrap(),
+        LAMPORTS_PER_SOL
+    );
+    assert_eq!(svm.get_balance(&recipient.pubkey()).unwrap_or(0), 0);
 }
