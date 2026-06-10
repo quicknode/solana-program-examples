@@ -126,7 +126,7 @@ pub fn handle_withdraw(
     let shares_u128 = shares_to_burn as u128;
     let total_u128 = total_shares as u128;
 
-    // Proportional amounts — floor division (user gets floor)
+    // Proportional amounts - floor division (user gets floor)
     let amount_usdc: u64 = (vault_usdc_amount as u128)
         .checked_mul(shares_u128)
         .ok_or(VaultError::MathOverflow)?

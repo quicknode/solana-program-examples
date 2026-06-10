@@ -469,7 +469,7 @@ fn test_deposit_first() {
     )
     .unwrap();
 
-    // First deposit is 1:1 — shares == usdc_amount
+    // First deposit is 1:1 - shares == usdc_amount
     let share_balance = get_token_account_balance(&ctx.svm, &user_share).unwrap();
     assert_eq!(share_balance, deposit_amount, "First deposit should be 1:1");
 
@@ -845,7 +845,7 @@ fn test_withdraw_rejects_slippage() {
         ctx.vault_program_id,
         &vault_strategy::instruction::Withdraw {
             shares_to_burn: shares,
-            min_usdc_out: deposit_amount + 1, // more than available — should fail
+            min_usdc_out: deposit_amount + 1, // more than available - should fail
             min_asset_a_out: 0,
             min_asset_b_out: 0,
         }

@@ -100,13 +100,13 @@ pub struct DepositAccountConstraints<'info> {
     )]
     pub vault_asset_b: Box<InterfaceAccount<'info, TokenAccount>>,
 
-    /// CHECK: Pyth PriceUpdateV2 for asset_a — key validated against strategy.price_feed_a
+    /// CHECK: Pyth PriceUpdateV2 for asset_a - key validated against strategy.price_feed_a
     #[account(
         constraint = price_feed_a.key() == strategy.price_feed_a @ VaultError::InvalidPriceFeed
     )]
     pub price_feed_a: UncheckedAccount<'info>,
 
-    /// CHECK: Pyth PriceUpdateV2 for asset_b — key validated against strategy.price_feed_b
+    /// CHECK: Pyth PriceUpdateV2 for asset_b - key validated against strategy.price_feed_b
     #[account(
         constraint = price_feed_b.key() == strategy.price_feed_b @ VaultError::InvalidPriceFeed
     )]
@@ -227,7 +227,7 @@ pub fn handle_deposit(
     let cpi_ctx = CpiContext::new(context.accounts.token_program.key(), transfer_accounts);
     transfer_checked(cpi_ctx, usdc_amount, usdc_decimals)?;
 
-    // Mint shares to depositor — strategy PDA signs
+    // Mint shares to depositor - strategy PDA signs
     let signer_seeds: &[&[&[u8]]] = &[&[b"strategy", manager_key.as_ref(), &[strategy_bump]]];
 
     let mint_accounts = MintTo {

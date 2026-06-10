@@ -45,7 +45,7 @@ pub struct InitializeStrategyAccountConstraints<'info> {
     )]
     pub share_mint: InterfaceAccount<'info, Mint>,
 
-    /// Vault's USDC token account — strategy PDA is the authority
+    /// Vault's USDC token account - strategy PDA is the authority
     #[account(
         init,
         payer = manager,
@@ -55,7 +55,7 @@ pub struct InitializeStrategyAccountConstraints<'info> {
     )]
     pub vault_usdc: InterfaceAccount<'info, TokenAccount>,
 
-    /// Vault's asset_a token account — strategy PDA is the authority
+    /// Vault's asset_a token account - strategy PDA is the authority
     #[account(
         init,
         payer = manager,
@@ -65,7 +65,7 @@ pub struct InitializeStrategyAccountConstraints<'info> {
     )]
     pub vault_asset_a: InterfaceAccount<'info, TokenAccount>,
 
-    /// Vault's asset_b token account — strategy PDA is the authority
+    /// Vault's asset_b token account - strategy PDA is the authority
     #[account(
         init,
         payer = manager,

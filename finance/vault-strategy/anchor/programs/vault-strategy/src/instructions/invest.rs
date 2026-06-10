@@ -26,7 +26,7 @@ pub struct InvestAccountConstraints<'info> {
 
     pub usdc_mint: Box<InterfaceAccount<'info, Mint>>,
 
-    /// The asset mint to buy — must be asset_mint_a or asset_mint_b
+    /// The asset mint to buy - must be asset_mint_a or asset_mint_b
     #[account(mut)]
     pub asset_mint: Box<InterfaceAccount<'info, Mint>>,
 

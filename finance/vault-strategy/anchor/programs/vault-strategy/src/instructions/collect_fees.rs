@@ -29,7 +29,7 @@ pub struct CollectFeesAccountConstraints<'info> {
     )]
     pub share_mint: InterfaceAccount<'info, Mint>,
 
-    /// Manager's share token account — receives fee shares
+    /// Manager's share token account - receives fee shares
     #[account(
         init_if_needed,
         payer = payer,
@@ -85,7 +85,7 @@ pub fn handle_collect_fees(context: Context<CollectFeesAccountConstraints>) -> R
         .checked_add(fee_shares)
         .ok_or(VaultError::MathOverflow)?;
 
-    // Mint fee shares to manager — strategy PDA signs
+    // Mint fee shares to manager - strategy PDA signs
     let signer_seeds: &[&[&[u8]]] = &[&[b"strategy", manager_key.as_ref(), &[strategy_bump]]];
 
     let mint_accounts = MintTo {

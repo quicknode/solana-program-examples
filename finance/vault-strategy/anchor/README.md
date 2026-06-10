@@ -2,7 +2,7 @@
 
 A manager-run investment vault on Solana. Users deposit [USDC](https://www.investopedia.com/terms/u/usd-coin-usdc.asp) and receive shares representing proportional ownership of a basket of assets. The manager allocates funds across the basket, earns a fee, and depositors withdraw their proportional slice when they choose.
 
-The example uses two stocks as the basket assets: **TSLAx** (Tesla) and **NVDAx** (Nvidia) — [xStocks](https://backed.fi/xstocks) issued on Solana by Backed Finance. In tests these are mock [tokens](https://solana.com/docs/terminology#token).
+The example uses two stocks as the basket assets: **TSLAx** (Tesla) and **NVDAx** (Nvidia) - [xStocks](https://backed.fi/xstocks) issued on Solana by Backed Finance. In tests these are mock [tokens](https://solana.com/docs/terminology#token).
 
 ---
 
@@ -27,21 +27,21 @@ NAV = vault_usdc_balance
     + vault_nvda_balance × nvda_price_in_usdc
 ```
 
-NAV answers: *"if we liquidated the entire vault at today's prices, how many USDC would we get?"* It is used to price new deposits fairly — every depositor pays the same per-share price regardless of when they join.
+NAV answers: *"if we liquidated the entire vault at today's prices, how many USDC would we get?"* It is used to price new deposits fairly - every depositor pays the same per-share price regardless of when they join.
 
-Prices come from [Pyth Network](https://pyth.network/) oracle accounts (`PriceUpdateV2`). A staleness window of 60 seconds is enforced — deposits fail if either price is older than that.
+Prices come from [Pyth Network](https://pyth.network/) oracle accounts (`PriceUpdateV2`). A staleness window of 60 seconds is enforced - deposits fail if either price is older than that.
 
 ### Shares
 
 A [share](https://www.investopedia.com/terms/s/shares.asp) (also called an LP token or vault token) represents a fraction of the total vault. If you hold 1% of all shares, you own 1% of every asset in the vault.
 
 - **First deposit**: shares are issued 1:1 with USDC base units (sets an initial share price of 1 USDC).
-- **Later deposits**: `shares_to_mint = deposit_usdc × total_shares / NAV`. If the vault has grown, each new USDC buys fewer shares — correctly reflecting that the vault is worth more per share than when it started.
+- **Later deposits**: `shares_to_mint = deposit_usdc × total_shares / NAV`. If the vault has grown, each new USDC buys fewer shares - correctly reflecting that the vault is worth more per share than when it started.
 - Shares are [SPL tokens](https://solana.com/docs/terminology#token) stored in the depositor's [associated token account (ATA)](https://solana.com/docs/terminology#associated-token-account).
 
 ### Management Fee
 
-A [management fee](https://www.investopedia.com/terms/m/managementfee.asp) is charged annually as a percentage of assets under management. This vault uses [basis points](https://www.investopedia.com/terms/b/basispoint.asp) (bps) — 100 bps = 1%.
+A [management fee](https://www.investopedia.com/terms/m/managementfee.asp) is charged annually as a percentage of assets under management. This vault uses [basis points](https://www.investopedia.com/terms/b/basispoint.asp) (bps) - 100 bps = 1%.
 
 The fee is collected by *minting new shares to the manager*, which dilutes existing holders proportionally. This avoids the need to know the current price at fee-collection time:
 
@@ -49,7 +49,7 @@ The fee is collected by *minting new shares to the manager*, which dilutes exist
 fee_shares = total_shares × fee_bps × elapsed_seconds / (10_000 × 31_536_000)
 ```
 
-Anyone can call `collect_fees` — it is permissionless.
+Anyone can call `collect_fees` - it is permissionless.
 
 ### Basket Allocation and Rebalancing
 
@@ -57,11 +57,11 @@ A [basket](https://www.investopedia.com/terms/b/basket.asp) is a group of assets
 
 ### Slippage
 
-[Slippage](https://www.investopedia.com/terms/s/slippage.asp) is the difference between the price you expected and the price you actually received. Every instruction that moves tokens accepts a `minimum_*` parameter — the transaction reverts if the output would fall below that floor.
+[Slippage](https://www.investopedia.com/terms/s/slippage.asp) is the difference between the price you expected and the price you actually received. Every instruction that moves tokens accepts a `minimum_*` parameter - the transaction reverts if the output would fall below that floor.
 
 ### In-Kind Withdrawal
 
-An [in-kind distribution](https://www.investopedia.com/terms/i/in-kind.asp) means you receive the underlying assets themselves, not cash. When you withdraw from this vault you receive a proportional slice of whatever the vault holds at that moment — some USDC, some TSLAx, some NVDAx — rather than a forced conversion to USDC. You can then sell those assets on a DEX yourself.
+An [in-kind distribution](https://www.investopedia.com/terms/i/in-kind.asp) means you receive the underlying assets themselves, not cash. When you withdraw from this vault you receive a proportional slice of whatever the vault holds at that moment - some USDC, some TSLAx, some NVDAx - rather than a forced conversion to USDC. You can then sell those assets on a DEX yourself.
 
 ---
 
@@ -75,11 +75,11 @@ An [in-kind distribution](https://www.investopedia.com/terms/i/in-kind.asp) mean
 | **Bob** | Early depositor | Gain diversified exposure to TSLAx + NVDAx without managing individual positions |
 | **Carol** | Later depositor | Join the same strategy after it has been running for a while |
 
-Alice's `manager` key can be a [Squads](https://squads.so/) multisig address — the vault stores it as a plain `Pubkey` and checks only that the transaction is signed by it. No code change is needed to use a multisig.
+Alice's `manager` key can be a [Squads](https://squads.so/) multisig address - the vault stores it as a plain `Pubkey` and checks only that the transaction is signed by it. No code change is needed to use a multisig.
 
 ---
 
-### Step 1 — Alice initialises the vault
+### Step 1 - Alice initialises the vault
 
 **Instruction:** `initialize_strategy(weight_bps_a=4000, weight_bps_b=6000, fee_bps=100, swap_router, price_feed_a, price_feed_b)`
 
@@ -97,7 +97,7 @@ The weights must sum to 10,000 bps, and `fee_bps` must not exceed `MAX_FEE_BPS` 
 
 ---
 
-### Step 2 — Bob deposits 1,000 USDC
+### Step 2 - Bob deposits 1,000 USDC
 
 **Instruction:** `deposit(usdc_amount=1_000_000_000, minimum_shares=990_000_000)`
 
@@ -116,11 +116,11 @@ Bob now holds 100% of the vault. His motivation: rather than buying TSLAx and NV
 
 ---
 
-### Step 3 — Alice invests: USDC → TSLAx and NVDAx
+### Step 3 - Alice invests: USDC → TSLAx and NVDAx
 
 Alice calls `invest` twice, once per asset, to deploy the deposited USDC into the basket according to the 40/60 target.
 
-**Instruction (call 1):** `invest(usdc_amount=400_000_000, minimum_asset_out=1_550_000)` — buys TSLAx at $250
+**Instruction (call 1):** `invest(usdc_amount=400_000_000, minimum_asset_out=1_550_000)` - buys TSLAx at $250
 
 **Accounts modified (call 1):**
 
@@ -130,7 +130,7 @@ Alice calls `invest` twice, once per asset, to deploy the deposited USDC into th
 | `vault_asset_a` (TSLAx) | +1,600,000 base units (1.6 TSLAx @ $250) |
 | `router_usdc_treasury` | +400 USDC |
 
-**Instruction (call 2):** `invest(usdc_amount=600_000_000, minimum_asset_out=3_300_000)` — buys NVDAx at $180
+**Instruction (call 2):** `invest(usdc_amount=600_000_000, minimum_asset_out=3_300_000)` - buys NVDAx at $180
 
 **Accounts modified (call 2):**
 
@@ -140,11 +140,11 @@ Alice calls `invest` twice, once per asset, to deploy the deposited USDC into th
 | `vault_asset_b` (NVDAx) | +3,333,333 base units (3.33 NVDAx @ $180) |
 | `router_usdc_treasury` | +600 USDC |
 
-After both calls the vault holds: ~0 USDC, 1.6 TSLAx, 3.33 NVDAx — all worth ~1,000 USDC at current prices.
+After both calls the vault holds: ~0 USDC, 1.6 TSLAx, 3.33 NVDAx - all worth ~1,000 USDC at current prices.
 
 ---
 
-### Step 4 — Carol deposits 1,000 USDC (after investing)
+### Step 4 - Carol deposits 1,000 USDC (after investing)
 
 **Instruction:** `deposit(usdc_amount=1_000_000_000, minimum_shares=990_000_000)`
 
@@ -165,7 +165,7 @@ Bob and Carol now each own ~50% of the vault.
 
 ---
 
-### Step 5 — Alice rebalances (optional)
+### Step 5 - Alice rebalances (optional)
 
 Suppose TSLAx has risen and the allocation has drifted to 45% TSLAx / 55% NVDAx. Alice calls `rebalance` to sell some TSLAx and buy more NVDAx, restoring the 40/60 target.
 
@@ -184,11 +184,11 @@ Two CPI legs execute atomically:
 | `vault_asset_b` (NVDAx) | +1,111,111 base units |
 | `router_usdc_treasury` | net: +USDC from TSLAx sale, −USDC for NVDAx purchase |
 
-If either slippage check fails, both legs revert — no partial rebalance.
+If either slippage check fails, both legs revert - no partial rebalance.
 
 ---
 
-### Step 6 — Alice collects fees
+### Step 6 - Alice collects fees
 
 Six months have elapsed. Anyone calls `collect_fees` (it is permissionless).
 
@@ -211,7 +211,7 @@ Bob and Carol are each diluted by ~0.5%. Alice now holds ~0.5% of the vault.
 
 ---
 
-### Step 7 — Bob withdraws
+### Step 7 - Bob withdraws
 
 Bob burns all his shares and receives his proportional slice of the vault in-kind.
 
@@ -241,7 +241,7 @@ Bob receives TSLAx and NVDAx directly in his own ATAs. He can sell them on a DEX
 
 | Instruction | Signer | Key Accounts Read | Key Accounts Written |
 |------------|--------|-------------------|----------------------|
-| `initialize_strategy` | manager | — | Strategy PDA, share_mint, vault_usdc, vault_asset_a, vault_asset_b |
+| `initialize_strategy` | manager | - | Strategy PDA, share_mint, vault_usdc, vault_asset_a, vault_asset_b |
 | `deposit` | depositor | vault_usdc, vault_asset_a, vault_asset_b, price_feed_a, price_feed_b | vault_usdc (+), depositor_usdc_ata (−), depositor_share_ata (+), strategy.total_shares (+) |
 | `invest` | manager | strategy | vault_usdc (−), vault_asset (+), router_usdc_treasury (+) |
 | `rebalance` | manager | strategy | vault_sell (−), vault_buy (+), vault_usdc (net 0), router_usdc_treasury |
@@ -294,16 +294,16 @@ Every account a caller passes is checked against state the program controls, nev
 
 This is a **manager-custodial** vault. The strategy [PDA](https://solana.com/docs/terminology#program-derived-address-pda) holds all assets; the manager controls `invest` and `rebalance` with no onchain constraint that they follow the stated allocation. Depositors trust the manager to act in their interest.
 
-The `manager` field is a plain `Pubkey`. It can be a [Squads](https://squads.so/) multisig address — the vault checks only that the transaction carries a valid signature from that key. Squads handles threshold approval before the transaction reaches the vault. No program changes are required.
+The `manager` field is a plain `Pubkey`. It can be a [Squads](https://squads.so/) multisig address - the vault checks only that the transaction carries a valid signature from that key. Squads handles threshold approval before the transaction reaches the vault. No program changes are required.
 
 ---
 
 ## Financial Math Implementation
 
-- No floating point — integer arithmetic only throughout
+- No floating point - integer arithmetic only throughout
 - All intermediate products use `u128` to prevent overflow (`u64 × u64` overflows at ~1.8 × 10¹⁹)
 - Multiply before divide to preserve precision
-- All arithmetic uses `checked_*` methods — raw `+ - * /` are never used on token amounts
+- All arithmetic uses `checked_*` methods - raw `+ - * /` are never used on token amounts
 - The user always receives floor division; the protocol retains the rounding remainder
 - `transfer_checked` is used for all SPL token transfers (carries decimals through the CPI to catch wrong-mint errors)
 
