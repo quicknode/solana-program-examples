@@ -2,6 +2,7 @@
 
 use quasar_lang::prelude::*;
 
+pub mod error;
 mod instructions;
 use instructions::*;
 pub mod state;
@@ -87,16 +88,31 @@ mod quasar_token_swap {
         ctx: Ctx<DepositLiquidityAccounts>,
         amount_a: u64,
         amount_b: u64,
+        minimum_lp_tokens_out: u64,
     ) -> Result<(), ProgramError> {
-        instructions::handle_deposit_liquidity(&mut ctx.accounts, amount_a, amount_b, &ctx.bumps)
+        instructions::handle_deposit_liquidity(
+            &mut ctx.accounts,
+            amount_a,
+            amount_b,
+            minimum_lp_tokens_out,
+            &ctx.bumps,
+        )
     }
 
     #[instruction(discriminator = 3)]
     pub fn withdraw_liquidity(
         ctx: Ctx<WithdrawLiquidityAccounts>,
         amount: u64,
+        minimum_token_a_out: u64,
+        minimum_token_b_out: u64,
     ) -> Result<(), ProgramError> {
-        instructions::handle_withdraw_liquidity(&mut ctx.accounts, amount, &ctx.bumps)
+        instructions::handle_withdraw_liquidity(
+            &mut ctx.accounts,
+            amount,
+            minimum_token_a_out,
+            minimum_token_b_out,
+            &ctx.bumps,
+        )
     }
 
     #[instruction(discriminator = 4)]
