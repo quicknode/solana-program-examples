@@ -4,7 +4,9 @@ use anchor_lang::prelude::*;
 use anchor_lang::solana_program::instruction::{AccountMeta, Instruction};
 use borsh::BorshSerialize;
 
+pub mod error;
 mod instructions;
+pub mod state;
 use instructions::*;
 
 declare_id!("Fd4iwpPWaCU8BNwGQGtvvrcvG4Tfizq3RgLm8YLBJX6D");
@@ -85,8 +87,12 @@ pub fn build_transfer_instruction(
 pub mod cnft_vault {
     use super::*;
 
+    pub fn initialize_vault(context: Context<InitializeVaultAccountConstraints>) -> Result<()> {
+        instructions::initialize_vault::handler(context)
+    }
+
     pub fn withdraw_cnft<'info>(
-        context: Context<'info, Withdraw<'info>>,
+        context: Context<'info, WithdrawCnftAccountConstraints<'info>>,
         root: [u8; 32],
         data_hash: [u8; 32],
         creator_hash: [u8; 32],
@@ -98,7 +104,7 @@ pub mod cnft_vault {
 
     #[allow(clippy::too_many_arguments)]
     pub fn withdraw_two_cnfts<'info>(
-        context: Context<'info, WithdrawTwo<'info>>,
+        context: Context<'info, WithdrawTwoCnftsAccountConstraints<'info>>,
         root1: [u8; 32],
         data_hash1: [u8; 32],
         creator_hash1: [u8; 32],

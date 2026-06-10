@@ -1,5 +1,10 @@
+use crate::error::VaultError;
+use crate::state::Vault;
 use crate::*;
-use quasar_lang::{cpi::{InstructionAccount, InstructionView, Seed, Signer}, remaining::RemainingAccounts};
+use quasar_lang::{
+    cpi::{InstructionAccount, InstructionView, Seed, Signer as CpiSigner},
+    remaining::RemainingAccounts,
+};
 
 /// Maximum proof nodes per tree.
 const MAX_PROOF_NODES: usize = 24;
@@ -10,28 +15,44 @@ const MAX_CPI_ACCOUNTS: usize = 8 + MAX_PROOF_NODES;
 /// Transfer args byte length: root(32) + data_hash(32) + creator_hash(32) + nonce(8) + index(4).
 const TRANSFER_ARGS_LEN: usize = 108;
 
+/// Instruction data length:
+/// args1(108) + proof_1_length(1) + args2(108) + proof_2_length(1).
+const WITHDRAW_TWO_DATA_LEN: usize = TRANSFER_ARGS_LEN * 2 + 2;
+
 /// Accounts for withdrawing two compressed NFTs from the vault in one transaction.
 /// Each cNFT can be from a different merkle tree.
 #[derive(Accounts)]
-pub struct WithdrawTwo {
+pub struct WithdrawTwoCnftsAccountConstraints {
+    /// The stored vault authority. Only this signer may withdraw.
+    pub authority: Signer,
+
+    /// Vault PDA that owns the cNFTs (as Bubblegum leaf owner) and signs
+    /// both transfers via invoke_signed.
+    #[account(
+        address = Vault::seeds(),
+        has_one(authority) @ VaultError::InvalidWithdrawAuthority,
+    )]
+    pub vault: Account<Vault>,
+
     /// Tree authority PDA for tree 1.
     #[account(mut)]
     pub tree_authority1: UncheckedAccount,
-    /// Vault PDA that owns the cNFTs - signs both transfers.
-    #[account(address = crate::VaultPda::seeds())]
-    pub leaf_owner: UncheckedAccount,
     /// Recipient for cNFT 1.
     pub new_leaf_owner1: UncheckedAccount,
     /// Merkle tree for cNFT 1.
     #[account(mut)]
     pub merkle_tree1: UncheckedAccount,
+    // The second tree's accounts and recipient are marked `dup` because they
+    // may legitimately repeat first-position accounts: both cNFTs can live in
+    // the same tree and both can go to the same recipient.
     /// Tree authority PDA for tree 2.
-    #[account(mut)]
+    #[account(mut, dup)]
     pub tree_authority2: UncheckedAccount,
     /// Recipient for cNFT 2.
+    #[account(dup)]
     pub new_leaf_owner2: UncheckedAccount,
     /// Merkle tree for cNFT 2.
-    #[account(mut)]
+    #[account(mut, dup)]
     pub merkle_tree2: UncheckedAccount,
     /// SPL Noop log wrapper.
     pub log_wrapper: UncheckedAccount,
@@ -45,25 +66,28 @@ pub struct WithdrawTwo {
 }
 
 #[allow(clippy::too_many_lines)]
-pub fn handle_withdraw_two_cnfts(accounts: &mut WithdrawTwo, data: &[u8], remaining: RemainingAccounts<'_>, leaf_owner_bump: u8) -> Result<(), ProgramError> {
-    // Parse instruction args:
-    // args1(108) + proof_1_length(1) + args2(108) + _proof_2_length(1) = 218 bytes
-    if data.len() < 218 {
+pub fn handle_withdraw_two_cnfts(
+    accounts: &mut WithdrawTwoCnftsAccountConstraints,
+    data: &[u8],
+    remaining: RemainingAccounts<'_>,
+    vault_bump: u8,
+) -> Result<(), ProgramError> {
+    if data.len() < WITHDRAW_TWO_DATA_LEN {
         return Err(ProgramError::InvalidInstructionData);
     }
 
     let args1 = &data[0..TRANSFER_ARGS_LEN];
     let proof_1_length = data[TRANSFER_ARGS_LEN] as usize;
     let args2 = &data[TRANSFER_ARGS_LEN + 1..TRANSFER_ARGS_LEN * 2 + 1];
-    // _proof_2_length at data[217] - not needed, remaining after proof1 is proof2
+    let proof_2_length = data[TRANSFER_ARGS_LEN * 2 + 1] as usize;
 
     // PDA signer seeds
-    let bump_bytes = [leaf_owner_bump];
+    let bump_bytes = [vault_bump];
     let seeds: [Seed; 2] = [
         Seed::from(b"cNFT-vault" as &[u8]),
         Seed::from(&bump_bytes as &[u8]),
     ];
-    let signer = Signer::from(&seeds as &[Seed]);
+    let signer = CpiSigner::from(&seeds as &[Seed]);
 
     // Collect all remaining accounts (proof1 ++ proof2).
     //
@@ -85,9 +109,18 @@ pub fn handle_withdraw_two_cnfts(accounts: &mut WithdrawTwo, data: &[u8], remain
         total_proofs += 1;
     }
 
-    // Split into proof1 and proof2
-    let proof1_count = proof_1_length.min(total_proofs);
-    let proof2_count = total_proofs.saturating_sub(proof1_count);
+    // The proof lengths are client-supplied: bounds-check them against the
+    // accounts actually provided before splitting, so adversarial input gets
+    // a clean named error instead of misattributed proof nodes.
+    require!(
+        proof_1_length
+            .checked_add(proof_2_length)
+            .is_some_and(|total| total == total_proofs),
+        VaultError::ProofLengthMismatch
+    );
+
+    let proof1_count = proof_1_length;
+    let proof2_count = proof_2_length;
 
     // --- Withdraw cNFT #1 ---
     log("withdrawing cNFT#1");
@@ -102,8 +135,8 @@ pub fn handle_withdraw_two_cnfts(accounts: &mut WithdrawTwo, data: &[u8], remain
             core::array::from_fn(|_| InstructionAccount::readonly(sys_addr));
 
         ix_accounts[0] = InstructionAccount::readonly(accounts.tree_authority1.address());
-        ix_accounts[1] = InstructionAccount::readonly_signer(accounts.leaf_owner.address());
-        ix_accounts[2] = InstructionAccount::readonly(accounts.leaf_owner.address());
+        ix_accounts[1] = InstructionAccount::readonly_signer(accounts.vault.address());
+        ix_accounts[2] = InstructionAccount::readonly(accounts.vault.address());
         ix_accounts[3] = InstructionAccount::readonly(accounts.new_leaf_owner1.address());
         ix_accounts[4] = InstructionAccount::writable(accounts.merkle_tree1.address());
         ix_accounts[5] = InstructionAccount::readonly(accounts.log_wrapper.address());
@@ -115,12 +148,11 @@ pub fn handle_withdraw_two_cnfts(accounts: &mut WithdrawTwo, data: &[u8], remain
         }
 
         let sys_view = accounts.system_program.to_account_view().clone();
-        let mut views: [AccountView; MAX_CPI_ACCOUNTS] =
-            core::array::from_fn(|_| sys_view.clone());
+        let mut views: [AccountView; MAX_CPI_ACCOUNTS] = core::array::from_fn(|_| sys_view.clone());
 
         views[0] = accounts.tree_authority1.to_account_view().clone();
-        views[1] = accounts.leaf_owner.to_account_view().clone();
-        views[2] = accounts.leaf_owner.to_account_view().clone();
+        views[1] = accounts.vault.to_account_view().clone();
+        views[2] = accounts.vault.to_account_view().clone();
         views[3] = accounts.new_leaf_owner1.to_account_view().clone();
         views[4] = accounts.merkle_tree1.to_account_view().clone();
         views[5] = accounts.log_wrapper.to_account_view().clone();
@@ -137,10 +169,11 @@ pub fn handle_withdraw_two_cnfts(accounts: &mut WithdrawTwo, data: &[u8], remain
             accounts: &ix_accounts[..total_accounts],
         };
 
-        solana_instruction_view::cpi::invoke_signed_with_bounds::<
-            MAX_CPI_ACCOUNTS,
-            AccountView,
-        >(&instruction, &views[..total_accounts], &[signer.clone()])?;
+        solana_instruction_view::cpi::invoke_signed_with_bounds::<MAX_CPI_ACCOUNTS, AccountView>(
+            &instruction,
+            &views[..total_accounts],
+            &[signer.clone()],
+        )?;
     }
 
     // --- Withdraw cNFT #2 ---
@@ -156,8 +189,8 @@ pub fn handle_withdraw_two_cnfts(accounts: &mut WithdrawTwo, data: &[u8], remain
             core::array::from_fn(|_| InstructionAccount::readonly(sys_addr));
 
         ix_accounts[0] = InstructionAccount::readonly(accounts.tree_authority2.address());
-        ix_accounts[1] = InstructionAccount::readonly_signer(accounts.leaf_owner.address());
-        ix_accounts[2] = InstructionAccount::readonly(accounts.leaf_owner.address());
+        ix_accounts[1] = InstructionAccount::readonly_signer(accounts.vault.address());
+        ix_accounts[2] = InstructionAccount::readonly(accounts.vault.address());
         ix_accounts[3] = InstructionAccount::readonly(accounts.new_leaf_owner2.address());
         ix_accounts[4] = InstructionAccount::writable(accounts.merkle_tree2.address());
         ix_accounts[5] = InstructionAccount::readonly(accounts.log_wrapper.address());
@@ -171,12 +204,11 @@ pub fn handle_withdraw_two_cnfts(accounts: &mut WithdrawTwo, data: &[u8], remain
         }
 
         let sys_view = accounts.system_program.to_account_view().clone();
-        let mut views: [AccountView; MAX_CPI_ACCOUNTS] =
-            core::array::from_fn(|_| sys_view.clone());
+        let mut views: [AccountView; MAX_CPI_ACCOUNTS] = core::array::from_fn(|_| sys_view.clone());
 
         views[0] = accounts.tree_authority2.to_account_view().clone();
-        views[1] = accounts.leaf_owner.to_account_view().clone();
-        views[2] = accounts.leaf_owner.to_account_view().clone();
+        views[1] = accounts.vault.to_account_view().clone();
+        views[2] = accounts.vault.to_account_view().clone();
         views[3] = accounts.new_leaf_owner2.to_account_view().clone();
         views[4] = accounts.merkle_tree2.to_account_view().clone();
         views[5] = accounts.log_wrapper.to_account_view().clone();
@@ -193,10 +225,11 @@ pub fn handle_withdraw_two_cnfts(accounts: &mut WithdrawTwo, data: &[u8], remain
             accounts: &ix_accounts[..total_accounts],
         };
 
-        solana_instruction_view::cpi::invoke_signed_with_bounds::<
-            MAX_CPI_ACCOUNTS,
-            AccountView,
-        >(&instruction, &views[..total_accounts], &[signer])?;
+        solana_instruction_view::cpi::invoke_signed_with_bounds::<MAX_CPI_ACCOUNTS, AccountView>(
+            &instruction,
+            &views[..total_accounts],
+            &[signer],
+        )?;
     }
 
     log("successfully sent cNFTs");

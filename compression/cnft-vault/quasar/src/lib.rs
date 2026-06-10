@@ -2,7 +2,9 @@
 
 use quasar_lang::prelude::*;
 
+pub mod error;
 mod instructions;
+pub mod state;
 use instructions::*;
 #[cfg(test)]
 mod tests;
@@ -26,32 +28,41 @@ const SPL_ACCOUNT_COMPRESSION_ID: Address = Address::new_from_array([
 
 declare_id!("Fd4iwpPWaCU8BNwGQGtvvrcvG4Tfizq3RgLm8YLBJX6D");
 
-/// Marker carrying the seeds for the vault PDA. Used by the
-/// `address = VaultPda::seeds()` derive form; Quasar does not accept
-/// inline `seeds = [...]` here.
-#[derive(Seeds)]
-#[seeds(b"cNFT-vault")]
-pub struct VaultPda;
-
 #[program]
 mod quasar_cnft_vault {
     use super::*;
 
-    /// Withdraw a single compressed NFT from the vault PDA.
+    /// Withdraw a single compressed NFT from the vault PDA. Only the
+    /// authority stored by initialize_vault may sign this.
     #[instruction(discriminator = 0)]
-    pub fn withdraw_cnft(ctx: CtxWithRemaining<Withdraw>) -> Result<(), ProgramError> {
+    pub fn withdraw_cnft(
+        ctx: CtxWithRemaining<WithdrawCnftAccountConstraints>,
+    ) -> Result<(), ProgramError> {
         let data = ctx.data;
         let remaining = ctx.remaining_accounts();
-        let leaf_owner_bump = ctx.bumps.leaf_owner;
-        instructions::handle_withdraw_cnft(&mut ctx.accounts, data, remaining, leaf_owner_bump)
+        let vault_bump = ctx.bumps.vault;
+        instructions::handle_withdraw_cnft(&mut ctx.accounts, data, remaining, vault_bump)
     }
 
-    /// Withdraw two compressed NFTs from the vault PDA in a single transaction.
+    /// Withdraw two compressed NFTs from the vault PDA in a single
+    /// transaction. Only the authority stored by initialize_vault may sign
+    /// this.
     #[instruction(discriminator = 1)]
-    pub fn withdraw_two_cnfts(ctx: CtxWithRemaining<WithdrawTwo>) -> Result<(), ProgramError> {
+    pub fn withdraw_two_cnfts(
+        ctx: CtxWithRemaining<WithdrawTwoCnftsAccountConstraints>,
+    ) -> Result<(), ProgramError> {
         let data = ctx.data;
         let remaining = ctx.remaining_accounts();
-        let leaf_owner_bump = ctx.bumps.leaf_owner;
-        instructions::handle_withdraw_two_cnfts(&mut ctx.accounts, data, remaining, leaf_owner_bump)
+        let vault_bump = ctx.bumps.vault;
+        instructions::handle_withdraw_two_cnfts(&mut ctx.accounts, data, remaining, vault_bump)
+    }
+
+    /// Create the vault PDA and store the signer as its withdraw authority.
+    #[instruction(discriminator = 2)]
+    pub fn initialize_vault(
+        ctx: Ctx<InitializeVaultAccountConstraints>,
+    ) -> Result<(), ProgramError> {
+        let vault_bump = ctx.bumps.vault;
+        instructions::handle_initialize_vault(&mut ctx.accounts, vault_bump)
     }
 }
