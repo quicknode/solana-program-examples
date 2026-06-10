@@ -11,7 +11,7 @@ Use this as a reference for working with cNFTs in your own programs.
 
 ## Components
 
-- `programs/cutils/` - the Anchor program. The setup uses a `validate`/`actuate` pattern via Anchor's `access_control` macro; this pairs well with the cNFT verification logic.
+- `programs/cutils/` - the Anchor program. Instruction handlers live in `src/instructions/` (`handle_mint`, `handle_verify`).
 
 ## Testing
 
@@ -36,4 +36,3 @@ Reference implementation only.
 
 - [@nickfrosty](https://twitter.com/nickfrosty) for the sample code and [live demo](https://youtu.be/LxhTxS9DexU).
 - [@HeyAndyS](https://twitter.com/HeyAndyS) for the groundwork in `cnft-vault`.
-- Switchboard VRF-flip (since archived) for inspiring the validate/actuate setup.
