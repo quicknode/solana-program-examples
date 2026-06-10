@@ -32,4 +32,10 @@ pub enum VaultError {
     StalePriceFeed,
     #[msg("Sell and buy mints must be different")]
     SameMint,
+    #[msg("USDC mint does not match the strategy's registered USDC mint")]
+    InvalidUsdcMint,
+    #[msg("Swap router program does not match the strategy's registered swap router")]
+    InvalidSwapRouter,
+    #[msg("Management fee exceeds the maximum allowed")]
+    FeeTooHigh,
 }

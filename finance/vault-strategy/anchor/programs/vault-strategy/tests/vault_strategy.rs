@@ -3,6 +3,7 @@ use {
         solana_program::{clock::Clock, instruction::Instruction, pubkey::Pubkey, system_program},
         InstructionData, ToAccountMetas,
     },
+    anchor_spl::token::spl_token,
     litesvm::LiteSVM,
     solana_account::Account as SolanaAccount,
     solana_keypair::Keypair,
@@ -74,6 +75,9 @@ fn build_mock_price_update_account(price: i64, exponent: i32, publish_time: i64)
 /// Fixed publish time matching the test clock
 const PUBLISH_TIME: i64 = 1_700_000_000;
 
+/// All test mints (USDC and the basket assets) use 6 decimals, matching real USDC.
+const TOKEN_DECIMALS: u8 = 6;
+
 struct TestContext {
     svm: LiteSVM,
     vault_program_id: Pubkey,
@@ -121,20 +125,34 @@ fn setup_full() -> TestContext {
     let payer = create_wallet(&mut svm, 100_000_000_000).unwrap();
     let manager = create_wallet(&mut svm, 10_000_000_000).unwrap();
 
-    let decimals: u8 = 6;
+    // Create mints with payer as the initial mint authority for all three
+    let usdc_mint = create_token_mint(&mut svm, &payer, TOKEN_DECIMALS, None).unwrap();
+    let tsla_mint = create_token_mint(&mut svm, &payer, TOKEN_DECIMALS, None).unwrap();
+    let nvda_mint = create_token_mint(&mut svm, &payer, TOKEN_DECIMALS, None).unwrap();
 
-    // Create mints — payer is initial mint authority (we'll transfer TSLAx/NVDAx to router_authority)
-    let usdc_mint = create_token_mint(&mut svm, &payer, decimals, None).unwrap();
-
-    // Derive router_authority PDA before creating mints
     let (router_authority_pda, _) =
         Pubkey::find_program_address(&[b"router_authority"], &router_program_id);
 
-    // TSLAx and NVDAx have router_authority as mint authority
-    let tsla_mint =
-        create_token_mint(&mut svm, &payer, decimals, Some(&router_authority_pda)).unwrap();
-    let nvda_mint =
-        create_token_mint(&mut svm, &payer, decimals, Some(&router_authority_pda)).unwrap();
+    // The router pays out swap_usdc_for_asset by minting, so the basket asset
+    // mints must have router_authority as their mint authority
+    for basket_mint in [&tsla_mint, &nvda_mint] {
+        let set_authority_instruction = spl_token::instruction::set_authority(
+            &spl_token::ID,
+            basket_mint,
+            Some(&router_authority_pda),
+            spl_token::instruction::AuthorityType::MintTokens,
+            &payer.pubkey(),
+            &[],
+        )
+        .unwrap();
+        send_transaction_from_instructions(
+            &mut svm,
+            vec![set_authority_instruction],
+            &[&payer],
+            &payer.pubkey(),
+        )
+        .unwrap();
+    }
 
     // Derive PDAs
     let (strategy_pda, _) = Pubkey::find_program_address(
@@ -313,14 +331,18 @@ fn setup_full() -> TestContext {
     }
 }
 
-fn initialize_strategy(ctx: &mut TestContext) {
-    let init_strategy_ix = Instruction::new_with_bytes(
+fn build_initialize_strategy_instruction(
+    ctx: &TestContext,
+    fee_bps: u16,
+    swap_router: Pubkey,
+) -> Instruction {
+    Instruction::new_with_bytes(
         ctx.vault_program_id,
         &vault_strategy::instruction::InitializeStrategy {
             weight_bps_a: 4000,
             weight_bps_b: 6000,
-            fee_bps: 100,
-            swap_router: ctx.router_program_id,
+            fee_bps,
+            swap_router,
             price_feed_a: ctx.price_feed_tsla,
             price_feed_b: ctx.price_feed_nvda,
         }
@@ -340,7 +362,20 @@ fn initialize_strategy(ctx: &mut TestContext) {
             system_program: system_program::id(),
         }
         .to_account_metas(None),
-    );
+    )
+}
+
+/// Annual management fee used by the happy-path tests: 100 bps = 1%.
+const TEST_FEE_BPS: u16 = 100;
+
+fn initialize_strategy(ctx: &mut TestContext) {
+    initialize_strategy_with_router(ctx, ctx.router_program_id);
+}
+
+/// Initialize the strategy with an arbitrary stored swap router, so tests can
+/// prove that invest/rebalance reject a router program the strategy did not register.
+fn initialize_strategy_with_router(ctx: &mut TestContext, swap_router: Pubkey) {
+    let init_strategy_ix = build_initialize_strategy_instruction(ctx, TEST_FEE_BPS, swap_router);
     send_transaction_from_instructions(
         &mut ctx.svm,
         vec![init_strategy_ix],
@@ -937,11 +972,12 @@ fn test_rebalance() {
     let tsla_before = get_token_account_balance(&ctx.svm, &ctx.vault_tsla).unwrap();
     let nvda_before = get_token_account_balance(&ctx.svm, &ctx.vault_nvda).unwrap();
 
-    // Rebalance: sell 800_000 TSLAx → receive 200_000_000 USDC (800_000 * 250)
-    // then buy NVDAx with 200_000_000 USDC → 1_111_111 NVDAx (200_000_000 / 180)
-    let sell_amount: u64 = 800_000;
-    let usdc_from_sell: u64 = sell_amount * 250; // 200_000_000
-    let nvda_bought: u64 = usdc_from_sell / 180; // 1_111_111
+    // Rebalance: sell 100_000 TSLAx (vault holds 160_000) → receive
+    // 25_000_000 USDC (100_000 * 250), then buy NVDAx with that USDC
+    // → 138_888 NVDAx (25_000_000 / 180, floor)
+    let sell_amount: u64 = 100_000;
+    let usdc_from_sell: u64 = sell_amount * 250; // 25_000_000
+    let nvda_bought: u64 = usdc_from_sell / 180; // 138_888
 
     let rebalance_ix = Instruction::new_with_bytes(
         ctx.vault_program_id,
@@ -987,4 +1023,316 @@ fn test_rebalance() {
 
     assert_eq!(tsla_after, tsla_before - sell_amount, "TSLAx balance should decrease by sell_amount");
     assert_eq!(nvda_after, nvda_before + nvda_bought, "NVDAx balance should increase by nvda_bought");
+}
+
+fn assert_transaction_fails_with(
+    result: Result<(), solana_kite::SolanaKiteError>,
+    expected_error_name: &str,
+) {
+    let error = result.expect_err("transaction should fail");
+    let error_text = format!("{error:?}");
+    assert!(
+        error_text.contains(expected_error_name),
+        "expected failure with {expected_error_name}, got: {error_text}"
+    );
+}
+
+#[test]
+fn test_initialize_rejects_excessive_fee() {
+    let mut ctx = setup_full();
+
+    let excessive_fee_bps = vault_strategy::MAX_FEE_BPS + 1;
+    let init_strategy_ix =
+        build_initialize_strategy_instruction(&ctx, excessive_fee_bps, ctx.router_program_id);
+    let result = send_transaction_from_instructions(
+        &mut ctx.svm,
+        vec![init_strategy_ix],
+        &[&ctx.payer, &ctx.manager],
+        &ctx.payer.pubkey(),
+    );
+    assert_transaction_fails_with(result, "FeeTooHigh");
+
+    assert!(
+        ctx.svm.get_account(&ctx.strategy_pda).is_none(),
+        "Strategy PDA must not be created when fee_bps exceeds MAX_FEE_BPS"
+    );
+}
+
+#[test]
+fn test_deposit_rejects_wrong_usdc_mint() {
+    let mut ctx = setup_full();
+    initialize_strategy(&mut ctx);
+
+    // A real but unregistered mint: its strategy-owned vault is empty, so
+    // accepting it would understate NAV and mint inflated shares.
+    let junk_mint = create_token_mint(&mut ctx.svm, &ctx.payer, TOKEN_DECIMALS, None).unwrap();
+    let junk_vault =
+        create_associated_token_account(&mut ctx.svm, &ctx.strategy_pda, &junk_mint, &ctx.payer)
+            .unwrap();
+
+    let user = create_wallet(&mut ctx.svm, 10_000_000_000).unwrap();
+    let deposit_amount: u64 = 1_000_000;
+    let user_junk =
+        create_associated_token_account(&mut ctx.svm, &user.pubkey(), &junk_mint, &ctx.payer)
+            .unwrap();
+    mint_tokens_to_token_account(&mut ctx.svm, &junk_mint, &user_junk, deposit_amount, &ctx.payer)
+        .unwrap();
+    let user_share = derive_ata(&user.pubkey(), &ctx.share_mint_pda);
+
+    let deposit_ix = Instruction::new_with_bytes(
+        ctx.vault_program_id,
+        &vault_strategy::instruction::Deposit {
+            usdc_amount: deposit_amount,
+            minimum_shares: 0,
+        }
+        .data(),
+        vault_strategy::accounts::DepositAccountConstraints {
+            depositor: user.pubkey(),
+            strategy: ctx.strategy_pda,
+            share_mint: ctx.share_mint_pda,
+            usdc_mint: junk_mint,
+            asset_mint_a: ctx.tsla_mint,
+            asset_mint_b: ctx.nvda_mint,
+            depositor_usdc_account: user_junk,
+            depositor_share_account: user_share,
+            vault_usdc: junk_vault,
+            vault_asset_a: ctx.vault_tsla,
+            vault_asset_b: ctx.vault_nvda,
+            price_feed_a: ctx.price_feed_tsla,
+            price_feed_b: ctx.price_feed_nvda,
+            associated_token_program: ata_program_id(),
+            token_program: token_program_id(),
+            system_program: system_program::id(),
+        }
+        .to_account_metas(None),
+    );
+
+    let result = send_transaction_from_instructions(
+        &mut ctx.svm,
+        vec![deposit_ix],
+        &[&ctx.payer, &user],
+        &ctx.payer.pubkey(),
+    );
+    assert_transaction_fails_with(result, "InvalidUsdcMint");
+}
+
+#[test]
+fn test_deposit_rejects_wrong_asset_mint() {
+    let mut ctx = setup_full();
+    initialize_strategy(&mut ctx);
+
+    // An unregistered mint passed as asset_mint_a: its empty strategy-owned
+    // vault would hide the real TSLAx holdings from the NAV calculation.
+    let junk_mint = create_token_mint(&mut ctx.svm, &ctx.payer, TOKEN_DECIMALS, None).unwrap();
+    let junk_vault =
+        create_associated_token_account(&mut ctx.svm, &ctx.strategy_pda, &junk_mint, &ctx.payer)
+            .unwrap();
+
+    let user = create_wallet(&mut ctx.svm, 10_000_000_000).unwrap();
+    let deposit_amount: u64 = 1_000_000;
+    let user_usdc =
+        create_associated_token_account(&mut ctx.svm, &user.pubkey(), &ctx.usdc_mint, &ctx.payer)
+            .unwrap();
+    mint_tokens_to_token_account(&mut ctx.svm, &ctx.usdc_mint, &user_usdc, deposit_amount, &ctx.payer)
+        .unwrap();
+    let user_share = derive_ata(&user.pubkey(), &ctx.share_mint_pda);
+
+    let deposit_ix = Instruction::new_with_bytes(
+        ctx.vault_program_id,
+        &vault_strategy::instruction::Deposit {
+            usdc_amount: deposit_amount,
+            minimum_shares: 0,
+        }
+        .data(),
+        vault_strategy::accounts::DepositAccountConstraints {
+            depositor: user.pubkey(),
+            strategy: ctx.strategy_pda,
+            share_mint: ctx.share_mint_pda,
+            usdc_mint: ctx.usdc_mint,
+            asset_mint_a: junk_mint,
+            asset_mint_b: ctx.nvda_mint,
+            depositor_usdc_account: user_usdc,
+            depositor_share_account: user_share,
+            vault_usdc: ctx.vault_usdc,
+            vault_asset_a: junk_vault,
+            vault_asset_b: ctx.vault_nvda,
+            price_feed_a: ctx.price_feed_tsla,
+            price_feed_b: ctx.price_feed_nvda,
+            associated_token_program: ata_program_id(),
+            token_program: token_program_id(),
+            system_program: system_program::id(),
+        }
+        .to_account_metas(None),
+    );
+
+    let result = send_transaction_from_instructions(
+        &mut ctx.svm,
+        vec![deposit_ix],
+        &[&ctx.payer, &user],
+        &ctx.payer.pubkey(),
+    );
+    assert_transaction_fails_with(result, "InvalidAssetMint");
+
+    // The deposit must not have moved funds or minted shares
+    let vault_usdc_balance = get_token_account_balance(&ctx.svm, &ctx.vault_usdc).unwrap();
+    assert_eq!(vault_usdc_balance, 0, "Vault USDC must be untouched");
+}
+
+#[test]
+fn test_withdraw_rejects_wrong_asset_mint() {
+    let mut ctx = setup_full();
+    initialize_strategy(&mut ctx);
+
+    // Deposit normally so the user holds shares
+    let user = create_wallet(&mut ctx.svm, 10_000_000_000).unwrap();
+    let deposit_amount: u64 = 10_000_000;
+    let user_usdc =
+        create_associated_token_account(&mut ctx.svm, &user.pubkey(), &ctx.usdc_mint, &ctx.payer)
+            .unwrap();
+    mint_tokens_to_token_account(&mut ctx.svm, &ctx.usdc_mint, &user_usdc, deposit_amount, &ctx.payer)
+        .unwrap();
+    let user_share = do_deposit(&mut ctx, &user, deposit_amount);
+
+    // An unregistered mint passed as asset_mint_a on withdraw: the empty junk
+    // vault would replace the real TSLAx vault in the proportional payout.
+    let junk_mint = create_token_mint(&mut ctx.svm, &ctx.payer, TOKEN_DECIMALS, None).unwrap();
+    let junk_vault =
+        create_associated_token_account(&mut ctx.svm, &ctx.strategy_pda, &junk_mint, &ctx.payer)
+            .unwrap();
+    let user_junk = derive_ata(&user.pubkey(), &junk_mint);
+    let user_nvda = derive_ata(&user.pubkey(), &ctx.nvda_mint);
+
+    let withdraw_ix = Instruction::new_with_bytes(
+        ctx.vault_program_id,
+        &vault_strategy::instruction::Withdraw {
+            shares_to_burn: deposit_amount,
+            min_usdc_out: 0,
+            min_asset_a_out: 0,
+            min_asset_b_out: 0,
+        }
+        .data(),
+        vault_strategy::accounts::WithdrawAccountConstraints {
+            user: user.pubkey(),
+            strategy: ctx.strategy_pda,
+            share_mint: ctx.share_mint_pda,
+            usdc_mint: ctx.usdc_mint,
+            asset_mint_a: junk_mint,
+            asset_mint_b: ctx.nvda_mint,
+            user_share_account: user_share,
+            user_usdc_account: user_usdc,
+            user_asset_a_account: user_junk,
+            user_asset_b_account: user_nvda,
+            vault_usdc: ctx.vault_usdc,
+            vault_asset_a: junk_vault,
+            vault_asset_b: ctx.vault_nvda,
+            associated_token_program: ata_program_id(),
+            token_program: token_program_id(),
+            system_program: system_program::id(),
+        }
+        .to_account_metas(None),
+    );
+
+    let result = send_transaction_from_instructions(
+        &mut ctx.svm,
+        vec![withdraw_ix],
+        &[&ctx.payer, &user],
+        &ctx.payer.pubkey(),
+    );
+    assert_transaction_fails_with(result, "InvalidAssetMint");
+
+    // Shares must not have been burned and the vault must still hold the USDC
+    let shares_after = get_token_account_balance(&ctx.svm, &user_share).unwrap();
+    assert_eq!(shares_after, deposit_amount, "Shares must be untouched");
+    let vault_usdc_balance = get_token_account_balance(&ctx.svm, &ctx.vault_usdc).unwrap();
+    assert_eq!(vault_usdc_balance, deposit_amount, "Vault USDC must be untouched");
+}
+
+#[test]
+fn test_invest_rejects_unregistered_router() {
+    let mut ctx = setup_full();
+
+    // Strategy registers a router that is NOT the deployed mock-swap-router
+    let registered_router = Pubkey::new_unique();
+    initialize_strategy_with_router(&mut ctx, registered_router);
+
+    let invest_ix = Instruction::new_with_bytes(
+        ctx.vault_program_id,
+        &vault_strategy::instruction::Invest {
+            usdc_amount: 1_000_000,
+            minimum_asset_out: 0,
+        }
+        .data(),
+        vault_strategy::accounts::InvestAccountConstraints {
+            manager: ctx.manager.pubkey(),
+            strategy: ctx.strategy_pda,
+            usdc_mint: ctx.usdc_mint,
+            asset_mint: ctx.tsla_mint,
+            vault_usdc: ctx.vault_usdc,
+            vault_asset: ctx.vault_tsla,
+            asset_rate: ctx.tsla_rate_pda,
+            router_config: ctx.router_config_pda,
+            router_usdc_treasury: ctx.router_usdc_treasury,
+            router_authority: ctx.router_authority_pda,
+            swap_router_program: ctx.router_program_id,
+            associated_token_program: ata_program_id(),
+            token_program: token_program_id(),
+            system_program: system_program::id(),
+        }
+        .to_account_metas(None),
+    );
+
+    let result = send_transaction_from_instructions(
+        &mut ctx.svm,
+        vec![invest_ix],
+        &[&ctx.payer, &ctx.manager],
+        &ctx.payer.pubkey(),
+    );
+    assert_transaction_fails_with(result, "InvalidSwapRouter");
+}
+
+#[test]
+fn test_rebalance_rejects_unregistered_router() {
+    let mut ctx = setup_full();
+
+    let registered_router = Pubkey::new_unique();
+    initialize_strategy_with_router(&mut ctx, registered_router);
+
+    let rebalance_ix = Instruction::new_with_bytes(
+        ctx.vault_program_id,
+        &vault_strategy::instruction::Rebalance {
+            sell_amount: 1,
+            minimum_usdc_from_sell: 0,
+            usdc_to_invest: 0,
+            minimum_buy_amount: 0,
+        }
+        .data(),
+        vault_strategy::accounts::RebalanceAccountConstraints {
+            manager: ctx.manager.pubkey(),
+            strategy: ctx.strategy_pda,
+            usdc_mint: ctx.usdc_mint,
+            sell_mint: ctx.tsla_mint,
+            buy_mint: ctx.nvda_mint,
+            vault_sell: ctx.vault_tsla,
+            vault_buy: ctx.vault_nvda,
+            vault_usdc: ctx.vault_usdc,
+            sell_rate: ctx.tsla_rate_pda,
+            buy_rate: ctx.nvda_rate_pda,
+            router_config: ctx.router_config_pda,
+            router_usdc_treasury: ctx.router_usdc_treasury,
+            router_authority: ctx.router_authority_pda,
+            swap_router_program: ctx.router_program_id,
+            associated_token_program: ata_program_id(),
+            token_program: token_program_id(),
+            system_program: system_program::id(),
+        }
+        .to_account_metas(None),
+    );
+
+    let result = send_transaction_from_instructions(
+        &mut ctx.svm,
+        vec![rebalance_ix],
+        &[&ctx.payer, &ctx.manager],
+        &ctx.payer.pubkey(),
+    );
+    assert_transaction_fails_with(result, "InvalidSwapRouter");
 }

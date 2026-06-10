@@ -40,23 +40,26 @@ pub struct DepositAccountConstraints<'info> {
 
     #[account(
         mut,
+        has_one = usdc_mint @ VaultError::InvalidUsdcMint,
+        has_one = asset_mint_a @ VaultError::InvalidAssetMint,
+        has_one = asset_mint_b @ VaultError::InvalidAssetMint,
         seeds = [b"strategy", strategy.manager.as_ref()],
         bump = strategy.bump
     )]
-    pub strategy: Account<'info, Strategy>,
+    pub strategy: Box<Account<'info, Strategy>>,
 
     #[account(
         mut,
         seeds = [b"share_mint", strategy.key().as_ref()],
         bump
     )]
-    pub share_mint: InterfaceAccount<'info, Mint>,
+    pub share_mint: Box<InterfaceAccount<'info, Mint>>,
 
-    pub usdc_mint: InterfaceAccount<'info, Mint>,
+    pub usdc_mint: Box<InterfaceAccount<'info, Mint>>,
 
-    pub asset_mint_a: InterfaceAccount<'info, Mint>,
+    pub asset_mint_a: Box<InterfaceAccount<'info, Mint>>,
 
-    pub asset_mint_b: InterfaceAccount<'info, Mint>,
+    pub asset_mint_b: Box<InterfaceAccount<'info, Mint>>,
 
     #[account(
         mut,
@@ -64,7 +67,7 @@ pub struct DepositAccountConstraints<'info> {
         associated_token::authority = depositor,
         associated_token::token_program = token_program
     )]
-    pub depositor_usdc_account: InterfaceAccount<'info, TokenAccount>,
+    pub depositor_usdc_account: Box<InterfaceAccount<'info, TokenAccount>>,
 
     #[account(
         init_if_needed,
@@ -73,7 +76,7 @@ pub struct DepositAccountConstraints<'info> {
         associated_token::authority = depositor,
         associated_token::token_program = token_program
     )]
-    pub depositor_share_account: InterfaceAccount<'info, TokenAccount>,
+    pub depositor_share_account: Box<InterfaceAccount<'info, TokenAccount>>,
 
     #[account(
         mut,
@@ -81,21 +84,21 @@ pub struct DepositAccountConstraints<'info> {
         associated_token::authority = strategy,
         associated_token::token_program = token_program
     )]
-    pub vault_usdc: InterfaceAccount<'info, TokenAccount>,
+    pub vault_usdc: Box<InterfaceAccount<'info, TokenAccount>>,
 
     #[account(
         associated_token::mint = asset_mint_a,
         associated_token::authority = strategy,
         associated_token::token_program = token_program
     )]
-    pub vault_asset_a: InterfaceAccount<'info, TokenAccount>,
+    pub vault_asset_a: Box<InterfaceAccount<'info, TokenAccount>>,
 
     #[account(
         associated_token::mint = asset_mint_b,
         associated_token::authority = strategy,
         associated_token::token_program = token_program
     )]
-    pub vault_asset_b: InterfaceAccount<'info, TokenAccount>,
+    pub vault_asset_b: Box<InterfaceAccount<'info, TokenAccount>>,
 
     /// CHECK: Pyth PriceUpdateV2 for asset_a — key validated against strategy.price_feed_a
     #[account(

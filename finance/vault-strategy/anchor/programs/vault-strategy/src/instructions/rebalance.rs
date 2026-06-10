@@ -18,20 +18,21 @@ pub struct RebalanceAccountConstraints<'info> {
     #[account(
         mut,
         has_one = manager,
+        has_one = usdc_mint @ VaultError::InvalidUsdcMint,
         seeds = [b"strategy", strategy.manager.as_ref()],
         bump = strategy.bump
     )]
-    pub strategy: Account<'info, Strategy>,
+    pub strategy: Box<Account<'info, Strategy>>,
 
-    pub usdc_mint: InterfaceAccount<'info, Mint>,
+    pub usdc_mint: Box<InterfaceAccount<'info, Mint>>,
 
     /// The basket token being sold
     #[account(mut)]
-    pub sell_mint: InterfaceAccount<'info, Mint>,
+    pub sell_mint: Box<InterfaceAccount<'info, Mint>>,
 
     /// The basket token being bought
     #[account(mut)]
-    pub buy_mint: InterfaceAccount<'info, Mint>,
+    pub buy_mint: Box<InterfaceAccount<'info, Mint>>,
 
     /// Vault's token account for the asset being sold
     #[account(
@@ -40,7 +41,7 @@ pub struct RebalanceAccountConstraints<'info> {
         associated_token::authority = strategy,
         associated_token::token_program = token_program
     )]
-    pub vault_sell: InterfaceAccount<'info, TokenAccount>,
+    pub vault_sell: Box<InterfaceAccount<'info, TokenAccount>>,
 
     /// Vault's token account for the asset being bought
     #[account(
@@ -49,7 +50,7 @@ pub struct RebalanceAccountConstraints<'info> {
         associated_token::authority = strategy,
         associated_token::token_program = token_program
     )]
-    pub vault_buy: InterfaceAccount<'info, TokenAccount>,
+    pub vault_buy: Box<InterfaceAccount<'info, TokenAccount>>,
 
     #[account(
         mut,
@@ -57,7 +58,7 @@ pub struct RebalanceAccountConstraints<'info> {
         associated_token::authority = strategy,
         associated_token::token_program = token_program
     )]
-    pub vault_usdc: InterfaceAccount<'info, TokenAccount>,
+    pub vault_usdc: Box<InterfaceAccount<'info, TokenAccount>>,
 
     pub sell_rate: Account<'info, AssetRate>,
 
@@ -75,6 +76,9 @@ pub struct RebalanceAccountConstraints<'info> {
     #[account(mut)]
     pub router_authority: UncheckedAccount<'info>,
 
+    #[account(
+        constraint = swap_router_program.key() == strategy.swap_router @ VaultError::InvalidSwapRouter
+    )]
     pub swap_router_program: Program<'info, mock_swap_router::program::MockSwapRouter>,
 
     pub associated_token_program: Program<'info, AssociatedToken>,

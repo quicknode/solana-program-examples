@@ -83,11 +83,13 @@ Alice's `manager` key can be a [Squads](https://squads.so/) multisig address —
 
 **Instruction:** `initialize_strategy(weight_bps_a=4000, weight_bps_b=6000, fee_bps=100, swap_router, price_feed_a, price_feed_b)`
 
+The weights must sum to 10,000 bps, and `fee_bps` must not exceed `MAX_FEE_BPS` (1,000 bps = 10% per year). Because `collect_fees` mints shares to the manager and dilutes every depositor, an uncapped fee would let a manager drain the vault by configuration, so unsafe fees are rejected at creation time (`FeeTooHigh`).
+
 **Accounts created:**
 
 | Account | Seeds / Derivation | What it stores |
 |---------|--------------------|----------------|
-| `Strategy` [PDA](https://solana.com/docs/terminology#program-derived-address-pda) | `["strategy", alice_pubkey]` | manager, mint addresses, weights, fee, total shares, fee timestamp, Pyth feed pubkeys |
+| `Strategy` [PDA](https://solana.com/docs/terminology#program-derived-address-pda) | `["strategy", alice_pubkey]` | manager, mint addresses, weights, fee, total shares, fee timestamp, swap router program pubkey, Pyth feed pubkeys |
 | `share_mint` PDA | `["share_mint", strategy_pubkey]` | The SPL mint for vault shares. Strategy PDA is mint authority. |
 | `vault_usdc` ATA | Associated token account of strategy PDA for USDC | Holds deposited USDC |
 | `vault_asset_a` ATA | Associated token account of strategy PDA for TSLAx | Holds TSLAx after investing |
@@ -270,7 +272,21 @@ The `mock-swap-router` exists only for testing. It:
 - `swap_usdc_for_asset`: receives USDC into its treasury, mints basket tokens to caller
 - `swap_asset_for_usdc`: burns basket tokens from caller, releases USDC from its treasury
 
+The `Strategy` account stores the router's program pubkey (`swap_router`) at creation time, and `invest` and `rebalance` require the swap router program account they are given to match it (`InvalidSwapRouter`). A manager cannot route vault funds through a program the strategy did not register.
+
 In production, replace the router CPIs in `invest` and `rebalance` with [Jupiter](https://jup.ag) CPI calls. The strategy PDA still signs; only the target program ID and account list change.
+
+---
+
+## Account Validation
+
+Every account a caller passes is checked against state the program controls, never trusted:
+
+- **Mints are bound to the strategy.** `deposit` and `withdraw` enforce `has_one` on `usdc_mint`, `asset_mint_a`, and `asset_mint_b` against the pubkeys stored in the `Strategy` account (`InvalidUsdcMint` / `InvalidAssetMint`). Without this, a caller could pass an unregistered mint whose strategy-owned vault is empty, understating NAV to mint inflated shares on deposit or skewing the proportional payout on withdraw. `invest` and `rebalance` enforce `has_one` on `usdc_mint` and require their asset mints to be one of the two registered basket mints.
+- **Vault token accounts are derived, not supplied.** Each vault account must be the associated token account of the strategy PDA for the corresponding bound mint.
+- **Price feeds are bound to the strategy.** The Pyth accounts passed to `deposit` must equal the feed pubkeys stored at creation (`InvalidPriceFeed`).
+- **The swap router is bound to the strategy.** `invest` and `rebalance` require the router program account to equal the stored `swap_router` (`InvalidSwapRouter`).
+- **Config is validated at creation.** Weights must sum to 10,000 bps and the fee is capped at `MAX_FEE_BPS`.
 
 ---
 
@@ -296,11 +312,16 @@ The `manager` field is a plain `Pubkey`. It can be a [Squads](https://squads.so/
 ## Build and Test
 
 ```bash
-# Build both programs (requires anchor-cli and solana toolchain)
-anchor build
+# Build the vault (requires the Solana toolchain). This also compiles the
+# router, but with the vault's `cpi` feature enabled, which strips the
+# router's entrypoint and leaves a stub .so:
+cargo build-sbf
 
-# Run tests (LiteSVM — no local validator needed)
+# So build the router again on its own to get a deployable .so:
+cargo build-sbf --manifest-path programs/mock-swap-router/Cargo.toml
+
+# Run tests (LiteSVM, no local validator needed)
 cargo test
 ```
 
-Tests use [LiteSVM](https://github.com/LiteSVM/litesvm) for fast, self-contained program simulation. Both `.so` files are loaded from `target/deploy/`. The test suite covers all eight instructions including slippage rejection and time-based fee accrual.
+Tests live in `programs/vault-strategy/tests/vault_strategy.rs` and use [LiteSVM](https://github.com/LiteSVM/litesvm) for fast, self-contained program simulation. Both `.so` files are loaded from `target/deploy/`, so build before testing. The suite exercises all six instruction handlers and the rejection paths: slippage limits, unregistered mints on deposit and withdraw, an over-cap management fee, and an unregistered swap router on invest and rebalance.
