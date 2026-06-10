@@ -26,7 +26,6 @@ anchor-lang = "1.0.0"
 # using raw invoke() with hardcoded program IDs and discriminators. Bubblegum types
 # (MetadataArgs, LeafSchema, etc.) are re-implemented in bubblegum_types.rs.
 borsh = "1"
-sha2 = "0.10"
 sha3 = "0.10"
 
 [lints.rust]

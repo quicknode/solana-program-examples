@@ -4,7 +4,6 @@ use quasar_lang::prelude::*;
 
 mod bubblegum_types;
 mod instructions;
-mod state;
 use instructions::*;
 #[cfg(test)]
 mod tests;
