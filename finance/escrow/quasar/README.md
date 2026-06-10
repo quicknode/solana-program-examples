@@ -6,8 +6,10 @@ See also: the [repository catalog](../../../README.md).
 
 ## Major concepts
 
-- Escrow PDA
-- See [Anchor variant](../anchor/README.md) for the full walkthrough
+- **Offer**: a PDA with seeds `["offer", maker, id]` (the same seeds as the Anchor variant, so clients work against either build). It stores the maker, both mints, the maker's token B account, the vault address, the wanted `receive` amount, and the bump. `take_offer` and `cancel_offer` validate every passed account against this stored state via `has_one` bindings.
+- **Vault**: a token account owned by the offer PDA holding the maker's offered token A while the offer is open.
+- The maker pays the rent for the offer account and the vault in `make_offer`; both `take_offer` and `cancel_offer` close those accounts back to the maker.
+- See the [Anchor variant](../anchor/README.md) for the full walkthrough.
 
 ## Setup
 

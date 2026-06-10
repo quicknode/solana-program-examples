@@ -14,7 +14,7 @@ use super::{close_token_account, transfer_tokens};
 // account's rent unclaimed). The maker signs, the vault tokens flow back to
 // the maker, and both the vault and the offer accounts are closed.
 #[derive(Accounts)]
-pub struct CancelOffer<'info> {
+pub struct CancelOfferAccountConstraints<'info> {
     #[account(mut)]
     pub maker: Signer<'info>,
 
@@ -51,7 +51,7 @@ pub struct CancelOffer<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handle_cancel_offer(context: Context<CancelOffer>) -> Result<()> {
+pub fn handle_cancel_offer(context: Context<CancelOfferAccountConstraints>) -> Result<()> {
     let maker_key = context.accounts.maker.key();
     let id_bytes = context.accounts.offer.id.to_le_bytes();
     let bump = [context.accounts.offer.bump];

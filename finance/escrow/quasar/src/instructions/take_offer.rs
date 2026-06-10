@@ -5,16 +5,23 @@ use {
 };
 
 #[derive(Accounts)]
-pub struct TakeOffer {
+pub struct TakeOfferAccountConstraints {
     #[account(mut)]
     pub taker: Signer,
+    // Every account the offer recorded at make time is bound to the stored
+    // state: the maker, both mints, the maker's token B account, and the
+    // vault. The offer closes back to the maker, who paid its rent in
+    // make_offer.
     #[account(
         mut,
         has_one(maker),
+        has_one(token_mint_a),
+        has_one(token_mint_b),
         has_one(maker_token_account_b),
+        has_one(vault),
         constraints(offer.receive > 0),
-        close(dest = taker),
-        address = Offer::seeds(maker.address())
+        close(dest = maker),
+        address = Offer::seeds(maker.address(), offer.id.into())
     )]
     pub offer: Account<Offer>,
     #[account(mut)]
@@ -30,12 +37,7 @@ pub struct TakeOffer {
     pub taker_token_account_a: Account<Token>,
     #[account(mut)]
     pub taker_token_account_b: Account<Token>,
-    #[account(
-        mut,
-        init(idempotent),
-        payer = taker,
-        token(mint = token_mint_b, authority = maker, token_program = token_program),
-    )]
+    #[account(mut)]
     pub maker_token_account_b: Account<Token>,
     #[account(mut)]
     pub vault: Account<Token>,
@@ -45,8 +47,11 @@ pub struct TakeOffer {
 }
 
 #[inline(always)]
-pub fn handle_transfer_tokens(accounts: &mut TakeOffer) -> Result<(), ProgramError> {
-    accounts.token_program
+pub fn handle_transfer_tokens(
+    accounts: &mut TakeOfferAccountConstraints,
+) -> Result<(), ProgramError> {
+    accounts
+        .token_program
         .transfer(
             &accounts.taker_token_account_b,
             &accounts.maker_token_account_b,
@@ -57,15 +62,21 @@ pub fn handle_transfer_tokens(accounts: &mut TakeOffer) -> Result<(), ProgramErr
 }
 
 #[inline(always)]
-pub fn handle_withdraw_tokens_and_close_take(accounts: &mut TakeOffer, bumps: &TakeOfferBumps) -> Result<(), ProgramError> {
+pub fn handle_withdraw_tokens_and_close_take(
+    accounts: &mut TakeOfferAccountConstraints,
+    bumps: &TakeOfferAccountConstraintsBumps,
+) -> Result<(), ProgramError> {
+    let id_bytes = u64::from(accounts.offer.id).to_le_bytes();
     let bump = [bumps.offer];
     let seeds = [
         Seed::from(b"offer" as &[u8]),
         Seed::from(accounts.maker.address().as_ref()),
+        Seed::from(id_bytes.as_ref()),
         Seed::from(bump.as_ref()),
     ];
 
-    accounts.token_program
+    accounts
+        .token_program
         .transfer(
             &accounts.vault,
             &accounts.taker_token_account_a,
@@ -74,8 +85,11 @@ pub fn handle_withdraw_tokens_and_close_take(accounts: &mut TakeOffer, bumps: &T
         )
         .invoke_signed(&seeds)?;
 
-    accounts.token_program
-        .close_account(&accounts.vault, &accounts.taker, &accounts.offer)
+    // The maker paid the vault's rent in make_offer, so the vault closes
+    // back to the maker.
+    accounts
+        .token_program
+        .close_account(&accounts.vault, &accounts.maker, &accounts.offer)
         .invoke_signed(&seeds)?;
     Ok(())
 }

@@ -10,7 +10,7 @@ use crate::Offer;
 use super::{close_token_account, transfer_tokens};
 
 #[derive(Accounts)]
-pub struct TakeOffer<'info> {
+pub struct TakeOfferAccountConstraints<'info> {
     #[account(mut)]
     pub taker: Signer<'info>,
 
@@ -38,9 +38,7 @@ pub struct TakeOffer<'info> {
     )]
     pub taker_token_account_b: Box<InterfaceAccount<'info, TokenAccount>>,
 
-    // The maker's token-B ATA is initialized in make_offer (paid by the maker),
-    // so the taker no longer pays its rent. Treat it as a plain existing account
-    // here.
+    // The maker's token-B ATA is initialized in make_offer, paid by the maker.
     #[account(
         mut,
         associated_token::mint = token_mint_b,
@@ -73,7 +71,9 @@ pub struct TakeOffer<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handle_send_wanted_tokens_to_maker(context: &Context<TakeOffer>) -> Result<()> {
+pub fn handle_send_wanted_tokens_to_maker(
+    context: &Context<TakeOfferAccountConstraints>,
+) -> Result<()> {
     transfer_tokens(
         &context.accounts.taker_token_account_b,
         &context.accounts.maker_token_account_b,
@@ -85,7 +85,7 @@ pub fn handle_send_wanted_tokens_to_maker(context: &Context<TakeOffer>) -> Resul
     )
 }
 
-pub fn handle_withdraw_and_close_vault(context: Context<TakeOffer>) -> Result<()> {
+pub fn handle_withdraw_and_close_vault(context: Context<TakeOfferAccountConstraints>) -> Result<()> {
     let maker_key = context.accounts.maker.key();
     let id_bytes = context.accounts.offer.id.to_le_bytes();
     let bump = [context.accounts.offer.bump];
@@ -101,9 +101,11 @@ pub fn handle_withdraw_and_close_vault(context: Context<TakeOffer>) -> Result<()
         Some(offer_seeds),
     )?;
 
+    // The maker paid the vault's rent in make_offer, so the vault closes back
+    // to the maker (the offer account does the same via `close = maker`).
     close_token_account(
         &context.accounts.vault,
-        &context.accounts.taker.to_account_info(),
+        &context.accounts.maker.to_account_info(),
         &context.accounts.offer.to_account_info(),
         &context.accounts.token_program,
         Some(offer_seeds),

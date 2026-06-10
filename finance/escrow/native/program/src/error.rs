@@ -8,6 +8,21 @@ pub enum EscrowError {
 
     #[error("Token account provided does not match expected")]
     TokenAccountMismatch,
+
+    #[error("Maker account provided does not match the offer's maker")]
+    MakerMismatch,
+
+    #[error("Token mint provided does not match the offer's mint")]
+    MintMismatch,
+
+    #[error("Maker's token B account must exist before the offer can be taken")]
+    MakerTokenAccountBNotInitialized,
+
+    #[error("Token balances after transfer do not balance against the amounts moved")]
+    TokenConservationViolation,
+
+    #[error("Arithmetic overflow")]
+    ArithmeticOverflow,
 }
 
 impl From<EscrowError> for ProgramError {

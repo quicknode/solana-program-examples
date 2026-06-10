@@ -23,6 +23,7 @@ fn process_instruction(
     match instruction {
         EscrowInstruction::MakeOffer(data) => MakeOffer::process(program_id, accounts, data),
         EscrowInstruction::TakeOffer => TakeOffer::process(program_id, accounts),
+        EscrowInstruction::CancelOffer => CancelOffer::process(program_id, accounts),
     }
 }
 
@@ -30,4 +31,5 @@ fn process_instruction(
 enum EscrowInstruction {
     MakeOffer(MakeOffer),
     TakeOffer,
+    CancelOffer,
 }
