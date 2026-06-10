@@ -8,6 +8,8 @@ See also: [Pyth overview](../README.md) and the [repository catalog](../../../RE
 
 - Oracle accounts
 - Price feed layout
+- Oracle account validation: `read_price` only accepts accounts owned by the Pyth Receiver program (`rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ`)
+- Price freshness: updates older than `MAXIMUM_PRICE_AGE_SECONDS` are rejected (compared against `publish_time`, a unix timestamp in seconds)
 
 ## Setup
 

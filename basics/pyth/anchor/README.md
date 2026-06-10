@@ -21,6 +21,8 @@ See also: [Pyth overview](../README.md) and the [repository catalog](../../../RE
 
 - Oracle price accounts
 - Consuming external onchain data in a program
+- Oracle account validation: `Account<PriceUpdateV2>` enforces that the price account is owned by the Pyth Receiver program (`rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ`)
+- Price freshness: `read_price` rejects updates older than `MAXIMUM_PRICE_AGE_SECONDS` (compared against `publish_time`, a unix timestamp in seconds, mirroring the SDK's `get_price_no_older_than`)
 
 ## Setup
 

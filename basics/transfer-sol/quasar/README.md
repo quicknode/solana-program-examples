@@ -8,6 +8,7 @@ See also: [Transfer Sol overview](../README.md) and the [repository catalog](../
 
 - System transfer CPI
 - Signer-funded lamports
+- Direct lamport moves (`transfer_sol_with_program`) require the payer to be owned by this program, enforced by an account constraint, with checked balance math
 
 ## Setup
 

@@ -8,6 +8,7 @@ See also: the [repository catalog](../../../README.md).
 
 - PDA init and close
 - Rent reclamation
+- `close_user` binds the user account to the signer's own PDA, so only the account's owner can close it
 
 ## Setup
 

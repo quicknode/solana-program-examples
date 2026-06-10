@@ -162,7 +162,7 @@ fn test_close_user_rejects_non_owner() {
     let victim_account_after_create = result.account(&victim_account).unwrap().clone();
 
     // The attacker signs as `user` but passes the victim's account: the
-    // address constraint must reject it before any lamports move.
+    // PDA derivation check must reject it before any lamports move.
     let close_ix = Instruction {
         program_id,
         accounts: vec![
@@ -176,6 +176,6 @@ fn test_close_user_rejects_non_owner() {
         &[signer(attacker), victim_account_after_create],
     );
     result.assert_error(quasar_svm::ProgramError::Custom(
-        quasar_lang::prelude::QuasarError::AddressMismatch as u32,
+        quasar_lang::prelude::QuasarError::InvalidPda as u32,
     ));
 }
