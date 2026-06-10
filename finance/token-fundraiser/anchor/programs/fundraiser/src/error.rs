@@ -16,6 +16,8 @@ pub enum FundraiserError {
     FundraiserNotEnded,
     #[msg("The fundraiser has ended")]
     FundraiserEnded,
-    #[msg("Invalid total amount. i should be bigger than 3")]
-    InvalidAmount
+    #[msg("The amount to raise is below the minimum of 3 major units")]
+    InvalidAmount,
+    #[msg("Arithmetic overflow")]
+    MathOverflow,
 }

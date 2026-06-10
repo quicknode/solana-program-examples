@@ -1,8 +1,10 @@
 use {
     anchor_lang::{
-        solana_program::{instruction::Instruction, pubkey::Pubkey, system_program},
+        solana_program::{clock::Clock, instruction::Instruction, pubkey::Pubkey, system_program},
         InstructionData, ToAccountMetas,
     },
+    borsh::BorshDeserialize,
+    fundraiser::SECONDS_TO_DAYS,
     litesvm::LiteSVM,
     solana_keypair::Keypair,
     solana_kite::{
@@ -11,6 +13,16 @@ use {
     },
     solana_signer::Signer,
 };
+
+const MINT_DECIMALS: u8 = 6;
+/// One major unit of the test mint in minor units (10^MINT_DECIMALS).
+const ONE_TOKEN: u64 = 1_000_000;
+/// Comfortably above the program's 3-major-unit minimum target.
+const AMOUNT_TO_RAISE: u64 = 30 * ONE_TOKEN;
+/// The per-contributor cap is 10% of the target.
+const MAX_CONTRIBUTION: u64 = AMOUNT_TO_RAISE / 10;
+const DURATION_DAYS: u16 = 7;
+const CONTRIBUTOR_STARTING_BALANCE: u64 = 10 * ONE_TOKEN;
 
 fn token_program_id() -> Pubkey {
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
@@ -32,15 +44,43 @@ fn derive_ata(wallet: &Pubkey, mint: &Pubkey) -> Pubkey {
     ata
 }
 
-fn setup() -> (LiteSVM, Pubkey, Keypair) {
-    let program_id = fundraiser::id();
-    let mut svm = LiteSVM::new();
+/// Mirror of the onchain Fundraiser struct for borsh-decoding account data
+/// in tests. Pubkeys are read as raw 32-byte arrays.
+#[derive(BorshDeserialize)]
+struct FundraiserState {
+    _maker: [u8; 32],
+    _mint_to_raise: [u8; 32],
+    amount_to_raise: u64,
+    current_amount: u64,
+    _time_started: i64,
+    duration: u16,
+    _bump: u8,
+}
 
-    let program_bytes = include_bytes!("../../../target/deploy/fundraiser.so");
-    svm.add_program(program_id, program_bytes).unwrap();
+/// Mirror of the onchain Contributor struct.
+#[derive(BorshDeserialize)]
+struct ContributorState {
+    amount: u64,
+    _bump: u8,
+}
 
-    let payer = create_wallet(&mut svm, 100_000_000_000).unwrap();
-    (svm, program_id, payer)
+const ANCHOR_DISCRIMINATOR_LENGTH: usize = 8;
+
+fn read_fundraiser_state(svm: &LiteSVM, fundraiser_pda: &Pubkey) -> FundraiserState {
+    let account = svm.get_account(fundraiser_pda).unwrap();
+    FundraiserState::try_from_slice(&account.data[ANCHOR_DISCRIMINATOR_LENGTH..]).unwrap()
+}
+
+fn read_contributor_state(svm: &LiteSVM, contributor_pda: &Pubkey) -> ContributorState {
+    let account = svm.get_account(contributor_pda).unwrap();
+    ContributorState::try_from_slice(&account.data[ANCHOR_DISCRIMINATOR_LENGTH..]).unwrap()
+}
+
+/// Moves the LiteSVM clock forward by the given number of days.
+fn warp_days_forward(svm: &mut LiteSVM, days: i64) {
+    let mut clock: Clock = svm.get_sysvar();
+    clock.unix_timestamp += days * SECONDS_TO_DAYS;
+    svm.set_sysvar(&clock);
 }
 
 struct FundraiserSetup {
@@ -54,20 +94,22 @@ struct FundraiserSetup {
 }
 
 fn full_setup() -> FundraiserSetup {
-    let (mut svm, program_id, payer) = setup();
+    let program_id = fundraiser::id();
+    let mut svm = LiteSVM::new();
 
+    let program_bytes = include_bytes!("../../../target/deploy/fundraiser.so");
+    svm.add_program(program_id, program_bytes).unwrap();
+
+    let payer = create_wallet(&mut svm, 100_000_000_000).unwrap();
     let maker = create_wallet(&mut svm, 10_000_000_000).unwrap();
 
-    // Create mint (6 decimals) — payer is mint authority
-    let mint = create_token_mint(&mut svm, &payer, 6, None).unwrap();
+    // The payer is the mint authority.
+    let mint = create_token_mint(&mut svm, &payer, MINT_DECIMALS, None).unwrap();
 
-    // Derive the fundraiser PDA
-    let (fundraiser_pda, _bump) = Pubkey::find_program_address(
-        &[b"fundraiser", maker.pubkey().as_ref()],
-        &program_id,
-    );
+    let (fundraiser_pda, _bump) =
+        Pubkey::find_program_address(&[b"fundraiser", maker.pubkey().as_ref()], &program_id);
 
-    // Vault is the ATA of the fundraiser PDA for the mint
+    // The vault is the ATA of the fundraiser PDA for the mint.
     let vault = derive_ata(&fundraiser_pda, &mint);
 
     FundraiserSetup {
@@ -81,344 +123,524 @@ fn full_setup() -> FundraiserSetup {
     }
 }
 
-#[test]
-fn test_initialize_fundraiser() {
-    let mut fs = full_setup();
-
-    let amount_to_raise: u64 = 30_000_000;
-    let duration: u16 = 0;
-
-    let init_ix = Instruction::new_with_bytes(
-        fs.program_id,
-        &fundraiser::instruction::Initialize {
-            amount: amount_to_raise,
-            duration,
-        }
-        .data(),
-        fundraiser::accounts::Initialize {
-            maker: fs.maker.pubkey(),
-            mint_to_raise: fs.mint,
-            fundraiser: fs.fundraiser_pda,
-            vault: fs.vault,
+fn initialize_fundraiser(setup: &mut FundraiserSetup, amount: u64, duration: u16) {
+    let initialize_instruction = Instruction::new_with_bytes(
+        setup.program_id,
+        &fundraiser::instruction::Initialize { amount, duration }.data(),
+        fundraiser::accounts::InitializeAccountConstraints {
+            maker: setup.maker.pubkey(),
+            mint_to_raise: setup.mint,
+            fundraiser: setup.fundraiser_pda,
+            vault: setup.vault,
             system_program: system_program::id(),
             token_program: token_program_id(),
             associated_token_program: ata_program_id(),
         }
         .to_account_metas(None),
     );
-
     send_transaction_from_instructions(
-        &mut fs.svm,
-        vec![init_ix],
-        &[&fs.maker],
-        &fs.maker.pubkey(),
+        &mut setup.svm,
+        vec![initialize_instruction],
+        &[&setup.maker],
+        &setup.maker.pubkey(),
     )
     .unwrap();
-
-    // Verify fundraiser account exists
-    let fundraiser_data = fs
-        .svm
-        .get_account(&fs.fundraiser_pda)
-        .expect("Fundraiser account should exist");
-    assert!(!fundraiser_data.data.is_empty());
-
-    // Verify vault exists with zero balance
-    assert_eq!(get_token_account_balance(&fs.svm, &fs.vault).unwrap(), 0);
 }
 
-#[test]
-fn test_contribute_and_refund() {
-    let mut fs = full_setup();
+/// Creates a contributor wallet with a funded ATA and returns
+/// (contributor keypair, contributor ATA, contributor account PDA).
+fn create_funded_contributor(setup: &mut FundraiserSetup) -> (Keypair, Pubkey, Pubkey) {
+    let contributor = create_wallet(&mut setup.svm, 10_000_000_000).unwrap();
 
-    let amount_to_raise: u64 = 30_000_000;
-    let duration: u16 = 0;
-
-    // Initialize fundraiser
-    let init_ix = Instruction::new_with_bytes(
-        fs.program_id,
-        &fundraiser::instruction::Initialize {
-            amount: amount_to_raise,
-            duration,
-        }
-        .data(),
-        fundraiser::accounts::Initialize {
-            maker: fs.maker.pubkey(),
-            mint_to_raise: fs.mint,
-            fundraiser: fs.fundraiser_pda,
-            vault: fs.vault,
-            system_program: system_program::id(),
-            token_program: token_program_id(),
-            associated_token_program: ata_program_id(),
-        }
-        .to_account_metas(None),
-    );
-    send_transaction_from_instructions(
-        &mut fs.svm,
-        vec![init_ix],
-        &[&fs.maker],
-        &fs.maker.pubkey(),
+    let contributor_ata = create_associated_token_account(
+        &mut setup.svm,
+        &contributor.pubkey(),
+        &setup.mint,
+        &setup.payer,
     )
     .unwrap();
 
-    // Setup contributor using Kite
-    let contributor = create_wallet(&mut fs.svm, 10_000_000_000).unwrap();
+    mint_tokens_to_token_account(
+        &mut setup.svm,
+        &setup.mint,
+        &contributor_ata,
+        CONTRIBUTOR_STARTING_BALANCE,
+        &setup.payer,
+    )
+    .unwrap();
 
-    let contributor_ata =
-        create_associated_token_account(&mut fs.svm, &contributor.pubkey(), &fs.mint, &fs.payer)
-            .unwrap();
-
-    let mint_amount: u64 = 10_000_000;
-    mint_tokens_to_token_account(&mut fs.svm, &fs.mint, &contributor_ata, mint_amount, &fs.payer)
-        .unwrap();
-
-    // Derive contributor account PDA
     let (contributor_account_pda, _bump) = Pubkey::find_program_address(
         &[
             b"contributor",
-            fs.fundraiser_pda.as_ref(),
+            setup.fundraiser_pda.as_ref(),
             contributor.pubkey().as_ref(),
         ],
-        &fs.program_id,
+        &setup.program_id,
     );
 
-    // Contribute 1_000_000
-    let contribute_amount: u64 = 1_000_000;
-    let contribute_ix = Instruction::new_with_bytes(
-        fs.program_id,
-        &fundraiser::instruction::Contribute {
-            amount: contribute_amount,
-        }
-        .data(),
-        fundraiser::accounts::Contribute {
-            contributor: contributor.pubkey(),
-            mint_to_raise: fs.mint,
-            fundraiser: fs.fundraiser_pda,
-            contributor_account: contributor_account_pda,
-            contributor_ata,
-            vault: fs.vault,
+    (contributor, contributor_ata, contributor_account_pda)
+}
+
+fn build_contribute_instruction(
+    setup: &FundraiserSetup,
+    contributor: &Pubkey,
+    contributor_ata: &Pubkey,
+    contributor_account_pda: &Pubkey,
+    amount: u64,
+) -> Instruction {
+    Instruction::new_with_bytes(
+        setup.program_id,
+        &fundraiser::instruction::Contribute { amount }.data(),
+        fundraiser::accounts::ContributeAccountConstraints {
+            contributor: *contributor,
+            mint_to_raise: setup.mint,
+            fundraiser: setup.fundraiser_pda,
+            contributor_account: *contributor_account_pda,
+            contributor_ata: *contributor_ata,
+            vault: setup.vault,
             token_program: token_program_id(),
             system_program: system_program::id(),
         }
         .to_account_metas(None),
-    );
-    send_transaction_from_instructions(
-        &mut fs.svm,
-        vec![contribute_ix],
-        &[&contributor],
-        &contributor.pubkey(),
     )
-    .unwrap();
+}
 
-    // Verify vault balance
-    assert_eq!(
-        get_token_account_balance(&fs.svm, &fs.vault).unwrap(),
-        contribute_amount
-    );
-
-    // Expire blockhash to avoid AlreadyProcessed error (same accounts, same amount = same tx hash)
-    fs.svm.expire_blockhash();
-
-    // Contribute again
-    let contribute_ix2 = Instruction::new_with_bytes(
-        fs.program_id,
-        &fundraiser::instruction::Contribute {
-            amount: contribute_amount,
-        }
-        .data(),
-        fundraiser::accounts::Contribute {
-            contributor: contributor.pubkey(),
-            mint_to_raise: fs.mint,
-            fundraiser: fs.fundraiser_pda,
-            contributor_account: contributor_account_pda,
-            contributor_ata,
-            vault: fs.vault,
-            token_program: token_program_id(),
-            system_program: system_program::id(),
-        }
-        .to_account_metas(None),
-    );
-    send_transaction_from_instructions(
-        &mut fs.svm,
-        vec![contribute_ix2],
-        &[&contributor],
-        &contributor.pubkey(),
-    )
-    .unwrap();
-
-    // Verify vault balance is now 2_000_000
-    assert_eq!(
-        get_token_account_balance(&fs.svm, &fs.vault).unwrap(),
-        contribute_amount * 2
-    );
-
-    fs.svm.expire_blockhash();
-
-    // Refund
-    let refund_ix = Instruction::new_with_bytes(
-        fs.program_id,
+fn build_refund_instruction(
+    setup: &FundraiserSetup,
+    contributor: &Pubkey,
+    contributor_ata: &Pubkey,
+    contributor_account_pda: &Pubkey,
+) -> Instruction {
+    Instruction::new_with_bytes(
+        setup.program_id,
         &fundraiser::instruction::Refund {}.data(),
-        fundraiser::accounts::Refund {
-            contributor: contributor.pubkey(),
-            maker: fs.maker.pubkey(),
-            mint_to_raise: fs.mint,
-            fundraiser: fs.fundraiser_pda,
-            contributor_account: contributor_account_pda,
-            contributor_ata,
-            vault: fs.vault,
+        fundraiser::accounts::RefundAccountConstraints {
+            contributor: *contributor,
+            maker: setup.maker.pubkey(),
+            mint_to_raise: setup.mint,
+            fundraiser: setup.fundraiser_pda,
+            contributor_account: *contributor_account_pda,
+            contributor_ata: *contributor_ata,
+            vault: setup.vault,
             token_program: token_program_id(),
             system_program: system_program::id(),
         }
         .to_account_metas(None),
-    );
-    send_transaction_from_instructions(
-        &mut fs.svm,
-        vec![refund_ix],
-        &[&contributor],
-        &contributor.pubkey(),
     )
-    .unwrap();
+}
 
-    // Verify vault is empty after refund
-    assert_eq!(get_token_account_balance(&fs.svm, &fs.vault).unwrap(), 0);
-
-    // Verify contributor got tokens back
-    assert_eq!(
-        get_token_account_balance(&fs.svm, &contributor_ata).unwrap(),
-        mint_amount
-    );
-
-    // Contributor account PDA should be closed
-    assert!(
-        fs.svm.get_account(&contributor_account_pda).is_none(),
-        "Contributor account should be closed after refund"
-    );
+fn build_check_contributions_instruction(
+    setup: &FundraiserSetup,
+    maker_ata: &Pubkey,
+) -> Instruction {
+    Instruction::new_with_bytes(
+        setup.program_id,
+        &fundraiser::instruction::CheckContributions {}.data(),
+        fundraiser::accounts::CheckContributionsAccountConstraints {
+            maker: setup.maker.pubkey(),
+            mint_to_raise: setup.mint,
+            fundraiser: setup.fundraiser_pda,
+            vault: setup.vault,
+            maker_ata: *maker_ata,
+            token_program: token_program_id(),
+            system_program: system_program::id(),
+            associated_token_program: ata_program_id(),
+        }
+        .to_account_metas(None),
+    )
 }
 
 #[test]
-fn test_check_contributions_success() {
-    let mut fs = full_setup();
+fn test_initialize_fundraiser() {
+    let mut setup = full_setup();
 
-    let amount_to_raise: u64 = 1_000;
-    let duration: u16 = 0;
+    initialize_fundraiser(&mut setup, AMOUNT_TO_RAISE, DURATION_DAYS);
 
-    // Initialize fundraiser
-    let init_ix = Instruction::new_with_bytes(
-        fs.program_id,
+    let fundraiser_state = read_fundraiser_state(&setup.svm, &setup.fundraiser_pda);
+    assert_eq!(fundraiser_state.amount_to_raise, AMOUNT_TO_RAISE);
+    assert_eq!(fundraiser_state.current_amount, 0);
+    assert_eq!(fundraiser_state.duration, DURATION_DAYS);
+
+    assert_eq!(get_token_account_balance(&setup.svm, &setup.vault).unwrap(), 0);
+}
+
+#[test]
+fn test_initialize_below_minimum_target_fails() {
+    let mut setup = full_setup();
+
+    // 3 major units is the minimum; one minor unit below it must fail.
+    let below_minimum_target = 3 * ONE_TOKEN - 1;
+    let initialize_instruction = Instruction::new_with_bytes(
+        setup.program_id,
         &fundraiser::instruction::Initialize {
-            amount: amount_to_raise,
-            duration,
+            amount: below_minimum_target,
+            duration: DURATION_DAYS,
         }
         .data(),
-        fundraiser::accounts::Initialize {
-            maker: fs.maker.pubkey(),
-            mint_to_raise: fs.mint,
-            fundraiser: fs.fundraiser_pda,
-            vault: fs.vault,
+        fundraiser::accounts::InitializeAccountConstraints {
+            maker: setup.maker.pubkey(),
+            mint_to_raise: setup.mint,
+            fundraiser: setup.fundraiser_pda,
+            vault: setup.vault,
             system_program: system_program::id(),
             token_program: token_program_id(),
             associated_token_program: ata_program_id(),
         }
         .to_account_metas(None),
     );
+    let result = send_transaction_from_instructions(
+        &mut setup.svm,
+        vec![initialize_instruction],
+        &[&setup.maker],
+        &setup.maker.pubkey(),
+    );
+    assert!(result.is_err(), "Target below 3 major units must be rejected");
+    assert!(
+        setup.svm.get_account(&setup.fundraiser_pda).is_none(),
+        "Fundraiser account must not exist after a failed initialize"
+    );
+}
+
+#[test]
+fn test_contribute_inside_window_succeeds() {
+    let mut setup = full_setup();
+    initialize_fundraiser(&mut setup, AMOUNT_TO_RAISE, DURATION_DAYS);
+
+    let (contributor, contributor_ata, contributor_account_pda) =
+        create_funded_contributor(&mut setup);
+
+    // One day in: well inside the 7-day window.
+    warp_days_forward(&mut setup.svm, 1);
+
+    let contribute_instruction = build_contribute_instruction(
+        &setup,
+        &contributor.pubkey(),
+        &contributor_ata,
+        &contributor_account_pda,
+        MAX_CONTRIBUTION,
+    );
     send_transaction_from_instructions(
-        &mut fs.svm,
-        vec![init_ix],
-        &[&fs.maker],
-        &fs.maker.pubkey(),
+        &mut setup.svm,
+        vec![contribute_instruction],
+        &[&contributor],
+        &contributor.pubkey(),
     )
     .unwrap();
 
-    // Need 10 contributors each contributing 100 (10% of 1000) to reach goal
+    assert_eq!(
+        get_token_account_balance(&setup.svm, &setup.vault).unwrap(),
+        MAX_CONTRIBUTION
+    );
+    assert_eq!(
+        get_token_account_balance(&setup.svm, &contributor_ata).unwrap(),
+        CONTRIBUTOR_STARTING_BALANCE - MAX_CONTRIBUTION
+    );
+
+    let fundraiser_state = read_fundraiser_state(&setup.svm, &setup.fundraiser_pda);
+    assert_eq!(fundraiser_state.current_amount, MAX_CONTRIBUTION);
+
+    let contributor_state = read_contributor_state(&setup.svm, &contributor_account_pda);
+    assert_eq!(contributor_state.amount, MAX_CONTRIBUTION);
+}
+
+#[test]
+fn test_contribute_after_deadline_fails() {
+    let mut setup = full_setup();
+    initialize_fundraiser(&mut setup, AMOUNT_TO_RAISE, DURATION_DAYS);
+
+    let (contributor, contributor_ata, contributor_account_pda) =
+        create_funded_contributor(&mut setup);
+
+    // One day past the deadline.
+    warp_days_forward(&mut setup.svm, DURATION_DAYS as i64 + 1);
+
+    let contribute_instruction = build_contribute_instruction(
+        &setup,
+        &contributor.pubkey(),
+        &contributor_ata,
+        &contributor_account_pda,
+        ONE_TOKEN,
+    );
+    let result = send_transaction_from_instructions(
+        &mut setup.svm,
+        vec![contribute_instruction],
+        &[&contributor],
+        &contributor.pubkey(),
+    );
+    assert!(result.is_err(), "Contributing after the deadline must fail");
+
+    assert_eq!(get_token_account_balance(&setup.svm, &setup.vault).unwrap(), 0);
+    assert_eq!(
+        get_token_account_balance(&setup.svm, &contributor_ata).unwrap(),
+        CONTRIBUTOR_STARTING_BALANCE
+    );
+}
+
+#[test]
+fn test_contribute_below_one_major_unit_fails() {
+    let mut setup = full_setup();
+    initialize_fundraiser(&mut setup, AMOUNT_TO_RAISE, DURATION_DAYS);
+
+    let (contributor, contributor_ata, contributor_account_pda) =
+        create_funded_contributor(&mut setup);
+
+    let contribute_instruction = build_contribute_instruction(
+        &setup,
+        &contributor.pubkey(),
+        &contributor_ata,
+        &contributor_account_pda,
+        ONE_TOKEN - 1,
+    );
+    let result = send_transaction_from_instructions(
+        &mut setup.svm,
+        vec![contribute_instruction],
+        &[&contributor],
+        &contributor.pubkey(),
+    );
+    assert!(
+        result.is_err(),
+        "Contributions below one major unit must fail"
+    );
+    assert_eq!(get_token_account_balance(&setup.svm, &setup.vault).unwrap(), 0);
+}
+
+#[test]
+fn test_refund_before_deadline_fails() {
+    let mut setup = full_setup();
+    initialize_fundraiser(&mut setup, AMOUNT_TO_RAISE, DURATION_DAYS);
+
+    let (contributor, contributor_ata, contributor_account_pda) =
+        create_funded_contributor(&mut setup);
+
+    let contribute_instruction = build_contribute_instruction(
+        &setup,
+        &contributor.pubkey(),
+        &contributor_ata,
+        &contributor_account_pda,
+        ONE_TOKEN,
+    );
+    send_transaction_from_instructions(
+        &mut setup.svm,
+        vec![contribute_instruction],
+        &[&contributor],
+        &contributor.pubkey(),
+    )
+    .unwrap();
+
+    // Still inside the window: refund must fail with FundraiserNotEnded.
+    let refund_instruction = build_refund_instruction(
+        &setup,
+        &contributor.pubkey(),
+        &contributor_ata,
+        &contributor_account_pda,
+    );
+    let result = send_transaction_from_instructions(
+        &mut setup.svm,
+        vec![refund_instruction],
+        &[&contributor],
+        &contributor.pubkey(),
+    );
+    assert!(result.is_err(), "Refunding before the deadline must fail");
+
+    assert_eq!(
+        get_token_account_balance(&setup.svm, &setup.vault).unwrap(),
+        ONE_TOKEN
+    );
+    let fundraiser_state = read_fundraiser_state(&setup.svm, &setup.fundraiser_pda);
+    assert_eq!(fundraiser_state.current_amount, ONE_TOKEN);
+}
+
+#[test]
+fn test_refund_after_deadline_target_not_met_succeeds() {
+    let mut setup = full_setup();
+    initialize_fundraiser(&mut setup, AMOUNT_TO_RAISE, DURATION_DAYS);
+
+    let (contributor, contributor_ata, contributor_account_pda) =
+        create_funded_contributor(&mut setup);
+
+    let contribute_instruction = build_contribute_instruction(
+        &setup,
+        &contributor.pubkey(),
+        &contributor_ata,
+        &contributor_account_pda,
+        MAX_CONTRIBUTION,
+    );
+    send_transaction_from_instructions(
+        &mut setup.svm,
+        vec![contribute_instruction],
+        &[&contributor],
+        &contributor.pubkey(),
+    )
+    .unwrap();
+
+    // Past the deadline, target not met: refund must succeed.
+    warp_days_forward(&mut setup.svm, DURATION_DAYS as i64 + 1);
+
+    let refund_instruction = build_refund_instruction(
+        &setup,
+        &contributor.pubkey(),
+        &contributor_ata,
+        &contributor_account_pda,
+    );
+    send_transaction_from_instructions(
+        &mut setup.svm,
+        vec![refund_instruction],
+        &[&contributor],
+        &contributor.pubkey(),
+    )
+    .unwrap();
+
+    assert_eq!(get_token_account_balance(&setup.svm, &setup.vault).unwrap(), 0);
+    assert_eq!(
+        get_token_account_balance(&setup.svm, &contributor_ata).unwrap(),
+        CONTRIBUTOR_STARTING_BALANCE
+    );
+
+    let fundraiser_state = read_fundraiser_state(&setup.svm, &setup.fundraiser_pda);
+    assert_eq!(fundraiser_state.current_amount, 0);
+
+    assert!(
+        setup.svm.get_account(&contributor_account_pda).is_none(),
+        "Contributor account must be closed after refund"
+    );
+}
+
+#[test]
+fn test_refund_when_target_met_fails() {
+    let mut setup = full_setup();
+    initialize_fundraiser(&mut setup, AMOUNT_TO_RAISE, DURATION_DAYS);
+
+    // 10 contributors at the 10% cap reach the target exactly.
+    let mut contributors = Vec::new();
     for _ in 0..10 {
-        let contributor = create_wallet(&mut fs.svm, 10_000_000_000).unwrap();
-
-        let contributor_ata = create_associated_token_account(
-            &mut fs.svm,
+        let (contributor, contributor_ata, contributor_account_pda) =
+            create_funded_contributor(&mut setup);
+        let contribute_instruction = build_contribute_instruction(
+            &setup,
             &contributor.pubkey(),
-            &fs.mint,
-            &fs.payer,
-        )
-        .unwrap();
-
-        mint_tokens_to_token_account(&mut fs.svm, &fs.mint, &contributor_ata, 10_000, &fs.payer)
-            .unwrap();
-
-        let (contributor_pda, _) = Pubkey::find_program_address(
-            &[
-                b"contributor",
-                fs.fundraiser_pda.as_ref(),
-                contributor.pubkey().as_ref(),
-            ],
-            &fs.program_id,
-        );
-
-        let contribute_ix = Instruction::new_with_bytes(
-            fs.program_id,
-            &fundraiser::instruction::Contribute { amount: 100 }.data(),
-            fundraiser::accounts::Contribute {
-                contributor: contributor.pubkey(),
-                mint_to_raise: fs.mint,
-                fundraiser: fs.fundraiser_pda,
-                contributor_account: contributor_pda,
-                contributor_ata,
-                vault: fs.vault,
-                token_program: token_program_id(),
-                system_program: system_program::id(),
-            }
-            .to_account_metas(None),
+            &contributor_ata,
+            &contributor_account_pda,
+            MAX_CONTRIBUTION,
         );
         send_transaction_from_instructions(
-            &mut fs.svm,
-            vec![contribute_ix],
+            &mut setup.svm,
+            vec![contribute_instruction],
             &[&contributor],
             &contributor.pubkey(),
         )
         .unwrap();
-
-        // Check if we've hit the goal
-        let current = get_token_account_balance(&fs.svm, &fs.vault).unwrap();
-        if current >= amount_to_raise {
-            break;
-        }
+        contributors.push((contributor, contributor_ata, contributor_account_pda));
     }
 
-    // Verify vault has enough
-    assert!(get_token_account_balance(&fs.svm, &fs.vault).unwrap() >= amount_to_raise);
+    warp_days_forward(&mut setup.svm, DURATION_DAYS as i64 + 1);
 
-    // Check contributions (maker claims the funds)
-    let maker_ata = derive_ata(&fs.maker.pubkey(), &fs.mint);
-
-    let check_ix = Instruction::new_with_bytes(
-        fs.program_id,
-        &fundraiser::instruction::CheckContributions {}.data(),
-        fundraiser::accounts::CheckContributions {
-            maker: fs.maker.pubkey(),
-            mint_to_raise: fs.mint,
-            fundraiser: fs.fundraiser_pda,
-            vault: fs.vault,
-            maker_ata,
-            token_program: token_program_id(),
-            system_program: system_program::id(),
-            associated_token_program: ata_program_id(),
-        }
-        .to_account_metas(None),
+    let (contributor, contributor_ata, contributor_account_pda) = &contributors[0];
+    let refund_instruction = build_refund_instruction(
+        &setup,
+        &contributor.pubkey(),
+        contributor_ata,
+        contributor_account_pda,
     );
+    let result = send_transaction_from_instructions(
+        &mut setup.svm,
+        vec![refund_instruction],
+        &[contributor],
+        &contributor.pubkey(),
+    );
+    assert!(
+        result.is_err(),
+        "Refunding must fail once the target has been met"
+    );
+    assert_eq!(
+        get_token_account_balance(&setup.svm, &setup.vault).unwrap(),
+        AMOUNT_TO_RAISE
+    );
+}
+
+#[test]
+fn test_check_contributions_success_pays_maker_and_closes_vault() {
+    let mut setup = full_setup();
+    initialize_fundraiser(&mut setup, AMOUNT_TO_RAISE, DURATION_DAYS);
+
+    // 10 contributors at the 10% cap reach the target exactly.
+    for _ in 0..10 {
+        let (contributor, contributor_ata, contributor_account_pda) =
+            create_funded_contributor(&mut setup);
+        let contribute_instruction = build_contribute_instruction(
+            &setup,
+            &contributor.pubkey(),
+            &contributor_ata,
+            &contributor_account_pda,
+            MAX_CONTRIBUTION,
+        );
+        send_transaction_from_instructions(
+            &mut setup.svm,
+            vec![contribute_instruction],
+            &[&contributor],
+            &contributor.pubkey(),
+        )
+        .unwrap();
+    }
+
+    assert_eq!(
+        get_token_account_balance(&setup.svm, &setup.vault).unwrap(),
+        AMOUNT_TO_RAISE
+    );
+
+    let maker_ata = derive_ata(&setup.maker.pubkey(), &setup.mint);
+    let check_instruction = build_check_contributions_instruction(&setup, &maker_ata);
     send_transaction_from_instructions(
-        &mut fs.svm,
-        vec![check_ix],
-        &[&fs.maker],
-        &fs.maker.pubkey(),
+        &mut setup.svm,
+        vec![check_instruction],
+        &[&setup.maker],
+        &setup.maker.pubkey(),
     )
     .unwrap();
 
-    // Verify maker received the funds
-    assert!(
-        get_token_account_balance(&fs.svm, &maker_ata).unwrap() >= amount_to_raise
+    assert_eq!(
+        get_token_account_balance(&setup.svm, &maker_ata).unwrap(),
+        AMOUNT_TO_RAISE
     );
-
-    // Fundraiser account should be closed
     assert!(
-        fs.svm.get_account(&fs.fundraiser_pda).is_none(),
-        "Fundraiser account should be closed after check_contributions"
+        setup.svm.get_account(&setup.vault).is_none(),
+        "Vault token account must be closed after a successful claim"
+    );
+    assert!(
+        setup.svm.get_account(&setup.fundraiser_pda).is_none(),
+        "Fundraiser account must be closed after a successful claim"
+    );
+}
+
+#[test]
+fn test_check_contributions_ignores_direct_vault_donations() {
+    let mut setup = full_setup();
+    initialize_fundraiser(&mut setup, AMOUNT_TO_RAISE, DURATION_DAYS);
+
+    // Mint the full target straight into the vault, bypassing contribute.
+    // The state-tracked current_amount stays 0, so the claim must fail.
+    mint_tokens_to_token_account(
+        &mut setup.svm,
+        &setup.mint,
+        &setup.vault,
+        AMOUNT_TO_RAISE,
+        &setup.payer,
+    )
+    .unwrap();
+
+    let maker_ata = derive_ata(&setup.maker.pubkey(), &setup.mint);
+    let check_instruction = build_check_contributions_instruction(&setup, &maker_ata);
+    let result = send_transaction_from_instructions(
+        &mut setup.svm,
+        vec![check_instruction],
+        &[&setup.maker],
+        &setup.maker.pubkey(),
+    );
+    assert!(
+        result.is_err(),
+        "Direct donations to the vault must not unlock the claim"
+    );
+    assert!(
+        setup.svm.get_account(&setup.fundraiser_pda).is_some(),
+        "Fundraiser account must stay open after a failed claim"
     );
 }

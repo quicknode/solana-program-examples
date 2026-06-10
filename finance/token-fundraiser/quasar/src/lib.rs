@@ -2,6 +2,7 @@
 
 use quasar_lang::prelude::*;
 
+mod error;
 mod instructions;
 use instructions::*;
 mod state;
@@ -27,10 +28,11 @@ mod quasar_token_fundraiser {
         instructions::handle_initialize(&mut ctx.accounts, amount_to_raise, duration, ctx.bumps.fundraiser)
     }
 
-    /// Contribute tokens to the fundraiser.
+    /// Contribute tokens to the fundraiser while its window is open. Creates
+    /// the contributor's tracking account on first contribution.
     #[instruction(discriminator = 1)]
     pub fn contribute(ctx: Ctx<Contribute>, amount: u64) -> Result<(), ProgramError> {
-        instructions::handle_contribute(&mut ctx.accounts, amount)
+        instructions::handle_contribute(&mut ctx.accounts, amount, &ctx.bumps)
     }
 
     /// Maker withdraws all funds once the target is met.
@@ -39,7 +41,8 @@ mod quasar_token_fundraiser {
         instructions::handle_check_contributions(&mut ctx.accounts, &ctx.bumps)
     }
 
-    /// Contributors reclaim their tokens if the fundraiser fails.
+    /// Contributors reclaim their tokens after the deadline if the target
+    /// was not met.
     #[instruction(discriminator = 3)]
     pub fn refund(ctx: Ctx<Refund>) -> Result<(), ProgramError> {
         instructions::handle_refund(&mut ctx.accounts, &ctx.bumps)

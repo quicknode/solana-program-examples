@@ -1,6 +1,6 @@
 # Token Fundraiser
 
-Create a fundraiser that collects tokens. A user creates a fundraiser [account](https://solana.com/docs/terminology#account), specifies the [mint](https://solana.com/docs/terminology#token-mint) they want to receive, the target amount, and a duration. Other users contribute. If the target is reached, the maker can claim the funds; if it isn't reached within the duration, contributors can refund.
+Create a fundraiser that collects tokens. A **maker** creates a fundraiser [account](https://solana.com/docs/terminology#account), specifies the [mint](https://solana.com/docs/terminology#token-mint) they want to receive, the target amount, and a duration in days. **Contributors** contribute while the window is open. If the target is reached, the maker claims the funds; if it is not reached by the deadline, contributors can refund.
 
 ## Architecture
 
@@ -22,13 +22,13 @@ pub struct Fundraiser {
 
 Fields:
 
-- `maker` — the person starting the fundraiser.
-- `mint_to_raise` — the mint the maker wants to receive.
-- `amount_to_raise` — the target amount.
-- `current_amount` — total amount currently contributed.
-- `time_started` — when the fundraiser was created.
-- `duration` — fundraising window in days.
-- `bump` — canonical bump for the Fundraiser [PDA](https://solana.com/docs/terminology#program-derived-address-pda).
+- `maker` - the person starting the fundraiser.
+- `mint_to_raise` - the mint the maker wants to receive.
+- `amount_to_raise` - the target amount, in minor units.
+- `current_amount` - total amount contributed through the `contribute` handler. This tracked total, not the vault balance, is what `check_contributions` and `refund` compare against the target, so tokens sent directly to the vault cannot trigger an early release or block refunds.
+- `time_started` - when the fundraiser was created.
+- `duration` - fundraising window in days.
+- `bump` - canonical bump for the Fundraiser [PDA](https://solana.com/docs/terminology#program-derived-address-pda).
 
 The `InitSpace` derive macro implements the `Space` trait, which calculates the size of the account (not counting the [Anchor](https://solana.com/docs/terminology#anchor) discriminator).
 
@@ -43,8 +43,8 @@ pub struct Contributor {
 }
 ```
 
-- `amount` — total amount contributed by this contributor.
-- `bump` — canonical bump for the Contributor PDA.
+- `amount` - total amount contributed by this contributor.
+- `bump` - canonical bump for the Contributor PDA.
 
 The Contributor PDA uses `init_if_needed`, which only runs the init branch on first call. The handler stores `bumps.contributor_account` into `bump` on first init (when `bump == 0`); see [`instructions/contribute.rs`](programs/fundraiser/src/instructions/contribute.rs).
 
@@ -59,90 +59,75 @@ pub const MAX_CONTRIBUTION_PERCENTAGE: u64 = 10;
 pub const PERCENTAGE_SCALER: u64 = 100;
 ```
 
-`MAX_CONTRIBUTION_PERCENTAGE / PERCENTAGE_SCALER` = 10%, the per-contributor cap.
+`MAX_CONTRIBUTION_PERCENTAGE / PERCENTAGE_SCALER` = 10%, the per-contributor cap. `MIN_AMOUNT_TO_RAISE` is the minimum target in major units.
 
 ### Code layout
 
-Each [instruction handler](https://solana.com/docs/terminology#instruction-handler) is a free function (`pub fn handle_<name>(accounts: &mut <Context>, ...)`) called from the `#[program]` module in `lib.rs`. Account-validation structs sit in the same file as the handler.
+Each [instruction handler](https://solana.com/docs/terminology#instruction-handler) is a free function (`pub fn handle_<name>(accounts: &mut <Constraints>, ...)`) called from the `#[program]` module in `lib.rs`. The matching `#[derive(Accounts)]` struct (named `<Name>AccountConstraints`) sits in the same file as the handler.
 
-## Instruction handlers
+### Token program compatibility
+
+All token accounts use `anchor_spl::token_interface` types (`InterfaceAccount<Mint>`, `InterfaceAccount<TokenAccount>`, `Interface<TokenInterface>`), and every token movement uses `transfer_checked`, which carries the mint and decimals through the [CPI](https://solana.com/docs/terminology#cross-program-invocation-cpi). The same code works against the Classic Token Program and the Token Extensions Program.
+
+### Onchain math
+
+All balance arithmetic uses `checked_*` operations and returns `FundraiserError::MathOverflow` on overflow. The per-contributor cap is computed in `u128` so the percentage product cannot overflow `u64`. Both handlers that move tokens out of the vault update program state before issuing the transfer CPI (checks-effects-interactions).
+
+## Lifecycle
 
 ### `initialize`
 
-[`programs/fundraiser/src/instructions/initialize.rs`](programs/fundraiser/src/instructions/initialize.rs).
+[`programs/fundraiser/src/instructions/initialize.rs`](programs/fundraiser/src/instructions/initialize.rs), account constraints `InitializeAccountConstraints`.
 
-```rust
-#[derive(Accounts)]
-pub struct Initialize<'info> {
-    #[account(mut)]
-    pub maker: Signer<'info>,
-    pub mint_to_raise: Account<'info, Mint>,
-    #[account(
-        init,
-        payer = maker,
-        seeds = [b"fundraiser", maker.key().as_ref()],
-        bump,
-        space = Fundraiser::DISCRIMINATOR.len() + Fundraiser::INIT_SPACE,
-    )]
-    pub fundraiser: Account<'info, Fundraiser>,
-    #[account(
-        init,
-        payer = maker,
-        associated_token::mint = mint_to_raise,
-        associated_token::authority = fundraiser,
-    )]
-    pub vault: Account<'info, TokenAccount>,
-    pub system_program: Program<'info, System>,
-    pub token_program: Program<'info, Token>,
-    pub associated_token_program: Program<'info, AssociatedToken>,
-}
-```
+The maker signs and pays for two new accounts:
 
-Account breakdown:
+- `fundraiser` - the state account, derived from `b"fundraiser"` and the maker's public key. Anchor calculates the canonical bump and the handler stores it.
+- `vault` - the [ATA](https://solana.com/docs/terminology#associated-token-account-ata) that receives contributions, owned by the Fundraiser PDA.
 
-- `maker` — the person starting the fundraiser. Signs; mutable so we can deduct [lamports](https://solana.com/docs/terminology#lamport).
-- `mint_to_raise` — the mint the maker wants to receive.
-- `fundraiser` — the state account. Derived from `b"fundraiser"` and the maker's public key; Anchor calculates the canonical bump and stores it in the struct.
-- `vault` — the [ATA](https://solana.com/docs/terminology#associated-token-account-ata) that receives contributions, owned by the Fundraiser PDA.
-- `system_program`, `token_program`, `associated_token_program` — needed to initialize the new accounts.
-
-The handler requires `amount >= MIN_AMOUNT_TO_RAISE.pow(mint.decimals)` and initializes the Fundraiser state.
+The handler requires `amount >= MIN_AMOUNT_TO_RAISE * 10^decimals` (the target must be at least 3 major units of the mint, expressed in minor units), then initializes the Fundraiser state with `current_amount = 0` and `time_started` from the `Clock` sysvar. A target below the minimum fails with `InvalidAmount`.
 
 ### `contribute`
 
-[`programs/fundraiser/src/instructions/contribute.rs`](programs/fundraiser/src/instructions/contribute.rs).
+[`programs/fundraiser/src/instructions/contribute.rs`](programs/fundraiser/src/instructions/contribute.rs), account constraints `ContributeAccountConstraints`.
 
-Account-validation struct: see source. The handler performs four `require!` checks in order:
+A contributor signs and the handler performs four checks in order:
 
-1. `amount >= 1_u64.pow(mint.decimals)` — minimum contribution (this is `1`, since `1.pow(n) == 1`; effectively contributions just need to be non-zero).
-2. `amount <= amount_to_raise * MAX_CONTRIBUTION_PERCENTAGE / PERCENTAGE_SCALER` — per-call cap of 10% of the target.
-3. `fundraiser.duration <= (current_time - time_started) / SECONDS_TO_DAYS` — see the [duration semantics note](#duration-check-semantics) below.
-4. Cumulative contributor cap: this contributor's running total (existing + new) must not exceed 10% of the target.
+1. Minimum contribution: `amount >= 10^decimals` (one major unit of the mint), else `ContributionTooSmall`.
+2. Per-call cap: `amount <= amount_to_raise * MAX_CONTRIBUTION_PERCENTAGE / PERCENTAGE_SCALER` (10% of the target), else `ContributionTooBig`.
+3. Time window: contributions are allowed while `elapsed_days < duration`, where `elapsed_days = (now - time_started) / SECONDS_TO_DAYS`. Once `elapsed_days` reaches `duration` the handler fails with `FundraiserEnded`.
+4. Cumulative cap: the contributor's running total (existing + new) must not exceed the same 10% cap, else `MaximumContributionsReached`.
 
-If all four checks pass, tokens are transferred from `contributor_ata` to `vault` via a [CPI](https://solana.com/docs/terminology#cross-program-invocation-cpi) to the [Classic Token Program](https://solana.com/docs/terminology#token-program), and both `Fundraiser.current_amount` and `Contributor.amount` are updated.
+If all checks pass, `Fundraiser.current_amount` and `Contributor.amount` are updated, then `amount` is transferred from `contributor_ata` to `vault` with `transfer_checked`.
 
 ### `check_contributions`
 
-[`programs/fundraiser/src/instructions/checker.rs`](programs/fundraiser/src/instructions/checker.rs).
+[`programs/fundraiser/src/instructions/checker.rs`](programs/fundraiser/src/instructions/checker.rs), account constraints `CheckContributionsAccountConstraints`.
 
-Lets the maker claim the funds. Requires `vault.amount >= amount_to_raise`. The CPI uses `new_with_signer` with the Fundraiser PDA's seeds because the vault is owned by the PDA. The Fundraiser account is closed (via the `close = maker` constraint) and its [rent](https://solana.com/docs/terminology#rent) is refunded to the maker.
+Lets the maker claim the funds once the target is met. Requires `fundraiser.current_amount >= amount_to_raise` (the state-tracked total, so direct donations to the vault cannot unlock the claim early), else `TargetNotMet`. The handler then, signing both CPIs with the Fundraiser PDA's seeds:
+
+1. Transfers the entire vault balance (including any direct donations) to `maker_ata` with `transfer_checked`.
+2. Closes the empty vault token account with `close_account`, returning its rent to the maker.
+
+The Fundraiser state account is closed via the `close = maker` constraint, so the maker also recovers that [rent](https://solana.com/docs/terminology#rent).
 
 ### `refund`
 
-[`programs/fundraiser/src/instructions/refund.rs`](programs/fundraiser/src/instructions/refund.rs).
+[`programs/fundraiser/src/instructions/refund.rs`](programs/fundraiser/src/instructions/refund.rs), account constraints `RefundAccountConstraints`.
 
-Lets a contributor reclaim their contribution if the target wasn't met. Two checks:
+Lets a contributor reclaim their contribution after a failed fundraiser. Two checks:
 
-1. `fundraiser.duration >= (current_time - time_started) / SECONDS_TO_DAYS` — see the [duration semantics note](#duration-check-semantics) below.
-2. `vault.amount < amount_to_raise` — target not met.
+1. Refunds are allowed only after the fundraiser has ended: `elapsed_days >= duration`, else `FundraiserNotEnded`.
+2. The target was not met: `fundraiser.current_amount < amount_to_raise` (again the state-tracked total, so donated tokens cannot block refunds), else `TargetMet`.
 
-Then the vault's tokens are transferred back to the contributor's ATA (CPI with PDA signer seeds) and the Contributor account is closed (via `close = contributor`), refunding its rent to the contributor.
+The handler subtracts the contributor's recorded amount from `current_amount` and zeroes the Contributor record before the transfer CPI, then sends the tokens from the vault back to `contributor_ata` with `transfer_checked` (PDA signer). The Contributor account is closed via `close = contributor`, refunding its rent to the contributor.
 
-## Duration check semantics
+## Testing
 
-The `contribute` and `refund` handlers compare `fundraiser.duration` (a `u16` in *days*) against elapsed days since `time_started`. The two checks use opposite comparison operators, which is worth reading carefully:
+The tests are Rust integration tests using [LiteSVM](https://www.anchor-lang.com/docs/testing/litesvm) and [solana-kite](https://crates.io/crates/solana-kite), in [`programs/fundraiser/tests/test_fundraiser.rs`](programs/fundraiser/tests/test_fundraiser.rs). They load the compiled program with `include_bytes!`, so build the program first and rebuild after every program change:
 
-- `contribute`: `require!(duration <= elapsed_days, FundraiserEnded)` — fails (with `FundraiserEnded`) when `elapsed_days < duration`.
-- `refund`: `require!(duration >= elapsed_days, FundraiserNotEnded)` — fails (with `FundraiserNotEnded`) when `elapsed_days > duration`.
+```sh
+cargo build-sbf
+cargo test
+```
 
-> ⚠️ Both comparisons look inverted relative to their error names. If you adapt this code, audit the duration logic carefully before relying on it.
+The suite uses a nonzero duration and warps the LiteSVM `Clock` sysvar to exercise both sides of every deadline: contributing inside the window succeeds, contributing after the deadline fails, refunding before the deadline fails, and refunding after the deadline succeeds when the target was not met. It also verifies that the claim pays the maker and closes the vault, that direct vault donations do not unlock the claim, and asserts token balances and decoded account state rather than just transaction success.

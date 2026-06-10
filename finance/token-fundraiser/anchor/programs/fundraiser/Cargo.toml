@@ -29,6 +29,12 @@ solana-signer = "3.0.0"
 solana-keypair = "3.0.1"
 solana-kite = "0.3.0"
 borsh = "1.6.1"
+# solana-kite depends on these SPL program crates without "no-entrypoint",
+# so the host test binary would link their `entrypoint` symbols alongside
+# this program's and fail with a duplicate-symbol error. Enabling
+# "no-entrypoint" here removes theirs via feature unification.
+spl-token = { version = "9.0.0", features = ["no-entrypoint"] }
+spl-associated-token-account = { version = "8.0.0", features = ["no-entrypoint"] }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }
