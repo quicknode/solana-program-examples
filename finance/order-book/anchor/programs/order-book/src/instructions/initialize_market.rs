@@ -9,7 +9,7 @@ use crate::state::{Market, OrderBook, MARKET_SEED};
 const MAX_FEE_BASIS_POINTS: u16 = 10_000;
 
 pub fn handle_initialize_market(
-    context: Context<InitializeMarket>,
+    context: Context<InitializeMarketAccountConstraints>,
     fee_basis_points: u16,
     tick_size: u64,
     base_lot_size: u64,
@@ -52,7 +52,7 @@ pub fn handle_initialize_market(
 }
 
 #[derive(Accounts)]
-pub struct InitializeMarket<'info> {
+pub struct InitializeMarketAccountConstraints<'info> {
     #[account(
         init,
         payer = authority,

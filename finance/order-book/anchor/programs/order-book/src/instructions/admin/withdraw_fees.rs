@@ -11,7 +11,7 @@ use crate::state::{Market, MARKET_SEED};
 /// the fee vault. Transfers the current balance of the fee vault in full;
 /// a partial-withdraw flavour could take an amount parameter, left out here
 /// to keep the example focused.
-pub fn handle_withdraw_fees(context: Context<WithdrawFees>) -> Result<()> {
+pub fn handle_withdraw_fees(context: Context<WithdrawFeesAccountConstraints>) -> Result<()> {
     let market = &context.accounts.market;
 
     require!(
@@ -55,14 +55,14 @@ pub fn handle_withdraw_fees(context: Context<WithdrawFees>) -> Result<()> {
 }
 
 #[derive(Accounts)]
-pub struct WithdrawFees<'info> {
+pub struct WithdrawFeesAccountConstraints<'info> {
     #[account(
         mut,
         has_one = fee_vault @ ErrorCode::InvalidFeeVault,
     )]
     pub market: Account<'info, Market>,
 
-    // Boxed to keep the struct under the BPF stack limit (see PlaceOrder).
+    // Boxed to keep the struct under the BPF stack limit (see PlaceOrderAccountConstraints).
     #[account(mut)]
     pub fee_vault: Box<InterfaceAccount<'info, TokenAccount>>,
 

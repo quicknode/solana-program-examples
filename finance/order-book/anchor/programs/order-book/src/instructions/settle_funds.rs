@@ -6,7 +6,7 @@ use anchor_spl::token_interface::{
 use crate::errors::ErrorCode;
 use crate::state::{Market, MarketUser, MARKET_SEED, MARKET_USER_SEED};
 
-pub fn handle_settle_funds(context: Context<SettleFunds>) -> Result<()> {
+pub fn handle_settle_funds(context: Context<SettleFundsAccountConstraints>) -> Result<()> {
     let market_user = &mut context.accounts.market_user;
     let market = &context.accounts.market;
 
@@ -71,7 +71,7 @@ pub fn handle_settle_funds(context: Context<SettleFunds>) -> Result<()> {
 }
 
 #[derive(Accounts)]
-pub struct SettleFunds<'info> {
+pub struct SettleFundsAccountConstraints<'info> {
     // `has_one` constraints bind these vaults/mints to the addresses stored
     // on the Market PDA at initialise_market time. Without them a caller
     // could substitute the fee_vault (same mint + same authority as
@@ -94,7 +94,7 @@ pub struct SettleFunds<'info> {
     )]
     pub market_user: Account<'info, MarketUser>,
 
-    // Boxed for the same reason as in PlaceOrder -
+    // Boxed for the same reason as in PlaceOrderAccountConstraints -
     // InterfaceAccount is too large to keep on the BPF stack in bulk.
     #[account(mut)]
     pub base_vault: Box<InterfaceAccount<'info, TokenAccount>>,

@@ -273,7 +273,7 @@ fn build_initialize_market_ix(
             min_order_size,
         }
         .data(),
-        order_book::accounts::InitializeMarket {
+        order_book::accounts::InitializeMarketAccountConstraints {
             market: sc.market,
             order_book: sc.order_book.pubkey(),
             base_mint: sc.base_mint,
@@ -294,7 +294,7 @@ fn build_create_market_user_ix(sc: &Scenario, owner: &Pubkey) -> Instruction {
     Instruction::new_with_bytes(
         sc.program_id,
         &order_book::instruction::CreateMarketUser {}.data(),
-        order_book::accounts::CreateMarketUser {
+        order_book::accounts::CreateMarketUserAccountConstraints {
             market_user,
             market: sc.market,
             owner: *owner,
@@ -325,7 +325,7 @@ fn build_place_order_ix(
             quantity,
         }
         .data(),
-        order_book::accounts::PlaceOrder {
+        order_book::accounts::PlaceOrderAccountConstraints {
             market: sc.market,
             order_book: sc.order_book.pubkey(),
             order,
@@ -395,7 +395,7 @@ fn build_withdraw_fees_ix(
     Instruction::new_with_bytes(
         sc.program_id,
         &order_book::instruction::WithdrawFees {}.data(),
-        order_book::accounts::WithdrawFees {
+        order_book::accounts::WithdrawFeesAccountConstraints {
             market: sc.market,
             fee_vault: sc.fee_vault.pubkey(),
             authority_quote_account,
@@ -417,7 +417,7 @@ fn build_cancel_order_ix(
     Instruction::new_with_bytes(
         sc.program_id,
         &order_book::instruction::CancelOrder {}.data(),
-        order_book::accounts::CancelOrder {
+        order_book::accounts::CancelOrderAccountConstraints {
             market: sc.market,
             order_book: sc.order_book.pubkey(),
             order,
@@ -438,7 +438,7 @@ fn build_settle_funds_ix(
     Instruction::new_with_bytes(
         sc.program_id,
         &order_book::instruction::SettleFunds {}.data(),
-        order_book::accounts::SettleFunds {
+        order_book::accounts::SettleFundsAccountConstraints {
             market: sc.market,
             market_user,
             base_vault: sc.base_vault.pubkey(),
@@ -1013,7 +1013,7 @@ fn cancel_and_settle_bid_refunds_full_quote() {
 }
 
 // Regression test for the fee-drain attack on settle_funds. Pre-fix,
-// `SettleFunds` did not bind `quote_vault` to `market.quote_vault` via
+// `SettleFundsAccountConstraints` did not bind `quote_vault` to `market.quote_vault` via
 // `has_one`, so a caller could pass `market.fee_vault` (same mint and
 // same authority) where `quote_vault` was expected and drain accumulated
 // taker fees while spending their own unsettled_quote credit. The
@@ -1061,7 +1061,7 @@ fn settle_funds_rejects_fee_vault_substituted_for_quote_vault() {
     let attack_ix = Instruction::new_with_bytes(
         sc.program_id,
         &order_book::instruction::SettleFunds {}.data(),
-        order_book::accounts::SettleFunds {
+        order_book::accounts::SettleFundsAccountConstraints {
             market: sc.market,
             market_user: sc.buyer_market_user,
             base_vault: sc.base_vault.pubkey(),

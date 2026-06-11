@@ -10,7 +10,7 @@ use crate::state::{
 };
 
 // Mirror of MarketUser.open_orders max_len. Kept as a constant so the
-// PlaceOrder check reads clearly and the limit is documented in one place.
+// PlaceOrderAccountConstraints check reads clearly and the limit is documented in one place.
 const MAX_OPEN_ORDERS_PER_USER: usize = 20;
 
 // Basis-points denominator. 10_000 bps == 100% - the universal rate convention
@@ -26,7 +26,7 @@ const BASIS_POINTS_DENOMINATOR: u128 = 10_000;
 const ACCOUNTS_PER_MAKER: usize = 2;
 
 pub fn handle_place_order<'info>(
-    context: Context<'info, PlaceOrder<'info>>,
+    context: Context<'info, PlaceOrderAccountConstraints<'info>>,
     side: OrderSide,
     price: u64,
     quantity: u64,
@@ -429,7 +429,7 @@ pub fn handle_place_order<'info>(
 
 #[derive(Accounts)]
 #[instruction(side: OrderSide, price: u64, quantity: u64)]
-pub struct PlaceOrder<'info> {
+pub struct PlaceOrderAccountConstraints<'info> {
     // `has_one` ties every market-owned account on this struct to the
     // addresses recorded on the Market PDA. Crucially, without
     // has_one on base_vault / quote_vault / base_mint / quote_mint a caller
