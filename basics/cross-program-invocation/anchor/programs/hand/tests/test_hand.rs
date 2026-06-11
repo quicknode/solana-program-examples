@@ -90,7 +90,7 @@ fn test_pull_lever_cpi() {
             name: "Jacob".to_string(),
         }
         .data(),
-        hand::accounts::PullLever {
+        hand::accounts::PullLeverAccountConstraints {
             power: power_keypair.pubkey(),
             lever_program: lever_program_id,
         }
@@ -113,7 +113,7 @@ fn test_pull_lever_cpi() {
             name: "sol-warrior".to_string(),
         }
         .data(),
-        hand::accounts::PullLever {
+        hand::accounts::PullLeverAccountConstraints {
             power: power_keypair.pubkey(),
             lever_program: lever_program_id,
         }

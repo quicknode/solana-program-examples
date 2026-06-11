@@ -7,7 +7,7 @@ use {
 /// at the fixed seed `b"config"`. There is no `id` parameter - calling this
 /// twice for the same program will fail because the account already exists.
 #[derive(Accounts)]
-pub struct CreateConfigAccounts {
+pub struct CreateConfigAccountConstraints {
     #[account(mut, init, payer = payer, address = ConfigPda::seeds())]
     pub config: Account<Config>,
     /// Admin authority for the AMM.
@@ -19,7 +19,7 @@ pub struct CreateConfigAccounts {
 
 #[inline(always)]
 pub fn handle_create_config(
-    accounts: &mut CreateConfigAccounts,
+    accounts: &mut CreateConfigAccountConstraints,
     fee: u16,
     admin_share_bps: u16,
 ) -> Result<(), ProgramError> {

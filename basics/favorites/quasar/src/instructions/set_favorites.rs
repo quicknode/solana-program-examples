@@ -6,7 +6,7 @@ use {
 /// Accounts for setting user favourites. Uses `init_if_needed` so the same
 /// instruction can create or update the favourites PDA.
 #[derive(Accounts)]
-pub struct SetFavorites {
+pub struct SetFavoritesAccountConstraints {
     #[account(mut)]
     pub user: Signer,
     #[account(mut, init(idempotent), payer = user, address = Favorites::seeds(user.address()))]
@@ -15,7 +15,7 @@ pub struct SetFavorites {
 }
 
 #[inline(always)]
-pub fn handle_set_favorites(accounts: &mut SetFavorites, number: u64, color: &str) -> Result<(), ProgramError> {
+pub fn handle_set_favorites(accounts: &mut SetFavoritesAccountConstraints, number: u64, color: &str) -> Result<(), ProgramError> {
     let rent = Rent::get()?;
     accounts.favorites.set_inner(
         FavoritesInner { number, color },

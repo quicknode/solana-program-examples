@@ -16,7 +16,7 @@ use {
 /// onchain addresses than the Anchor sibling because `#[derive(Seeds)]`
 /// emits the literal prefix first. Internally consistent within this program.
 #[derive(Accounts)]
-pub struct CreatePoolAccounts {
+pub struct CreatePoolAccountConstraints {
     #[account(address = ConfigPda::seeds())]
     pub config: Account<Config>,
     #[account(
@@ -66,7 +66,7 @@ pub struct CreatePoolAccounts {
 }
 
 #[inline(always)]
-pub fn handle_create_pool(accounts: &mut CreatePoolAccounts) -> Result<(), ProgramError> {
+pub fn handle_create_pool(accounts: &mut CreatePoolAccountConstraints) -> Result<(), ProgramError> {
     accounts.pool_config.set_inner(PoolConfigInner {
         config: *accounts.config.address(),
         mint_a: *accounts.mint_a.address(),

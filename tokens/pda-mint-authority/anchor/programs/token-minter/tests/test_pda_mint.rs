@@ -12,7 +12,7 @@ use {
 };
 
 /// Decimals configured by the program's `mint::decimals` constraint in
-/// `CreateToken`.
+/// `CreateTokenAccountConstraints`.
 const MINT_DECIMALS: u32 = 9;
 
 /// Converts a whole-token (major unit) count to minor units, the form the
@@ -98,7 +98,7 @@ fn test_create_token_and_mint() {
             token_uri: "https://example.com/token.json".to_string(),
         }
         .data(),
-        token_minter::accounts::CreateToken {
+        token_minter::accounts::CreateTokenAccountConstraints {
             payer: payer.pubkey(),
             mint_account: mint_pda,
             metadata_account,

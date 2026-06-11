@@ -11,7 +11,7 @@ use {
 /// `pool_config` is mutable because each swap accumulates the admin's slice
 /// of the trading fee into `admin_fees_owed_a` / `admin_fees_owed_b`.
 #[derive(Accounts)]
-pub struct SwapTokensAccounts {
+pub struct SwapTokensAccountConstraints {
     #[account(address = ConfigPda::seeds())]
     pub config: Account<Config>,
     #[account(
@@ -51,11 +51,11 @@ pub struct SwapTokensAccounts {
 
 #[inline(always)]
 pub fn handle_swap_tokens(
-    accounts: &mut SwapTokensAccounts,
+    accounts: &mut SwapTokensAccountConstraints,
     input_is_token_a: bool,
     input_amount: u64,
     min_output_amount: u64,
-    bumps: &SwapTokensAccountsBumps,
+    bumps: &SwapTokensAccountConstraintsBumps,
 ) -> Result<(), ProgramError> {
     // Never silently clamp the input to the trader's balance: the trader's
     // min_output_amount is computed against the input they requested, so

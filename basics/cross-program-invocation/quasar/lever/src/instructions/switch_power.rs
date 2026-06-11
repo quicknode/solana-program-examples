@@ -5,13 +5,13 @@ use {
 
 /// Accounts for toggling the power switch.
 #[derive(Accounts)]
-pub struct SwitchPower {
+pub struct SwitchPowerAccountConstraints {
     #[account(mut)]
     pub power: Account<PowerStatus>,
 }
 
 #[inline(always)]
-pub fn handle_switch_power(accounts: &mut SwitchPower, name: &str) -> Result<(), ProgramError> {
+pub fn handle_switch_power(accounts: &mut SwitchPowerAccountConstraints, name: &str) -> Result<(), ProgramError> {
     let current: bool = accounts.power.is_on.into();
     let new_state = !current;
     accounts.power.is_on = PodBool::from(new_state);

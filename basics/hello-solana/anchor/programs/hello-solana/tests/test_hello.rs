@@ -16,7 +16,7 @@ fn test_say_hello() {
     let instruction = Instruction::new_with_bytes(
         program_id,
         &hello_solana::instruction::Hello {}.data(),
-        hello_solana::accounts::Hello {}.to_account_metas(None),
+        hello_solana::accounts::HelloAccountConstraints {}.to_account_metas(None),
     );
 
     send_transaction_from_instructions(&mut svm, vec![instruction], &[&payer], &payer.pubkey())

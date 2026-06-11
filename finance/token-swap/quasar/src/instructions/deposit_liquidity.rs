@@ -11,7 +11,7 @@ use {
 /// Seeds reference the `config`, `mint_a`, and `mint_b` account addresses,
 /// which must be provided as separate account inputs.
 #[derive(Accounts)]
-pub struct DepositLiquidityAccounts {
+pub struct DepositLiquidityAccountConstraints {
     #[account(address = ConfigPda::seeds())]
     pub config: Account<Config>,
     #[account(address = PoolPda::seeds(config.address(), mint_a.address(), mint_b.address()))]
@@ -76,11 +76,11 @@ fn isqrt(n: u128) -> u128 {
 
 #[inline(always)]
 pub fn handle_deposit_liquidity(
-    accounts: &mut DepositLiquidityAccounts,
+    accounts: &mut DepositLiquidityAccountConstraints,
     amount_a: u64,
     amount_b: u64,
     minimum_lp_tokens_out: u64,
-    bumps: &DepositLiquidityAccountsBumps,
+    bumps: &DepositLiquidityAccountConstraintsBumps,
 ) -> Result<(), ProgramError> {
     // Fail fast if the depositor lacks the requested balance. Never silently
     // clamp to the available balance: callers expect their requested amount to

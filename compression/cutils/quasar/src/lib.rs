@@ -30,14 +30,14 @@ mod quasar_cutils {
 
     /// Mint a compressed NFT to a collection via MintToCollectionV1.
     #[instruction(discriminator = 0)]
-    pub fn mint(ctx: Ctx<Mint>) -> Result<(), ProgramError> {
+    pub fn mint(ctx: Ctx<MintAccountConstraints>) -> Result<(), ProgramError> {
         let data = ctx.data;
         instructions::handle_mint(&mut ctx.accounts, data)
     }
 
     /// Verify a compressed NFT leaf exists in the merkle tree.
     #[instruction(discriminator = 1)]
-    pub fn verify(ctx: CtxWithRemaining<Verify>) -> Result<(), ProgramError> {
+    pub fn verify(ctx: CtxWithRemaining<VerifyAccountConstraints>) -> Result<(), ProgramError> {
         let data = ctx.data;
         let remaining = ctx.remaining_accounts();
         instructions::handle_verify(&mut ctx.accounts, data, remaining)

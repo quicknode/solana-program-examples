@@ -2,7 +2,7 @@ use crate::state::*;
 use anchor_lang::prelude::*;
 
 #[derive(Accounts)]
-pub struct CloseUserContext<'info> {
+pub struct CloseUserAccountConstraints<'info> {
     #[account(mut)]
     pub user: Signer<'info>,
 
@@ -18,6 +18,6 @@ pub struct CloseUserContext<'info> {
     pub user_account: Account<'info, User>,
 }
 
-pub fn handle_close_user(_context: Context<CloseUserContext>) -> Result<()> {
+pub fn handle_close_user(_context: Context<CloseUserAccountConstraints>) -> Result<()> {
     Ok(())
 }

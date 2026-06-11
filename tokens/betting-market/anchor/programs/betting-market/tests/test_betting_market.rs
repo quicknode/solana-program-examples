@@ -111,7 +111,7 @@ fn initialize_config_ix(admin: Pubkey, mint: Pubkey, fee_recipient: Pubkey) -> I
             fee_recipient,
         }
         .data(),
-        betting_market::accounts::InitializeConfig {
+        betting_market::accounts::InitializeConfigAccountConstraints {
             admin,
             token_mint: mint,
             config: config_pda(),
@@ -131,7 +131,7 @@ fn create_event_ix(admin: Pubkey, mint: Pubkey, event_id: u64, description: &str
             description: description.to_string(),
         }
         .data(),
-        betting_market::accounts::CreateEvent {
+        betting_market::accounts::CreateEventAccountConstraints {
             admin,
             config: config_pda(),
             token_mint: mint,
@@ -153,7 +153,7 @@ fn add_outcome_ix(admin: Pubkey, event_id: u64, index: u8, label: &str) -> Instr
             label: label.to_string(),
         }
         .data(),
-        betting_market::accounts::AddOutcome {
+        betting_market::accounts::AddOutcomeAccountConstraints {
             admin,
             config: config_pda(),
             event,
@@ -210,7 +210,7 @@ fn settle_event_ix(
             winning_outcome_index,
         }
         .data(),
-        betting_market::accounts::SettleEvent {
+        betting_market::accounts::SettleEventAccountConstraints {
             admin,
             config: config_pda(),
             token_mint: mint,
@@ -257,7 +257,7 @@ fn cancel_event_ix(admin: Pubkey, event_id: u64) -> Instruction {
     Instruction::new_with_bytes(
         betting_market::id(),
         &betting_market::instruction::CancelEvent {}.data(),
-        betting_market::accounts::CancelEvent {
+        betting_market::accounts::CancelEventAccountConstraints {
             admin,
             config: config_pda(),
             event: event_pda(event_id),

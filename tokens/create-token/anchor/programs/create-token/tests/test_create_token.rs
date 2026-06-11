@@ -66,7 +66,7 @@ fn test_create_spl_token() {
             token_uri: "https://example.com/token.json".to_string(),
         }
         .data(),
-        create_token::accounts::CreateTokenMint {
+        create_token::accounts::CreateTokenMintAccountConstraints {
             payer: payer.pubkey(),
             metadata_account,
             mint_account: mint_keypair.pubkey(),
@@ -117,7 +117,7 @@ fn test_create_nft() {
             token_uri: "https://example.com/nft.json".to_string(),
         }
         .data(),
-        create_token::accounts::CreateTokenMint {
+        create_token::accounts::CreateTokenMintAccountConstraints {
             payer: payer.pubkey(),
             metadata_account,
             mint_account: mint_keypair.pubkey(),

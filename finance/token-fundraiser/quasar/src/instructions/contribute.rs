@@ -8,7 +8,7 @@ use {
 };
 
 #[derive(Accounts)]
-pub struct Contribute {
+pub struct ContributeAccountConstraints {
     #[account(mut)]
     pub contributor: Signer,
 
@@ -43,9 +43,9 @@ pub struct Contribute {
 
 #[inline(always)]
 pub fn handle_contribute(
-    accounts: &mut Contribute,
+    accounts: &mut ContributeAccountConstraints,
     amount: u64,
-    bumps: &ContributeBumps,
+    bumps: &ContributeAccountConstraintsBumps,
 ) -> Result<(), ProgramError> {
     require!(amount > 0, FundraiserError::InvalidAmount);
 

@@ -6,7 +6,7 @@ use quasar_spl::prelude::*;
 #[cfg(test)]
 mod tests;
 
-declare_id!("22222222222222222222222222222222222222222222");
+declare_id!("nHi9DdNjuupjQ3c8AJU9sChB5gLbZvTLsJQouY4hU67");
 
 /// Demonstrates creating a mint, minting tokens, and transferring between accounts.
 ///

@@ -5,7 +5,7 @@ use {
 };
 
 #[derive(Accounts)]
-pub struct CheckContributions {
+pub struct CheckContributionsAccountConstraints {
     #[account(mut)]
     pub maker: Signer,
 
@@ -29,8 +29,8 @@ pub struct CheckContributions {
 
 #[inline(always)]
 pub fn handle_check_contributions(
-    accounts: &mut CheckContributions,
-    bumps: &CheckContributionsBumps,
+    accounts: &mut CheckContributionsAccountConstraints,
+    bumps: &CheckContributionsAccountConstraintsBumps,
 ) -> Result<(), ProgramError> {
     let current_amount: u64 = accounts.fundraiser.current_amount.into();
     let amount_to_raise: u64 = accounts.fundraiser.amount_to_raise.into();

@@ -39,7 +39,7 @@ fn test_create_address_info() {
             city: "Solana Beach".to_string(),
         }
         .data(),
-        account_data_anchor_program::accounts::CreateAddressInfo {
+        account_data_anchor_program::accounts::CreateAddressInfoAccountConstraints {
             payer: payer.pubkey(),
             address_info: address_info_keypair.pubkey(),
             system_program: system_program::id(),

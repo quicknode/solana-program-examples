@@ -24,7 +24,7 @@ pub enum PythExampleError {
 pub mod anchor_test {
     use super::*;
 
-    pub fn read_price(context: Context<ReadPrice>) -> Result<()> {
+    pub fn read_price(context: Context<ReadPriceAccountConstraints>) -> Result<()> {
         let price_update = &context.accounts.price_update;
 
         // Reject stale prices: a price that stopped updating is wrong.
@@ -50,7 +50,7 @@ pub mod anchor_test {
 }
 
 #[derive(Accounts)]
-pub struct ReadPrice<'info> {
+pub struct ReadPriceAccountConstraints<'info> {
     pub price_update: Account<'info, PriceUpdateV2>,
 }
 

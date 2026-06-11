@@ -43,7 +43,7 @@ fn test_check_accounts() {
     let check_accounts_ix = Instruction::new_with_bytes(
         program_id,
         &checking_account_program::instruction::CheckAccounts {}.data(),
-        checking_account_program::accounts::CheckingAccounts {
+        checking_account_program::accounts::CheckingAccountsAccountConstraints {
             payer: payer.pubkey(),
             account_to_create: account_to_create.pubkey(),
             account_to_change: account_to_change.pubkey(),

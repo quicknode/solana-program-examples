@@ -16,7 +16,7 @@ pub mod betting_market {
     // One-time setup: the signer becomes the admin and fixes the stake token and
     // the settlement fee (basis points) for every market in this deployment.
     pub fn initialize_config(
-        context: Context<InitializeConfig>,
+        context: Context<InitializeConfigAccountConstraints>,
         fee_bps: u16,
         fee_recipient: Pubkey,
     ) -> Result<()> {
@@ -25,7 +25,7 @@ pub mod betting_market {
 
     // Admin opens a new market and creates its pool vault.
     pub fn create_event(
-        context: Context<CreateEvent>,
+        context: Context<CreateEventAccountConstraints>,
         event_id: u64,
         description: String,
     ) -> Result<()> {
@@ -33,7 +33,7 @@ pub mod betting_market {
     }
 
     // Admin adds a possible result. Only allowed before betting starts.
-    pub fn add_outcome(context: Context<AddOutcome>, label: String) -> Result<()> {
+    pub fn add_outcome(context: Context<AddOutcomeAccountConstraints>, label: String) -> Result<()> {
         instructions::add_outcome::handle_add_outcome(context, label)
     }
 
@@ -44,7 +44,7 @@ pub mod betting_market {
 
     // Admin resolves the market: takes the fee from the losing pool and records
     // the figures winners need to claim their share.
-    pub fn settle_event(context: Context<SettleEvent>, winning_outcome_index: u8) -> Result<()> {
+    pub fn settle_event(context: Context<SettleEventAccountConstraints>, winning_outcome_index: u8) -> Result<()> {
         instructions::settle_event::handle_settle_event(context, winning_outcome_index)
     }
 
@@ -61,7 +61,7 @@ pub mod betting_market {
     }
 
     // Admin voids an unresolved market so bettors can be made whole.
-    pub fn cancel_event(context: Context<CancelEvent>) -> Result<()> {
+    pub fn cancel_event(context: Context<CancelEventAccountConstraints>) -> Result<()> {
         instructions::cancel_event::handle_cancel_event(context)
     }
 

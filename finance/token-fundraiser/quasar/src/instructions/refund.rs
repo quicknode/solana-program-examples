@@ -8,7 +8,7 @@ use {
 };
 
 #[derive(Accounts)]
-pub struct Refund {
+pub struct RefundAccountConstraints {
     #[account(mut)]
     pub contributor: Signer,
 
@@ -39,7 +39,7 @@ pub struct Refund {
 }
 
 #[inline(always)]
-pub fn handle_refund(accounts: &mut Refund, bumps: &RefundBumps) -> Result<(), ProgramError> {
+pub fn handle_refund(accounts: &mut RefundAccountConstraints, bumps: &RefundAccountConstraintsBumps) -> Result<(), ProgramError> {
     // Refunds are allowed only after the deadline (now >= start + duration).
     let now: i64 = Clock::get()?.unix_timestamp.into();
     let deadline = fundraiser_deadline(

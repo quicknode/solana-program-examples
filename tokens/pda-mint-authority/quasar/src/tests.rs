@@ -142,5 +142,17 @@ fn test_mint_with_pda_authority() {
     );
 
     assert!(result.is_ok(), "mint_tokens failed: {:?}", result.raw_result);
+
+    // The handler mints exactly the minor-unit amount passed: no decimal scaling.
+    let token_after = result.account(&token_addr).expect("token account exists");
+    let token_state = <TokenAccount as solana_program_pack::Pack>::unpack(&token_after.data)
+        .expect("valid token account");
+    assert_eq!(token_state.amount, amount);
+
+    let mint_after = result.account(&mint_pda).expect("mint exists");
+    let mint_state =
+        <Mint as solana_program_pack::Pack>::unpack(&mint_after.data).expect("valid mint");
+    assert_eq!(mint_state.supply, amount);
+
     println!("  MINT WITH PDA CU: {}", result.compute_units_consumed);
 }

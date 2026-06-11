@@ -8,7 +8,7 @@ use {
 };
 
 #[derive(Accounts)]
-pub struct Initialize {
+pub struct InitializeAccountConstraints {
     #[account(mut)]
     pub maker: Signer,
 
@@ -34,7 +34,7 @@ pub struct Initialize {
 
 #[inline(always)]
 pub fn handle_initialize(
-    accounts: &mut Initialize,
+    accounts: &mut InitializeAccountConstraints,
     amount_to_raise: u64,
     duration: u16,
     bump: u8,

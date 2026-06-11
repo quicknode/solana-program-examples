@@ -7,7 +7,7 @@ use instructions::*;
 #[cfg(test)]
 mod tests;
 
-declare_id!("22222222222222222222222222222222222222222222");
+declare_id!("3EMcczaGi9ivdLxvvFwRbGYeEUEHpGwabXegARw4jLxa");
 
 /// Marker carrying the seeds for the shared PDA mint authority used as
 /// both mint and update authority. PR #195 removed inline

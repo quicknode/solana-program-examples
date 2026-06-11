@@ -12,7 +12,7 @@ pub struct RentVault;
 /// When lamports are sent to a new address, the system program creates
 /// a system-owned account automatically.
 #[derive(Accounts)]
-pub struct InitRentVault {
+pub struct InitRentVaultAccountConstraints {
     #[account(mut)]
     pub payer: Signer,
     #[account(mut, address = RentVault::seeds())]
@@ -21,7 +21,7 @@ pub struct InitRentVault {
 }
 
 #[inline(always)]
-pub fn handle_init_rent_vault(accounts: &mut InitRentVault, fund_lamports: u64) -> Result<(), ProgramError> {
+pub fn handle_init_rent_vault(accounts: &mut InitRentVaultAccountConstraints, fund_lamports: u64) -> Result<(), ProgramError> {
     accounts.system_program
         .transfer(&accounts.payer, &accounts.rent_vault, fund_lamports)
         .invoke()

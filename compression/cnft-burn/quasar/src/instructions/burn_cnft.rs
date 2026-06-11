@@ -10,7 +10,7 @@ const MAX_CPI_ACCOUNTS: usize = 7 + MAX_PROOF_NODES;
 
 /// Accounts for burning a compressed NFT via mpl-bubblegum CPI.
 #[derive(Accounts)]
-pub struct BurnCnft {
+pub struct BurnCnftAccountConstraints {
     #[account(mut)]
     pub leaf_owner: Signer,
     /// Tree authority PDA (seeds checked by Bubblegum).
@@ -30,7 +30,7 @@ pub struct BurnCnft {
     pub system_program: Program<SystemProgram>,
 }
 
-pub fn handle_burn_cnft(accounts: &mut BurnCnft, data: &[u8], remaining: RemainingAccounts<'_>) -> Result<(), ProgramError> {
+pub fn handle_burn_cnft(accounts: &mut BurnCnftAccountConstraints, data: &[u8], remaining: RemainingAccounts<'_>) -> Result<(), ProgramError> {
     // Parse instruction args from raw data:
     // root(32) + data_hash(32) + creator_hash(32) + nonce(8) + index(4) = 108 bytes
     if data.len() < 108 {

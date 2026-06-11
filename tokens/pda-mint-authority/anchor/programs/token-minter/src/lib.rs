@@ -9,7 +9,7 @@ pub mod token_minter {
     use super::*;
 
     pub fn create_token(
-        context: Context<CreateToken>,
+        context: Context<CreateTokenAccountConstraints>,
         token_name: String,
         token_symbol: String,
         token_uri: String,

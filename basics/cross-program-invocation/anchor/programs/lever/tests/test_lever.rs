@@ -29,7 +29,7 @@ fn test_initialize_lever() {
     let instruction = Instruction::new_with_bytes(
         program_id,
         &lever::instruction::Initialize {}.data(),
-        lever::accounts::InitializeLever {
+        lever::accounts::InitializeLeverAccountConstraints {
             power: power_keypair.pubkey(),
             user: payer.pubkey(),
             system_program: system_program::id(),
@@ -65,7 +65,7 @@ fn test_switch_power() {
     let init_ix = Instruction::new_with_bytes(
         program_id,
         &lever::instruction::Initialize {}.data(),
-        lever::accounts::InitializeLever {
+        lever::accounts::InitializeLeverAccountConstraints {
             power: power_keypair.pubkey(),
             user: payer.pubkey(),
             system_program: system_program::id(),
@@ -87,7 +87,7 @@ fn test_switch_power() {
             name: "Alice".to_string(),
         }
         .data(),
-        lever::accounts::SetPowerStatus {
+        lever::accounts::SetPowerStatusAccountConstraints {
             power: power_keypair.pubkey(),
         }
         .to_account_metas(None),
@@ -108,7 +108,7 @@ fn test_switch_power() {
             name: "Bob".to_string(),
         }
         .data(),
-        lever::accounts::SetPowerStatus {
+        lever::accounts::SetPowerStatusAccountConstraints {
             power: power_keypair.pubkey(),
         }
         .to_account_metas(None),

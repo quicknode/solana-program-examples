@@ -13,7 +13,7 @@ const MAX_IX_DATA: usize = 400;
 
 /// Accounts for minting a compressed NFT to a collection.
 #[derive(Accounts)]
-pub struct Mint {
+pub struct MintAccountConstraints {
     pub payer: Signer,
     /// Tree authority PDA (seeds checked by Bubblegum).
     #[account(mut)]
@@ -53,7 +53,7 @@ pub struct Mint {
     pub system_program: Program<SystemProgram>,
 }
 
-pub fn handle_mint(accounts: &mut Mint, data: &[u8]) -> Result<(), ProgramError> {
+pub fn handle_mint(accounts: &mut MintAccountConstraints, data: &[u8]) -> Result<(), ProgramError> {
     // Parse URI from instruction data: u32 length prefix + utf8 bytes (borsh String)
     if data.len() < 4 {
         return Err(ProgramError::InvalidInstructionData);

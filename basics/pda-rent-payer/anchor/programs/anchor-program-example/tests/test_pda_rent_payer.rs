@@ -33,7 +33,7 @@ fn test_init_rent_vault() {
             fund_lamports: fund_amount,
         }
         .data(),
-        pda_rent_payer::accounts::InitRentVault {
+        pda_rent_payer::accounts::InitRentVaultAccountConstraints {
             payer: payer.pubkey(),
             rent_vault: rent_vault_pda,
             system_program: system_program::id(),
@@ -68,7 +68,7 @@ fn test_create_new_account_from_rent_vault() {
             fund_lamports: fund_amount,
         }
         .data(),
-        pda_rent_payer::accounts::InitRentVault {
+        pda_rent_payer::accounts::InitRentVaultAccountConstraints {
             payer: payer.pubkey(),
             rent_vault: rent_vault_pda,
             system_program: system_program::id(),
@@ -85,7 +85,7 @@ fn test_create_new_account_from_rent_vault() {
     let create_ix = Instruction::new_with_bytes(
         program_id,
         &pda_rent_payer::instruction::CreateNewAccount {}.data(),
-        pda_rent_payer::accounts::CreateNewAccount {
+        pda_rent_payer::accounts::CreateNewAccountAccountConstraints {
             new_account: new_account.pubkey(),
             rent_vault: rent_vault_pda,
             system_program: system_program::id(),

@@ -6,7 +6,7 @@ use quasar_spl::{initialize_mint2, prelude::*};
 #[cfg(test)]
 mod tests;
 
-declare_id!("22222222222222222222222222222222222222222222");
+declare_id!("GwvQ53QTu1xz3XXYfG5m5jEqwhMBvVBudPS8TUuFYnhT");
 
 /// SPL Mint account size in bytes.
 const MINT_SPACE: usize = 82;

@@ -71,7 +71,7 @@ mod quasar_token_swap {
 
     #[instruction(discriminator = 0)]
     pub fn create_config(
-        ctx: Ctx<CreateConfigAccounts>,
+        ctx: Ctx<CreateConfigAccountConstraints>,
         fee: u16,
         admin_share_bps: u16,
     ) -> Result<(), ProgramError> {
@@ -79,13 +79,13 @@ mod quasar_token_swap {
     }
 
     #[instruction(discriminator = 1)]
-    pub fn create_pool(ctx: Ctx<CreatePoolAccounts>) -> Result<(), ProgramError> {
+    pub fn create_pool(ctx: Ctx<CreatePoolAccountConstraints>) -> Result<(), ProgramError> {
         instructions::handle_create_pool(&mut ctx.accounts)
     }
 
     #[instruction(discriminator = 2)]
     pub fn deposit_liquidity(
-        ctx: Ctx<DepositLiquidityAccounts>,
+        ctx: Ctx<DepositLiquidityAccountConstraints>,
         amount_a: u64,
         amount_b: u64,
         minimum_lp_tokens_out: u64,
@@ -101,7 +101,7 @@ mod quasar_token_swap {
 
     #[instruction(discriminator = 3)]
     pub fn withdraw_liquidity(
-        ctx: Ctx<WithdrawLiquidityAccounts>,
+        ctx: Ctx<WithdrawLiquidityAccountConstraints>,
         amount: u64,
         minimum_token_a_out: u64,
         minimum_token_b_out: u64,
@@ -117,7 +117,7 @@ mod quasar_token_swap {
 
     #[instruction(discriminator = 4)]
     pub fn swap_tokens(
-        ctx: Ctx<SwapTokensAccounts>,
+        ctx: Ctx<SwapTokensAccountConstraints>,
         input_is_token_a: bool,
         input_amount: u64,
         min_output_amount: u64,
@@ -133,7 +133,7 @@ mod quasar_token_swap {
 
     #[instruction(discriminator = 5)]
     pub fn claim_admin_fees(
-        ctx: Ctx<ClaimAdminFeesAccounts>,
+        ctx: Ctx<ClaimAdminFeesAccountConstraints>,
     ) -> Result<(), ProgramError> {
         instructions::handle_claim_admin_fees(&mut ctx.accounts, &ctx.bumps)
     }

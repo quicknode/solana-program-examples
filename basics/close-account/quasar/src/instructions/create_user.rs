@@ -5,7 +5,7 @@ use {
 
 /// Accounts for creating a new user.
 #[derive(Accounts)]
-pub struct CreateUser {
+pub struct CreateUserAccountConstraints {
     #[account(mut)]
     pub user: Signer,
     #[account(mut, init, payer = user, address = User::seeds(user.address()))]
@@ -15,7 +15,7 @@ pub struct CreateUser {
 
 #[inline(always)]
 pub fn handle_create_user(
-    accounts: &mut CreateUser,
+    accounts: &mut CreateUserAccountConstraints,
     name: &str,
     bump: u8,
 ) -> Result<(), ProgramError> {

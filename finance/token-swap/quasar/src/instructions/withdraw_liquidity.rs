@@ -9,7 +9,7 @@ use {
 };
 
 #[derive(Accounts)]
-pub struct WithdrawLiquidityAccounts {
+pub struct WithdrawLiquidityAccountConstraints {
     #[account(address = ConfigPda::seeds())]
     pub config: Account<Config>,
     #[account(address = PoolPda::seeds(config.address(), mint_a.address(), mint_b.address()))]
@@ -59,11 +59,11 @@ pub struct WithdrawLiquidityAccounts {
 
 #[inline(always)]
 pub fn handle_withdraw_liquidity(
-    accounts: &mut WithdrawLiquidityAccounts,
+    accounts: &mut WithdrawLiquidityAccountConstraints,
     amount: u64,
     minimum_token_a_out: u64,
     minimum_token_b_out: u64,
-    bumps: &WithdrawLiquidityAccountsBumps,
+    bumps: &WithdrawLiquidityAccountConstraintsBumps,
 ) -> Result<(), ProgramError> {
     // Seed order matches PoolAuthorityPda: [b"authority", config, mint_a, mint_b, bump].
     let bump = [bumps.pool_authority];

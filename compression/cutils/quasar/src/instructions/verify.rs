@@ -13,7 +13,7 @@ const VERIFY_LEAF_DISCRIMINATOR: [u8; 8] = [0x7c, 0xdc, 0x16, 0xdf, 0x68, 0x0a, 
 
 /// Accounts for verifying a compressed NFT leaf in the merkle tree.
 #[derive(Accounts)]
-pub struct Verify {
+pub struct VerifyAccountConstraints {
     pub leaf_owner: Signer,
     /// Leaf delegate.
     pub leaf_delegate: UncheckedAccount,
@@ -24,7 +24,7 @@ pub struct Verify {
     pub compression_program: UncheckedAccount,
 }
 
-pub fn handle_verify(accounts: &mut Verify, data: &[u8], remaining: RemainingAccounts<'_>) -> Result<(), ProgramError> {
+pub fn handle_verify(accounts: &mut VerifyAccountConstraints, data: &[u8], remaining: RemainingAccounts<'_>) -> Result<(), ProgramError> {
     // Parse verify params from instruction data:
     // root(32) + data_hash(32) + creator_hash(32) + nonce(8) + index(4) = 108 bytes
     if data.len() < 108 {

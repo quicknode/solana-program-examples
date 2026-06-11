@@ -5,7 +5,7 @@ use crate::{error::BettingError, Config, Event, EventStatus};
 // Abandon an event that can't be resolved (e.g. the real-world result is void).
 // Bettors then reclaim their exact stakes via `claim_refund`; no fee is taken.
 #[derive(Accounts)]
-pub struct CancelEvent<'info> {
+pub struct CancelEventAccountConstraints<'info> {
     pub admin: Signer<'info>,
 
     #[account(
@@ -23,7 +23,7 @@ pub struct CancelEvent<'info> {
     pub event: Account<'info, Event>,
 }
 
-pub fn handle_cancel_event(context: Context<CancelEvent>) -> Result<()> {
+pub fn handle_cancel_event(context: Context<CancelEventAccountConstraints>) -> Result<()> {
     require!(
         context.accounts.event.status == EventStatus::Open,
         BettingError::EventNotOpen

@@ -12,7 +12,7 @@ use {
 /// enforce that explicitly in the handler since quasar doesn't have an
 /// Anchor-style `has_one` constraint.
 #[derive(Accounts)]
-pub struct ClaimAdminFeesAccounts {
+pub struct ClaimAdminFeesAccountConstraints {
     #[account(address = ConfigPda::seeds())]
     pub config: Account<Config>,
     #[account(
@@ -47,8 +47,8 @@ pub struct ClaimAdminFeesAccounts {
 
 #[inline(always)]
 pub fn handle_claim_admin_fees(
-    accounts: &mut ClaimAdminFeesAccounts,
-    bumps: &ClaimAdminFeesAccountsBumps,
+    accounts: &mut ClaimAdminFeesAccountConstraints,
+    bumps: &ClaimAdminFeesAccountConstraintsBumps,
 ) -> Result<(), ProgramError> {
     // Authorisation: only the address stored in `Config.admin` may call this.
     if *accounts.admin.address() != *accounts.config.admin() {

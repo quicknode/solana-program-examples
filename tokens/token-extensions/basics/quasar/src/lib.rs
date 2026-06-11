@@ -33,20 +33,20 @@ mod quasar_token_2022_basics {
 
     /// Mint tokens to a recipient's token account.
     #[instruction(discriminator = 0)]
-    pub fn mint_token(ctx: Ctx<MintToken>, amount: u64) -> Result<(), ProgramError> {
+    pub fn mint_token(ctx: Ctx<MintTokenAccountConstraints>, amount: u64) -> Result<(), ProgramError> {
         handle_mint_token(&mut ctx.accounts, amount)
     }
 
     /// Transfer tokens using transfer_checked (required for Token Extensions).
     #[instruction(discriminator = 1)]
-    pub fn transfer_token(ctx: Ctx<TransferToken>, amount: u64) -> Result<(), ProgramError> {
+    pub fn transfer_token(ctx: Ctx<TransferTokenAccountConstraints>, amount: u64) -> Result<(), ProgramError> {
         handle_transfer_token(&mut ctx.accounts, amount)
     }
 }
 
 /// Accounts for minting tokens via Token Extensions.
 #[derive(Accounts)]
-pub struct MintToken {
+pub struct MintTokenAccountConstraints {
     #[account(mut)]
     pub authority: Signer,
     #[account(mut)]
@@ -57,7 +57,7 @@ pub struct MintToken {
 }
 
 #[inline(always)]
-fn handle_mint_token(accounts: &mut MintToken, amount: u64) -> Result<(), ProgramError> {
+fn handle_mint_token(accounts: &mut MintTokenAccountConstraints, amount: u64) -> Result<(), ProgramError> {
     // SPL Token MintTo instruction: opcode 7, amount as u64 LE.
     let data = build_u64_data(7, amount);
     CpiCall::new(
@@ -79,7 +79,7 @@ fn handle_mint_token(accounts: &mut MintToken, amount: u64) -> Result<(), Progra
 
 /// Accounts for transferring tokens via Token Extensions transfer_checked.
 #[derive(Accounts)]
-pub struct TransferToken {
+pub struct TransferTokenAccountConstraints {
     #[account(mut)]
     pub sender: Signer,
     #[account(mut)]
@@ -91,7 +91,7 @@ pub struct TransferToken {
 }
 
 #[inline(always)]
-fn handle_transfer_token(accounts: &mut TransferToken, amount: u64) -> Result<(), ProgramError> {
+fn handle_transfer_token(accounts: &mut TransferTokenAccountConstraints, amount: u64) -> Result<(), ProgramError> {
     // SPL Token TransferChecked instruction: opcode 12, amount as u64 LE, decimals as u8.
     let data = build_transfer_checked_data(amount, 6);
     CpiCall::new(

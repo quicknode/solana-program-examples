@@ -113,7 +113,7 @@ fn setup_with_price_account(
 
 fn read_price_instruction(price_update: anchor_lang::solana_program::pubkey::Pubkey) -> Instruction {
     let ix_data = pythexample::instruction::ReadPrice {}.data();
-    let accounts = pythexample::accounts::ReadPrice { price_update }.to_account_metas(None);
+    let accounts = pythexample::accounts::ReadPriceAccountConstraints { price_update }.to_account_metas(None);
     Instruction::new_with_bytes(pythexample::id(), &ix_data, accounts)
 }
 

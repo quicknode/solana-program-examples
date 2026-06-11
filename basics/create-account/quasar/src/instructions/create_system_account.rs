@@ -3,7 +3,7 @@ use quasar_lang::{prelude::*, sysvars::Sysvar};
 /// Accounts for creating a new system-owned account.
 /// Both payer and new_account must sign the transaction.
 #[derive(Accounts)]
-pub struct CreateSystemAccount {
+pub struct CreateSystemAccountAccountConstraints {
     #[account(mut)]
     pub payer: Signer,
     #[account(mut)]
@@ -13,7 +13,7 @@ pub struct CreateSystemAccount {
 
 #[inline(always)]
 pub fn handle_create_system_account(
-    accounts: &mut CreateSystemAccount,
+    accounts: &mut CreateSystemAccountAccountConstraints,
 ) -> Result<(), ProgramError> {
     let system_program_address = Address::default();
     let rent = Rent::get()?;

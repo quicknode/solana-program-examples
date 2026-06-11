@@ -83,7 +83,7 @@ fn test_set_favorites() {
             ],
         }
         .data(),
-        favorites::accounts::SetFavorites {
+        favorites::accounts::SetFavoritesAccountConstraints {
             user: payer.pubkey(),
             favorites: pda,
             system_program: system_program::id(),
@@ -118,7 +118,7 @@ fn test_update_favorites() {
             ],
         }
         .data(),
-        favorites::accounts::SetFavorites {
+        favorites::accounts::SetFavoritesAccountConstraints {
             user: payer.pubkey(),
             favorites: pda,
             system_program: system_program::id(),
@@ -143,7 +143,7 @@ fn test_update_favorites() {
             ],
         }
         .data(),
-        favorites::accounts::SetFavorites {
+        favorites::accounts::SetFavoritesAccountConstraints {
             user: payer.pubkey(),
             favorites: pda,
             system_program: system_program::id(),
