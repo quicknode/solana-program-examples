@@ -22,7 +22,10 @@ pub struct TransferSolWithProgramAccountConstraints<'info> {
 }
 
 // Directly modifying lamports is only possible if the program is the owner of the account
-pub fn handler(context: Context<TransferSolWithProgramAccountConstraints>, amount: u64) -> Result<()> {
+pub fn handler(
+    context: Context<TransferSolWithProgramAccountConstraints>,
+    amount: u64,
+) -> Result<()> {
     let payer = &context.accounts.payer;
     let recipient = &context.accounts.recipient;
 

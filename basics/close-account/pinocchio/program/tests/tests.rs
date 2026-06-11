@@ -199,7 +199,10 @@ fn create_rejects_wrong_bump() {
         ),
         &payer,
     );
-    assert!(result.is_err(), "create with a non-canonical bump must fail");
+    assert!(
+        result.is_err(),
+        "create with a non-canonical bump must fail"
+    );
     assert!(svm.get_account(&target).is_none());
 }
 

@@ -20,7 +20,9 @@ pub struct CreatePageVisitsAccountConstraints<'info> {
     system_program: Program<'info, System>,
 }
 
-pub fn handle_create_page_visits(context: Context<CreatePageVisitsAccountConstraints>) -> Result<()> {
+pub fn handle_create_page_visits(
+    context: Context<CreatePageVisitsAccountConstraints>,
+) -> Result<()> {
     *context.accounts.page_visits = PageVisits {
         page_visits: 0,
         bump: context.bumps.page_visits,

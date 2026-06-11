@@ -8,7 +8,10 @@ declare_id!("7Hm9nsYVuBZ9rf8z9AMUHreZRv8Q4vLhqwdVTCawRZtA");
 pub mod pda_rent_payer {
     use super::*;
 
-    pub fn init_rent_vault(context: Context<InitRentVaultAccountConstraints>, fund_lamports: u64) -> Result<()> {
+    pub fn init_rent_vault(
+        context: Context<InitRentVaultAccountConstraints>,
+        fund_lamports: u64,
+    ) -> Result<()> {
         init_rent_vault::handle_init_rent_vault(context, fund_lamports)
     }
 

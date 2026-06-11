@@ -15,7 +15,9 @@ pub struct IncrementPageVisitsAccountConstraints<'info> {
     page_visits: Account<'info, PageVisits>,
 }
 
-pub fn handle_increment_page_visits(context: Context<IncrementPageVisitsAccountConstraints>) -> Result<()> {
+pub fn handle_increment_page_visits(
+    context: Context<IncrementPageVisitsAccountConstraints>,
+) -> Result<()> {
     let page_visits = &mut context.accounts.page_visits;
     page_visits.page_visits = page_visits
         .page_visits

@@ -90,9 +90,7 @@ describe("Close Account!", () => {
     await sendIx(
       svm,
       payer,
-      toKitInstruction(
-        createCreateUserInstruction(userAccount, payerPublicKey, programPublicKey, "Jacob"),
-      ),
+      toKitInstruction(createCreateUserInstruction(userAccount, payerPublicKey, programPublicKey, "Jacob")),
     );
 
     const userAccountLamports = svm.getBalance(userAccountAddress);
@@ -111,9 +109,7 @@ describe("Close Account!", () => {
       sendIx(
         svm,
         attacker,
-        toKitInstruction(
-          createCloseUserInstruction(userAccount, attackerPublicKey, programPublicKey),
-        ),
+        toKitInstruction(createCloseUserInstruction(userAccount, attackerPublicKey, programPublicKey)),
       ),
       "closing someone else's account must fail",
     );
@@ -152,9 +148,6 @@ describe("Close Account!", () => {
     );
 
     const closedBalance = svm.getBalance(userAccountAddress);
-    assert.ok(
-      closedBalance === null || closedBalance === 0n,
-      "closed account should hold no lamports",
-    );
+    assert.ok(closedBalance === null || closedBalance === 0n, "closed account should hold no lamports");
   });
 });

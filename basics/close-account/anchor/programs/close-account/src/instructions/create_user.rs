@@ -20,7 +20,10 @@ pub struct CreateUserAccountConstraints<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handle_create_user(context: Context<CreateUserAccountConstraints>, name: String) -> Result<()> {
+pub fn handle_create_user(
+    context: Context<CreateUserAccountConstraints>,
+    name: String,
+) -> Result<()> {
     *context.accounts.user_account = User {
         bump: context.bumps.user_account,
         user: context.accounts.user.key(),

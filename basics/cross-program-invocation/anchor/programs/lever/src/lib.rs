@@ -13,7 +13,10 @@ pub mod lever {
         instructions::initialize::handler(context)
     }
 
-    pub fn switch_power(context: Context<SetPowerStatusAccountConstraints>, name: String) -> Result<()> {
+    pub fn switch_power(
+        context: Context<SetPowerStatusAccountConstraints>,
+        name: String,
+    ) -> Result<()> {
         instructions::switch_power::handler(context, name)
     }
 }

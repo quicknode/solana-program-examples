@@ -7,7 +7,9 @@ declare_id!("ARVNCsYKDQsCLHbwUTJLpFXVrJdjhWZStyzvxmKe2xHi");
 pub mod create_system_account {
     use super::*;
 
-    pub fn create_system_account(context: Context<CreateSystemAccountAccountConstraints>) -> Result<()> {
+    pub fn create_system_account(
+        context: Context<CreateSystemAccountAccountConstraints>,
+    ) -> Result<()> {
         msg!("Program invoked. Creating a system account...");
         msg!(
             "  New public key will be: {}",

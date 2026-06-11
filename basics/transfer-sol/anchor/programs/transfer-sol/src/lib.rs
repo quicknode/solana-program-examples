@@ -9,7 +9,10 @@ declare_id!("4fQVnLWKKKYxtxgGn7Haw8v2g2Hzbu8K61JvWKvqAi7W");
 pub mod transfer_sol {
     use super::*;
 
-    pub fn transfer_sol_with_cpi(context: Context<TransferSolWithCpiAccountConstraints>, amount: u64) -> Result<()> {
+    pub fn transfer_sol_with_cpi(
+        context: Context<TransferSolWithCpiAccountConstraints>,
+        amount: u64,
+    ) -> Result<()> {
         instructions::transfer_sol_with_cpi::handler(context, amount)
     }
 

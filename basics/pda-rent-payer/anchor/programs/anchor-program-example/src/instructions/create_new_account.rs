@@ -17,7 +17,9 @@ pub struct CreateNewAccountAccountConstraints<'info> {
     system_program: Program<'info, System>,
 }
 
-pub fn handle_create_new_account(context: Context<CreateNewAccountAccountConstraints>) -> Result<()> {
+pub fn handle_create_new_account(
+    context: Context<CreateNewAccountAccountConstraints>,
+) -> Result<()> {
     // PDA signer seeds
     let signer_seeds: &[&[&[u8]]] = &[&[b"rent_vault", &[context.bumps.rent_vault]]];
 

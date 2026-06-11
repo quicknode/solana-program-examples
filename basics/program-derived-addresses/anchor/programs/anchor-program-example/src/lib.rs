@@ -15,7 +15,9 @@ pub mod program_derived_addresses_program {
         create::handle_create_page_visits(context)
     }
 
-    pub fn increment_page_visits(context: Context<IncrementPageVisitsAccountConstraints>) -> Result<()> {
+    pub fn increment_page_visits(
+        context: Context<IncrementPageVisitsAccountConstraints>,
+    ) -> Result<()> {
         increment::handle_increment_page_visits(context)
     }
 }

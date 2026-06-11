@@ -9,7 +9,8 @@ use {
     solana_keypair::Keypair,
     solana_kite::{
         create_associated_token_account, create_token_mint, create_wallet,
-        get_token_account_balance, mint_tokens_to_token_account, send_transaction_from_instructions,
+        get_token_account_balance, mint_tokens_to_token_account,
+        send_transaction_from_instructions,
     },
     solana_signer::Signer,
 };
@@ -59,7 +60,7 @@ fn build_mock_price_update_account(price: i64, exponent: i32, publish_time: i64)
     let mut data = Vec::with_capacity(133);
     data.extend_from_slice(&discriminator);
     data.extend_from_slice(&[0u8; 32]); // write_authority placeholder
-    data.push(1u8);                      // verification_level: Full
+    data.push(1u8); // verification_level: Full
     data.extend_from_slice(&[0xEFu8; 32]); // feed_id
     data.extend_from_slice(&price.to_le_bytes());
     data.extend_from_slice(&100_000u64.to_le_bytes()); // conf
@@ -155,14 +156,10 @@ fn setup_full() -> TestContext {
     }
 
     // Derive PDAs
-    let (strategy_pda, _) = Pubkey::find_program_address(
-        &[b"strategy", manager.pubkey().as_ref()],
-        &vault_program_id,
-    );
-    let (share_mint_pda, _) = Pubkey::find_program_address(
-        &[b"share_mint", strategy_pda.as_ref()],
-        &vault_program_id,
-    );
+    let (strategy_pda, _) =
+        Pubkey::find_program_address(&[b"strategy", manager.pubkey().as_ref()], &vault_program_id);
+    let (share_mint_pda, _) =
+        Pubkey::find_program_address(&[b"share_mint", strategy_pda.as_ref()], &vault_program_id);
     let (router_config_pda, _) =
         Pubkey::find_program_address(&[b"router_config"], &router_program_id);
     let (tsla_rate_pda, _) =
@@ -215,10 +212,7 @@ fn setup_full() -> TestContext {
     // Step 1: Initialize router
     let init_router_ix = Instruction::new_with_bytes(
         router_program_id,
-        &mock_swap_router::instruction::InitializeRouter {
-            usdc_mint,
-        }
-        .data(),
+        &mock_swap_router::instruction::InitializeRouter { usdc_mint }.data(),
         mock_swap_router::accounts::InitializeRouterAccountConstraints {
             authority: payer.pubkey(),
             usdc_mint,
@@ -229,13 +223,8 @@ fn setup_full() -> TestContext {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(
-        &mut svm,
-        vec![init_router_ix],
-        &[&payer],
-        &payer.pubkey(),
-    )
-    .unwrap();
+    send_transaction_from_instructions(&mut svm, vec![init_router_ix], &[&payer], &payer.pubkey())
+        .unwrap();
 
     // Step 2: Set TSLAx rate = 250 usdc per token
     let set_tsla_rate_ix = Instruction::new_with_bytes(
@@ -430,8 +419,14 @@ fn test_deposit_first() {
             .unwrap();
     let user_share = derive_ata(&user.pubkey(), &ctx.share_mint_pda);
 
-    mint_tokens_to_token_account(&mut ctx.svm, &ctx.usdc_mint, &user_usdc, deposit_amount, &ctx.payer)
-        .unwrap();
+    mint_tokens_to_token_account(
+        &mut ctx.svm,
+        &ctx.usdc_mint,
+        &user_usdc,
+        deposit_amount,
+        &ctx.payer,
+    )
+    .unwrap();
 
     let deposit_ix = Instruction::new_with_bytes(
         ctx.vault_program_id,
@@ -474,7 +469,10 @@ fn test_deposit_first() {
     assert_eq!(share_balance, deposit_amount, "First deposit should be 1:1");
 
     let vault_usdc_balance = get_token_account_balance(&ctx.svm, &ctx.vault_usdc).unwrap();
-    assert_eq!(vault_usdc_balance, deposit_amount, "Vault USDC should hold deposit");
+    assert_eq!(
+        vault_usdc_balance, deposit_amount,
+        "Vault USDC should hold deposit"
+    );
 }
 
 fn do_deposit(ctx: &mut TestContext, user: &Keypair, usdc_amount: u64) -> Pubkey {
@@ -737,7 +735,10 @@ fn test_collect_fees() {
     let fee_shares = get_token_account_balance(&ctx.svm, &manager_share).unwrap();
     assert!(fee_shares > 0, "Manager should receive fee shares");
     // 1% of 1_000_000_000 = 10_000_000
-    assert_eq!(fee_shares, 10_000_000, "Annual fee should be 1% of total shares");
+    assert_eq!(
+        fee_shares, 10_000_000,
+        "Annual fee should be 1% of total shares"
+    );
 }
 
 #[test]
@@ -877,7 +878,10 @@ fn test_withdraw_rejects_slippage() {
         &[&ctx.payer, &user],
         &ctx.payer.pubkey(),
     );
-    assert!(result.is_err(), "Withdraw should fail when slippage too high");
+    assert!(
+        result.is_err(),
+        "Withdraw should fail when slippage too high"
+    );
 }
 
 #[test]
@@ -1021,8 +1025,16 @@ fn test_rebalance() {
     let tsla_after = get_token_account_balance(&ctx.svm, &ctx.vault_tsla).unwrap();
     let nvda_after = get_token_account_balance(&ctx.svm, &ctx.vault_nvda).unwrap();
 
-    assert_eq!(tsla_after, tsla_before - sell_amount, "TSLAx balance should decrease by sell_amount");
-    assert_eq!(nvda_after, nvda_before + nvda_bought, "NVDAx balance should increase by nvda_bought");
+    assert_eq!(
+        tsla_after,
+        tsla_before - sell_amount,
+        "TSLAx balance should decrease by sell_amount"
+    );
+    assert_eq!(
+        nvda_after,
+        nvda_before + nvda_bought,
+        "NVDAx balance should increase by nvda_bought"
+    );
 }
 
 fn assert_transaction_fails_with(
@@ -1075,8 +1087,14 @@ fn test_deposit_rejects_wrong_usdc_mint() {
     let user_junk =
         create_associated_token_account(&mut ctx.svm, &user.pubkey(), &junk_mint, &ctx.payer)
             .unwrap();
-    mint_tokens_to_token_account(&mut ctx.svm, &junk_mint, &user_junk, deposit_amount, &ctx.payer)
-        .unwrap();
+    mint_tokens_to_token_account(
+        &mut ctx.svm,
+        &junk_mint,
+        &user_junk,
+        deposit_amount,
+        &ctx.payer,
+    )
+    .unwrap();
     let user_share = derive_ata(&user.pubkey(), &ctx.share_mint_pda);
 
     let deposit_ix = Instruction::new_with_bytes(
@@ -1133,8 +1151,14 @@ fn test_deposit_rejects_wrong_asset_mint() {
     let user_usdc =
         create_associated_token_account(&mut ctx.svm, &user.pubkey(), &ctx.usdc_mint, &ctx.payer)
             .unwrap();
-    mint_tokens_to_token_account(&mut ctx.svm, &ctx.usdc_mint, &user_usdc, deposit_amount, &ctx.payer)
-        .unwrap();
+    mint_tokens_to_token_account(
+        &mut ctx.svm,
+        &ctx.usdc_mint,
+        &user_usdc,
+        deposit_amount,
+        &ctx.payer,
+    )
+    .unwrap();
     let user_share = derive_ata(&user.pubkey(), &ctx.share_mint_pda);
 
     let deposit_ix = Instruction::new_with_bytes(
@@ -1189,8 +1213,14 @@ fn test_withdraw_rejects_wrong_asset_mint() {
     let user_usdc =
         create_associated_token_account(&mut ctx.svm, &user.pubkey(), &ctx.usdc_mint, &ctx.payer)
             .unwrap();
-    mint_tokens_to_token_account(&mut ctx.svm, &ctx.usdc_mint, &user_usdc, deposit_amount, &ctx.payer)
-        .unwrap();
+    mint_tokens_to_token_account(
+        &mut ctx.svm,
+        &ctx.usdc_mint,
+        &user_usdc,
+        deposit_amount,
+        &ctx.payer,
+    )
+    .unwrap();
     let user_share = do_deposit(&mut ctx, &user, deposit_amount);
 
     // An unregistered mint passed as asset_mint_a on withdraw: the empty junk
@@ -1244,7 +1274,10 @@ fn test_withdraw_rejects_wrong_asset_mint() {
     let shares_after = get_token_account_balance(&ctx.svm, &user_share).unwrap();
     assert_eq!(shares_after, deposit_amount, "Shares must be untouched");
     let vault_usdc_balance = get_token_account_balance(&ctx.svm, &ctx.vault_usdc).unwrap();
-    assert_eq!(vault_usdc_balance, deposit_amount, "Vault USDC must be untouched");
+    assert_eq!(
+        vault_usdc_balance, deposit_amount,
+        "Vault USDC must be untouched"
+    );
 }
 
 #[test]

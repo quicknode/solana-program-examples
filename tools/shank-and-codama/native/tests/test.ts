@@ -213,18 +213,11 @@ test("pick_up_car rejects a payer that did not sign", async () => {
   const instructionWithoutVictimSignature: Instruction = {
     ...instruction,
     accounts: instruction.accounts.map((account) =>
-      account.address === victim.address
-        ? { address: account.address, role: AccountRole.WRITABLE }
-        : account,
+      account.address === victim.address ? { address: account.address, role: AccountRole.WRITABLE } : account,
     ),
   };
 
-  await expectCustomError(
-    svm,
-    attacker,
-    instructionWithoutVictimSignature,
-    ERROR_PAYER_SIGNATURE_MISSING,
-  );
+  await expectCustomError(svm, attacker, instructionWithoutVictimSignature, ERROR_PAYER_SIGNATURE_MISSING);
 
   // The rental is untouched.
   const rental = decodeRentalOrder(svm.getAccount(rentalAccount)!);

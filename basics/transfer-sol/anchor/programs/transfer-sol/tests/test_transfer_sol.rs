@@ -133,12 +133,8 @@ fn test_transfer_sol_with_program_rejects_insufficient_funds() {
         .to_account_metas(None),
     );
 
-    let result = send_transaction_from_instructions(
-        &mut svm,
-        vec![instruction],
-        &[&payer],
-        &payer.pubkey(),
-    );
+    let result =
+        send_transaction_from_instructions(&mut svm, vec![instruction], &[&payer], &payer.pubkey());
     assert!(result.is_err(), "overdrawing the payer must fail");
 
     // Balances are untouched.
