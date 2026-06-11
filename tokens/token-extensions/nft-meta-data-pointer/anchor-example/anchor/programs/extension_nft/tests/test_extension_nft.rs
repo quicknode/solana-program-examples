@@ -114,7 +114,7 @@ fn mint_nft_ix(program_id: &Pubkey, signer: &Pubkey, mint: &Pubkey) -> Instructi
 fn chop_tree_ix(program_id: &Pubkey, signer: &Pubkey, mint: &Pubkey, counter: u16) -> Instruction {
     Instruction {
         program_id: *program_id,
-        accounts: extension_nft::accounts::ChopTree {
+        accounts: extension_nft::accounts::ChopTreeAccountConstraints {
             // session_token is optional; pass None -> the macro falls back to
             // the main-wallet authority check.
             session_token: None,
