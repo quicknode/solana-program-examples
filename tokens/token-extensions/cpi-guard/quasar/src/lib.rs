@@ -29,13 +29,13 @@ mod quasar_cpi_guard {
     /// Attempt a CPI transfer_checked. Will fail if CPI Guard is enabled
     /// on the sender's token account.
     #[instruction(discriminator = 0)]
-    pub fn cpi_transfer(ctx: Ctx<CpiTransfer>) -> Result<(), ProgramError> {
+    pub fn cpi_transfer(ctx: Ctx<CpiTransferAccountConstraints>) -> Result<(), ProgramError> {
         handle_cpi_transfer(&mut ctx.accounts)
     }
 }
 
 #[derive(Accounts)]
-pub struct CpiTransfer {
+pub struct CpiTransferAccountConstraints {
     #[account(mut)]
     pub sender: Signer,
     #[account(mut)]
@@ -47,7 +47,7 @@ pub struct CpiTransfer {
 }
 
 #[inline(always)]
-fn handle_cpi_transfer(accounts: &mut CpiTransfer) -> Result<(), ProgramError> {
+fn handle_cpi_transfer(accounts: &mut CpiTransferAccountConstraints) -> Result<(), ProgramError> {
     // TransferChecked: opcode 12, amount=1, decimals=9
     let mut data = [0u8; 10];
     data[0] = 12;

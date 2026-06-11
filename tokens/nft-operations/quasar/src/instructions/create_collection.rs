@@ -9,7 +9,7 @@ use {
 ///
 /// The PDA `["authority"]` acts as mint authority and update authority.
 #[derive(Accounts)]
-pub struct CreateCollection {
+pub struct CreateCollectionAccountConstraints {
     #[account(mut)]
     pub user: Signer,
     #[account(
@@ -47,42 +47,54 @@ pub struct CreateCollection {
     pub rent: Sysvar<Rent>,
 }
 
+/// Creates a collection NFT with caller-supplied metadata: mints one token,
+/// then creates the metadata account (with sized collection details) and the
+/// master edition, all signed by the PDA authority.
 #[inline(always)]
-pub fn handle_create_collection(accounts: &mut CreateCollection, bumps: &CreateCollectionBumps) -> Result<(), ProgramError> {
+pub fn handle_create_collection(
+    accounts: &mut CreateCollectionAccountConstraints,
+    bumps: &CreateCollectionAccountConstraintsBumps,
+    name: &str,
+    symbol: &str,
+    uri: &str,
+) -> Result<(), ProgramError> {
     let bump = [bumps.mint_authority];
     let seeds: &[Seed] = &[
         Seed::from(b"authority" as &[u8]),
         Seed::from(&bump as &[u8]),
     ];
 
-    // Mint 1 token to the destination.
-    accounts.token_program
+    // Mint 1 token (the collection NFT) to the destination.
+    accounts
+        .token_program
         .mint_to(&accounts.mint, &accounts.destination, &accounts.mint_authority, 1u64)
         .invoke_signed(seeds)?;
     log("Collection NFT minted!");
 
-    // Create metadata account.
-    accounts.token_metadata_program
-        .create_metadata_accounts_v3(
-            &accounts.metadata,
-            &accounts.mint,
-            &accounts.mint_authority,
-            &accounts.user,
-            &accounts.mint_authority,
-            &accounts.system_program,
-            &accounts.rent,
-            "DummyCollection",
-            "DC",
-            "",
-            0,    // seller_fee_basis_points
-            true, // is_mutable
-            true, // update_authority_is_signer
-        )?
-        .invoke_signed(seeds)?;
+    // Create the metadata account, marked as a sized collection
+    // (CollectionDetails::V1) so NFTs can be verified into it.
+    super::create_metadata_account_v3(
+        &accounts.token_metadata_program,
+        &accounts.metadata,
+        &accounts.mint,
+        &accounts.mint_authority,
+        &accounts.user,
+        &accounts.mint_authority,
+        &accounts.system_program,
+        &accounts.rent,
+        name,
+        symbol,
+        uri,
+        accounts.mint_authority.address(),
+        None,
+        true,
+    )?
+    .invoke_signed(seeds)?;
     log("Metadata Account created!");
 
     // Create master edition.
-    accounts.token_metadata_program
+    accounts
+        .token_metadata_program
         .create_master_edition_v3(
             &accounts.master_edition,
             &accounts.mint,

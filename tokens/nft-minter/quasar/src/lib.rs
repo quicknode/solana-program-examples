@@ -19,7 +19,7 @@ mod quasar_nft_minter {
     // PR #195 made the capacity bound on `String<N>` mandatory.
     #[instruction(discriminator = 0)]
     pub fn mint_nft(
-        ctx: Ctx<MintNft>,
+        ctx: Ctx<MintNftAccountConstraints>,
         nft_name: String<32>,
         nft_symbol: String<10>,
         nft_uri: String<200>,
@@ -30,7 +30,7 @@ mod quasar_nft_minter {
 
 /// All accounts needed to mint an NFT in one transaction.
 #[derive(Accounts)]
-pub struct MintNft {
+pub struct MintNftAccountConstraints {
     #[account(mut)]
     pub payer: Signer,
 
@@ -76,7 +76,7 @@ pub struct MintNft {
 
 #[inline(always)]
 fn handle_mint_nft(
-    accounts: &mut MintNft,
+    accounts: &mut MintNftAccountConstraints,
     nft_name: &str,
     nft_symbol: &str,
     nft_uri: &str,

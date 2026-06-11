@@ -69,7 +69,7 @@ fn test_default_account_state() {
     let initialize_ix = Instruction::new_with_bytes(
         program_id,
         &default_account_state::instruction::Initialize {}.data(),
-        default_account_state::accounts::Initialize {
+        default_account_state::accounts::InitializeAccountConstraints {
             payer: payer.pubkey(),
             mint_account: mint_keypair.pubkey(),
             token_program: TOKEN_EXTENSIONS_PROGRAM_ID,
@@ -123,7 +123,7 @@ fn test_default_account_state() {
             account_state: default_account_state::AnchorAccountState::Initialized,
         }
         .data(),
-        default_account_state::accounts::UpdateDefaultState {
+        default_account_state::accounts::UpdateDefaultStateAccountConstraints {
             freeze_authority: payer.pubkey(),
             mint_account: mint_keypair.pubkey(),
             token_program: TOKEN_EXTENSIONS_PROGRAM_ID,

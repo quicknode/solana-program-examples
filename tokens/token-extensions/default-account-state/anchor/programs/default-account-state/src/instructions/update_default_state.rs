@@ -6,7 +6,7 @@ use anchor_spl::token_interface::{
 use crate::AnchorAccountState;
 
 #[derive(Accounts)]
-pub struct UpdateDefaultState<'info> {
+pub struct UpdateDefaultStateAccountConstraints<'info> {
     #[account(mut)]
     pub freeze_authority: Signer<'info>,
     #[account(
@@ -20,7 +20,7 @@ pub struct UpdateDefaultState<'info> {
 }
 
 pub fn handler(
-    context: Context<UpdateDefaultState>,
+    context: Context<UpdateDefaultStateAccountConstraints>,
     account_state: AnchorAccountState,
 ) -> Result<()> {
     // Convert AnchorAccountState to spl_token_2022::state::AccountState

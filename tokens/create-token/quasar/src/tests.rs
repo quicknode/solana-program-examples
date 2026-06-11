@@ -53,14 +53,6 @@ fn token_account(address: Pubkey, mint: Pubkey, owner: Pubkey, amount: u64) -> A
     )
 }
 
-/// Mark specific account indices as signers.
-fn with_signers(mut ix: Instruction, indices: &[usize]) -> Instruction {
-    for &i in indices {
-        ix.accounts[i].is_signer = true;
-    }
-    ix
-}
-
 /// Build create_token instruction data.
 /// Wire format: [discriminator: u8 = 0] [decimals: u8]
 fn build_create_token_data(decimals: u8) -> Vec<u8> {

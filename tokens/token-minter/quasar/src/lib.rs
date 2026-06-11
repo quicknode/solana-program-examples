@@ -23,7 +23,7 @@ mod quasar_token_minter {
     // capacity - bare `String` (no <N>) is not accepted.
     #[instruction(discriminator = 0)]
     pub fn create_token(
-        ctx: Ctx<CreateToken>,
+        ctx: Ctx<CreateTokenAccountConstraints>,
         token_name: String<32>,
         token_symbol: String<10>,
         token_uri: String<200>,
@@ -36,8 +36,12 @@ mod quasar_token_minter {
         )
     }
 
+    /// Mint `amount` minor units of the token to the recipient.
     #[instruction(discriminator = 1)]
-    pub fn mint_token(ctx: Ctx<MintToken>, amount: u64) -> Result<(), ProgramError> {
+    pub fn mint_token(
+        ctx: Ctx<MintTokenAccountConstraints>,
+        amount: u64,
+    ) -> Result<(), ProgramError> {
         instructions::handle_mint_token(&mut ctx.accounts, amount)
     }
 }

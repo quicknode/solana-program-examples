@@ -29,7 +29,7 @@ mod quasar_default_account_state {
     /// Create a new mint with DefaultAccountState extension set to frozen.
     /// The mint account must be a signer (keypair created client-side).
     #[instruction(discriminator = 0)]
-    pub fn initialize(ctx: Ctx<Initialize>) -> Result<(), ProgramError> {
+    pub fn initialize(ctx: Ctx<InitializeAccountConstraints>) -> Result<(), ProgramError> {
         handle_initialize(&mut ctx.accounts)
     }
 
@@ -37,7 +37,7 @@ mod quasar_default_account_state {
     /// 0 = Uninitialized, 1 = Initialized, 2 = Frozen
     #[instruction(discriminator = 1)]
     pub fn update_default_state(
-        ctx: Ctx<UpdateDefaultState>,
+        ctx: Ctx<UpdateDefaultStateAccountConstraints>,
         account_state: u8,
     ) -> Result<(), ProgramError> {
         handle_update_default_state(&mut ctx.accounts, account_state)
@@ -45,7 +45,7 @@ mod quasar_default_account_state {
 }
 
 #[derive(Accounts)]
-pub struct Initialize {
+pub struct InitializeAccountConstraints {
     #[account(mut)]
     pub payer: Signer,
     #[account(mut)]
@@ -55,7 +55,7 @@ pub struct Initialize {
 }
 
 #[inline(always)]
-fn handle_initialize(accounts: &mut Initialize) -> Result<(), ProgramError> {
+fn handle_initialize(accounts: &mut InitializeAccountConstraints) -> Result<(), ProgramError> {
     // 165 (base account) + 1 (account type) + 4 (TLV header) + 1 (DefaultAccountState data) = 171 bytes
     let mint_size: u64 = 171;
     let lamports = Rent::get()?.try_minimum_balance(mint_size as usize)?;
@@ -107,7 +107,7 @@ fn handle_initialize(accounts: &mut Initialize) -> Result<(), ProgramError> {
 }
 
 #[derive(Accounts)]
-pub struct UpdateDefaultState {
+pub struct UpdateDefaultStateAccountConstraints {
     #[account(mut)]
     pub freeze_authority: Signer,
     #[account(mut)]
@@ -117,7 +117,7 @@ pub struct UpdateDefaultState {
 
 #[inline(always)]
 fn handle_update_default_state(
-    accounts: &mut UpdateDefaultState,
+    accounts: &mut UpdateDefaultStateAccountConstraints,
     account_state: u8,
 ) -> Result<(), ProgramError> {
     // DefaultAccountState Update: opcode 28, sub-opcode 1, new state

@@ -161,7 +161,7 @@ fn test_cpi_guard_prevents_transfer_then_allows_after_disable() {
     let transfer_ix = Instruction::new_with_bytes(
         program_id,
         &cpi_guard::instruction::CpiTransfer {}.data(),
-        cpi_guard::accounts::CpiTransfer {
+        cpi_guard::accounts::CpiTransferAccountConstraints {
             sender: payer.pubkey(),
             sender_token_account: token_keypair.pubkey(),
             recipient_token_account,
@@ -188,7 +188,7 @@ fn test_cpi_guard_prevents_transfer_then_allows_after_disable() {
     let transfer_ix2 = Instruction::new_with_bytes(
         program_id,
         &cpi_guard::instruction::CpiTransfer {}.data(),
-        cpi_guard::accounts::CpiTransfer {
+        cpi_guard::accounts::CpiTransferAccountConstraints {
             sender: payer.pubkey(),
             sender_token_account: token_keypair.pubkey(),
             recipient_token_account,
