@@ -1,6 +1,7 @@
 use quasar_svm::{Account, Instruction, Pubkey, QuasarSvm};
 use solana_address::Address;
 
+use crate::instructions::TransferSolError;
 use quasar_transfer_sol_client::{
     TransferSolWithCpiInstruction, TransferSolWithProgramInstruction,
 };
@@ -101,4 +102,77 @@ fn test_transfer_sol_with_program() {
 
     let recipient_after = result.account(&recipient).unwrap();
     assert_eq!(recipient_after.lamports, 1_000_000_000 + amount);
+}
+
+#[test]
+fn test_transfer_sol_with_program_rejects_foreign_owned_payer() {
+    let mut svm = setup();
+
+    let payer = Pubkey::new_unique();
+    let recipient = Pubkey::new_unique();
+    let amount = 500_000_000; // 0.5 SOL
+
+    // The payer is owned by the system program, not this program, so the
+    // owner constraint must reject the transfer before any lamports move.
+    let payer_account = system_account(payer, 2_000_000_000);
+    let recipient_account = Account {
+        address: recipient,
+        lamports: 1_000_000_000,
+        data: vec![],
+        owner: Pubkey::from(crate::ID),
+        executable: false,
+    };
+
+    let instruction: Instruction = TransferSolWithProgramInstruction {
+        payer: Address::from(payer.to_bytes()),
+        recipient: Address::from(recipient.to_bytes()),
+        amount,
+    }
+    .into();
+
+    let result = svm.process_instruction(&instruction, &[payer_account, recipient_account]);
+    result.assert_error(quasar_svm::ProgramError::Custom(
+        TransferSolError::PayerNotOwnedByProgram as u32,
+    ));
+}
+
+#[test]
+fn test_transfer_sol_with_program_rejects_insufficient_funds() {
+    let mut svm = setup();
+
+    let payer = Pubkey::new_unique();
+    let recipient = Pubkey::new_unique();
+    let payer_lamports = 100_000_000; // 0.1 SOL
+    let amount = 500_000_000; // 0.5 SOL, more than the payer holds
+
+    let payer_account = Account {
+        address: payer,
+        lamports: payer_lamports,
+        data: vec![],
+        owner: Pubkey::from(crate::ID),
+        executable: false,
+    };
+    let recipient_account = Account {
+        address: recipient,
+        lamports: 1_000_000_000,
+        data: vec![],
+        owner: Pubkey::from(crate::ID),
+        executable: false,
+    };
+
+    let instruction: Instruction = TransferSolWithProgramInstruction {
+        payer: Address::from(payer.to_bytes()),
+        recipient: Address::from(recipient.to_bytes()),
+        amount,
+    }
+    .into();
+
+    let result = svm.process_instruction(&instruction, &[payer_account, recipient_account]);
+    result.assert_error(quasar_svm::ProgramError::Custom(
+        TransferSolError::InsufficientFunds as u32,
+    ));
+
+    // No lamports moved.
+    let payer_after = result.account(&payer).unwrap();
+    assert_eq!(payer_after.lamports, payer_lamports);
 }

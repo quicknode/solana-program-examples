@@ -1,8 +1,9 @@
 use {
     anchor_lang::{
         solana_program::{instruction::Instruction, pubkey::Pubkey, system_program},
-        InstructionData, ToAccountMetas,
+        AccountDeserialize, InstructionData, ToAccountMetas,
     },
+    betting_market::{User, MAX_BETS_PER_USER},
     litesvm::LiteSVM,
     solana_keypair::Keypair,
     solana_kite::{
@@ -110,7 +111,7 @@ fn initialize_config_ix(admin: Pubkey, mint: Pubkey, fee_recipient: Pubkey) -> I
             fee_recipient,
         }
         .data(),
-        betting_market::accounts::InitializeConfig {
+        betting_market::accounts::InitializeConfigAccountConstraints {
             admin,
             token_mint: mint,
             config: config_pda(),
@@ -130,7 +131,7 @@ fn create_event_ix(admin: Pubkey, mint: Pubkey, event_id: u64, description: &str
             description: description.to_string(),
         }
         .data(),
-        betting_market::accounts::CreateEvent {
+        betting_market::accounts::CreateEventAccountConstraints {
             admin,
             config: config_pda(),
             token_mint: mint,
@@ -152,7 +153,7 @@ fn add_outcome_ix(admin: Pubkey, event_id: u64, index: u8, label: &str) -> Instr
             label: label.to_string(),
         }
         .data(),
-        betting_market::accounts::AddOutcome {
+        betting_market::accounts::AddOutcomeAccountConstraints {
             admin,
             config: config_pda(),
             event,
@@ -176,7 +177,7 @@ fn place_bet_ix(
     Instruction::new_with_bytes(
         betting_market::id(),
         &betting_market::instruction::PlaceBet { amount }.data(),
-        betting_market::accounts::PlaceBet {
+        betting_market::accounts::PlaceBetAccountConstraints {
             bettor: *bettor,
             config: config_pda(),
             token_mint: mint,
@@ -209,7 +210,7 @@ fn settle_event_ix(
             winning_outcome_index,
         }
         .data(),
-        betting_market::accounts::SettleEvent {
+        betting_market::accounts::SettleEventAccountConstraints {
             admin,
             config: config_pda(),
             token_mint: mint,
@@ -238,11 +239,12 @@ fn claim_winnings_ix(
     Instruction::new_with_bytes(
         betting_market::id(),
         &betting_market::instruction::ClaimWinnings {}.data(),
-        betting_market::accounts::ClaimWinnings {
+        betting_market::accounts::ClaimWinningsAccountConstraints {
             bettor: *bettor,
             token_mint: mint,
             event,
             bet: bet_pda(&outcome, bettor),
+            user: user_pda(bettor),
             bettor_token_account: *bettor_ata,
             vault: derive_ata(&event, &mint),
             token_program: token_program_id(),
@@ -255,7 +257,7 @@ fn cancel_event_ix(admin: Pubkey, event_id: u64) -> Instruction {
     Instruction::new_with_bytes(
         betting_market::id(),
         &betting_market::instruction::CancelEvent {}.data(),
-        betting_market::accounts::CancelEvent {
+        betting_market::accounts::CancelEventAccountConstraints {
             admin,
             config: config_pda(),
             event: event_pda(event_id),
@@ -276,11 +278,12 @@ fn claim_refund_ix(
     Instruction::new_with_bytes(
         betting_market::id(),
         &betting_market::instruction::ClaimRefund {}.data(),
-        betting_market::accounts::ClaimRefund {
+        betting_market::accounts::ClaimRefundAccountConstraints {
             bettor: *bettor,
             token_mint: mint,
             event,
             bet: bet_pda(&outcome, bettor),
+            user: user_pda(bettor),
             bettor_token_account: *bettor_ata,
             vault: derive_ata(&event, &mint),
             token_program: token_program_id(),
@@ -289,12 +292,29 @@ fn claim_refund_ix(
     )
 }
 
-// Decode a User account's `bets` Vec<Pubkey> length from raw account data.
-// Layout after the 8-byte discriminator: authority (32) + vec_len (4) + entries.
-fn read_user_bet_count(market: &Market, bettor: &Pubkey) -> u32 {
+fn close_losing_bet_ix(bettor: &Pubkey, event_id: u64, outcome_index: u8) -> Instruction {
+    let event = event_pda(event_id);
+    let outcome = outcome_pda(&event, outcome_index);
+    Instruction::new_with_bytes(
+        betting_market::id(),
+        &betting_market::instruction::CloseLosingBet {}.data(),
+        betting_market::accounts::CloseLosingBetAccountConstraints {
+            bettor: *bettor,
+            event,
+            bet: bet_pda(&outcome, bettor),
+            user: user_pda(bettor),
+        }
+        .to_account_metas(None),
+    )
+}
+
+// Decode a User account so tests can assert exactly which Bet addresses the
+// per-wallet index currently holds.
+fn read_user_bets(market: &Market, bettor: &Pubkey) -> Vec<Pubkey> {
     let account = market.svm.get_account(&user_pda(bettor)).unwrap();
-    let data = &account.data[8..];
-    u32::from_le_bytes(data[32..36].try_into().unwrap())
+    User::try_deserialize(&mut account.data.as_slice())
+        .unwrap()
+        .bets
 }
 
 fn init_config(market: &mut Market) {
@@ -362,7 +382,10 @@ fn test_full_lifecycle() {
     // Vault holds the entire pool.
     let vault = derive_ata(&event_pda(event_id), &mint);
     assert_eq!(get_token_account_balance(&market.svm, &vault).unwrap(), 600);
-    assert_eq!(read_user_bet_count(&market, &alice.pubkey()), 1);
+    assert_eq!(
+        read_user_bets(&market, &alice.pubkey()),
+        vec![bet_pda(&outcome_pda(&event_pda(event_id), 0), &alice.pubkey())]
+    );
 
     // Settle to "Yes" (index 0). Losing pool 200, fee = 2% = 4, distributable = 196.
     let fee_recipient = market.fee_recipient.pubkey();
@@ -406,6 +429,10 @@ fn test_full_lifecycle() {
     // Pool fully distributed: 400 stakes + 196 winnings + 4 fee = 600.
     assert_eq!(get_token_account_balance(&market.svm, &vault).unwrap(), 0);
 
+    // Claiming closed the winners' Bet accounts and emptied their indexes.
+    assert!(read_user_bets(&market, &alice.pubkey()).is_empty());
+    assert!(read_user_bets(&market, &bob.pubkey()).is_empty());
+
     // Carol bet the losing outcome, so she has nothing to claim.
     let carol_claim = send_transaction_from_instructions(
         &mut market.svm,
@@ -414,6 +441,18 @@ fn test_full_lifecycle() {
         &carol.pubkey(),
     );
     assert!(carol_claim.is_err(), "loser must not be able to claim winnings");
+
+    // Her losing position stays in the index until she closes it.
+    let carol_bet = bet_pda(&outcome_pda(&event_pda(event_id), 1), &carol.pubkey());
+    assert_eq!(read_user_bets(&market, &carol.pubkey()), vec![carol_bet]);
+    send_transaction_from_instructions(
+        &mut market.svm,
+        vec![close_losing_bet_ix(&carol.pubkey(), event_id, 1)],
+        &[&carol],
+        &carol.pubkey(),
+    )
+    .unwrap();
+    assert!(read_user_bets(&market, &carol.pubkey()).is_empty());
 }
 
 #[test]
@@ -626,6 +665,9 @@ fn test_cancel_and_refund() {
     )
     .unwrap();
 
+    let alice_bet = bet_pda(&outcome_pda(&event_pda(event_id), 0), &alice.pubkey());
+    assert_eq!(read_user_bets(&market, &alice.pubkey()), vec![alice_bet]);
+
     send_transaction_from_instructions(
         &mut market.svm,
         vec![claim_refund_ix(mint, &alice.pubkey(), &alice_ata, event_id, 0)],
@@ -633,6 +675,10 @@ fn test_cancel_and_refund() {
         &alice.pubkey(),
     )
     .unwrap();
+
+    // The refund closed Alice's Bet account and removed it from her index.
+    assert!(read_user_bets(&market, &alice.pubkey()).is_empty());
+
     send_transaction_from_instructions(
         &mut market.svm,
         vec![claim_refund_ix(mint, &carol.pubkey(), &carol_ata, event_id, 1)],
@@ -646,4 +692,203 @@ fn test_cancel_and_refund() {
     assert_eq!(get_token_account_balance(&market.svm, &carol_ata).unwrap(), 1_000);
     let vault = derive_ata(&event_pda(event_id), &mint);
     assert_eq!(get_token_account_balance(&market.svm, &vault).unwrap(), 0);
+}
+
+#[test]
+fn test_close_losing_bet_only_after_settle_and_only_for_losers() {
+    let mut market = setup();
+    let event_id: u64 = 6;
+    let (alice, alice_ata) = create_bettor(&mut market, 1_000);
+    let (carol, carol_ata) = create_bettor(&mut market, 1_000);
+
+    init_config(&mut market);
+    let admin = market.admin.pubkey();
+    let mint = market.mint;
+    let fee_recipient = market.fee_recipient.pubkey();
+    let fee_recipient_ata = market.fee_recipient_ata;
+    send_transaction_from_instructions(
+        &mut market.svm,
+        vec![
+            create_event_ix(admin, mint, event_id, "Derby winner"),
+            add_outcome_ix(admin, event_id, 0, "Red"),
+            add_outcome_ix(admin, event_id, 1, "Blue"),
+        ],
+        &[&market.admin],
+        &admin,
+    )
+    .unwrap();
+    send_transaction_from_instructions(
+        &mut market.svm,
+        vec![place_bet_ix(mint, &alice.pubkey(), &alice_ata, event_id, 0, 100)],
+        &[&alice],
+        &alice.pubkey(),
+    )
+    .unwrap();
+    send_transaction_from_instructions(
+        &mut market.svm,
+        vec![place_bet_ix(mint, &carol.pubkey(), &carol_ata, event_id, 1, 100)],
+        &[&carol],
+        &carol.pubkey(),
+    )
+    .unwrap();
+
+    // The event is still open, so no position is a losing one yet.
+    let premature_close = send_transaction_from_instructions(
+        &mut market.svm,
+        vec![close_losing_bet_ix(&carol.pubkey(), event_id, 1)],
+        &[&carol],
+        &carol.pubkey(),
+    );
+    assert!(premature_close.is_err(), "closing before settlement must fail");
+
+    send_transaction_from_instructions(
+        &mut market.svm,
+        vec![settle_event_ix(admin, mint, fee_recipient, fee_recipient_ata, event_id, 0)],
+        &[&market.admin],
+        &admin,
+    )
+    .unwrap();
+
+    // Alice won; her bet must be closed via claim_winnings, not discarded.
+    let winner_close = send_transaction_from_instructions(
+        &mut market.svm,
+        vec![close_losing_bet_ix(&alice.pubkey(), event_id, 0)],
+        &[&alice],
+        &alice.pubkey(),
+    );
+    assert!(winner_close.is_err(), "a winning bet must not be closed as losing");
+    let alice_bet = bet_pda(&outcome_pda(&event_pda(event_id), 0), &alice.pubkey());
+    assert_eq!(read_user_bets(&market, &alice.pubkey()), vec![alice_bet]);
+
+    // Carol lost; closing frees her index slot. A fresh blockhash so this is
+    // a distinct transaction from her premature attempt above.
+    market.svm.expire_blockhash();
+    send_transaction_from_instructions(
+        &mut market.svm,
+        vec![close_losing_bet_ix(&carol.pubkey(), event_id, 1)],
+        &[&carol],
+        &carol.pubkey(),
+    )
+    .unwrap();
+    assert!(read_user_bets(&market, &carol.pubkey()).is_empty());
+}
+
+// Regression test: closing a Bet must free its User index slot, so a wallet
+// that fills all MAX_BETS_PER_USER slots can bet again after unwinding a
+// position. Without the removal, a full index rejects every future bet on
+// every market, permanently.
+#[test]
+fn test_closing_a_bet_frees_a_slot_for_a_new_bet() {
+    const STAKE: u64 = 10;
+    let mut market = setup();
+    let full_event_id: u64 = 7;
+    let second_event_id: u64 = 8;
+    // Enough outcomes to fill the index and attempt one more bet.
+    let outcome_count = (MAX_BETS_PER_USER + 1) as u8;
+    let (alice, alice_ata) = create_bettor(&mut market, outcome_count as u64 * STAKE);
+
+    init_config(&mut market);
+    let admin = market.admin.pubkey();
+    let mint = market.mint;
+
+    send_transaction_from_instructions(
+        &mut market.svm,
+        vec![create_event_ix(admin, mint, full_event_id, "Wide field")],
+        &[&market.admin],
+        &admin,
+    )
+    .unwrap();
+    for index in 0..outcome_count {
+        send_transaction_from_instructions(
+            &mut market.svm,
+            vec![add_outcome_ix(admin, full_event_id, index, &format!("Runner {index}"))],
+            &[&market.admin],
+            &admin,
+        )
+        .unwrap();
+    }
+    send_transaction_from_instructions(
+        &mut market.svm,
+        vec![
+            create_event_ix(admin, mint, second_event_id, "Second market"),
+            add_outcome_ix(admin, second_event_id, 0, "Yes"),
+            add_outcome_ix(admin, second_event_id, 1, "No"),
+        ],
+        &[&market.admin],
+        &admin,
+    )
+    .unwrap();
+
+    // Fill every slot in Alice's index.
+    for index in 0..MAX_BETS_PER_USER as u8 {
+        send_transaction_from_instructions(
+            &mut market.svm,
+            vec![place_bet_ix(mint, &alice.pubkey(), &alice_ata, full_event_id, index, STAKE)],
+            &[&alice],
+            &alice.pubkey(),
+        )
+        .unwrap();
+    }
+    assert_eq!(read_user_bets(&market, &alice.pubkey()).len(), MAX_BETS_PER_USER);
+
+    // With the index full, any new position is rejected - on this event or another.
+    let one_too_many = send_transaction_from_instructions(
+        &mut market.svm,
+        vec![place_bet_ix(
+            mint,
+            &alice.pubkey(),
+            &alice_ata,
+            full_event_id,
+            MAX_BETS_PER_USER as u8,
+            STAKE,
+        )],
+        &[&alice],
+        &alice.pubkey(),
+    );
+    assert!(one_too_many.is_err(), "a full index must reject a new position");
+    let other_market_bet = send_transaction_from_instructions(
+        &mut market.svm,
+        vec![place_bet_ix(mint, &alice.pubkey(), &alice_ata, second_event_id, 0, STAKE)],
+        &[&alice],
+        &alice.pubkey(),
+    );
+    assert!(other_market_bet.is_err(), "a full index must reject bets on any market");
+
+    // Unwind one position: cancel the event and refund the first bet.
+    send_transaction_from_instructions(
+        &mut market.svm,
+        vec![cancel_event_ix(admin, full_event_id)],
+        &[&market.admin],
+        &admin,
+    )
+    .unwrap();
+    send_transaction_from_instructions(
+        &mut market.svm,
+        vec![claim_refund_ix(mint, &alice.pubkey(), &alice_ata, full_event_id, 0)],
+        &[&alice],
+        &alice.pubkey(),
+    )
+    .unwrap();
+    let bets_after_refund = read_user_bets(&market, &alice.pubkey());
+    assert_eq!(bets_after_refund.len(), MAX_BETS_PER_USER - 1);
+    let refunded_bet = bet_pda(&outcome_pda(&event_pda(full_event_id), 0), &alice.pubkey());
+    assert!(
+        !bets_after_refund.contains(&refunded_bet),
+        "the refunded bet must leave the index"
+    );
+
+    // The freed slot lets the wallet bet again. A fresh blockhash so this is
+    // a distinct transaction from the rejected attempt above.
+    market.svm.expire_blockhash();
+    send_transaction_from_instructions(
+        &mut market.svm,
+        vec![place_bet_ix(mint, &alice.pubkey(), &alice_ata, second_event_id, 0, STAKE)],
+        &[&alice],
+        &alice.pubkey(),
+    )
+    .unwrap();
+    let final_bets = read_user_bets(&market, &alice.pubkey());
+    assert_eq!(final_bets.len(), MAX_BETS_PER_USER);
+    let new_bet = bet_pda(&outcome_pda(&event_pda(second_event_id), 0), &alice.pubkey());
+    assert!(final_bets.contains(&new_bet), "the new position must appear in the index");
 }

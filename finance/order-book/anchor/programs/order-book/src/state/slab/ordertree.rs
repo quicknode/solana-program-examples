@@ -20,7 +20,7 @@ pub const MAX_TREE_NODES: usize = 1024;
 
 /// Root pointer + leaf count for one side of the book.
 ///
-/// `maybe_node` is only meaningful when `leaf_count > 0` — a freshly-zeroed
+/// `maybe_node` is only meaningful when `leaf_count > 0` - a freshly-zeroed
 /// root represents an empty tree.
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 #[repr(C)]
@@ -160,7 +160,7 @@ impl OrderTreeNodes {
         search_key: u128,
     ) -> Option<LeafNode> {
         // Stack of (handle, critbit) pairs so we can walk back up to the
-        // root after splicing the leaf out — same trick the upstream uses.
+        // root after splicing the leaf out - same trick the upstream uses.
         let mut stack: Vec<(NodeHandle, bool)> = vec![];
 
         let mut parent_h = root.node()?;
@@ -255,7 +255,7 @@ impl OrderTreeNodes {
     /// Returns the handle of the new leaf and, when a duplicate key collided,
     /// the leaf that got overwritten. (Callers in this order book embed a
     /// monotonically increasing seq_num in every key, so collisions cannot
-    /// actually happen — the case is kept just to match the upstream API.)
+    /// actually happen - the case is kept just to match the upstream API.)
     pub fn insert_leaf(
         &mut self,
         root: &mut OrderTreeRoot,
@@ -294,7 +294,7 @@ impl OrderTreeNodes {
 
             if let Some(NodeRef::Inner(inner)) = parent_contents.case() {
                 if shared_prefix_len >= inner.prefix_len {
-                    // The new key shares at least this node's prefix —
+                    // The new key shares at least this node's prefix -
                     // descend.
                     let (child, crit_bit) = inner.walk_down(new_leaf.key);
                     stack.push((parent_handle, crit_bit));
@@ -325,7 +325,7 @@ impl OrderTreeNodes {
             // replacing it with a freshly-built InnerNode that has the new
             // leaf and the moved-aside old node as children. We can't go via
             // `node_mut().as_inner_mut()` here because that would refuse the
-            // slot when its tag is still LeafNode — instead, write a complete
+            // slot when its tag is still LeafNode - instead, write a complete
             // new InnerNode bit-pattern into the slot via AnyNode.
             let mut new_inner = InnerNode::new(shared_prefix_len, new_leaf.key);
             new_inner.children[new_leaf_crit_bit as usize] = new_leaf_handle;

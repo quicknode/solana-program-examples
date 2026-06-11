@@ -3,7 +3,7 @@ use quasar_lang::prelude::*;
 use crate::errors;
 use crate::state::{read_wallet_allowed, MODE_ALLOW, MODE_BLOCK, MODE_MIXED, AB_WALLET_SIZE};
 
-/// Transfer hook handler. Called by Token-2022 during transfers.
+/// Transfer hook handler. Called by Token Extensions during transfers.
 ///
 /// Account layout (fixed by the SPL transfer hook interface):
 ///   [0] source_token_account
@@ -11,9 +11,9 @@ use crate::state::{read_wallet_allowed, MODE_ALLOW, MODE_BLOCK, MODE_MIXED, AB_W
 ///   [2] destination_token_account
 ///   [3] owner_delegate
 ///   [4] extra_account_meta_list
-///   [5] ab_wallet — resolved from extra account metas (PDA for destination owner)
+///   [5] ab_wallet - resolved from extra account metas (PDA for destination owner)
 #[derive(Accounts)]
-pub struct TxHook {
+pub struct TxHookAccountConstraints {
     pub source_token_account: UncheckedAccount,
     pub mint: UncheckedAccount,
     pub destination_token_account: UncheckedAccount,
@@ -23,7 +23,7 @@ pub struct TxHook {
 }
 
 #[inline(always)]
-pub fn handle_tx_hook(accounts: &mut TxHook, amount: u64) -> Result<(), ProgramError> {
+pub fn handle_tx_hook(accounts: &mut TxHookAccountConstraints, amount: u64) -> Result<(), ProgramError> {
     let mint_view = accounts.mint.to_account_view();
     let mint_data = mint_view.try_borrow()?;
 
@@ -51,7 +51,7 @@ pub fn handle_tx_hook(accounts: &mut TxHook, amount: u64) -> Result<(), ProgramE
     }
 }
 
-fn decode_wallet_mode(accounts: &TxHook) -> Result<DecodedWalletMode, ProgramError> {
+fn decode_wallet_mode(accounts: &TxHookAccountConstraints) -> Result<DecodedWalletMode, ProgramError> {
     let wallet_view = accounts.ab_wallet.to_account_view();
     if wallet_view.data_len() == 0 {
         return Ok(DecodedWalletMode::None);
@@ -82,11 +82,11 @@ enum DecodedWalletMode {
     None,
 }
 
-/// Parse Token-2022 mint account data to extract the mode from embedded
+/// Parse Token Extensions mint account data to extract the mode from embedded
 /// metadata. The metadata is stored as a TLV extension within the mint
 /// account.
 ///
-/// Token-2022 mint layout:
+/// Token Extensions mint layout:
 ///   [0..82]   base Mint state
 ///   [82..164] padding (copy of base)
 ///   [164]     AccountType (2 = Mint)

@@ -7,6 +7,12 @@ use anchor_spl::{
 use crate::error::VaultError;
 use crate::state::Strategy;
 
+/// Highest annual management fee a manager may set, in basis points (10%).
+/// `collect_fees` mints shares to the manager and dilutes every depositor,
+/// so an uncapped fee would let a manager drain the vault by configuration;
+/// 10% per year is already far above typical fund management fees.
+pub const MAX_FEE_BPS: u16 = 1_000;
+
 #[derive(Accounts)]
 pub struct InitializeStrategyAccountConstraints<'info> {
     #[account(mut)]
@@ -39,7 +45,7 @@ pub struct InitializeStrategyAccountConstraints<'info> {
     )]
     pub share_mint: InterfaceAccount<'info, Mint>,
 
-    /// Vault's USDC token account — strategy PDA is the authority
+    /// Vault's USDC token account - strategy PDA is the authority
     #[account(
         init,
         payer = manager,
@@ -49,7 +55,7 @@ pub struct InitializeStrategyAccountConstraints<'info> {
     )]
     pub vault_usdc: InterfaceAccount<'info, TokenAccount>,
 
-    /// Vault's asset_a token account — strategy PDA is the authority
+    /// Vault's asset_a token account - strategy PDA is the authority
     #[account(
         init,
         payer = manager,
@@ -59,7 +65,7 @@ pub struct InitializeStrategyAccountConstraints<'info> {
     )]
     pub vault_asset_a: InterfaceAccount<'info, TokenAccount>,
 
-    /// Vault's asset_b token account — strategy PDA is the authority
+    /// Vault's asset_b token account - strategy PDA is the authority
     #[account(
         init,
         payer = manager,
@@ -90,6 +96,8 @@ pub fn handle_initialize_strategy(
             == 10_000,
         VaultError::InvalidWeights
     );
+
+    require!(fee_bps <= MAX_FEE_BPS, VaultError::FeeTooHigh);
 
     let clock = Clock::get()?;
 

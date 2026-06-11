@@ -58,7 +58,7 @@ fn test_pull_lever_cpi() {
         env!("CARGO_MANIFEST_DIR"),
         "/../../target/deploy/lever.so"
     ))
-    .expect("lever.so not found — run `anchor build` first");
+    .expect("lever.so not found - run `anchor build` first");
     svm.add_program(hand_program_id, hand_bytes).unwrap();
     svm.add_program(lever_program_id, &lever_bytes).unwrap();
     let payer = create_wallet(&mut svm, 10_000_000_000).unwrap();
@@ -90,7 +90,7 @@ fn test_pull_lever_cpi() {
             name: "Jacob".to_string(),
         }
         .data(),
-        hand::accounts::PullLever {
+        hand::accounts::PullLeverAccountConstraints {
             power: power_keypair.pubkey(),
             lever_program: lever_program_id,
         }
@@ -113,7 +113,7 @@ fn test_pull_lever_cpi() {
             name: "sol-warrior".to_string(),
         }
         .data(),
-        hand::accounts::PullLever {
+        hand::accounts::PullLeverAccountConstraints {
             power: power_keypair.pubkey(),
             lever_program: lever_program_id,
         }

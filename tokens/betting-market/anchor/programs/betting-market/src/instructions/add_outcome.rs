@@ -5,7 +5,7 @@ use crate::{error::BettingError, Config, Event, EventStatus, Outcome};
 pub const MAX_LABEL_LEN: usize = 64;
 
 #[derive(Accounts)]
-pub struct AddOutcome<'info> {
+pub struct AddOutcomeAccountConstraints<'info> {
     #[account(mut)]
     pub admin: Signer<'info>,
 
@@ -35,7 +35,7 @@ pub struct AddOutcome<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handle_add_outcome(context: Context<AddOutcome>, label: String) -> Result<()> {
+pub fn handle_add_outcome(context: Context<AddOutcomeAccountConstraints>, label: String) -> Result<()> {
     require!(label.len() <= MAX_LABEL_LEN, BettingError::LabelTooLong);
     require!(
         context.accounts.event.status == EventStatus::Open,

@@ -1,4 +1,4 @@
-# Transfer Hook — Account Data as Seed (Quasar)
+# Transfer Hook - Account Data as Seed (Quasar)
 
 Derive extra accounts from token account data in a transfer hook.
 

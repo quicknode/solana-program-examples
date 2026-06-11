@@ -53,14 +53,6 @@ fn token_account(address: Pubkey, mint: Pubkey, owner: Pubkey, amount: u64) -> A
     )
 }
 
-/// Mark specific account indices as signers.
-fn with_signers(mut ix: Instruction, indices: &[usize]) -> Instruction {
-    for &i in indices {
-        ix.accounts[i].is_signer = true;
-    }
-    ix
-}
-
 /// Build create_token instruction data.
 /// Wire format: [discriminator: u8 = 0] [decimals: u8]
 fn build_create_token_data(decimals: u8) -> Vec<u8> {
@@ -83,16 +75,17 @@ fn test_create_token() {
     let mint_address = Pubkey::new_unique();
     let token_program = quasar_svm::SPL_TOKEN_PROGRAM_ID;
     let system_program = quasar_svm::system_program::ID;
-    let rent = quasar_svm::solana_sdk_ids::sysvar::rent::ID;
 
-    let data = build_create_token_data(9);
+    // Deliberately not 9: proves the decimals instruction argument reaches
+    // the initialize_mint2 CPI instead of being hardcoded.
+    let requested_decimals = 6u8;
+    let data = build_create_token_data(requested_decimals);
 
     let instruction = Instruction {
         program_id: crate::ID,
         accounts: vec![
             solana_instruction::AccountMeta::new(payer.into(), true),
             solana_instruction::AccountMeta::new(mint_address.into(), true),
-            solana_instruction::AccountMeta::new_readonly(rent.into(), false),
             solana_instruction::AccountMeta::new_readonly(token_program.into(), false),
             solana_instruction::AccountMeta::new_readonly(system_program.into(), false),
         ],
@@ -105,6 +98,14 @@ fn test_create_token() {
     );
 
     assert!(result.is_ok(), "create_token failed: {:?}", result.raw_result);
+
+    // The created mint must carry the requested decimals.
+    let mint_account = result.account(&mint_address).expect("mint should exist");
+    let mint_state =
+        <Mint as solana_program_pack::Pack>::unpack(&mint_account.data).expect("valid mint");
+    assert_eq!(mint_state.decimals, requested_decimals);
+    assert_eq!(mint_state.mint_authority, Some(payer).into());
+
     println!("  CREATE TOKEN CU: {}", result.compute_units_consumed);
 }
 
@@ -141,5 +142,17 @@ fn test_mint_tokens() {
     );
 
     assert!(result.is_ok(), "mint_tokens failed: {:?}", result.raw_result);
+
+    // The handler mints exactly the minor-unit amount passed: no decimal scaling.
+    let token_after = result.account(&token_addr).expect("token account exists");
+    let token_state = <TokenAccount as solana_program_pack::Pack>::unpack(&token_after.data)
+        .expect("valid token account");
+    assert_eq!(token_state.amount, amount);
+
+    let mint_after = result.account(&mint_address).expect("mint exists");
+    let mint_state =
+        <Mint as solana_program_pack::Pack>::unpack(&mint_after.data).expect("valid mint");
+    assert_eq!(mint_state.supply, amount);
+
     println!("  MINT TOKENS CU: {}", result.compute_units_consumed);
 }

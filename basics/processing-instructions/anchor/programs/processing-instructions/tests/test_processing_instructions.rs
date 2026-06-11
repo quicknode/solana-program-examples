@@ -27,7 +27,7 @@ fn test_go_to_park() {
             height: 3,
         }
         .data(),
-        processing_instructions::accounts::Park {}.to_account_metas(None),
+        processing_instructions::accounts::ParkAccountConstraints {}.to_account_metas(None),
     );
     send_transaction_from_instructions(&mut svm, vec![ix_short], &[&payer], &payer.pubkey())
         .unwrap();
@@ -42,7 +42,7 @@ fn test_go_to_park() {
             height: 10,
         }
         .data(),
-        processing_instructions::accounts::Park {}.to_account_metas(None),
+        processing_instructions::accounts::ParkAccountConstraints {}.to_account_metas(None),
     );
     send_transaction_from_instructions(&mut svm, vec![ix_tall], &[&payer], &payer.pubkey())
         .unwrap();

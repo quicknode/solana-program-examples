@@ -2,7 +2,7 @@ use anchor_lang::prelude::*;
 use anchor_spl::token_interface::{transfer_fee_set, Mint, Token2022, TransferFeeSetTransferFee};
 
 #[derive(Accounts)]
-pub struct UpdateFee<'info> {
+pub struct UpdateFeeAccountConstraints<'info> {
     pub authority: Signer<'info>,
 
     #[account(mut)]
@@ -14,7 +14,7 @@ pub struct UpdateFee<'info> {
 // This is a safely feature built into the extension
 // https://github.com/solana-program/token-2022/blob/2d18d97f083627d3f13ce43b16fa4305cbfac4de/program/src/extension/transfer_fee/processor.rs#L92-L109
 pub fn handle_process_update_fee(
-    context: Context<UpdateFee>,
+    context: Context<UpdateFeeAccountConstraints>,
     transfer_fee_basis_points: u16,
     maximum_fee: u64,
 ) -> Result<()> {

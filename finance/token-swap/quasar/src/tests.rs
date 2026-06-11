@@ -1,12 +1,32 @@
 extern crate std;
 use {
+    crate::error::AmmError,
     alloc::vec,
     quasar_svm::{
         token::{create_keyed_associated_token_account, create_keyed_mint_account, Mint},
-        Account, Instruction, Pubkey, QuasarSvm, SPL_TOKEN_PROGRAM_ID,
+        Account, Instruction, ProgramError, Pubkey, QuasarSvm, SPL_TOKEN_PROGRAM_ID,
     },
     std::println,
 };
+
+/// Quasar reports program errors as `ProgramError::Custom(code)`; this maps a
+/// named `AmmError` to that wire form for assertions.
+fn amm_error(error: AmmError) -> ProgramError {
+    ProgramError::Custom(error as u32)
+}
+
+/// `amount * numerator / denominator` in u128 with checked ops, narrowed back
+/// to u64. Mirrors the program's ratio math for computing expected values.
+fn mul_div(amount: u64, numerator: u64, denominator: u64) -> u64 {
+    u64::try_from(
+        (amount as u128)
+            .checked_mul(numerator as u128)
+            .expect("mul_div: product overflow")
+            .checked_div(denominator as u128)
+            .expect("mul_div: divide by zero"),
+    )
+    .expect("mul_div: result exceeds u64")
+}
 
 // ── SVM setup ────────────────────────────────────────────────────────────────
 
@@ -48,11 +68,6 @@ fn test_mint(addr: Pubkey, decimals: u8) -> Account {
 /// Depositor's pre-funded ATA (address derived from wallet + mint).
 fn funded_ata(wallet: Pubkey, mint: Pubkey, amount: u64) -> Account {
     create_keyed_associated_token_account(&wallet, &mint, amount)
-}
-
-/// ATA address derived from wallet + mint (same formula as SPL ATA program).
-fn ata_addr(wallet: Pubkey, mint: Pubkey) -> Pubkey {
-    create_keyed_associated_token_account(&wallet, &mint, 0).address
 }
 
 /// Read the `amount` field (bytes 64–72) from a packed token account.
@@ -99,16 +114,19 @@ fn build_create_config_data(fee: u16, admin_share_bps: u16) -> Vec<u8> {
     data
 }
 
-fn build_deposit_data(amount_a: u64, amount_b: u64) -> Vec<u8> {
+fn build_deposit_data(amount_a: u64, amount_b: u64, minimum_lp_tokens_out: u64) -> Vec<u8> {
     let mut data = vec![2u8]; // discriminator = 2
     data.extend_from_slice(&amount_a.to_le_bytes());
     data.extend_from_slice(&amount_b.to_le_bytes());
+    data.extend_from_slice(&minimum_lp_tokens_out.to_le_bytes());
     data
 }
 
-fn build_withdraw_data(amount: u64) -> Vec<u8> {
+fn build_withdraw_data(amount: u64, minimum_token_a_out: u64, minimum_token_b_out: u64) -> Vec<u8> {
     let mut data = vec![3u8]; // discriminator = 3
     data.extend_from_slice(&amount.to_le_bytes());
+    data.extend_from_slice(&minimum_token_a_out.to_le_bytes());
+    data.extend_from_slice(&minimum_token_b_out.to_le_bytes());
     data
 }
 
@@ -186,6 +204,7 @@ fn ix_deposit(
     payer: Pubkey,
     amount_a: u64,
     amount_b: u64,
+    minimum_lp_tokens_out: u64,
 ) -> Instruction {
     Instruction {
         program_id: crate::ID,
@@ -208,7 +227,7 @@ fn ix_deposit(
             solana_instruction::AccountMeta::new_readonly(SPL_TOKEN_PROGRAM_ID, false),
             solana_instruction::AccountMeta::new_readonly(quasar_svm::system_program::ID.into(), false),
         ],
-        data: build_deposit_data(amount_a, amount_b),
+        data: build_deposit_data(amount_a, amount_b, minimum_lp_tokens_out),
     }
 }
 
@@ -227,6 +246,8 @@ fn ix_withdraw(
     token_b: Pubkey,
     payer: Pubkey,
     amount: u64,
+    minimum_token_a_out: u64,
+    minimum_token_b_out: u64,
 ) -> Instruction {
     Instruction {
         program_id: crate::ID,
@@ -249,7 +270,7 @@ fn ix_withdraw(
             solana_instruction::AccountMeta::new_readonly(SPL_TOKEN_PROGRAM_ID, false),
             solana_instruction::AccountMeta::new_readonly(quasar_svm::system_program::ID.into(), false),
         ],
-        data: build_withdraw_data(amount),
+        data: build_withdraw_data(amount, minimum_token_a_out, minimum_token_b_out),
     }
 }
 
@@ -354,7 +375,7 @@ fn setup_pool() -> PoolEnv {
     );
     assert!(r.is_ok(), "setup_pool/create_config: {:?}", r.raw_result);
 
-    // Pre-populate mint accounts (no on-chain minting needed for tests).
+    // Pre-populate mint accounts (no onchain minting needed for tests).
     let mint_a = Pubkey::new_unique();
     let mint_b = Pubkey::new_unique();
     svm.set_account(test_mint(mint_a, 6));
@@ -368,7 +389,7 @@ fn setup_pool() -> PoolEnv {
     let pool_a = Pubkey::new_unique();
     let pool_b = Pubkey::new_unique();
 
-    // create_pool — pass empty PDA slots (pool_config, lp_mint) and signer
+    // create_pool - pass empty PDA slots (pool_config, lp_mint) and signer
     // slots for non-PDA token accounts (pool_a, pool_b).  The SVM commits
     // all accounts from the merged list, so every new account must appear here.
     let r = svm.process_instruction(
@@ -404,7 +425,7 @@ fn do_deposit(env: &mut PoolEnv, amount_a: u64, amount_b: u64) -> (Pubkey, Pubke
     env.svm.set_account(ta);
     env.svm.set_account(tb);
 
-    // LP token account will be created by init(idempotent) — pass as signer
+    // LP token account will be created by init(idempotent) - pass as signer
     // because system::create_account CPI requires the new account to sign.
     let lp_token = Pubkey::new_unique();
 
@@ -413,7 +434,8 @@ fn do_deposit(env: &mut PoolEnv, amount_a: u64, amount_b: u64) -> (Pubkey, Pubke
             env.config, env.pool_config, env.pool_authority, depositor,
             env.lp_mint, env.mint_a, env.mint_b, env.pool_a, env.pool_b,
             lp_token, token_a, token_b, env.payer,
-            amount_a, amount_b,
+            // Pool-setup helper, not a slippage test: no LP floor.
+            amount_a, amount_b, 0,
         ),
         &[signer(lp_token), signer(depositor)],
     );
@@ -423,7 +445,7 @@ fn do_deposit(env: &mut PoolEnv, amount_a: u64, amount_b: u64) -> (Pubkey, Pubke
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Tests — create_config (existing)
+// Tests - create_config (existing)
 // ═══════════════════════════════════════════════════════════════════════════════
 
 #[test]
@@ -502,7 +524,7 @@ fn test_create_config_invalid_admin_share() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Tests — create_pool
+// Tests - create_pool
 // ═══════════════════════════════════════════════════════════════════════════════
 
 #[test]
@@ -518,7 +540,7 @@ fn test_create_pool() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Tests — deposit_liquidity
+// Tests - deposit_liquidity
 // ═══════════════════════════════════════════════════════════════════════════════
 
 #[test]
@@ -584,16 +606,178 @@ fn test_deposit_insufficient_funds_rejected() {
             env.config, env.pool_config, env.pool_authority, depositor,
             env.lp_mint, env.mint_a, env.mint_b, env.pool_a, env.pool_b,
             lp_token, token_a, token_b, env.payer,
-            1_000_000, 1_000_000,
+            1_000_000, 1_000_000, 0,
         ),
         &[empty(lp_token), signer(depositor)],
     );
-    assert!(!r.is_ok(), "deposit with insufficient funds should fail");
+    r.assert_error(amm_error(AmmError::InsufficientBalance));
     println!("  DEPOSIT insufficient funds correctly rejected");
 }
 
+/// Regression test for the ratio-clamp direction bug: with reserves at
+/// pool_a > pool_b, logic that branches on RESERVE sizes (instead of which
+/// USER amount is binding) scales `amount_a` UP to
+/// `amount_b * pool_a / pool_b`, past both the user's stated amount and the
+/// balance check. The correct try-A-then-B clamp scales token B DOWN instead.
+#[test]
+fn test_deposit_clamps_down_never_up() {
+    let mut env = setup_pool();
+
+    // Seed at a 4:1 ratio so pool_a > pool_b.
+    let (pool_seed_a, pool_seed_b) = (4_000_000u64, 1_000_000u64);
+    let (_, lp_seed_token) = do_deposit(&mut env, pool_seed_a, pool_seed_b);
+    let lp_supply = token_amount(&env.svm.get_account(&lp_seed_token).unwrap());
+
+    // Depositor offers 1_000_000 of each and holds exactly that much. The
+    // old logic would try to pull 4_000_000 token A (scaling A UP); the
+    // correct clamp uses all 1_000_000 A and scales B down to 250_000.
+    let depositor = Pubkey::new_unique();
+    let (stated_a, stated_b) = (1_000_000u64, 1_000_000u64);
+    let ta = funded_ata(depositor, env.mint_a, stated_a);
+    let tb = funded_ata(depositor, env.mint_b, stated_b);
+    let (token_a, token_b) = (ta.address, tb.address);
+    env.svm.set_account(ta);
+    env.svm.set_account(tb);
+    let lp_token = Pubkey::new_unique();
+
+    let expected_b_pulled = mul_div(stated_a, pool_seed_b, pool_seed_a);
+    let expected_lp = mul_div(stated_a, lp_supply, pool_seed_a);
+
+    let r = env.svm.process_instruction(
+        &ix_deposit(
+            env.config, env.pool_config, env.pool_authority, depositor,
+            env.lp_mint, env.mint_a, env.mint_b, env.pool_a, env.pool_b,
+            lp_token, token_a, token_b, env.payer,
+            stated_a, stated_b, expected_lp,
+        ),
+        &[signer(lp_token), signer(depositor)],
+    );
+    assert!(r.is_ok(), "clamped deposit failed: {:?}", r.raw_result);
+
+    // Exact amounts pulled: all of A, ratio-clamped B, nothing more.
+    let depositor_a = token_amount(&env.svm.get_account(&token_a).unwrap());
+    let depositor_b = token_amount(&env.svm.get_account(&token_b).unwrap());
+    assert_eq!(depositor_a, 0, "all stated token A must be pulled");
+    assert_eq!(
+        depositor_b,
+        stated_b - expected_b_pulled,
+        "token B must be clamped down to the pool ratio"
+    );
+    let pool_a_after = token_amount(&env.svm.get_account(&env.pool_a).unwrap());
+    let pool_b_after = token_amount(&env.svm.get_account(&env.pool_b).unwrap());
+    assert_eq!(pool_a_after, pool_seed_a + stated_a);
+    assert_eq!(pool_b_after, pool_seed_b + expected_b_pulled);
+
+    let lp_minted = token_amount(&env.svm.get_account(&lp_token).unwrap());
+    assert_eq!(lp_minted, expected_lp, "LP mint must be proportional");
+    println!(
+        "  DEPOSIT clamp: pulled_a={}, pulled_b={}, lp={}",
+        stated_a, expected_b_pulled, lp_minted
+    );
+}
+
+/// Mirror of `test_deposit_clamps_down_never_up` with the reserves reversed
+/// (pool_b > pool_a), so the binding side is token A's counterpart: the full
+/// `amount_b` is used and `amount_a` is the side that covers the ratio.
+#[test]
+fn test_deposit_clamps_down_other_side() {
+    let mut env = setup_pool();
+
+    // Seed at a 1:4 ratio so pool_b > pool_a.
+    let (pool_seed_a, pool_seed_b) = (1_000_000u64, 4_000_000u64);
+    let (_, lp_seed_token) = do_deposit(&mut env, pool_seed_a, pool_seed_b);
+    let lp_supply = token_amount(&env.svm.get_account(&lp_seed_token).unwrap());
+
+    let depositor = Pubkey::new_unique();
+    let (stated_a, stated_b) = (1_000_000u64, 1_000_000u64);
+    let ta = funded_ata(depositor, env.mint_a, stated_a);
+    let tb = funded_ata(depositor, env.mint_b, stated_b);
+    let (token_a, token_b) = (ta.address, tb.address);
+    env.svm.set_account(ta);
+    env.svm.set_account(tb);
+    let lp_token = Pubkey::new_unique();
+
+    // amount_b_required for the full stated_a would be 4_000_000 > stated_b,
+    // so amount_b binds: all of B is used and A is clamped down.
+    let expected_a_pulled = mul_div(stated_b, pool_seed_a, pool_seed_b);
+    let expected_lp = mul_div(stated_b, lp_supply, pool_seed_b);
+
+    let r = env.svm.process_instruction(
+        &ix_deposit(
+            env.config, env.pool_config, env.pool_authority, depositor,
+            env.lp_mint, env.mint_a, env.mint_b, env.pool_a, env.pool_b,
+            lp_token, token_a, token_b, env.payer,
+            stated_a, stated_b, expected_lp,
+        ),
+        &[signer(lp_token), signer(depositor)],
+    );
+    assert!(r.is_ok(), "clamped deposit failed: {:?}", r.raw_result);
+
+    let depositor_a = token_amount(&env.svm.get_account(&token_a).unwrap());
+    let depositor_b = token_amount(&env.svm.get_account(&token_b).unwrap());
+    assert_eq!(
+        depositor_a,
+        stated_a - expected_a_pulled,
+        "token A must be clamped down to the pool ratio"
+    );
+    assert_eq!(depositor_b, 0, "all stated token B must be pulled");
+    let pool_a_after = token_amount(&env.svm.get_account(&env.pool_a).unwrap());
+    let pool_b_after = token_amount(&env.svm.get_account(&env.pool_b).unwrap());
+    assert_eq!(pool_a_after, pool_seed_a + expected_a_pulled);
+    assert_eq!(pool_b_after, pool_seed_b + stated_b);
+
+    let lp_minted = token_amount(&env.svm.get_account(&lp_token).unwrap());
+    assert_eq!(lp_minted, expected_lp, "LP mint must be proportional");
+    println!(
+        "  DEPOSIT clamp (B binding): pulled_a={}, pulled_b={}, lp={}",
+        expected_a_pulled, stated_b, lp_minted
+    );
+}
+
+#[test]
+fn test_deposit_slippage_rejected() {
+    let mut env = setup_pool();
+
+    let (pool_seed_a, pool_seed_b) = (1_000_000u64, 1_000_000u64);
+    let (_, lp_seed_token) = do_deposit(&mut env, pool_seed_a, pool_seed_b);
+    let lp_supply = token_amount(&env.svm.get_account(&lp_seed_token).unwrap());
+
+    let depositor = Pubkey::new_unique();
+    let (stated_a, stated_b) = (500_000u64, 500_000u64);
+    let ta = funded_ata(depositor, env.mint_a, stated_a);
+    let tb = funded_ata(depositor, env.mint_b, stated_b);
+    let (token_a, token_b) = (ta.address, tb.address);
+    env.svm.set_account(ta);
+    env.svm.set_account(tb);
+    let lp_token = Pubkey::new_unique();
+
+    // The pool will mint exactly this much; ask for one more.
+    let exact_lp = mul_div(stated_a, lp_supply, pool_seed_a);
+    let r = env.svm.process_instruction(
+        &ix_deposit(
+            env.config, env.pool_config, env.pool_authority, depositor,
+            env.lp_mint, env.mint_a, env.mint_b, env.pool_a, env.pool_b,
+            lp_token, token_a, token_b, env.payer,
+            stated_a, stated_b, exact_lp + 1,
+        ),
+        &[signer(lp_token), signer(depositor)],
+    );
+    r.assert_error(amm_error(AmmError::DepositBelowMinimum));
+
+    // Nothing moved: depositor balances and pool reserves are unchanged.
+    let depositor_a = token_amount(&env.svm.get_account(&token_a).unwrap());
+    let depositor_b = token_amount(&env.svm.get_account(&token_b).unwrap());
+    assert_eq!(depositor_a, stated_a, "token A must be untouched after revert");
+    assert_eq!(depositor_b, stated_b, "token B must be untouched after revert");
+    let pa = token_amount(&env.svm.get_account(&env.pool_a).unwrap());
+    let pb = token_amount(&env.svm.get_account(&env.pool_b).unwrap());
+    assert_eq!(pa, pool_seed_a, "pool_a must be untouched after revert");
+    assert_eq!(pb, pool_seed_b, "pool_b must be untouched after revert");
+    println!("  DEPOSIT slippage guard correctly rejected");
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
-// Tests — withdraw_liquidity
+// Tests - withdraw_liquidity
 // ═══════════════════════════════════════════════════════════════════════════════
 
 #[test]
@@ -609,6 +793,15 @@ fn test_withdraw_liquidity() {
     // Withdraw half the LP tokens.
     let withdraw_amount = lp_balance / 2;
 
+    // Expected proportional share, mirroring the program's formula:
+    //   amount_out = lp_amount * reserve / (lp_supply + MINIMUM_LIQUIDITY)
+    // The depositor holds the entire LP supply, so supply == lp_balance.
+    let divisor = lp_balance
+        .checked_add(crate::MINIMUM_LIQUIDITY)
+        .expect("divisor overflow");
+    let expected_a = mul_div(withdraw_amount, amount_a, divisor);
+    let expected_b = mul_div(withdraw_amount, amount_b, divisor);
+
     // Output token accounts are created by init(idempotent) → pass as empty.
     let recv_a = Pubkey::new_unique();
     let recv_b = Pubkey::new_unique();
@@ -618,18 +811,28 @@ fn test_withdraw_liquidity() {
             env.config, env.pool_config, env.pool_authority, depositor,
             env.lp_mint, env.mint_a, env.mint_b, env.pool_a, env.pool_b,
             lp_token, recv_a, recv_b, env.payer,
-            withdraw_amount,
+            // Pass the exact expected amounts as the slippage floors: the
+            // pool hasn't moved since the quote, so the floors must be met.
+            withdraw_amount, expected_a, expected_b,
         ),
         // recv_a / recv_b are non-PDA accounts init(idempotent) → signer required.
         &[signer(recv_a), signer(recv_b), signer(depositor)],
     );
     assert!(r.is_ok(), "withdraw failed: {:?}", r.raw_result);
 
-    // Verify the depositor received tokens.
+    // Verify the depositor received exactly the proportional share.
     let ra = env.svm.get_account(&recv_a).expect("recv_a missing after withdraw");
     let rb = env.svm.get_account(&recv_b).expect("recv_b missing after withdraw");
-    assert!(token_amount(&ra) > 0, "recv_a should have tokens after withdraw");
-    assert!(token_amount(&rb) > 0, "recv_b should have tokens after withdraw");
+    assert_eq!(token_amount(&ra), expected_a, "token A withdrawal mismatch");
+    assert_eq!(token_amount(&rb), expected_b, "token B withdrawal mismatch");
+
+    // LP tokens were burned.
+    let lp_after = token_amount(&env.svm.get_account(&lp_token).unwrap());
+    assert_eq!(
+        lp_after,
+        lp_balance - withdraw_amount,
+        "LP balance should drop by the burned amount"
+    );
 
     println!(
         "  WITHDRAW: lp_burned={}, recv_a={}, recv_b={}",
@@ -637,69 +840,161 @@ fn test_withdraw_liquidity() {
     );
 }
 
+#[test]
+fn test_withdraw_slippage_rejected() {
+    let mut env = setup_pool();
+    let (depositor, lp_token) = do_deposit(&mut env, 2_000_000, 2_000_000);
+    let lp_balance = token_amount(&env.svm.get_account(&lp_token).unwrap());
+
+    let withdraw_amount = lp_balance / 2;
+    let divisor = lp_balance
+        .checked_add(crate::MINIMUM_LIQUIDITY)
+        .expect("divisor overflow");
+    let expected_a = mul_div(withdraw_amount, 2_000_000, divisor);
+
+    let recv_a = Pubkey::new_unique();
+    let recv_b = Pubkey::new_unique();
+
+    // Floor on token A set just above what the pool will pay out.
+    let r = env.svm.process_instruction(
+        &ix_withdraw(
+            env.config, env.pool_config, env.pool_authority, depositor,
+            env.lp_mint, env.mint_a, env.mint_b, env.pool_a, env.pool_b,
+            lp_token, recv_a, recv_b, env.payer,
+            withdraw_amount, expected_a + 1, 0,
+        ),
+        &[signer(recv_a), signer(recv_b), signer(depositor)],
+    );
+    r.assert_error(amm_error(AmmError::WithdrawalBelowMinimum));
+
+    // Nothing moved: pool reserves and the LP balance are unchanged.
+    let pa = token_amount(&env.svm.get_account(&env.pool_a).unwrap());
+    let pb = token_amount(&env.svm.get_account(&env.pool_b).unwrap());
+    assert_eq!(pa, 2_000_000, "pool_a must be untouched after revert");
+    assert_eq!(pb, 2_000_000, "pool_b must be untouched after revert");
+    let lp_after = token_amount(&env.svm.get_account(&lp_token).unwrap());
+    assert_eq!(lp_after, lp_balance, "LP balance must be untouched after revert");
+    println!("  WITHDRAW slippage guard correctly rejected");
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
-// Tests — swap_tokens
+// Tests - swap_tokens
 // ═══════════════════════════════════════════════════════════════════════════════
 
+/// Constant-product quote mirroring the program's swap math, on effective
+/// reserves: output = taxed_input * pool_out / (pool_in + taxed_input), where
+/// taxed_input = input - input * fee_bps / 10_000. All products in u128.
+fn expected_swap_output(input: u64, fee_bps: u64, pool_in: u64, pool_out: u64) -> u64 {
+    let fee_amount = mul_div(input, fee_bps, crate::BASIS_POINTS_DIVISOR);
+    let taxed_input = input.checked_sub(fee_amount).expect("fee exceeds input");
+    let divisor = pool_in.checked_add(taxed_input).expect("reserve overflow");
+    mul_div(taxed_input, pool_out, divisor)
+}
+
+/// Trading fee passed to `create_config` in `setup_pool`, in basis points.
+const POOL_FEE_BPS: u64 = 30;
+
 #[test]
-fn test_swap_a_to_b() {
+fn test_swap_a_to_b_conserves_balances() {
     let mut env = setup_pool();
 
     // Seed the pool with liquidity first.
-    do_deposit(&mut env, 10_000_000, 10_000_000);
+    let (pool_seed_a, pool_seed_b) = (10_000_000u64, 10_000_000u64);
+    do_deposit(&mut env, pool_seed_a, pool_seed_b);
 
     // Trader swaps 100_000 token A for token B.
     let trader = Pubkey::new_unique();
-    let ta = funded_ata(trader, env.mint_a, 1_000_000);
+    let trader_funding = 1_000_000u64;
+    let ta = funded_ata(trader, env.mint_a, trader_funding);
     let token_a = ta.address;
     let token_b_out = Pubkey::new_unique(); // created by init(idempotent)
     env.svm.set_account(ta);
 
     let input = 100_000u64;
+    let expected_output = expected_swap_output(input, POOL_FEE_BPS, pool_seed_a, pool_seed_b);
     let r = env.svm.process_instruction(
         &ix_swap(
             env.config, env.pool_config, env.pool_authority, trader,
             env.mint_a, env.mint_b, env.pool_a, env.pool_b,
             token_a, token_b_out, env.payer,
-            true, input, 1, // input_is_token_a=true, min_output=1
+            true, input, expected_output, // floor = exact quote; pool hasn't moved
         ),
         // token_b_out is a new non-PDA account → signer required for init.
         &[signer(token_b_out), signer(trader)],
     );
     assert!(r.is_ok(), "swap A→B failed: {:?}", r.raw_result);
 
-    let out_acct = env.svm.get_account(&token_b_out).expect("token_b_out missing after swap");
-    let received = token_amount(&out_acct);
-    assert!(received > 0, "expected non-zero token B output");
+    // Conservation: the trader pays exactly `input` and receives exactly what
+    // the pool sent; nothing is minted or lost in transit.
+    let trader_a_after = token_amount(&env.svm.get_account(&token_a).unwrap());
+    let received = token_amount(&env.svm.get_account(&token_b_out).unwrap());
+    let pool_a_after = token_amount(&env.svm.get_account(&env.pool_a).unwrap());
+    let pool_b_after = token_amount(&env.svm.get_account(&env.pool_b).unwrap());
+    assert_eq!(
+        trader_a_after,
+        trader_funding - input,
+        "trader must pay exactly the input amount"
+    );
+    assert_eq!(received, expected_output, "trader output mismatch");
+    assert_eq!(
+        pool_a_after,
+        pool_seed_a + input,
+        "pool_a must gain exactly the input"
+    );
+    assert_eq!(
+        pool_b_after,
+        pool_seed_b - received,
+        "pool_b must lose exactly what the trader received"
+    );
     println!("  SWAP A→B: input={}, output={}", input, received);
 }
 
 #[test]
-fn test_swap_b_to_a() {
+fn test_swap_b_to_a_conserves_balances() {
     let mut env = setup_pool();
-    do_deposit(&mut env, 10_000_000, 10_000_000);
+    let (pool_seed_a, pool_seed_b) = (10_000_000u64, 10_000_000u64);
+    do_deposit(&mut env, pool_seed_a, pool_seed_b);
 
     let trader = Pubkey::new_unique();
-    let tb = funded_ata(trader, env.mint_b, 1_000_000);
+    let trader_funding = 1_000_000u64;
+    let tb = funded_ata(trader, env.mint_b, trader_funding);
     let token_b = tb.address;
     let token_a_out = Pubkey::new_unique();
     env.svm.set_account(tb);
 
     let input = 100_000u64;
+    let expected_output = expected_swap_output(input, POOL_FEE_BPS, pool_seed_b, pool_seed_a);
     let r = env.svm.process_instruction(
         &ix_swap(
             env.config, env.pool_config, env.pool_authority, trader,
             env.mint_a, env.mint_b, env.pool_a, env.pool_b,
             token_a_out, token_b, env.payer,
-            false, input, 1, // input_is_token_a=false
+            false, input, expected_output, // input_is_token_a=false
         ),
         &[signer(token_a_out), signer(trader)],
     );
     assert!(r.is_ok(), "swap B→A failed: {:?}", r.raw_result);
 
-    let out_acct = env.svm.get_account(&token_a_out).expect("token_a_out missing");
-    let received = token_amount(&out_acct);
-    assert!(received > 0, "expected non-zero token A output");
+    let trader_b_after = token_amount(&env.svm.get_account(&token_b).unwrap());
+    let received = token_amount(&env.svm.get_account(&token_a_out).unwrap());
+    let pool_a_after = token_amount(&env.svm.get_account(&env.pool_a).unwrap());
+    let pool_b_after = token_amount(&env.svm.get_account(&env.pool_b).unwrap());
+    assert_eq!(
+        trader_b_after,
+        trader_funding - input,
+        "trader must pay exactly the input amount"
+    );
+    assert_eq!(received, expected_output, "trader output mismatch");
+    assert_eq!(
+        pool_b_after,
+        pool_seed_b + input,
+        "pool_b must gain exactly the input"
+    );
+    assert_eq!(
+        pool_a_after,
+        pool_seed_a - received,
+        "pool_a must lose exactly what the trader received"
+    );
     println!("  SWAP B→A: input={}, output={}", input, received);
 }
 
@@ -714,22 +1009,32 @@ fn test_swap_slippage_rejected() {
     let token_b_out = Pubkey::new_unique();
     env.svm.set_account(ta);
 
-    // min_output set absurdly high (more than pool can deliver).
+    // min_output set one above the exact quote, so the floor cannot be met.
+    let input = 100_000u64;
+    let quote = expected_swap_output(input, POOL_FEE_BPS, 10_000_000, 10_000_000);
     let r = env.svm.process_instruction(
         &ix_swap(
             env.config, env.pool_config, env.pool_authority, trader,
             env.mint_a, env.mint_b, env.pool_a, env.pool_b,
             token_a, token_b_out, env.payer,
-            true, 100_000, 999_999_999,
+            true, input, quote + 1,
         ),
         &[empty(token_b_out), signer(trader)],
     );
-    assert!(!r.is_ok(), "swap with impossible slippage should fail");
+    r.assert_error(amm_error(AmmError::SlippageExceeded));
+
+    // Nothing moved: the trader keeps their input and the pool is untouched.
+    let trader_a = token_amount(&env.svm.get_account(&token_a).unwrap());
+    assert_eq!(trader_a, 1_000_000, "trader balance must be untouched after revert");
+    let pa = token_amount(&env.svm.get_account(&env.pool_a).unwrap());
+    let pb = token_amount(&env.svm.get_account(&env.pool_b).unwrap());
+    assert_eq!(pa, 10_000_000, "pool_a must be untouched after revert");
+    assert_eq!(pb, 10_000_000, "pool_b must be untouched after revert");
     println!("  SWAP slippage guard correctly rejected");
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Tests — claim_admin_fees
+// Tests - claim_admin_fees
 // ═══════════════════════════════════════════════════════════════════════════════
 
 #[test]

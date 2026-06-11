@@ -2,25 +2,26 @@
 
 use quasar_lang::prelude::*;
 
+mod error;
 mod instructions;
 use instructions::*;
 mod state;
 #[cfg(test)]
 mod tests;
 
-declare_id!("HYSDBQLVUSMRQKQZxfKJwDy5PPrZb7bvuBLaWfbcYhEP");
+declare_id!("BmDHboaj1kBUoinJKKSRqKfMeRKJqQqEbUj1VgzeQe4A");
 
 #[program]
 mod quasar_counter {
     use super::*;
 
     #[instruction(discriminator = 0)]
-    pub fn initialize_counter(ctx: Ctx<InitializeCounter>) -> Result<(), ProgramError> {
+    pub fn initialize_counter(ctx: Ctx<InitializeCounterAccountConstraints>) -> Result<(), ProgramError> {
         instructions::handle_initialize_counter(&mut ctx.accounts)
     }
 
     #[instruction(discriminator = 1)]
-    pub fn increment(ctx: Ctx<Increment>) -> Result<(), ProgramError> {
+    pub fn increment(ctx: Ctx<IncrementAccountConstraints>) -> Result<(), ProgramError> {
         instructions::handle_increment(&mut ctx.accounts)
     }
 }

@@ -4,7 +4,7 @@ use {
 };
 
 #[derive(Accounts)]
-pub struct Switch<'info> {
+pub struct SwitchAccountConstraints<'info> {
     /// admin that controls the switch
     #[account(mut)]
     pub admin: Signer<'info>,
@@ -34,7 +34,7 @@ pub struct Switch<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handle_switch(accounts: &mut Switch, on: bool, bump: u8) -> Result<()> {
+pub fn handle_switch(accounts: &mut SwitchAccountConstraints, on: bool, bump: u8) -> Result<()> {
         // toggle switch on/off for the given wallet
         //
         accounts.wallet_switch.set_inner(TransferSwitch {
@@ -45,7 +45,7 @@ pub fn handle_switch(accounts: &mut Switch, on: bool, bump: u8) -> Result<()> {
         Ok(())
     }
 
-// admin_config is validated via `seeds=[b"admin-config"], bump` — Anchor
+// admin_config is validated via `seeds=[b"admin-config"], bump` - Anchor
 // re-derives it and fails if it doesn't match, so storing AdminConfig.bump
 // isn't strictly needed to validate `admin_config` inside `Switch` (the
 // bump field on AdminConfig is still populated on creation to satisfy the

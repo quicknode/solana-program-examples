@@ -20,7 +20,7 @@ mod quasar_favorites {
     /// support nested dynamic types. See state.rs for details.
     #[instruction(discriminator = 0)]
     pub fn set_favorites(
-        ctx: Ctx<SetFavorites>,
+        ctx: Ctx<SetFavoritesAccountConstraints>,
         number: u64,
         color: String<50>,
     ) -> Result<(), ProgramError> {

@@ -9,8 +9,4 @@ pub struct PageVisits {
 
 impl PageVisits {
     pub const SEED_PREFIX: &'static [u8; 11] = b"page_visits";
-
-    pub fn increment(&mut self) {
-        self.page_visits = self.page_visits.checked_add(1).unwrap();
-    }
 }

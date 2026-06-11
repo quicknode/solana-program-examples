@@ -3,7 +3,7 @@ use anchor_lang::prelude::*;
 use crate::WhiteList;
 
 #[derive(Accounts)]
-pub struct AddToWhiteList<'info> {
+pub struct AddToWhiteListAccountConstraints<'info> {
     /// CHECK: New account to add to white list
     #[account()]
     pub new_account: UncheckedAccount<'info>,
@@ -17,7 +17,7 @@ pub struct AddToWhiteList<'info> {
     pub signer: Signer<'info>,
 }
 
-pub fn handler(context: Context<AddToWhiteList>) -> Result<()> {
+pub fn handler(context: Context<AddToWhiteListAccountConstraints>) -> Result<()> {
     if context.accounts.white_list.authority != context.accounts.signer.key() {
         panic!("Only the authority can add to the white list!");
     }

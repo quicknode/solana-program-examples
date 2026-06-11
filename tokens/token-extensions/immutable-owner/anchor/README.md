@@ -1,4 +1,4 @@
-# Token Extensions — Immutable Owner (Anchor)
+# Token Extensions - Immutable Owner (Anchor)
 
 Create token accounts whose owner field cannot be changed after creation.
 

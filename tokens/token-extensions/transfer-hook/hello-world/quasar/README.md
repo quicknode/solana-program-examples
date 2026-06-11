@@ -1,4 +1,4 @@
-# Transfer Hook — Hello World (Quasar)
+# Transfer Hook - Hello World (Quasar)
 
 Minimal transfer hook executed on each transfer.
 

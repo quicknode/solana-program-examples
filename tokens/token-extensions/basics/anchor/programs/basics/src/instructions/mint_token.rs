@@ -2,7 +2,7 @@ use anchor_lang::prelude::*;
 use anchor_spl::token_interface::{self, Mint, MintTo, TokenAccount, TokenInterface};
 
 #[derive(Accounts)]
-pub struct MintToken<'info> {
+pub struct MintTokenAccountConstraints<'info> {
     #[account(mut)]
     pub signer: Signer<'info>,
     #[account(mut)]
@@ -12,7 +12,7 @@ pub struct MintToken<'info> {
     pub token_program: Interface<'info, TokenInterface>,
 }
 
-pub fn handler(context: Context<MintToken>, amount: u64) -> Result<()> {
+pub fn handler(context: Context<MintTokenAccountConstraints>, amount: u64) -> Result<()> {
     let cpi_accounts = MintTo {
         mint: context.accounts.mint.to_account_info().clone(),
         to: context.accounts.receiver.to_account_info().clone(),

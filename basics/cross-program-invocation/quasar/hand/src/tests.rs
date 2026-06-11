@@ -1,7 +1,7 @@
 use quasar_svm::{Account, Instruction, Pubkey, QuasarSvm};
 use solana_address::Address;
 
-/// Lever program's program ID — must match the lever's declare_id!().
+/// Lever program's program ID - must match the lever's declare_id!().
 fn lever_program_id() -> Pubkey {
     Pubkey::from(crate::LEVER_PROGRAM_ID)
 }

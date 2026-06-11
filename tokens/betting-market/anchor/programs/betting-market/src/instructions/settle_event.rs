@@ -12,7 +12,7 @@ const BPS_DENOMINATOR: u128 = 10_000;
 
 #[derive(Accounts)]
 #[instruction(winning_outcome_index: u8)]
-pub struct SettleEvent<'info> {
+pub struct SettleEventAccountConstraints<'info> {
     #[account(mut)]
     pub admin: Signer<'info>,
 
@@ -68,7 +68,7 @@ pub struct SettleEvent<'info> {
 }
 
 pub fn handle_settle_event(
-    context: Context<SettleEvent>,
+    context: Context<SettleEventAccountConstraints>,
     winning_outcome_index: u8,
 ) -> Result<()> {
     require!(

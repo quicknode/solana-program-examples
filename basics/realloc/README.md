@@ -1,6 +1,6 @@
 # Realloc
 
-Resize a Solana [account](https://solana.com/docs/terminology#account) after it has been created — grow or shrink the data it can hold.
+Resize a Solana [account](https://solana.com/docs/terminology#account) after it has been created - grow or shrink the data it can hold.
 
 ## A note on `realloc` vs `resize`
 

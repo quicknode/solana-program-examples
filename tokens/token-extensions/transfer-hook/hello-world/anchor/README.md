@@ -1,4 +1,4 @@
-# Transfer Hook — Hello World (Anchor)
+# Transfer Hook - Hello World (Anchor)
 
 Minimal transfer hook that runs custom logic on every token transfer.
 

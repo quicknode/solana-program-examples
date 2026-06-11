@@ -5,7 +5,7 @@ use anchor_lang::prelude::*;
 /// Holds the metadata that identifies a single pool: which `Config` it belongs
 /// to, which two mints it trades, and its canonical bump. The actual pool
 /// reserves live in separate token accounts (`pool_a`, `pool_b`) owned by the
-/// pool authority PDA — they are not stored here. This struct is the pool's
+/// pool authority PDA - they are not stored here. This struct is the pool's
 /// *configuration*, not its state.
 ///
 /// In addition to the identity fields, this account tracks the admin's

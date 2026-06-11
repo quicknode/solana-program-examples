@@ -16,13 +16,13 @@ mod quasar_lever {
 
     /// Initialize the power status account (off by default).
     #[instruction(discriminator = 0)]
-    pub fn initialize(ctx: Ctx<InitializeLever>) -> Result<(), ProgramError> {
+    pub fn initialize(ctx: Ctx<InitializeLeverAccountConstraints>) -> Result<(), ProgramError> {
         instructions::handle_initialize(&mut ctx.accounts)
     }
 
     /// Toggle the power switch. Logs who is pulling the lever.
     #[instruction(discriminator = 1)]
-    pub fn switch_power(ctx: Ctx<SwitchPower>, name: String<50>) -> Result<(), ProgramError> {
+    pub fn switch_power(ctx: Ctx<SwitchPowerAccountConstraints>, name: String<50>) -> Result<(), ProgramError> {
         instructions::handle_switch_power(&mut ctx.accounts, name)
     }
 }

@@ -8,7 +8,6 @@ skip-lint = false
 [programs.devnet]
 swap_example = "AsGVFxWqEn8icRBFQApxJe68x3r9zvfSbmiEzYFATGYn"
 
-# [registry] section removed — no longer used in Anchor 1.0
 
 [provider]
 cluster = "localnet"

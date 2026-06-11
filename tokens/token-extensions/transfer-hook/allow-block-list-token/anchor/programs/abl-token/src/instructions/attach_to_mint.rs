@@ -10,7 +10,7 @@ use spl_transfer_hook_interface::instruction::ExecuteInstruction;
 use crate::{get_extra_account_metas, get_meta_list_size, META_LIST_ACCOUNT_SEED};
 
 #[derive(Accounts)]
-pub struct AttachToMint<'info> {
+pub struct AttachToMintAccountConstraints<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
 
@@ -35,7 +35,7 @@ pub struct AttachToMint<'info> {
     pub token_program: Program<'info, Token2022>,
 }
 
-impl AttachToMint<'_> {
+impl AttachToMintAccountConstraints<'_> {
     pub fn attach_to_mint(&mut self) -> Result<()> {
         let tx_hook_accs = TransferHookUpdate {
             token_program_id: self.token_program.to_account_info(),

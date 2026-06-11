@@ -19,7 +19,7 @@ use {
 };
 
 /// Create a Token Extensions token account (165 bytes, no extra extensions).
-/// Uses explicit keypair — not an ATA — so we can inspect account state bytes.
+/// Uses explicit keypair - not an ATA - so we can inspect account state bytes.
 fn create_token_account_instruction(
     payer: &Pubkey,
     token_account: &Pubkey,
@@ -69,7 +69,7 @@ fn test_default_account_state() {
     let initialize_ix = Instruction::new_with_bytes(
         program_id,
         &default_account_state::instruction::Initialize {}.data(),
-        default_account_state::accounts::Initialize {
+        default_account_state::accounts::InitializeAccountConstraints {
             payer: payer.pubkey(),
             mint_account: mint_keypair.pubkey(),
             token_program: TOKEN_EXTENSIONS_PROGRAM_ID,
@@ -102,7 +102,7 @@ fn test_default_account_state() {
         "Token account should be frozen (state=2)"
     );
 
-    // Step 3: Attempt to mint to the frozen account — should fail
+    // Step 3: Attempt to mint to the frozen account - should fail
     let result = mint_tokens_to_token_extensions_account(
         &mut svm,
         &mint_keypair.pubkey(),
@@ -123,7 +123,7 @@ fn test_default_account_state() {
             account_state: default_account_state::AnchorAccountState::Initialized,
         }
         .data(),
-        default_account_state::accounts::UpdateDefaultState {
+        default_account_state::accounts::UpdateDefaultStateAccountConstraints {
             freeze_authority: payer.pubkey(),
             mint_account: mint_keypair.pubkey(),
             token_program: TOKEN_EXTENSIONS_PROGRAM_ID,
@@ -134,7 +134,7 @@ fn test_default_account_state() {
     send_transaction_from_instructions(&mut svm, vec![update_ix], &[&payer], &payer.pubkey()).unwrap();
     svm.expire_blockhash();
 
-    // Step 5: Create a new token account — should be initialized (not frozen) now
+    // Step 5: Create a new token account - should be initialized (not frozen) now
     let token2 = Keypair::new();
     let create_token2_ixs = create_token_account_instruction(
         &payer.pubkey(),
@@ -152,7 +152,7 @@ fn test_default_account_state() {
         "Token account should be initialized (state=1)"
     );
 
-    // Step 6: Mint to the new account — should succeed
+    // Step 6: Mint to the new account - should succeed
     mint_tokens_to_token_extensions_account(
         &mut svm,
         &mint_keypair.pubkey(),

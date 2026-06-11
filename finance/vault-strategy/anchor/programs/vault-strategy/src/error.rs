@@ -4,13 +4,13 @@ use anchor_lang::prelude::*;
 pub enum VaultError {
     #[msg("Weights must sum to 10000 basis points")]
     InvalidWeights,
-    #[msg("Shares minted are below the minimum — slippage exceeded")]
+    #[msg("Shares minted are below the minimum - slippage exceeded")]
     SlippageTooHigh,
-    #[msg("USDC out is below minimum — slippage exceeded")]
+    #[msg("USDC out is below minimum - slippage exceeded")]
     UsdcSlippage,
-    #[msg("Asset A out is below minimum — slippage exceeded")]
+    #[msg("Asset A out is below minimum - slippage exceeded")]
     AssetASlippage,
-    #[msg("Asset B out is below minimum — slippage exceeded")]
+    #[msg("Asset B out is below minimum - slippage exceeded")]
     AssetBSlippage,
     #[msg("Asset mint is neither asset_a nor asset_b")]
     InvalidAssetMint,
@@ -22,7 +22,7 @@ pub enum VaultError {
     ZeroShares,
     #[msg("Cannot deposit zero USDC")]
     ZeroDeposit,
-    #[msg("Total shares are zero — cannot compute proportional withdraw")]
+    #[msg("Total shares are zero - cannot compute proportional withdraw")]
     ZeroTotalShares,
     #[msg("Price feed account does not match the strategy's registered feed")]
     InvalidPriceFeed,
@@ -32,4 +32,10 @@ pub enum VaultError {
     StalePriceFeed,
     #[msg("Sell and buy mints must be different")]
     SameMint,
+    #[msg("USDC mint does not match the strategy's registered USDC mint")]
+    InvalidUsdcMint,
+    #[msg("Swap router program does not match the strategy's registered swap router")]
+    InvalidSwapRouter,
+    #[msg("Management fee exceeds the maximum allowed")]
+    FeeTooHigh,
 }

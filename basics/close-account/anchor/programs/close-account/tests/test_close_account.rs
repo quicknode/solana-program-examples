@@ -34,7 +34,7 @@ fn test_create_and_close_user() {
             name: "John Doe".to_string(),
         }
         .data(),
-        close_account_program::accounts::CreateUserContext {
+        close_account_program::accounts::CreateUserAccountConstraints {
             user: payer.pubkey(),
             user_account: user_account_pda,
             system_program: system_program::id(),
@@ -56,7 +56,7 @@ fn test_create_and_close_user() {
     let close_ix = Instruction::new_with_bytes(
         program_id,
         &close_account_program::instruction::CloseUser {}.data(),
-        close_account_program::accounts::CloseUserContext {
+        close_account_program::accounts::CloseUserAccountConstraints {
             user: payer.pubkey(),
             user_account: user_account_pda,
         }

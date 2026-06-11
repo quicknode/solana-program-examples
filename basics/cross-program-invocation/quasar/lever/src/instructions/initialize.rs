@@ -5,7 +5,7 @@ use {
 
 /// Accounts for initialising the power status (PDA seeded by "power").
 #[derive(Accounts)]
-pub struct InitializeLever {
+pub struct InitializeLeverAccountConstraints {
     #[account(mut)]
     pub payer: Signer,
     #[account(mut, init, payer = payer, address = PowerStatus::seeds())]
@@ -14,7 +14,7 @@ pub struct InitializeLever {
 }
 
 #[inline(always)]
-pub fn handle_initialize(accounts: &mut InitializeLever) -> Result<(), ProgramError> {
+pub fn handle_initialize(accounts: &mut InitializeLeverAccountConstraints) -> Result<(), ProgramError> {
     // Power starts off (false). Counter-style fixed-size set_inner takes only the inner value.
     accounts.power.set_inner(PowerStatusInner { is_on: PodBool::from(false) });
     Ok(())

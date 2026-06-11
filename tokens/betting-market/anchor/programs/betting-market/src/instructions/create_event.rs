@@ -10,7 +10,7 @@ pub const MAX_DESCRIPTION_LEN: usize = 200;
 
 #[derive(Accounts)]
 #[instruction(event_id: u64)]
-pub struct CreateEvent<'info> {
+pub struct CreateEventAccountConstraints<'info> {
     #[account(mut)]
     pub admin: Signer<'info>,
 
@@ -51,7 +51,7 @@ pub struct CreateEvent<'info> {
 }
 
 pub fn handle_create_event(
-    context: Context<CreateEvent>,
+    context: Context<CreateEventAccountConstraints>,
     event_id: u64,
     description: String,
 ) -> Result<()> {

@@ -8,6 +8,7 @@ See also: [Token Minter overview](../README.md) and the [repository catalog](../
 
 - Mint authority on a PDA or signer
 - Token account initialization
+- Amounts: `mint_token` takes `amount` in **minor units**, the raw integer the token program operates on. Clients convert from major units offchain: 1 token with 9 decimals is `1 * 10^9` minor units. The program never scales amounts onchain.
 
 ## Setup
 

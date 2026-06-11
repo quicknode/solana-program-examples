@@ -1,4 +1,4 @@
-# Transfer Hook — Counter (Quasar)
+# Transfer Hook - Counter (Quasar)
 
 Count transfers in hook-side state.
 

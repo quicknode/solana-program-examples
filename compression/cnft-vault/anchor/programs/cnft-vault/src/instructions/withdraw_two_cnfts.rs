@@ -1,10 +1,24 @@
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::{instruction::AccountMeta, program::invoke_signed};
 
+use crate::error::VaultError;
+use crate::state::{Vault, VAULT_SEED};
 use crate::{build_transfer_instruction, SPLCompression, TransferArgs, MPL_BUBBLEGUM_ID};
 
 #[derive(Accounts)]
-pub struct WithdrawTwo<'info> {
+pub struct WithdrawTwoCnftsAccountConstraints<'info> {
+    /// The stored vault authority. Only this signer may withdraw.
+    pub authority: Signer<'info>,
+
+    // The vault PDA owns the cNFTs (as Bubblegum leaf owner) and signs both
+    // transfer CPIs via invoke_signed.
+    #[account(
+        seeds = [VAULT_SEED],
+        bump = vault.bump,
+        has_one = authority @ VaultError::InvalidWithdrawAuthority,
+    )]
+    pub vault: Account<'info, Vault>,
+
     #[account(mut)]
     #[account(
         seeds = [merkle_tree1.key().as_ref()],
@@ -13,14 +27,10 @@ pub struct WithdrawTwo<'info> {
     )]
     /// CHECK: This account is modified in the downstream program
     pub tree_authority1: UncheckedAccount<'info>,
-    #[account(
-        seeds = [b"cNFT-vault"],
-        bump,
-    )]
-    /// CHECK: This account doesnt even exist (it is just the pda to sign)
-    pub leaf_owner: UncheckedAccount<'info>,
+
     /// CHECK: This account is neither written to nor read from.
     pub new_leaf_owner1: UncheckedAccount<'info>,
+
     #[account(mut)]
     /// CHECK: This account is modified in the downstream program
     pub merkle_tree1: UncheckedAccount<'info>,
@@ -33,26 +43,31 @@ pub struct WithdrawTwo<'info> {
     )]
     /// CHECK: This account is modified in the downstream program
     pub tree_authority2: UncheckedAccount<'info>,
+
     /// CHECK: This account is neither written to nor read from.
     pub new_leaf_owner2: UncheckedAccount<'info>,
+
     #[account(mut)]
     /// CHECK: This account is modified in the downstream program
     pub merkle_tree2: UncheckedAccount<'info>,
 
     /// CHECK: This account is neither written to nor read from.
     pub log_wrapper: UncheckedAccount<'info>,
+
     pub compression_program: Program<'info, SPLCompression>,
+
     // Pin the bubblegum program account to the known mpl-bubblegum id. Without
     // this constraint the caller could pass any account to the two CPI calls.
     /// CHECK: address constrained to the mpl-bubblegum program id.
     #[account(address = MPL_BUBBLEGUM_ID)]
     pub bubblegum_program: UncheckedAccount<'info>,
+
     pub system_program: Program<'info, System>,
 }
 
 #[allow(clippy::too_many_arguments)]
 pub fn handler<'info>(
-    context: Context<'info, WithdrawTwo<'info>>,
+    context: Context<'info, WithdrawTwoCnftsAccountConstraints<'info>>,
     root1: [u8; 32],
     data_hash1: [u8; 32],
     creator_hash1: [u8; 32],
@@ -64,7 +79,7 @@ pub fn handler<'info>(
     creator_hash2: [u8; 32],
     nonce2: u64,
     index2: u32,
-    _proof_2_length: u8,
+    proof_2_length: u8,
 ) -> Result<()> {
     let merkle_tree1 = context.accounts.merkle_tree1.key();
     let merkle_tree2 = context.accounts.merkle_tree2.key();
@@ -74,11 +89,22 @@ pub fn handler<'info>(
         merkle_tree2
     );
 
-    let signer_seeds: &[&[u8]] = &[b"cNFT-vault", &[context.bumps.leaf_owner]];
+    // The proof lengths are client-supplied: bounds-check them against the
+    // accounts actually provided before slicing, so adversarial input gets a
+    // clean named error instead of a panic.
+    let proof_1_length = proof_1_length as usize;
+    let proof_2_length = proof_2_length as usize;
+    require!(
+        proof_1_length
+            .checked_add(proof_2_length)
+            .is_some_and(|total| total == context.remaining_accounts.len()),
+        VaultError::ProofLengthMismatch
+    );
+
+    let signer_seeds: &[&[u8]] = &[VAULT_SEED, &[context.accounts.vault.bump]];
 
     // Split remaining accounts into proof1 and proof2
-    let (proof1_accounts, proof2_accounts) =
-        context.remaining_accounts.split_at(proof_1_length as usize);
+    let (proof1_accounts, proof2_accounts) = context.remaining_accounts.split_at(proof_1_length);
 
     let proof1_metas: Vec<AccountMeta> = proof1_accounts
         .iter()
@@ -94,8 +120,8 @@ pub fn handler<'info>(
     msg!("withdrawing cNFT#1");
     let instruction1 = build_transfer_instruction(
         context.accounts.tree_authority1.key(),
-        context.accounts.leaf_owner.key(),
-        context.accounts.leaf_owner.key(),
+        context.accounts.vault.key(),
+        context.accounts.vault.key(),
         context.accounts.new_leaf_owner1.key(),
         context.accounts.merkle_tree1.key(),
         context.accounts.log_wrapper.key(),
@@ -114,7 +140,7 @@ pub fn handler<'info>(
     let mut account_infos1 = vec![
         context.accounts.bubblegum_program.to_account_info(),
         context.accounts.tree_authority1.to_account_info(),
-        context.accounts.leaf_owner.to_account_info(),
+        context.accounts.vault.to_account_info(),
         context.accounts.new_leaf_owner1.to_account_info(),
         context.accounts.merkle_tree1.to_account_info(),
         context.accounts.log_wrapper.to_account_info(),
@@ -131,8 +157,8 @@ pub fn handler<'info>(
     msg!("withdrawing cNFT#2");
     let instruction2 = build_transfer_instruction(
         context.accounts.tree_authority2.key(),
-        context.accounts.leaf_owner.key(),
-        context.accounts.leaf_owner.key(),
+        context.accounts.vault.key(),
+        context.accounts.vault.key(),
         context.accounts.new_leaf_owner2.key(),
         context.accounts.merkle_tree2.key(),
         context.accounts.log_wrapper.key(),
@@ -151,7 +177,7 @@ pub fn handler<'info>(
     let mut account_infos2 = vec![
         context.accounts.bubblegum_program.to_account_info(),
         context.accounts.tree_authority2.to_account_info(),
-        context.accounts.leaf_owner.to_account_info(),
+        context.accounts.vault.to_account_info(),
         context.accounts.new_leaf_owner2.to_account_info(),
         context.accounts.merkle_tree2.to_account_info(),
         context.accounts.log_wrapper.to_account_info(),

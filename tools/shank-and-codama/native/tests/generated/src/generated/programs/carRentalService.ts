@@ -200,7 +200,7 @@ export function carRentalServiceProgram() {
               client,
               getAddCarInstruction({
                 ...input,
-                payer: input.payer ?? client.payer.address,
+                payer: input.payer ?? client.payer,
               }),
             ),
           bookRental: (input) =>
@@ -208,7 +208,7 @@ export function carRentalServiceProgram() {
               client,
               getBookRentalInstruction({
                 ...input,
-                payer: input.payer ?? client.payer.address,
+                payer: input.payer ?? client.payer,
               }),
             ),
           pickUpCar: (input) =>
@@ -216,7 +216,7 @@ export function carRentalServiceProgram() {
               client,
               getPickUpCarInstruction({
                 ...input,
-                payer: input.payer ?? client.payer.address,
+                payer: input.payer ?? client.payer,
               }),
             ),
           returnCar: (input) =>
@@ -224,7 +224,7 @@ export function carRentalServiceProgram() {
               client,
               getReturnCarInstruction({
                 ...input,
-                payer: input.payer ?? client.payer.address,
+                payer: input.payer ?? client.payer,
               }),
             ),
         },

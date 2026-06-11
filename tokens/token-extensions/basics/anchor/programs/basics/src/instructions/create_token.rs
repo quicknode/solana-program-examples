@@ -3,7 +3,7 @@ use anchor_spl::token_interface::{Mint, TokenInterface};
 
 #[derive(Accounts)]
 #[instruction(token_name: String)]
-pub struct CreateToken<'info> {
+pub struct CreateTokenAccountConstraints<'info> {
     #[account(mut)]
     pub signer: Signer<'info>,
     #[account(
@@ -19,7 +19,7 @@ pub struct CreateToken<'info> {
     pub token_program: Interface<'info, TokenInterface>,
 }
 
-pub fn handler(_context: Context<CreateToken>, _token_name: String) -> Result<()> {
+pub fn handler(_context: Context<CreateTokenAccountConstraints>, _token_name: String) -> Result<()> {
     msg!("Create Token");
     Ok(())
 }

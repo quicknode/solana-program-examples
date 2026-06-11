@@ -6,7 +6,7 @@ use {
 /// Accounts for creating a new account funded by the rent vault PDA.
 /// The rent vault signs the create_account CPI via PDA seeds.
 #[derive(Accounts)]
-pub struct CreateNewAccount {
+pub struct CreateNewAccountAccountConstraints {
     #[account(mut)]
     pub new_account: Signer,
     #[account(mut, address = RentVault::seeds())]
@@ -15,7 +15,7 @@ pub struct CreateNewAccount {
 }
 
 #[inline(always)]
-pub fn handle_create_new_account(accounts: &mut CreateNewAccount, rent_vault_bump: u8) -> Result<(), ProgramError> {
+pub fn handle_create_new_account(accounts: &mut CreateNewAccountAccountConstraints, rent_vault_bump: u8) -> Result<(), ProgramError> {
     // Build PDA signer seeds: ["rent_vault", bump].
     let bump_bytes = [rent_vault_bump];
     let seeds: &[Seed] = &[

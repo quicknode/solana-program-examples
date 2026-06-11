@@ -10,23 +10,23 @@ use crate::state::{
 };
 
 // Mirror of MarketUser.open_orders max_len. Kept as a constant so the
-// PlaceOrder check reads clearly and the limit is documented in one place.
+// PlaceOrderAccountConstraints check reads clearly and the limit is documented in one place.
 const MAX_OPEN_ORDERS_PER_USER: usize = 20;
 
-// Basis-points denominator. 10_000 bps == 100% — the universal rate convention
+// Basis-points denominator. 10_000 bps == 100% - the universal rate convention
 // on every major exchange (NYSE, CME, Binance, Coinbase, ...).
 const BASIS_POINTS_DENOMINATOR: u128 = 10_000;
 
 // Remaining accounts are passed in groups of 2 per resting order we intend
 // to cross: [maker_order, maker_market_user]. We keep it at 2 (instead of
 // also threading the maker's ATAs) because fills land in the maker's
-// unsettled_* balance — the maker drains them later via settle_funds. This
+// unsettled_* balance - the maker drains them later via settle_funds. This
 // mirrors how Openbook v2 works and keeps the per-fill account footprint
 // small.
 const ACCOUNTS_PER_MAKER: usize = 2;
 
 pub fn handle_place_order<'info>(
-    context: Context<'info, PlaceOrder<'info>>,
+    context: Context<'info, PlaceOrderAccountConstraints<'info>>,
     side: OrderSide,
     price: u64,
     quantity: u64,
@@ -47,12 +47,12 @@ pub fn handle_place_order<'info>(
     );
 
     // Lock up the funds the order would need if filled. Bids lock quote
-    // (price * quantity); asks lock base (quantity). This always happens —
+    // (price * quantity); asks lock base (quantity). This always happens -
     // matching consumes from the locked pot (already in the vault), and any
     // unmatched remainder rests as a maker order with its lock still in place.
     //
     // The bid lock multiplies two u64s. A plain `u64::checked_mul` would
-    // refuse anything that overflows u64 (~1.8e19) — which is a perfectly
+    // refuse anything that overflows u64 (~1.8e19) - which is a perfectly
     // legal lock once you scale by token decimals (e.g. 18-decimal quote
     // mint * mid-cap price * mid-cap quantity). Promote to u128 for the
     // multiplication, then narrow back to u64 with try_into so the failure
@@ -155,7 +155,7 @@ pub fn handle_place_order<'info>(
     let mut taker_base_received: u64 = 0;
     let mut taker_quote_rebate: u64 = 0;
     let mut taker_quote_received: u64 = 0;
-    // Aggregate the per-fill fee into a single transfer at the end —
+    // Aggregate the per-fill fee into a single transfer at the end -
     // halves CU cost vs one CPI per fill.
     let mut total_fee_quote: u64 = 0;
 
@@ -178,14 +178,14 @@ pub fn handle_place_order<'info>(
         // Fee model (simple, maker-funded, no extra taker deposit):
         //
         //   gross  = fill_price * fill_quantity (quote tokens per fill)
-        //   fee    = gross * fee_bps / 10_000   (rounded down)
+        //   fee    = gross * fee_bps / 10_000   (rounded up)
         //   maker gets gross - fee,
         //   fee_vault gets fee,
         //   taker pays 'gross' net (out of their pre-locked quote).
         //
         // Strictly "makers pay nothing" would require the taker to bring
         // (gross + fee) which means pulling more from the taker's ATA on
-        // every fill — a per-fill CPI that inflates CU cost and account
+        // every fill - a per-fill CPI that inflates CU cost and account
         // lists. Real CLOBs (Openbook v2, Phoenix) use a similar
         // deduct-from-gross pattern for simplicity; the fee can be thought
         // of as the maker pricing their ask a fraction higher to cover it.
@@ -201,8 +201,13 @@ pub fn handle_place_order<'info>(
             .try_into()
             .map_err(|_| error!(ErrorCode::NumericalOverflow))?;
 
+        // Ceiling division: round the fee in the protocol's favour. Flooring
+        // would leak up to 1 minor unit of quote per fill to the maker, which
+        // an attacker could industrialise with many tiny fills.
         let fee_quote: u64 = (gross_quote as u128)
             .checked_mul(market.fee_basis_points as u128)
+            .ok_or(ErrorCode::NumericalOverflow)?
+            .checked_add(BASIS_POINTS_DENOMINATOR - 1)
             .ok_or(ErrorCode::NumericalOverflow)?
             .checked_div(BASIS_POINTS_DENOMINATOR)
             .ok_or(ErrorCode::NumericalOverflow)?
@@ -211,7 +216,7 @@ pub fn handle_place_order<'info>(
 
         // Defensive invariant: fees are a fraction of gross, never more.
         // `fee_basis_points <= 10_000` is enforced at market init, so this
-        // should be unreachable — but a stale assumption here would let a
+        // should be unreachable - but a stale assumption here would let a
         // misconfigured market overdraw the maker's net payout. Cheap check.
         require!(fee_quote <= gross_quote, ErrorCode::NumericalOverflow);
 
@@ -238,7 +243,7 @@ pub fn handle_place_order<'info>(
                 // Price improvement: taker locked (price * quantity) but
                 // only needs (fill_price * fill_quantity) for this fill.
                 // u128 intermediate for the same reason as the bid lock
-                // and gross_quote above — the original lock is already
+                // and gross_quote above - the original lock is already
                 // bounded to u64, so this product narrows back cleanly.
                 let locked_for_this_fill: u64 = (price as u128)
                     .checked_mul(fill.fill_quantity as u128)
@@ -424,7 +429,7 @@ pub fn handle_place_order<'info>(
 
 #[derive(Accounts)]
 #[instruction(side: OrderSide, price: u64, quantity: u64)]
-pub struct PlaceOrder<'info> {
+pub struct PlaceOrderAccountConstraints<'info> {
     // `has_one` ties every market-owned account on this struct to the
     // addresses recorded on the Market PDA. Crucially, without
     // has_one on base_vault / quote_vault / base_mint / quote_mint a caller
@@ -444,7 +449,7 @@ pub struct PlaceOrder<'info> {
 
     // Zero-copy: AccountLoader streams the slab in/out without paying
     // borsh (de)serialization on every instruction. See order_book.rs for
-    // the layout. Not a PDA — the client created it directly via
+    // the layout. Not a PDA - the client created it directly via
     // system_program::create_account (see initialize_market.rs for why);
     // `has_one = order_book` on `market` is what ties this specific account
     // to this specific market.
@@ -452,7 +457,7 @@ pub struct PlaceOrder<'info> {
     pub order_book: AccountLoader<'info, OrderBook>,
 
     // The order PDA seed uses the book's `next_order_id` *before* this
-    // instruction increments it — i.e. the id this new order will receive.
+    // instruction increments it - i.e. the id this new order will receive.
     // Read via `load()` so Anchor can derive the PDA at verification time.
     #[account(
         init,

@@ -18,12 +18,16 @@ pub enum BettingError {
     InvalidWinningOutcome,
     #[msg("This bet did not win, so there is nothing to claim")]
     NothingToClaim,
-    #[msg("This bet has already been claimed")]
-    AlreadyClaimed,
+    #[msg("This bet won, so it must be closed via claim_winnings")]
+    BetWon,
     #[msg("The bet amount must be greater than zero")]
     ZeroAmount,
-    #[msg("This bettor already holds the maximum number of distinct bets")]
+    #[msg("This bettor already holds the maximum number of open positions")]
     TooManyBets,
+    #[msg("This bet is not in the bettor's User index")]
+    BetNotInUserIndex,
+    #[msg("Arithmetic overflow")]
+    MathOverflow,
     #[msg("Outcomes can only be added before any bets are placed")]
     BettingAlreadyStarted,
     #[msg("The event description is too long")]

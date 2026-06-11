@@ -5,7 +5,7 @@
 // This will resolve when anchor-lang upgrades to solana 3.x (likely anchor 0.33+).
 
 use {
-    abl_token::{accounts::InitConfig, accounts::InitMint, instructions::InitMintArgs, Mode},
+    abl_token::{accounts::InitConfigAccountConstraints, accounts::InitMintAccountConstraints, instructions::InitMintArgs, Mode},
     anchor_lang::InstructionData,
     anchor_lang::ToAccountMetas,
     litesvm::LiteSVM,
@@ -54,7 +54,7 @@ fn test() {
 
     let init_cfg_ix = abl_token::instruction::InitConfig {};
 
-    let init_cfg_accounts = InitConfig {
+    let init_cfg_accounts = InitConfigAccountConstraints {
         payer: admin_pk,
         config: config,
         system_program: SYSTEM_PROGRAM_ID,
@@ -88,7 +88,7 @@ fn test() {
 
     let data = init_mint_ix.data();
 
-    let init_mint_accounts = InitMint {
+    let init_mint_accounts = InitMintAccountConstraints {
         payer: admin_pk,
         mint: mint_pk,
         extra_metas_account: meta_list,

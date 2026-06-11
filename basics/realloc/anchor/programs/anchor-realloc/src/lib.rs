@@ -9,11 +9,11 @@ declare_id!("Fod47xKXjdHVQDzkFPBvfdWLm8gEAV4iMSXkfUzCHiSD");
 pub mod anchor_realloc {
     use super::*;
 
-    pub fn initialize(context: Context<Initialize>, input: String) -> Result<()> {
+    pub fn initialize(context: Context<InitializeAccountConstraints>, input: String) -> Result<()> {
         instructions::initialize::handler(context, input)
     }
 
-    pub fn update(context: Context<Update>, input: String) -> Result<()> {
+    pub fn update(context: Context<UpdateAccountConstraints>, input: String) -> Result<()> {
         instructions::update::handler(context, input)
     }
 }

@@ -7,9 +7,6 @@ pub use instructions::*;
 
 pub mod bubblegum_types;
 
-pub mod state;
-pub use state::*;
-
 use anchor_lang::prelude::*;
 
 /// SPL Account Compression program ID (cmtDvXumGCrqC1Age74AVPhSRVXJMd8PJS91L8KbNCK)
@@ -39,16 +36,17 @@ declare_id!("BuFyrgRYzg2nPhqYrxZ7d9uYUs4VXtxH71U8EcoAfTQZ");
 pub mod cutils {
     use super::*;
 
-    #[access_control(context.accounts.validate(&context, &params))]
-    pub fn mint<'info>(context: Context<'info, Mint<'info>>, params: MintParams) -> Result<()> {
-        Mint::actuate(context, params)
+    pub fn mint<'info>(
+        context: Context<'info, MintAccountConstraints<'info>>,
+        params: MintParams,
+    ) -> Result<()> {
+        instructions::mint::handle_mint(context, params)
     }
 
-    #[access_control(context.accounts.validate(&context, &params))]
     pub fn verify<'info>(
-        context: Context<'info, Verify<'info>>,
+        context: Context<'info, VerifyAccountConstraints<'info>>,
         params: VerifyParams,
     ) -> Result<()> {
-        Verify::actuate(context, &params)
+        instructions::verify::handle_verify(context, &params)
     }
 }

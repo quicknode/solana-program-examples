@@ -14,7 +14,7 @@
         {
           "name": "payer",
           "isMut": true,
-          "isSigner": false,
+          "isSigner": true,
           "docs": ["Fee payer"]
         },
         {
@@ -55,7 +55,7 @@
         {
           "name": "payer",
           "isMut": true,
-          "isSigner": false,
+          "isSigner": true,
           "docs": ["Fee payer"]
         },
         {
@@ -96,7 +96,7 @@
         {
           "name": "payer",
           "isMut": true,
-          "isSigner": false,
+          "isSigner": true,
           "docs": ["Fee payer"]
         }
       ],
@@ -124,7 +124,7 @@
         {
           "name": "payer",
           "isMut": true,
-          "isSigner": false,
+          "isSigner": true,
           "docs": ["Fee payer"]
         }
       ],

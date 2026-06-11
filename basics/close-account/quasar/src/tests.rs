@@ -127,8 +127,55 @@ fn test_close_user() {
     // owner, and resize data are applied to the BPF input buffer but aren't read back
     // by the TransactionContext in the test harness.
     //
-    // The close instruction executes successfully onchain — verified by:
-    // - The instruction succeeds (assert_success above)
-    // - Program log shows "close_user: executing close" when logging is enabled
-    // - CU consumption is consistent with close operations
+    // So the strongest assertion available here is that the instruction
+    // succeeds (assert_success above). The Anchor twin's LiteSVM suite
+    // verifies the post-close account state (lamports drained, data cleared).
+}
+
+#[test]
+fn test_close_user_rejects_non_owner() {
+    let mut svm = setup();
+
+    let victim = Pubkey::new_unique();
+    let attacker = Pubkey::new_unique();
+    let system_program = quasar_svm::system_program::ID;
+    let program_id = Pubkey::from(crate::ID);
+
+    let (victim_account, _) = Pubkey::find_program_address(&[b"USER", victim.as_ref()], &program_id);
+
+    // The victim creates their user account.
+    let create_ix = Instruction {
+        program_id,
+        accounts: vec![
+            solana_instruction::AccountMeta::new(Address::from(victim.to_bytes()), true),
+            solana_instruction::AccountMeta::new(Address::from(victim_account.to_bytes()), false),
+            solana_instruction::AccountMeta::new_readonly(
+                Address::from(system_program.to_bytes()),
+                false,
+            ),
+        ],
+        data: build_create_instruction("Alice"),
+    };
+    let result = svm.process_instruction(&create_ix, &[signer(victim), empty(victim_account)]);
+    result.assert_success();
+
+    let victim_account_after_create = result.account(&victim_account).unwrap().clone();
+
+    // The attacker signs as `user` but passes the victim's account: the
+    // PDA derivation check must reject it before any lamports move.
+    let close_ix = Instruction {
+        program_id,
+        accounts: vec![
+            solana_instruction::AccountMeta::new(Address::from(attacker.to_bytes()), true),
+            solana_instruction::AccountMeta::new(Address::from(victim_account.to_bytes()), false),
+        ],
+        data: vec![1u8], // close_user discriminator
+    };
+    let result = svm.process_instruction(
+        &close_ix,
+        &[signer(attacker), victim_account_after_create],
+    );
+    result.assert_error(quasar_svm::ProgramError::Custom(
+        quasar_lang::prelude::QuasarError::InvalidPda as u32,
+    ));
 }

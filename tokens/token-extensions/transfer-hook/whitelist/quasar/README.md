@@ -1,4 +1,4 @@
-# Transfer Hook — Whitelist (Quasar)
+# Transfer Hook - Whitelist (Quasar)
 
 Only whitelisted accounts may receive tokens.
 

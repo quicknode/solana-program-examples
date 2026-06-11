@@ -12,7 +12,7 @@ use {
 /// constants for `name` / `symbol` / `uri`; this instruction takes them at
 /// runtime.
 #[derive(Accounts)]
-pub struct CreateToken {
+pub struct CreateTokenAccountConstraints {
     #[account(mut)]
     pub payer: Signer,
     #[account(
@@ -27,7 +27,7 @@ pub struct CreateToken {
         ),
     )]
     pub mint_account: Account<Mint>,
-    /// The metadata PDA — will be initialised by the Metaplex program.
+    /// The metadata PDA - will be initialised by the Metaplex program.
     #[account(mut)]
     pub metadata_account: UncheckedAccount,
     pub token_program: Program<TokenProgram>,
@@ -38,7 +38,7 @@ pub struct CreateToken {
 
 #[inline(always)]
 pub fn handle_create_token(
-    accounts: &mut CreateToken,
+    accounts: &mut CreateTokenAccountConstraints,
     token_name: &str,
     token_symbol: &str,
     token_uri: &str,

@@ -1,5 +1,6 @@
 use {
     crate::{
+        error::AmmError,
         state::{Config, PoolConfig, PoolConfigInner},
         ConfigPda, PoolAuthorityPda, PoolPda, BASIS_POINTS_DIVISOR,
     },
@@ -10,7 +11,7 @@ use {
 /// `pool_config` is mutable because each swap accumulates the admin's slice
 /// of the trading fee into `admin_fees_owed_a` / `admin_fees_owed_b`.
 #[derive(Accounts)]
-pub struct SwapTokensAccounts {
+pub struct SwapTokensAccountConstraints {
     #[account(address = ConfigPda::seeds())]
     pub config: Account<Config>,
     #[account(
@@ -50,11 +51,11 @@ pub struct SwapTokensAccounts {
 
 #[inline(always)]
 pub fn handle_swap_tokens(
-    accounts: &mut SwapTokensAccounts,
+    accounts: &mut SwapTokensAccountConstraints,
     input_is_token_a: bool,
     input_amount: u64,
     min_output_amount: u64,
-    bumps: &SwapTokensAccountsBumps,
+    bumps: &SwapTokensAccountConstraintsBumps,
 ) -> Result<(), ProgramError> {
     // Never silently clamp the input to the trader's balance: the trader's
     // min_output_amount is computed against the input they requested, so
@@ -66,7 +67,7 @@ pub fn handle_swap_tokens(
         accounts.token_b.amount()
     };
     if input_amount > trader_balance {
-        return Err(ProgramError::InsufficientFunds);
+        return Err(AmmError::InsufficientBalance.into());
     }
     let input = input_amount;
 
@@ -81,19 +82,21 @@ pub fn handle_swap_tokens(
     // intermediate `input * fee` can overflow u64; multiply before divide.
     let fee = accounts.config.fee() as u128;
     let admin_share_bps = accounts.config.admin_share_bps() as u128;
-    let fee_amount = (input as u128)
+    let fee_amount_u128 = (input as u128)
         .checked_mul(fee)
-        .ok_or(ProgramError::ArithmeticOverflow)?
+        .ok_or(AmmError::MathOverflow)?
         .checked_div(BASIS_POINTS_DIVISOR as u128)
-        .ok_or(ProgramError::ArithmeticOverflow)? as u64;
-    let admin_portion = (fee_amount as u128)
+        .ok_or(AmmError::MathOverflow)?;
+    let fee_amount = u64::try_from(fee_amount_u128).map_err(|_| AmmError::MathOverflow)?;
+    let admin_portion_u128 = (fee_amount as u128)
         .checked_mul(admin_share_bps)
-        .ok_or(ProgramError::ArithmeticOverflow)?
+        .ok_or(AmmError::MathOverflow)?
         .checked_div(BASIS_POINTS_DIVISOR as u128)
-        .ok_or(ProgramError::ArithmeticOverflow)? as u64;
+        .ok_or(AmmError::MathOverflow)?;
+    let admin_portion = u64::try_from(admin_portion_u128).map_err(|_| AmmError::MathOverflow)?;
     let taxed_input = input
         .checked_sub(fee_amount)
-        .ok_or(ProgramError::ArithmeticOverflow)?;
+        .ok_or(AmmError::MathOverflow)?;
 
     // Effective reserves = raw vault balance - admin's accumulated claim.
     // The constant-product curve runs on the LP-claimable portion only, so
@@ -106,43 +109,44 @@ pub fn handle_swap_tokens(
     let owed_b = accounts.pool_config.admin_fees_owed_b();
     let effective_pool_a = pool_a_raw
         .checked_sub(owed_a)
-        .ok_or(ProgramError::ArithmeticOverflow)?;
+        .ok_or(AmmError::MathOverflow)?;
     let effective_pool_b = pool_b_raw
         .checked_sub(owed_b)
-        .ok_or(ProgramError::ArithmeticOverflow)?;
+        .ok_or(AmmError::MathOverflow)?;
 
-    let output = if input_is_token_a {
+    let output_u128 = if input_is_token_a {
         (taxed_input as u128)
             .checked_mul(effective_pool_b as u128)
-            .ok_or(ProgramError::ArithmeticOverflow)?
+            .ok_or(AmmError::MathOverflow)?
             .checked_div(
                 (effective_pool_a as u128)
                     .checked_add(taxed_input as u128)
-                    .ok_or(ProgramError::ArithmeticOverflow)?,
+                    .ok_or(AmmError::MathOverflow)?,
             )
-            .ok_or(ProgramError::ArithmeticOverflow)? as u64
+            .ok_or(AmmError::MathOverflow)?
     } else {
         (taxed_input as u128)
             .checked_mul(effective_pool_a as u128)
-            .ok_or(ProgramError::ArithmeticOverflow)?
+            .ok_or(AmmError::MathOverflow)?
             .checked_div(
                 (effective_pool_b as u128)
                     .checked_add(taxed_input as u128)
-                    .ok_or(ProgramError::ArithmeticOverflow)?,
+                    .ok_or(AmmError::MathOverflow)?,
             )
-            .ok_or(ProgramError::ArithmeticOverflow)? as u64
+            .ok_or(AmmError::MathOverflow)?
     };
+    let output = u64::try_from(output_u128).map_err(|_| AmmError::MathOverflow)?;
 
-    if output < min_output_amount {
-        return Err(ProgramError::Custom(4)); // OutputTooSmall
-    }
+    // Trader's slippage protection: revert if the pool moved between quote
+    // and landing and the output dropped below the trader's floor.
+    require!(output >= min_output_amount, AmmError::SlippageExceeded);
 
     // Record invariant on the *effective* reserves before the trade. Using
     // raw balances would let the admin's accumulated fees count toward LP
     // yield (wrong).
     let invariant = (effective_pool_a as u128)
         .checked_mul(effective_pool_b as u128)
-        .ok_or(ProgramError::ArithmeticOverflow)?;
+        .ok_or(AmmError::MathOverflow)?;
 
     // Effects (Checks-Effects-Interactions): accumulate the admin's slice on
     // the *input* side before any transfer CPI. The fee always comes off the
@@ -152,13 +156,13 @@ pub fn handle_swap_tokens(
     // transfer.
     let (new_owed_a, new_owed_b) = if input_is_token_a {
         (
-            owed_a.checked_add(admin_portion).ok_or(ProgramError::ArithmeticOverflow)?,
+            owed_a.checked_add(admin_portion).ok_or(AmmError::MathOverflow)?,
             owed_b,
         )
     } else {
         (
             owed_a,
-            owed_b.checked_add(admin_portion).ok_or(ProgramError::ArithmeticOverflow)?,
+            owed_b.checked_add(admin_portion).ok_or(AmmError::MathOverflow)?,
         )
     };
     let config_addr = *accounts.pool_config.config();
@@ -207,27 +211,25 @@ pub fn handle_swap_tokens(
     // u128 + checked throughout - a raw `+`/`-` could wrap on extreme values.
     let new_pool_a_raw = (pool_a_raw as u128)
         .checked_add(if input_is_token_a { input as u128 } else { 0 })
-        .ok_or(ProgramError::ArithmeticOverflow)?
+        .ok_or(AmmError::MathOverflow)?
         .checked_sub(if !input_is_token_a { output as u128 } else { 0 })
-        .ok_or(ProgramError::ArithmeticOverflow)?;
+        .ok_or(AmmError::MathOverflow)?;
     let new_pool_b_raw = (pool_b_raw as u128)
         .checked_add(if !input_is_token_a { input as u128 } else { 0 })
-        .ok_or(ProgramError::ArithmeticOverflow)?
+        .ok_or(AmmError::MathOverflow)?
         .checked_sub(if input_is_token_a { output as u128 } else { 0 })
-        .ok_or(ProgramError::ArithmeticOverflow)?;
+        .ok_or(AmmError::MathOverflow)?;
     let new_effective_a = new_pool_a_raw
         .checked_sub(new_owed_a as u128)
-        .ok_or(ProgramError::ArithmeticOverflow)?;
+        .ok_or(AmmError::MathOverflow)?;
     let new_effective_b = new_pool_b_raw
         .checked_sub(new_owed_b as u128)
-        .ok_or(ProgramError::ArithmeticOverflow)?;
+        .ok_or(AmmError::MathOverflow)?;
     let new_invariant = new_effective_a
         .checked_mul(new_effective_b)
-        .ok_or(ProgramError::ArithmeticOverflow)?;
+        .ok_or(AmmError::MathOverflow)?;
 
-    if new_invariant < invariant {
-        return Err(ProgramError::Custom(5)); // InvariantViolated
-    }
+    require!(new_invariant >= invariant, AmmError::InvariantViolated);
 
     Ok(())
 }

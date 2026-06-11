@@ -43,7 +43,7 @@ fn token_account(address: Pubkey, mint: Pubkey, owner: Pubkey, amount: u64) -> A
     )
 }
 
-/// Test CPI transfer_checked (without CPI guard — should succeed).
+/// Test CPI transfer_checked (without CPI guard - should succeed).
 #[test]
 fn test_cpi_transfer() {
     let mut svm = setup();

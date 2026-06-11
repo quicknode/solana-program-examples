@@ -51,7 +51,7 @@ pub fn handle_withdraw_liquidity(
     // The `+ MINIMUM_LIQUIDITY` accounts for the bootstrap floor that was
     // locked away on the first deposit and is *not* part of the LP supply
     // counter (mint::supply doesn't include it) but *is* part of the
-    // reserves — so the divisor needs the same adjustment to keep shares
+    // reserves - so the divisor needs the same adjustment to keep shares
     // honest.
     //
     // u128 + checked: `lp_amount * reserve` can fill the full u128 (both

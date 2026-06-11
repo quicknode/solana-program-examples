@@ -2,6 +2,7 @@ extern crate std;
 use {
     alloc::vec,
     quasar_svm::{Account, Instruction, Pubkey, QuasarSvm},
+    solana_program_pack::Pack,
     spl_token_interface::state::{Account as TokenAccount, AccountState, Mint},
     std::println,
 };
@@ -43,8 +44,18 @@ fn token_account(address: Pubkey, mint_address: Pubkey, owner: Pubkey, amount: u
     )
 }
 
+/// Decimals configured by the mint fixture above, matching the program's
+/// `mint(decimals = 9)` constraint in `CreateTokenAccountConstraints`.
+const MINT_DECIMALS: u32 = 9;
+
+/// Converts a whole-token (major unit) count to minor units, the form the
+/// program's `mint_token` handler takes amounts in.
+fn to_minor_units(major_units: u64) -> u64 {
+    major_units.checked_mul(10u64.pow(MINT_DECIMALS)).unwrap()
+}
+
 /// Build mint_token instruction data.
-/// Wire format: [disc=1] [amount: u64 LE]
+/// Wire format: [disc=1] [amount: u64 LE, in minor units]
 fn build_mint_token_data(amount: u64) -> Vec<u8> {
     let mut data = vec![1u8];
     data.extend_from_slice(&amount.to_le_bytes());
@@ -66,7 +77,7 @@ fn test_mint_token() {
     let token_program = quasar_svm::SPL_TOKEN_PROGRAM_ID;
     let system_program = quasar_svm::system_program::ID;
 
-    let amount = 100u64;
+    let amount = to_minor_units(100);
     let data = build_mint_token_data(amount);
 
     let instruction = Instruction {
@@ -97,5 +108,12 @@ fn test_mint_token() {
         "mint_token failed: {:?}",
         result.raw_result
     );
+
+    // The recipient's token account balance is the exact minor-unit amount
+    // requested - the program performs no onchain scaling.
+    let token_account_after = result.account(&token_addr).unwrap();
+    let token_account_state = TokenAccount::unpack_from_slice(&token_account_after.data).unwrap();
+    assert_eq!(token_account_state.amount, amount);
+
     println!("  MINT TOKEN CU: {}", result.compute_units_consumed);
 }

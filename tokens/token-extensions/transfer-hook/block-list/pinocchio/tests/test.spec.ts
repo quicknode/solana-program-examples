@@ -24,7 +24,7 @@ import { assert } from "chai";
 import { FailedTransactionMetadata, LiteSVM, type TransactionMetadata } from "litesvm";
 import { before, describe, it } from "mocha";
 
-// Program ID baked into the on-chain program (`declare_id!` in program/src/lib.rs).
+// Program ID baked into the onchain program (`declare_id!` in program/src/lib.rs).
 const BLOCK_LIST_PROGRAM_ID = new PublicKey("BLoCKLSG2qMQ9YxEyrrKKAQzthvW4Lu8Eyv74axF6mf");
 const PROGRAM_SO_PATH = path.resolve(__dirname, "fixtures/block_list.so");
 
@@ -398,7 +398,7 @@ describe("block-list pinocchio transfer-hook", () => {
 
     // Re-issue the transfer with the (now-closed) wallet_block PDA still in
     // the extra metas. After unblock the wallet_block account no longer
-    // exists on-chain (lamports drained, data zeroed), so `data_is_empty()` is
+    // exists onchain (lamports drained, data zeroed), so `data_is_empty()` is
     // true in the hook and the transfer is no longer blocked.
     const transferTx = new Transaction().add(
       ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),

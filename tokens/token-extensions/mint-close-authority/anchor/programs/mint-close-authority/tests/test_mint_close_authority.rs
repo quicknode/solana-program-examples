@@ -32,7 +32,7 @@ fn test_create_and_close_mint() {
     let initialize_ix = Instruction::new_with_bytes(
         program_id,
         &mint_close_authority::instruction::Initialize {}.data(),
-        mint_close_authority::accounts::Initialize {
+        mint_close_authority::accounts::InitializeAccountConstraints {
             payer: payer.pubkey(),
             mint_account: mint_keypair.pubkey(),
             token_program: TOKEN_EXTENSIONS_PROGRAM_ID,
@@ -54,7 +54,7 @@ fn test_create_and_close_mint() {
     let close_ix = Instruction::new_with_bytes(
         program_id,
         &mint_close_authority::instruction::Close {}.data(),
-        mint_close_authority::accounts::Close {
+        mint_close_authority::accounts::CloseAccountConstraints {
             authority: payer.pubkey(),
             mint_account: mint_keypair.pubkey(),
             token_program: TOKEN_EXTENSIONS_PROGRAM_ID,
@@ -76,7 +76,7 @@ fn test_create_and_close_mint() {
     let initialize_ix2 = Instruction::new_with_bytes(
         program_id,
         &mint_close_authority::instruction::Initialize {}.data(),
-        mint_close_authority::accounts::Initialize {
+        mint_close_authority::accounts::InitializeAccountConstraints {
             payer: payer.pubkey(),
             mint_account: mint_keypair.pubkey(),
             token_program: TOKEN_EXTENSIONS_PROGRAM_ID,

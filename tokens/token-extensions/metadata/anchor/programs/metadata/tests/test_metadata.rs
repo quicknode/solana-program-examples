@@ -39,7 +39,7 @@ fn test_metadata_full_flow() {
             },
         }
         .data(),
-        metadata::accounts::Initialize {
+        metadata::accounts::InitializeAccountConstraints {
             payer: payer.pubkey(),
             mint_account: mint_keypair.pubkey(),
             token_program: TOKEN_EXTENSIONS_PROGRAM_ID,
@@ -73,7 +73,7 @@ fn test_metadata_full_flow() {
             },
         }
         .data(),
-        metadata::accounts::UpdateField {
+        metadata::accounts::UpdateFieldAccountConstraints {
             authority: payer.pubkey(),
             mint_account: mint_keypair.pubkey(),
             token_program: TOKEN_EXTENSIONS_PROGRAM_ID,
@@ -95,7 +95,7 @@ fn test_metadata_full_flow() {
             },
         }
         .data(),
-        metadata::accounts::UpdateField {
+        metadata::accounts::UpdateFieldAccountConstraints {
             authority: payer.pubkey(),
             mint_account: mint_keypair.pubkey(),
             token_program: TOKEN_EXTENSIONS_PROGRAM_ID,
@@ -119,7 +119,7 @@ fn test_metadata_full_flow() {
             key: "color".to_string(),
         }
         .data(),
-        metadata::accounts::RemoveKey {
+        metadata::accounts::RemoveKeyAccountConstraints {
             update_authority: payer.pubkey(),
             mint_account: mint_keypair.pubkey(),
             token_program: TOKEN_EXTENSIONS_PROGRAM_ID,
@@ -135,7 +135,7 @@ fn test_metadata_full_flow() {
     let update_authority_ix = Instruction::new_with_bytes(
         program_id,
         &metadata::instruction::UpdateAuthority {}.data(),
-        metadata::accounts::UpdateAuthority {
+        metadata::accounts::UpdateAuthorityAccountConstraints {
             current_authority: payer.pubkey(),
             new_authority: None,
             mint_account: mint_keypair.pubkey(),
@@ -157,7 +157,7 @@ fn test_metadata_full_flow() {
     let emit_ix = Instruction::new_with_bytes(
         program_id,
         &metadata::instruction::Emit {}.data(),
-        metadata::accounts::Emit {
+        metadata::accounts::EmitAccountConstraints {
             mint_account: mint_keypair.pubkey(),
             token_program: TOKEN_EXTENSIONS_PROGRAM_ID,
         }

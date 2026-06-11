@@ -6,33 +6,40 @@ use quasar_spl::prelude::*;
 #[cfg(test)]
 mod tests;
 
-declare_id!("22222222222222222222222222222222222222222222");
+declare_id!("nHi9DdNjuupjQ3c8AJU9sChB5gLbZvTLsJQouY4hU67");
 
-/// Demonstrates creating a mint, minting tokens, and transferring between accounts.
+/// Demonstrates minting tokens and transferring them between accounts.
 ///
-/// The Anchor version uses Metaplex for onchain metadata. Quasar does not have
-/// a Metaplex integration crate, so this example focuses on the core SPL Token
-/// operations: minting and transferring.
+/// The Anchor variant also creates Metaplex metadata for the mint; this
+/// variant focuses on the core token operations - minting and transferring -
+/// and leaves metadata out. Both handlers take `amount` in minor units (the
+/// raw integer the token program operates on); no scaling happens onchain.
 #[program]
 mod quasar_transfer_tokens {
     use super::*;
 
-    /// Mint tokens to a recipient's token account.
+    /// Mint `amount` minor units to a recipient's token account.
     #[instruction(discriminator = 0)]
-    pub fn mint_tokens(ctx: Ctx<MintTokens>, amount: u64) -> Result<(), ProgramError> {
+    pub fn mint_tokens(
+        ctx: Ctx<MintTokensAccountConstraints>,
+        amount: u64,
+    ) -> Result<(), ProgramError> {
         handle_mint_tokens(&mut ctx.accounts, amount)
     }
 
-    /// Transfer tokens from sender to recipient.
+    /// Transfer `amount` minor units from sender to recipient.
     #[instruction(discriminator = 1)]
-    pub fn transfer_tokens(ctx: Ctx<TransferTokens>, amount: u64) -> Result<(), ProgramError> {
+    pub fn transfer_tokens(
+        ctx: Ctx<TransferTokensAccountConstraints>,
+        amount: u64,
+    ) -> Result<(), ProgramError> {
         handle_transfer_tokens(&mut ctx.accounts, amount)
     }
 }
 
 /// Accounts for minting tokens to a recipient.
 #[derive(Accounts)]
-pub struct MintTokens {
+pub struct MintTokensAccountConstraints {
     #[account(mut)]
     pub mint_authority: Signer,
     #[account(mut)]
@@ -44,7 +51,10 @@ pub struct MintTokens {
 }
 
 #[inline(always)]
-fn handle_mint_tokens(accounts: &mut MintTokens, amount: u64) -> Result<(), ProgramError> {
+fn handle_mint_tokens(
+    accounts: &mut MintTokensAccountConstraints,
+    amount: u64,
+) -> Result<(), ProgramError> {
     accounts.token_program
         .mint_to(&accounts.mint, &accounts.recipient_token_account, &accounts.mint_authority, amount)
         .invoke()
@@ -52,7 +62,7 @@ fn handle_mint_tokens(accounts: &mut MintTokens, amount: u64) -> Result<(), Prog
 
 /// Accounts for transferring tokens between two token accounts.
 #[derive(Accounts)]
-pub struct TransferTokens {
+pub struct TransferTokensAccountConstraints {
     #[account(mut)]
     pub sender: Signer,
     #[account(mut)]
@@ -63,7 +73,10 @@ pub struct TransferTokens {
 }
 
 #[inline(always)]
-fn handle_transfer_tokens(accounts: &mut TransferTokens, amount: u64) -> Result<(), ProgramError> {
+fn handle_transfer_tokens(
+    accounts: &mut TransferTokensAccountConstraints,
+    amount: u64,
+) -> Result<(), ProgramError> {
     accounts.token_program
         .transfer(&accounts.sender_token_account, &accounts.recipient_token_account, &accounts.sender, amount)
         .invoke()

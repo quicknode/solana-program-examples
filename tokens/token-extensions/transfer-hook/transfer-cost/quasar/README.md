@@ -1,4 +1,4 @@
-# Transfer Hook — Transfer Cost (Quasar)
+# Transfer Hook - Transfer Cost (Quasar)
 
 Additional fee on each transfer via the hook.
 

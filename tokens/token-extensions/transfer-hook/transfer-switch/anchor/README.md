@@ -1,4 +1,4 @@
-# Transfer Hook — Transfer Switch (Anchor)
+# Transfer Hook - Transfer Switch (Anchor)
 
 Enable or disable transfers globally with onchain switch state.
 

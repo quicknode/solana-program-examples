@@ -7,7 +7,7 @@ use quasar_spl::prelude::*;
 #[cfg(test)]
 mod tests;
 
-declare_id!("22222222222222222222222222222222222222222222");
+declare_id!("52quezNUzc1Ej6Jh6L4bvtxPW8j6TEFHuLVAWiFvdnsc");
 
 /// NFT minter: creates a mint (decimals = 0), mints 1 token, creates Metaplex
 /// metadata and master edition in a single instruction.
@@ -19,7 +19,7 @@ mod quasar_nft_minter {
     // PR #195 made the capacity bound on `String<N>` mandatory.
     #[instruction(discriminator = 0)]
     pub fn mint_nft(
-        ctx: Ctx<MintNft>,
+        ctx: Ctx<MintNftAccountConstraints>,
         nft_name: String<32>,
         nft_symbol: String<10>,
         nft_uri: String<200>,
@@ -30,18 +30,18 @@ mod quasar_nft_minter {
 
 /// All accounts needed to mint an NFT in one transaction.
 #[derive(Accounts)]
-pub struct MintNft {
+pub struct MintNftAccountConstraints {
     #[account(mut)]
     pub payer: Signer,
 
-    /// Metadata PDA — initialised via the Metaplex program by an explicit
+    /// Metadata PDA - initialised via the Metaplex program by an explicit
     /// CPI below; stays an UncheckedAccount because the new
     /// `metadata(...)` behaviour only accepts compile-time literals for
     /// name / symbol / uri.
     #[account(mut)]
     pub metadata_account: UncheckedAccount,
 
-    /// Master edition PDA — initialised via the Metaplex program below.
+    /// Master edition PDA - initialised via the Metaplex program below.
     #[account(mut)]
     pub edition_account: UncheckedAccount,
 
@@ -76,7 +76,7 @@ pub struct MintNft {
 
 #[inline(always)]
 fn handle_mint_nft(
-    accounts: &mut MintNft,
+    accounts: &mut MintNftAccountConstraints,
     nft_name: &str,
     nft_symbol: &str,
     nft_uri: &str,

@@ -19,6 +19,10 @@ node_modules/
 **/*/target
 **/*/tests/fixtures/*
 !**/*/tests/fixtures/*.so
+# Exception to the exception: escrow native's fixture .so is OUR program's
+# build output (cargo build-sbf --sbf-out-dir=tests/fixtures regenerates it),
+# not a third-party dump, so it stays untracked.
+finance/escrow/native/tests/fixtures/escrow_native_program.so
 **/*.rs.bk
 **/*/test-ledger
 **/*/yarn.lock

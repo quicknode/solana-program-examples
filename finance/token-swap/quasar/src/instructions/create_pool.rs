@@ -13,10 +13,10 @@ use {
 /// - `liquidity_provider_mint = [b"liquidity", config, mint_a, mint_b]`
 ///
 /// `pool_authority` and `liquidity_provider_mint` derive at different
-/// on-chain addresses than the Anchor sibling because `#[derive(Seeds)]`
+/// onchain addresses than the Anchor sibling because `#[derive(Seeds)]`
 /// emits the literal prefix first. Internally consistent within this program.
 #[derive(Accounts)]
-pub struct CreatePoolAccounts {
+pub struct CreatePoolAccountConstraints {
     #[account(address = ConfigPda::seeds())]
     pub config: Account<Config>,
     #[account(
@@ -26,12 +26,12 @@ pub struct CreatePoolAccounts {
         address = PoolPda::seeds(config.address(), mint_a.address(), mint_b.address()),
     )]
     pub pool_config: Account<PoolConfig>,
-    /// Pool authority PDA — signs for pool token operations.
+    /// Pool authority PDA - signs for pool token operations.
     #[account(
         address = PoolAuthorityPda::seeds(config.address(), mint_a.address(), mint_b.address()),
     )]
     pub pool_authority: UncheckedAccount,
-    /// Liquidity token mint — created at a PDA.
+    /// Liquidity token mint - created at a PDA.
     #[account(
         mut,
         init,
@@ -66,7 +66,7 @@ pub struct CreatePoolAccounts {
 }
 
 #[inline(always)]
-pub fn handle_create_pool(accounts: &mut CreatePoolAccounts) -> Result<(), ProgramError> {
+pub fn handle_create_pool(accounts: &mut CreatePoolAccountConstraints) -> Result<(), ProgramError> {
     accounts.pool_config.set_inner(PoolConfigInner {
         config: *accounts.config.address(),
         mint_a: *accounts.mint_a.address(),

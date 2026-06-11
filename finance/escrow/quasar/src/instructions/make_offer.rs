@@ -5,10 +5,11 @@ use {
 };
 
 #[derive(Accounts)]
-pub struct MakeOffer {
+#[instruction(id: u64)]
+pub struct MakeOfferAccountConstraints {
     #[account(mut)]
     pub maker: Signer,
-    #[account(mut, init, payer = maker, address = Offer::seeds(maker.address()))]
+    #[account(mut, init, payer = maker, address = Offer::seeds(maker.address(), id))]
     pub offer: Account<Offer>,
     pub token_mint_a: Account<Mint>,
     pub token_mint_b: Account<Mint>,
@@ -34,12 +35,19 @@ pub struct MakeOffer {
 }
 
 #[inline(always)]
-pub fn handle_make_offer(accounts: &mut MakeOffer, receive: u64, bumps: &MakeOfferBumps) -> Result<(), ProgramError> {
+pub fn handle_make_offer(
+    accounts: &mut MakeOfferAccountConstraints,
+    id: u64,
+    receive: u64,
+    bumps: &MakeOfferAccountConstraintsBumps,
+) -> Result<(), ProgramError> {
     accounts.offer.set_inner(OfferInner {
+        id,
         maker: *accounts.maker.address(),
         token_mint_a: *accounts.token_mint_a.address(),
         token_mint_b: *accounts.token_mint_b.address(),
         maker_token_account_b: *accounts.maker_token_account_b.address(),
+        vault: *accounts.vault.address(),
         receive,
         bump: bumps.offer,
     });
@@ -47,8 +55,17 @@ pub fn handle_make_offer(accounts: &mut MakeOffer, receive: u64, bumps: &MakeOff
 }
 
 #[inline(always)]
-pub fn handle_deposit_tokens(accounts: &mut MakeOffer, amount: u64) -> Result<(), ProgramError> {
-    accounts.token_program
-        .transfer(&accounts.maker_token_account_a, &accounts.vault, &accounts.maker, amount)
+pub fn handle_deposit_tokens(
+    accounts: &mut MakeOfferAccountConstraints,
+    amount: u64,
+) -> Result<(), ProgramError> {
+    accounts
+        .token_program
+        .transfer(
+            &accounts.maker_token_account_a,
+            &accounts.vault,
+            &accounts.maker,
+            amount,
+        )
         .invoke()
 }

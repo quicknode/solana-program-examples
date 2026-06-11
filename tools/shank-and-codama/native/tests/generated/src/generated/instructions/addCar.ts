@@ -8,6 +8,7 @@
 
 import {
   type AccountMeta,
+  type AccountSignerMeta,
   type Address,
   addDecoderSizePrefix,
   addEncoderSizePrefix,
@@ -32,8 +33,10 @@ import {
   type ReadonlyUint8Array,
   SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
   SolanaError,
+  type TransactionSigner,
   transformEncoder,
   type WritableAccount,
+  type WritableSignerAccount,
 } from "@solana/kit";
 import { getAccountMetaFactory, type ResolvedInstructionAccount } from "@solana/program-client-core";
 import { CAR_RENTAL_SERVICE_PROGRAM_ADDRESS } from "../programs";
@@ -55,7 +58,9 @@ export type AddCarInstruction<
   InstructionWithAccounts<
     [
       TAccountCarAccount extends string ? WritableAccount<TAccountCarAccount> : TAccountCarAccount,
-      TAccountPayer extends string ? WritableAccount<TAccountPayer> : TAccountPayer,
+      TAccountPayer extends string
+        ? WritableSignerAccount<TAccountPayer> & AccountSignerMeta<TAccountPayer>
+        : TAccountPayer,
       TAccountSystemProgram extends string ? ReadonlyAccount<TAccountSystemProgram> : TAccountSystemProgram,
       ...TRemainingAccounts,
     ]
@@ -107,7 +112,7 @@ export type AddCarInput<
   /** The account that will represent the Car being created */
   carAccount: Address<TAccountCarAccount>;
   /** Fee payer */
-  payer: Address<TAccountPayer>;
+  payer: TransactionSigner<TAccountPayer>;
   /** The System Program */
   systemProgram?: Address<TAccountSystemProgram>;
   year: AddCarInstructionDataArgs["year"];

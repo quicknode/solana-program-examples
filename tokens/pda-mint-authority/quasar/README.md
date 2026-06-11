@@ -8,6 +8,8 @@ See also: [Pda Mint Authority overview](../README.md) and the [repository catalo
 
 - PDA mint authority
 - mint_to CPI
+- `create_mint` takes a `decimals` instruction argument and initializes the mint with it
+- `mint_tokens` takes `amount` in minor units, the raw integer the token program operates on
 
 ## Setup
 

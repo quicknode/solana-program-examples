@@ -1,22 +1,33 @@
-//! LiteSVM integration test for the cnft-vault Anchor program.
+//! LiteSVM integration tests for the cnft-vault Anchor program.
 //!
-//! Full flow exercised:
+//! Shared flow exercised by the tests:
 //!   1. Load the cnft-vault program plus the three mainnet fixtures
 //!      (mpl-bubblegum, spl-account-compression, spl-noop) into LiteSVM.
-//!   2. Allocate + initialize a Bubblegum Merkle tree (max_depth=3,
+//!   2. Initialize the vault PDA via `initialize_vault`, storing the
+//!      withdraw authority.
+//!   3. Allocate + initialize a Bubblegum Merkle tree (max_depth=3,
 //!      max_buffer_size=8, canopy=0) via `create_tree_config`.
-//!   3. Mint a single cNFT whose leaf_owner is the vault PDA (so the vault
+//!   4. Mint a single cNFT whose leaf_owner is the vault PDA (so the vault
 //!      holds it) via `mint_v1`.
-//!   4. Recompute `data_hash` / `creator_hash` exactly as Bubblegum does.
-//!   5. Build the Merkle proof for leaf 0 (all empty-node siblings) and read
-//!      the current root from the on-chain tree account.
-//!   6. Call our program's `withdraw_cnft`, which CPIs Bubblegum `Transfer`
-//!      signed by the vault PDA (`invoke_signed`), to move the cNFT to a
-//!      recipient. Assert the transaction succeeds and that a second withdraw
-//!      with the now-stale root fails (the leaf moved, so the root changed).
+//!   5. Recompute `data_hash` / `creator_hash` exactly as Bubblegum does.
+//!   6. Build the Merkle proof for leaf 0 (all empty-node siblings) and read
+//!      the current root from the onchain tree account.
+//!   7. Call the program's withdraw handlers, which CPI Bubblegum `Transfer`
+//!      signed by the vault PDA (`invoke_signed`), to move the cNFT(s) to a
+//!      recipient.
+//!
+//! Coverage:
+//!   - withdraw by the stored authority succeeds (single and two-cNFT)
+//!   - withdraw by a non-authority signer fails with
+//!     `VaultError::InvalidWithdrawAuthority`
+//!   - replaying a withdraw with the now-stale root fails
+//!   - a two-cNFT withdraw whose proof lengths do not match the supplied
+//!     proof accounts fails with `VaultError::ProofLengthMismatch` instead
+//!     of panicking inside `split_at`
 
 use {
     borsh::BorshSerialize,
+    cnft_vault::error::VaultError,
     litesvm::LiteSVM,
     solana_instruction::{account_meta::AccountMeta, Instruction},
     solana_keccak_hasher::hashv,
@@ -73,8 +84,8 @@ struct MetadataArgs {
     is_mutable: bool,
     edition_nonce: Option<u8>,
     token_standard: Option<u8>, // TokenStandard enum, encoded by variant index
-    collection: Option<u8>,     // None — Collection, kept absent
-    uses: Option<u8>,           // None — Uses, kept absent
+    collection: Option<u8>,     // None - Collection, kept absent
+    uses: Option<u8>,           // None - Uses, kept absent
     token_program_version: TokenProgramVersion,
     creators: Vec<Creator>,
 }
@@ -112,18 +123,19 @@ fn empty_node(level: u32) -> [u8; 32] {
     hashv(&[&lower, &lower]).to_bytes()
 }
 
-// ---- Anchor discriminator for withdraw_cnft --------------------------------
+// ---- Anchor instruction discriminators --------------------------------------
 
-fn withdraw_cnft_disc() -> [u8; 8] {
-    // sha256("global:withdraw_cnft")[..8]. Implemented inline to avoid pulling
-    // a crypto crate that conflicts with the program's solana version.
-    let digest = sha256(b"global:withdraw_cnft");
+// sha256("global:<handler_name>")[..8]. Implemented inline to avoid pulling
+// a crypto crate that conflicts with the program's solana version.
+fn anchor_discriminator(handler_name: &str) -> [u8; 8] {
+    let preimage = format!("global:{handler_name}");
+    let digest = sha256(preimage.as_bytes());
     let mut out = [0u8; 8];
     out.copy_from_slice(&digest[..8]);
     out
 }
 
-// Minimal SHA-256 (FIPS 180-4) — only used to derive the Anchor discriminator.
+// Minimal SHA-256 (FIPS 180-4) - only used to derive Anchor discriminators.
 fn sha256(input: &[u8]) -> [u8; 32] {
     const K: [u32; 64] = [
         0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4,
@@ -235,7 +247,7 @@ fn read_current_root(data: &[u8]) -> [u8; 32] {
     root
 }
 
-// ---- Helpers ---------------------------------------------------------------
+// ---- Transaction helpers ----------------------------------------------------
 
 fn send(
     svm: &mut LiteSVM,
@@ -250,8 +262,42 @@ fn send(
     svm.send_transaction(tx).map(|_| ()).map_err(Box::new)
 }
 
-#[test]
-fn test_withdraw_cnft() {
+/// Assert a failed transaction carries the given program error.
+fn assert_custom_error(
+    result: Result<(), Box<litesvm::types::FailedTransactionMetadata>>,
+    expected: VaultError,
+) {
+    let failed = result.expect_err("transaction should fail");
+    let expected_code = u32::from(expected);
+    let error_text = format!("{:?}", failed.err);
+    assert!(
+        error_text.contains(&format!("Custom({expected_code})")),
+        "expected Custom({expected_code}), got: {error_text}"
+    );
+}
+
+// ---- Fixture setup ----------------------------------------------------------
+
+/// One Bubblegum tree holding a single cNFT owned by the vault PDA, plus
+/// everything needed to withdraw it (root, hashes, proof).
+struct TreeWithVaultCnft {
+    merkle_tree: Pubkey,
+    tree_config: Pubkey,
+    root: [u8; 32],
+    data_hash: [u8; 32],
+    creator_hash: [u8; 32],
+    proof: [[u8; 32]; MAX_DEPTH as usize],
+}
+
+struct VaultTestContext {
+    svm: LiteSVM,
+    payer: Keypair,
+    /// The keypair stored as the vault's withdraw authority.
+    authority: Keypair,
+    vault_pda: Pubkey,
+}
+
+fn setup_vault() -> VaultTestContext {
     let mut svm = LiteSVM::new();
 
     // Load the cnft-vault program and the three mainnet fixtures.
@@ -276,21 +322,58 @@ fn test_withdraw_cnft() {
     )
     .unwrap();
 
-    // Fund payer.
     let payer = Keypair::new();
     svm.airdrop(&payer.pubkey(), 100 * solana_native_token::LAMPORTS_PER_SOL)
         .unwrap();
 
-    // The vault PDA that owns the cNFT and signs the transfer CPI.
-    // seeds = [b"cNFT-vault"] under the cnft-vault program.
+    let authority = Keypair::new();
+    svm.airdrop(
+        &authority.pubkey(),
+        10 * solana_native_token::LAMPORTS_PER_SOL,
+    )
+    .unwrap();
+
+    // The vault PDA that stores the authority, owns the cNFTs (as Bubblegum
+    // leaf owner) and signs the transfer CPI.
     let (vault_pda, _vault_bump) = Pubkey::find_program_address(&[b"cNFT-vault"], &CNFT_VAULT_ID);
 
-    // The recipient of the withdraw.
-    let recipient = Keypair::new();
+    // initialize_vault: store `authority` on the vault PDA.
+    let initialize_ix = Instruction {
+        program_id: CNFT_VAULT_ID,
+        accounts: vec![
+            AccountMeta::new(authority.pubkey(), true),
+            AccountMeta::new(vault_pda, false),
+            AccountMeta::new_readonly(SYSTEM_ID, false),
+        ],
+        data: anchor_discriminator("initialize_vault").to_vec(),
+    };
+    let mut svm_context = VaultTestContext {
+        svm,
+        payer,
+        authority,
+        vault_pda,
+    };
+    let authority_keypair = svm_context.authority.insecure_clone();
+    send(
+        &mut svm_context.svm,
+        vec![initialize_ix],
+        &authority_keypair,
+        &[&authority_keypair],
+    )
+    .expect("initialize_vault should succeed");
+
+    svm_context
+}
+
+/// Create a Bubblegum tree and mint one cNFT into the vault PDA.
+fn create_tree_with_vault_cnft(context: &mut VaultTestContext) -> TreeWithVaultCnft {
+    let payer = context.payer.insecure_clone();
 
     // Create the Merkle tree account, owned by the compression program.
     let merkle_tree = Keypair::new();
-    let rent = svm.minimum_balance_for_rent_exemption(TREE_ACCOUNT_SIZE);
+    let rent = context
+        .svm
+        .minimum_balance_for_rent_exemption(TREE_ACCOUNT_SIZE);
     let create_acc = Instruction {
         program_id: SYSTEM_ID,
         accounts: vec![
@@ -334,7 +417,7 @@ fn test_withdraw_cnft() {
     };
 
     send(
-        &mut svm,
+        &mut context.svm,
         vec![create_acc, create_tree_ix],
         &payer,
         &[&payer, &merkle_tree],
@@ -363,13 +446,13 @@ fn test_withdraw_cnft() {
         creators: vec![creator.clone()],
     };
 
-    // mint_v1 — leaf_owner and leaf_delegate are the vault PDA.
+    // mint_v1 - leaf_owner and leaf_delegate are the vault PDA.
     let mint_ix = Instruction {
         program_id: BUBBLEGUM_ID,
         accounts: vec![
             AccountMeta::new(tree_config, false),
-            AccountMeta::new_readonly(vault_pda, false),
-            AccountMeta::new_readonly(vault_pda, false), // leaf_delegate
+            AccountMeta::new_readonly(context.vault_pda, false),
+            AccountMeta::new_readonly(context.vault_pda, false), // leaf_delegate
             AccountMeta::new(merkle_tree.pubkey(), false),
             AccountMeta::new_readonly(payer.pubkey(), true),
             AccountMeta::new_readonly(payer.pubkey(), true), // tree_creator_or_delegate
@@ -383,7 +466,7 @@ fn test_withdraw_cnft() {
             d
         },
     };
-    send(&mut svm, vec![mint_ix], &payer, &[&payer]).expect("mint_v1 should succeed");
+    send(&mut context.svm, vec![mint_ix], &payer, &[&payer]).expect("mint_v1 should succeed");
 
     // Recompute data_hash and creator_hash exactly as Bubblegum does.
     let data_hash = hash_metadata(&metadata);
@@ -392,62 +475,294 @@ fn test_withdraw_cnft() {
     // Proof for leaf index 0 in an otherwise-empty tree: empty-node siblings.
     let proof = [empty_node(0), empty_node(1), empty_node(2)];
 
-    // Read the current root from the on-chain tree account.
-    let tree_data = svm.get_account(&merkle_tree.pubkey()).unwrap().data;
+    // Read the current root from the onchain tree account.
+    let tree_data = context
+        .svm
+        .get_account(&merkle_tree.pubkey())
+        .unwrap()
+        .data;
     let root = read_current_root(&tree_data);
 
-    // Build withdraw_cnft via our program. Accounts per Withdraw struct:
-    //   tree_authority (mut), leaf_owner (vault PDA), new_leaf_owner (recipient),
-    //   merkle_tree (mut), log_wrapper, compression_program, bubblegum_program,
-    //   system_program, then proof nodes as remaining accounts.
-    let mut withdraw_accounts = vec![
-        AccountMeta::new(tree_config, false),
-        AccountMeta::new_readonly(vault_pda, false),
-        AccountMeta::new_readonly(recipient.pubkey(), false),
-        AccountMeta::new(merkle_tree.pubkey(), false),
+    TreeWithVaultCnft {
+        merkle_tree: merkle_tree.pubkey(),
+        tree_config,
+        root,
+        data_hash,
+        creator_hash,
+        proof,
+    }
+}
+
+// ---- Instruction builders for the program under test ------------------------
+
+/// Build withdraw_cnft. Accounts per WithdrawCnftAccountConstraints:
+///   authority (signer), vault, tree_authority (mut), new_leaf_owner,
+///   merkle_tree (mut), log_wrapper, compression_program, bubblegum_program,
+///   system_program, then proof nodes as remaining accounts.
+fn build_withdraw_cnft_instruction(
+    context: &VaultTestContext,
+    signer: Pubkey,
+    tree: &TreeWithVaultCnft,
+    recipient: Pubkey,
+) -> Instruction {
+    let mut accounts = vec![
+        AccountMeta::new_readonly(signer, true),
+        AccountMeta::new_readonly(context.vault_pda, false),
+        AccountMeta::new(tree.tree_config, false),
+        AccountMeta::new_readonly(recipient, false),
+        AccountMeta::new(tree.merkle_tree, false),
         AccountMeta::new_readonly(NOOP_ID, false),
         AccountMeta::new_readonly(COMPRESSION_ID, false),
         AccountMeta::new_readonly(BUBBLEGUM_ID, false),
         AccountMeta::new_readonly(SYSTEM_ID, false),
     ];
-    for node in proof.iter() {
-        withdraw_accounts.push(AccountMeta::new_readonly(
+    for node in tree.proof.iter() {
+        accounts.push(AccountMeta::new_readonly(
             Pubkey::new_from_array(*node),
             false,
         ));
     }
 
-    let withdraw_data = {
-        let mut d = withdraw_cnft_disc().to_vec();
-        d.extend_from_slice(&root);
-        d.extend_from_slice(&data_hash);
-        d.extend_from_slice(&creator_hash);
+    let data = {
+        let mut d = anchor_discriminator("withdraw_cnft").to_vec();
+        d.extend_from_slice(&tree.root);
+        d.extend_from_slice(&tree.data_hash);
+        d.extend_from_slice(&tree.creator_hash);
         d.extend_from_slice(&0u64.to_le_bytes()); // nonce
         d.extend_from_slice(&0u32.to_le_bytes()); // index
         d
     };
 
-    let withdraw_ix = Instruction {
+    Instruction {
         program_id: CNFT_VAULT_ID,
-        accounts: withdraw_accounts.clone(),
-        data: withdraw_data.clone(),
+        accounts,
+        data,
+    }
+}
+
+/// Build withdraw_two_cnfts. Accounts per WithdrawTwoCnftsAccountConstraints:
+///   authority (signer), vault, tree_authority1 (mut), new_leaf_owner1,
+///   merkle_tree1 (mut), tree_authority2 (mut), new_leaf_owner2,
+///   merkle_tree2 (mut), log_wrapper, compression_program, bubblegum_program,
+///   system_program, then proof1 ++ proof2 as remaining accounts.
+fn build_withdraw_two_cnfts_instruction(
+    context: &VaultTestContext,
+    signer: Pubkey,
+    tree1: &TreeWithVaultCnft,
+    tree2: &TreeWithVaultCnft,
+    recipient: Pubkey,
+    proof_1_length: u8,
+    proof_2_length: u8,
+) -> Instruction {
+    let mut accounts = vec![
+        AccountMeta::new_readonly(signer, true),
+        AccountMeta::new_readonly(context.vault_pda, false),
+        AccountMeta::new(tree1.tree_config, false),
+        AccountMeta::new_readonly(recipient, false),
+        AccountMeta::new(tree1.merkle_tree, false),
+        AccountMeta::new(tree2.tree_config, false),
+        AccountMeta::new_readonly(recipient, false),
+        AccountMeta::new(tree2.merkle_tree, false),
+        AccountMeta::new_readonly(NOOP_ID, false),
+        AccountMeta::new_readonly(COMPRESSION_ID, false),
+        AccountMeta::new_readonly(BUBBLEGUM_ID, false),
+        AccountMeta::new_readonly(SYSTEM_ID, false),
+    ];
+    for node in tree1.proof.iter().chain(tree2.proof.iter()) {
+        accounts.push(AccountMeta::new_readonly(
+            Pubkey::new_from_array(*node),
+            false,
+        ));
+    }
+
+    let data = {
+        let mut d = anchor_discriminator("withdraw_two_cnfts").to_vec();
+        d.extend_from_slice(&tree1.root);
+        d.extend_from_slice(&tree1.data_hash);
+        d.extend_from_slice(&tree1.creator_hash);
+        d.extend_from_slice(&0u64.to_le_bytes()); // nonce1
+        d.extend_from_slice(&0u32.to_le_bytes()); // index1
+        d.push(proof_1_length);
+        d.extend_from_slice(&tree2.root);
+        d.extend_from_slice(&tree2.data_hash);
+        d.extend_from_slice(&tree2.creator_hash);
+        d.extend_from_slice(&0u64.to_le_bytes()); // nonce2
+        d.extend_from_slice(&0u32.to_le_bytes()); // index2
+        d.push(proof_2_length);
+        d
     };
 
-    // Withdraw is signed by the payer (the vault PDA signs via invoke_signed
-    // inside the program, not as a transaction signer).
-    send(&mut svm, vec![withdraw_ix], &payer, &[&payer]).expect("withdraw_cnft should succeed");
+    Instruction {
+        program_id: CNFT_VAULT_ID,
+        accounts,
+        data,
+    }
+}
+
+// ---- Tests ------------------------------------------------------------------
+
+#[test]
+fn test_withdraw_cnft_by_authority() {
+    let mut context = setup_vault();
+    let tree = create_tree_with_vault_cnft(&mut context);
+    let recipient = Keypair::new();
+    let authority = context.authority.insecure_clone();
+
+    let withdraw_ix = build_withdraw_cnft_instruction(
+        &context,
+        authority.pubkey(),
+        &tree,
+        recipient.pubkey(),
+    );
+
+    // The stored authority signs, so the withdraw succeeds (the vault PDA
+    // signs the Bubblegum CPI via invoke_signed inside the program).
+    send(
+        &mut context.svm,
+        vec![withdraw_ix.clone()],
+        &authority,
+        &[&authority],
+    )
+    .expect("withdraw_cnft signed by the vault authority should succeed");
 
     // After transfer, leaf 0's owner changed (vault -> recipient), so the root
     // moved. A second withdraw replaying the same (root, hashes) must fail: the
     // cached root is stale and the leaf no longer hashes to it for the vault.
-    let withdraw_ix2 = Instruction {
-        program_id: CNFT_VAULT_ID,
-        accounts: withdraw_accounts,
-        data: withdraw_data,
-    };
-    let second = send(&mut svm, vec![withdraw_ix2], &payer, &[&payer]);
+    let second = send(
+        &mut context.svm,
+        vec![withdraw_ix],
+        &authority,
+        &[&authority],
+    );
     assert!(
         second.is_err(),
         "second withdraw must fail: leaf already transferred out of the vault"
     );
+}
+
+#[test]
+fn test_withdraw_cnft_rejected_for_non_authority() {
+    let mut context = setup_vault();
+    let tree = create_tree_with_vault_cnft(&mut context);
+    let recipient = Keypair::new();
+
+    // An attacker funds and signs their own withdraw attempt; the vault's
+    // stored authority did not sign.
+    let attacker = Keypair::new();
+    context
+        .svm
+        .airdrop(
+            &attacker.pubkey(),
+            10 * solana_native_token::LAMPORTS_PER_SOL,
+        )
+        .unwrap();
+
+    let withdraw_ix =
+        build_withdraw_cnft_instruction(&context, attacker.pubkey(), &tree, recipient.pubkey());
+
+    let result = send(&mut context.svm, vec![withdraw_ix], &attacker, &[&attacker]);
+    assert_custom_error(result, VaultError::InvalidWithdrawAuthority);
+}
+
+#[test]
+fn test_withdraw_two_cnfts_by_authority() {
+    let mut context = setup_vault();
+    let tree1 = create_tree_with_vault_cnft(&mut context);
+    let tree2 = create_tree_with_vault_cnft(&mut context);
+    let recipient = Keypair::new();
+    let authority = context.authority.insecure_clone();
+
+    let withdraw_ix = build_withdraw_two_cnfts_instruction(
+        &context,
+        authority.pubkey(),
+        &tree1,
+        &tree2,
+        recipient.pubkey(),
+        MAX_DEPTH as u8,
+        MAX_DEPTH as u8,
+    );
+
+    send(
+        &mut context.svm,
+        vec![withdraw_ix],
+        &authority,
+        &[&authority],
+    )
+    .expect("withdraw_two_cnfts signed by the vault authority should succeed");
+
+    // Both trees' roots moved, so both cNFTs left the vault: replaying the
+    // single-tree withdraw against either tree with the cached roots fails.
+    let replay1 = build_withdraw_cnft_instruction(
+        &context,
+        authority.pubkey(),
+        &tree1,
+        recipient.pubkey(),
+    );
+    let replay = send(&mut context.svm, vec![replay1], &authority, &[&authority]);
+    assert!(
+        replay.is_err(),
+        "cNFT#1 already left the vault, replay must fail"
+    );
+}
+
+#[test]
+fn test_withdraw_two_cnfts_rejects_out_of_range_proof_length() {
+    let mut context = setup_vault();
+    let tree1 = create_tree_with_vault_cnft(&mut context);
+    let tree2 = create_tree_with_vault_cnft(&mut context);
+    let recipient = Keypair::new();
+    let authority = context.authority.insecure_clone();
+
+    // Claim one more proof node for tree1 than the instruction supplies in
+    // total: the bounds check must return ProofLengthMismatch instead of
+    // letting split_at(proof_1_length) panic and abort the program.
+    let supplied_proof_nodes = 2 * MAX_DEPTH as u8;
+    let out_of_range_proof_1_length = supplied_proof_nodes + 1;
+
+    let withdraw_ix = build_withdraw_two_cnfts_instruction(
+        &context,
+        authority.pubkey(),
+        &tree1,
+        &tree2,
+        recipient.pubkey(),
+        out_of_range_proof_1_length,
+        0,
+    );
+
+    let result = send(
+        &mut context.svm,
+        vec![withdraw_ix],
+        &authority,
+        &[&authority],
+    );
+    assert_custom_error(result, VaultError::ProofLengthMismatch);
+}
+
+#[test]
+fn test_withdraw_two_cnfts_rejects_inconsistent_proof_lengths() {
+    let mut context = setup_vault();
+    let tree1 = create_tree_with_vault_cnft(&mut context);
+    let tree2 = create_tree_with_vault_cnft(&mut context);
+    let recipient = Keypair::new();
+    let authority = context.authority.insecure_clone();
+
+    // proof_1_length is in range but the two lengths do not add up to the
+    // supplied proof accounts, so the split would misattribute proof nodes.
+    let withdraw_ix = build_withdraw_two_cnfts_instruction(
+        &context,
+        authority.pubkey(),
+        &tree1,
+        &tree2,
+        recipient.pubkey(),
+        MAX_DEPTH as u8 - 1,
+        MAX_DEPTH as u8,
+    );
+
+    let result = send(
+        &mut context.svm,
+        vec![withdraw_ix],
+        &authority,
+        &[&authority],
+    );
+    assert_custom_error(result, VaultError::ProofLengthMismatch);
 }

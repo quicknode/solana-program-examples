@@ -68,7 +68,7 @@ fn test_create_token_account_with_immutable_owner() {
     let initialize_ix = Instruction::new_with_bytes(
         program_id,
         &immutable_owner::instruction::Initialize {}.data(),
-        immutable_owner::accounts::Initialize {
+        immutable_owner::accounts::InitializeAccountConstraints {
             payer: payer.pubkey(),
             token_account: token_keypair.pubkey(),
             mint_account: mint,
@@ -90,7 +90,7 @@ fn test_create_token_account_with_immutable_owner() {
         token_data.data.len()
     );
 
-    // Step 3: Attempt to change the account owner — should fail due to immutable owner
+    // Step 3: Attempt to change the account owner - should fail due to immutable owner
     let new_owner = Keypair::new();
     let set_authority_ix = set_authority_instruction(
         &token_keypair.pubkey(),

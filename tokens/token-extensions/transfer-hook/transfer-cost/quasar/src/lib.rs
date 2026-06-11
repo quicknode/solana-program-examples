@@ -9,7 +9,7 @@ use quasar_lang::{
 #[cfg(test)]
 mod tests;
 
-declare_id!("22222222222222222222222222222222222222222222");
+declare_id!("FjcHckEgXcBhFmSGai3FRpDLiT6hbpV893n8iTxVd81g");
 
 /// SPL Transfer Hook Interface discriminators (SHA-256 prefix).
 #[allow(dead_code)]
@@ -31,16 +31,16 @@ mod quasar_transfer_hook_cost {
     /// Discriminator = sha256("spl-transfer-hook-interface:initialize-extra-account-metas")[:8]
     #[instruction(discriminator = [43, 34, 13, 49, 167, 88, 235, 235])]
     pub fn initialize_extra_account_meta_list(
-        ctx: Ctx<InitializeExtraAccountMetaList>,
+        ctx: Ctx<InitializeExtraAccountMetaListAccountConstraints>,
     ) -> Result<(), ProgramError> {
         handle_initialize_extra_account_meta_list(&mut ctx.accounts)
     }
 
-    /// Transfer hook handler — validates the amount and increments the counter.
+    /// Transfer hook handler - validates the amount and increments the counter.
     /// In the full version, this would also charge a WSOL fee via delegate.
     /// Discriminator = sha256("spl-transfer-hook-interface:execute")[:8]
     #[instruction(discriminator = [105, 37, 101, 197, 75, 251, 102, 26])]
-    pub fn transfer_hook(ctx: Ctx<TransferHook>, amount: u64) -> Result<(), ProgramError> {
+    pub fn transfer_hook(ctx: Ctx<TransferHookAccountConstraints>, amount: u64) -> Result<(), ProgramError> {
         handle_transfer_hook(&mut ctx.accounts, amount)
     }
 }
@@ -50,7 +50,7 @@ mod quasar_transfer_hook_cost {
 // ---------------------------------------------------------------------------
 
 #[derive(Accounts)]
-pub struct InitializeExtraAccountMetaList {
+pub struct InitializeExtraAccountMetaListAccountConstraints {
     #[account(mut)]
     pub payer: Signer,
     #[account(mut)]
@@ -63,7 +63,7 @@ pub struct InitializeExtraAccountMetaList {
 
 #[inline(always)]
 fn handle_initialize_extra_account_meta_list(
-    accounts: &mut InitializeExtraAccountMetaList,
+    accounts: &mut InitializeExtraAccountMetaListAccountConstraints,
 ) -> Result<(), ProgramError> {
         // Create ExtraAccountMetaList PDA with 1 extra account: counter
         let meta_list_size: u64 = 51;
@@ -138,7 +138,7 @@ fn handle_initialize_extra_account_meta_list(
 // ---------------------------------------------------------------------------
 
 #[derive(Accounts)]
-pub struct TransferHook {
+pub struct TransferHookAccountConstraints {
     pub source_token: UncheckedAccount,
     pub mint: UncheckedAccount,
     pub destination_token: UncheckedAccount,
@@ -149,7 +149,7 @@ pub struct TransferHook {
 }
 
 #[inline(always)]
-fn handle_transfer_hook(accounts: &mut TransferHook, amount: u64) -> Result<(), ProgramError> {
+fn handle_transfer_hook(accounts: &mut TransferHookAccountConstraints, amount: u64) -> Result<(), ProgramError> {
         // Validate amount
         if amount > 50 {
             log("Warning: large transfer amount");

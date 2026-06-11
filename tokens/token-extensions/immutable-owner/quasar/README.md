@@ -1,4 +1,4 @@
-# Token Extensions — Immutable Owner (Quasar)
+# Token Extensions - Immutable Owner (Quasar)
 
 Token accounts with an immutable owner field.
 

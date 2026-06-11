@@ -10,7 +10,7 @@ const MAX_CPI_ACCOUNTS: usize = 7 + MAX_PROOF_NODES;
 
 /// Accounts for burning a compressed NFT via mpl-bubblegum CPI.
 #[derive(Accounts)]
-pub struct BurnCnft {
+pub struct BurnCnftAccountConstraints {
     #[account(mut)]
     pub leaf_owner: Signer,
     /// Tree authority PDA (seeds checked by Bubblegum).
@@ -30,7 +30,7 @@ pub struct BurnCnft {
     pub system_program: Program<SystemProgram>,
 }
 
-pub fn handle_burn_cnft(accounts: &mut BurnCnft, data: &[u8], remaining: RemainingAccounts<'_>) -> Result<(), ProgramError> {
+pub fn handle_burn_cnft(accounts: &mut BurnCnftAccountConstraints, data: &[u8], remaining: RemainingAccounts<'_>) -> Result<(), ProgramError> {
     // Parse instruction args from raw data:
     // root(32) + data_hash(32) + creator_hash(32) + nonce(8) + index(4) = 108 bytes
     if data.len() < 108 {
@@ -47,7 +47,7 @@ pub fn handle_burn_cnft(accounts: &mut BurnCnft, data: &[u8], remaining: Remaini
     //
     // `remaining.iter()` yields `Result<RemainingAccount, _>` in newer
     // quasar-lang. Reach the inner `AccountView` via the unchecked accessor
-    // — this CPI only reads proof addresses and views, never touching the
+    // - this CPI only reads proof addresses and views, never touching the
     // accounts' data, so the aliasing/borrow invariants are upheld.
     let placeholder = accounts.system_program.to_account_view().clone();
     let mut proof_views: [AccountView; MAX_PROOF_NODES] =

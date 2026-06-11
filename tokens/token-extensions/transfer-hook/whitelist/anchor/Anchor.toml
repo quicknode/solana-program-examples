@@ -8,8 +8,6 @@ skip-lint = false
 [programs.localnet]
 transfer_hook = "DrWbQtYJGtsoRwzKqAbHKHKsCJJfpysudF39GBVFSxub"
 
-# [registry] section removed — no longer used in Anchor 1.0
-
 [provider]
 cluster = "Localnet"
 wallet = "~/.config/solana/id.json"
@@ -18,6 +16,6 @@ wallet = "~/.config/solana/id.json"
 test = "cargo test"
 
 # Transfer-hook tests use the real local validator (not bankrun).
-# No external program clones needed — this project doesn't use Metaplex.
+# No external program clones needed - this project doesn't use Metaplex.
 # The previous [[test.validator.clone]] of metaplex was unnecessary and
 # caused 5-minute timeouts in CI trying to fetch from devnet.

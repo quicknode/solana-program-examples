@@ -15,7 +15,7 @@ declare_id!("FjcHckEgXcBhFmSGai3FRpDLiT6hbpV893n8iTxVd81g");
 pub mod transfer_switch {
     use super::*;
 
-    pub fn configure_admin(mut context: Context<ConfigureAdmin>) -> Result<()> {
+    pub fn configure_admin(mut context: Context<ConfigureAdminAccountConstraints>) -> Result<()> {
         let bump = context.bumps.admin_config;
         handle_is_admin(&mut context.accounts)?;
         handle_configure_admin(&mut context.accounts, bump)
@@ -23,18 +23,18 @@ pub mod transfer_switch {
 
     #[instruction(discriminator = InitializeExtraAccountMetaListInstruction::SPL_DISCRIMINATOR_SLICE)]
     pub fn initialize_extra_account_metas_list(
-        mut context: Context<InitializeExtraAccountMetas>,
+        mut context: Context<InitializeExtraAccountMetasAccountConstraints>,
     ) -> Result<()> {
         handle_initialize_extra_account_metas_list(&mut context.accounts, context.bumps)
     }
 
-    pub fn switch(mut context: Context<Switch>, on: bool) -> Result<()> {
+    pub fn switch(mut context: Context<SwitchAccountConstraints>, on: bool) -> Result<()> {
         let bump = context.bumps.wallet_switch;
         handle_switch(&mut context.accounts, on, bump)
     }
 
     #[instruction(discriminator = ExecuteInstruction::SPL_DISCRIMINATOR_SLICE)]
-    pub fn transfer_hook(mut context: Context<TransferHook>, _amount: u64) -> Result<()> {
+    pub fn transfer_hook(mut context: Context<TransferHookAccountConstraints>, _amount: u64) -> Result<()> {
         handle_assert_is_transferring(&mut context.accounts)?;
         handle_assert_switch_is_on(&mut context.accounts)
     }

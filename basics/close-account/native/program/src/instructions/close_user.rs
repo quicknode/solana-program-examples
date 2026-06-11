@@ -1,29 +1,50 @@
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
-    rent::Rent,
-    sysvar::Sysvar,
+    program_error::ProgramError,
+    pubkey::Pubkey,
 };
 
-pub fn close_user(accounts: &[AccountInfo]) -> ProgramResult {
+use crate::state::user::User;
+
+pub fn close_user(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
     let target_account = next_account_info(accounts_iter)?;
     let payer = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
-    let account_span = 0usize;
-    let lamports_required = (Rent::get()?).minimum_balance(account_span);
+    // Only the user whose key derives the PDA may close it.
+    if !payer.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
 
-    let diff = target_account.lamports() - lamports_required;
+    // The target must be this payer's own User PDA; otherwise anyone could
+    // close anyone else's account and pocket the rent.
+    let (user_pda, _) = Pubkey::find_program_address(
+        &[User::SEED_PREFIX.as_bytes(), payer.key.as_ref()],
+        program_id,
+    );
+    if &user_pda != target_account.key {
+        return Err(ProgramError::InvalidSeeds);
+    }
 
-    // Send the rent back to the payer
-    **target_account.lamports.borrow_mut() -= diff;
-    **payer.lamports.borrow_mut() += diff;
+    // The account must belong to this program before we drain it.
+    if target_account.owner != program_id {
+        return Err(ProgramError::IncorrectProgramId);
+    }
 
-    // Realloc the account to zero
-    target_account.resize(account_span)?;
+    // Move ALL lamports back to the payer. Leaving any balance behind would
+    // strand it forever: nobody can sign for the PDA to recover it later.
+    let lamports_to_return = target_account.lamports();
+    let new_payer_lamports = payer
+        .lamports()
+        .checked_add(lamports_to_return)
+        .ok_or(ProgramError::ArithmeticOverflow)?;
+    **payer.lamports.borrow_mut() = new_payer_lamports;
+    **target_account.lamports.borrow_mut() = 0;
 
-    // Assign the account to the System Program
+    // Wipe the data and hand the empty account back to the System Program.
+    target_account.resize(0)?;
     target_account.assign(system_program.key);
 
     Ok(())

@@ -1,4 +1,4 @@
-# Token Extensions — Mint Close Authority (Anchor)
+# Token Extensions - Mint Close Authority (Anchor)
 
 Designate an account allowed to close the mint and reclaim lamports.
 

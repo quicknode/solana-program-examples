@@ -3,7 +3,7 @@ use anchor_lang::prelude::*;
 use crate::{ABWallet, Config, AB_WALLET_SEED, CONFIG_SEED};
 
 #[derive(Accounts)]
-pub struct InitWallet<'info> {
+pub struct InitWalletAccountConstraints<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
 
@@ -28,7 +28,7 @@ pub struct InitWallet<'info> {
     pub system_program: Program<'info, System>,
 }
 
-impl InitWallet<'_> {
+impl InitWalletAccountConstraints<'_> {
     pub fn init_wallet(&mut self, args: InitWalletArgs, bump: u8) -> Result<()> {
         let ab_wallet = &mut self.ab_wallet;
         ab_wallet.wallet = self.wallet.key();

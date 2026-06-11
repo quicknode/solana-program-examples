@@ -2,7 +2,7 @@
 
 [Pyth](https://pyth.network/) is an oracle that publishes low-latency market data from institutional sources [onchain](https://solana.com/docs/terminology#onchain). You can use it to read real-world asset prices from Solana [programs](https://solana.com/docs/terminology#program).
 
-Each asset's price lives in its own Solana [account](https://solana.com/docs/terminology#account) — a **price feed**.
+Each asset's price lives in its own Solana [account](https://solana.com/docs/terminology#account) - a **price feed**.
 
 For example, the SOL/USD price feed on mainnet lives at `H6ARHf6YXhGYeQfUzQNGk6rDNnLBQKrenN712K4AQJEG`.
 

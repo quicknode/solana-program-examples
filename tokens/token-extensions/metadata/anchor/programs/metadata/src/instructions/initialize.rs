@@ -7,7 +7,7 @@ use spl_token_metadata_interface::state::TokenMetadata;
 use spl_type_length_value::variable_len_pack::VariableLenPack;
 
 #[derive(Accounts)]
-pub struct Initialize<'info> {
+pub struct InitializeAccountConstraints<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
 
@@ -24,7 +24,7 @@ pub struct Initialize<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn process_initialize(context: Context<Initialize>, args: TokenMetadataArgs) -> Result<()> {
+pub fn process_initialize(context: Context<InitializeAccountConstraints>, args: TokenMetadataArgs) -> Result<()> {
     let TokenMetadataArgs { name, symbol, uri } = args;
 
     // Define token metadata

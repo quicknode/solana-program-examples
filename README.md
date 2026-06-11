@@ -6,11 +6,11 @@
 
 Each example is available in one or more of the following frameworks:
 
-- [⚓ Anchor](https://www.anchor-lang.com/) — the most popular framework for Solana development. Build with `anchor build`, test with `pnpm test` as defined in `Anchor.toml`.
-- [💫 Quasar](https://quasar-lang.com/docs) — a newer, more performant framework with Anchor-compatible ergonomics. Run `pnpm test` to execute tests.
-- [🤥 Pinocchio](https://github.com/anza-xyz/pinocchio) — a zero-copy, zero-allocation library for Solana programs. Run `pnpm test` to execute tests.
-- [🦀 Native Rust](https://docs.anza.xyz/) — vanilla Rust using Solana's native crates. Run `pnpm test` to execute tests.
-- [🧬 ASM](https://github.com/blueshift-gg/sbpf) — hand-written sBPF assembly built with the `sbpf` toolchain. Run `pnpm build-and-test` to build and test.
+- [⚓ Anchor](https://www.anchor-lang.com/) - the most popular framework for Solana development. Build with `anchor build`, test with `pnpm test` as defined in `Anchor.toml`.
+- [💫 Quasar](https://quasar-lang.com/docs) - a newer, more performant framework with Anchor-compatible ergonomics. Run `pnpm test` to execute tests.
+- [🤥 Pinocchio](https://github.com/anza-xyz/pinocchio) - a zero-copy, zero-allocation library for Solana programs. Run `pnpm test` to execute tests.
+- [🦀 Native Rust](https://docs.anza.xyz/) - vanilla Rust using Solana's native crates. Run `pnpm test` to execute tests.
+- [🧬 ASM](https://github.com/blueshift-gg/sbpf) - hand-written sBPF assembly built with the `sbpf` toolchain. Run `pnpm build-and-test` to build and test.
 
 > [!NOTE]
 > You don't need to write your own program for basic tasks like creating [accounts](https://solana.com/docs/terminology#account), transferring SOL, or minting tokens. These are handled by existing programs like the System Program and Token Program.
@@ -19,7 +19,7 @@ Each example is available in one or more of the following frameworks:
 
 ### Escrow
 
-**Start here — the best first finance program to learn on Solana.** A neutral account that holds funds until both sides deliver, like a real-estate escrow or a lawyer's trust account. The maker deposits token A and names how much token B they want; when a taker supplies token B, the program swaps both in a single all-or-nothing transaction. This swap is the core idea behind every onchain exchange.
+**Start here - the best first finance program to learn on Solana.** A neutral account that holds funds until both sides deliver, like a real-estate escrow or a lawyer's trust account. The maker deposits token A and names how much token B they want; when a taker supplies token B, the program swaps both in a single all-or-nothing transaction. This swap is the core idea behind every onchain exchange.
 
 [⚓ Anchor](./finance/escrow/anchor) [💫 Quasar](./finance/escrow/quasar) [🦀 Native](./finance/escrow/native)
 
@@ -49,7 +49,7 @@ A managed investment fund onchain, like an ETF or mutual fund. Investors deposit
 
 ### Betting Market
 
-Parimutuel (pooled) prediction market — an admin opens an event with multiple outcomes, bettors stake tokens on an outcome, and at settlement the losing pool (minus a protocol fee) is split among winners in proportion to their stake.
+Parimutuel (pooled) prediction market - an admin opens an event with multiple outcomes, bettors stake tokens on an outcome, and at settlement the losing pool (minus a protocol fee) is split among winners in proportion to their stake.
 
 [⚓ Anchor](./tokens/betting-market/anchor)
 
@@ -70,7 +70,7 @@ Store and retrieve data using Solana accounts.
 
 ### Counter
 
-Use a [PDA](https://solana.com/docs/terminology#program-derived-address-pda) to store global state — a counter that increments when called.
+Use a [PDA](https://solana.com/docs/terminology#program-derived-address-pda) to store global state - a counter that increments when called.
 
 [⚓ Anchor](./basics/counter/anchor) [💫 Quasar](./basics/counter/quasar) [🤥 Pinocchio](./basics/counter/pinocchio) [🦀 Native](./basics/counter/native)
 
@@ -100,7 +100,7 @@ Create new accounts on the blockchain.
 
 ### Cross-Program Invocation
 
-Call one program from another — the hand program invokes the lever program to toggle a switch.
+Call one program from another - the hand program invokes the lever program to toggle a switch.
 
 [⚓ Anchor](./basics/cross-program-invocation/anchor) [💫 Quasar](./basics/cross-program-invocation/quasar) [🦀 Native](./basics/cross-program-invocation/native)
 
@@ -148,7 +148,7 @@ Send SOL between two accounts.
 
 ### Pyth Price Feeds
 
-An **oracle** brings real-world market prices — a dollar, a stock, a token — [onchain](https://solana.com/docs/terminology#onchain), like a Bloomberg terminal feeding live quotes. [Pyth](https://pyth.network/) publishes low-latency prices from institutional sources, each in its own price feed account. This example reads a feed and logs its price, confidence interval, and exponent — the building block an AMM, lending market, or vault uses to value assets.
+An **oracle** brings real-world market prices - a dollar, a stock, a token - [onchain](https://solana.com/docs/terminology#onchain), like a Bloomberg terminal feeding live quotes. [Pyth](https://pyth.network/) publishes low-latency prices from institutional sources, each in its own price feed account. This example reads a feed and logs its price, confidence interval, and exponent - the building block an AMM, lending market, or vault uses to value assets.
 
 [⚓ Anchor](./basics/pyth/anchor) [💫 Quasar](./basics/pyth/quasar)
 
@@ -282,43 +282,43 @@ Create tokens with a built-in transfer fee.
 
 [⚓ Anchor](./tokens/token-extensions/transfer-fee/anchor) [💫 Quasar](./tokens/token-extensions/transfer-fee/quasar) [🦀 Native](./tokens/token-extensions/transfer-fee/native)
 
-### Transfer Hook — Hello World
+### Transfer Hook - Hello World
 
 A minimal transfer hook that executes custom logic on every token transfer.
 
 [⚓ Anchor](./tokens/token-extensions/transfer-hook/hello-world/anchor) [💫 Quasar](./tokens/token-extensions/transfer-hook/hello-world/quasar)
 
-### Transfer Hook — Counter
+### Transfer Hook - Counter
 
 Count how many times tokens have been transferred.
 
 [⚓ Anchor](./tokens/token-extensions/transfer-hook/counter/anchor) [💫 Quasar](./tokens/token-extensions/transfer-hook/counter/quasar)
 
-### Transfer Hook — Account Data as Seed
+### Transfer Hook - Account Data as Seed
 
 Use token account owner data as seeds to derive extra accounts in a transfer hook.
 
 [⚓ Anchor](./tokens/token-extensions/transfer-hook/account-data-as-seed/anchor) [💫 Quasar](./tokens/token-extensions/transfer-hook/account-data-as-seed/quasar)
 
-### Transfer Hook — Allow/Block List
+### Transfer Hook - Allow/Block List
 
 Restrict or allow token transfers using an onchain list managed by a list authority.
 
 [⚓ Anchor](./tokens/token-extensions/transfer-hook/allow-block-list-token/anchor) [💫 Quasar](./tokens/token-extensions/transfer-hook/allow-block-list-token/quasar)
 
-### Transfer Hook — Transfer Cost
+### Transfer Hook - Transfer Cost
 
 Charge an additional fee on every token transfer.
 
 [⚓ Anchor](./tokens/token-extensions/transfer-hook/transfer-cost/anchor) [💫 Quasar](./tokens/token-extensions/transfer-hook/transfer-cost/quasar)
 
-### Transfer Hook — Transfer Switch
+### Transfer Hook - Transfer Switch
 
 Enable or disable token transfers with an onchain switch.
 
 [⚓ Anchor](./tokens/token-extensions/transfer-hook/transfer-switch/anchor) [💫 Quasar](./tokens/token-extensions/transfer-hook/transfer-switch/quasar)
 
-### Transfer Hook — Whitelist
+### Transfer Hook - Whitelist
 
 Restrict transfers so only whitelisted accounts can receive tokens.
 
@@ -343,6 +343,14 @@ Store Metaplex compressed NFTs inside a PDA.
 Work with Metaplex compressed NFTs.
 
 [⚓ Anchor](./compression/cutils/anchor) [💫 Quasar](./compression/cutils/quasar)
+
+## Tools
+
+### Shank and Codama
+
+Generate an IDL from a native Rust program with [Shank](https://github.com/metaplex-foundation/shank), then generate a TypeScript client from that IDL with [Codama](https://github.com/codama-idl/codama).
+
+[🦀 Native](./tools/shank-and-codama/native)
 
 ---
 

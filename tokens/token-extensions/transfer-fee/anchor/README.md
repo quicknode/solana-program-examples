@@ -1,4 +1,4 @@
-# Token Extensions — Transfer Fee (Anchor)
+# Token Extensions - Transfer Fee (Anchor)
 
 Charge a fee on each transfer configured at the mint level.
 

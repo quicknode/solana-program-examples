@@ -37,7 +37,7 @@ impl Car {
     }
 }
 
-#[derive(BorshDeserialize, BorshSerialize, Clone, Debug)]
+#[derive(BorshDeserialize, BorshSerialize, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RentalOrderStatus {
     Created,
     PickedUp,

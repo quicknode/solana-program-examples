@@ -1,5 +1,6 @@
 use {
     crate::{
+        error::AmmError,
         state::{Config, PoolConfig, PoolConfigInner},
         ConfigPda, PoolAuthorityPda, PoolPda,
     },
@@ -11,7 +12,7 @@ use {
 /// enforce that explicitly in the handler since quasar doesn't have an
 /// Anchor-style `has_one` constraint.
 #[derive(Accounts)]
-pub struct ClaimAdminFeesAccounts {
+pub struct ClaimAdminFeesAccountConstraints {
     #[account(address = ConfigPda::seeds())]
     pub config: Account<Config>,
     #[account(
@@ -19,7 +20,7 @@ pub struct ClaimAdminFeesAccounts {
         address = PoolPda::seeds(config.address(), mint_a.address(), mint_b.address()),
     )]
     pub pool_config: Account<PoolConfig>,
-    /// Pool authority PDA — signs the outbound transfers.
+    /// Pool authority PDA - signs the outbound transfers.
     #[account(address = PoolAuthorityPda::seeds(config.address(), mint_a.address(), mint_b.address()))]
     pub pool_authority: UncheckedAccount,
     pub mint_a: Account<Mint>,
@@ -46,16 +47,21 @@ pub struct ClaimAdminFeesAccounts {
 
 #[inline(always)]
 pub fn handle_claim_admin_fees(
-    accounts: &mut ClaimAdminFeesAccounts,
-    bumps: &ClaimAdminFeesAccountsBumps,
+    accounts: &mut ClaimAdminFeesAccountConstraints,
+    bumps: &ClaimAdminFeesAccountConstraintsBumps,
 ) -> Result<(), ProgramError> {
     // Authorisation: only the address stored in `Config.admin` may call this.
     if *accounts.admin.address() != *accounts.config.admin() {
-        return Err(ProgramError::Custom(6)); // Unauthorized
+        return Err(AmmError::Unauthorized.into());
     }
 
     let owed_a = accounts.pool_config.admin_fees_owed_a();
     let owed_b = accounts.pool_config.admin_fees_owed_b();
+
+    // Revert (rather than silently no-op) when there is nothing to sweep, so
+    // the admin gets a clear signal the call was wasted. Matches the Anchor
+    // variant's behaviour.
+    require!(owed_a > 0 || owed_b > 0, AmmError::NothingToClaim);
 
     // Seed order matches PoolAuthorityPda: [b"authority", config, mint_a, mint_b, bump].
     let bump = [bumps.pool_authority];

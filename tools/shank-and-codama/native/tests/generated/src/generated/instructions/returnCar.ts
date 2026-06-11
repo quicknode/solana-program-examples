@@ -8,6 +8,7 @@
 
 import {
   type AccountMeta,
+  type AccountSignerMeta,
   type Address,
   combineCodec,
   type FixedSizeCodec,
@@ -24,8 +25,10 @@ import {
   type ReadonlyUint8Array,
   SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
   SolanaError,
+  type TransactionSigner,
   transformEncoder,
   type WritableAccount,
+  type WritableSignerAccount,
 } from "@solana/kit";
 import { getAccountMetaFactory, type ResolvedInstructionAccount } from "@solana/program-client-core";
 import { CAR_RENTAL_SERVICE_PROGRAM_ADDRESS } from "../programs";
@@ -48,7 +51,9 @@ export type ReturnCarInstruction<
     [
       TAccountRentalAccount extends string ? WritableAccount<TAccountRentalAccount> : TAccountRentalAccount,
       TAccountCarAccount extends string ? ReadonlyAccount<TAccountCarAccount> : TAccountCarAccount,
-      TAccountPayer extends string ? WritableAccount<TAccountPayer> : TAccountPayer,
+      TAccountPayer extends string
+        ? WritableSignerAccount<TAccountPayer> & AccountSignerMeta<TAccountPayer>
+        : TAccountPayer,
       ...TRemainingAccounts,
     ]
   >;
@@ -85,7 +90,7 @@ export type ReturnCarInput<
   /** The account representing the Car being rented in this order */
   carAccount: Address<TAccountCarAccount>;
   /** Fee payer */
-  payer: Address<TAccountPayer>;
+  payer: TransactionSigner<TAccountPayer>;
 };
 
 export function getReturnCarInstruction<

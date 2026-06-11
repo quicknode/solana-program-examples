@@ -5,12 +5,38 @@ declare_id!("GUkjQmrLPFXXNK1bFLKt8XQi6g3TjxcHVspbjDoHvMG2");
 /// The Pyth Receiver program that owns `PriceUpdateV2` accounts on devnet/mainnet.
 pub const PYTH_RECEIVER_PROGRAM_ID: Pubkey = pubkey!("rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ");
 
+/// Maximum allowed age of a price update before it is rejected as stale.
+/// Pyth's `publish_time` is a unix timestamp in seconds, so the age check
+/// uses unix time rather than slots: seconds are the only freshness signal
+/// the price message carries (this mirrors the official
+/// `pyth-solana-receiver-sdk`'s `get_price_no_older_than`).
+pub const MAXIMUM_PRICE_AGE_SECONDS: i64 = 60;
+
+#[error_code]
+pub enum PythExampleError {
+    #[msg("The price update is older than the maximum allowed age")]
+    PriceTooOld,
+    #[msg("Computing the price update's age overflowed an i64")]
+    MathOverflow,
+}
+
 #[program]
 pub mod anchor_test {
     use super::*;
 
-    pub fn read_price(context: Context<ReadPrice>) -> Result<()> {
+    pub fn read_price(context: Context<ReadPriceAccountConstraints>) -> Result<()> {
         let price_update = &context.accounts.price_update;
+
+        // Reject stale prices: a price that stopped updating is wrong.
+        let price_age_seconds = Clock::get()?
+            .unix_timestamp
+            .checked_sub(price_update.price_message.publish_time)
+            .ok_or(PythExampleError::MathOverflow)?;
+        require!(
+            price_age_seconds <= MAXIMUM_PRICE_AGE_SECONDS,
+            PythExampleError::PriceTooOld
+        );
+
         msg!("Price feed id: {:?}", price_update.price_message.feed_id);
         msg!("Price: {:?}", price_update.price_message.price);
         msg!("Confidence: {:?}", price_update.price_message.conf);
@@ -24,7 +50,7 @@ pub mod anchor_test {
 }
 
 #[derive(Accounts)]
-pub struct ReadPrice<'info> {
+pub struct ReadPriceAccountConstraints<'info> {
     pub price_update: Account<'info, PriceUpdateV2>,
 }
 
@@ -50,7 +76,7 @@ pub struct ReadPrice<'info> {
 // https://github.com/pyth-network/pyth-crosschain/issues/3756
 //
 // The fields, order, and 8-byte
-// discriminator below match the on-chain account exactly, and it is owned by
+// discriminator below match the onchain account exactly, and it is owned by
 // the Pyth Receiver program (see the `Owner` impl), so accounts written by Pyth
 // deserialize unchanged. Replace this with the SDK type once an Anchor 1.0 /
 // borsh 1.x compatible `pyth-solana-receiver-sdk` release ships.

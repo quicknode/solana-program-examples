@@ -11,7 +11,7 @@ use crate::{
 use super::transfer_tokens_to_vault;
 
 #[derive(Accounts)]
-pub struct PlaceBet<'info> {
+pub struct PlaceBetAccountConstraints<'info> {
     #[account(mut)]
     pub bettor: Signer<'info>,
 
@@ -79,7 +79,7 @@ pub struct PlaceBet<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handle_place_bet(context: Context<PlaceBet>, amount: u64) -> Result<()> {
+pub fn handle_place_bet(context: Context<PlaceBetAccountConstraints>, amount: u64) -> Result<()> {
     require!(amount > 0, BettingError::ZeroAmount);
     require!(
         context.accounts.event.status == EventStatus::Open,
@@ -112,18 +112,30 @@ pub fn handle_place_bet(context: Context<PlaceBet>, amount: u64) -> Result<()> {
         bet.event = event_key;
         bet.outcome = outcome_key;
         bet.outcome_index = outcome_index;
-        bet.claimed = false;
         bet.bump = bet_bump;
     }
-    bet.amount += amount;
+    bet.amount = bet
+        .amount
+        .checked_add(amount)
+        .ok_or(BettingError::MathOverflow)?;
 
     let outcome = &mut context.accounts.outcome;
-    outcome.total_amount += amount;
+    outcome.total_amount = outcome
+        .total_amount
+        .checked_add(amount)
+        .ok_or(BettingError::MathOverflow)?;
     if is_new_bet {
-        outcome.bet_count += 1;
+        outcome.bet_count = outcome
+            .bet_count
+            .checked_add(1)
+            .ok_or(BettingError::MathOverflow)?;
     }
 
-    context.accounts.event.total_pool += amount;
+    let event = &mut context.accounts.event;
+    event.total_pool = event
+        .total_pool
+        .checked_add(amount)
+        .ok_or(BettingError::MathOverflow)?;
 
     let user = &mut context.accounts.user;
     if user.authority == Pubkey::default() {

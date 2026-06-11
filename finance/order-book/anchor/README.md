@@ -1,6 +1,6 @@
-# Order Book — Central Limit Order Book (CLOB)
+# Order Book - Central Limit Order Book (CLOB)
 
-This is an **[order book](https://www.investopedia.com/terms/o/order-book.asp)** — specifically, a **[central limit order
+This is an **[order book](https://www.investopedia.com/terms/o/order-book.asp)** - specifically, a **[central limit order
 book (CLOB)](https://www.investopedia.com/terms/o/order-book.asp)**, the standard piece of market infrastructure used by
 NYSE, NASDAQ, LSE, CME, and every major crypto venue. An Anchor
 program that runs an onchain order book for a single pair of token mints:
@@ -20,7 +20,7 @@ are, skip to [Accounts and PDAs](#2-accounts-and-pdas) or
 - [A real-world walkthrough: NVDAx/USDC](#a-real-world-walkthrough-nvdaxusdc)
 2. [Accounts and PDAs](#2-accounts-and-pdas)
 3. [Instruction lifecycle walkthrough](#3-instruction-lifecycle-walkthrough)
-4. [The matching engine — step by step](#4-the-matching-engine--step-by-step)
+4. [The matching engine - step by step](#4-the-matching-engine--step-by-step)
 - [Ensuring fast order matching performance](#ensuring-fast-order-matching-performance)
 5. [Full-lifecycle worked examples](#5-full-lifecycle-worked-examples)
 6. [Safety and edge cases](#6-safety-and-edge-cases)
@@ -33,52 +33,52 @@ are, skip to [Accounts and PDAs](#2-accounts-and-pdas) or
 
 Two users want to swap tokens at prices they each picked:
 
-- Alice holds **USDC** (the *[quote](https://www.investopedia.com/terms/q/quotecurrency.asp)* mint — the pricing unit, the way USD
+- Alice holds **USDC** (the *[quote](https://www.investopedia.com/terms/q/quotecurrency.asp)* mint - the pricing unit, the way USD
   is the pricing unit in "NVDAx is $950") and wants to buy **NVDAx**
-  (the *[base](https://www.investopedia.com/terms/b/basecurrency.asp)* mint — the asset being priced), but only if she can
+  (the *[base](https://www.investopedia.com/terms/b/basecurrency.asp)* mint - the asset being priced), but only if she can
   get NVDAx at 900 USDC per share or lower.
 - Bob holds **NVDAx** and wants USDC, but only if he can get at least
   950 USDC per NVDAx share he sells.
 
-They post their offers — Alice a *bid* (a buy offer at a limit price),
-Bob an *ask* (a sell offer at a limit price) — and wait. Alice's bid
+They post their offers - Alice a *bid* (a buy offer at a limit price),
+Bob an *ask* (a sell offer at a limit price) - and wait. Alice's bid
 sits on the book. Bob's ask sits on the book. Neither crosses the
 other, so nothing happens yet.
 
 Later, Carol shows up holding NVDAx and willing to sell at any price ≥ 900
 USDC. She posts an ask at 900. Now Alice's bid (900 USDC) *crosses*
-Carol's new ask (900 USDC) — the bid is ≥ the ask. The program:
+Carol's new ask (900 USDC) - the bid is ≥ the ask. The program:
 
 1. Pairs them up.
 2. Locks Carol's NVDAx in the program's base vault (Carol signed this
    transaction, so only her funds move).
-3. Allocates Alice's USDC — already sitting in the quote vault since
-   Alice placed her bid — to Carol.
+3. Allocates Alice's USDC - already sitting in the quote vault since
+   Alice placed her bid - to Carol.
 4. Credits each party's unsettled balance with what they're owed, minus
    a fee for the market operator. Tokens don't leave the vaults yet;
    Alice and Carol each call `settle_funds` later to pull them out.
 
-At no point does either of them transfer directly to the other — all
+At no point does either of them transfer directly to the other - all
 token flows go through two program-owned vaults, and both users later
 call `settle_funds` to pull their balances out.
 
 ### The onchain pieces, in plain terms
 
-- A **Market** PDA — one per base/quote pair. Stores fee rate, tick
+- A **Market** PDA - one per base/quote pair. Stores fee rate, tick
   size, minimum order size, the addresses of the four related accounts
   (base vault, quote vault, fee vault, order book), and the pubkey
   that can withdraw accumulated fees.
-- An **OrderBook** account — two stores: bids sorted highest-first,
+- An **OrderBook** account - two stores: bids sorted highest-first,
   asks sorted lowest-first, each holding up to 1024 entries. Rather
   than a plain list of orders, each side uses a depth-bounded tree (a
-  critbit trie) for fast lookup — see [Ensuring fast order matching performance](#ensuring-fast-order-matching-performance).
+  critbit trie) for fast lookup - see [Ensuring fast order matching performance](#ensuring-fast-order-matching-performance).
   Each entry stores enough to drive matching (price, quantity,
   `order_id`); the full `Order` PDA holds the authoritative state.
-- A **MarketUser** PDA — one per `(market, wallet)` pair. Tracks the
+- A **MarketUser** PDA - one per `(market, wallet)` pair. Tracks the
   order_ids this user has open and two running tallies
   (`unsettled_base`, `unsettled_quote`) of tokens owed back to this
   user from fills or cancellations.
-- An **Order** PDA — one per placed order. Stores price, quantity,
+- An **Order** PDA - one per placed order. Stores price, quantity,
   side (bid or ask), fill status, and the owner.
 - Three token accounts held by the Market PDA: `base_vault` (all
   sellers' locked base + buyers' bought base waiting to be withdrawn),
@@ -87,7 +87,7 @@ call `settle_funds` to pull their balances out.
 
 ### Finance background, briefly
 
-For readers new to trading terms — these are the same concepts every
+For readers new to trading terms - these are the same concepts every
 equity, futures, and crypto exchange uses. They're optional;
 everything above describes the program mechanically.
 
@@ -102,9 +102,9 @@ everything above describes the program mechanically.
   book on the ask side is the lowest-priced sell offer.
 
 - **A [maker](https://www.investopedia.com/terms/m/marketmaker.asp)** is whoever posts an order that doesn't immediately
-  match — they "make" [liquidity](https://www.investopedia.com/terms/l/liquidity.asp) by leaving their offer on the book
+  match - they "make" [liquidity](https://www.investopedia.com/terms/l/liquidity.asp) by leaving their offer on the book
   for others to trade against. A **[taker](https://www.investopedia.com/terms/m/maker_taker.asp)** is whoever walks into the
-  book and hits the resting orders — they "take" liquidity.
+  book and hits the resting orders - they "take" liquidity.
 
 - **A [taker fee](https://www.investopedia.com/terms/m/maker_taker.asp)** is a cut of each trade taken by the venue from the
   taker's leg of the trade, expressed in *[basis points](https://www.investopedia.com/terms/b/basispoint.asp)* (bps). One
@@ -124,7 +124,7 @@ everything above describes the program mechanically.
 
 - **Not deployed, not audited.** Treat as a learning example, not
   production-ready code.
-- **No [immediate-or-cancel](https://www.investopedia.com/terms/i/immediateorcancel.asp) (IOC), [fill-or-kill](https://www.investopedia.com/terms/f/fill-or-kill.asp) (FOK), or post-only orders** — every
+- **No [immediate-or-cancel](https://www.investopedia.com/terms/i/immediateorcancel.asp) (IOC), [fill-or-kill](https://www.investopedia.com/terms/f/fill-or-kill.asp) (FOK), or post-only orders** - every
   order matches what it can at the limit price and rests any remainder
   on the book. IOC would discard the remainder instead of resting it;
   FOK would reject the whole order unless it fills entirely; post-only
@@ -139,7 +139,7 @@ being priced and the quote is the pricing unit. Bids spend quote and
 receive base; asks spend base and receive quote.
 
 **Limit price.** The worst price at which an order is allowed to
-trade — for a bid, the *highest* the buyer will pay; for an ask, the
+trade - for a bid, the *highest* the buyer will pay; for an ask, the
 *lowest* the seller will accept. A bid at 900 won't fill against an
 ask at 950.
 
@@ -152,7 +152,7 @@ Keeps dust orders from polluting the book.
 
 **Match / fill / cross.** Two orders *cross* when the bid's price is
 ≥ the ask's price; they *match* (are paired up) and a *fill* is the
-result — one crossing event with a fill quantity and a fill price.
+result - one crossing event with a fill quantity and a fill price.
 One call to `place_order` can produce many fills.
 
 **[Price improvement](https://www.investopedia.com/terms/p/priceimprovement.asp).** When a taker's limit is better than the best
@@ -167,7 +167,7 @@ tokens still sit in the market's vaults. `settle_funds` moves them
 to the user's own token accounts and zeroes the counters.
 
 **Fee vault.** A separate token account (quote mint) owned by the
-Market PDA. Every taker fee — `gross * fee_bps / 10_000` per fill —
+Market PDA. Every taker fee - `ceil(gross * fee_bps / 10_000)` per fill -
 moves here in one batched CPI at the end of `place_order`.
 
 **Remaining accounts.** Solana lets the caller pass a tail of extra
@@ -187,23 +187,23 @@ This section walks through a complete sequence of trades using four real partici
 
 | Token | What it is | Role on this market |
 |---|---|---|
-| **NVDAx** | An onchain NVIDIA share (xStock). Its price tracks the underlying stock. | **Base asset** — the thing being bought and sold |
-| **USDC** | A stablecoin redeemable 1:1 for US dollars | **Quote asset** — the currency used for pricing and payment |
+| **NVDAx** | An onchain NVIDIA share (xStock). Its price tracks the underlying stock. | **Base asset** - the thing being bought and sold |
+| **USDC** | A stablecoin redeemable 1:1 for US dollars | **Quote asset** - the currency used for pricing and payment |
 
-A price of **960** means "960 USDC per NVDAx". The same program logic — identical instruction handlers and account structure — works for any other pair, such as **TSLAx/USDC** (Tesla xStock).
+A price of **960** means "960 USDC per NVDAx". The same program logic - identical instruction handlers and account structure - works for any other pair, such as **TSLAx/USDC** (Tesla xStock).
 
 ### The participants
 
 | Name | Role | Motivation |
 |---|---|---|
 | **Maria** | Market authority | Earns 0.25 % ([25 basis points](https://www.investopedia.com/terms/b/basispoint.asp)) on every fill. Her revenue scales with market volume, so she wants a liquid, trusted venue. |
-| **Alice** | Retail investor — buyer | Bullish thesis: she expects NVDAx to rise from ~960 USDC to ~1 100 as demand for NVIDIA's AI chips grows. She wants to accumulate NVDAx at a good price before that move. |
+| **Alice** | Retail investor - buyer | Bullish thesis: she expects NVDAx to rise from ~960 USDC to ~1 100 as demand for NVIDIA's AI chips grows. She wants to accumulate NVDAx at a good price before that move. |
 | **Bob** | [Market maker](https://www.investopedia.com/terms/m/marketmaker.asp) | No directional view on NVDAx. Profits from the [bid-ask spread](https://www.investopedia.com/terms/b/bid-askspread.asp): he simultaneously quotes a buy price (bid) below fair value and a sell price (ask) above it. If both sides fill, the difference is his gross revenue. He provides [liquidity](https://www.investopedia.com/terms/l/liquidity.asp) to the market in exchange for that spread. |
-| **Carol** | Retail investor — seller | Bought NVDAx at 800 USDC six months ago. It is now trading around 960. She wants to sell some to [realise her profit](https://www.investopedia.com/terms/r/realizedprofit.asp) in USDC. |
+| **Carol** | Retail investor - seller | Bought NVDAx at 800 USDC six months ago. It is now trading around 960. She wants to sell some to [realise her profit](https://www.investopedia.com/terms/r/realizedprofit.asp) in USDC. |
 
 ---
 
-### Step 1 — Maria creates the market
+### Step 1 - Maria creates the market
 
 **Instruction: `initialize_market(fee_basis_points=25, tick_size=1, min_order_size=1)`**
 **Key accounts: `base_mint = NVDAx`, `quote_mint = USDC`**
@@ -222,11 +222,11 @@ Maria's wallet signs. Five accounts are created:
 
 ---
 
-### Step 2 — Alice, Bob, and Carol register as traders
+### Step 2 - Alice, Bob, and Carol register as traders
 
 **Instruction: `create_market_user`** (called once by each trader)
 
-Each call creates one `MarketUser` PDA — a per-(trader, market) account that tracks their open orders and any tokens owed to them:
+Each call creates one `MarketUser` PDA - a per-(trader, market) account that tracks their open orders and any tokens owed to them:
 
 | Account | Seeds | State after |
 |---|---|---|
@@ -236,11 +236,11 @@ Each call creates one `MarketUser` PDA — a per-(trader, market) account that t
 
 ---
 
-### Step 3 — Bob posts a sell offer (ask) at 965 USDC
+### Step 3 - Bob posts a sell offer (ask) at 965 USDC
 
-Bob estimates NVDAx fair value at 960 USDC. He quotes a 10-USDC spread — ask at 965, bid at 955. He starts by posting the ask.
+Bob estimates NVDAx fair value at 960 USDC. He quotes a 10-USDC spread - ask at 965, bid at 955. He starts by posting the ask.
 
-**Instruction: `place_order(side=Ask, price=965, quantity=10)`** (no `remaining_accounts` — book is empty)
+**Instruction: `place_order(side=Ask, price=965, quantity=10)`** (no `remaining_accounts` - book is empty)
 
 **Token flow:**
 ```
@@ -264,7 +264,7 @@ bids  []
 
 ---
 
-### Step 4 — Alice places a buy offer (bid) at 950 USDC
+### Step 4 - Alice places a buy offer (bid) at 950 USDC
 
 Alice places a [limit order](https://www.investopedia.com/terms/l/limitorder.asp): she will buy 5 NVDAx but pay no more than 950 USDC each. Her bid (950) does not cross Bob's ask (965), so nothing fills and her bid rests on the book.
 
@@ -294,13 +294,13 @@ The [bid-ask spread](https://www.investopedia.com/terms/b/bid-askspread.asp) is 
 
 ---
 
-### Step 5 — Carol sells into Alice's bid
+### Step 5 - Carol sells into Alice's bid
 
-Carol wants to sell 3 NVDAx. Alice is bidding 950 USDC — above Carol's floor of 945. Carol sends an [ask](https://www.investopedia.com/terms/a/ask.asp) at 945 and passes Alice's resting order as a maker.
+Carol wants to sell 3 NVDAx. Alice is bidding 950 USDC - above Carol's floor of 945. Carol sends an [ask](https://www.investopedia.com/terms/a/ask.asp) at 945 and passes Alice's resting order as a maker.
 
 **Instruction: `place_order(side=Ask, price=945, quantity=3, remaining_accounts=[alice_order_pda, alice_market_user_pda])`**
 
-**Crossing check:** Carol's ask (945) ≤ Alice's bid (950) ✓ — the orders cross. Fill price = 950 (Alice's price — the resting [maker](https://www.investopedia.com/terms/m/marketmaker.asp) always sets the execution price). Carol named 945 but receives 950 — that is [price improvement](https://www.investopedia.com/terms/p/priceimprovement.asp).
+**Crossing check:** Carol's ask (945) ≤ Alice's bid (950) ✓ - the orders cross. Fill price = 950 (Alice's price - the resting [maker](https://www.investopedia.com/terms/m/marketmaker.asp) always sets the execution price). Carol named 945 but receives 950 - that is [price improvement](https://www.investopedia.com/terms/p/priceimprovement.asp).
 
 **Token flow (Carol's NVDAx locked up front):**
 ```
@@ -312,8 +312,8 @@ carol_nvdax_ata --[3 NVDAx]--> base_vault
 | Line item | Calculation | Result |
 |---|---|---|
 | Gross quote exchanged | 950 × 3 | 2 850 USDC |
-| Taker fee (25 bps) | 2 850 × 25 / 10 000 | 7 USDC |
-| Carol's net proceeds | 2 850 − 7 | 2 843 USDC → `carol.MarketUser.unsettled_quote` |
+| Taker fee (25 bps) | ceil(2 850 × 25 / 10 000) = ceil(7.125) | 8 USDC |
+| Carol's net proceeds | 2 850 − 8 | 2 842 USDC → `carol.MarketUser.unsettled_quote` |
 | Alice's base received | 3 NVDAx | → `alice.MarketUser.unsettled_base` |
 
 **Accounts changed:**
@@ -321,11 +321,11 @@ carol_nvdax_ata --[3 NVDAx]--> base_vault
 | Account | Change |
 |---|---|
 | `base_vault` | +3 NVDAx (Carol's lock) |
-| `fee_vault` | +7 USDC (fee CPI from quote_vault) |
+| `fee_vault` | +8 USDC (fee CPI from quote_vault) |
 | Alice's `Order` PDA (id=2) | `filled_quantity=3`, `status=PartiallyFilled` |
 | Alice's `MarketUser.unsettled_base` | +3 NVDAx |
-| Alice's `MarketUser.open_orders` | `[2]` (still open — 2 of 5 NVDAx remain) |
-| Carol's `MarketUser.unsettled_quote` | +2 843 USDC |
+| Alice's `MarketUser.open_orders` | `[2]` (still open - 2 of 5 NVDAx remain) |
+| Carol's `MarketUser.unsettled_quote` | +2 842 USDC |
 | New Carol's `Order` PDA (id=3) | `side=Ask, price=945, qty=3, status=Filled` |
 | `OrderBook.bids` | Alice's leaf quantity: 5 → 2 |
 
@@ -335,11 +335,11 @@ asks  [(id=1, price=965, qty=10)]   ← Bob (untouched)
 bids  [(id=2, price=950, qty=2)]    ← Alice (3 filled, 2 still resting)
 ```
 
-Alice has 3 NVDAx credited to her (tracked in `unsettled_base`). Carol has 2 993 USDC credited (tracked in `unsettled_quote`). Neither amount has left the vaults yet — that happens on `settle_funds`.
+Alice has 3 NVDAx credited to her (tracked in `unsettled_base`). Carol has 2 993 USDC credited (tracked in `unsettled_quote`). Neither amount has left the vaults yet - that happens on `settle_funds`.
 
 ---
 
-### Step 6 — Settlement: tokens move to wallets
+### Step 6 - Settlement: tokens move to wallets
 
 [Settlement](https://www.investopedia.com/terms/s/settlement.asp) is when the program pays out what it owes.
 
@@ -351,17 +351,17 @@ base_vault --[3 NVDAx]--> alice_nvdax_ata
 
 **Carol calls `settle_funds`:**
 ```
-quote_vault --[2 843 USDC]--> carol_usdc_ata
+quote_vault --[2 842 USDC]--> carol_usdc_ata
 ```
 `carol.MarketUser.unsettled_quote = 0`
 
 ---
 
-### Step 7 — Maria sweeps fees
+### Step 7 - Maria sweeps fees
 
 **Maria calls `withdraw_fees`:**
 ```
-fee_vault --[7 USDC]--> maria_usdc_ata
+fee_vault --[8 USDC]--> maria_usdc_ata
 ```
 `fee_vault.balance = 0`
 
@@ -372,9 +372,9 @@ fee_vault --[7 USDC]--> maria_usdc_ata
 | Participant | Paid / locked | Received | Outcome |
 |---|---|---|---|
 | **Alice** | 4 750 USDC (for 5 NVDAx) | 3 NVDAx + 1 900 USDC still in `quote_vault` (2-NVDAx bid resting at 950) | Thesis running; waiting for a seller at 950 to fill the rest |
-| **Carol** | 3 NVDAx (cost 800 each) | 2 843 USDC | Locked in ≈ 148 USDC/NVDAx profit net of fee |
-| **Bob** | 10 NVDAx locked | Nothing yet — ask at 965 unfilled | Earns the spread when a buyer at 965 arrives |
-| **Maria** | — | 7 USDC | Fee revenue |
+| **Carol** | 3 NVDAx (cost 800 each) | 2 842 USDC | Locked in ≈ 147 USDC/NVDAx profit net of fee |
+| **Bob** | 10 NVDAx locked | Nothing yet - ask at 965 unfilled | Earns the spread when a buyer at 965 arrives |
+| **Maria** | - | 8 USDC | Fee revenue |
 
 Alice's remaining 2-NVDAx [bid](https://www.investopedia.com/terms/b/bid.asp) stays on the book. The next seller willing to part with NVDAx at 950 or below will fill it automatically. A **TSLAx/USDC** market runs the same seven steps with different mint addresses.
 
@@ -395,7 +395,7 @@ Alice's remaining 2-NVDAx [bid](https://www.investopedia.com/terms/b/bid.asp) st
 
 | Account | PDA? | Authority | Mint | Holds |
 |---|---|---|---|---|
-| `base_vault` | no (regular token account) | Market PDA | base | bids' locked base IS NOT STORED HERE — only asks' locked base sits here pre-match, plus base owed to bid-takers waiting for `settle_funds` |
+| `base_vault` | no (regular token account) | Market PDA | base | bids' locked base IS NOT STORED HERE - only asks' locked base sits here pre-match, plus base owed to bid-takers waiting for `settle_funds` |
 | `quote_vault` | no | Market PDA | quote | bids' locked quote pre-match, plus quote owed to ask-takers and bid-makers waiting for settlement |
 | `fee_vault` | no | Market PDA | quote | taker fees accumulated across all fills; drained by `withdraw_fees` |
 
@@ -473,7 +473,7 @@ Three reasons:
 1. **Unsettled balances are per-market by definition.** Different
    markets use different `base_mint` / `quote_mint` pairs, so the
    scalar `unsettled_base` / `unsettled_quote` fields can't be
-   shared across markets — they'd refer to different tokens.
+   shared across markets - they'd refer to different tokens.
 
 2. **Open-order indexing is local to one book.** `open_orders`
    holds `order_id`s that index into a specific market's
@@ -503,7 +503,7 @@ At any point in time:
 (Plus the bit of quote that the matching engine has already taken out
 as fee and batched into `fee_vault`.)
 
-This is not a hard invariant the program enforces — it emerges from
+This is not a hard invariant the program enforces - it emerges from
 the flows. The invariant worth caring about is the per-event balance:
 every fill moves tokens from the loser's locked pool to the winner's
 `unsettled_*`, plus the fee cut to `fee_vault`. The unit tests check
@@ -516,12 +516,12 @@ this directly (`settle_funds_after_match_pays_out_both_unsettled_balances`).
 The program has six instruction handlers. The order a user encounters
 them is:
 
-1. `initialize_market` (market operator — once)
+1. `initialize_market` (market operator - once)
 2. `create_market_user` (every user, once per market)
-3. `place_order` (a user — as many times as they want)
-4. `cancel_order` (a user — to remove a resting order)
-5. `settle_funds` (a user — to collect winnings)
-6. `withdraw_fees` (market authority — to collect protocol revenue)
+3. `place_order` (a user - as many times as they want)
+4. `cancel_order` (a user - to remove a resting order)
+5. `settle_funds` (a user - to collect winnings)
+6. `withdraw_fees` (market authority - to collect protocol revenue)
 
 For each, the shape is: who signs, what accounts go in, what PDAs get
 created, what token flows happen, what state mutates, what checks are
@@ -552,10 +552,10 @@ pub fn initialize_market(
 
 **Accounts in:**
 
-- `authority` (signer, mut — pays account rent for all five new
+- `authority` (signer, mut - pays account rent for all five new
   accounts)
 - `market` (PDA, **init**, seeds `["market", base_mint, quote_mint]`)
-- `order_book` (not a PDA — client calls `system_program::create_account`
+- `order_book` (not a PDA - client calls `system_program::create_account`
   first, sized to `ORDER_BOOK_ACCOUNT_SIZE`; verified here with
   `#[account(zero)]`)
 - `base_mint`, `quote_mint` (read-only)
@@ -576,7 +576,7 @@ the supplied parameters plus all the derived fields
 (`market.authority`, the vault pubkeys, `is_active = true`,
 `next_order_id = 1`).
 
-The vaults are regular token accounts, *not* PDAs — their
+The vaults are regular token accounts, *not* PDAs - their
 addresses are chosen by the caller (typically fresh keypairs) and
 captured on the market's state so later instruction handlers can
 validate them.
@@ -590,7 +590,7 @@ trade on.
 
 **Accounts in:**
 
-- `owner` (signer, mut — pays rent)
+- `owner` (signer, mut - pays rent)
 - `market` (read-only)
 - `market_user` (PDA, **init**, seeds `["market_user", market, owner]`)
 - `system_program`
@@ -625,7 +625,7 @@ pub fn place_order<'info>(
   `["order", market, next_order_id.to_le_bytes()]`)
 - `market_user` (mut, PDA seeds-checked)
 - `base_vault`, `quote_vault`, `fee_vault` (all mut, boxed)
-- `user_base_account`, `user_quote_account` (mut — the caller's ATAs)
+- `user_base_account`, `user_quote_account` (mut - the caller's ATAs)
 - `base_mint`, `quote_mint` (read-only)
 - `owner` (signer, mut)
 - `token_program`, `system_program`
@@ -698,14 +698,14 @@ always holds *exactly* what's needed to fulfil every open trading
 position plus every unsettled balance.
 
 **Token movements (during matching, per fill):** see
-[§4. The matching engine — step by step](#4-the-matching-engine--step-by-step).
+[§4. The matching engine - step by step](#4-the-matching-engine--step-by-step).
 Summary:
 
 - For a taker bid crossing a resting ask at price `p`:
   ```
   quote_vault         --[p * fill_qty * fee_bps / 10_000]--> fee_vault
   (everything else stays in quote_vault as unsettled_quote for maker)
-  (base_vault provides the taker's base via unsettled_base — the base
+  (base_vault provides the taker's base via unsettled_base - the base
    was pre-locked when the maker placed their ask)
   ```
 
@@ -714,7 +714,7 @@ Summary:
   quote_vault         --[p * fill_qty * fee_bps / 10_000]--> fee_vault
   ```
 
-No user's ATA is touched during matching — all movements happen
+No user's ATA is touched during matching - all movements happen
 between vaults or inside `MarketUser` counters. Physical payouts wait
 for `settle_funds`.
 
@@ -775,7 +775,7 @@ On the caller's new `order`:
 - `order.owner == owner.key()` → `Unauthorized`
 - `order.status ∈ {Open, PartiallyFilled}` → `OrderNotCancellable`
 - The order's `order_id` is present in `order_book` → `OrderNotFound`
-  (sanity — shouldn't normally fire since fully-filled orders aren't
+  (sanity - shouldn't normally fire since fully-filled orders aren't
   cancellable)
 
 **Token movements:** none. Cancellation is an accounting-only step.
@@ -804,7 +804,7 @@ zero, so it is safe to call on a heartbeat/cron.
 - `market` (mut)
 - `market_user` (mut)
 - `base_vault`, `quote_vault` (mut, boxed)
-- `user_base_account`, `user_quote_account` (mut, boxed — caller's
+- `user_base_account`, `user_quote_account` (mut, boxed - caller's
   ATAs; caller must create them before calling)
 - `base_mint`, `quote_mint` (boxed, read-only)
 - `owner` (signer)
@@ -846,7 +846,7 @@ double-withdraw.
 
 - `market` (mut, `has_one = fee_vault`)
 - `fee_vault` (mut, boxed)
-- `authority_quote_account` (mut, boxed — destination)
+- `authority_quote_account` (mut, boxed - destination)
 - `quote_mint` (boxed)
 - `authority` (signer)
 - `token_program`
@@ -870,19 +870,19 @@ zero as a side effect of the transfer).
 
 ---
 
-## 4. The matching engine — step by step
+## 4. The matching engine - step by step
 
 This is the heart of the program. Everything in `place_order` after
 the initial fund lock is matching-engine work. Follow along with
 [`place_order.rs`](programs/order-book/src/instructions/place_order.rs) and
-[`state/matching.rs`](programs/order-book/src/state/matching.rs) — it'll
+[`state/matching.rs`](programs/order-book/src/state/matching.rs) - it'll
 read more easily once you've gone through this section.
 
 ### Ensuring fast order matching performance
 
 The book must find the best-priced resting order on every `place_order`
 call. Storing orders in a plain list (`Vec<Order>`) would work at small
-scale, but finding the best price requires scanning every entry — in
+scale, but finding the best price requires scanning every entry - in
 formal notation that's **O(n)**: double the number of open orders,
 double the work.
 
@@ -894,7 +894,7 @@ instead of 1 024.
 
 The specific data structure used here is a
 [critbit tree](https://cr.yp.to/critbit.html) (short for *critical-bit
-tree*) — a compact binary radix trie where each internal node splits on
+tree*) - a compact binary radix trie where each internal node splits on
 the first bit where two keys disagree. Unlike a self-balancing BST it
 never rotates or recolours nodes; its depth is instead bounded by the
 *bit width of the key* rather than the number of orders, so it stays
@@ -909,7 +909,7 @@ example.
 1. Caller passes `(side, price, quantity)` and, in remaining_accounts,
    the maker pairs to cross against.
 2. The handler locks the required funds into the vault (done up
-   front, before any matching — see §3.3).
+   front, before any matching - see §3.3).
 3. **Plan the fills** (pure logic, no mutations): walk the opposite
    side of the book sorted by price (best price first). For each
    entry whose price
@@ -932,7 +932,7 @@ example.
    `order_id` to the taker's `open_orders`, set status to
    `PartiallyFilled` (if any fills) or `Open` (if none).
 
-### 4.2 Why bids spend quote, asks spend base — the full accounting
+### 4.2 Why bids spend quote, asks spend base - the full accounting
 
 Pick a taker **bid** at price `bp` and quantity `bq`, crossing a
 resting **ask** at `ap ≤ bp` with remaining quantity `aq`. Let
@@ -942,7 +942,7 @@ Per-fill quantities:
 
 ```
 gross       = fill_price * fill_qty                         (quote tokens)
-fee         = gross * fee_bps / 10_000                       (quote tokens)
+fee         = ceil(gross * fee_bps / 10_000)                 (quote tokens)
 net_to_maker = gross - fee                                   (quote tokens)
 locked      = bp * fill_qty                                  (quote tokens the taker had locked for this fill)
 rebate      = locked - gross                                 (quote the taker locked but doesn't need to spend)
@@ -953,7 +953,7 @@ Token flows:
 ```
   quote_vault  --[fee]---------> fee_vault       (CPI signed by Market PDA, batched across all fills)
 
-  # No physical transfer for the base and net-quote legs — they stay in the
+  # No physical transfer for the base and net-quote legs - they stay in the
   # vaults, accounted for via unsettled_* counters:
 
   maker.unsettled_quote += net_to_maker          (maker collects gross - fee)
@@ -961,21 +961,21 @@ Token flows:
   taker.unsettled_quote += rebate                (price improvement refund)
 ```
 
-The *base* that the taker now owns was already in `base_vault` —
+The *base* that the taker now owns was already in `base_vault` -
 remember, the maker locked it there when placing the ask. The *quote*
-that the maker now owns was already in `quote_vault` — the taker
+that the maker now owns was already in `quote_vault` - the taker
 locked `bp * bq` there at the top of this call. Nothing leaves the
 vaults except the fee. Everything else gets paid out later, on
 `settle_funds`.
 
-For the opposite direction — a taker **ask** at `ap` crossing a
+For the opposite direction - a taker **ask** at `ap` crossing a
 resting **bid** at `bp ≥ ap`:
 
 ```
 fill_qty     = min(taker_remaining, bp_remaining)
 fill_price   = bp
 gross        = bp * fill_qty
-fee          = gross * fee_bps / 10_000
+fee          = ceil(gross * fee_bps / 10_000)
 net_to_taker = gross - fee
 
 Token flows:
@@ -987,9 +987,9 @@ Token flows:
 
 No rebate on this side: the maker's bid locked exactly `bp *
 bid_original_qty` of quote up front, and of that, `bp * fill_qty` is
-being spent right now at exactly that price — no leftover.
+being spent right now at exactly that price - no leftover.
 
-### 4.3 Worked example — taker bid crosses two resting asks
+### 4.3 Worked example - taker bid crosses two resting asks
 
 Start with an empty book. Fees 10 bps (0.1%). Tick size 1.
 
@@ -1005,21 +1005,21 @@ Start with an empty book. Fees 10 bps (0.1%). Tick size 1.
    makers as remaining_accounts: `(order_1, dan_user), (order_2,
    erin_user)`.
 
-   Step A — lock. Faye's quote ATA loses `1000 * 7 = 7000` quote;
+   Step A - lock. Faye's quote ATA loses `1000 * 7 = 7000` quote;
    `quote_vault.balance += 7000`.
 
-   Step B — plan:
+   Step B - plan:
    - Fill 0: resting index 0 (Dan's ask), order_id 1, qty = min(7,
      5) = 5, price = 900. `taker_remaining = 7 - 5 = 2`.
    - Fill 1: resting index 1 (Erin's ask), order_id 2, qty = min(2,
      5) = 2, price = 950. `taker_remaining = 0`.
 
-   Step C — apply fills:
+   Step C - apply fills:
 
    For Fill 0 (Dan):
-   - gross = 900 * 5 = 4500; fee = 4500 * 10 / 10 000 = 4;
-     net_to_maker = 4496.
-   - `dan_market_user.unsettled_quote += 4496`
+   - gross = 900 * 5 = 4500; fee = ceil(4500 * 10 / 10 000) = ceil(4.5) = 5;
+     net_to_maker = 4495.
+   - `dan_market_user.unsettled_quote += 4495`
    - `faye_market_user.unsettled_base += 5`
    - Faye's rebate = 1000*5 − 4500 = 500.
      `faye_market_user.unsettled_quote += 500`
@@ -1027,15 +1027,15 @@ Start with an empty book. Fees 10 bps (0.1%). Tick size 1.
      remove from `dan_market_user.open_orders`.
 
    For Fill 1 (Erin):
-   - gross = 950 * 2 = 1900; fee = 1; net_to_maker = 1899.
-   - `erin_market_user.unsettled_quote += 1899`
+   - gross = 950 * 2 = 1900; fee = ceil(1.9) = 2; net_to_maker = 1898.
+   - `erin_market_user.unsettled_quote += 1898`
    - `faye_market_user.unsettled_base += 2`
    - Faye's rebate = 1000*2 − 1900 = 100.
      `faye_market_user.unsettled_quote += 100`
    - `erin_order.filled_quantity = 2`, status = PartiallyFilled
      (original 5, filled 2), **stays** in `erin_market_user.open_orders`.
 
-   Step D — clean book. Dan's ask was fully filled → leaf removed from
+   Step D - clean book. Dan's ask was fully filled → leaf removed from
    the asks critbit tree. Erin's ask was partially filled → leaf's
    `quantity` decremented in place to 3 (no tree rebalancing needed).
    The `Order` PDA carries `filled_quantity`; the leaf just holds the
@@ -1043,27 +1043,27 @@ Start with an empty book. Fees 10 bps (0.1%). Tick size 1.
    The next taker who wants to hit Erin's ask will pass `order_2` as a
    maker and see `leaf.quantity = 3`.
 
-   Step E — pay the fee. `total_fee_quote = 4 + 1 = 5`. One CPI:
+   Step E - pay the fee. `total_fee_quote = 5 + 2 = 7`. One CPI:
    ```
-   quote_vault --[5 quote]--> fee_vault
+   quote_vault --[7 quote]--> fee_vault
    ```
 
-   Step F — apply Faye's deltas. `faye_market_user.unsettled_base =
+   Step F - apply Faye's deltas. `faye_market_user.unsettled_base =
    0 + 7 = 7`. `faye_market_user.unsettled_quote = 0 + (500 + 100) =
    600`.
 
-   Step G — rest the remainder. `taker_remaining = 0` → Faye's new
+   Step G - rest the remainder. `taker_remaining = 0` → Faye's new
    Order is marked `Filled` immediately, not added to the book.
 
 4. Later, each user calls `settle_funds`:
    - Dan's settle: `base_vault` loses 0 base; `quote_vault` loses
-     4496 quote → Dan's quote ATA gains 4496.
-   - Erin's settle: 1899 quote to Erin's ATA.
+     4495 quote → Dan's quote ATA gains 4495.
+   - Erin's settle: 1898 quote to Erin's ATA.
    - Faye's settle: 7 base to Faye's base ATA; 600 quote refund to
      Faye's quote ATA (unused from her 7000 lock).
 
 5. At some point the market authority calls `withdraw_fees`:
-   `fee_vault.balance = 5` → drained to authority's quote ATA.
+   `fee_vault.balance = 7` → drained to authority's quote ATA.
 
 **Post-settlement invariant check**:
 - `base_vault.balance` should equal sum of remaining ask quantities =
@@ -1109,7 +1109,7 @@ Gael decides to cancel. `cancel_order` on order_id 4:
 - `order_book.bids` cleared. `gael_market_user.open_orders = []`.
 - `order.status = Cancelled`.
 
-No tokens moved — `quote_vault.balance` still holds the 3640.
+No tokens moved - `quote_vault.balance` still holds the 3640.
 
 Gael calls `settle_funds`:
 
@@ -1140,9 +1140,9 @@ Market configuration:
 Cast: **Maria** (market authority + Alice/Bob's broker), **Alice**
 (seller), **Bob** (buyer).
 
-1. `initialize_market` — Maria runs it. Rent for five accounts comes
+1. `initialize_market` - Maria runs it. Rent for five accounts comes
    out of her wallet. Market is now `is_active`.
-2. `create_market_user` — Alice and Bob each run it once.
+2. `create_market_user` - Alice and Bob each run it once.
 3. Alice posts an ask: `place_order(Ask, 1000, 5)`, no
    remaining_accounts (empty book).
    - Lock: `alice_base_account --[5 base]--> base_vault`.
@@ -1247,14 +1247,14 @@ Cast: Alice (ask maker), Bob (bid maker, then remainder rests), Carol
        the bid side)
      - No rebate on ask-taker side.
      - Bob's order: filled_quantity 3 → 7, status PartiallyFilled
-       (still not fully filled — original 10, filled 7).
+       (still not fully filled - original 10, filled 7).
    - Clean book: Bob's book remaining = 10 − 7 = 3 > 0, so his
      entry stays. `order_book.bids = [(2, 1100)]`.
    - Fee CPI: 22 quote → fee_vault.
    - `taker_remaining = 0` → Carol's new Order marked Filled.
 
    Mid-state: `base_vault = 0 + 4 = 4` (from Carol's lock; was 0
-   after Bob's settle made it flow — wait, no: Bob's base never
+   after Bob's settle made it flow - wait, no: Bob's base never
    settled yet. Let's re-check:)
 
    After step 4 Bob's `unsettled_base = 3` (from the 3-base fill
@@ -1269,7 +1269,7 @@ Cast: Alice (ask maker), Bob (bid maker, then remainder rests), Carol
 Cast: Alice (bid maker), nobody else.
 
 1. `initialize_market`, `create_market_user(Alice)`.
-2. Alice posts `Bid, 900, 10` — rests on an empty book.
+2. Alice posts `Bid, 900, 10` - rests on an empty book.
    - Lock: 9000 quote from Alice to quote_vault.
    - No fills. `alice.open_orders = [1]`. `bids = [(1, 900)]`.
 3. Alice reconsiders and calls `cancel_order` on her bid.
@@ -1285,7 +1285,7 @@ Cast: Alice (bid maker), nobody else.
 
 Net delta: Alice is exactly where she started. The vaults are empty.
 The Order account is still onchain in `Cancelled` state (one could
-imagine a future instruction handler to reclaim its rent — see §8).
+imagine a future instruction handler to reclaim its rent - see §8).
 
 ---
 
@@ -1323,7 +1323,7 @@ From [`errors.rs`](programs/order-book/src/errors.rs):
   owe.
 
 - **Caller supplies maker pairs.** The matching engine does not
-  iterate the whole book looking for counterparties — the caller
+  iterate the whole book looking for counterparties - the caller
   tells it which resting orders to cross. This is what Openbook v2
   does and it's the only way to fit the matching work within a
   transaction's account budget when the book is large. The cost is
@@ -1331,7 +1331,7 @@ From [`errors.rs`](programs/order-book/src/errors.rs):
   first, pick the crossings, and pass the right accounts. The
   program still enforces order (price-time priority) and ownership
   on what the caller passes, so a malicious caller cannot cross a
-  non-top-of-book maker to hurt someone else — they can only *fail
+  non-top-of-book maker to hurt someone else - they can only *fail
   to cross* orders they should have crossed, which only hurts
   themselves.
 
@@ -1344,8 +1344,8 @@ From [`errors.rs`](programs/order-book/src/errors.rs):
 - **Fees come out of the gross.** The maker receives `gross - fee`,
   not `gross`; the fee lives on for a while in `quote_vault` before
   being moved to `fee_vault` in one batched CPI at the end of
-  `place_order`. An alternative model — the taker paying `gross +
-  fee` on top of the lock — is discussed in a comment in
+  `place_order`. An alternative model - the taker paying `gross +
+  fee` on top of the lock - is discussed in a comment in
   `place_order.rs` and left as an exercise.
 
 - **Unsettled balances are pure accounting.** No token physically
@@ -1363,7 +1363,7 @@ From [`errors.rs`](programs/order-book/src/errors.rs):
 
 - **Boxed InterfaceAccounts.** Several handlers use `Box<
   InterfaceAccount<...>>` for mint/token accounts. That's a BPF
-  stack-size workaround — each `InterfaceAccount` is ~1 KB on the
+  stack-size workaround - each `InterfaceAccount` is ~1 KB on the
   stack and the Solana VM gives handlers a tight budget. Don't
   unbox these without testing the compute output size.
 
@@ -1375,7 +1375,7 @@ From [`errors.rs`](programs/order-book/src/errors.rs):
 - **Book capacity check after matching.** The taker's remainder
   check happens at the end. A bid that clears enough asks to free
   up 3 slots can then rest its own 1-slot remainder even on a
-  previously-full book — matching the "liquidity-positive" spirit
+  previously-full book - matching the "liquidity-positive" spirit
   of an order book.
 
 ### 6.3 Things this example does *not* do
@@ -1427,7 +1427,7 @@ run first.
 From `finance/order-book/anchor/`:
 
 ```bash
-# 1. Build the .so — target/deploy/order_book.so
+# 1. Build the .so - target/deploy/order_book.so
 anchor build
 
 # 2. Run the LiteSVM tests
@@ -1555,8 +1555,8 @@ Ordered by difficulty.
 
 **Worst-case depth must be bounded, not assumed.** A plain binary
 search tree only keeps a roughly-balanced shape when its inputs arrive
-in random order. In an order book an attacker chooses the inputs — the
-prices of their orders — so nothing they choose can be allowed to
+in random order. In an order book an attacker chooses the inputs - the
+prices of their orders - so nothing they choose can be allowed to
 inflate the tree's depth. Two families of structure defend against
 this: *self-balancing* BSTs (red-black, AVL, …) that restore a bounded
 height with rotations on every insert and delete, and *radix tries*
@@ -1580,10 +1580,10 @@ every operation cheap regardless of input, so the attack is
 structurally impossible.
 
 **Why critbit specifically.** Critbit is a binary radix trie keyed on
-the order's sort bits — *not* a self-balancing BST, so it never rotates
+the order's sort bits - *not* a self-balancing BST, so it never rotates
 or recolours nodes. Its shape is a deterministic function of which keys
 are present, and its depth can never exceed the *bit width of the sort
-key* (128 bits here — price in the high 64, sequence number in the low
+key* (128 bits here - price in the high 64, sequence number in the low
 64), so it cannot degenerate into a long chain under any insert order.
 An insert splits exactly one leaf and adds exactly one inner node; a
 delete splices one out. This example uses the critbit slab from
@@ -1591,7 +1591,7 @@ Openbook v2 (`src/state/slab/`).
 
 ### Harder
 
-- **Event queue.** Mirror Openbook's `EventQueue` — `place_order`
+- **Event queue.** Mirror Openbook's `EventQueue` - `place_order`
   writes "fill" events, and a separate `consume_events` instruction
   processes them in batches for the maker side. Makes matching O(1)
   in CU cost regardless of the taker's depth.

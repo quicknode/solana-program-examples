@@ -8,10 +8,10 @@ use quasar_lang::prelude::*;
 /// Note: Anchor's `#[account(owner = id())]` owner constraint is not directly available
 /// in Quasar. Owner checks can be done manually in the instruction body if needed.
 #[derive(Accounts)]
-pub struct CheckAccounts {
+pub struct CheckAccountsAccountConstraints {
     /// Checks that this account signed the transaction.
     pub payer: Signer,
-    /// No checks performed — the caller is responsible for validation.
+    /// No checks performed - the caller is responsible for validation.
     #[account(mut)]
     pub account_to_create: UncheckedAccount,
     /// No automatic owner check in Quasar; see note above.
@@ -22,7 +22,7 @@ pub struct CheckAccounts {
 }
 
 #[inline(always)]
-pub fn handle_check_accounts(_accounts: &mut CheckAccounts) -> Result<(), ProgramError> {
+pub fn handle_check_accounts(_accounts: &mut CheckAccountsAccountConstraints) -> Result<(), ProgramError> {
     // All validation happens declaratively via the account types above.
     // If any check fails, the runtime rejects the transaction before this runs.
     Ok(())

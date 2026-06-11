@@ -16,23 +16,26 @@ pub struct WithdrawAccountConstraints<'info> {
 
     #[account(
         mut,
+        has_one = usdc_mint @ VaultError::InvalidUsdcMint,
+        has_one = asset_mint_a @ VaultError::InvalidAssetMint,
+        has_one = asset_mint_b @ VaultError::InvalidAssetMint,
         seeds = [b"strategy", strategy.manager.as_ref()],
         bump = strategy.bump
     )]
-    pub strategy: Account<'info, Strategy>,
+    pub strategy: Box<Account<'info, Strategy>>,
 
     #[account(
         mut,
         seeds = [b"share_mint", strategy.key().as_ref()],
         bump
     )]
-    pub share_mint: InterfaceAccount<'info, Mint>,
+    pub share_mint: Box<InterfaceAccount<'info, Mint>>,
 
-    pub usdc_mint: InterfaceAccount<'info, Mint>,
+    pub usdc_mint: Box<InterfaceAccount<'info, Mint>>,
 
-    pub asset_mint_a: InterfaceAccount<'info, Mint>,
+    pub asset_mint_a: Box<InterfaceAccount<'info, Mint>>,
 
-    pub asset_mint_b: InterfaceAccount<'info, Mint>,
+    pub asset_mint_b: Box<InterfaceAccount<'info, Mint>>,
 
     #[account(
         mut,
@@ -40,7 +43,7 @@ pub struct WithdrawAccountConstraints<'info> {
         associated_token::authority = user,
         associated_token::token_program = token_program
     )]
-    pub user_share_account: InterfaceAccount<'info, TokenAccount>,
+    pub user_share_account: Box<InterfaceAccount<'info, TokenAccount>>,
 
     #[account(
         init_if_needed,
@@ -49,7 +52,7 @@ pub struct WithdrawAccountConstraints<'info> {
         associated_token::authority = user,
         associated_token::token_program = token_program
     )]
-    pub user_usdc_account: InterfaceAccount<'info, TokenAccount>,
+    pub user_usdc_account: Box<InterfaceAccount<'info, TokenAccount>>,
 
     #[account(
         init_if_needed,
@@ -58,7 +61,7 @@ pub struct WithdrawAccountConstraints<'info> {
         associated_token::authority = user,
         associated_token::token_program = token_program
     )]
-    pub user_asset_a_account: InterfaceAccount<'info, TokenAccount>,
+    pub user_asset_a_account: Box<InterfaceAccount<'info, TokenAccount>>,
 
     #[account(
         init_if_needed,
@@ -67,7 +70,7 @@ pub struct WithdrawAccountConstraints<'info> {
         associated_token::authority = user,
         associated_token::token_program = token_program
     )]
-    pub user_asset_b_account: InterfaceAccount<'info, TokenAccount>,
+    pub user_asset_b_account: Box<InterfaceAccount<'info, TokenAccount>>,
 
     #[account(
         mut,
@@ -75,7 +78,7 @@ pub struct WithdrawAccountConstraints<'info> {
         associated_token::authority = strategy,
         associated_token::token_program = token_program
     )]
-    pub vault_usdc: InterfaceAccount<'info, TokenAccount>,
+    pub vault_usdc: Box<InterfaceAccount<'info, TokenAccount>>,
 
     #[account(
         mut,
@@ -83,7 +86,7 @@ pub struct WithdrawAccountConstraints<'info> {
         associated_token::authority = strategy,
         associated_token::token_program = token_program
     )]
-    pub vault_asset_a: InterfaceAccount<'info, TokenAccount>,
+    pub vault_asset_a: Box<InterfaceAccount<'info, TokenAccount>>,
 
     #[account(
         mut,
@@ -91,7 +94,7 @@ pub struct WithdrawAccountConstraints<'info> {
         associated_token::authority = strategy,
         associated_token::token_program = token_program
     )]
-    pub vault_asset_b: InterfaceAccount<'info, TokenAccount>,
+    pub vault_asset_b: Box<InterfaceAccount<'info, TokenAccount>>,
 
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub token_program: Interface<'info, TokenInterface>,
@@ -123,7 +126,7 @@ pub fn handle_withdraw(
     let shares_u128 = shares_to_burn as u128;
     let total_u128 = total_shares as u128;
 
-    // Proportional amounts — floor division (user gets floor)
+    // Proportional amounts - floor division (user gets floor)
     let amount_usdc: u64 = (vault_usdc_amount as u128)
         .checked_mul(shares_u128)
         .ok_or(VaultError::MathOverflow)?

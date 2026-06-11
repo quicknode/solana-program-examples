@@ -16,7 +16,7 @@ use anchor_spl::{
 use crate::Mode;
 
 #[derive(Accounts)]
-pub struct ChangeMode<'info> {
+pub struct ChangeModeAccountConstraints<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
 
@@ -37,7 +37,7 @@ pub struct ChangeModeArgs {
     pub threshold: u64,
 }
 
-impl ChangeMode<'_> {
+impl ChangeModeAccountConstraints<'_> {
     pub fn change_mode(&mut self, args: ChangeModeArgs) -> Result<()> {
         let cpi_accounts = TokenMetadataUpdateField {
             metadata: self.mint.to_account_info(),

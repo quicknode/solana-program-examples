@@ -45,6 +45,6 @@ fn process_instruction(
     }
     .invoke()?;
 
-    log!("Account created succesfully.");
+    log!("Account created successfully.");
     Ok(())
 }

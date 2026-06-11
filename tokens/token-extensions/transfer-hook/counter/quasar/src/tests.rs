@@ -139,7 +139,7 @@ fn test_transfer_hook_increments_counter() {
         data: hook_data,
     };
 
-    // Don't pass counter_pda or meta_list_pda — they were committed by the init instruction
+    // Don't pass counter_pda or meta_list_pda - they were committed by the init instruction
     let result = svm.process_instruction(
         &hook_ix,
         &[

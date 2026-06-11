@@ -1,5 +1,10 @@
+use crate::error::VaultError;
+use crate::state::Vault;
 use crate::*;
-use quasar_lang::{cpi::{InstructionAccount, InstructionView, Seed, Signer}, remaining::RemainingAccounts};
+use quasar_lang::{
+    cpi::{InstructionAccount, InstructionView, Seed, Signer as CpiSigner},
+    remaining::RemainingAccounts,
+};
 
 /// Maximum proof nodes for the merkle tree.
 const MAX_PROOF_NODES: usize = 24;
@@ -12,13 +17,21 @@ const TRANSFER_ARGS_LEN: usize = 108;
 
 /// Accounts for withdrawing a single compressed NFT from the vault.
 #[derive(Accounts)]
-pub struct Withdraw {
+pub struct WithdrawCnftAccountConstraints {
+    /// The stored vault authority. Only this signer may withdraw.
+    pub authority: Signer,
+
+    /// Vault PDA that owns the cNFT (as Bubblegum leaf owner) and signs the
+    /// transfer via invoke_signed.
+    #[account(
+        address = Vault::seeds(),
+        has_one(authority) @ VaultError::InvalidWithdrawAuthority,
+    )]
+    pub vault: Account<Vault>,
+
     /// Tree authority PDA (seeds checked by Bubblegum).
     #[account(mut)]
     pub tree_authority: UncheckedAccount,
-    /// Vault PDA that owns the cNFT — signs the transfer via invoke_signed.
-    #[account(address = crate::VaultPda::seeds())]
-    pub leaf_owner: UncheckedAccount,
     /// New owner to receive the cNFT.
     pub new_leaf_owner: UncheckedAccount,
     /// Merkle tree account.
@@ -43,7 +56,12 @@ fn build_transfer_data(args: &[u8]) -> [u8; 8 + TRANSFER_ARGS_LEN] {
     ix_data
 }
 
-pub fn handle_withdraw_cnft(accounts: &mut Withdraw, data: &[u8], remaining: RemainingAccounts<'_>, leaf_owner_bump: u8) -> Result<(), ProgramError> {
+pub fn handle_withdraw_cnft(
+    accounts: &mut WithdrawCnftAccountConstraints,
+    data: &[u8],
+    remaining: RemainingAccounts<'_>,
+    vault_bump: u8,
+) -> Result<(), ProgramError> {
     if data.len() < TRANSFER_ARGS_LEN {
         return Err(ProgramError::InvalidInstructionData);
     }
@@ -54,7 +72,7 @@ pub fn handle_withdraw_cnft(accounts: &mut Withdraw, data: &[u8], remaining: Rem
     //
     // `remaining.iter()` yields `Result<RemainingAccount, _>` in newer
     // quasar-lang. Reach the inner `AccountView` via the unchecked accessor
-    // — we only read addresses/views to forward to the bubblegum CPI as
+    // - we only read addresses/views to forward to the bubblegum CPI as
     // proof nodes; no aliased data access.
     let placeholder = accounts.system_program.to_account_view().clone();
     let mut proof_views: [AccountView; MAX_PROOF_NODES] =
@@ -80,9 +98,9 @@ pub fn handle_withdraw_cnft(accounts: &mut Withdraw, data: &[u8], remaining: Rem
         core::array::from_fn(|_| InstructionAccount::readonly(sys_addr));
 
     ix_accounts[0] = InstructionAccount::readonly(accounts.tree_authority.address());
-    ix_accounts[1] = InstructionAccount::readonly_signer(accounts.leaf_owner.address());
-    // leaf_delegate = leaf_owner, not an additional signer
-    ix_accounts[2] = InstructionAccount::readonly(accounts.leaf_owner.address());
+    ix_accounts[1] = InstructionAccount::readonly_signer(accounts.vault.address());
+    // leaf_delegate = leaf_owner (the vault), not an additional signer
+    ix_accounts[2] = InstructionAccount::readonly(accounts.vault.address());
     ix_accounts[3] = InstructionAccount::readonly(accounts.new_leaf_owner.address());
     ix_accounts[4] = InstructionAccount::writable(accounts.merkle_tree.address());
     ix_accounts[5] = InstructionAccount::readonly(accounts.log_wrapper.address());
@@ -95,12 +113,11 @@ pub fn handle_withdraw_cnft(accounts: &mut Withdraw, data: &[u8], remaining: Rem
 
     // Build account views
     let sys_view = accounts.system_program.to_account_view().clone();
-    let mut views: [AccountView; MAX_CPI_ACCOUNTS] =
-        core::array::from_fn(|_| sys_view.clone());
+    let mut views: [AccountView; MAX_CPI_ACCOUNTS] = core::array::from_fn(|_| sys_view.clone());
 
     views[0] = accounts.tree_authority.to_account_view().clone();
-    views[1] = accounts.leaf_owner.to_account_view().clone();
-    views[2] = accounts.leaf_owner.to_account_view().clone();
+    views[1] = accounts.vault.to_account_view().clone();
+    views[2] = accounts.vault.to_account_view().clone();
     views[3] = accounts.new_leaf_owner.to_account_view().clone();
     views[4] = accounts.merkle_tree.to_account_view().clone();
     views[5] = accounts.log_wrapper.to_account_view().clone();
@@ -118,12 +135,12 @@ pub fn handle_withdraw_cnft(accounts: &mut Withdraw, data: &[u8], remaining: Rem
     };
 
     // PDA signer seeds: ["cNFT-vault", bump]
-    let bump_bytes = [leaf_owner_bump];
+    let bump_bytes = [vault_bump];
     let seeds: [Seed; 2] = [
         Seed::from(b"cNFT-vault" as &[u8]),
         Seed::from(&bump_bytes as &[u8]),
     ];
-    let signer = Signer::from(&seeds as &[Seed]);
+    let signer = CpiSigner::from(&seeds as &[Seed]);
 
     solana_instruction_view::cpi::invoke_signed_with_bounds::<MAX_CPI_ACCOUNTS, AccountView>(
         &instruction,

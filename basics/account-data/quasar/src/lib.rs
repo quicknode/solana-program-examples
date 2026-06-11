@@ -24,7 +24,7 @@ mod quasar_account_data {
     /// pass them directly (not by reference) to the handler.
     #[instruction(discriminator = 0)]
     pub fn create_address_info(
-        ctx: Ctx<CreateAddressInfo>,
+        ctx: Ctx<CreateAddressInfoAccountConstraints>,
         house_number: u8,
         name: String<50>,
         street: String<50>,

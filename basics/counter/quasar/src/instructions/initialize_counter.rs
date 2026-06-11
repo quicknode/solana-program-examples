@@ -4,7 +4,7 @@ use quasar_lang::prelude::*;
 /// Accounts for creating a new counter.
 /// The counter is derived as a PDA from ["counter", payer] seeds.
 #[derive(Accounts)]
-pub struct InitializeCounter {
+pub struct InitializeCounterAccountConstraints {
     #[account(mut)]
     pub payer: Signer,
     #[account(mut, init, payer = payer, address = Counter::seeds(payer.address()))]
@@ -13,7 +13,7 @@ pub struct InitializeCounter {
 }
 
 #[inline(always)]
-pub fn handle_initialize_counter(accounts: &mut InitializeCounter) -> Result<(), ProgramError> {
+pub fn handle_initialize_counter(accounts: &mut InitializeCounterAccountConstraints) -> Result<(), ProgramError> {
     accounts.counter.set_inner(CounterInner { count: 0 });
     Ok(())
 }

@@ -8,8 +8,6 @@ skip-lint = false
 [programs.localnet]
 transfer_hook = "1qahDxKHeCLZhbBU2NyMU6vQCQmEUmdeSEBrG5drffK"
 
-# [registry] section removed — no longer used in Anchor 1.0
-
 [provider]
 cluster = "Localnet"
 wallet = "~/.config/solana/id.json"

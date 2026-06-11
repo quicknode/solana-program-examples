@@ -6,7 +6,7 @@ use crate::constants::*;
 use crate::instructions::init_mint::Token2022;
 
 #[derive(Accounts)]
-pub struct AttachToMint {
+pub struct AttachToMintAccountConstraints {
     #[account(mut)]
     pub payer: Signer,
     #[account(mut)]
@@ -18,7 +18,7 @@ pub struct AttachToMint {
 }
 
 #[inline(always)]
-pub fn handle_attach_to_mint(accounts: &mut AttachToMint) -> Result<(), ProgramError> {
+pub fn handle_attach_to_mint(accounts: &mut AttachToMintAccountConstraints) -> Result<(), ProgramError> {
     let mint_key = accounts.mint.to_account_view().address();
     let payer_key = accounts.payer.to_account_view().address();
     let token_prog = accounts.token_program.to_account_view().address();

@@ -6,7 +6,7 @@ use anchor_spl::token_interface::{
 use crate::check_mint_data;
 
 #[derive(Accounts)]
-pub struct UpdateRate<'info> {
+pub struct UpdateRateAccountConstraints<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
     #[account(mut)]
@@ -16,7 +16,7 @@ pub struct UpdateRate<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handler(context: Context<UpdateRate>, rate: i16) -> Result<()> {
+pub fn handler(context: Context<UpdateRateAccountConstraints>, rate: i16) -> Result<()> {
     interest_bearing_mint_update_rate(
         CpiContext::new(
             context.accounts.token_program.key(),

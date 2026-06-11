@@ -1,4 +1,4 @@
-# Token Extensions — Default Account State (Quasar)
+# Token Extensions - Default Account State (Quasar)
 
 New token accounts frozen by default until thawed.
 

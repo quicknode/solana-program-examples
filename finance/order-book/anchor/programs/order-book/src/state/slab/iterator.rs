@@ -2,7 +2,7 @@
 // MIT-licensed. See LICENSE-OPENBOOK in this directory.
 //
 // This iterator yields (handle, leaf) pairs in best-price-first order.
-// Matching uses pure price-time priority — no oracle peg or time-in-force
+// Matching uses pure price-time priority - no oracle peg or time-in-force
 // filtering needed here.
 
 use super::nodes::{InnerNode, LeafNode, NodeHandle, NodeRef};
@@ -15,7 +15,7 @@ use super::ordertree::{OrderTreeNodes, OrderTreeRoot, OrderTreeType};
 ///   - bids: descending (highest price first)
 ///
 /// Within a single price level, earlier orders come first (price-time
-/// priority) — that ordering is encoded in the leaf key, so it falls out of
+/// priority) - that ordering is encoded in the leaf key, so it falls out of
 /// the in-order walk automatically.
 pub struct OrderTreeIter<'a> {
     nodes: &'a OrderTreeNodes,
@@ -27,7 +27,7 @@ pub struct OrderTreeIter<'a> {
     /// Cached next leaf so `peek` and `next` can share work.
     next_leaf: Option<(NodeHandle, &'a LeafNode)>,
 
-    /// Child indexes to walk: (first, second). For asks we go (0, 1) — i.e.
+    /// Child indexes to walk: (first, second). For asks we go (0, 1) - i.e.
     /// down the left child first, then right; for bids we go (1, 0).
     first: usize,
     second: usize,

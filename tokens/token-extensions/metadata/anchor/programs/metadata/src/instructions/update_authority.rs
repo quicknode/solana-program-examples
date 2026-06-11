@@ -5,7 +5,7 @@ use anchor_spl::token_interface::{
 };
 
 #[derive(Accounts)]
-pub struct UpdateAuthority<'info> {
+pub struct UpdateAuthorityAccountConstraints<'info> {
     pub current_authority: Signer<'info>,
     pub new_authority: Option<UncheckedAccount<'info>>,
 
@@ -18,7 +18,7 @@ pub struct UpdateAuthority<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn process_update_authority(context: Context<UpdateAuthority>) -> Result<()> {
+pub fn process_update_authority(context: Context<UpdateAuthorityAccountConstraints>) -> Result<()> {
     let new_authority_key = match &context.accounts.new_authority {
         Some(account) => OptionalNonZeroPubkey::try_from(Some(account.key()))?,
         None => OptionalNonZeroPubkey::try_from(None)?,

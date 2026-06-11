@@ -26,7 +26,7 @@ describe("PDAs", async () => {
     },
   };
 
-  // Empty struct — just needs to serialize to zero bytes
+  // Empty struct - just needs to serialize to zero bytes
   const IncrementPageVisitsSchema = { struct: {} };
 
   function borshSerialize(schema: borsh.Schema, data: object): Buffer {

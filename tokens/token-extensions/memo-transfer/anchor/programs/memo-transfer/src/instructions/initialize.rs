@@ -10,7 +10,7 @@ use anchor_spl::{
 };
 
 #[derive(Accounts)]
-pub struct Initialize<'info> {
+pub struct InitializeAccountConstraints<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
 
@@ -21,7 +21,7 @@ pub struct Initialize<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handler(context: Context<Initialize>) -> Result<()> {
+pub fn handler(context: Context<InitializeAccountConstraints>) -> Result<()> {
     // Calculate space required for token and extension data
     let token_account_size =
         ExtensionType::try_calculate_account_len::<PodAccount>(&[ExtensionType::MemoTransfer])?;

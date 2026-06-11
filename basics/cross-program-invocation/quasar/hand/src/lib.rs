@@ -9,7 +9,7 @@ mod tests;
 
 declare_id!("Bi5N7SUQhpGknVcqPTzdFFVueQoxoUu8YTLz75J6fT8A");
 
-/// The lever program's ID — used to verify the correct program is passed.
+/// The lever program's ID - used to verify the correct program is passed.
 pub const LEVER_PROGRAM_ID: Address = address!("E64FVeubGC4NPNF2UBJYX4AkrVowf74fRJD9q6YhwstN");
 
 /// Marker type for the lever program, implementing `Id` so it can be used
@@ -26,7 +26,7 @@ mod quasar_hand {
 
     /// Pull the lever by invoking the lever program's switch_power via CPI.
     #[instruction(discriminator = 0)]
-    pub fn pull_lever(ctx: Ctx<PullLever>, name: String<50>) -> Result<(), ProgramError> {
+    pub fn pull_lever(ctx: Ctx<PullLeverAccountConstraints>, name: String<50>) -> Result<(), ProgramError> {
         instructions::handle_pull_lever(&mut ctx.accounts, name)
     }
 }

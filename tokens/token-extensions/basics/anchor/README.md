@@ -1,4 +1,4 @@
-# Token Extensions — Basics (Anchor)
+# Token Extensions - Basics (Anchor)
 
 Create mints, mint tokens, and transfer using the [Token Extensions Program](https://solana.com/docs/terminology#token-extensions-program).
 

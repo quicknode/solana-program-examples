@@ -6,7 +6,7 @@ use {
 /// Accounts for creating a new page visits counter.
 /// The counter is derived as a PDA from ["page_visits", payer] seeds.
 #[derive(Accounts)]
-pub struct CreatePageVisits {
+pub struct CreatePageVisitsAccountConstraints {
     #[account(mut)]
     pub payer: Signer,
     #[account(mut, init, payer = payer, address = PageVisits::seeds(payer.address()))]
@@ -15,7 +15,7 @@ pub struct CreatePageVisits {
 }
 
 #[inline(always)]
-pub fn handle_create_page_visits(accounts: &mut CreatePageVisits) -> Result<(), ProgramError> {
+pub fn handle_create_page_visits(accounts: &mut CreatePageVisitsAccountConstraints) -> Result<(), ProgramError> {
     accounts.page_visits.set_inner(PageVisitsInner { page_visits: 0 });
     Ok(())
 }

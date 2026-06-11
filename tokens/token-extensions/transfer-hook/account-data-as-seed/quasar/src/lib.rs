@@ -9,7 +9,7 @@ use quasar_lang::{
 #[cfg(test)]
 mod tests;
 
-declare_id!("22222222222222222222222222222222222222222222");
+declare_id!("1qahDxKHeCLZhbBU2NyMU6vQCQmEUmdeSEBrG5drffK");
 
 /// SPL Transfer Hook Interface discriminators (SHA-256 prefix).
 #[allow(dead_code)]
@@ -17,7 +17,7 @@ const EXECUTE_DISCRIMINATOR: [u8; 8] = [105, 37, 101, 197, 75, 251, 102, 26];
 
 /// Transfer hook that uses account data as a PDA seed. The counter PDA is
 /// seeded by ["counter", owner_pubkey] where the owner pubkey is read from
-/// the source token account data at runtime by the Token-2022 program.
+/// the source token account data at runtime by the Token Extensions program.
 #[program]
 mod quasar_transfer_hook_account_data_as_seed {
     use super::*;
@@ -28,15 +28,15 @@ mod quasar_transfer_hook_account_data_as_seed {
     /// Discriminator = sha256("spl-transfer-hook-interface:initialize-extra-account-metas")[:8]
     #[instruction(discriminator = [43, 34, 13, 49, 167, 88, 235, 235])]
     pub fn initialize_extra_account_meta_list(
-        ctx: Ctx<InitializeExtraAccountMetaList>,
+        ctx: Ctx<InitializeExtraAccountMetaListAccountConstraints>,
     ) -> Result<(), ProgramError> {
         handle_initialize_extra_account_meta_list(&mut ctx.accounts)
     }
 
-    /// Transfer hook handler — increments a per-owner counter on each transfer.
+    /// Transfer hook handler - increments a per-owner counter on each transfer.
     /// Discriminator = sha256("spl-transfer-hook-interface:execute")[:8]
     #[instruction(discriminator = [105, 37, 101, 197, 75, 251, 102, 26])]
-    pub fn transfer_hook(ctx: Ctx<TransferHook>, _amount: u64) -> Result<(), ProgramError> {
+    pub fn transfer_hook(ctx: Ctx<TransferHookAccountConstraints>, _amount: u64) -> Result<(), ProgramError> {
         handle_transfer_hook(&mut ctx.accounts)
     }
 }
@@ -46,7 +46,7 @@ mod quasar_transfer_hook_account_data_as_seed {
 // ---------------------------------------------------------------------------
 
 #[derive(Accounts)]
-pub struct InitializeExtraAccountMetaList {
+pub struct InitializeExtraAccountMetaListAccountConstraints {
     #[account(mut)]
     pub payer: Signer,
     /// ExtraAccountMetaList PDA: ["extra-account-metas", mint]
@@ -60,7 +60,7 @@ pub struct InitializeExtraAccountMetaList {
 }
 
 #[inline(always)]
-pub fn handle_initialize_extra_account_meta_list(accounts: &mut InitializeExtraAccountMetaList) -> Result<(), ProgramError> {
+pub fn handle_initialize_extra_account_meta_list(accounts: &mut InitializeExtraAccountMetaListAccountConstraints) -> Result<(), ProgramError> {
     // ExtraAccountMetaList with 1 extra account.
     // ExtraAccountMeta for a PDA with seeds [Literal("counter"), AccountData(0, 32, 32)]:
     //   The AccountData seed resolves the owner pubkey from account_index=0
@@ -168,19 +168,19 @@ pub fn handle_initialize_extra_account_meta_list(accounts: &mut InitializeExtraA
 // ---------------------------------------------------------------------------
 
 #[derive(Accounts)]
-pub struct TransferHook {
+pub struct TransferHookAccountConstraints {
     pub source_token: UncheckedAccount,
     pub mint: UncheckedAccount,
     pub destination_token: UncheckedAccount,
     pub owner: UncheckedAccount,
     pub extra_account_meta_list: UncheckedAccount,
-    /// Counter PDA resolved by Token-2022 using account data seeds
+    /// Counter PDA resolved by Token Extensions using account data seeds
     #[account(mut)]
     pub counter_account: UncheckedAccount,
 }
 
 #[inline(always)]
-pub fn handle_transfer_hook(accounts: &mut TransferHook) -> Result<(), ProgramError> {
+pub fn handle_transfer_hook(accounts: &mut TransferHookAccountConstraints) -> Result<(), ProgramError> {
     let view = unsafe {
         &mut *(&mut accounts.counter_account as *mut UncheckedAccount
             as *mut AccountView)

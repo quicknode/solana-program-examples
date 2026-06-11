@@ -5,7 +5,7 @@ use crate::errors;
 use crate::state::{read_config_authority, CONFIG_SIZE};
 
 #[derive(Accounts)]
-pub struct RemoveWallet {
+pub struct RemoveWalletAccountConstraints {
     #[account(mut)]
     pub authority: Signer,
     pub config: UncheckedAccount,
@@ -14,7 +14,7 @@ pub struct RemoveWallet {
 }
 
 #[inline(always)]
-pub fn handle_remove_wallet(accounts: &mut RemoveWallet) -> Result<(), ProgramError> {
+pub fn handle_remove_wallet(accounts: &mut RemoveWalletAccountConstraints) -> Result<(), ProgramError> {
     // Verify config PDA
     let (config_pda, _) = Address::find_program_address(&[CONFIG_SEED], &crate::ID);
     if accounts.config.to_account_view().address() != &config_pda {

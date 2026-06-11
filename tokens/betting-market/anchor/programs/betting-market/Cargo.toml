@@ -25,6 +25,12 @@ anchor-lang = { version = "1.0.0", features = ["init-if-needed"] }
 anchor-spl = "1.0.0"
 
 [dev-dependencies]
+# no-entrypoint: solana-kite pulls these SPL program crates into the host test
+# build, and their `entrypoint` symbols collide with this program's own
+# entrypoint at link time. Feature unification turns their entrypoints off
+# across the test build; the dependencies exist only for that.
+spl-token = { version = "9.0.0", features = ["no-entrypoint"] }
+spl-associated-token-account = { version = "8.0.0", features = ["no-entrypoint"] }
 litesvm = "0.11.0"
 solana-signer = "3.0.0"
 solana-keypair = "3.0.1"

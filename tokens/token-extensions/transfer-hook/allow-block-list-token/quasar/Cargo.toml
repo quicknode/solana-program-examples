@@ -13,7 +13,7 @@ check-cfg = ['cfg(target_os, values("solana"))']
 crate-type = ["cdylib", "lib"]
 
 [features]
-# Removed `alloc` feature — the upstream `quasar-lang` master no longer
+# Removed `alloc` feature - the upstream `quasar-lang` master no longer
 # exposes it, and nothing in this crate depends on alloc.
 client = []
 debug = []

@@ -1,4 +1,4 @@
-# Token Extensions — Group Pointer (Quasar)
+# Token Extensions - Group Pointer (Quasar)
 
 Link mints to a group via Group Pointer.
 

@@ -11,7 +11,7 @@ pub mod transfer_tokens {
     use super::*;
 
     pub fn create_token(
-        context: Context<CreateToken>,
+        context: Context<CreateTokenAccountConstraints>,
         token_title: String,
         token_symbol: String,
         token_uri: String,
@@ -19,11 +19,19 @@ pub mod transfer_tokens {
         create::handle_create_token(context, token_title, token_symbol, token_uri)
     }
 
-    pub fn mint_token(context: Context<MintToken>, amount: u64) -> Result<()> {
+    /// Mint `amount` minor units of the token to the recipient.
+    pub fn mint_token(
+        context: Context<MintTokenAccountConstraints>,
+        amount: u64,
+    ) -> Result<()> {
         mint::handle_mint_token(context, amount)
     }
 
-    pub fn transfer_tokens(context: Context<TransferTokens>, amount: u64) -> Result<()> {
+    /// Transfer `amount` minor units of the token from sender to recipient.
+    pub fn transfer_tokens(
+        context: Context<TransferTokensAccountConstraints>,
+        amount: u64,
+    ) -> Result<()> {
         transfer::handle_transfer_tokens(context, amount)
     }
 }

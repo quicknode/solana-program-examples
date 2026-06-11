@@ -9,7 +9,7 @@ use anchor_spl::token_interface::{
 };
 
 #[derive(Accounts)]
-pub struct InitializeGroup<'info> {
+pub struct InitializeGroupAccountConstraints<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
 
@@ -29,7 +29,7 @@ pub struct InitializeGroup<'info> {
     pub system_program: Program<'info, System>,
 }
 
-fn check_mint_data(accounts: &mut InitializeGroup) -> Result<()> {
+fn check_mint_data(accounts: &mut InitializeGroupAccountConstraints) -> Result<()> {
     let mint = &accounts.mint_account.to_account_info();
     let mint_data = mint.data.borrow();
     let mint_with_extension = StateWithExtensions::<MintState>::unpack(&mint_data)?;
@@ -40,7 +40,7 @@ fn check_mint_data(accounts: &mut InitializeGroup) -> Result<()> {
     Ok(())
 }
 
-pub fn handler(mut context: Context<InitializeGroup>) -> Result<()> {
+pub fn handler(mut context: Context<InitializeGroupAccountConstraints>) -> Result<()> {
     check_mint_data(&mut context.accounts)?;
 
     // // Token Group and Token Member extensions features not enabled yet on the Token2022 program

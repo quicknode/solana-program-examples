@@ -12,11 +12,11 @@ use anchor_spl::{
     token::Mint, 
     metadata::Metadata, 
 };
-// In Anchor 1.0, sysvar::instructions::ID moved — use the well-known address directly
+// In Anchor 1.0, sysvar::instructions::ID moved - use the well-known address directly
 const INSTRUCTIONS_SYSVAR_ID: Pubkey = anchor_lang::solana_program::pubkey::pubkey!("Sysvar1nstructions1111111111111111111111111");
 
 #[derive(Accounts)]
-pub struct VerifyCollectionMint<'info> {
+pub struct VerifyCollectionMintAccountConstraints<'info> {
     pub authority: Signer<'info>,
     #[account(mut)]
     pub metadata: Account<'info, MetadataAccount>,
@@ -38,7 +38,10 @@ pub struct VerifyCollectionMint<'info> {
     pub token_metadata_program: Program<'info, Metadata>,
 }
 
-pub fn handler(accounts: &mut VerifyCollectionMint, bumps: &VerifyCollectionMintBumps) -> Result<()> {
+pub fn handle_verify_collection(
+    accounts: &mut VerifyCollectionMintAccountConstraints,
+    bumps: &VerifyCollectionMintAccountConstraintsBumps,
+) -> Result<()> {
         let metadata = &accounts.metadata.to_account_info();
         let authority = &accounts.mint_authority.to_account_info();
         let collection_mint = &accounts.collection_mint.to_account_info();

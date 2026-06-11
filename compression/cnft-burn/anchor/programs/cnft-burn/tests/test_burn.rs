@@ -8,7 +8,7 @@
 //!   3. Mint a single cNFT to `leaf_owner` via `mint_v1`.
 //!   4. Recompute `data_hash` / `creator_hash` exactly as Bubblegum does.
 //!   5. Build the Merkle proof for leaf 0 (all empty-node siblings) and read
-//!      the current root from the on-chain tree account.
+//!      the current root from the onchain tree account.
 //!   6. Call our program's `burn_cnft`, signed by `leaf_owner`, and assert the
 //!      transaction succeeds and a second burn fails (leaf already zeroed).
 
@@ -75,8 +75,8 @@ struct MetadataArgs {
     is_mutable: bool,
     edition_nonce: Option<u8>,
     token_standard: Option<u8>, // TokenStandard enum, encoded by variant index
-    collection: Option<u8>,     // None — Collection, kept absent
-    uses: Option<u8>,           // None — Uses, kept absent
+    collection: Option<u8>,     // None - Collection, kept absent
+    uses: Option<u8>,           // None - Uses, kept absent
     token_program_version: TokenProgramVersion,
     creators: Vec<Creator>,
 }
@@ -125,7 +125,7 @@ fn burn_cnft_disc() -> [u8; 8] {
     out
 }
 
-// Minimal SHA-256 (FIPS 180-4) — only used to derive the Anchor discriminator.
+// Minimal SHA-256 (FIPS 180-4) - only used to derive the Anchor discriminator.
 fn sha256(input: &[u8]) -> [u8; 32] {
     const K: [u32; 64] = [
         0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4,
@@ -392,7 +392,7 @@ fn test_burn_cnft() {
     // Proof for leaf index 0 in an otherwise-empty tree: empty-node siblings.
     let proof = [empty_node(0), empty_node(1), empty_node(2)];
 
-    // Read the current root from the on-chain tree account.
+    // Read the current root from the onchain tree account.
     let tree_data = svm.get_account(&merkle_tree.pubkey()).unwrap().data;
     let root = read_current_root(&tree_data);
 

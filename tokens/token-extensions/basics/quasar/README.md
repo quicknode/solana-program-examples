@@ -1,4 +1,4 @@
-# Token Extensions — Basics (Quasar)
+# Token Extensions - Basics (Quasar)
 
 Mint and transfer with the [Token Extensions Program](https://solana.com/docs/terminology#token-extensions-program).
 

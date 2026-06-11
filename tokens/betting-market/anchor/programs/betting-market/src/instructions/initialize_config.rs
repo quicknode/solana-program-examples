@@ -6,7 +6,7 @@ use crate::{error::BettingError, Config};
 pub const MAX_FEE_BPS: u16 = 10_000;
 
 #[derive(Accounts)]
-pub struct InitializeConfig<'info> {
+pub struct InitializeConfigAccountConstraints<'info> {
     #[account(mut)]
     pub admin: Signer<'info>,
 
@@ -27,7 +27,7 @@ pub struct InitializeConfig<'info> {
 }
 
 pub fn handle_initialize_config(
-    context: Context<InitializeConfig>,
+    context: Context<InitializeConfigAccountConstraints>,
     fee_bps: u16,
     fee_recipient: Pubkey,
 ) -> Result<()> {

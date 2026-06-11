@@ -1,4 +1,4 @@
-# Token Extensions — Non-Transferable (Quasar)
+# Token Extensions - Non-Transferable (Quasar)
 
 Tokens that cannot be transferred.
 

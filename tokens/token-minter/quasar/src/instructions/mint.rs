@@ -3,7 +3,7 @@ use quasar_spl::prelude::*;
 
 /// Accounts for minting tokens to a recipient's token account.
 #[derive(Accounts)]
-pub struct MintToken {
+pub struct MintTokenAccountConstraints {
     #[account(mut)]
     pub mint_authority: Signer,
     pub recipient: UncheckedAccount,
@@ -20,21 +20,24 @@ pub struct MintToken {
     pub system_program: Program<SystemProgram>,
 }
 
+/// Mints `amount` tokens to the recipient's associated token account.
+///
+/// `amount` is in minor units (the raw integer the token program operates
+/// on). Clients convert from major units, e.g. 1 token with 9 decimals is
+/// `1 * 10u64.pow(9)` minor units.
 #[inline(always)]
-pub fn handle_mint_token(accounts: &mut MintToken, amount: u64) -> Result<(), ProgramError> {
+pub fn handle_mint_token(
+    accounts: &mut MintTokenAccountConstraints,
+    amount: u64,
+) -> Result<(), ProgramError> {
     log("Minting tokens to associated token account...");
-
-    let decimals = accounts.mint_account.decimals();
-    let adjusted_amount = amount
-        .checked_mul(10u64.pow(decimals as u32))
-        .ok_or(ProgramError::ArithmeticOverflow)?;
 
     accounts.token_program
         .mint_to(
             &accounts.mint_account,
             &accounts.associated_token_account,
             &accounts.mint_authority,
-            adjusted_amount,
+            amount,
         )
         .invoke()?;
 

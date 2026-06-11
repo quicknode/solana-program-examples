@@ -21,7 +21,7 @@ mod quasar_rent {
     /// (blueshift-gg/quasar#126). We pass the fields individually instead.
     #[instruction(discriminator = 0)]
     pub fn create_system_account(
-        ctx: Ctx<CreateSystemAccount>,
+        ctx: Ctx<CreateSystemAccountAccountConstraints>,
         name: String<50>,
         address: String<50>,
     ) -> Result<(), ProgramError> {

@@ -5,8 +5,8 @@
 ### Cargo.toml
 - Change `anchor-lang = "0.32.1"` → `anchor-lang = "1.0.0"`
 - Change `anchor-lang = { version = "0.32.1", ... }` → `anchor-lang = { version = "1.0.0", ... }`
-- Same for `anchor-spl` if present — change to `1.0.0`
-- Add comment: `# Anchor 1.0.0 — pin to RC until stable release`
+- Same for `anchor-spl` if present - change to `1.0.0`
+- Add comment: `# Anchor 1.0.0 - pin to RC until stable release`
 - **REMOVE `interface-instructions` feature** if present (removed in Anchor 1.0). This affects transfer-hook projects.
 - Keep all other features as-is (`idl-build`, `init-if-needed`, `cpi`, etc.)
 
@@ -37,5 +37,5 @@
 ### interface-instructions removal (transfer-hook projects)
 For projects that had `features = ["interface-instructions"]`:
 - Remove that feature from Cargo.toml
-- The `#[interface]` attribute is removed — check if the program source uses it
+- The `#[interface]` attribute is removed - check if the program source uses it
 - If it does, this needs manual intervention to refactor

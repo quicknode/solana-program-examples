@@ -15,7 +15,7 @@ impl Id for Token2022 {
 }
 
 #[derive(Accounts)]
-pub struct InitMint {
+pub struct InitMintAccountConstraints {
     #[account(mut)]
     pub payer: Signer,
     /// The mint account (must also be a signer for create_account).
@@ -30,7 +30,7 @@ pub struct InitMint {
 
 #[inline(always)]
 pub fn handle_init_mint(
-    accounts: &mut InitMint, decimals: u8,
+    accounts: &mut InitMintAccountConstraints, decimals: u8,
     freeze_authority: &Address,
     permanent_delegate: &Address,
     transfer_hook_authority: &Address,
@@ -188,10 +188,10 @@ pub fn handle_init_mint(
     Ok(())
 }
 
-/// Emit a Token-2022 TokenMetadataUpdateField CPI.
+/// Emit a Token Extensions TokenMetadataUpdateField CPI.
 /// Opcode 44, sub-opcode 1, followed by Field::Key (discriminator 2, then borsh
 /// string for key, then borsh string for value).
-fn emit_update_field_cpi(ctx: &InitMint, key: &[u8], value: &[u8]) -> Result<(), ProgramError> {
+fn emit_update_field_cpi(ctx: &InitMintAccountConstraints, key: &[u8], value: &[u8]) -> Result<(), ProgramError> {
     let token_prog = ctx.token_program.to_account_view().address();
     let mint_key = ctx.mint.to_account_view().address();
     let payer_key = ctx.payer.to_account_view().address();
@@ -225,7 +225,7 @@ fn emit_update_field_cpi(ctx: &InitMint, key: &[u8], value: &[u8]) -> Result<(),
 
 /// Top up the mint account if its balance is below the rent minimum for its
 /// current data size.
-fn top_up_rent(ctx: &InitMint) -> Result<(), ProgramError> {
+fn top_up_rent(ctx: &InitMintAccountConstraints) -> Result<(), ProgramError> {
     let mint_view = ctx.mint.to_account_view();
     let data_len = mint_view.data_len();
     let min_balance = Rent::get()?.try_minimum_balance(data_len)?;
@@ -242,7 +242,7 @@ fn top_up_rent(ctx: &InitMint) -> Result<(), ProgramError> {
 
 /// Create the ExtraAccountMetaList PDA and populate it with the ABWallet
 /// extra account meta (PDA seeded by [AB_WALLET_SEED, AccountData(2, 32, 32)]).
-fn init_extra_metas(ctx: &mut InitMint) -> Result<(), ProgramError> {
+fn init_extra_metas(ctx: &mut InitMintAccountConstraints) -> Result<(), ProgramError> {
     let mint_key = ctx.mint.to_account_view().address();
 
     // Meta list with 1 extra account = 51 bytes

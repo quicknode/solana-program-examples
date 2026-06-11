@@ -13,14 +13,16 @@ See also: [Pyth overview](../README.md) and the [repository catalog](../../../RE
 > error[E0277]: the trait bound `pythnet_sdk::messages::PriceFeedMessage: BorshSerialize` is not satisfied
 > ```
 >
-> No published `pyth-solana-receiver-sdk` targets `anchor-lang` 1.0 (which this repo standardizes on), and no `pythnet-sdk` release has migrated to borsh 1.x — so the dependency can't simply be upgraded. Tracked upstream at [pyth-network/pyth-crosschain#3756](https://github.com/pyth-network/pyth-crosschain/issues/3756).
+> No published `pyth-solana-receiver-sdk` targets `anchor-lang` 1.0 (which this repo standardizes on), and no `pythnet-sdk` release has migrated to borsh 1.x - so the dependency can't simply be upgraded. Tracked upstream at [pyth-network/pyth-crosschain#3756](https://github.com/pyth-network/pyth-crosschain/issues/3756).
 >
-> As a workaround, `programs/pythexample/src/lib.rs` mirrors the on-chain `PriceUpdateV2` layout locally (same fields, same 8-byte discriminator, owned by the Pyth Receiver program) so accounts written by Pyth deserialize unchanged. Replace the vendored type with the SDK import once an Anchor 1.0 / borsh 1.x compatible release ships.
+> As a workaround, `programs/pythexample/src/lib.rs` mirrors the onchain `PriceUpdateV2` layout locally (same fields, same 8-byte discriminator, owned by the Pyth Receiver program) so accounts written by Pyth deserialize unchanged. Replace the vendored type with the SDK import once an Anchor 1.0 / borsh 1.x compatible release ships.
 
 ## Major concepts
 
 - Oracle price accounts
 - Consuming external onchain data in a program
+- Oracle account validation: `Account<PriceUpdateV2>` enforces that the price account is owned by the Pyth Receiver program (`rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ`)
+- Price freshness: `read_price` rejects updates older than `MAXIMUM_PRICE_AGE_SECONDS` (compared against `publish_time`, a unix timestamp in seconds, mirroring the SDK's `get_price_no_older_than`)
 
 ## Setup
 
