@@ -27,7 +27,7 @@ fn test_initialize_group() {
     let instruction = Instruction::new_with_bytes(
         program_id,
         &group::instruction::TestInitializeGroup {}.data(),
-        group::accounts::InitializeGroup {
+        group::accounts::InitializeGroupAccountConstraints {
             payer: payer.pubkey(),
             mint_account,
             token_program: TOKEN_EXTENSIONS_PROGRAM_ID,

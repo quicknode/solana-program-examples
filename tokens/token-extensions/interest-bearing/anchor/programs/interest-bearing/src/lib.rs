@@ -18,11 +18,11 @@ pub mod interest_bearing {
 
     use super::*;
 
-    pub fn initialize(context: Context<Initialize>, rate: i16) -> Result<()> {
+    pub fn initialize(context: Context<InitializeAccountConstraints>, rate: i16) -> Result<()> {
         instructions::initialize::handler(context, rate)
     }
 
-    pub fn update_rate(context: Context<UpdateRate>, rate: i16) -> Result<()> {
+    pub fn update_rate(context: Context<UpdateRateAccountConstraints>, rate: i16) -> Result<()> {
         instructions::update_rate::handler(context, rate)
     }
 }

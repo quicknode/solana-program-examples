@@ -26,18 +26,18 @@ mod quasar_interest_bearing {
     use super::*;
 
     #[instruction(discriminator = 0)]
-    pub fn initialize(ctx: Ctx<Initialize>, rate: i16) -> Result<(), ProgramError> {
+    pub fn initialize(ctx: Ctx<InitializeAccountConstraints>, rate: i16) -> Result<(), ProgramError> {
         handle_initialize(&mut ctx.accounts, rate)
     }
 
     #[instruction(discriminator = 1)]
-    pub fn update_rate(ctx: Ctx<UpdateRate>, rate: i16) -> Result<(), ProgramError> {
+    pub fn update_rate(ctx: Ctx<UpdateRateAccountConstraints>, rate: i16) -> Result<(), ProgramError> {
         handle_update_rate(&mut ctx.accounts, rate)
     }
 }
 
 #[derive(Accounts)]
-pub struct Initialize {
+pub struct InitializeAccountConstraints {
     #[account(mut)]
     pub payer: Signer,
     #[account(mut)]
@@ -47,7 +47,7 @@ pub struct Initialize {
 }
 
 #[inline(always)]
-fn handle_initialize(accounts: &mut Initialize, rate: i16) -> Result<(), ProgramError> {
+fn handle_initialize(accounts: &mut InitializeAccountConstraints, rate: i16) -> Result<(), ProgramError> {
     // 165 (base) + 1 (account type) + 4 (TLV header) + 52 (InterestBearingConfig data) = 222 bytes
     let mint_size: u64 = 222;
     let lamports = Rent::get()?.try_minimum_balance(mint_size as usize)?;
@@ -101,7 +101,7 @@ fn handle_initialize(accounts: &mut Initialize, rate: i16) -> Result<(), Program
 }
 
 #[derive(Accounts)]
-pub struct UpdateRate {
+pub struct UpdateRateAccountConstraints {
     #[account(mut)]
     pub authority: Signer,
     #[account(mut)]
@@ -110,7 +110,7 @@ pub struct UpdateRate {
 }
 
 #[inline(always)]
-fn handle_update_rate(accounts: &mut UpdateRate, rate: i16) -> Result<(), ProgramError> {
+fn handle_update_rate(accounts: &mut UpdateRateAccountConstraints, rate: i16) -> Result<(), ProgramError> {
     // InterestBearingMintUpdateRate: opcode 33, sub-opcode 1, rate (i16 LE)
     let mut data = [0u8; 4];
     data[0] = 33;

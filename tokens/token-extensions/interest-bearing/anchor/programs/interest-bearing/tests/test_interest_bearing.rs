@@ -32,7 +32,7 @@ fn test_initialize_and_update_rate() {
     let initialize_ix = Instruction::new_with_bytes(
         program_id,
         &interest_bearing::instruction::Initialize { rate: 0 }.data(),
-        interest_bearing::accounts::Initialize {
+        interest_bearing::accounts::InitializeAccountConstraints {
             payer: payer.pubkey(),
             mint_account: mint_keypair.pubkey(),
             token_program: TOKEN_EXTENSIONS_PROGRAM_ID,
@@ -54,7 +54,7 @@ fn test_initialize_and_update_rate() {
     let update_rate_ix = Instruction::new_with_bytes(
         program_id,
         &interest_bearing::instruction::UpdateRate { rate: 100 }.data(),
-        interest_bearing::accounts::UpdateRate {
+        interest_bearing::accounts::UpdateRateAccountConstraints {
             authority: payer.pubkey(),
             mint_account: mint_keypair.pubkey(),
             token_program: TOKEN_EXTENSIONS_PROGRAM_ID,

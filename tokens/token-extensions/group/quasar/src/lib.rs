@@ -30,13 +30,13 @@ mod quasar_group {
     use super::*;
 
     #[instruction(discriminator = 0)]
-    pub fn initialize_group(ctx: Ctx<InitializeGroup>) -> Result<(), ProgramError> {
+    pub fn initialize_group(ctx: Ctx<InitializeGroupAccountConstraints>) -> Result<(), ProgramError> {
         handle_initialize_group(&mut ctx.accounts)
     }
 }
 
 #[derive(Accounts)]
-pub struct InitializeGroup {
+pub struct InitializeGroupAccountConstraints {
     #[account(mut)]
     pub payer: Signer,
     #[account(mut)]
@@ -46,7 +46,7 @@ pub struct InitializeGroup {
 }
 
 #[inline(always)]
-fn handle_initialize_group(accounts: &mut InitializeGroup) -> Result<(), ProgramError> {
+fn handle_initialize_group(accounts: &mut InitializeGroupAccountConstraints) -> Result<(), ProgramError> {
     // Mint + GroupPointer extension = 234 bytes
     // (base mint padded to 165 + account_type byte + GroupPointer TLV [2 type + 2 len + 64 data])
     let mint_size: u64 = 234;
