@@ -5,13 +5,13 @@ use {
 
 /// Accounts for incrementing a counter.
 #[derive(Accounts)]
-pub struct Increment {
+pub struct IncrementAccountConstraints {
     #[account(mut)]
     pub counter: Account<Counter>,
 }
 
 #[inline(always)]
-pub fn handle_increment(accounts: &mut Increment) -> Result<(), ProgramError> {
+pub fn handle_increment(accounts: &mut IncrementAccountConstraints) -> Result<(), ProgramError> {
     let current: u64 = accounts.counter.count.into();
     let next = current
         .checked_add(1)

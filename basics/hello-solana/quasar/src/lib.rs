@@ -14,7 +14,7 @@ mod quasar_hello_solana {
     use super::*;
 
     #[instruction(discriminator = 0)]
-    pub fn hello(ctx: Ctx<Hello>) -> Result<(), ProgramError> {
+    pub fn hello(ctx: Ctx<HelloAccountConstraints>) -> Result<(), ProgramError> {
         instructions::handle_hello(&mut ctx.accounts)
     }
 }
