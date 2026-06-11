@@ -28,7 +28,7 @@ mod quasar_transfer_fee {
     /// Create a mint with the TransferFeeConfig extension.
     #[instruction(discriminator = 0)]
     pub fn initialize(
-        ctx: Ctx<Initialize>,
+        ctx: Ctx<InitializeAccountConstraints>,
         transfer_fee_basis_points: u16,
         maximum_fee: u64,
     ) -> Result<(), ProgramError> {
@@ -37,14 +37,14 @@ mod quasar_transfer_fee {
 
     /// Transfer tokens with fee.
     #[instruction(discriminator = 1)]
-    pub fn transfer(ctx: Ctx<Transfer>, amount: u64, fee: u64) -> Result<(), ProgramError> {
+    pub fn transfer(ctx: Ctx<TransferAccountConstraints>, amount: u64, fee: u64) -> Result<(), ProgramError> {
         handle_transfer(&mut ctx.accounts, amount, fee)
     }
 
     /// Update the transfer fee (takes effect after 2 epochs).
     #[instruction(discriminator = 2)]
     pub fn update_fee(
-        ctx: Ctx<UpdateFee>,
+        ctx: Ctx<UpdateFeeAccountConstraints>,
         transfer_fee_basis_points: u16,
         maximum_fee: u64,
     ) -> Result<(), ProgramError> {
@@ -53,13 +53,13 @@ mod quasar_transfer_fee {
 
     /// Withdraw withheld fees from the mint account.
     #[instruction(discriminator = 3)]
-    pub fn withdraw(ctx: Ctx<Withdraw>) -> Result<(), ProgramError> {
+    pub fn withdraw(ctx: Ctx<WithdrawAccountConstraints>) -> Result<(), ProgramError> {
         handle_withdraw(&mut ctx.accounts)
     }
 }
 
 #[derive(Accounts)]
-pub struct Initialize {
+pub struct InitializeAccountConstraints {
     #[account(mut)]
     pub payer: Signer,
     #[account(mut)]
@@ -69,7 +69,7 @@ pub struct Initialize {
 }
 
 #[inline(always)]
-fn handle_initialize(accounts: &mut Initialize, basis_points: u16, max_fee: u64) -> Result<(), ProgramError> {
+fn handle_initialize(accounts: &mut InitializeAccountConstraints, basis_points: u16, max_fee: u64) -> Result<(), ProgramError> {
         // 165 (base) + 1 (AccountType) + 4 (TLV header) + 108 (TransferFeeConfig data) = 278 bytes
         let mint_size: u64 = 278;
         let lamports = Rent::get()?.try_minimum_balance(mint_size as usize)?;
@@ -127,7 +127,7 @@ fn handle_initialize(accounts: &mut Initialize, basis_points: u16, max_fee: u64)
 }
 
 #[derive(Accounts)]
-pub struct Transfer {
+pub struct TransferAccountConstraints {
     #[account(mut)]
     pub sender: Signer,
     #[account(mut)]
@@ -139,7 +139,7 @@ pub struct Transfer {
 }
 
 #[inline(always)]
-fn handle_transfer(accounts: &mut Transfer, amount: u64, fee: u64) -> Result<(), ProgramError> {
+fn handle_transfer(accounts: &mut TransferAccountConstraints, amount: u64, fee: u64) -> Result<(), ProgramError> {
         // TransferCheckedWithFee: opcode 37
         // Data: [37, amount (u64 LE), decimals (u8), fee (u64 LE)]
         let mut data = [0u8; 18];
@@ -168,7 +168,7 @@ fn handle_transfer(accounts: &mut Transfer, amount: u64, fee: u64) -> Result<(),
 }
 
 #[derive(Accounts)]
-pub struct UpdateFee {
+pub struct UpdateFeeAccountConstraints {
     pub authority: Signer,
     #[account(mut)]
     pub mint_account: UncheckedAccount,
@@ -176,7 +176,7 @@ pub struct UpdateFee {
 }
 
 #[inline(always)]
-fn handle_update_fee(accounts: &mut UpdateFee, basis_points: u16, max_fee: u64) -> Result<(), ProgramError> {
+fn handle_update_fee(accounts: &mut UpdateFeeAccountConstraints, basis_points: u16, max_fee: u64) -> Result<(), ProgramError> {
         // SetTransferFee: opcode 26, sub-opcode 4
         // Actually: extension instruction layout is different.
         // TransferFeeInstruction::SetTransferFee = 4 within type 26
@@ -202,7 +202,7 @@ fn handle_update_fee(accounts: &mut UpdateFee, basis_points: u16, max_fee: u64) 
 }
 
 #[derive(Accounts)]
-pub struct Withdraw {
+pub struct WithdrawAccountConstraints {
     pub authority: Signer,
     #[account(mut)]
     pub mint_account: UncheckedAccount,
@@ -212,7 +212,7 @@ pub struct Withdraw {
 }
 
 #[inline(always)]
-fn handle_withdraw(accounts: &mut Withdraw) -> Result<(), ProgramError> {
+fn handle_withdraw(accounts: &mut WithdrawAccountConstraints) -> Result<(), ProgramError> {
         // WithdrawWithheldTokensFromMint: opcode 26, sub-opcode 3
         let data: [u8; 2] = [26, 3];
 

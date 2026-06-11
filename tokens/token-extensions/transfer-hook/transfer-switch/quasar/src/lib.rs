@@ -24,7 +24,7 @@ mod quasar_transfer_hook_switch {
 
     /// Set up or change the admin. The first caller becomes admin.
     #[instruction(discriminator = [0, 0, 0, 0, 0, 0, 0, 1])]
-    pub fn configure_admin(ctx: Ctx<ConfigureAdmin>) -> Result<(), ProgramError> {
+    pub fn configure_admin(ctx: Ctx<ConfigureAdminAccountConstraints>) -> Result<(), ProgramError> {
         handle_configure_admin(&mut ctx.accounts)
     }
 
@@ -32,21 +32,21 @@ mod quasar_transfer_hook_switch {
     /// Discriminator = sha256("spl-transfer-hook-interface:initialize-extra-account-metas")[:8]
     #[instruction(discriminator = [43, 34, 13, 49, 167, 88, 235, 235])]
     pub fn initialize_extra_account_metas_list(
-        ctx: Ctx<InitializeExtraAccountMetas>,
+        ctx: Ctx<InitializeExtraAccountMetasAccountConstraints>,
     ) -> Result<(), ProgramError> {
         handle_initialize_extra_account_metas_list(&mut ctx.accounts)
     }
 
     /// Toggle the transfer switch for a wallet.
     #[instruction(discriminator = [0, 0, 0, 0, 0, 0, 0, 3])]
-    pub fn switch(ctx: Ctx<Switch>, on: u8) -> Result<(), ProgramError> {
+    pub fn switch(ctx: Ctx<SwitchAccountConstraints>, on: u8) -> Result<(), ProgramError> {
         handle_switch(&mut ctx.accounts, on != 0)
     }
 
     /// Transfer hook handler - checks the sender's switch is on.
     /// Discriminator = sha256("spl-transfer-hook-interface:execute")[:8]
     #[instruction(discriminator = [105, 37, 101, 197, 75, 251, 102, 26])]
-    pub fn transfer_hook(ctx: Ctx<TransferHook>, _amount: u64) -> Result<(), ProgramError> {
+    pub fn transfer_hook(ctx: Ctx<TransferHookAccountConstraints>, _amount: u64) -> Result<(), ProgramError> {
         handle_transfer_hook(&mut ctx.accounts)
     }
 }
@@ -61,7 +61,7 @@ mod quasar_transfer_hook_switch {
 // ---------------------------------------------------------------------------
 
 #[derive(Accounts)]
-pub struct ConfigureAdmin {
+pub struct ConfigureAdminAccountConstraints {
     #[account(mut)]
     pub admin: Signer,
     pub new_admin: UncheckedAccount,
@@ -71,7 +71,7 @@ pub struct ConfigureAdmin {
 }
 
 #[inline(always)]
-fn handle_configure_admin(accounts: &mut ConfigureAdmin) -> Result<(), ProgramError> {
+fn handle_configure_admin(accounts: &mut ConfigureAdminAccountConstraints) -> Result<(), ProgramError> {
     let view = accounts.admin_config.to_account_view();
     let data = view.try_borrow()?;
 
@@ -125,7 +125,7 @@ fn handle_configure_admin(accounts: &mut ConfigureAdmin) -> Result<(), ProgramEr
 // ---------------------------------------------------------------------------
 
 #[derive(Accounts)]
-pub struct InitializeExtraAccountMetas {
+pub struct InitializeExtraAccountMetasAccountConstraints {
     #[account(mut)]
     pub payer: Signer,
     pub token_mint: UncheckedAccount,
@@ -136,7 +136,7 @@ pub struct InitializeExtraAccountMetas {
 
 #[inline(always)]
 fn handle_initialize_extra_account_metas_list(
-    accounts: &mut InitializeExtraAccountMetas,
+    accounts: &mut InitializeExtraAccountMetasAccountConstraints,
 ) -> Result<(), ProgramError> {
         // 1 extra account: wallet switch PDA seeded by [AccountKey(index=3)] (sender/owner)
         let meta_list_size: u64 = 51; // 8 + 4 + 4 + 35
@@ -189,7 +189,7 @@ fn handle_initialize_extra_account_metas_list(
 // ---------------------------------------------------------------------------
 
 #[derive(Accounts)]
-pub struct Switch {
+pub struct SwitchAccountConstraints {
     #[account(mut)]
     pub admin: Signer,
     pub wallet: UncheckedAccount,
@@ -200,7 +200,7 @@ pub struct Switch {
 }
 
 #[inline(always)]
-fn handle_switch(accounts: &mut Switch, on: bool) -> Result<(), ProgramError> {
+fn handle_switch(accounts: &mut SwitchAccountConstraints, on: bool) -> Result<(), ProgramError> {
     // Verify admin
     let config_view = accounts.admin_config.to_account_view();
     let config_data = config_view.try_borrow()?;
@@ -253,7 +253,7 @@ fn handle_switch(accounts: &mut Switch, on: bool) -> Result<(), ProgramError> {
 // ---------------------------------------------------------------------------
 
 #[derive(Accounts)]
-pub struct TransferHook {
+pub struct TransferHookAccountConstraints {
     pub source_token_account: UncheckedAccount,
     pub token_mint: UncheckedAccount,
     pub receiver_token_account: UncheckedAccount,
@@ -264,7 +264,7 @@ pub struct TransferHook {
 }
 
 #[inline(always)]
-fn handle_transfer_hook(accounts: &mut TransferHook) -> Result<(), ProgramError> {
+fn handle_transfer_hook(accounts: &mut TransferHookAccountConstraints) -> Result<(), ProgramError> {
     let switch_view = accounts.wallet_switch.to_account_view();
     let data = switch_view.try_borrow()?;
 

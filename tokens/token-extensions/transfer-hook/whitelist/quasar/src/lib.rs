@@ -25,7 +25,7 @@ mod quasar_transfer_hook_whitelist {
     /// Discriminator = sha256("spl-transfer-hook-interface:initialize-extra-account-metas")[:8]
     #[instruction(discriminator = [43, 34, 13, 49, 167, 88, 235, 235])]
     pub fn initialize_extra_account_meta_list(
-        ctx: Ctx<InitializeExtraAccountMetaList>,
+        ctx: Ctx<InitializeExtraAccountMetaListAccountConstraints>,
     ) -> Result<(), ProgramError> {
         handle_initialize(&mut ctx.accounts)
     }
@@ -33,13 +33,13 @@ mod quasar_transfer_hook_whitelist {
     /// Transfer hook handler - checks if the destination is in the whitelist.
     /// Discriminator = sha256("spl-transfer-hook-interface:execute")[:8]
     #[instruction(discriminator = [105, 37, 101, 197, 75, 251, 102, 26])]
-    pub fn transfer_hook(ctx: Ctx<TransferHook>, _amount: u64) -> Result<(), ProgramError> {
+    pub fn transfer_hook(ctx: Ctx<TransferHookAccountConstraints>, _amount: u64) -> Result<(), ProgramError> {
         handle_transfer_hook(&mut ctx.accounts)
     }
 
     /// Add an address to the whitelist. Only callable by the authority.
     #[instruction(discriminator = [0, 0, 0, 0, 0, 0, 0, 2])]
-    pub fn add_to_whitelist(ctx: Ctx<AddToWhitelist>) -> Result<(), ProgramError> {
+    pub fn add_to_whitelist(ctx: Ctx<AddToWhitelistAccountConstraints>) -> Result<(), ProgramError> {
         handle_add_to_whitelist(&mut ctx.accounts)
     }
 }
@@ -49,7 +49,7 @@ mod quasar_transfer_hook_whitelist {
 // ---------------------------------------------------------------------------
 
 #[derive(Accounts)]
-pub struct InitializeExtraAccountMetaList {
+pub struct InitializeExtraAccountMetaListAccountConstraints {
     #[account(mut)]
     pub payer: Signer,
     #[account(mut)]
@@ -62,7 +62,7 @@ pub struct InitializeExtraAccountMetaList {
 }
 
 #[inline(always)]
-pub fn handle_initialize(accounts: &mut InitializeExtraAccountMetaList) -> Result<(), ProgramError> {
+pub fn handle_initialize(accounts: &mut InitializeExtraAccountMetaListAccountConstraints) -> Result<(), ProgramError> {
     // Create ExtraAccountMetaList PDA (1 extra account: whitelist)
     let meta_list_size: u64 = 51; // 8 + 4 + 4 + 35
     let lamports = Rent::get()?.try_minimum_balance(meta_list_size as usize)?;
@@ -147,7 +147,7 @@ pub fn handle_initialize(accounts: &mut InitializeExtraAccountMetaList) -> Resul
 // ---------------------------------------------------------------------------
 
 #[derive(Accounts)]
-pub struct TransferHook {
+pub struct TransferHookAccountConstraints {
     pub source_token: UncheckedAccount,
     pub mint: UncheckedAccount,
     pub destination_token: UncheckedAccount,
@@ -157,7 +157,7 @@ pub struct TransferHook {
 }
 
 #[inline(always)]
-pub fn handle_transfer_hook(accounts: &TransferHook) -> Result<(), ProgramError> {
+pub fn handle_transfer_hook(accounts: &TransferHookAccountConstraints) -> Result<(), ProgramError> {
     let wl_view = accounts.white_list.to_account_view();
     let data = wl_view.try_borrow()?;
 
@@ -198,7 +198,7 @@ pub fn handle_transfer_hook(accounts: &TransferHook) -> Result<(), ProgramError>
 // ---------------------------------------------------------------------------
 
 #[derive(Accounts)]
-pub struct AddToWhitelist {
+pub struct AddToWhitelistAccountConstraints {
     pub signer: Signer,
     pub new_account: UncheckedAccount,
     #[account(mut)]
@@ -206,7 +206,7 @@ pub struct AddToWhitelist {
 }
 
 #[inline(always)]
-pub fn handle_add_to_whitelist(accounts: &mut AddToWhitelist) -> Result<(), ProgramError> {
+pub fn handle_add_to_whitelist(accounts: &mut AddToWhitelistAccountConstraints) -> Result<(), ProgramError> {
     let view = unsafe {
         &mut *(&mut accounts.white_list as *mut UncheckedAccount
             as *mut AccountView)

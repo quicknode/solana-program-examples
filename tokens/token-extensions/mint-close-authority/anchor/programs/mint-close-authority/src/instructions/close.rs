@@ -5,7 +5,7 @@ use anchor_spl::{
 };
 
 #[derive(Accounts)]
-pub struct Close<'info> {
+pub struct CloseAccountConstraints<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
 
@@ -17,7 +17,7 @@ pub struct Close<'info> {
     pub token_program: Program<'info, Token2022>,
 }
 
-pub fn handler(context: Context<Close>) -> Result<()> {
+pub fn handler(context: Context<CloseAccountConstraints>) -> Result<()> {
     // cpi to token extensions programs to close mint account
     // alternatively, this can also be done in the client
     close_account(CpiContext::new(

@@ -88,7 +88,7 @@ fn test_whitelist_transfer_hook() {
     let init_extra_ix = Instruction::new_with_bytes(
         program_id,
         &transfer_hook::instruction::InitializeExtraAccountMetaList {}.data(),
-        transfer_hook::accounts::InitializeExtraAccountMetaList {
+        transfer_hook::accounts::InitializeExtraAccountMetaListAccountConstraints {
             payer: payer.pubkey(),
             extra_account_meta_list,
             mint,
@@ -104,7 +104,7 @@ fn test_whitelist_transfer_hook() {
     let add_to_whitelist_ix = Instruction::new_with_bytes(
         program_id,
         &transfer_hook::instruction::AddToWhitelist {}.data(),
-        transfer_hook::accounts::AddToWhiteList {
+        transfer_hook::accounts::AddToWhiteListAccountConstraints {
             new_account: dest_ata,
             white_list: white_list_pda,
             signer: payer.pubkey(),

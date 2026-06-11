@@ -13,7 +13,7 @@ use anchor_spl::token_interface::{
 
 #[derive(Accounts)]
 #[instruction(_decimals: u8)]
-pub struct Initialize<'info> {
+pub struct InitializeAccountConstraints<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
 
@@ -31,13 +31,13 @@ pub struct Initialize<'info> {
 }
 
 // create a mint account that specifies this program as the transfer hook program
-pub fn handler(mut context: Context<Initialize>, _decimals: u8) -> Result<()> {
+pub fn handler(mut context: Context<InitializeAccountConstraints>, _decimals: u8) -> Result<()> {
     handle_check_mint_data(&mut context.accounts)?;
     Ok(())
 }
 
 // helper to check mint data, and demonstrate how to read mint extension data within a program
-fn handle_check_mint_data(accounts: &mut Initialize) -> Result<()> {
+fn handle_check_mint_data(accounts: &mut InitializeAccountConstraints) -> Result<()> {
     let mint = &accounts.mint_account.to_account_info();
     let mint_data = mint.data.borrow();
     // .map_err() needed because spl-token-2022 uses solana-program-error 2.x

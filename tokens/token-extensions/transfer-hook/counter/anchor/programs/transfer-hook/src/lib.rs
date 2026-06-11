@@ -33,18 +33,18 @@ pub mod transfer_hook {
 
     #[instruction(discriminator = InitializeExtraAccountMetaListInstruction::SPL_DISCRIMINATOR_SLICE)]
     pub fn initialize_extra_account_meta_list(
-        context: Context<InitializeExtraAccountMetaList>,
+        context: Context<InitializeExtraAccountMetaListAccountConstraints>,
     ) -> Result<()> {
         instructions::initialize_extra_account_meta_list::handler(context)
     }
 
     #[instruction(discriminator = ExecuteInstruction::SPL_DISCRIMINATOR_SLICE)]
-    pub fn transfer_hook(context: Context<TransferHook>, amount: u64) -> Result<()> {
+    pub fn transfer_hook(context: Context<TransferHookAccountConstraints>, amount: u64) -> Result<()> {
         instructions::transfer_hook::handler(context, amount)
     }
 }
 
-pub fn check_is_transferring(context: &Context<TransferHook>) -> Result<()> {
+pub fn check_is_transferring(context: &Context<TransferHookAccountConstraints>) -> Result<()> {
     let source_token_info = context.accounts.source_token.to_account_info();
     let mut account_data_ref: RefMut<&mut [u8]> = source_token_info.try_borrow_mut_data()?;
     let mut account = PodStateWithExtensionsMut::<PodAccount>::unpack(*account_data_ref)?;

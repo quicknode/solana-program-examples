@@ -91,7 +91,7 @@ fn test_transfer_switch() {
     let configure_admin_ix = Instruction::new_with_bytes(
         program_id,
         &transfer_switch::instruction::ConfigureAdmin {}.data(),
-        transfer_switch::accounts::ConfigureAdmin {
+        transfer_switch::accounts::ConfigureAdminAccountConstraints {
             admin: payer.pubkey(),
             new_admin: payer.pubkey(),
             admin_config,
@@ -106,7 +106,7 @@ fn test_transfer_switch() {
     let init_extra_ix = Instruction::new_with_bytes(
         program_id,
         &transfer_switch::instruction::InitializeExtraAccountMetasList {}.data(),
-        transfer_switch::accounts::InitializeExtraAccountMetas {
+        transfer_switch::accounts::InitializeExtraAccountMetasAccountConstraints {
             payer: payer.pubkey(),
             token_mint: mint,
             extra_account_metas_list: extra_account_meta_list,
@@ -121,7 +121,7 @@ fn test_transfer_switch() {
     let switch_off_ix = Instruction::new_with_bytes(
         program_id,
         &transfer_switch::instruction::Switch { on: false }.data(),
-        transfer_switch::accounts::Switch {
+        transfer_switch::accounts::SwitchAccountConstraints {
             admin: payer.pubkey(),
             wallet: sender.pubkey(),
             admin_config,
@@ -164,7 +164,7 @@ fn test_transfer_switch() {
     let switch_on_ix = Instruction::new_with_bytes(
         program_id,
         &transfer_switch::instruction::Switch { on: true }.data(),
-        transfer_switch::accounts::Switch {
+        transfer_switch::accounts::SwitchAccountConstraints {
             admin: payer.pubkey(),
             wallet: sender.pubkey(),
             admin_config,

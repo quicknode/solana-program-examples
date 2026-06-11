@@ -9,7 +9,7 @@ declare_id!("A9rxKS84ZoJVyeTfQbCEfxME2vvAM4uwSMjkmhR5XWb1");
 pub mod permanent_delegate {
     use super::*;
 
-    pub fn initialize(context: Context<Initialize>) -> Result<()> {
+    pub fn initialize(context: Context<InitializeAccountConstraints>) -> Result<()> {
         instructions::initialize::handler(context)
     }
 }

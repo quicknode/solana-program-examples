@@ -7,7 +7,7 @@ use crate::instructions::init_mint::Token2022;
 use crate::state::mode_to_metadata_value;
 
 #[derive(Accounts)]
-pub struct ChangeMode {
+pub struct ChangeModeAccountConstraints {
     #[account(mut)]
     pub authority: Signer,
     #[account(mut)]
@@ -17,7 +17,7 @@ pub struct ChangeMode {
 }
 
 #[inline(always)]
-pub fn handle_change_mode(accounts: &mut ChangeMode, mode: u8, threshold: u64) -> Result<(), ProgramError> {
+pub fn handle_change_mode(accounts: &mut ChangeModeAccountConstraints, mode: u8, threshold: u64) -> Result<(), ProgramError> {
     let mode_value = mode_to_metadata_value(mode);
     let token_prog = accounts.token_program.to_account_view().address();
     let mint_key = accounts.mint.to_account_view().address();
@@ -65,7 +65,7 @@ fn emit_update_field(
     token_prog: &Address,
     mint_key: &Address,
     auth_key: &Address,
-    ctx: &ChangeMode,
+    ctx: &ChangeModeAccountConstraints,
     key: &[u8],
     value: &[u8],
 ) -> Result<(), ProgramError> {
@@ -97,7 +97,7 @@ fn emit_update_field(
 }
 
 /// Check if the mint's metadata already contains a "threshold" key.
-fn has_threshold_in_metadata(ctx: &ChangeMode) -> Result<bool, ProgramError> {
+fn has_threshold_in_metadata(ctx: &ChangeModeAccountConstraints) -> Result<bool, ProgramError> {
     let mint_view = ctx.mint.to_account_view();
     let data = mint_view.try_borrow()?;
 

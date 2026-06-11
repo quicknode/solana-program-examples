@@ -40,7 +40,7 @@ fn test_create_non_transferable_mint_and_attempt_transfer() {
     let initialize_ix = Instruction::new_with_bytes(
         program_id,
         &non_transferable::instruction::Initialize {}.data(),
-        non_transferable::accounts::Initialize {
+        non_transferable::accounts::InitializeAccountConstraints {
             payer: payer.pubkey(),
             mint_account: mint_keypair.pubkey(),
             token_program: TOKEN_EXTENSIONS_PROGRAM_ID,

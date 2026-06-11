@@ -79,7 +79,7 @@ fn associated_token_address(wallet: &Pubkey, mint: &Pubkey) -> Pubkey {
 fn init_player_ix(program_id: &Pubkey, signer: &Pubkey) -> Instruction {
     Instruction {
         program_id: *program_id,
-        accounts: extension_nft::accounts::InitPlayer {
+        accounts: extension_nft::accounts::InitPlayerAccountConstraints {
             player: player_pda(program_id, signer),
             game_data: game_data_pda(program_id, LEVEL_SEED),
             signer: *signer,
@@ -96,7 +96,7 @@ fn init_player_ix(program_id: &Pubkey, signer: &Pubkey) -> Instruction {
 fn mint_nft_ix(program_id: &Pubkey, signer: &Pubkey, mint: &Pubkey) -> Instruction {
     Instruction {
         program_id: *program_id,
-        accounts: extension_nft::accounts::MintNft {
+        accounts: extension_nft::accounts::MintNftAccountConstraints {
             signer: *signer,
             system_program: system_program::id(),
             token_program: TOKEN_2022_ID,

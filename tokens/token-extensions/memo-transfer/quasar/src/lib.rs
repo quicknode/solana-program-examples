@@ -26,18 +26,18 @@ mod quasar_memo_transfer {
     use super::*;
 
     #[instruction(discriminator = 0)]
-    pub fn initialize(ctx: Ctx<Initialize>) -> Result<(), ProgramError> {
+    pub fn initialize(ctx: Ctx<InitializeAccountConstraints>) -> Result<(), ProgramError> {
         handle_initialize(&mut ctx.accounts)
     }
 
     #[instruction(discriminator = 1)]
-    pub fn disable(ctx: Ctx<Disable>) -> Result<(), ProgramError> {
+    pub fn disable(ctx: Ctx<DisableAccountConstraints>) -> Result<(), ProgramError> {
         handle_disable(&mut ctx.accounts)
     }
 }
 
 #[derive(Accounts)]
-pub struct Initialize {
+pub struct InitializeAccountConstraints {
     #[account(mut)]
     pub payer: Signer,
     #[account(mut)]
@@ -48,7 +48,7 @@ pub struct Initialize {
 }
 
 #[inline(always)]
-fn handle_initialize(accounts: &mut Initialize) -> Result<(), ProgramError> {
+fn handle_initialize(accounts: &mut InitializeAccountConstraints) -> Result<(), ProgramError> {
     // Token account + MemoTransfer extension = 300 bytes
     let account_size: u64 = 300;
     let lamports = Rent::get()?.try_minimum_balance(account_size as usize)?;
@@ -100,7 +100,7 @@ fn handle_initialize(accounts: &mut Initialize) -> Result<(), ProgramError> {
 }
 
 #[derive(Accounts)]
-pub struct Disable {
+pub struct DisableAccountConstraints {
     #[account(mut)]
     pub owner: Signer,
     #[account(mut)]
@@ -109,7 +109,7 @@ pub struct Disable {
 }
 
 #[inline(always)]
-fn handle_disable(accounts: &mut Disable) -> Result<(), ProgramError> {
+fn handle_disable(accounts: &mut DisableAccountConstraints) -> Result<(), ProgramError> {
     // MemoTransfer disable: opcode 30, sub-opcode 1
     CpiCall::new(
         accounts.token_program.to_account_view().address(),

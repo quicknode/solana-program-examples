@@ -44,7 +44,7 @@ fn test_init_config_and_init_mint() {
     let init_config_ix = Instruction::new_with_bytes(
         program_id,
         &abl_token::instruction::InitConfig {}.data(),
-        abl_token::accounts::InitConfig {
+        abl_token::accounts::InitConfigAccountConstraints {
             payer: payer.pubkey(),
             config: config_pda,
             system_program: system_program::id(),
@@ -73,7 +73,7 @@ fn test_init_config_and_init_mint() {
             args: init_mint_args,
         }
         .data(),
-        abl_token::accounts::InitMint {
+        abl_token::accounts::InitMintAccountConstraints {
             payer: payer.pubkey(),
             mint: mint_keypair.pubkey(),
             extra_metas_account: extra_account_meta_list,

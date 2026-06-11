@@ -13,7 +13,7 @@ use anchor_spl::{
     },
 };
 
-pub fn handle_mint_nft(context: Context<MintNft>) -> Result<()> {
+pub fn handle_mint_nft(context: Context<MintNftAccountConstraints>) -> Result<()> {
     msg!("Mint nft with meta data extension and additional meta data");
 
     let space =
@@ -187,7 +187,7 @@ pub fn handle_mint_nft(context: Context<MintNft>) -> Result<()> {
 }
 
 #[derive(Accounts)]
-pub struct MintNft<'info> {
+pub struct MintNftAccountConstraints<'info> {
     #[account(mut)]
     pub signer: Signer<'info>,
     pub system_program: Program<'info, System>,

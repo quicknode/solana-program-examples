@@ -13,7 +13,7 @@ use crate::state::{read_wallet_allowed, MODE_ALLOW, MODE_BLOCK, MODE_MIXED, AB_W
 ///   [4] extra_account_meta_list
 ///   [5] ab_wallet - resolved from extra account metas (PDA for destination owner)
 #[derive(Accounts)]
-pub struct TxHook {
+pub struct TxHookAccountConstraints {
     pub source_token_account: UncheckedAccount,
     pub mint: UncheckedAccount,
     pub destination_token_account: UncheckedAccount,
@@ -23,7 +23,7 @@ pub struct TxHook {
 }
 
 #[inline(always)]
-pub fn handle_tx_hook(accounts: &mut TxHook, amount: u64) -> Result<(), ProgramError> {
+pub fn handle_tx_hook(accounts: &mut TxHookAccountConstraints, amount: u64) -> Result<(), ProgramError> {
     let mint_view = accounts.mint.to_account_view();
     let mint_data = mint_view.try_borrow()?;
 
@@ -51,7 +51,7 @@ pub fn handle_tx_hook(accounts: &mut TxHook, amount: u64) -> Result<(), ProgramE
     }
 }
 
-fn decode_wallet_mode(accounts: &TxHook) -> Result<DecodedWalletMode, ProgramError> {
+fn decode_wallet_mode(accounts: &TxHookAccountConstraints) -> Result<DecodedWalletMode, ProgramError> {
     let wallet_view = accounts.ab_wallet.to_account_view();
     if wallet_view.data_len() == 0 {
         return Ok(DecodedWalletMode::None);

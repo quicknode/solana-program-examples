@@ -36,7 +36,7 @@ mod quasar_transfer_hook_hello_world {
     /// Create a mint with the TransferHook extension pointing to this program.
     /// Custom discriminator (not part of the transfer hook interface).
     #[instruction(discriminator = [0, 0, 0, 0, 0, 0, 0, 1])]
-    pub fn initialize(ctx: Ctx<Initialize>, decimals: u8) -> Result<(), ProgramError> {
+    pub fn initialize(ctx: Ctx<InitializeAccountConstraints>, decimals: u8) -> Result<(), ProgramError> {
         handle_initialize(&mut ctx.accounts, decimals)
     }
 
@@ -44,7 +44,7 @@ mod quasar_transfer_hook_hello_world {
     /// Discriminator = sha256("spl-transfer-hook-interface:initialize-extra-account-metas")[:8]
     #[instruction(discriminator = [43, 34, 13, 49, 167, 88, 235, 235])]
     pub fn initialize_extra_account_meta_list(
-        ctx: Ctx<InitializeExtraAccountMetaList>,
+        ctx: Ctx<InitializeExtraAccountMetaListAccountConstraints>,
     ) -> Result<(), ProgramError> {
         handle_initialize_extra_account_meta_list(&mut ctx.accounts)
     }
@@ -52,7 +52,7 @@ mod quasar_transfer_hook_hello_world {
     /// Transfer hook handler - called automatically by Token Extensions during transfers.
     /// Discriminator = sha256("spl-transfer-hook-interface:execute")[:8]
     #[instruction(discriminator = [105, 37, 101, 197, 75, 251, 102, 26])]
-    pub fn transfer_hook(ctx: Ctx<TransferHook>, _amount: u64) -> Result<(), ProgramError> {
+    pub fn transfer_hook(ctx: Ctx<TransferHookAccountConstraints>, _amount: u64) -> Result<(), ProgramError> {
         handle_transfer_hook(&mut ctx.accounts)
     }
 }
@@ -62,7 +62,7 @@ mod quasar_transfer_hook_hello_world {
 // ---------------------------------------------------------------------------
 
 #[derive(Accounts)]
-pub struct Initialize {
+pub struct InitializeAccountConstraints {
     #[account(mut)]
     pub payer: Signer,
     #[account(mut)]
@@ -72,7 +72,7 @@ pub struct Initialize {
 }
 
 #[inline(always)]
-fn handle_initialize(accounts: &mut Initialize, decimals: u8) -> Result<(), ProgramError> {
+fn handle_initialize(accounts: &mut InitializeAccountConstraints, decimals: u8) -> Result<(), ProgramError> {
         // Mint with TransferHook extension:
         //   165 (base account + padding) + 1 (account type) + 4 (TLV header) + 64 (extension) = 234
         let mint_size: u64 = 234;
@@ -132,7 +132,7 @@ fn handle_initialize(accounts: &mut Initialize, decimals: u8) -> Result<(), Prog
 // ---------------------------------------------------------------------------
 
 #[derive(Accounts)]
-pub struct InitializeExtraAccountMetaList {
+pub struct InitializeExtraAccountMetaListAccountConstraints {
     #[account(mut)]
     pub payer: Signer,
     /// ExtraAccountMetaList PDA seeded by ["extra-account-metas", mint]
@@ -144,7 +144,7 @@ pub struct InitializeExtraAccountMetaList {
 
 #[inline(always)]
 fn handle_initialize_extra_account_meta_list(
-    accounts: &mut InitializeExtraAccountMetaList,
+    accounts: &mut InitializeExtraAccountMetaListAccountConstraints,
 ) -> Result<(), ProgramError> {
         use quasar_lang::cpi::Seed;
 
@@ -212,7 +212,7 @@ fn handle_initialize_extra_account_meta_list(
 // ---------------------------------------------------------------------------
 
 #[derive(Accounts)]
-pub struct TransferHook {
+pub struct TransferHookAccountConstraints {
     /// Source token account
     pub source_token: UncheckedAccount,
     /// Mint
@@ -226,7 +226,7 @@ pub struct TransferHook {
 }
 
 #[inline(always)]
-fn handle_transfer_hook(_accounts: &mut TransferHook) -> Result<(), ProgramError> {
+fn handle_transfer_hook(_accounts: &mut TransferHookAccountConstraints) -> Result<(), ProgramError> {
         // In production, verify the source token's TransferHookAccount.transferring
         // flag is set. The Token Extensions program sets this before invoking the hook
         // and clears it after, preventing standalone invocation.

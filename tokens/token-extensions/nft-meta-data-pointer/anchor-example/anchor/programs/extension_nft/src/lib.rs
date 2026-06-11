@@ -24,7 +24,7 @@ declare_id!("9aZZ7TJ2fQZxY8hMtWXywp5y6BgqC4N2BPcr9FDT47sW");
 pub mod extension_nft {
     use super::*;
 
-    pub fn init_player(context: Context<InitPlayer>, _level_seed: String) -> Result<()> {
+    pub fn init_player(context: Context<InitPlayerAccountConstraints>, _level_seed: String) -> Result<()> {
         init_player::handle_init_player(context)
     }
 
@@ -43,7 +43,7 @@ pub mod extension_nft {
         chop_tree::chop_tree(ctx, counter, 1)
     }
 
-    pub fn mint_nft(context: Context<MintNft>) -> Result<()> {
+    pub fn mint_nft(context: Context<MintNftAccountConstraints>) -> Result<()> {
         mint_nft::handle_mint_nft(context)
     }
 }

@@ -9,7 +9,7 @@ use spl_transfer_hook_interface::instruction::ExecuteInstruction;
 use crate::{handle_extra_account_metas, handle_extra_account_metas_count};
 
 #[derive(Accounts)]
-pub struct InitializeExtraAccountMetaList<'info> {
+pub struct InitializeExtraAccountMetaListAccountConstraints<'info> {
     #[account(mut)]
     payer: Signer<'info>,
 
@@ -31,7 +31,7 @@ pub struct InitializeExtraAccountMetaList<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handler(mut context: Context<InitializeExtraAccountMetaList>) -> Result<()> {
+pub fn handler(mut context: Context<InitializeExtraAccountMetaListAccountConstraints>) -> Result<()> {
     let extra_account_metas = handle_extra_account_metas()?;
 
     // initialize ExtraAccountMetaList account with extra accounts

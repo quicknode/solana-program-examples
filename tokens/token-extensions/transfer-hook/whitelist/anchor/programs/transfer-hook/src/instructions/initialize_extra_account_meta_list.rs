@@ -6,7 +6,7 @@ use spl_transfer_hook_interface::instruction::ExecuteInstruction;
 use crate::{handle_extra_account_metas, handle_extra_account_metas_count, WhiteList};
 
 #[derive(Accounts)]
-pub struct InitializeExtraAccountMetaList<'info> {
+pub struct InitializeExtraAccountMetaListAccountConstraints<'info> {
     #[account(mut)]
     payer: Signer<'info>,
 
@@ -28,7 +28,7 @@ pub struct InitializeExtraAccountMetaList<'info> {
     pub white_list: Account<'info, WhiteList>,
 }
 
-pub fn handler(mut context: Context<InitializeExtraAccountMetaList>) -> Result<()> {
+pub fn handler(mut context: Context<InitializeExtraAccountMetaListAccountConstraints>) -> Result<()> {
     // set authority field on white_list account as payer address
     context.accounts.white_list.authority = context.accounts.payer.key();
     context.accounts.white_list.bump = context.bumps.white_list;

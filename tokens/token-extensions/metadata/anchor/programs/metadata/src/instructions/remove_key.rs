@@ -4,7 +4,7 @@ use anchor_spl::token_interface::{Mint, Token2022};
 use spl_token_metadata_interface::instruction::remove_key;
 
 #[derive(Accounts)]
-pub struct RemoveKey<'info> {
+pub struct RemoveKeyAccountConstraints<'info> {
     #[account(mut)]
     pub update_authority: Signer<'info>,
 
@@ -19,7 +19,7 @@ pub struct RemoveKey<'info> {
 
 // Invoke the remove_key instruction from spl_token_metadata_interface directly
 // There is not an anchor CpiContext for this instruction
-pub fn process_remove_key(context: Context<RemoveKey>, key: String) -> Result<()> {
+pub fn process_remove_key(context: Context<RemoveKeyAccountConstraints>, key: String) -> Result<()> {
     invoke(
         &remove_key(
             &context.accounts.token_program.key(),    // token program id

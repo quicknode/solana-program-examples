@@ -59,7 +59,7 @@ fn test_transfer_hook_hello_world() {
             decimals,
         }
         .data(),
-        transfer_hook::accounts::Initialize {
+        transfer_hook::accounts::InitializeAccountConstraints {
             payer: payer.pubkey(),
             mint_account: mint_keypair.pubkey(),
             token_program: TOKEN_EXTENSIONS_PROGRAM_ID,
@@ -101,7 +101,7 @@ fn test_transfer_hook_hello_world() {
     let init_extra_ix = Instruction::new_with_bytes(
         program_id,
         &transfer_hook::instruction::InitializeExtraAccountMetaList {}.data(),
-        transfer_hook::accounts::InitializeExtraAccountMetaList {
+        transfer_hook::accounts::InitializeExtraAccountMetaListAccountConstraints {
             payer: payer.pubkey(),
             extra_account_meta_list,
             mint: mint_keypair.pubkey(),
@@ -137,7 +137,7 @@ fn test_transfer_hook_hello_world() {
     let direct_hook_ix = Instruction::new_with_bytes(
         program_id,
         &transfer_hook::instruction::TransferHook { amount: 1 }.data(),
-        transfer_hook::accounts::TransferHook {
+        transfer_hook::accounts::TransferHookAccountConstraints {
             source_token: source_ata,
             mint: mint_keypair.pubkey(),
             destination_token: dest_ata,

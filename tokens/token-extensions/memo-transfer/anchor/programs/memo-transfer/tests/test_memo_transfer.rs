@@ -119,7 +119,7 @@ fn test_memo_transfer() {
     let initialize_ix = Instruction::new_with_bytes(
         program_id,
         &memo_transfer::instruction::Initialize {}.data(),
-        memo_transfer::accounts::Initialize {
+        memo_transfer::accounts::InitializeAccountConstraints {
             payer: payer.pubkey(),
             token_account: token_keypair.pubkey(),
             mint_account: mint,
@@ -192,7 +192,7 @@ fn test_memo_transfer() {
     let disable_ix = Instruction::new_with_bytes(
         program_id,
         &memo_transfer::instruction::Disable {}.data(),
-        memo_transfer::accounts::Disable {
+        memo_transfer::accounts::DisableAccountConstraints {
             owner: payer.pubkey(),
             token_account: token_keypair.pubkey(),
             token_program: TOKEN_EXTENSIONS_PROGRAM_ID,
