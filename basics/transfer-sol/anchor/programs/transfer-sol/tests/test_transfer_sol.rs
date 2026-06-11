@@ -27,7 +27,7 @@ fn test_transfer_sol_with_cpi() {
             amount: LAMPORTS_PER_SOL,
         }
         .data(),
-        transfer_sol::accounts::TransferSolWithCpi {
+        transfer_sol::accounts::TransferSolWithCpiAccountConstraints {
             payer: payer.pubkey(),
             recipient: recipient.pubkey(),
             system_program: system_program::id(),
