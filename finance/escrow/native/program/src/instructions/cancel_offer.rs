@@ -2,12 +2,8 @@ use {
     crate::{error::*, state::*, utils::*},
     borsh::{BorshDeserialize, BorshSerialize},
     solana_program::{
-        account_info::AccountInfo,
-        entrypoint::ProgramResult,
-        program::invoke_signed,
-        program_error::ProgramError,
-        program_pack::Pack,
-        pubkey::Pubkey,
+        account_info::AccountInfo, entrypoint::ProgramResult, program::invoke_signed,
+        program_error::ProgramError, program_pack::Pack, pubkey::Pubkey,
     },
     spl_token_interface::{
         instruction as token_instruction,
@@ -25,15 +21,9 @@ pub struct CancelOffer {}
 
 impl CancelOffer {
     pub fn process(program_id: &Pubkey, accounts: &[AccountInfo<'_>]) -> ProgramResult {
-        let [
-            offer_info,
-            token_mint_a,
-            maker_token_account_a,
-            vault,
-            maker,
-            token_program,
-            system_program
-        ] = accounts else {
+        let [offer_info, token_mint_a, maker_token_account_a, vault, maker, token_program, system_program] =
+            accounts
+        else {
             return Err(ProgramError::NotEnoughAccountKeys);
         };
 

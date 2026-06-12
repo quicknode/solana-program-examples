@@ -1,24 +1,26 @@
 // Codama client generator.
 //
 // Reads the Shank-generated IDL (program/idl/car_rental_service.json) and emits
-// a TypeScript client built on @solana/kit into tests/generated/.
+// a Rust client into clients/rust/src/generated/. The wrapper crate at
+// clients/rust/ re-exports the generated module; the program's Rust + LiteSVM
+// tests (program/tests/) drive the program through it.
 //
 // Flow: read IDL -> rootNodeFromAnchor (origin = "shank" so the u8 instruction
-// discriminants are interpreted correctly) -> createFromRoot -> render JS.
+// discriminants are interpreted correctly) -> createFromRoot -> render Rust.
 //
 // Run with: pnpm generate-client
 
-import { readFileSync, rmSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { type AnchorIdl, rootNodeFromAnchor } from "@codama/nodes-from-anchor";
-import { renderVisitor } from "@codama/renderers-js";
+import { renderVisitor } from "@codama/renderers-rust";
 import { createFromRoot } from "codama";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const idlPath = join(here, "program", "idl", "car_rental_service.json");
-const outDir = join(here, "tests", "generated");
+const outDir = join(here, "clients", "rust", "src", "generated");
 
 const idl = JSON.parse(readFileSync(idlPath, "utf-8")) as AnchorIdl;
 
@@ -33,12 +35,11 @@ const idlWithOrigin = {
 
 const codama = createFromRoot(rootNodeFromAnchor(idlWithOrigin));
 
-await codama.accept(renderVisitor(outDir, { deleteFolderBeforeRendering: true }));
+await codama.accept(
+  renderVisitor(outDir, {
+    deleteFolderBeforeRendering: true,
+    crateFolder: join(here, "clients", "rust"),
+  }),
+);
 
-// The renderer drops a standalone `package.json` (declaring an implicit CommonJS
-// package) at the output root. That would shadow this example's
-// `"type": "module"` setting and break ESM resolution of the generated `.ts`
-// files when the test imports them via tsx, so remove it.
-rmSync(join(outDir, "package.json"), { force: true });
-
-console.log(`Codama: generated TypeScript client in ${outDir}`);
+console.log(`Codama: generated Rust client in ${outDir}`);

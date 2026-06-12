@@ -33,9 +33,11 @@ Optional helpers come from the [`solana-kite`](https://crates.io/crates/solana-k
 
 **Quasar examples** are tested in Rust with QuasarSVM. Run `quasar build` (which also generates the Rust client crate under `target/client/rust/` that the tests import), then `quasar test` or `cargo test`.
 
-**Native and Pinocchio examples** use `litesvm` directly from Rust, except for a few that keep TypeScript tests (`tsx --test` with [`solana-kite`](https://solanakite.org) and [`@solana/kit`](https://solanakit.com)) where the example is specifically about client-side tooling.
+**Native and Pinocchio examples** use `litesvm` directly from Rust. Tests live in `program/tests/`, load the compiled program with `include_bytes!` from the workspace `target/deploy/`, and run with `cargo test --manifest-path=./program/Cargo.toml` (build the `.so` first with `cargo build-sbf --manifest-path=./program/Cargo.toml`).
 
-Do not write TypeScript tests for Anchor or Quasar programs, and do not use `anchor.workspace` or `program.methods.X().rpc()`.
+**ASM examples** keep their LiteSVM tests inline in `src/lib.rs`; build with `sbpf build`, test with `cargo test`.
+
+Do not write TypeScript tests for any program, and do not use `anchor.workspace` or `program.methods.X().rpc()`. All tests are Rust + LiteSVM (QuasarSVM for Quasar).
 
 Tests must exercise the program for real: initialize accounts, send transactions through the program's instruction handlers, and assert resulting state and balances. Placeholder tests (`assert!(true)`, build-only checks) don't count.
 

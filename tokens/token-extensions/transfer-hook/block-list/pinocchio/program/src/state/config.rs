@@ -2,7 +2,6 @@ use pinocchio::pubkey::Pubkey;
 
 use super::{Discriminator, Transmutable};
 
-
 // `#[repr(C, packed)]` keeps the onchain layout exactly 41 bytes wide.
 // With plain `#[repr(C)]` the u64 field gets 7 bytes of alignment padding
 // inserted after the 33-byte (u8 + Pubkey) prefix, making the struct 48 bytes

@@ -1,10 +1,12 @@
 use pinocchio::{account_info::AccountInfo, pubkey::Pubkey, ProgramResult};
 
-use crate::{load, token_extensions_utils::has_immutable_owner_extension, BlockListError, WalletBlock};
+use crate::{
+    load, token_extensions_utils::has_immutable_owner_extension, BlockListError, WalletBlock,
+};
 
 ///
 /// SECURITY ASSUMPTIONS OVER TX-HOOK
-/// 
+///
 /// 1- its called by the token-2022 program
 /// 2- if some other program is calling it, we don't care as we don't write state here
 /// 2- its inputs are already sanitized by the token-2022 program
@@ -31,7 +33,7 @@ impl<'a> TxHook<'a> {
     pub fn process(&self) -> ProgramResult {
         // check if there is a wallet block for the source account
         if let Some(source_wallet_block) = self.source_wallet_block {
-            let source_data = unsafe {self.source.borrow_data_unchecked()};
+            let source_data = unsafe { self.source.borrow_data_unchecked() };
             // without the immutable owner extension, TA owners could bypass wallet blocks
             // by changing the owner to a different wallet controlled by the same entity
             if !has_immutable_owner_extension(source_data) {
@@ -39,8 +41,8 @@ impl<'a> TxHook<'a> {
             }
 
             if !source_wallet_block.data_is_empty() {
-
-                let _ = unsafe { load::<WalletBlock>(source_wallet_block.borrow_data_unchecked())? };
+                let _ =
+                    unsafe { load::<WalletBlock>(source_wallet_block.borrow_data_unchecked())? };
 
                 // its a potential blocked wallet
                 // lets check if authority is not the owner nor the delegate
@@ -53,35 +55,31 @@ impl<'a> TxHook<'a> {
                 if owner.eq(self.authority.key()) || delegate.eq(self.authority.key()) {
                     return Err(BlockListError::AccountBlocked.into());
                 }
-                
             }
-
         }
 
         // check if there is a wallet block for the destination account
         if let Some(destination_wallet_block) = self.destination_wallet_block {
-
-            if !has_immutable_owner_extension(unsafe {self.destination.borrow_data_unchecked()}) {
+            if !has_immutable_owner_extension(unsafe { self.destination.borrow_data_unchecked() }) {
                 return Err(BlockListError::ImmutableOwnerExtensionMissing.into());
             }
 
             if !destination_wallet_block.data_is_empty() {
-                let _ = unsafe { load::<WalletBlock>(destination_wallet_block.borrow_data_unchecked())? };
+                let _ = unsafe {
+                    load::<WalletBlock>(destination_wallet_block.borrow_data_unchecked())?
+                };
                 return Err(BlockListError::AccountBlocked.into());
             }
-
         }
 
         Ok(())
     }
-
 }
 
 impl<'a> TryFrom<&'a [AccountInfo]> for TxHook<'a> {
     type Error = BlockListError;
 
     fn try_from(accounts: &'a [AccountInfo]) -> Result<Self, Self::Error> {
-
         /*
         TX HOOK GETS CALLED WITH:
          1- source TA
@@ -89,8 +87,8 @@ impl<'a> TryFrom<&'a [AccountInfo]> for TxHook<'a> {
          3- destination TA
          4- authority (either src owner or src delegate)
          5- extra account metas
-         6- (optional) source wallet block 
-         7- (optional) destination wallet block 
+         6- (optional) source wallet block
+         7- (optional) destination wallet block
          */
 
         let [source, mint, destination, authority, remaining_accounts @ ..] = accounts else {
@@ -104,8 +102,6 @@ impl<'a> TryFrom<&'a [AccountInfo]> for TxHook<'a> {
         } else {
             (None, None)
         };
-
-
 
         Ok(Self {
             source,

@@ -7,10 +7,10 @@ IDL, [Codama](https://github.com/codama-idl/codama) turns it into a typed client
 in the language of your choice.
 
 This example is a small "car rental service" program. It is annotated with Shank
-macros, Shank extracts the IDL, and Codama renders a TypeScript client
-(`@solana/kit`-based) from that IDL. An in-process [LiteSVM](https://github.com/litesvm/litesvm)
-test then drives the program through the generated client - no validator or
-devnet required, so it runs in CI.
+macros, Shank extracts the IDL, and Codama renders a Rust client from that IDL.
+An in-process Rust + [LiteSVM](https://github.com/litesvm/litesvm) test then
+drives the program through the generated client - no validator or devnet
+required, so it runs in CI.
 
 ## Shank
 
@@ -77,28 +77,30 @@ It understands Shank IDLs out of the box.
 Install the pieces used here:
 
 ```bash
-pnpm add codama @codama/nodes-from-anchor @codama/renderers-js @solana/kit
+pnpm add codama @codama/nodes-from-anchor @codama/renderers-rust
 ```
 
 The generator script ([`codama.ts`](./codama.ts)) reads the Shank IDL, sets its
 `origin` to `"shank"` so the `u8` discriminants are honoured, builds a Codama
-root node, and renders a TypeScript client:
+root node, and renders a Rust client:
 
 ```ts
 import { rootNodeFromAnchor } from "@codama/nodes-from-anchor";
-import { renderVisitor } from "@codama/renderers-js";
+import { renderVisitor } from "@codama/renderers-rust";
 import { createFromRoot } from "codama";
 
 const idl = JSON.parse(readFileSync(idlPath, "utf-8"));
 const codama = createFromRoot(
   rootNodeFromAnchor({ ...idl, metadata: { ...idl.metadata, origin: "shank" } }),
 );
-await codama.accept(renderVisitor(outDir, { deleteFolderBeforeRendering: true }));
+await codama.accept(
+  renderVisitor(outDir, { deleteFolderBeforeRendering: true, crateFolder: crateDir }),
+);
 ```
 
-> Codama also ships `@codama/renderers-rust` if you want a Rust client instead of
-> a TypeScript one - swap `renderVisitor` from `@codama/renderers-js` for the Rust
-> renderer.
+> Codama also ships `@codama/renderers-js` if you want a TypeScript client
+> instead of a Rust one - swap `renderVisitor` from `@codama/renderers-rust`
+> for the JS renderer.
 
 Generate the client:
 
@@ -106,21 +108,32 @@ Generate the client:
 pnpm generate-client
 ```
 
-The generated TypeScript client lands in `tests/generated/`.
+The generated module lands in `clients/rust/src/generated/`, wrapped by the
+hand-written `car-rental-service-client` crate
+([`clients/rust/Cargo.toml`](./clients/rust/Cargo.toml)) that the tests import.
 
 ## Build and test
 
 ```bash
-pnpm install
-pnpm build            # cargo build-sbf -> program/target/so/car_rental_service.so
-pnpm build-and-test   # build, regenerate the client, then run the LiteSVM test
+pnpm build            # cargo build-sbf -> program/target/deploy/car_rental_service.so
+pnpm build-and-test   # build the program, then run the Rust + LiteSVM tests
 ```
 
-The test ([`tests/test.ts`](./tests/test.ts)) loads the compiled `.so` into a
-[LiteSVM](https://github.com/litesvm/litesvm) instance and drives the full
-rental lifecycle (`add_car`, `book_rental`, `pick_up_car`, `return_car`)
-through the generated client, asserting on the resulting onchain account
-state. It also asserts the program's account validation: a payer that did not
-sign, a rental account owned by the wrong program, and an out-of-order status
-transition (returning a car that was never picked up) are all rejected with
-the named errors from `program/src/error.rs`.
+Or without pnpm:
+
+```bash
+cargo build-sbf --manifest-path=./program/Cargo.toml 
+cargo test --manifest-path=./program/Cargo.toml
+```
+
+Rebuild the program after every change before re-running the tests: the tests
+embed the `.so` at compile time, so a stale binary silently tests old code.
+
+The tests ([`program/tests/test.rs`](./program/tests/test.rs)) load the
+compiled `.so` into a [LiteSVM](https://github.com/litesvm/litesvm) instance
+and drive the full rental lifecycle (`add_car`, `book_rental`, `pick_up_car`,
+`return_car`) through the generated client, asserting on the resulting onchain
+account state. They also assert the program's account validation: a payer that
+did not sign, a rental account owned by the wrong program, and an out-of-order
+status transition (returning a car that was never picked up) are all rejected
+with the named errors from `program/src/error.rs`.
