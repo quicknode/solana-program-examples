@@ -92,6 +92,15 @@ cd cli
 cargo build
 ```
 
+## Testing
+
+The tests are Rust + LiteSVM, in [`pinocchio/program/tests/`](pinocchio/program/tests/). Build the program first - the tests embed the `.so` at compile time, so rebuild after every program change or a stale binary silently tests old code:
+
+```bash
+cargo build-sbf --manifest-path=./program/Cargo.toml
+cargo test --manifest-path=./program/Cargo.toml
+```
+
 ## Setup
 
 ### Block list

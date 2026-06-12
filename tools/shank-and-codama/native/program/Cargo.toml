@@ -10,6 +10,15 @@ shank = "0.4.8"
 solana-program = "4.0"
 solana-system-interface = { version = "3", features = ["bincode"] }
 
+[dev-dependencies]
+car-rental-service-client = { path = "../clients/rust" }
+litesvm = "0.11.0"
+solana-account = "3.0"
+solana-instruction = "3.0"
+solana-keypair = "3.0"
+solana-pubkey = "3.0"
+solana-transaction = "3.0"
+
 # This example is intentionally standalone (not part of the root workspace),
 # so it pins its own dependency versions and has its own Cargo.lock.
 [workspace]

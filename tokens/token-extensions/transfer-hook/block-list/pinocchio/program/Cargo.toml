@@ -17,3 +17,14 @@ pinocchio = "0.9.3"
 pinocchio-pubkey = "0.3.0"
 pinocchio-system = "0.3.0"
 pinocchio-log = "0.5.1"
+
+# The generated Rust client (sdk/rust) is built on solana-program 2.x types,
+# so the test stack pins litesvm and SPL crate versions from the same
+# generation. Bump these together when the client is regenerated against a
+# newer solana-program.
+[dev-dependencies]
+block-list-client = { workspace = true }
+litesvm = "0.6.1"
+solana-sdk = "2.2"
+spl-token-2022 = "7.0"
+spl-associated-token-account = "6.0"

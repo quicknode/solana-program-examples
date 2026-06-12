@@ -27,9 +27,13 @@ fn test_create_mint_and_transfer_spl() {
     let mut svm = LiteSVM::new();
 
     let program_id = Pubkey::new_unique();
+    // The .so is built into the workspace target/deploy by
+    // `cargo build-sbf --manifest-path=./program/Cargo.toml` (run from the
+    // project root). Rebuild after every program change: the binary is
+    // embedded at test-compile time, so a stale .so silently tests old code.
     svm.add_program(
         program_id,
-        include_bytes!("../../tests/fixtures/transfer_tokens_program.so"),
+        include_bytes!("../../../../../target/deploy/transfer_tokens_program.so"),
     )
     .unwrap();
     svm.add_program(

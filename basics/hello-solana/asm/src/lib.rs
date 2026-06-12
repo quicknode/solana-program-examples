@@ -10,7 +10,7 @@ mod tests {
     #[test]
     fn test_hello_solana() {
         let program_id = Pubkey::new_unique();
-        let program_bytes = include_bytes!("../tests/fixtures/hello-solana-asm-program.so");
+        let program_bytes = include_bytes!("../deploy/hello-solana-asm-program.so");
 
         let mut svm = LiteSVM::new();
         svm.add_program(program_id, program_bytes).unwrap();

@@ -158,12 +158,6 @@ jobs:
           key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.toml', '**/Cargo.lock') }}
           restore-keys: |
             cargo-${{ runner.os }}-
-      - uses: pnpm/action-setup@v4
-      - name: Use Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version: 'lts/*'
-          check-latest: true
       - name: Setup build environment
         id: setup
         run: |
@@ -175,40 +169,45 @@ jobs:
             echo "Building and Testing $project with Solana $solana_version"
             cd "$project" || return 1
 
-            # Install dependencies
-            if ! pnpm install --frozen-lockfile; then
-              echo "::error::pnpm install failed for $project"
-              echo "$project: pnpm install failed with $solana_version" >> $GITHUB_WORKSPACE/failed_projects.txt
-              cd - > /dev/null
-              return 1
-            fi
-
-            # Build
-            if ! pnpm build; then
-              echo "::error::build failed for $project"
-              echo "$project: build failed with $solana_version" >> $GITHUB_WORKSPACE/failed_projects.txt
-              cd - > /dev/null
-              return 1
-            fi
-
-            # Test
-            if ! pnpm build-and-test; then
-              echo "::error::tests failed for $project"
-              echo "$project: tests failed with $solana_version" >> $GITHUB_WORKSPACE/failed_projects.txt
-              cd - > /dev/null
-              return 1
-            fi
-
-          # Run Rust unit tests
+            # Collect program manifests: single-program projects use program/,
+            # multi-program projects (e.g. cross-program-invocation) use programs/*/.
+            local manifests=()
             if [ -d "program" ]; then
-              echo "Running Rust unit tests for $project"
-              if ! cargo test --manifest-path=./program/Cargo.toml; then
-                echo "::error::Rust unit tests failed for $project"
-                echo "$project: Rust unit tests failed with $solana_version" >> $GITHUB_WORKSPACE/failed_projects.txt
+              manifests=("./program/Cargo.toml")
+            elif [ -d "programs" ]; then
+              for manifest in programs/*/Cargo.toml; do
+                manifests+=("./$manifest")
+              done
+            fi
+
+            if [ ${#manifests[@]} -eq 0 ]; then
+              echo "::error::no program manifest found for $project"
+              echo "$project: no program manifest found with $solana_version" >> $GITHUB_WORKSPACE/failed_projects.txt
+              cd - > /dev/null
+              return 1
+            fi
+
+            # Build the .so files first: the Rust + LiteSVM tests embed them
+            # at compile time via include_bytes!, so the tests cannot even
+            # compile without a build, and a stale .so would test old code.
+            for manifest in "${manifests[@]}"; do
+              if ! cargo build-sbf --manifest-path="$manifest"; then
+                echo "::error::build failed for $project ($manifest)"
+                echo "$project: build failed with $solana_version" >> $GITHUB_WORKSPACE/failed_projects.txt
                 cd - > /dev/null
                 return 1
               fi
-            fi
+            done
+
+            # Run the Rust + LiteSVM tests
+            for manifest in "${manifests[@]}"; do
+              if ! cargo test --manifest-path="$manifest"; then
+                echo "::error::tests failed for $project ($manifest)"
+                echo "$project: tests failed with $solana_version" >> $GITHUB_WORKSPACE/failed_projects.txt
+                cd - > /dev/null
+                return 1
+              fi
+            done
 
             echo "Build and tests succeeded for $project with $solana_version version."
             cd - > /dev/null

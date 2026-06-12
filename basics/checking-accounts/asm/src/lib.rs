@@ -21,7 +21,7 @@ mod tests {
         svm.airdrop(&payer.pubkey(), LAMPORTS_PER_SOL * 10).unwrap();
 
         let program_id = Pubkey::new_unique();
-        let program_bytes = include_bytes!("../tests/fixtures/checking-account-asm-program.so");
+        let program_bytes = include_bytes!("../deploy/checking-account-asm-program.so");
 
         svm.add_program(program_id, program_bytes).unwrap();
 
@@ -69,7 +69,7 @@ mod tests {
     fn setup() -> (LiteSVM, Pubkey) {
         let mut svm = LiteSVM::new();
         let program_id = Pubkey::new_unique();
-        let program_bytes = include_bytes!("../tests/fixtures/checking-account-asm-program.so");
+        let program_bytes = include_bytes!("../deploy/checking-account-asm-program.so");
         svm.add_program(program_id, program_bytes).unwrap();
         (svm, program_id)
     }

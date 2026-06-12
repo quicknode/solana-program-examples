@@ -27,17 +27,17 @@ Errors are reported through the named `EscrowError` enum in `program/src/error.r
 
 Prerequisites: the [Agave](https://docs.anza.xyz/) toolchain (`cargo build-sbf`) and Rust.
 
-Build the program into the test fixtures directory:
+Build the program:
 
 ```bash
-cargo build-sbf --manifest-path=./program/Cargo.toml --sbf-out-dir=./tests/fixtures
+cargo build-sbf --manifest-path=./program/Cargo.toml
 ```
 
-(`npm run build-and-test` in `package.json` runs the same command.)
+This writes the program binary to `target/deploy/escrow_native_program.so`.
 
 ## Testing
 
-The tests run against [LiteSVM](https://www.anchor-lang.com/docs/testing/litesvm), loading the `.so` built above. After building, run:
+The Rust + [LiteSVM](https://www.anchor-lang.com/docs/testing/litesvm) tests load the `.so` built above. The binary is embedded at test-compile time, so rebuild after every program change or a stale `.so` silently tests old code. After building, run:
 
 ```bash
 cargo test --manifest-path=./program/Cargo.toml
