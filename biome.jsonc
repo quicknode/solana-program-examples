@@ -3,7 +3,7 @@
   "files": {
     // Generated code (e.g. Codama clients) is excluded - it's not
     // hand-maintained and gets overwritten on every regeneration.
-    "includes": ["**", "!**/Assets", "!**/generated/**"]
+    "includes": ["**", "!**/Assets", "!**/generated"]
   },
   "formatter": {
     // Matches more existing code,
