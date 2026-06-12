@@ -50,7 +50,14 @@ jobs:
           # anything containing the substring "asm" (e.g. "wasm/", "plasma/") can
           # never enter the build list.
           function get_projects() {
-            find . -type d -name "asm" | grep -vE "$ignore_pattern" | sort
+            # An empty .ghaignore makes ignore_pattern empty, and `grep -vE ""`
+            # matches everything, silently emptying the project list - only
+            # filter when there is actually a pattern.
+            if [[ -n "$ignore_pattern" ]]; then
+              find . -type d -name "asm" | grep -vE "$ignore_pattern" | sort
+            else
+              find . -type d -name "asm" | sort
+            fi
           }
 
           # Filter the full project list down to projects touched by the given
