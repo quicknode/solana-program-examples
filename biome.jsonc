@@ -1,7 +1,9 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.4.12/schema.json",
   "files": {
-    "includes": ["**", "!**/Assets"]
+    // Generated code (e.g. Codama clients) is excluded - it's not
+    // hand-maintained and gets overwritten on every regeneration.
+    "includes": ["**", "!**/Assets", "!**/generated/**"]
   },
   "formatter": {
     // Matches more existing code,
