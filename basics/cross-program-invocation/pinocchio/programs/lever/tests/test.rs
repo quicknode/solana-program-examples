@@ -5,13 +5,14 @@ use solana_native_token::LAMPORTS_PER_SOL;
 use solana_pubkey::Pubkey;
 use solana_transaction::Transaction;
 
-// Both .so files are built into ../../../tests/fixtures (the example root) by
-// `pnpm build` / `pnpm build-and-test`, which run `cargo build-sbf` for each
-// program with --sbf-out-dir set there. Run that before `cargo test`.
+// Both .so files are built into the workspace target/deploy by
+// `cargo build-sbf` for each program (run from the project root). Rebuild after
+// every program change: the binaries are embedded at test-compile time, so a
+// stale .so silently tests old code.
 const HAND_SO: &[u8] =
-    include_bytes!("../../../tests/fixtures/cross_program_invocation_pinocchio_hand.so");
+    include_bytes!("../../../../../../target/deploy/cross_program_invocation_pinocchio_hand.so");
 const LEVER_SO: &[u8] =
-    include_bytes!("../../../tests/fixtures/cross_program_invocation_pinocchio_lever.so");
+    include_bytes!("../../../../../../target/deploy/cross_program_invocation_pinocchio_lever.so");
 
 // Lever instruction discriminators.
 const IX_INITIALIZE: u8 = 0;

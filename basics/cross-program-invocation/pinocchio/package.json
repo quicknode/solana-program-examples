@@ -1,8 +1,0 @@
-{
-  "type": "module",
-  "scripts": {
-    "build": "cargo build-sbf --manifest-path=./programs/hand/Cargo.toml --sbf-out-dir=./tests/fixtures && cargo build-sbf --manifest-path=./programs/lever/Cargo.toml --sbf-out-dir=./tests/fixtures",
-    "build-and-test": "pnpm build && cargo test --manifest-path=./programs/lever/Cargo.toml",
-    "test": "cargo test --manifest-path=./programs/lever/Cargo.toml"
-  }
-}

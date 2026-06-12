@@ -12,14 +12,10 @@ The `src` folder splits responsibilities the same way the `native` and `anchor` 
 
 ## Setup
 
-1. Build the [program](https://solana.com/docs/terminology#program): `pnpm build`
-2. Build and test: `pnpm build-and-test` then `pnpm test`
+1. Build the [program](https://solana.com/docs/terminology#program): `cargo build-sbf --manifest-path=./program/Cargo.toml`
+2. Run the Rust + LiteSVM tests: `cargo test --manifest-path=./program/Cargo.toml`
 
-The tests live in `program/tests/test.rs` and run on-chain in [LiteSVM](https://github.com/LiteSVM/litesvm) - there are no JavaScript tests. `pnpm build` / `pnpm build-and-test` compile the program to `tests/fixtures` so the LiteSVM test can load it.
-
-## Deploy
-
-`pnpm build` then `pnpm deploy`
+Rebuild the program after every change before re-running the tests: the tests embed the `.so` at compile time, so a stale binary silently tests old code.
 
 ## Credits
 

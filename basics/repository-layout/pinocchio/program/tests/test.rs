@@ -5,12 +5,12 @@ use solana_native_token::LAMPORTS_PER_SOL;
 use solana_pubkey::Pubkey;
 use solana_transaction::Transaction;
 
-// The .so is built into ../../tests/fixtures by `pnpm build-and-test` (which runs
-// `cargo build-sbf --sbf-out-dir=./tests/fixtures` from the package root). Run
-// that script (or `cargo build-sbf` with --sbf-out-dir set accordingly) before
-// `cargo test`.
+// The .so is built into the workspace target/deploy by
+// `cargo build-sbf --manifest-path=./program/Cargo.toml` (run from the project
+// root). Rebuild after every program change: the binary is embedded at
+// test-compile time, so a stale .so silently tests old code.
 const PROGRAM_SO: &[u8] =
-    include_bytes!("../../tests/fixtures/repository_layout_pinocchio_program.so");
+    include_bytes!("../../../../../target/deploy/repository_layout_pinocchio_program.so");
 
 // Builds the carnival instruction data in the wire format the program decodes:
 //   name (str), height (u32), ticket_count (u32), attraction (str), attraction_name (str)
