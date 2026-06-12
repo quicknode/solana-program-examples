@@ -2,7 +2,6 @@ use pinocchio::{account_info::AccountInfo, program_error::ProgramError, ProgramR
 
 use crate::{load, load_mut_unchecked, BlockListError, Config, Discriminator, WalletBlock};
 
-
 pub struct UnblockWallet<'a> {
     pub authority: &'a AccountInfo,
     pub config: &'a AccountInfo,
@@ -12,7 +11,6 @@ pub struct UnblockWallet<'a> {
 
 impl<'a> UnblockWallet<'a> {
     pub fn process(&self) -> ProgramResult {
-        
         let destination_lamports = self.authority.lamports();
 
         unsafe {
@@ -21,9 +19,13 @@ impl<'a> UnblockWallet<'a> {
                 .ok_or(ProgramError::ArithmeticOverflow)?;
             self.wallet_block.close_unchecked();
         }
-        
-        let config = unsafe { load_mut_unchecked::<Config>(self.config.borrow_mut_data_unchecked())? };
-        config.blocked_wallets_count = config.blocked_wallets_count.checked_sub(1).ok_or(ProgramError::ArithmeticOverflow)?;
+
+        let config =
+            unsafe { load_mut_unchecked::<Config>(self.config.borrow_mut_data_unchecked())? };
+        config.blocked_wallets_count = config
+            .blocked_wallets_count
+            .checked_sub(1)
+            .ok_or(ProgramError::ArithmeticOverflow)?;
 
         Ok(())
     }
@@ -42,7 +44,7 @@ impl<'a> TryFrom<&'a [AccountInfo]> for UnblockWallet<'a> {
         };
 
         let cfg = unsafe { load::<Config>(config.borrow_data_unchecked())? };
-        
+
         if !config.is_owned_by(&crate::ID) {
             return Err(BlockListError::InvalidConfigAccount);
         }
@@ -50,12 +52,12 @@ impl<'a> TryFrom<&'a [AccountInfo]> for UnblockWallet<'a> {
         if !authority.is_signer() || cfg.authority.ne(authority.key()) {
             return Err(BlockListError::InvalidAuthority);
         }
-        
+
         if !config.is_writable() && !wallet_block.is_writable() {
             return Err(BlockListError::AccountNotWritable);
         }
 
-        if unsafe { load::<WalletBlock>(wallet_block.borrow_data_unchecked()).is_err() }{
+        if unsafe { load::<WalletBlock>(wallet_block.borrow_data_unchecked()).is_err() } {
             return Err(BlockListError::InvalidAccountData);
         }
 

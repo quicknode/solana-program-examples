@@ -32,18 +32,9 @@ impl MakeOffer {
         accounts: &[AccountInfo<'_>],
         args: MakeOffer,
     ) -> ProgramResult {
-        let [
-            offer_info,
-            token_mint_a,
-            token_mint_b,
-            maker_token_account_a,
-            maker_token_account_b,
-            vault,
-            maker,
-            token_program,
-            associated_token_program,
-            system_program
-        ] = accounts else {
+        let [offer_info, token_mint_a, token_mint_b, maker_token_account_a, maker_token_account_b, vault, maker, token_program, associated_token_program, system_program] =
+            accounts
+        else {
             return Err(ProgramError::NotEnoughAccountKeys);
         };
 

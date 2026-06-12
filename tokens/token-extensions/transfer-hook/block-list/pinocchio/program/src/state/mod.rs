@@ -61,4 +61,3 @@ pub unsafe fn load_mut_unchecked<T: Transmutable>(
     }
     Ok(&mut *(bytes.as_mut_ptr() as *mut T))
 }
-

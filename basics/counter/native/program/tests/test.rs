@@ -9,11 +9,11 @@ use solana_rent::Rent;
 use solana_system_interface::instruction::create_account;
 use solana_transaction::Transaction;
 
-// The .so is built into ../../tests/fixtures by `pnpm build-and-test` (which runs
-// `cargo build-sbf --sbf-out-dir=./tests/fixtures` from the package root). Run
-// that script (or `cargo build-sbf` with --sbf-out-dir set accordingly) before
-// `cargo test`.
-const PROGRAM_SO: &[u8] = include_bytes!("../../tests/fixtures/counter_solana_native.so");
+// The .so is built into the workspace target/deploy by
+// `cargo build-sbf --manifest-path=./program/Cargo.toml` (run from the project
+// root). Rebuild after every program change: the binary is embedded at
+// test-compile time, so a stale .so silently tests old code.
+const PROGRAM_SO: &[u8] = include_bytes!("../../../../../target/deploy/counter_solana_native.so");
 
 fn setup_with_counter() -> (LiteSVM, Pubkey, Keypair, Keypair) {
     let program_id = Pubkey::new_unique();

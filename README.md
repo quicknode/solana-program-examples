@@ -8,11 +8,13 @@ Working, tested, up-to-date examples of common Solana programs — maintained by
 
 Each example is available in one or more of the following frameworks:
 
-- [⚓ Anchor](https://www.anchor-lang.com/) - the most popular framework for Solana development. Build with `anchor build`, test with `pnpm test` as defined in `Anchor.toml`.
-- [💫 Quasar](https://quasar-lang.com/docs) - a newer, more performant framework with Anchor-compatible ergonomics. Run `pnpm test` to execute tests.
-- [🤥 Pinocchio](https://github.com/anza-xyz/pinocchio) - a zero-copy, zero-allocation library for Solana programs. Run `pnpm test` to execute tests.
-- [🦀 Native Rust](https://docs.anza.xyz/) - vanilla Rust using Solana's native crates. Run `pnpm test` to execute tests.
-- [🧬 ASM](https://github.com/blueshift-gg/sbpf) - hand-written sBPF assembly built with the `sbpf` toolchain. Run `pnpm build-and-test` to build and test.
+- [⚓ Anchor](https://www.anchor-lang.com/) - the most popular framework for Solana development. Build with `anchor build`, test with `cargo test` as defined in `Anchor.toml`.
+- [💫 Quasar](https://quasar-lang.com/docs) - a newer, more performant framework with Anchor-compatible ergonomics. Build with `quasar build`, test with `quasar test`.
+- [🤥 Pinocchio](https://github.com/anza-xyz/pinocchio) - a zero-copy, zero-allocation library for Solana programs. Build with `cargo build-sbf --manifest-path=./program/Cargo.toml`, test with `cargo test --manifest-path=./program/Cargo.toml`.
+- [🦀 Native Rust](https://docs.anza.xyz/) - vanilla Rust using Solana's native crates. Build with `cargo build-sbf --manifest-path=./program/Cargo.toml`, test with `cargo test --manifest-path=./program/Cargo.toml`.
+- [🧬 ASM](https://github.com/blueshift-gg/sbpf) - hand-written sBPF assembly built with the `sbpf` toolchain. Build with `sbpf build`, test with `cargo test`.
+
+All examples are tested with Rust + [LiteSVM](https://github.com/litesvm/litesvm) in-process tests: build the program first, since the tests embed the `.so` at compile time.
 
 > [!NOTE]
 > You don't need to write your own program for basic tasks like creating [accounts](https://solana.com/docs/terminology#account), transferring SOL, or minting tokens. These are handled by existing programs like the System Program and Token Program.
@@ -358,7 +360,7 @@ Work with Metaplex compressed NFTs.
 
 ### Shank and Codama
 
-Generate an IDL from a native Rust program with [Shank](https://github.com/metaplex-foundation/shank), then generate a TypeScript client from that IDL with [Codama](https://github.com/codama-idl/codama).
+Generate an IDL from a native Rust program with [Shank](https://github.com/metaplex-foundation/shank), then generate a Rust client from that IDL with [Codama](https://github.com/codama-idl/codama).
 
 [🦀 Native](./tools/shank-and-codama/native)
 

@@ -3,11 +3,11 @@
   "version": "1.0.0",
   "description": "Solana program examples for Anchor, Quasar, Pinocchio, Native Rust, and ASM.",
   "scripts": {
-    "format:fix": "pnpx @biomejs/biome format --write ./",
-    "lint:fix": "pnpx @biomejs/biome lint --write ./",
-    "lint": "pnpx @biomejs/biome lint ./",
-    "fix": "pnpx @biomejs/biome check --write ./",
-    "check": "pnpx @biomejs/biome check ./",
+    "format:fix": "biome format --write ./",
+    "lint:fix": "biome lint --write ./",
+    "lint": "biome lint ./",
+    "fix": "biome check --write ./",
+    "check": "biome check ./",
     "prepare": "husky"
   },
   "lint-staged": {
@@ -20,7 +20,7 @@
   "author": "Quicknode",
   "license": "MIT",
   "devDependencies": {
-    "@biomejs/biome": "2.4.10",
+    "@biomejs/biome": "2.4.12",
     "@types/node": "^20.9.0",
     "husky": "^9.0.11",
     "lint-staged": "^15.4.3",

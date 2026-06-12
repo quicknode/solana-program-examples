@@ -15,7 +15,12 @@ const TRANSACTION_FEE_LAMPORTS: u64 = 5000;
 fn setup() -> (LiteSVM, Pubkey) {
     let mut svm = LiteSVM::new();
     let program_id = Pubkey::new_unique();
-    let program_bytes = include_bytes!("../../tests/fixtures/close_account_native_program.so");
+    // The .so is built into the workspace target/deploy by
+    // `cargo build-sbf --manifest-path=./program/Cargo.toml` (run from the project
+    // root). Rebuild after every program change: the binary is embedded at
+    // test-compile time, so a stale .so silently tests old code.
+    let program_bytes =
+        include_bytes!("../../../../../target/deploy/close_account_native_program.so");
     svm.add_program(program_id, program_bytes).unwrap();
     (svm, program_id)
 }

@@ -1,18 +1,29 @@
 use {
-    clap::{builder::BoolishValueParser, crate_description, crate_name, crate_version, Arg, Command}, solana_clap_v3_utils::{
+    clap::{
+        builder::BoolishValueParser, crate_description, crate_name, crate_version, Arg, Command,
+    },
+    solana_clap_v3_utils::{
         input_parsers::{
             parse_url_or_moniker,
             signer::{SignerSource, SignerSourceParserBuilder},
         },
         input_validators::normalize_to_url_if_moniker,
         keypair::signer_from_path,
-    }, solana_client::nonblocking::rpc_client::RpcClient, solana_remote_wallet::remote_wallet::RemoteWalletManager, solana_sdk::{
+    },
+    solana_client::nonblocking::rpc_client::RpcClient,
+    solana_remote_wallet::remote_wallet::RemoteWalletManager,
+    solana_sdk::{
         commitment_config::CommitmentConfig,
         message::Message,
         pubkey::Pubkey,
         signature::{Signature, Signer},
         transaction::Transaction,
-    }, spl_tlv_account_resolution::{account::ExtraAccountMeta, seeds::Seed, state::ExtraAccountMetaList}, spl_transfer_hook_interface::instruction::ExecuteInstruction, std::{error::Error, process::exit, rc::Rc, sync::Arc}
+    },
+    spl_tlv_account_resolution::{
+        account::ExtraAccountMeta, seeds::Seed, state::ExtraAccountMetaList,
+    },
+    spl_transfer_hook_interface::instruction::ExecuteInstruction,
+    std::{error::Error, process::exit, rc::Rc, sync::Arc},
 };
 
 struct Config {
@@ -38,7 +49,8 @@ pub fn get_extra_account_metas_with_source_wallet_block() -> Vec<ExtraAccountMet
             ],
             false,
             false,
-        ).unwrap(), 
+        )
+        .unwrap(),
     ]
 }
 pub fn get_extra_account_metas_with_both_wallet_blocks() -> Vec<ExtraAccountMeta> {
@@ -57,7 +69,8 @@ pub fn get_extra_account_metas_with_both_wallet_blocks() -> Vec<ExtraAccountMeta
             ],
             false,
             false,
-        ).unwrap(), 
+        )
+        .unwrap(),
         // [6] wallet_block for destination token account wallet
         ExtraAccountMeta::new_with_seeds(
             &[
@@ -72,10 +85,10 @@ pub fn get_extra_account_metas_with_both_wallet_blocks() -> Vec<ExtraAccountMeta
             ],
             false,
             false,
-        ).unwrap(), 
+        )
+        .unwrap(),
     ]
 }
-
 
 fn create_empty_extra_metas() -> Vec<u8> {
     let size = ExtraAccountMetaList::size_of(0).unwrap();
@@ -123,7 +136,6 @@ async fn get_extra_metas(rpc_client: &Arc<RpcClient>, mint_address: &Pubkey) {
     let extra_metas = block_list_client::accounts::ExtraMetas::find_pda(mint_address).0;
     let data = rpc_client.get_account_data(&extra_metas).await.unwrap();
     println!("extra_metas: {:?}", data);
-
 }
 
 async fn process_setup_extra_metas(
@@ -141,7 +153,7 @@ async fn process_setup_extra_metas(
         .instruction();
 
     let mut transaction = Transaction::new_unsigned(Message::new(&[ix], Some(&payer.pubkey())));
-    
+
     let blockhash = rpc_client
         .get_latest_blockhash()
         .await
@@ -163,14 +175,13 @@ async fn process_init(
     rpc_client: &Arc<RpcClient>,
     payer: &Arc<dyn Signer>,
 ) -> Result<Signature, Box<dyn Error>> {
-
     let ix = block_list_client::instructions::InitBuilder::new()
         .authority(payer.pubkey())
         .config(block_list_client::accounts::Config::find_pda().0)
         .instruction();
 
     let mut transaction = Transaction::new_unsigned(Message::new(&[ix], Some(&payer.pubkey())));
-    
+
     let blockhash = rpc_client
         .get_latest_blockhash()
         .await
@@ -193,7 +204,6 @@ async fn process_block_wallet(
     payer: &Arc<dyn Signer>,
     wallet_address: &Pubkey,
 ) -> Result<Signature, Box<dyn Error>> {
-    
     let ix = block_list_client::instructions::BlockWalletBuilder::new()
         .authority(payer.pubkey())
         .config(block_list_client::accounts::Config::find_pda().0)
@@ -202,7 +212,7 @@ async fn process_block_wallet(
         .instruction();
 
     let mut transaction = Transaction::new_unsigned(Message::new(&[ix], Some(&payer.pubkey())));
-    
+
     let blockhash = rpc_client
         .get_latest_blockhash()
         .await
@@ -232,7 +242,7 @@ async fn process_unblock_wallet(
         .instruction();
 
     let mut transaction = Transaction::new_unsigned(Message::new(&[ix], Some(&payer.pubkey())));
-    
+
     let blockhash = rpc_client
         .get_latest_blockhash()
         .await
@@ -249,7 +259,6 @@ async fn process_unblock_wallet(
 
     Ok(signature)
 }
-
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -299,64 +308,62 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 .value_parser(parse_url_or_moniker)
                 .help("JSON RPC URL for the cluster [default: value from configuration file]"),
         )
+        .subcommand(Command::new("init").about("Initializes the blocklist"))
         .subcommand(
-            Command::new("init").about("Initializes the blocklist")
-        )
-        .subcommand(
-            Command::new("block-wallet").about("Blocks a wallet")
-            .arg(
+            Command::new("block-wallet").about("Blocks a wallet").arg(
                 Arg::new("wallet_address")
                     .value_name("WALLET_ADDRESS")
                     .value_parser(SignerSourceParserBuilder::default().allow_pubkey().build())
                     .takes_value(true)
                     .index(1)
                     .help("Specify the wallet address to block"),
-            )
+            ),
         )
         .subcommand(
-            Command::new("unblock-wallet").about("Unblocks a wallet")
-            .arg(
-                Arg::new("wallet_address")
-                    .value_name("WALLET_ADDRESS")
-                    .value_parser(SignerSourceParserBuilder::default().allow_pubkey().build())
-                    .takes_value(true)
-                    .index(1)
-                    .help("Specify the wallet address to unblock"),
-            )
+            Command::new("unblock-wallet")
+                .about("Unblocks a wallet")
+                .arg(
+                    Arg::new("wallet_address")
+                        .value_name("WALLET_ADDRESS")
+                        .value_parser(SignerSourceParserBuilder::default().allow_pubkey().build())
+                        .takes_value(true)
+                        .index(1)
+                        .help("Specify the wallet address to unblock"),
+                ),
         )
         .subcommand(
-            Command::new("get-extra-metas-account-data").about("Gets the extra metas account data")
+            Command::new("get-extra-metas-account-data").about("Gets the extra metas account data"),
+        )
+        .subcommand(Command::new("get-config").about("Gets the config account data"))
+        .subcommand(
+            Command::new("get-extra-metas")
+                .about("Gets the extra metas account data")
+                .arg(
+                    Arg::new("mint_address")
+                        .value_name("MINT_ADDRESS")
+                        .value_parser(SignerSourceParserBuilder::default().allow_pubkey().build())
+                        .takes_value(true)
+                        .index(1)
+                        .help("Specify the mint address"),
+                ),
         )
         .subcommand(
-            Command::new("get-config").about("Gets the config account data")
-        )
-        .subcommand(
-            Command::new("get-extra-metas").about("Gets the extra metas account data")
-            .arg(
-                Arg::new("mint_address")
-                .value_name("MINT_ADDRESS")
-                .value_parser(SignerSourceParserBuilder::default().allow_pubkey().build())
-                .takes_value(true)
-                .index(1)
-                .help("Specify the mint address"),
-            )
-        )
-        .subcommand(
-            Command::new("setup-extra-metas").about("Setup the extra metas account")
-            .arg(
-                Arg::new("mint_address")
-                .value_name("MINT_ADDRESS")
-                .value_parser(SignerSourceParserBuilder::default().allow_pubkey().build())
-                .takes_value(true)
-                .index(1)
-                .help("Specify the mint address"),
-            )
-            .arg(
-                Arg::new("check-both-wallets")
-                .long("check-both-wallets")
-                .short('b')
-                .help("Specify if both wallets should be checked"),
-            )
+            Command::new("setup-extra-metas")
+                .about("Setup the extra metas account")
+                .arg(
+                    Arg::new("mint_address")
+                        .value_name("MINT_ADDRESS")
+                        .value_parser(SignerSourceParserBuilder::default().allow_pubkey().build())
+                        .takes_value(true)
+                        .index(1)
+                        .help("Specify the mint address"),
+                )
+                .arg(
+                    Arg::new("check-both-wallets")
+                        .long("check-both-wallets")
+                        .short('b')
+                        .help("Specify if both wallets should be checked"),
+                ),
         )
         .get_matches();
 
@@ -408,15 +415,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     match (command, matches) {
         ("init", _arg_matches) => {
-            let response = process_init(
-                &rpc_client,
-                &config.payer,
-            )
-            .await
-            .unwrap_or_else(|err| {
-                eprintln!("error: init: {}", err);
-                exit(1);
-            });
+            let response = process_init(&rpc_client, &config.payer)
+                .await
+                .unwrap_or_else(|err| {
+                    eprintln!("error: init: {}", err);
+                    exit(1);
+                });
             println!("{}", response);
         }
         ("block-wallet", arg_matches) => {
@@ -424,16 +428,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 SignerSource::try_get_pubkey(arg_matches, "wallet_address", &mut wallet_manager)
                     .unwrap()
                     .unwrap();
-            let response = process_block_wallet(
-                &rpc_client,
-                &config.payer,
-                &wallet_address,
-            )
-            .await
-            .unwrap_or_else(|err| {
-                eprintln!("error: init: {}", err);
-                exit(1);
-            });
+            let response = process_block_wallet(&rpc_client, &config.payer, &wallet_address)
+                .await
+                .unwrap_or_else(|err| {
+                    eprintln!("error: init: {}", err);
+                    exit(1);
+                });
             println!("{}", response);
         }
         ("unblock-wallet", arg_matches) => {
@@ -441,16 +441,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 SignerSource::try_get_pubkey(arg_matches, "wallet_address", &mut wallet_manager)
                     .unwrap()
                     .unwrap();
-            let response = process_unblock_wallet(
-                &rpc_client,
-                &config.payer,
-                &wallet_address,
-            )
-            .await
-            .unwrap_or_else(|err| {
-                eprintln!("error: init: {}", err);
-                exit(1);
-            });
+            let response = process_unblock_wallet(&rpc_client, &config.payer, &wallet_address)
+                .await
+                .unwrap_or_else(|err| {
+                    eprintln!("error: init: {}", err);
+                    exit(1);
+                });
             println!("{}", response);
         }
         ("get-extra-metas-account-data", _arg_matches) => {
@@ -490,4 +486,3 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     Ok(())
 }
-    

@@ -1,28 +1,18 @@
 {
   "name": "block-list",
   "version": "1.0.0",
-  "main": "index.js",
   "license": "MIT",
   "engines": {
     "node": ">=20.18.0"
   },
   "scripts": {
     "generate-sdks": "pnpx tsx codama.ts",
-    "test": "node ./tests/run-mocha-with-retry.mjs",
-    "build-and-test": "cargo build-sbf --manifest-path=./program/Cargo.toml --sbf-out-dir=./tests/fixtures && pnpm test",
-    "build": "cargo build-sbf --manifest-path=./program/Cargo.toml --sbf-out-dir=./program/target/so"
+    "build": "cargo build-sbf --manifest-path=./program/Cargo.toml",
+    "build-and-test": "cargo build-sbf --manifest-path=./program/Cargo.toml && cargo test --manifest-path=./program/Cargo.toml"
   },
   "dependencies": {
     "@codama/renderers": "^1.0.19",
-    "@solana/spl-token": "^0.4.13",
-    "@solana/web3.js": "^1.98.4",
-    "@types/chai": "^4.3.20",
-    "@types/mocha": "^10.0.10",
-    "chai": "^4.3.10",
     "codama": "^1.2.11",
-    "litesvm": "^0.3.0",
-    "mocha": "^11.1.0",
-    "ts-mocha": "^11.1.0",
     "tsx": "^4.19.3"
   },
   "devDependencies": {

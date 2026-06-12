@@ -18,9 +18,13 @@ fn test_create_token_with_metadata() {
     let mut svm = LiteSVM::new();
 
     let program_id = Pubkey::new_unique();
+    // The .so is built into the workspace target/deploy by
+    // `cargo build-sbf --manifest-path=./program/Cargo.toml` (run from the
+    // project root). Rebuild after every program change: the binary is
+    // embedded at test-compile time, so a stale .so silently tests old code.
     svm.add_program(
         program_id,
-        include_bytes!("../../tests/fixtures/create_token_program.so"),
+        include_bytes!("../../../../../target/deploy/create_token_program.so"),
     )
     .unwrap();
 

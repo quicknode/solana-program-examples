@@ -4,6 +4,21 @@ All notable changes to this repository are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-06-12] - Rust + LiteSVM tests everywhere
+
+### Changed
+
+- All native, Pinocchio, and ASM examples are now tested exclusively with Rust + LiteSVM. The web3.js v1 / solana-bankrun / ts-mocha TypeScript test suites (which duplicated existing Rust tests) were removed, along with their `package.json`, `pnpm-lock.yaml`, and `tsconfig.json` files and the `ts/` client directories.
+- Rust tests now load the program binary from the workspace `target/deploy/` (built with `cargo build-sbf --manifest-path=./program/Cargo.toml`) instead of per-project `tests/fixtures` directories. Committed foreign-program fixtures (e.g. `mpl_token_metadata.so`) stay where they were.
+- ASM examples standardized on `sbpf build`'s default `deploy/` output directory; their inline LiteSVM tests load from there.
+- `tools/shank-and-codama` now generates a Rust client (`@codama/renderers-rust`) instead of a TypeScript one, wrapped in the `car-rental-service-client` crate, and its tests are Rust + LiteSVM under `program/tests/`.
+- `transfer-hook/block-list` gained a Rust + LiteSVM lifecycle test (`program/tests/`) driving the program through its Codama-generated Rust SDK; the mocha/web3.js test was removed. Its `package.json` now only covers SDK generation.
+- CI (`native.yml`, `pinocchio.yml`, `solana-asm.yml`) no longer installs Node/pnpm; it builds with `cargo build-sbf` (or `sbpf build`) and tests with `cargo test`.
+
+### Added
+
+- `basics/hello-solana/pinocchio` Rust + LiteSVM test (it previously had only a TypeScript test).
+
 ## [2026-04-08] - Quicknode fork modernization (Mike MacCana)
 
 Mike MacCana led the Quicknode fork of the [Solana Foundation program examples](https://github.com/solana-developers/program-examples) from late 2025. The first commits on this repository lineage are dated **8 April 2026**; the summary below covers that work through the initial merge.

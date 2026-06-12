@@ -1,20 +1,16 @@
 {
   "type": "module",
   "scripts": {
-    "build": "cargo build-sbf --manifest-path=./program/Cargo.toml --sbf-out-dir=./program/target/so",
+    "build": "cargo build-sbf --manifest-path=./program/Cargo.toml",
     "generate-idl": "shank idl --crate-root ./program --out-dir ./program/idl",
     "generate-client": "tsx ./codama.ts",
-    "test": "node --import tsx --test ./tests/test.ts",
-    "build-and-test": "pnpm build && pnpm generate-client && pnpm test"
+    "test": "cargo test --manifest-path=./program/Cargo.toml",
+    "build-and-test": "pnpm build && pnpm test"
   },
   "dependencies": {
     "@codama/nodes-from-anchor": "^1.5.0",
-    "@codama/renderers-js": "^2.2.0",
-    "@solana-program/system": "^0.12.2",
-    "@solana/program-client-core": "^6.9.0",
-    "@solana/kit": "^6.9.0",
-    "codama": "^1.7.0",
-    "litesvm": "^1.1.0"
+    "@codama/renderers-rust": "^1.1.2",
+    "codama": "^1.7.0"
   },
   "devDependencies": {
     "@types/node": "^25.9.1",
