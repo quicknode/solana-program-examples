@@ -38,8 +38,16 @@ Everything else mirrors the Anchor version.
   deposited share amount, plus the borrow reserve and scaled debt. PDA:
   `["obligation", market, owner]`.
 - **`PriceFeed`** — a Switchboard-On-Demand-shaped price (`mantissa * 10^exponent`
-  + slot). `set_price` writes it directly for deterministic tests; in production a
-  reserve points at the real Switchboard feed. Freshness is checked in slots.
+  + slot). PDA: `["price_feed", authority, mint]` — the writer is part of the
+  address, so no signer can write or pre-claim another authority's feed, and each
+  reserve is bound to the feed its market owner registered. `set_price` writes it
+  directly for deterministic tests; in production a reserve points at the real
+  Switchboard feed. Freshness is checked in slots.
+- **Liquidation** — the close factor (max fraction of the debt one call repays)
+  comes from the borrow reserve; the bonus from the collateral reserve. A
+  repayment whose seizure would exceed the posted collateral fails with
+  `LiquidationTooLarge` rather than silently seizing less, which would make the
+  liquidator overpay.
 - **Share tokens** — supplying mints them, redeeming burns them; the exchange rate
   `total_liquidity / share_supply` rises as borrowers pay interest.
   `available_liquidity` (not the vault's raw balance) is the source of truth, so a

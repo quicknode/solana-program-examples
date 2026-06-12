@@ -55,11 +55,13 @@ pub struct Obligation {
     pub bump: u8,
 }
 
-/// Switchboard-On-Demand-shaped price feed. PDA: `["price_feed", mint]`.
-/// `price = price_mantissa * 10^exponent`; freshness is checked in slots.
-/// In production this account would be the real Switchboard feed.
+/// Switchboard-On-Demand-shaped price feed. PDA: `["price_feed", authority, mint]`
+/// — the writer is part of the address, so no two authorities can contend for
+/// the same feed, and a reserve trusts exactly the feed its market owner passed
+/// to `init_reserve`. `price = price_mantissa * 10^exponent`; freshness is
+/// checked in slots. In production this account would be the real Switchboard feed.
 #[account(discriminator = 4, set_inner)]
-#[seeds(b"price_feed", mint: Address)]
+#[seeds(b"price_feed", authority: Address, mint: Address)]
 pub struct PriceFeed {
     pub mint: Address,
     pub price_mantissa: i128,

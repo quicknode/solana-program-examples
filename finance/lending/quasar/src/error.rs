@@ -15,4 +15,5 @@ pub enum LendingError {
     WithdrawTooLarge,
     ObligationHealthy,
     WrongReserve,
+    LiquidationTooLarge,
 }

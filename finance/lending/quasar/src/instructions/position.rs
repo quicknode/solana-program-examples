@@ -67,7 +67,7 @@ pub struct DepositObligationCollateral {
     pub lending_market: Account<LendingMarket>,
     #[account(mut, has_one(owner), has_one(lending_market), address = Obligation::seeds(lending_market.address(), owner.address()))]
     pub obligation: Account<Obligation>,
-    #[account(has_one(share_mint))]
+    #[account(has_one(share_mint), has_one(lending_market))]
     pub reserve: Account<Reserve>,
     pub share_mint: Account<Mint>,
     #[account(
@@ -497,8 +497,9 @@ impl LiquidateObligation {
         let debt_value = market_value(debt, borrow.liquidity_decimals, borrow_price, Rounding::Up)?;
         require!(debt_value > unhealthy_threshold, LendingError::ObligationHealthy);
 
-        // Repay capped by the close factor.
-        let max_repay = mul_div_floor(debt as u128, collateral.close_factor_bps as u128, BPS_DENOMINATOR)?;
+        // Repay capped by the close factor — taken from the borrow reserve
+        // because it is a property of the debt being closed.
+        let max_repay = mul_div_floor(debt as u128, borrow.close_factor_bps as u128, BPS_DENOMINATOR)?;
         let repay = amount.min(u64::try_from(max_repay).map_err(|_| LendingError::MathOverflow)?);
         require!(repay > 0, LendingError::ZeroAmount);
 
@@ -512,10 +513,14 @@ impl LiquidateObligation {
             collateral.share_mint_supply as u128,
             collateral_total.max(1),
         )?;
-        let seize_shares = u64::try_from(seize_shares)
-            .map_err(|_| LendingError::MathOverflow)?
-            .min(obligation.deposited_shares);
+        let seize_shares = u64::try_from(seize_shares).map_err(|_| LendingError::MathOverflow)?;
         require!(seize_shares > 0, LendingError::ZeroAmount);
+        // Reject rather than silently seize less: a capped seizure would make
+        // the liquidator pay full price for less collateral.
+        require!(
+            seize_shares <= obligation.deposited_shares,
+            LendingError::LiquidationTooLarge
+        );
 
         let scaled_removed = mul_div_floor(repay as u128, SCALE, borrow.cumulative_borrow_rate_index)?
             .min(obligation.borrowed_scaled);

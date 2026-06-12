@@ -130,8 +130,9 @@ impl World {
         let (borrow_vault, _) = pda(&[b"liquidity_vault", borrow_reserve.as_ref()]);
         let (coll_share_mint, _) = pda(&[b"share_mint", coll_reserve.as_ref()]);
         let (borrow_share_mint, _) = pda(&[b"share_mint", borrow_reserve.as_ref()]);
-        let (coll_price, _) = pda(&[b"price_feed", COLL_MINT.as_ref()]);
-        let (borrow_price, _) = pda(&[b"price_feed", BORROW_MINT.as_ref()]);
+        // Feed PDAs are seeded by their writing authority (the market owner here).
+        let (coll_price, _) = pda(&[b"price_feed", OWNER.as_ref(), COLL_MINT.as_ref()]);
+        let (borrow_price, _) = pda(&[b"price_feed", OWNER.as_ref(), BORROW_MINT.as_ref()]);
         let (obligation, _) = pda(&[b"obligation", market.as_ref(), BORROWER.as_ref()]);
         let (obligation_vault, _) =
             pda(&[b"obligation_vault", coll_reserve.as_ref(), obligation.as_ref()]);

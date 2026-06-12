@@ -14,3 +14,8 @@ Initial Quasar port of the Kamino/Solend-style borrow/lend program.
 - Switchboard-On-Demand-shaped price feed with a `set_price` test writer.
 - quasar-svm integration tests covering supply/redeem, borrow/repay, interest
   accrual, and liquidation (including the healthy-rejection path).
+- Price feed PDAs are seeded by their authority, so no signer can write or
+  pre-claim a feed another authority's reserves trust.
+- Liquidation reads the close factor from the borrow reserve, and rejects
+  repayments whose seizure would exceed posted collateral
+  (`LiquidationTooLarge`).

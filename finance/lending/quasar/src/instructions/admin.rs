@@ -1,7 +1,6 @@
 use {
     crate::{
         constants::{MINT_SPACE, TOKEN_ACCOUNT_SPACE},
-        error::LendingError,
         logic::now,
         math::validate_config,
         state::{
@@ -58,7 +57,9 @@ pub struct InitReserve {
     /// Created and initialized as a share-token mint (authority = reserve) in the handler.
     #[account(mut, address = ShareMintPda::seeds(reserve.address()))]
     pub share_mint: UncheckedAccount,
-    #[account(address = PriceFeed::seeds(liquidity_mint.address()))]
+    // The reserve trusts the feed written by the market owner: feed PDAs are
+    // seeded by their authority, so this binds the reserve to the owner's feed.
+    #[account(address = PriceFeed::seeds(owner.address(), liquidity_mint.address()))]
     pub price_feed: Account<PriceFeed>,
     pub token_program: Program<TokenProgram>,
     pub system_program: Program<SystemProgram>,
@@ -178,7 +179,10 @@ impl InitReserve {
 pub struct SetPrice {
     #[account(mut)]
     pub authority: Signer,
-    #[account(init(idempotent), payer = authority, address = PriceFeed::seeds(mint.address()))]
+    // The authority is part of the seeds: a signer can only ever address (and
+    // therefore write) the feed derived from their own key, so there is no
+    // shared per-mint feed to claim first.
+    #[account(init(idempotent), payer = authority, address = PriceFeed::seeds(authority.address(), mint.address()))]
     pub price_feed: Account<PriceFeed>,
     pub mint: Account<Mint>,
     pub system_program: Program<SystemProgram>,
@@ -192,12 +196,6 @@ impl SetPrice {
         exponent: i32,
         bumps: &SetPriceBumps,
     ) -> Result<(), ProgramError> {
-        // On first creation the stored authority is the zero address; claim it.
-        // Afterwards only that authority may update the feed.
-        let existing = self.price_feed.authority;
-        if existing != Address::default() {
-            require_keys_eq!(existing, *self.authority.address(), LendingError::InvalidConfig);
-        }
         self.price_feed.set_inner(PriceFeedInner {
             mint: *self.mint.address(),
             price_mantissa,
