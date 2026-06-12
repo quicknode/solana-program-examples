@@ -32,6 +32,8 @@ pub enum LendingError {
     ReserveNotFound,
     #[msg("A refresh account did not match the obligation's stored reserves")]
     InvalidObligationAccount,
-    #[msg("Signer is not authorized for this price feed")]
-    UnauthorizedPriceFeed,
+    #[msg("Reserve belongs to a different lending market than the obligation")]
+    MarketMismatch,
+    #[msg("Repay amount would seize more collateral than the obligation holds")]
+    LiquidationTooLarge,
 }

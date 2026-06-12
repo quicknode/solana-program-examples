@@ -51,7 +51,10 @@ pub struct DepositObligationCollateral<'info> {
     #[account(mut)]
     pub owner: Signer<'info>,
 
-    #[account(has_one = share_mint)]
+    #[account(
+        has_one = share_mint,
+        constraint = reserve.lending_market == obligation.lending_market @ LendingError::MarketMismatch,
+    )]
     pub reserve: Account<'info, Reserve>,
 
     pub share_mint: InterfaceAccount<'info, Mint>,

@@ -15,3 +15,12 @@ Initial lending program: a Kamino/Solend-style borrow/lend market.
 - Rust + LiteSVM integration tests covering supply/redeem, borrow/repay,
   withdraw, interest accrual, liquidation, the share-inflation guard, and
   rounding/stale-input edge cases.
+- Lending markets are isolation boundaries: every obligation handler rejects
+  reserves from another market (`MarketMismatch`).
+- Price feed PDAs are seeded by their authority, so no signer can write or
+  pre-claim a feed another authority's reserves trust.
+- Liquidation reads the close factor from the repay reserve, the bonus from the
+  collateral reserve, and rejects repayments whose seizure would exceed the
+  posted collateral (`LiquidationTooLarge`).
+- Withdraw health checks round the removed borrow power up, so independent
+  rounding can never let a withdraw pass that an exact recompute would reject.

@@ -69,6 +69,18 @@ Borrowing and withdrawing are gated by `allowed_borrow_value`; an obligation is
 liquidatable once `borrowed_value > unhealthy_borrow_value`. Collateral is valued
 rounding down and debt rounding up, so health is always judged conservatively.
 
+Every handler that pairs an obligation with a reserve requires both to belong to
+the same `LendingMarket` (`MarketMismatch` otherwise), so each market is an
+isolation boundary: positions in one market can never be valued or settled
+against reserves of another.
+
+In a liquidation, the close factor (how much of the borrow one call may repay)
+comes from the **repay reserve**, because it is a property of the debt being
+closed; the liquidation bonus comes from the **collateral reserve**, because it
+prices the collateral being seized. A repayment whose seizure would exceed the
+posted collateral fails with `LiquidationTooLarge` rather than silently seizing
+less, which would make the liquidator overpay.
+
 ### Fixed-point math
 
 All money math is integer-only `u128` — no floats, no fixed-point crates. Ratios
@@ -82,11 +94,17 @@ round-trips.
 `PriceFeed` mirrors a Switchboard On-Demand pull feed: a signed mantissa, an
 exponent (`price = mantissa * 10^exponent`), and the slot the price was written.
 Freshness is checked in **slots** (`MAX_PRICE_STALENESS_SLOTS`), not wall-clock
-time. The `set_price` handler writes the feed directly so the LiteSVM tests are
+time. The feed PDA is seeded by `[b"price_feed", authority, mint]`, so a signer
+can only ever write the feed derived from their own key — there is no shared
+per-mint feed to claim first — and a reserve trusts exactly one feed: the
+account its market owner passed to `init_reserve`.
+
+The `set_price` handler writes the feed directly so the LiteSVM tests are
 deterministic; in production a reserve points at the real Switchboard feed and the
 program decodes `PullFeedAccountData` (`price_mantissa = current_result.value`,
-`exponent = -18`, `last_updated_slot = current_result.slot`) instead. Switchboard
-is used rather than Pyth here for its lower compute cost.
+`exponent = -18`, `last_updated_slot = current_result.slot`) instead, and should
+also reject results whose confidence interval is too wide. Switchboard is used
+rather than Pyth here for its lower compute cost.
 
 ### Custody
 
@@ -94,6 +112,20 @@ Supplied liquidity sits in program-owned vault PDAs, and posted collateral sits 
 per-obligation vault PDAs whose authority is the obligation PDA. The market owner
 can update reserve risk parameters (`update_reserve_config`) but has no path to
 move user funds — there is no admin withdrawal or escape hatch.
+
+### Known limits
+
+- **Tokens with transfer fees are not supported.** The program uses
+  `token_interface`, so Token Extensions mints are accepted, but a transfer-fee
+  extension would make the vault receive less than the recorded deposit and the
+  accounting would overstate `available_liquidity`. Production protocols
+  whitelist mints; a market owner here must only create reserves for tokens
+  without transfer fees.
+- **Reserve config changes act immediately.** Lowering a reserve's
+  `liquidation_threshold_bps` can make existing obligations liquidatable at
+  once; production governance phases such changes in.
+- This is an example. Deploying any program that custodies funds calls for a
+  professional security audit first.
 
 ### Instruction handlers
 

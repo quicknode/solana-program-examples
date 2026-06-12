@@ -82,6 +82,7 @@ pub struct RepayObligationLiquidity<'info> {
         mut,
         has_one = liquidity_mint,
         has_one = liquidity_vault,
+        constraint = reserve.lending_market == obligation.lending_market @ LendingError::MarketMismatch,
     )]
     pub reserve: Account<'info, Reserve>,
 

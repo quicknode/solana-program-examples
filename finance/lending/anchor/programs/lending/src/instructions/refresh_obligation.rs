@@ -18,6 +18,7 @@ use crate::state::{Obligation, PriceFeed, Reserve};
 pub fn handle_refresh_obligation(context: Context<RefreshObligation>) -> Result<()> {
     let slot = Clock::get()?.slot;
     let obligation = &mut context.accounts.obligation;
+    let lending_market = obligation.lending_market;
     let accounts = context.remaining_accounts;
     let mut cursor = 0usize;
 
@@ -26,7 +27,8 @@ pub fn handle_refresh_obligation(context: Context<RefreshObligation>) -> Result<
     let mut unhealthy_borrow_value: u128 = 0;
 
     for collateral in obligation.deposits.iter_mut() {
-        let (reserve, price_scaled) = read_pair(accounts, &mut cursor, collateral.reserve, slot)?;
+        let (reserve, price_scaled) =
+            read_pair(accounts, &mut cursor, collateral.reserve, lending_market, slot)?;
 
         let liquidity = mul_div_floor(
             collateral.deposited_shares as u128,
@@ -58,7 +60,8 @@ pub fn handle_refresh_obligation(context: Context<RefreshObligation>) -> Result<
 
     let mut borrowed_value: u128 = 0;
     for borrow in obligation.borrows.iter_mut() {
-        let (reserve, price_scaled) = read_pair(accounts, &mut cursor, borrow.reserve, slot)?;
+        let (reserve, price_scaled) =
+            read_pair(accounts, &mut cursor, borrow.reserve, lending_market, slot)?;
 
         let debt = mul_div_ceil(
             borrow.borrowed_scaled,
@@ -89,12 +92,14 @@ pub fn handle_refresh_obligation(context: Context<RefreshObligation>) -> Result<
 }
 
 /// Read the next `[reserve, price_feed]` pair from `remaining_accounts`,
-/// checking it matches the obligation's stored reserve and that both the
-/// reserve (refreshed this slot) and the price (fresh) are usable.
+/// checking it matches the obligation's stored reserve, belongs to the
+/// obligation's lending market, and that both the reserve (refreshed this
+/// slot) and the price (fresh) are usable.
 fn read_pair<'a, 'info>(
     accounts: &'a [AccountInfo<'info>],
     cursor: &mut usize,
     expected_reserve: Pubkey,
+    lending_market: Pubkey,
     slot: u64,
 ) -> Result<(Reserve, u128)>
 where
@@ -114,6 +119,11 @@ where
         LendingError::InvalidObligationAccount
     );
     let reserve = Account::<Reserve>::try_from(reserve_info)?;
+    require_keys_eq!(
+        reserve.lending_market,
+        lending_market,
+        LendingError::MarketMismatch
+    );
     reserve.require_refreshed()?;
 
     require_keys_eq!(

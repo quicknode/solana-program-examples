@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-use crate::constants::{FIXED_POINT_SCALE_DECIMALS, RESERVE_SEED};
+use crate::constants::FIXED_POINT_SCALE_DECIMALS;
 use crate::errors::LendingError;
 
 /// Which way to break ties when a division truncates. Deposits/redeems and
@@ -98,19 +98,4 @@ pub fn price_mantissa_to_scaled(mantissa: u128, exponent: i32) -> Result<u128> {
             .checked_div(ten_pow((-net_exponent) as u32)?)
             .ok_or(LendingError::MathOverflow)?)
     }
-}
-
-/// Signer seeds for a reserve PDA, which is the authority over its liquidity
-/// vault and the mint authority of its share token.
-pub fn reserve_signer_seeds<'a>(
-    lending_market: &'a Pubkey,
-    liquidity_mint: &'a Pubkey,
-    bump: &'a [u8; 1],
-) -> [&'a [u8]; 4] {
-    [
-        RESERVE_SEED,
-        lending_market.as_ref(),
-        liquidity_mint.as_ref(),
-        bump,
-    ]
 }

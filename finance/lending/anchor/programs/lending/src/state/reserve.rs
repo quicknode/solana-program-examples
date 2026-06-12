@@ -1,8 +1,23 @@
 use anchor_lang::prelude::*;
 
-use crate::constants::{BPS_DENOMINATOR, FIXED_POINT_SCALE, SLOTS_PER_YEAR};
+use crate::constants::{BPS_DENOMINATOR, FIXED_POINT_SCALE, RESERVE_SEED, SLOTS_PER_YEAR};
 use crate::errors::LendingError;
 use crate::math::{mul_div_ceil, mul_div_floor};
+
+/// Signer seeds for a reserve PDA, which is the authority over its liquidity
+/// vault and the mint authority of its share token.
+pub fn reserve_signer_seeds<'a>(
+    lending_market: &'a Pubkey,
+    liquidity_mint: &'a Pubkey,
+    bump: &'a [u8; 1],
+) -> [&'a [u8]; 4] {
+    [
+        RESERVE_SEED,
+        lending_market.as_ref(),
+        liquidity_mint.as_ref(),
+        bump,
+    ]
+}
 
 /// One asset's lending pool. Suppliers deposit `liquidity_mint` tokens into
 /// `liquidity_vault` and receive share tokens (`share_mint`); the share-to-
@@ -33,7 +48,11 @@ pub struct Reserve {
     pub available_liquidity: u64,
 
     /// Outstanding share-token supply, tracked here so valuations need only the
-    /// reserve account (not the mint) to convert shares to liquidity.
+    /// reserve account (not the mint) to convert shares to liquidity. A holder
+    /// burning share tokens directly via the token program (outside this
+    /// program) makes the real mint supply drift below this mirror; that drift
+    /// only lowers what the burner could have redeemed, so the pool never pays
+    /// out more than it holds.
     pub share_mint_supply: u64,
 
     /// Total borrowed principal, scaled so that the live debt is

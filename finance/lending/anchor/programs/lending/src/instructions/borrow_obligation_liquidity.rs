@@ -5,8 +5,8 @@ use anchor_spl::token_interface::{
 
 use crate::constants::FIXED_POINT_SCALE;
 use crate::errors::LendingError;
-use crate::math::{market_value, mul_div_ceil, reserve_signer_seeds, Rounding};
-use crate::state::{Obligation, PriceFeed, Reserve};
+use crate::math::{market_value, mul_div_ceil, Rounding};
+use crate::state::{reserve_signer_seeds, Obligation, PriceFeed, Reserve};
 
 /// Borrow liquidity against the obligation's collateral. The new debt's value
 /// (rounded up) plus the existing debt must stay within the obligation's
@@ -103,6 +103,7 @@ pub struct BorrowObligationLiquidity<'info> {
         has_one = liquidity_mint,
         has_one = liquidity_vault,
         has_one = price_feed,
+        constraint = reserve.lending_market == obligation.lending_market @ LendingError::MarketMismatch,
     )]
     pub reserve: Account<'info, Reserve>,
 

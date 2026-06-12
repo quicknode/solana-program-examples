@@ -4,8 +4,8 @@ use anchor_spl::token_interface::{
 };
 
 use crate::errors::LendingError;
-use crate::math::{mul_div_floor, reserve_signer_seeds};
-use crate::state::Reserve;
+use crate::math::mul_div_floor;
+use crate::state::{reserve_signer_seeds, Reserve};
 
 /// Burn share tokens and withdraw the underlying liquidity they represent:
 /// `share_amount * total_liquidity / share_supply`, floored so the protocol

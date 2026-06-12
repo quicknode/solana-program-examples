@@ -98,3 +98,41 @@ fn unhealthy_obligation_liquidated_with_bonus_capped_by_close_factor() {
     let obligation_state = env.obligation(obligation);
     assert_eq!(obligation_state.deposits[0].deposited_shares, 1_000_000_000 - 459_375_000);
 }
+
+/// A repayment whose seizure would exceed the posted collateral is rejected
+/// rather than silently capped — silently capping would make the liquidator
+/// pay full price for less collateral. A smaller repayment still works.
+#[test]
+fn over_seizing_liquidation_rejected_smaller_succeeds() {
+    let (mut env, collateral, borrow, _borrower, obligation, liquidator) = setup();
+
+    // Collateral crashes to $0.10: $100 of collateral against $700 of debt.
+    // The close-factor max repay ($350, plus 5% bonus => $367.50 of collateral)
+    // would seize far more than the $100 posted.
+    env.set_price(collateral.mint, cents(10));
+
+    let over_seize = env.try_liquidate(
+        &liquidator,
+        obligation,
+        &[&collateral],
+        &[&borrow],
+        &borrow,
+        &collateral,
+        350_000_000,
+    );
+    assert!(over_seize.unwrap_err().contains("LiquidationTooLarge"));
+
+    // Repaying $50 seizes $52.50 of collateral = 525 units at $0.10 — fits.
+    env.try_liquidate(
+        &liquidator,
+        obligation,
+        &[&collateral],
+        &[&borrow],
+        &borrow,
+        &collateral,
+        50_000_000,
+    )
+    .unwrap();
+    let liquidator_collateral_account = ata(&liquidator.pubkey(), &collateral.share_mint);
+    assert_eq!(env.token_balance(liquidator_collateral_account), 525_000_000);
+}

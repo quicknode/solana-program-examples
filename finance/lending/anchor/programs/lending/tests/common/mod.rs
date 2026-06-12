@@ -119,6 +119,75 @@ impl Env {
         self.svm.get_sysvar::<anchor_lang::solana_program::clock::Clock>().slot
     }
 
+    /// Create a second lending market owned by `market_owner`, for tests that
+    /// exercise cross-market isolation.
+    pub fn init_market_for(&mut self, market_owner: &Keypair) -> Pubkey {
+        let env_owner = self.owner.insecure_clone();
+        let quote_mint = create_token_mint(&mut self.svm, &env_owner, 6, None).unwrap();
+        let market = pda(&[LENDING_MARKET_SEED, market_owner.pubkey().as_ref()]);
+        let instruction = Instruction {
+            program_id: lending::id(),
+            accounts: lending::accounts::InitLendingMarket {
+                lending_market: market,
+                owner: market_owner.pubkey(),
+                quote_currency_mint: quote_mint,
+                system_program: system_program::id(),
+            }
+            .to_account_metas(None),
+            data: lending::instruction::InitLendingMarket {}.data(),
+        };
+        send(&mut self.svm, vec![instruction], &[market_owner], &market_owner.pubkey()).unwrap();
+        market
+    }
+
+    /// Add a reserve to a market other than the default one. The mint and price
+    /// feed are still created/written by the env owner (a reserve trusts
+    /// whichever feed its market owner registers; the writer need not match).
+    pub fn add_reserve_to(
+        &mut self,
+        market_owner: &Keypair,
+        market: Pubkey,
+        decimals: u8,
+        price_mantissa: i128,
+        config: ReserveConfig,
+    ) -> ReserveHandle {
+        let env_owner = self.owner.insecure_clone();
+        let mint = create_token_mint(&mut self.svm, &env_owner, decimals, None).unwrap();
+        self.set_price(mint, price_mantissa);
+
+        let reserve = pda(&[RESERVE_SEED, market.as_ref(), mint.as_ref()]);
+        let share_mint = pda(&[SHARE_MINT_SEED, reserve.as_ref()]);
+        let liquidity_vault = pda(&[LIQUIDITY_VAULT_SEED, reserve.as_ref()]);
+        let price_feed = self.price_feed_address(mint);
+
+        let instruction = Instruction {
+            program_id: lending::id(),
+            accounts: lending::accounts::InitReserve {
+                lending_market: market,
+                owner: market_owner.pubkey(),
+                reserve,
+                liquidity_mint: mint,
+                liquidity_vault,
+                share_mint,
+                price_feed,
+                token_program: TOKEN_PROGRAM_ID,
+                system_program: system_program::id(),
+            }
+            .to_account_metas(None),
+            data: lending::instruction::InitReserve { config }.data(),
+        };
+        send(&mut self.svm, vec![instruction], &[market_owner], &market_owner.pubkey()).unwrap();
+
+        ReserveHandle {
+            mint,
+            decimals,
+            reserve,
+            share_mint,
+            liquidity_vault,
+            price_feed,
+        }
+    }
+
     /// Advance time so interest accrues and blockhashes differ.
     pub fn warp_slots(&mut self, slots: u64) {
         let target = self.current_slot() + slots;
@@ -126,8 +195,14 @@ impl Env {
         self.svm.expire_blockhash();
     }
 
+    /// The feed PDA the market owner writes for `mint`: seeded by the owner's
+    /// key, so it is the feed `add_reserve` registers reserves against.
+    pub fn price_feed_address(&self, mint: Pubkey) -> Pubkey {
+        pda(&[PRICE_FEED_SEED, self.owner.pubkey().as_ref(), mint.as_ref()])
+    }
+
     pub fn set_price(&mut self, mint: Pubkey, price_mantissa: i128) {
-        let price_feed = pda(&[PRICE_FEED_SEED, mint.as_ref()]);
+        let price_feed = self.price_feed_address(mint);
         let instruction = Instruction {
             program_id: lending::id(),
             accounts: lending::accounts::SetPrice {
@@ -154,40 +229,8 @@ impl Env {
         config: ReserveConfig,
     ) -> ReserveHandle {
         let owner = self.owner.insecure_clone();
-        let mint = create_token_mint(&mut self.svm, &owner, decimals, None).unwrap();
-        self.set_price(mint, price_mantissa);
-
-        let reserve = pda(&[RESERVE_SEED, self.market.as_ref(), mint.as_ref()]);
-        let share_mint = pda(&[SHARE_MINT_SEED, reserve.as_ref()]);
-        let liquidity_vault = pda(&[LIQUIDITY_VAULT_SEED, reserve.as_ref()]);
-        let price_feed = pda(&[PRICE_FEED_SEED, mint.as_ref()]);
-
-        let instruction = Instruction {
-            program_id: lending::id(),
-            accounts: lending::accounts::InitReserve {
-                lending_market: self.market,
-                owner: owner.pubkey(),
-                reserve,
-                liquidity_mint: mint,
-                liquidity_vault,
-                share_mint,
-                price_feed,
-                token_program: TOKEN_PROGRAM_ID,
-                system_program: system_program::id(),
-            }
-            .to_account_metas(None),
-            data: lending::instruction::InitReserve { config }.data(),
-        };
-        send(&mut self.svm, vec![instruction], &[&owner], &owner.pubkey()).unwrap();
-
-        ReserveHandle {
-            mint,
-            decimals,
-            reserve,
-            share_mint,
-            liquidity_vault,
-            price_feed,
-        }
+        let market = self.market;
+        self.add_reserve_to(&owner, market, decimals, price_mantissa, config)
     }
 
     pub fn try_update_config(
@@ -332,13 +375,13 @@ impl Env {
         ])
     }
 
-    pub fn post_collateral(
+    pub fn try_post_collateral(
         &mut self,
         user: &Keypair,
         obligation: Pubkey,
         handle: &ReserveHandle,
         share_amount: u64,
-    ) {
+    ) -> Result<(), String> {
         let user_share = ata(&user.pubkey(), &handle.share_mint);
         let vault = self.obligation_share_vault(handle, obligation);
         let instruction = Instruction {
@@ -356,7 +399,18 @@ impl Env {
             .to_account_metas(None),
             data: lending::instruction::DepositObligationCollateral { share_amount }.data(),
         };
-        send(&mut self.svm, vec![instruction], &[user], &user.pubkey()).unwrap();
+        send(&mut self.svm, vec![instruction], &[user], &user.pubkey())
+    }
+
+    pub fn post_collateral(
+        &mut self,
+        user: &Keypair,
+        obligation: Pubkey,
+        handle: &ReserveHandle,
+        share_amount: u64,
+    ) {
+        self.try_post_collateral(user, obligation, handle, share_amount)
+            .unwrap()
     }
 
     fn refresh_obligation_ix(
@@ -537,13 +591,18 @@ impl Env {
         amount: u64,
     ) -> Result<(), String> {
         let repay_source = ata(&liquidator.pubkey(), &repay.mint);
-        let collateral_dest = create_associated_token_account(
-            &mut self.svm,
-            &liquidator.pubkey(),
-            &collateral.share_mint,
-            liquidator,
-        )
-        .unwrap();
+        // Create the destination ATA only on the first call, so a test can
+        // attempt several liquidations.
+        let collateral_dest = ata(&liquidator.pubkey(), &collateral.share_mint);
+        if self.svm.get_account(&collateral_dest).is_none() {
+            create_associated_token_account(
+                &mut self.svm,
+                &liquidator.pubkey(),
+                &collateral.share_mint,
+                liquidator,
+            )
+            .unwrap();
+        }
         let vault = self.obligation_share_vault(collateral, obligation);
 
         let mut all: Vec<&ReserveHandle> = deposit_reserves.to_vec();

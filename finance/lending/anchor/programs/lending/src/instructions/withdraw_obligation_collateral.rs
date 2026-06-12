@@ -5,7 +5,7 @@ use anchor_spl::token_interface::{
 
 use crate::constants::{BPS_DENOMINATOR, OBLIGATION_SEED, OBLIGATION_SHARE_VAULT_SEED};
 use crate::errors::LendingError;
-use crate::math::{market_value, mul_div_floor, Rounding};
+use crate::math::{market_value, mul_div_ceil, Rounding};
 use crate::state::{Obligation, PriceFeed, Reserve};
 
 /// Withdraw posted share-token collateral, but only as long as the obligation
@@ -32,7 +32,11 @@ pub fn handle_withdraw_obligation_collateral(
     );
 
     // Value of the collateral being removed, and the borrow power it backed.
-    let removed_liquidity = mul_div_floor(
+    // Every step rounds UP: subtracting an over-estimate of the removed borrow
+    // power guarantees the resulting allowance is never higher than a full
+    // recompute would give, so independent flooring can't let a withdraw
+    // squeak past the health check by a rounding sub-unit.
+    let removed_liquidity = mul_div_ceil(
         share_amount as u128,
         reserve.total_liquidity()?,
         (reserve.share_mint_supply as u128).max(1),
@@ -42,17 +46,19 @@ pub fn handle_withdraw_obligation_collateral(
         removed_liquidity,
         reserve.liquidity_decimals,
         price_scaled,
-        Rounding::Down,
+        Rounding::Up,
     )?;
-    let removed_allowed = mul_div_floor(
+    let removed_allowed = mul_div_ceil(
         removed_value,
         reserve.config.loan_to_value_bps as u128,
         BPS_DENOMINATOR,
     )?;
+    // saturating_sub is correct here (and not balance math): the ceil-rounded
+    // removal can exceed the floor-cached total by a sub-unit when withdrawing
+    // everything, and zero remaining allowance is the conservative answer.
     let new_allowed_borrow_value = obligation
         .allowed_borrow_value
-        .checked_sub(removed_allowed)
-        .ok_or(LendingError::MathOverflow)?;
+        .saturating_sub(removed_allowed);
     require!(
         obligation.borrowed_value <= new_allowed_borrow_value,
         LendingError::WithdrawTooLarge
@@ -102,7 +108,11 @@ pub struct WithdrawObligationCollateral<'info> {
 
     pub owner: Signer<'info>,
 
-    #[account(has_one = share_mint, has_one = price_feed)]
+    #[account(
+        has_one = share_mint,
+        has_one = price_feed,
+        constraint = reserve.lending_market == obligation.lending_market @ LendingError::MarketMismatch,
+    )]
     pub reserve: Account<'info, Reserve>,
 
     pub price_feed: Account<'info, PriceFeed>,
