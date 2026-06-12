@@ -1,8 +1,10 @@
-# Quicknode Solana Program Examples
+# Solana Program Examples
 
-> A fork of the [Solana Foundation program examples](https://github.com/solana-developers/program-examples) with current versions, more [programs](https://solana.com/docs/terminology#program), and additional frameworks.
+Working, tested, up-to-date examples of common Solana programs — maintained by [Quicknode](https://quicknode.com). Each example compiles and passes CI on the current Solana and Anchor toolchain.
 
 [![Anchor](../../actions/workflows/anchor.yml/badge.svg)](../../actions/workflows/anchor.yml) [![Quasar](../../actions/workflows/quasar.yml/badge.svg)](../../actions/workflows/quasar.yml) [![Pinocchio](../../actions/workflows/pinocchio.yml/badge.svg)](../../actions/workflows/pinocchio.yml) [![Native](../../actions/workflows/native.yml/badge.svg)](../../actions/workflows/native.yml) [![ASM](../../actions/workflows/solana-asm.yml/badge.svg)](../../actions/workflows/solana-asm.yml)
+
+**What you can build here:** escrow, AMM-based token swaps, order-book exchanges, token fundraisers, vault strategies, betting markets, NFTs, token extensions, compressed NFTs, and all the foundational Solana patterns (PDAs, CPIs, account management, rent).
 
 Each example is available in one or more of the following frameworks:
 
@@ -15,7 +17,15 @@ Each example is available in one or more of the following frameworks:
 > [!NOTE]
 > You don't need to write your own program for basic tasks like creating [accounts](https://solana.com/docs/terminology#account), transferring SOL, or minting tokens. These are handled by existing programs like the System Program and Token Program.
 
+## Getting started
+
+You need [Rust](https://www.rust-lang.org/tools/install), [Solana CLI](https://docs.anza.xyz/cli/install), [Anchor](https://www.anchor-lang.com/docs/installation), and [pnpm](https://pnpm.io/installation) installed. Clone the repo, `cd` into any example directory, and run `pnpm test`.
+
+To deploy to mainnet or devnet you'll need an RPC endpoint. [Quicknode](https://quicknode.com) provides free and paid Solana endpoints — create one and set it as your cluster in `Anchor.toml` or with `solana config set --url <your-endpoint>`.
+
 ## Financial Software
+
+The programs below implement the core primitives of Solana DeFi: peer-to-peer trading (escrow), decentralized exchanges (AMM and order book), fundraising, yield-bearing vaults, and prediction markets. These are the building blocks used by protocols like Raydium, Orca, Openbook, and Kamino.
 
 ### Escrow
 
