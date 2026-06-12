@@ -5,7 +5,6 @@
 //! <https://github.com/codama-idl/codama>
 //!
 
-  pub(crate) mod r#rental_order_status;
+pub(crate) mod r#rental_order_status;
 
-  pub use self::r#rental_order_status::*;
-
+pub use self::r#rental_order_status::*;

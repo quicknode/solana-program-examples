@@ -25,8 +25,9 @@ fn test_create_token_with_mint_close_authority() {
     // `cargo build-sbf --manifest-path=./program/Cargo.toml` (run from the
     // project root). Rebuild after every program change: the binary is
     // embedded at test-compile time, so a stale .so silently tests old code.
-    let program_bytes =
-        include_bytes!("../../../../../../target/deploy/token_2022_mint_close_authority_program.so");
+    let program_bytes = include_bytes!(
+        "../../../../../../target/deploy/token_2022_mint_close_authority_program.so"
+    );
     svm.add_program(program_id, program_bytes).unwrap();
 
     // litesvm bundles the Token Extensions program by default.

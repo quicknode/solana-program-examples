@@ -1,9 +1,9 @@
 use litesvm::LiteSVM;
+use solana_instruction::{AccountMeta, Instruction};
 use solana_keypair::{Keypair, Signer};
 use solana_native_token::LAMPORTS_PER_SOL;
 use solana_pubkey::Pubkey;
 use solana_system_interface::instruction::create_account;
-use solana_instruction::{AccountMeta, Instruction};
 use solana_transaction::Transaction;
 
 #[test]
@@ -21,7 +21,8 @@ fn test_checking_accounts() {
     // `cargo build-sbf --manifest-path=./program/Cargo.toml` (run from the project
     // root). Rebuild after every program change: the binary is embedded at
     // test-compile time, so a stale .so silently tests old code.
-    let program_bytes = include_bytes!("../../../../../target/deploy/checking_accounts_native_program.so");
+    let program_bytes =
+        include_bytes!("../../../../../target/deploy/checking_accounts_native_program.so");
 
     svm.add_program(program_id, program_bytes).unwrap();
 

@@ -1,8 +1,13 @@
-use pinocchio::{account_info::AccountInfo, instruction::Signer, pubkey::find_program_address, seeds, sysvars::{rent::Rent, Sysvar}, ProgramResult};
+use pinocchio::{
+    account_info::AccountInfo,
+    instruction::Signer,
+    pubkey::find_program_address,
+    seeds,
+    sysvars::{rent::Rent, Sysvar},
+    ProgramResult,
+};
 
 use crate::{load_mut_unchecked, BlockListError, Config, Discriminator, Transmutable};
-
-
 
 pub struct Init<'a> {
     pub authority: &'a AccountInfo,
@@ -32,7 +37,6 @@ impl<'a> TryFrom<&'a [AccountInfo]> for Init<'a> {
             return Err(BlockListError::InvalidInstruction);
         }*/
 
-
         // derive config account
         let (_, config_bump) = find_program_address(&[Config::SEED_PREFIX], &crate::ID);
         // no need to check if address is valid
@@ -46,7 +50,6 @@ impl<'a> TryFrom<&'a [AccountInfo]> for Init<'a> {
         if system_program.key().ne(&pinocchio_system::ID) {
             return Err(BlockListError::InvalidSystemProgram);
         }
-
 
         Ok(Self {
             authority,
@@ -64,19 +67,18 @@ impl<'a> Init<'a> {
         let bump_seed = [self.config_bump];
         let seeds = seeds!(Config::SEED_PREFIX, &bump_seed);
         let signer = Signer::from(&seeds);
-            
+
         pinocchio_system::instructions::CreateAccount {
             from: self.authority,
             to: self.config,
             lamports,
             space: Config::LEN as u64,
             owner: &crate::ID,
-        }.invoke_signed(&[signer])?;
+        }
+        .invoke_signed(&[signer])?;
 
         let mut data = self.config.try_borrow_mut_data()?;
-        let config = unsafe { 
-            load_mut_unchecked::<Config>(&mut data)? 
-        };
+        let config = unsafe { load_mut_unchecked::<Config>(&mut data)? };
         config.discriminator = Config::DISCRIMINATOR;
         config.authority = *self.authority.key();
 

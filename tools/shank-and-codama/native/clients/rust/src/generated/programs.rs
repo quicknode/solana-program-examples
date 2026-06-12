@@ -7,7 +7,5 @@
 
 use solana_pubkey::{pubkey, Pubkey};
 
-
-  /// `car_rental_service` program ID.
-  pub const CAR_RENTAL_SERVICE_ID: Pubkey = pubkey!("8avNGHVXDwsELJaWMSoUZ44CirQd4zyU9Ez4ZmP4jNjZ");
-
+/// `car_rental_service` program ID.
+pub const CAR_RENTAL_SERVICE_ID: Pubkey = pubkey!("8avNGHVXDwsELJaWMSoUZ44CirQd4zyU9Ez4ZmP4jNjZ");

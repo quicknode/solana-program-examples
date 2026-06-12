@@ -12,7 +12,8 @@ fn test_pda_rent_payer() {
     // `cargo build-sbf --manifest-path=./program/Cargo.toml` (run from the project
     // root). Rebuild after every program change: the binary is embedded at
     // test-compile time, so a stale .so silently tests old code.
-    let program_bytes = include_bytes!("../../../../../target/deploy/pda_rent_payer_pinocchio_program.so");
+    let program_bytes =
+        include_bytes!("../../../../../target/deploy/pda_rent_payer_pinocchio_program.so");
 
     let mut svm = LiteSVM::new();
     svm.add_program(program_id, program_bytes).unwrap();

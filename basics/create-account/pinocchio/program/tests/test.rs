@@ -12,7 +12,8 @@ fn test_create_account() {
     // `cargo build-sbf --manifest-path=./program/Cargo.toml` (run from the project
     // root). Rebuild after every program change: the binary is embedded at
     // test-compile time, so a stale .so silently tests old code.
-    let program_bytes = include_bytes!("../../../../../target/deploy/create_account_pinocchio_program.so");
+    let program_bytes =
+        include_bytes!("../../../../../target/deploy/create_account_pinocchio_program.so");
 
     let payer = Keypair::new();
     let new_keypair = Keypair::new();

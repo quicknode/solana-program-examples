@@ -17,7 +17,6 @@ pub enum BlockListError {
     ImmutableOwnerExtensionMissing,
 }
 
-
 impl From<BlockListError> for ProgramError {
     fn from(e: BlockListError) -> Self {
         ProgramError::Custom(e as u32)

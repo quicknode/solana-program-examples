@@ -5,9 +5,8 @@
 //! <https://github.com/codama-idl/codama>
 //!
 
-  pub(crate) mod r#car;
-  pub(crate) mod r#rental_order;
+pub(crate) mod r#car;
+pub(crate) mod r#rental_order;
 
-  pub use self::r#car::*;
-  pub use self::r#rental_order::*;
-
+pub use self::r#car::*;
+pub use self::r#rental_order::*;

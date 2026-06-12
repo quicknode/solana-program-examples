@@ -156,7 +156,11 @@ fn full_lifecycle_add_book_pick_up_return() {
     let make = "BMW";
     let model = "iX1";
     let car_account = car_pda(make, model);
-    send_instruction(&mut svm, &payer, add_car_instruction(&payer, make, model, 2020));
+    send_instruction(
+        &mut svm,
+        &payer,
+        add_car_instruction(&payer, make, model, 2020),
+    );
 
     let car = Car::from_bytes(&svm.get_account(&car_account).unwrap().data).unwrap();
     assert_eq!(car.year, 2020);
@@ -218,7 +222,11 @@ fn pick_up_car_rejects_a_payer_that_did_not_sign() {
     let make = "Tesla";
     let model = "Model 3";
     let car_account = car_pda(make, model);
-    send_instruction(&mut svm, &victim, add_car_instruction(&victim, make, model, 2024));
+    send_instruction(
+        &mut svm,
+        &victim,
+        add_car_instruction(&victim, make, model, 2024),
+    );
 
     let rental_account = rental_pda(&car_account, &victim.pubkey());
     send_instruction(
@@ -262,7 +270,11 @@ fn pick_up_car_rejects_a_rental_account_not_owned_by_the_program() {
     let make = "Volvo";
     let model = "EX30";
     let car_account = car_pda(make, model);
-    send_instruction(&mut svm, &payer, add_car_instruction(&payer, make, model, 2025));
+    send_instruction(
+        &mut svm,
+        &payer,
+        add_car_instruction(&payer, make, model, 2025),
+    );
 
     // Plant an account with plausible rental data at the correct PDA address,
     // but owned by the system program instead of the rental program.
@@ -301,7 +313,11 @@ fn return_car_rejects_a_rental_that_was_never_picked_up() {
     let make = "Kia";
     let model = "EV9";
     let car_account = car_pda(make, model);
-    send_instruction(&mut svm, &payer, add_car_instruction(&payer, make, model, 2023));
+    send_instruction(
+        &mut svm,
+        &payer,
+        add_car_instruction(&payer, make, model, 2023),
+    );
 
     let rental_account = rental_pda(&car_account, &payer.pubkey());
     send_instruction(

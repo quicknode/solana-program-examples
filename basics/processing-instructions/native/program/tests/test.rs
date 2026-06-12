@@ -15,7 +15,8 @@ fn test_processing_ixs() {
     // `cargo build-sbf --manifest-path=./program/Cargo.toml` (run from the project
     // root). Rebuild after every program change: the binary is embedded at
     // test-compile time, so a stale .so silently tests old code.
-    let program_bytes = include_bytes!("../../../../../target/deploy/processing_instructions_program.so");
+    let program_bytes =
+        include_bytes!("../../../../../target/deploy/processing_instructions_program.so");
 
     svm.add_program(program_id, program_bytes).unwrap();
 

@@ -12,7 +12,8 @@ use solana_transaction::Transaction;
 // `cargo build-sbf --manifest-path=./program/Cargo.toml` (run from the project
 // root). Rebuild after every program change: the binary is embedded at
 // test-compile time, so a stale .so silently tests old code.
-const PROGRAM_SO: &[u8] = include_bytes!("../../../../../target/deploy/counter_solana_pinocchio.so");
+const PROGRAM_SO: &[u8] =
+    include_bytes!("../../../../../target/deploy/counter_solana_pinocchio.so");
 
 #[test]
 fn test_counter() {

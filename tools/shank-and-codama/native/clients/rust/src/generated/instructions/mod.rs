@@ -5,13 +5,12 @@
 //! <https://github.com/codama-idl/codama>
 //!
 
-  pub(crate) mod r#add_car;
-  pub(crate) mod r#book_rental;
-  pub(crate) mod r#pick_up_car;
-  pub(crate) mod r#return_car;
+pub(crate) mod r#add_car;
+pub(crate) mod r#book_rental;
+pub(crate) mod r#pick_up_car;
+pub(crate) mod r#return_car;
 
-  pub use self::r#add_car::*;
-  pub use self::r#book_rental::*;
-  pub use self::r#pick_up_car::*;
-  pub use self::r#return_car::*;
-
+pub use self::r#add_car::*;
+pub use self::r#book_rental::*;
+pub use self::r#pick_up_car::*;
+pub use self::r#return_car::*;

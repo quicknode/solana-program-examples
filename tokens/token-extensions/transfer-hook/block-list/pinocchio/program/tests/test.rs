@@ -80,10 +80,9 @@ fn build_transfer_with_hook_accounts(
     // The hook program id is appended last so the Token Extensions transfer
     // instruction handler can CPI into it (it strips that entry from the hook
     // accounts list).
-    instruction.accounts.push(AccountMeta::new_readonly(
-        find_extra_metas_pda(mint),
-        false,
-    ));
+    instruction
+        .accounts
+        .push(AccountMeta::new_readonly(find_extra_metas_pda(mint), false));
     if let ExtraMode::SourceOnly = extra_mode {
         instruction.accounts.push(AccountMeta::new_readonly(
             find_wallet_block_pda(source_owner),
@@ -114,7 +113,11 @@ fn send_expecting_success(
         svm.latest_blockhash(),
     );
     if let Err(failure) = svm.send_transaction(transaction) {
-        panic!("{label} failed: {:?}\nlogs:\n{}", failure.err, failure.meta.logs.join("\n"));
+        panic!(
+            "{label} failed: {:?}\nlogs:\n{}",
+            failure.err,
+            failure.meta.logs.join("\n")
+        );
     }
 }
 
@@ -312,7 +315,13 @@ fn block_list_transfer_hook_lifecycle() {
         system_program: solana_sdk::system_program::id(),
     }
     .instruction();
-    send_expecting_success(&mut svm, &[block_instruction], &payer, &[&payer], "block_wallet A");
+    send_expecting_success(
+        &mut svm,
+        &[block_instruction],
+        &payer,
+        &[&payer],
+        "block_wallet A",
+    );
     let wallet_block = svm
         .get_account(&find_wallet_block_pda(&wallet_a.pubkey()))
         .unwrap();
