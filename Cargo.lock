@@ -1286,6 +1286,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "cross-program-invocation-pinocchio-hand"
+version = "0.1.0"
+dependencies = [
+ "pinocchio 0.10.2",
+]
+
+[[package]]
+name = "cross-program-invocation-pinocchio-lever"
+version = "0.1.0"
+dependencies = [
+ "litesvm",
+ "pinocchio 0.10.2",
+ "pinocchio-log",
+ "pinocchio-system",
+ "solana-instruction 3.3.0",
+ "solana-keypair",
+ "solana-native-token 3.0.0",
+ "solana-pubkey 3.0.0",
+ "solana-system-interface 2.0.0",
+ "solana-transaction 3.1.0",
+]
+
+[[package]]
 name = "crunchy"
 version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2955,6 +2978,20 @@ dependencies = [
  "solana-pubkey 3.0.0",
  "solana-rent 4.1.0",
  "solana-system-interface 2.0.0",
+ "solana-transaction 3.1.0",
+]
+
+[[package]]
+name = "repository-layout-pinocchio-program"
+version = "0.1.0"
+dependencies = [
+ "litesvm",
+ "pinocchio 0.10.2",
+ "pinocchio-log",
+ "solana-instruction 3.3.0",
+ "solana-keypair",
+ "solana-native-token 3.0.0",
+ "solana-pubkey 3.0.0",
  "solana-transaction 3.1.0",
 ]
 
