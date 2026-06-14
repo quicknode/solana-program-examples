@@ -19,3 +19,5 @@ Initial Quasar port of the Kamino/Solend-style borrow/lend program.
 - Liquidation reads the close factor from the borrow reserve, and rejects
   repayments whose seizure would exceed posted collateral
   (`LiquidationTooLarge`).
+- Reserve factor: the protocol keeps `reserve_factor_bps` of accrued interest
+  as fees the market owner withdraws with `collect_protocol_fees`.

@@ -91,7 +91,8 @@ pub fn current_debt(borrowed_scaled: u128, index: u128) -> Result<u64, ProgramEr
     u64::try_from(debt).map_err(|_| LendingError::MathOverflow.into())
 }
 
-/// Available liquidity plus live debt — what the share token is a claim on.
+/// Available liquidity plus live debt, before the protocol fee is removed. Used
+/// for the utilization ratio (about how much of the pool is lent out).
 pub fn total_liquidity(
     available: u64,
     borrowed_scaled: u128,
@@ -99,6 +100,19 @@ pub fn total_liquidity(
 ) -> Result<u128, ProgramError> {
     (available as u128)
         .checked_add(current_debt(borrowed_scaled, index)? as u128)
+        .ok_or(LendingError::MathOverflow.into())
+}
+
+/// What the share token is a claim on: gross liquidity minus the protocol fees
+/// owed to the owner, which belong to no supplier.
+pub fn net_total_liquidity(
+    available: u64,
+    borrowed_scaled: u128,
+    index: u128,
+    protocol_fees: u64,
+) -> Result<u128, ProgramError> {
+    total_liquidity(available, borrowed_scaled, index)?
+        .checked_sub(protocol_fees as u128)
         .ok_or(LendingError::MathOverflow.into())
 }
 
@@ -186,11 +200,13 @@ pub fn accrue_index(
     mul_div_floor(index, growth, FIXED_POINT_SCALE)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn validate_config(
     loan_to_value_bps: u16,
     liquidation_threshold_bps: u16,
     liquidation_bonus_bps: u16,
     close_factor_bps: u16,
+    reserve_factor_bps: u16,
     optimal_utilization_bps: u16,
     min_borrow_rate_bps: u16,
     optimal_borrow_rate_bps: u16,
@@ -202,6 +218,7 @@ pub fn validate_config(
             && within(liquidation_threshold_bps)
             && within(liquidation_bonus_bps)
             && within(close_factor_bps)
+            && within(reserve_factor_bps)
             && within(optimal_utilization_bps),
         LendingError::InvalidConfig
     );

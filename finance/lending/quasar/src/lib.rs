@@ -46,6 +46,7 @@ mod quasar_lending {
         liquidation_threshold_bps: u16,
         liquidation_bonus_bps: u16,
         close_factor_bps: u16,
+        reserve_factor_bps: u16,
         optimal_utilization_bps: u16,
         min_borrow_rate_bps: u16,
         optimal_borrow_rate_bps: u16,
@@ -56,6 +57,7 @@ mod quasar_lending {
             liquidation_threshold_bps,
             liquidation_bonus_bps,
             close_factor_bps,
+            reserve_factor_bps,
             optimal_utilization_bps,
             min_borrow_rate_bps,
             optimal_borrow_rate_bps,
@@ -132,5 +134,10 @@ mod quasar_lending {
         amount: u64,
     ) -> Result<(), ProgramError> {
         ctx.accounts.run(amount)
+    }
+
+    #[instruction(discriminator = 11)]
+    pub fn collect_protocol_fees(ctx: Ctx<CollectProtocolFees>) -> Result<(), ProgramError> {
+        ctx.accounts.run()
     }
 }

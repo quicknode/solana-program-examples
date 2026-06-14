@@ -2,7 +2,7 @@ use {
     crate::{
         error::LendingError,
         logic::{accrue, now, snapshot_reserve},
-        math::{mul_div_floor, total_liquidity},
+        math::{mul_div_floor, net_total_liquidity},
         state::Reserve,
     },
     quasar_lang::prelude::*,
@@ -53,10 +53,11 @@ impl DepositReserveLiquidity {
         let mut reserve = snapshot_reserve(&self.reserve);
         accrue(&mut reserve, slot)?;
 
-        let total = total_liquidity(
+        let total = net_total_liquidity(
             reserve.available_liquidity,
             reserve.borrowed_amount_scaled,
             reserve.cumulative_borrow_rate_index,
+            reserve.accumulated_protocol_fees,
         )?;
         let shares = if reserve.share_mint_supply == 0 {
             amount as u128
@@ -131,10 +132,11 @@ impl RedeemReserveCollateral {
         accrue(&mut reserve, slot)?;
         require!(reserve.share_mint_supply > 0, LendingError::InsufficientLiquidity);
 
-        let total = total_liquidity(
+        let total = net_total_liquidity(
             reserve.available_liquidity,
             reserve.borrowed_amount_scaled,
             reserve.cumulative_borrow_rate_index,
+            reserve.accumulated_protocol_fees,
         )?;
         let liquidity = mul_div_floor(shares as u128, total, reserve.share_mint_supply as u128)?;
         let liquidity = u64::try_from(liquidity).map_err(|_| LendingError::MathOverflow)?;

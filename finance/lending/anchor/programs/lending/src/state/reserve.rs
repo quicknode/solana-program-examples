@@ -65,6 +65,12 @@ pub struct Reserve {
 
     pub last_update_slot: u64,
 
+    /// Liquidity owed to the market owner: the protocol's cut of accrued
+    /// interest (`config.reserve_factor_bps`). It is carved out of
+    /// `total_liquidity` so it never inflates the share exchange rate, and the
+    /// owner withdraws it with `collect_protocol_fees`.
+    pub accumulated_protocol_fees: u64,
+
     pub config: ReserveConfig,
 
     pub bump: u8,
@@ -81,6 +87,9 @@ pub struct ReserveConfig {
     pub liquidation_bonus_bps: u16,
     /// Maximum fraction of a borrow that one liquidation may repay.
     pub close_factor_bps: u16,
+    /// Share of accrued borrow interest kept by the protocol (the rest lifts the
+    /// supplier exchange rate). This is how the market owner earns.
+    pub reserve_factor_bps: u16,
     /// Utilization at which the borrow rate reaches `optimal_borrow_rate_bps`.
     pub optimal_utilization_bps: u16,
     /// Borrow APR at 0% utilization.
@@ -99,6 +108,7 @@ impl ReserveConfig {
                 && within_bps(self.liquidation_threshold_bps)
                 && within_bps(self.liquidation_bonus_bps)
                 && within_bps(self.close_factor_bps)
+                && within_bps(self.reserve_factor_bps)
                 && within_bps(self.optimal_utilization_bps),
             LendingError::InvalidConfig
         );
@@ -135,20 +145,30 @@ impl Reserve {
         u64::try_from(amount).map_err(|_| LendingError::MathOverflow.into())
     }
 
-    /// Available liquidity plus live debt — the pool size the share token is a claim on.
-    pub fn total_liquidity(&self) -> Result<u128> {
-        Ok((self.available_liquidity as u128)
+    /// Available liquidity plus live debt, before the protocol's fee is removed.
+    /// Used for the utilization ratio, which is about how much of the pool is lent
+    /// out, independent of who owns the interest.
+    pub fn gross_liquidity(&self) -> Result<u128> {
+        (self.available_liquidity as u128)
             .checked_add(self.current_borrowed_amount()? as u128)
-            .ok_or(LendingError::MathOverflow)?)
+            .ok_or(LendingError::MathOverflow.into())
+    }
+
+    /// The pool size the share token is a claim on: gross liquidity minus the
+    /// protocol fees owed to the owner, which belong to no supplier.
+    pub fn total_liquidity(&self) -> Result<u128> {
+        self.gross_liquidity()?
+            .checked_sub(self.accumulated_protocol_fees as u128)
+            .ok_or(LendingError::MathOverflow.into())
     }
 
     /// Borrowed fraction of the pool, in basis points (0..=10_000).
     pub fn utilization_bps(&self) -> Result<u128> {
-        let total = self.total_liquidity()?;
-        if total == 0 {
+        let gross = self.gross_liquidity()?;
+        if gross == 0 {
             return Ok(0);
         }
-        mul_div_floor(self.current_borrowed_amount()? as u128, BPS_DENOMINATOR, total)
+        mul_div_floor(self.current_borrowed_amount()? as u128, BPS_DENOMINATOR, gross)
     }
 
     /// Per-slot borrow rate (FIXED_POINT_SCALE-scaled) from the kinked curve:
@@ -198,6 +218,7 @@ impl Reserve {
             .ok_or(LendingError::MathOverflow)?;
 
         if elapsed > 0 && self.borrowed_amount_scaled > 0 {
+            let borrowed_before = self.current_borrowed_amount()?;
             let rate_per_slot = self.current_borrow_rate_per_slot()?;
             let accrued = rate_per_slot
                 .checked_mul(elapsed as u128)
@@ -210,6 +231,23 @@ impl Reserve {
                 growth_factor,
                 FIXED_POINT_SCALE,
             )?;
+
+            // Borrowers owe the full interest (the index grew for all of it); the
+            // protocol keeps `reserve_factor_bps` of the newly accrued interest,
+            // and the remainder lifts the supplier exchange rate. Flooring the fee
+            // rounds the owner's cut down, in the suppliers' favour.
+            let interest = self
+                .current_borrowed_amount()?
+                .saturating_sub(borrowed_before);
+            let fee = mul_div_floor(
+                interest as u128,
+                self.config.reserve_factor_bps as u128,
+                BPS_DENOMINATOR,
+            )?;
+            self.accumulated_protocol_fees = self
+                .accumulated_protocol_fees
+                .checked_add(u64::try_from(fee).map_err(|_| LendingError::MathOverflow)?)
+                .ok_or(LendingError::MathOverflow)?;
         }
 
         self.last_update_slot = current_slot;

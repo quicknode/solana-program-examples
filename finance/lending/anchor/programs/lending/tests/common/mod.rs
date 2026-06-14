@@ -656,6 +656,35 @@ impl Env {
         send(&mut self.svm, instructions, &[payer], &payer.pubkey()).unwrap();
     }
 
+    /// Market owner collects accrued protocol fees from a reserve to their own
+    /// token account. Bundles `refresh_reserve` so fees are current. Returns the
+    /// owner's fee-receiving token account.
+    pub fn collect_protocol_fees(&mut self, handle: &ReserveHandle) -> Pubkey {
+        let owner = self.owner.insecure_clone();
+        let owner_liquidity = ata(&owner.pubkey(), &handle.mint);
+        if self.svm.get_account(&owner_liquidity).is_none() {
+            create_associated_token_account(&mut self.svm, &owner.pubkey(), &handle.mint, &owner)
+                .unwrap();
+        }
+        let refresh = self.refresh_reserve_ix(handle);
+        let collect = Instruction {
+            program_id: lending::id(),
+            accounts: lending::accounts::CollectProtocolFees {
+                lending_market: self.market,
+                owner: owner.pubkey(),
+                reserve: handle.reserve,
+                liquidity_mint: handle.mint,
+                liquidity_vault: handle.liquidity_vault,
+                owner_liquidity,
+                token_program: TOKEN_PROGRAM_ID,
+            }
+            .to_account_metas(None),
+            data: lending::instruction::CollectProtocolFees {}.data(),
+        };
+        send(&mut self.svm, vec![refresh, collect], &[&owner], &owner.pubkey()).unwrap();
+        owner_liquidity
+    }
+
     // --- state readers ---
 
     pub fn reserve(&self, handle: &ReserveHandle) -> Reserve {
@@ -674,13 +703,15 @@ impl Env {
 }
 
 /// A reasonable default reserve config: 75% LTV, 80% liquidation threshold,
-/// 5% bonus, 50% close factor, kink at 80% utilization, 2%/20%/150% APR curve.
+/// 5% bonus, 50% close factor, 10% reserve factor (protocol's cut of interest),
+/// kink at 80% utilization, 2%/20%/150% APR curve.
 pub fn default_config() -> ReserveConfig {
     ReserveConfig {
         loan_to_value_bps: 7_500,
         liquidation_threshold_bps: 8_000,
         liquidation_bonus_bps: 500,
         close_factor_bps: 5_000,
+        reserve_factor_bps: 1_000,
         optimal_utilization_bps: 8_000,
         min_borrow_rate_bps: 200,
         optimal_borrow_rate_bps: 2_000,

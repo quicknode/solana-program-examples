@@ -36,6 +36,7 @@ const BORROWER_COLL_SHARE: Pubkey = Pubkey::new_from_array([13; 32]);
 const BORROWER_BORROW: Pubkey = Pubkey::new_from_array([14; 32]);
 const LIQUIDATOR_BORROW: Pubkey = Pubkey::new_from_array([15; 32]);
 const LIQUIDATOR_COLL_SHARE: Pubkey = Pubkey::new_from_array([16; 32]);
+const OWNER_BORROW: Pubkey = Pubkey::new_from_array([17; 32]);
 
 fn token_program() -> Pubkey {
     quasar_svm::SPL_TOKEN_PROGRAM_ID
@@ -165,6 +166,8 @@ impl World {
             token(BORROWER_BORROW, BORROW_MINT, BORROWER, 0),
             token(LIQUIDATOR_BORROW, BORROW_MINT, LIQUIDATOR, 1_000 * UNIT),
             token(LIQUIDATOR_COLL_SHARE, coll_share_mint, LIQUIDATOR, 0),
+            // Where the market owner receives collected protocol fees.
+            token(OWNER_BORROW, BORROW_MINT, OWNER, 0),
         ] {
             svm.set_account(account);
         }
@@ -219,9 +222,9 @@ impl World {
 
     #[allow(clippy::too_many_arguments)]
     fn init_reserve(&mut self, the_mint: Pubkey, reserve: Pubkey, vault: Pubkey, share: Pubkey, price: Pubkey) {
-        // 75% LTV, 80% liq threshold, 5% bonus, 50% close factor, kink 80%,
-        // 2% / 20% / 150% APR curve.
-        let config: [u16; 8] = [7_500, 8_000, 500, 5_000, 8_000, 200, 2_000, 15_000];
+        // 75% LTV, 80% liq threshold, 5% bonus, 50% close factor, 10% reserve
+        // factor, kink 80%, 2% / 20% / 150% APR curve.
+        let config: [u16; 9] = [7_500, 8_000, 500, 5_000, 1_000, 8_000, 200, 2_000, 15_000];
         let mut data = vec![1u8];
         for value in config {
             data.extend_from_slice(&value.to_le_bytes());
@@ -396,6 +399,21 @@ impl World {
         self.init_obligation();
         self.post_collateral(1_000 * UNIT).assert_success();
     }
+
+    /// Market owner collects accrued protocol fees from the borrow reserve into
+    /// `OWNER_BORROW`. The handler accrues interest itself, so no separate refresh.
+    fn collect_borrow_fees(&mut self) -> quasar_svm::ExecutionResult {
+        let metas = vec![
+            meta(OWNER, true, true),
+            meta(self.market, false, false),
+            meta(self.borrow_reserve, true, false),
+            meta(BORROW_MINT, false, false),
+            meta(self.borrow_vault, true, false),
+            meta(OWNER_BORROW, true, false),
+            meta(token_program(), false, false),
+        ];
+        self.run(vec![11u8], metas)
+    }
 }
 
 #[test]
@@ -484,5 +502,24 @@ fn unhealthy_position_is_liquidated_and_healthy_is_rejected() {
     assert!(
         balance(&result, LIQUIDATOR_COLL_SHARE) > 0,
         "liquidator should receive seized collateral shares"
+    );
+}
+
+#[test]
+fn protocol_fees_accrue_and_owner_can_collect() {
+    let mut world = World::new();
+    world.bootstrap_position();
+    world.borrow(500 * UNIT).assert_success();
+
+    // ~0.1 year passes; interest accrues, and the reserve factor (10%) sets some
+    // of it aside for the market owner.
+    world.svm.sysvars.warp_to_slot(7_884_000);
+
+    let result = world.collect_borrow_fees();
+    result.assert_success();
+    assert!(
+        balance(&result, OWNER_BORROW) > 0,
+        "owner should collect a positive protocol fee, got {}",
+        balance(&result, OWNER_BORROW)
     );
 }

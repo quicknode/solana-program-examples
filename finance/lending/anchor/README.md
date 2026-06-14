@@ -60,6 +60,16 @@ utilization. Each borrow stores its principal as **scaled debt** (principal ÷
 index at borrow time), so every obligation's debt grows automatically as the
 index advances — no per-obligation accrual loop.
 
+### Protocol fees (how the market earns)
+
+Borrowers owe the full interest, but suppliers don't receive all of it. On each
+accrual the reserve keeps `config.reserve_factor_bps` of the freshly accrued
+interest in `accumulated_protocol_fees`; only the remainder lifts the supplier
+exchange rate. Those fees are carved out of `total_liquidity`, so they never
+count as a supplier claim, and the market owner withdraws them with
+**`collect_protocol_fees`** (paid out of the reserve's available liquidity).
+This spread between the borrow rate and the supply rate is the protocol's revenue.
+
 ### Obligation health
 
 `refresh_obligation` recomputes, from the refreshed reserves and their prices:
@@ -110,8 +120,9 @@ rather than Pyth here for its lower compute cost.
 
 Supplied liquidity sits in program-owned vault PDAs, and posted collateral sits in
 per-obligation vault PDAs whose authority is the obligation PDA. The market owner
-can update reserve risk parameters (`update_reserve_config`) but has no path to
-move user funds — there is no admin withdrawal or escape hatch.
+can update reserve risk parameters (`update_reserve_config`) and withdraw the
+protocol's earned fees (`collect_protocol_fees`), but has no path to a supplier's
+deposits or a borrower's collateral — there is no admin escape hatch over user funds.
 
 ### Known limits
 
@@ -129,7 +140,8 @@ move user funds — there is no admin withdrawal or escape hatch.
 
 ### Instruction handlers
 
-Admin: `init_lending_market`, `init_reserve`, `update_reserve_config`, `set_price`.
+Admin: `init_lending_market`, `init_reserve`, `update_reserve_config`, `set_price`,
+`collect_protocol_fees`.
 Supply side: `refresh_reserve`, `deposit_reserve_liquidity`,
 `redeem_reserve_collateral`. Borrow side: `init_obligation`, `refresh_obligation`,
 `deposit_obligation_collateral`, `withdraw_obligation_collateral`,

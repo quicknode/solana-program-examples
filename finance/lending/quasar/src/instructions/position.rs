@@ -4,7 +4,7 @@ use {
         error::LendingError,
         instructions::supply::reserve_seeds,
         logic::{accrue, now, price_scaled, snapshot_obligation, snapshot_reserve, SCALE},
-        math::{current_debt, market_value, mul_div_ceil, mul_div_floor, total_liquidity, value_to_amount, Rounding},
+        math::{current_debt, market_value, mul_div_ceil, mul_div_floor, net_total_liquidity, value_to_amount, Rounding},
         state::{
             LendingMarket, Obligation, ObligationInner, ObligationVaultPda, PriceFeed, Reserve,
         },
@@ -177,10 +177,11 @@ impl BorrowObligationLiquidity {
         }
 
         // Borrow power from collateral value.
-        let collateral_total = total_liquidity(
+        let collateral_total = net_total_liquidity(
             collateral.available_liquidity,
             collateral.borrowed_amount_scaled,
             collateral.cumulative_borrow_rate_index,
+            collateral.accumulated_protocol_fees,
         )?;
         let collateral_liquidity = mul_div_floor(
             obligation.deposited_shares as u128,
@@ -363,10 +364,11 @@ impl WithdrawObligationCollateral {
 
         // Remaining collateral value after withdrawing `shares`.
         let remaining_shares = obligation.deposited_shares - shares;
-        let collateral_total = total_liquidity(
+        let collateral_total = net_total_liquidity(
             collateral.available_liquidity,
             collateral.borrowed_amount_scaled,
             collateral.cumulative_borrow_rate_index,
+            collateral.accumulated_protocol_fees,
         )?;
         let remaining_liquidity = mul_div_floor(
             remaining_shares as u128,
@@ -476,10 +478,11 @@ impl LiquidateObligation {
         let borrow_price = price_scaled(&self.borrow_price, slot)?;
 
         // Health: unhealthy when debt value exceeds collateral value * liq threshold.
-        let collateral_total = total_liquidity(
+        let collateral_total = net_total_liquidity(
             collateral.available_liquidity,
             collateral.borrowed_amount_scaled,
             collateral.cumulative_borrow_rate_index,
+            collateral.accumulated_protocol_fees,
         )?;
         let collateral_liquidity = mul_div_floor(
             obligation.deposited_shares as u128,

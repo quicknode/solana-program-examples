@@ -26,6 +26,10 @@ pub struct Reserve {
     pub price_feed: Address,
     pub available_liquidity: u64,
     pub share_mint_supply: u64,
+    /// Liquidity owed to the market owner: the protocol's cut of accrued
+    /// interest, carved out of total liquidity and withdrawn via
+    /// `collect_protocol_fees`.
+    pub accumulated_protocol_fees: u64,
     pub borrowed_amount_scaled: u128,
     pub cumulative_borrow_rate_index: u128,
     pub last_update_slot: u64,
@@ -34,6 +38,8 @@ pub struct Reserve {
     pub liquidation_threshold_bps: u16,
     pub liquidation_bonus_bps: u16,
     pub close_factor_bps: u16,
+    /// Share of accrued borrow interest kept by the protocol (how the owner earns).
+    pub reserve_factor_bps: u16,
     pub optimal_utilization_bps: u16,
     pub min_borrow_rate_bps: u16,
     pub optimal_borrow_rate_bps: u16,

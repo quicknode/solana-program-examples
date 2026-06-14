@@ -30,6 +30,10 @@ pub mod lending {
         instructions::handle_update_reserve_config(context, config)
     }
 
+    pub fn collect_protocol_fees(context: Context<CollectProtocolFees>) -> Result<()> {
+        instructions::handle_collect_protocol_fees(context)
+    }
+
     pub fn set_price(
         context: Context<SetPrice>,
         price_mantissa: i128,

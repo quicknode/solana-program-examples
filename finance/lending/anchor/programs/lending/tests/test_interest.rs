@@ -61,3 +61,48 @@ fn interest_accrues_on_borrows_over_time() {
         "100M shares should redeem for more than 100M liquidity after interest, got {returned}"
     );
 }
+
+/// The protocol keeps `reserve_factor_bps` of accrued interest as fees the
+/// market owner can withdraw, while the rest lifts the supplier exchange rate.
+#[test]
+fn protocol_fees_accrue_and_owner_can_collect() {
+    let mut env = Env::new();
+    let collateral = env.add_reserve(6, dollars(1), default_config());
+    let borrow = env.add_reserve(6, dollars(1), default_config());
+
+    let supplier = env.create_user();
+    env.fund(&supplier, borrow.mint, 1_000_000_000);
+    env.supply(&supplier, &borrow, 1_000_000_000);
+
+    let borrower = env.create_user();
+    env.fund(&borrower, collateral.mint, 1_000_000_000);
+    env.fund(&borrower, borrow.mint, 0);
+    env.supply(&borrower, &collateral, 1_000_000_000);
+    let obligation = env.init_obligation(&borrower);
+    env.post_collateral(&borrower, obligation, &collateral, 1_000_000_000);
+    env.try_borrow(&borrower, obligation, &[&collateral], &[], &borrow, 500_000_000)
+        .unwrap();
+
+    // No interest has accrued yet, so no fees.
+    assert_eq!(env.reserve(&borrow).accumulated_protocol_fees, 0);
+
+    env.warp_slots(7_884_000);
+    env.refresh_reserve_only(&borrower, &borrow);
+
+    // Fees accrued, and they are ~10% (the reserve factor) of total interest.
+    let reserve = env.reserve(&borrow);
+    let fees = reserve.accumulated_protocol_fees;
+    assert!(fees > 0, "protocol fees should accrue once interest does");
+    let total_interest = reserve.current_borrowed_amount().unwrap() - 500_000_000;
+    let expected_fee = total_interest / 10; // 1000 bps = 10%
+    // Allow a 1-unit rounding tolerance from flooring.
+    assert!(
+        fees.abs_diff(expected_fee) <= 1,
+        "fees {fees} should be ~10% of interest {total_interest}"
+    );
+
+    // Maria withdraws the fees to her own account.
+    let owner_account = env.collect_protocol_fees(&borrow);
+    assert_eq!(env.token_balance(owner_account), fees);
+    assert_eq!(env.reserve(&borrow).accumulated_protocol_fees, 0);
+}

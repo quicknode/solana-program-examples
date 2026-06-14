@@ -1,7 +1,9 @@
 use {
     crate::{
         constants::{MINT_SPACE, TOKEN_ACCOUNT_SPACE},
-        logic::now,
+        error::LendingError,
+        instructions::supply::reserve_seeds,
+        logic::{accrue, now, snapshot_reserve},
         math::validate_config,
         state::{
             LendingMarket, LendingMarketInner, LiquidityVaultPda, PriceFeed, PriceFeedInner,
@@ -74,6 +76,7 @@ impl InitReserve {
         liquidation_threshold_bps: u16,
         liquidation_bonus_bps: u16,
         close_factor_bps: u16,
+        reserve_factor_bps: u16,
         optimal_utilization_bps: u16,
         min_borrow_rate_bps: u16,
         optimal_borrow_rate_bps: u16,
@@ -85,6 +88,7 @@ impl InitReserve {
             liquidation_threshold_bps,
             liquidation_bonus_bps,
             close_factor_bps,
+            reserve_factor_bps,
             optimal_utilization_bps,
             min_borrow_rate_bps,
             optimal_borrow_rate_bps,
@@ -153,6 +157,7 @@ impl InitReserve {
             price_feed: *self.price_feed.address(),
             available_liquidity: 0,
             share_mint_supply: 0,
+            accumulated_protocol_fees: 0,
             borrowed_amount_scaled: 0,
             cumulative_borrow_rate_index: crate::constants::FIXED_POINT_SCALE,
             last_update_slot: now()?,
@@ -161,6 +166,7 @@ impl InitReserve {
             liquidation_threshold_bps,
             liquidation_bonus_bps,
             close_factor_bps,
+            reserve_factor_bps,
             optimal_utilization_bps,
             min_borrow_rate_bps,
             optimal_borrow_rate_bps,
@@ -205,5 +211,69 @@ impl SetPrice {
             bump: bumps.price_feed,
         });
         Ok(())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// collect_protocol_fees
+// ---------------------------------------------------------------------------
+
+#[derive(Accounts)]
+pub struct CollectProtocolFees {
+    #[account(mut)]
+    pub owner: Signer,
+    #[account(has_one(owner), address = LendingMarket::seeds(owner.address()))]
+    pub lending_market: Account<LendingMarket>,
+    #[account(mut, has_one(lending_market), has_one(liquidity_mint), has_one(liquidity_vault))]
+    pub reserve: Account<Reserve>,
+    pub liquidity_mint: Account<Mint>,
+    #[account(mut)]
+    pub liquidity_vault: Account<Token>,
+    #[account(mut)]
+    pub owner_liquidity: Account<Token>,
+    pub token_program: Program<TokenProgram>,
+}
+
+impl CollectProtocolFees {
+    /// Pay the reserve's accrued protocol fees to the market owner. This is how
+    /// the owner earns: `reserve_factor_bps` of every interest accrual is set
+    /// aside in `accumulated_protocol_fees`, and this withdraws it — capped by
+    /// the liquidity currently sitting in the vault.
+    #[inline(always)]
+    pub fn run(&mut self) -> Result<(), ProgramError> {
+        let slot = now()?;
+        let mut reserve = snapshot_reserve(&self.reserve);
+        accrue(&mut reserve, slot)?;
+
+        let amount = reserve
+            .accumulated_protocol_fees
+            .min(reserve.available_liquidity);
+        require!(amount > 0, LendingError::NothingToCollect);
+        reserve.accumulated_protocol_fees = reserve
+            .accumulated_protocol_fees
+            .checked_sub(amount)
+            .ok_or(LendingError::MathOverflow)?;
+        reserve.available_liquidity = reserve
+            .available_liquidity
+            .checked_sub(amount)
+            .ok_or(LendingError::MathOverflow)?;
+
+        let decimals = reserve.liquidity_decimals;
+        let bump = [reserve.bump];
+        let lending_market = reserve.lending_market;
+        let liquidity_mint = reserve.liquidity_mint;
+        self.reserve.set_inner(reserve);
+
+        let seeds = reserve_seeds!(lending_market, liquidity_mint, bump);
+        self.token_program
+            .transfer_checked(
+                &self.liquidity_vault,
+                &self.liquidity_mint,
+                &self.owner_liquidity,
+                &self.reserve,
+                amount,
+                decimals,
+            )
+            .invoke_signed(&seeds)
     }
 }

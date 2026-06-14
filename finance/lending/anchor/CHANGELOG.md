@@ -24,3 +24,6 @@ Initial lending program: a Kamino/Solend-style borrow/lend market.
   posted collateral (`LiquidationTooLarge`).
 - Withdraw health checks round the removed borrow power up, so independent
   rounding can never let a withdraw pass that an exact recompute would reject.
+- Reserve factor: the protocol keeps `reserve_factor_bps` of accrued interest as
+  fees the market owner withdraws with `collect_protocol_fees`; the fees are
+  carved out of `total_liquidity` so they never inflate the supplier exchange rate.

@@ -52,6 +52,11 @@ Everything else mirrors the Anchor version.
   `total_liquidity / share_supply` rises as borrowers pay interest.
   `available_liquidity` (not the vault's raw balance) is the source of truth, so a
   token donation can't inflate the rate.
+- **Protocol fees** — the reserve keeps `reserve_factor_bps` of each interest
+  accrual in `accumulated_protocol_fees` (carved out of total liquidity, so it
+  never lifts the supplier exchange rate); the market owner withdraws it with
+  `collect_protocol_fees`. That spread between the borrow and supply rates is how
+  the owner earns.
 - **Integer-only math** — `u128`, scaled by `FIXED_POINT_SCALE` (10^18), every
   conversion rounding in the protocol's favour.
 
@@ -61,7 +66,8 @@ Everything else mirrors the Anchor version.
 `deposit_reserve_liquidity` (3), `redeem_reserve_collateral` (4),
 `init_obligation` (5), `deposit_obligation_collateral` (6),
 `withdraw_obligation_collateral` (7), `borrow_obligation_liquidity` (8),
-`repay_obligation_liquidity` (9), `liquidate_obligation` (10).
+`repay_obligation_liquidity` (9), `liquidate_obligation` (10),
+`collect_protocol_fees` (11).
 
 ## Setup
 

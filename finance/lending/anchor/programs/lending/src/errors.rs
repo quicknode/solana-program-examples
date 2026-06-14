@@ -36,4 +36,6 @@ pub enum LendingError {
     MarketMismatch,
     #[msg("Repay amount would seize more collateral than the obligation holds")]
     LiquidationTooLarge,
+    #[msg("No protocol fees are available to collect")]
+    NothingToCollect,
 }

@@ -21,6 +21,7 @@ pub fn handle_init_reserve(context: Context<InitReserve>, config: ReserveConfig)
     reserve.borrowed_amount_scaled = 0;
     reserve.cumulative_borrow_rate_index = FIXED_POINT_SCALE;
     reserve.last_update_slot = Clock::get()?.slot;
+    reserve.accumulated_protocol_fees = 0;
     reserve.config = config;
     reserve.bump = context.bumps.reserve;
     Ok(())
