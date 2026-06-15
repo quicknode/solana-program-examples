@@ -4,8 +4,6 @@ Working, tested, up-to-date examples of common Solana programs - maintained by [
 
 [![Anchor](../../actions/workflows/anchor.yml/badge.svg)](../../actions/workflows/anchor.yml) [![Quasar](../../actions/workflows/quasar.yml/badge.svg)](../../actions/workflows/quasar.yml) [![Pinocchio](../../actions/workflows/pinocchio.yml/badge.svg)](../../actions/workflows/pinocchio.yml) [![Native](../../actions/workflows/native.yml/badge.svg)](../../actions/workflows/native.yml) [![ASM](../../actions/workflows/solana-asm.yml/badge.svg)](../../actions/workflows/solana-asm.yml)
 
-**What you can build here:** escrow, AMM-based token swaps, order-book exchanges, token fundraisers, vault strategies, betting markets, NFTs, token extensions, compressed NFTs, and all the foundational Solana patterns (PDAs, CPIs, account management, rent).
-
 Each example is available in one or more of the following frameworks:
 
 - [⚓ Anchor](https://www.anchor-lang.com/) - the most popular framework for Solana development. Build with `anchor build`, test with `cargo test` as defined in `Anchor.toml`.
@@ -13,8 +11,6 @@ Each example is available in one or more of the following frameworks:
 - [🤥 Pinocchio](https://github.com/anza-xyz/pinocchio) - a zero-copy, zero-allocation library for Solana programs. Build with `cargo build-sbf --manifest-path=./program/Cargo.toml`, test with `cargo test --manifest-path=./program/Cargo.toml`.
 - [🦀 Native Rust](https://docs.anza.xyz/) - vanilla Rust using Solana's native crates. Build with `cargo build-sbf --manifest-path=./program/Cargo.toml`, test with `cargo test --manifest-path=./program/Cargo.toml`.
 - [🧬 ASM](https://github.com/blueshift-gg/sbpf) - hand-written sBPF assembly built with the `sbpf` toolchain. Build with `sbpf build`, test with `cargo test`.
-
-All examples are tested with Rust + [LiteSVM](https://github.com/litesvm/litesvm) in-process tests: build the program first, since the tests embed the `.so` at compile time.
 
 > [!NOTE]
 > You don't need to write your own program for basic tasks like creating [accounts](https://solana.com/docs/terminology#account), transferring SOL, or minting tokens. These are handled by existing programs like the System Program and Token Program.
