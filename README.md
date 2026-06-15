@@ -1,6 +1,6 @@
 # Solana Program Examples
 
-Working, tested, up-to-date examples of common Solana programs — maintained by [Quicknode](https://quicknode.com). Each example compiles and passes CI on the current Solana and Anchor toolchain.
+Working, tested, up-to-date examples of common Solana programs - maintained by [Quicknode](https://quicknode.com). Each example compiles and passes CI on the current Solana and Anchor toolchain.
 
 [![Anchor](../../actions/workflows/anchor.yml/badge.svg)](../../actions/workflows/anchor.yml) [![Quasar](../../actions/workflows/quasar.yml/badge.svg)](../../actions/workflows/quasar.yml) [![Pinocchio](../../actions/workflows/pinocchio.yml/badge.svg)](../../actions/workflows/pinocchio.yml) [![Native](../../actions/workflows/native.yml/badge.svg)](../../actions/workflows/native.yml) [![ASM](../../actions/workflows/solana-asm.yml/badge.svg)](../../actions/workflows/solana-asm.yml)
 
@@ -23,7 +23,7 @@ All examples are tested with Rust + [LiteSVM](https://github.com/litesvm/litesvm
 
 You need [Rust](https://www.rust-lang.org/tools/install), [Solana CLI](https://docs.anza.xyz/cli/install), [Anchor](https://www.anchor-lang.com/docs/installation), and [pnpm](https://pnpm.io/installation) installed. Clone the repo, `cd` into any example directory, and run `pnpm test`.
 
-To deploy to mainnet or devnet you'll need an RPC endpoint. [Quicknode](https://quicknode.com) provides free and paid Solana endpoints — create one and set it as your cluster in `Anchor.toml` or with `solana config set --url <your-endpoint>`.
+To deploy to mainnet or devnet you'll need an RPC endpoint. [Quicknode](https://quicknode.com) provides free and paid Solana endpoints - create one and set it as your cluster in `Anchor.toml` or with `solana config set --url <your-endpoint>`.
 
 ## Financial Software
 
