@@ -21,7 +21,7 @@ Each example is available in one or more of the following frameworks:
 
 Parimutuel (pooled) prediction market — an admin opens an event with multiple outcomes, bettors stake tokens on an outcome, and at settlement the losing pool (minus a protocol fee) is split among winners in proportion to their stake.
 
-[⚓ Anchor](./tokens/betting-market/anchor)
+[⚓ Anchor](./finance/betting-market/anchor)
 
 
 ### Escrow
