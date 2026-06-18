@@ -74,10 +74,11 @@ pub struct InitializeMarketAccountConstraints<'info> {
     // create_account-d account looks like. The handler then stamps the
     // discriminator + struct via `load_init()`.
     //
-    // The account is not a PDA; it is a plain account whose keypair the
-    // client generates. The README recommends deriving that keypair
-    // deterministically (e.g. from `["order_book", market]`) so the address
-    // is predictable - but the program doesn't enforce the derivation.
+    // This is not a PDA. create_account requires the new account to sign
+    // its own creation, and a PDA has no private key to sign with, so the
+    // client must generate a real keypair for it. The program ties this
+    // account to its market via `has_one = order_book` on `market`, not via
+    // seeds.
     #[account(zero)]
     pub order_book: AccountLoader<'info, OrderBook>,
 

@@ -387,7 +387,7 @@ Alice's remaining 2-NVDAx [bid](https://www.investopedia.com/terms/b/bid.asp) st
 | Account | PDA? | Seeds | Authority | Holds |
 |---|---|---|---|---|
 | `Market` | yes | `["market", base_mint, quote_mint]` | program | fee rate, tick size, min order size, base/quote mint pubkeys, vault pubkeys, order book pubkey, `authority` wallet (allowed to withdraw fees) |
-| `OrderBook` | no (client-allocated) | recommended: `["order_book", market]` | program | two critbit trees (bids highest-first, asks lowest-first, 1024 leaves each), `next_order_id` |
+| `OrderBook` | no (client-allocated keypair) | n/a — too large (~180 KB) for an `init`/CPI PDA, so created via `create_account` (which needs a signing key a PDA lacks); tied to its market via `has_one` | program | two critbit trees (bids highest-first, asks lowest-first, 1024 leaves each), `next_order_id` |
 | `Order` | yes | `["order", market, order_id.to_le_bytes()]` | program | owner, side, price, original_quantity, filled_quantity, status, timestamp |
 | `MarketUser` | yes | `["market_user", market, owner]` | program | `unsettled_base`, `unsettled_quote`, `open_orders: Vec<u64>` (max 20) |
 
