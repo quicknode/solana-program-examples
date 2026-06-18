@@ -2034,3 +2034,143 @@ fn settle_funds_after_match_pays_out_both_unsettled_balances() {
     );
 }
 
+// ---------------------------------------------------------------------------
+// Fee rounding tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn fee_rounds_down_on_fractional_result() {
+    // Confirms integer division floors the fee, not ceilings it.
+    //
+    // gross = 250 * 3 * quote_lot_size(1) = 750 raw quote
+    // fee   = 750 * 25 / 10_000 = 1.875 → floor → 1
+    //
+    // If the program rounded up, fee_vault would hold 2 and the taker would
+    // receive 748 instead of 749. The test would fail if that happened.
+    let mut sc = full_setup();
+
+    const FEE_BPS: u16 = 25;
+    const PRICE: u64 = 250;
+    const QUANTITY: u64 = 3;
+    const TEST_QUOTE_LOT_SIZE: u64 = 1;
+    const GROSS: u64 = PRICE * QUANTITY * TEST_QUOTE_LOT_SIZE;             // 750
+    // Compile-time proof that division is not exact — floor ≠ ceiling here.
+    const _: () = assert!((GROSS * FEE_BPS as u64) % 10_000 != 0);
+    const EXPECTED_FEE: u64 = GROSS * FEE_BPS as u64 / 10_000;            // 1, not 2
+    const EXPECTED_NET_TO_TAKER: u64 = GROSS - EXPECTED_FEE;              // 749
+
+    let create_ix = build_create_order_book_account_ix(&sc, &sc.authority.pubkey());
+    let init_ix = build_initialize_market_ix(
+        &sc, FEE_BPS, TICK_SIZE, BASE_LOT_SIZE, TEST_QUOTE_LOT_SIZE, MIN_ORDER_SIZE,
+    );
+    send_transaction_from_instructions(
+        &mut sc.svm,
+        vec![create_ix, init_ix],
+        &[&sc.authority, &sc.order_book, &sc.base_vault, &sc.quote_vault, &sc.fee_vault],
+        &sc.authority.pubkey(),
+    )
+    .unwrap();
+    let buyer_ix = build_create_market_user_ix(&sc, &sc.buyer.pubkey());
+    send_transaction_from_instructions(&mut sc.svm, vec![buyer_ix], &[&sc.buyer], &sc.buyer.pubkey()).unwrap();
+    let seller_ix = build_create_market_user_ix(&sc, &sc.seller.pubkey());
+    send_transaction_from_instructions(&mut sc.svm, vec![seller_ix], &[&sc.seller], &sc.seller.pubkey()).unwrap();
+
+    // Buyer posts a resting bid.
+    const MAKER_BID_ID: u64 = 1;
+    let maker_bid_ix = build_place_order_ix(
+        &sc, &sc.buyer, sc.buyer_market_user,
+        sc.buyer_base_ata, sc.buyer_quote_ata,
+        order_book::state::OrderSide::Bid, MAKER_BID_ID, PRICE, QUANTITY,
+    );
+    send_transaction_from_instructions(&mut sc.svm, vec![maker_bid_ix], &[&sc.buyer], &sc.buyer.pubkey()).unwrap();
+
+    // Seller's ask at the same price fully crosses.
+    const TAKER_ASK_ID: u64 = 2;
+    let taker_ask_ix = build_place_order_with_makers_ix(
+        &sc, &sc.seller, sc.seller_market_user,
+        sc.seller_base_ata, sc.seller_quote_ata,
+        order_book::state::OrderSide::Ask, TAKER_ASK_ID, PRICE, QUANTITY,
+        &[(MAKER_BID_ID, sc.buyer_market_user)],
+    );
+    send_transaction_from_instructions(&mut sc.svm, vec![taker_ask_ix], &[&sc.seller], &sc.seller.pubkey()).unwrap();
+
+    assert_eq!(
+        get_token_account_balance(&sc.svm, &sc.fee_vault.pubkey()).unwrap(),
+        EXPECTED_FEE,
+        "fee should be floored (1), not ceiling (2)",
+    );
+    let (buyer_base, _) = read_user_unsettled(&sc.svm, &sc.buyer_market_user);
+    assert_eq!(buyer_base, QUANTITY * BASE_LOT_SIZE);
+    let (_, seller_quote) = read_user_unsettled(&sc.svm, &sc.seller_market_user);
+    assert_eq!(seller_quote, EXPECTED_NET_TO_TAKER);
+}
+
+#[test]
+fn fee_exact_with_realistic_quote_lot_size() {
+    // When quote_lot_size matches the token's decimal scale, the fee is
+    // exactly representable — no rounding loss.
+    //
+    // Same trade as fee_rounds_down_on_fractional_result but with
+    // quote_lot_size = 1_000_000 (USDC has 6 decimal places):
+    //
+    //   gross = 250 * 3 * 1_000_000 = 750_000_000 raw quote
+    //   fee   = 750_000_000 * 25 / 10_000 = 1_875_000  (exact — remainder 0)
+    //
+    // For contrast: with lot_size=1, gross=750 → fee=1 (floor from 1.875).
+    let mut sc = full_setup();
+
+    const FEE_BPS: u16 = 25;
+    const PRICE: u64 = 250;
+    const QUANTITY: u64 = 3;
+    const TEST_QUOTE_LOT_SIZE: u64 = 1_000_000;
+    const GROSS: u64 = PRICE * QUANTITY * TEST_QUOTE_LOT_SIZE;             // 750_000_000
+    // Compile-time proof that division is exact — no rounding at all.
+    const _: () = assert!((GROSS * FEE_BPS as u64) % 10_000 == 0);
+    const EXPECTED_FEE: u64 = GROSS * FEE_BPS as u64 / 10_000;            // 1_875_000
+    const EXPECTED_NET_TO_TAKER: u64 = GROSS - EXPECTED_FEE;              // 748_125_000
+
+    let create_ix = build_create_order_book_account_ix(&sc, &sc.authority.pubkey());
+    let init_ix = build_initialize_market_ix(
+        &sc, FEE_BPS, TICK_SIZE, BASE_LOT_SIZE, TEST_QUOTE_LOT_SIZE, MIN_ORDER_SIZE,
+    );
+    send_transaction_from_instructions(
+        &mut sc.svm,
+        vec![create_ix, init_ix],
+        &[&sc.authority, &sc.order_book, &sc.base_vault, &sc.quote_vault, &sc.fee_vault],
+        &sc.authority.pubkey(),
+    )
+    .unwrap();
+    let buyer_ix = build_create_market_user_ix(&sc, &sc.buyer.pubkey());
+    send_transaction_from_instructions(&mut sc.svm, vec![buyer_ix], &[&sc.buyer], &sc.buyer.pubkey()).unwrap();
+    let seller_ix = build_create_market_user_ix(&sc, &sc.seller.pubkey());
+    send_transaction_from_instructions(&mut sc.svm, vec![seller_ix], &[&sc.seller], &sc.seller.pubkey()).unwrap();
+
+    // Buyer posts a resting bid.
+    const MAKER_BID_ID: u64 = 1;
+    let maker_bid_ix = build_place_order_ix(
+        &sc, &sc.buyer, sc.buyer_market_user,
+        sc.buyer_base_ata, sc.buyer_quote_ata,
+        order_book::state::OrderSide::Bid, MAKER_BID_ID, PRICE, QUANTITY,
+    );
+    send_transaction_from_instructions(&mut sc.svm, vec![maker_bid_ix], &[&sc.buyer], &sc.buyer.pubkey()).unwrap();
+
+    // Seller's ask at the same price fully crosses.
+    const TAKER_ASK_ID: u64 = 2;
+    let taker_ask_ix = build_place_order_with_makers_ix(
+        &sc, &sc.seller, sc.seller_market_user,
+        sc.seller_base_ata, sc.seller_quote_ata,
+        order_book::state::OrderSide::Ask, TAKER_ASK_ID, PRICE, QUANTITY,
+        &[(MAKER_BID_ID, sc.buyer_market_user)],
+    );
+    send_transaction_from_instructions(&mut sc.svm, vec![taker_ask_ix], &[&sc.seller], &sc.seller.pubkey()).unwrap();
+
+    assert_eq!(
+        get_token_account_balance(&sc.svm, &sc.fee_vault.pubkey()).unwrap(),
+        EXPECTED_FEE,
+        "fee should be exactly 1_875_000 with no rounding loss",
+    );
+    let (buyer_base, _) = read_user_unsettled(&sc.svm, &sc.buyer_market_user);
+    assert_eq!(buyer_base, QUANTITY * BASE_LOT_SIZE);
+    let (_, seller_quote) = read_user_unsettled(&sc.svm, &sc.seller_market_user);
+    assert_eq!(seller_quote, EXPECTED_NET_TO_TAKER);
+}
