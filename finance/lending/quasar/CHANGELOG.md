@@ -21,3 +21,7 @@ Initial Quasar port of the Kamino/Solend-style borrow/lend program.
   (`LiquidationTooLarge`).
 - Reserve factor: the protocol keeps `reserve_factor_bps` of accrued interest
   as fees the market owner withdraws with `collect_protocol_fees`.
+- LendingMarket is seeded by a `market_id` index (`["lending_market", market_id]`),
+  not by any individual; one owner can run several independent markets.
+- Price feeds are seeded `["price_feed", market, mint]` (scoped to a market, not
+  to an individual); only the market owner may write one.

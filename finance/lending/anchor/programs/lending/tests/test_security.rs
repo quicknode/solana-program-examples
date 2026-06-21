@@ -36,23 +36,25 @@ fn cross_market_reserve_is_rejected() {
     );
 }
 
-/// The price feed PDA is seeded by its authority, so no signer can write (or
-/// pre-claim) the feed another authority's reserves trust.
+/// A market's price feed can only be written by that market's owner: an
+/// outsider cannot publish (or squat) prices for a market they don't own.
 #[test]
-fn foreign_signer_cannot_write_owner_price_feed() {
+fn non_owner_cannot_write_market_price_feed() {
     let mut env = Env::new();
     let usdc = env.add_reserve(6, dollars(1), default_config());
 
     let attacker = env.create_user();
-    let owner_feed = env.price_feed_address(usdc.mint);
+    // The market's feed for this mint (seeds ["price_feed", market, mint]).
+    let market_feed = env.price_feed_address(env.market, usdc.mint);
 
-    // The attacker targets the owner's feed address while signing as themself.
-    // The seeds [b"price_feed", authority, mint] cannot match, so this fails.
+    // The attacker passes the real market but signs as themself; `has_one = owner`
+    // on the market rejects them before any write.
     let instruction = Instruction {
         program_id: lending::id(),
         accounts: lending::accounts::SetPrice {
-            price_feed: owner_feed,
-            authority: attacker.pubkey(),
+            lending_market: env.market,
+            owner: attacker.pubkey(),
+            price_feed: market_feed,
             mint: usdc.mint,
             system_program: system_program::id(),
         }
@@ -71,6 +73,6 @@ fn foreign_signer_cannot_write_owner_price_feed() {
     );
     assert!(
         result.is_err(),
-        "only the authority in a feed's seeds may write that feed"
+        "only the market owner may write its price feed"
     );
 }

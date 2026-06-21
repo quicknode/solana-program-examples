@@ -19,10 +19,12 @@ use {
 // ---------------------------------------------------------------------------
 
 #[derive(Accounts)]
+#[instruction(market_id: u64)]
 pub struct InitLendingMarket {
     #[account(mut)]
     pub owner: Signer,
-    #[account(init, payer = owner, address = LendingMarket::seeds(owner.address()))]
+    // Seeded by `market_id` alone — owner is stored for auth, not in the address.
+    #[account(init, payer = owner, address = LendingMarket::seeds(market_id))]
     pub lending_market: Account<LendingMarket>,
     pub quote_mint: Account<Mint>,
     pub system_program: Program<SystemProgram>,
@@ -30,9 +32,10 @@ pub struct InitLendingMarket {
 
 impl InitLendingMarket {
     #[inline(always)]
-    pub fn run(&mut self, bumps: &InitLendingMarketBumps) -> Result<(), ProgramError> {
+    pub fn run(&mut self, market_id: u64, bumps: &InitLendingMarketBumps) -> Result<(), ProgramError> {
         self.lending_market.set_inner(LendingMarketInner {
             owner: *self.owner.address(),
+            market_id,
             quote_mint: *self.quote_mint.address(),
             bump: bumps.lending_market,
         });
@@ -48,7 +51,7 @@ impl InitLendingMarket {
 pub struct InitReserve {
     #[account(mut)]
     pub owner: Signer,
-    #[account(has_one(owner), address = LendingMarket::seeds(owner.address()))]
+    #[account(has_one(owner))]
     pub lending_market: Account<LendingMarket>,
     #[account(init, payer = owner, address = Reserve::seeds(lending_market.address(), liquidity_mint.address()))]
     pub reserve: Account<Reserve>,
@@ -59,9 +62,8 @@ pub struct InitReserve {
     /// Created and initialized as a share-token mint (authority = reserve) in the handler.
     #[account(mut, address = ShareMintPda::seeds(reserve.address()))]
     pub share_mint: UncheckedAccount,
-    // The reserve trusts the feed written by the market owner: feed PDAs are
-    // seeded by their authority, so this binds the reserve to the owner's feed.
-    #[account(address = PriceFeed::seeds(owner.address(), liquidity_mint.address()))]
+    // Bound to this market's feed for this mint (seeds: market + mint).
+    #[account(address = PriceFeed::seeds(lending_market.address(), liquidity_mint.address()))]
     pub price_feed: Account<PriceFeed>,
     pub token_program: Program<TokenProgram>,
     pub system_program: Program<SystemProgram>,
@@ -184,11 +186,12 @@ impl InitReserve {
 #[derive(Accounts)]
 pub struct SetPrice {
     #[account(mut)]
-    pub authority: Signer,
-    // The authority is part of the seeds: a signer can only ever address (and
-    // therefore write) the feed derived from their own key, so there is no
-    // shared per-mint feed to claim first.
-    #[account(init(idempotent), payer = authority, address = PriceFeed::seeds(authority.address(), mint.address()))]
+    pub owner: Signer,
+    // Only the market's owner may publish its prices.
+    #[account(has_one(owner))]
+    pub lending_market: Account<LendingMarket>,
+    // Seeded by (market, mint) — scoped to the market, not to any individual.
+    #[account(init(idempotent), payer = owner, address = PriceFeed::seeds(lending_market.address(), mint.address()))]
     pub price_feed: Account<PriceFeed>,
     pub mint: Account<Mint>,
     pub system_program: Program<SystemProgram>,
@@ -203,11 +206,11 @@ impl SetPrice {
         bumps: &SetPriceBumps,
     ) -> Result<(), ProgramError> {
         self.price_feed.set_inner(PriceFeedInner {
+            market: *self.lending_market.address(),
             mint: *self.mint.address(),
             price_mantissa,
             exponent,
             last_updated_slot: now()?,
-            authority: *self.authority.address(),
             bump: bumps.price_feed,
         });
         Ok(())
@@ -222,7 +225,7 @@ impl SetPrice {
 pub struct CollectProtocolFees {
     #[account(mut)]
     pub owner: Signer,
-    #[account(has_one(owner), address = LendingMarket::seeds(owner.address()))]
+    #[account(has_one(owner))]
     pub lending_market: Account<LendingMarket>,
     #[account(mut, has_one(lending_market), has_one(liquidity_mint), has_one(liquidity_vault))]
     pub reserve: Account<Reserve>,

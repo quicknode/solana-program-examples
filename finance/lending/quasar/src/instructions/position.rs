@@ -477,7 +477,7 @@ impl LiquidateObligation {
         let collateral_price = price_scaled(&self.collateral_price, slot)?;
         let borrow_price = price_scaled(&self.borrow_price, slot)?;
 
-        // Health: unhealthy when debt value exceeds collateral value * liq threshold.
+        // Health: unhealthy when debt value exceeds collateral value * liquidation threshold.
         let collateral_total = net_total_liquidity(
             collateral.available_liquidity,
             collateral.borrowed_amount_scaled,

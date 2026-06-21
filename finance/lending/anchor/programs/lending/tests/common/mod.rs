@@ -97,7 +97,9 @@ impl Env {
 
         let owner = create_wallet(&mut svm, 1_000_000_000_000).unwrap();
         let quote_mint = create_token_mint(&mut svm, &owner, 6, None).unwrap();
-        let market = pda(&[LENDING_MARKET_SEED, owner.pubkey().as_ref()]);
+        // The market is seeded by its market_id index alone (no owner). Market 0.
+        let market_id: u64 = 0;
+        let market = pda(&[LENDING_MARKET_SEED, &market_id.to_le_bytes()]);
 
         let instruction = Instruction {
             program_id: lending::id(),
@@ -108,7 +110,7 @@ impl Env {
                 system_program: system_program::id(),
             }
             .to_account_metas(None),
-            data: lending::instruction::InitLendingMarket {}.data(),
+            data: lending::instruction::InitLendingMarket { market_id }.data(),
         };
         send(&mut svm, vec![instruction], &[&owner], &owner.pubkey()).unwrap();
 
@@ -124,7 +126,10 @@ impl Env {
     pub fn init_market_for(&mut self, market_owner: &Keypair) -> Pubkey {
         let env_owner = self.owner.insecure_clone();
         let quote_mint = create_token_mint(&mut self.svm, &env_owner, 6, None).unwrap();
-        let market = pda(&[LENDING_MARKET_SEED, market_owner.pubkey().as_ref()]);
+        // A distinct id from the env's market 0, since the id is the market's
+        // global identifier (the owner is not part of the seed).
+        let market_id: u64 = 1;
+        let market = pda(&[LENDING_MARKET_SEED, &market_id.to_le_bytes()]);
         let instruction = Instruction {
             program_id: lending::id(),
             accounts: lending::accounts::InitLendingMarket {
@@ -134,7 +139,7 @@ impl Env {
                 system_program: system_program::id(),
             }
             .to_account_metas(None),
-            data: lending::instruction::InitLendingMarket {}.data(),
+            data: lending::instruction::InitLendingMarket { market_id }.data(),
         };
         send(&mut self.svm, vec![instruction], &[market_owner], &market_owner.pubkey()).unwrap();
         market
@@ -153,12 +158,12 @@ impl Env {
     ) -> ReserveHandle {
         let env_owner = self.owner.insecure_clone();
         let mint = create_token_mint(&mut self.svm, &env_owner, decimals, None).unwrap();
-        self.set_price(mint, price_mantissa);
+        self.set_price_for(market_owner, market, mint, price_mantissa);
 
         let reserve = pda(&[RESERVE_SEED, market.as_ref(), mint.as_ref()]);
         let share_mint = pda(&[SHARE_MINT_SEED, reserve.as_ref()]);
         let liquidity_vault = pda(&[LIQUIDITY_VAULT_SEED, reserve.as_ref()]);
-        let price_feed = self.price_feed_address(mint);
+        let price_feed = self.price_feed_address(market, mint);
 
         let instruction = Instruction {
             program_id: lending::id(),
@@ -197,17 +202,32 @@ impl Env {
 
     /// The feed PDA the market owner writes for `mint`: seeded by the owner's
     /// key, so it is the feed `add_reserve` registers reserves against.
-    pub fn price_feed_address(&self, mint: Pubkey) -> Pubkey {
-        pda(&[PRICE_FEED_SEED, self.owner.pubkey().as_ref(), mint.as_ref()])
+    /// The feed PDA for a given market and mint (seeds `["price_feed", market, mint]`).
+    pub fn price_feed_address(&self, market: Pubkey, mint: Pubkey) -> Pubkey {
+        pda(&[PRICE_FEED_SEED, market.as_ref(), mint.as_ref()])
     }
 
     pub fn set_price(&mut self, mint: Pubkey, price_mantissa: i128) {
-        let price_feed = self.price_feed_address(mint);
+        let owner = self.owner.insecure_clone();
+        let market = self.market;
+        self.set_price_for(&owner, market, mint, price_mantissa);
+    }
+
+    /// Publish a price for `mint` in `market`, signed by that market's `owner`.
+    pub fn set_price_for(
+        &mut self,
+        owner: &Keypair,
+        market: Pubkey,
+        mint: Pubkey,
+        price_mantissa: i128,
+    ) {
+        let price_feed = self.price_feed_address(market, mint);
         let instruction = Instruction {
             program_id: lending::id(),
             accounts: lending::accounts::SetPrice {
+                lending_market: market,
+                owner: owner.pubkey(),
                 price_feed,
-                authority: self.owner.pubkey(),
                 mint,
                 system_program: system_program::id(),
             }
@@ -218,8 +238,7 @@ impl Env {
             }
             .data(),
         };
-        let owner = self.owner.insecure_clone();
-        send(&mut self.svm, vec![instruction], &[&owner], &owner.pubkey()).unwrap();
+        send(&mut self.svm, vec![instruction], &[owner], &owner.pubkey()).unwrap();
     }
 
     pub fn add_reserve(

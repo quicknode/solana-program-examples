@@ -32,7 +32,10 @@ crosses the liquidation threshold and a liquidator can close part of the positio
 ### Accounts
 
 - **`LendingMarket`** — top-level config (owner, quote-currency mint). PDA seeds
-  `["lending_market", owner]`.
+  `["lending_market", owner, market_id]`, where `market_id` is a per-owner `u64`
+  index. Seeding by an index (not the owner alone) lets one owner run several
+  independent, risk-isolated markets — their market 0, 1, 2 … — with no
+  cross-owner collisions.
 - **`Reserve`** — one per asset. Owns a program-controlled liquidity vault and a
   share-token mint, and stores the interest-rate config, the cumulative borrow-
   rate index, available liquidity, and scaled total debt. PDA seeds
@@ -104,10 +107,11 @@ round-trips.
 `PriceFeed` mirrors a Switchboard On-Demand pull feed: a signed mantissa, an
 exponent (`price = mantissa * 10^exponent`), and the slot the price was written.
 Freshness is checked in **slots** (`MAX_PRICE_STALENESS_SLOTS`), not wall-clock
-time. The feed PDA is seeded by `[b"price_feed", authority, mint]`, so a signer
-can only ever write the feed derived from their own key — there is no shared
-per-mint feed to claim first — and a reserve trusts exactly one feed: the
-account its market owner passed to `init_reserve`.
+time. The feed PDA is seeded by `[b"price_feed", market, mint]` — scoped to a
+market, not to any individual — and only that market's `owner` may write it
+(`set_price` checks `has_one = owner`). So prices can't be squatted, a reserve
+trusts exactly its own market's feed for the mint, and isolated markets can
+price the same asset independently.
 
 The `set_price` handler writes the feed directly so the LiteSVM tests are
 deterministic; in production a reserve points at the real Switchboard feed and the

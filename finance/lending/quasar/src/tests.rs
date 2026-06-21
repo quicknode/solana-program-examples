@@ -37,6 +37,8 @@ const BORROWER_BORROW: Pubkey = Pubkey::new_from_array([14; 32]);
 const LIQUIDATOR_BORROW: Pubkey = Pubkey::new_from_array([15; 32]);
 const LIQUIDATOR_COLL_SHARE: Pubkey = Pubkey::new_from_array([16; 32]);
 const OWNER_BORROW: Pubkey = Pubkey::new_from_array([17; 32]);
+// Per-owner market index this market is seeded from (owner's market 0).
+const MARKET_ID: u64 = 0;
 
 fn token_program() -> Pubkey {
     quasar_svm::SPL_TOKEN_PROGRAM_ID
@@ -124,7 +126,7 @@ impl World {
             .with_program(&crate::ID, &elf)
             .with_token_program();
 
-        let (market, _) = pda(&[b"lending_market", OWNER.as_ref()]);
+        let (market, _) = pda(&[b"lending_market", &MARKET_ID.to_le_bytes()]);
         let (coll_reserve, _) = pda(&[b"reserve", market.as_ref(), COLL_MINT.as_ref()]);
         let (borrow_reserve, _) = pda(&[b"reserve", market.as_ref(), BORROW_MINT.as_ref()]);
         let (coll_vault, _) = pda(&[b"liquidity_vault", coll_reserve.as_ref()]);
@@ -132,8 +134,8 @@ impl World {
         let (coll_share_mint, _) = pda(&[b"share_mint", coll_reserve.as_ref()]);
         let (borrow_share_mint, _) = pda(&[b"share_mint", borrow_reserve.as_ref()]);
         // Feed PDAs are seeded by their writing authority (the market owner here).
-        let (coll_price, _) = pda(&[b"price_feed", OWNER.as_ref(), COLL_MINT.as_ref()]);
-        let (borrow_price, _) = pda(&[b"price_feed", OWNER.as_ref(), BORROW_MINT.as_ref()]);
+        let (coll_price, _) = pda(&[b"price_feed", market.as_ref(), COLL_MINT.as_ref()]);
+        let (borrow_price, _) = pda(&[b"price_feed", market.as_ref(), BORROW_MINT.as_ref()]);
         let (obligation, _) = pda(&[b"obligation", market.as_ref(), BORROWER.as_ref()]);
         let (obligation_vault, _) =
             pda(&[b"obligation_vault", coll_reserve.as_ref(), obligation.as_ref()]);
@@ -198,13 +200,16 @@ impl World {
     }
 
     fn init_market(&mut self) {
+        // Instruction data: [discriminator 0][market_id u64 LE].
+        let mut data = vec![0u8];
+        data.extend_from_slice(&MARKET_ID.to_le_bytes());
         let metas = vec![
             meta(OWNER, true, true),
             meta(self.market, true, false),
             meta(QUOTE_MINT, false, false),
             meta(system_program(), false, false),
         ];
-        self.run(vec![0], metas).assert_success();
+        self.run(data, metas).assert_success();
     }
 
     fn set_price(&mut self, the_mint: Pubkey, price_feed: Pubkey, mantissa: i128) {
@@ -213,6 +218,7 @@ impl World {
         data.extend_from_slice(&EXP.to_le_bytes());
         let metas = vec![
             meta(OWNER, true, true),
+            meta(self.market, false, false),
             meta(price_feed, true, false),
             meta(the_mint, false, false),
             meta(system_program(), false, false),
@@ -222,7 +228,7 @@ impl World {
 
     #[allow(clippy::too_many_arguments)]
     fn init_reserve(&mut self, the_mint: Pubkey, reserve: Pubkey, vault: Pubkey, share: Pubkey, price: Pubkey) {
-        // 75% LTV, 80% liq threshold, 5% bonus, 50% close factor, 10% reserve
+        // 75% LTV, 80% liquidation threshold, 5% bonus, 50% close factor, 10% reserve
         // factor, kink 80%, 2% / 20% / 150% APR curve.
         let config: [u16; 9] = [7_500, 8_000, 500, 5_000, 1_000, 8_000, 200, 2_000, 15_000];
         let mut data = vec![1u8];

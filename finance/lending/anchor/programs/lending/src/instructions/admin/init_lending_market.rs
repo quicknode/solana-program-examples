@@ -4,8 +4,12 @@ use anchor_spl::token_interface::Mint;
 use crate::constants::LENDING_MARKET_SEED;
 use crate::state::LendingMarket;
 
-pub fn handle_init_lending_market(context: Context<InitLendingMarket>) -> Result<()> {
+pub fn handle_init_lending_market(
+    context: Context<InitLendingMarket>,
+    market_id: u64,
+) -> Result<()> {
     let market = &mut context.accounts.lending_market;
+    market.market_id = market_id;
     market.owner = context.accounts.owner.key();
     market.quote_currency_mint = context.accounts.quote_currency_mint.key();
     market.bump = context.bumps.lending_market;
@@ -13,12 +17,16 @@ pub fn handle_init_lending_market(context: Context<InitLendingMarket>) -> Result
 }
 
 #[derive(Accounts)]
+#[instruction(market_id: u64)]
 pub struct InitLendingMarket<'info> {
+    // Seeded by `market_id` alone — the market is not identified by any
+    // individual's address. `owner` is stored as a field and used only for
+    // authorization (`has_one = owner`) on admin instructions.
     #[account(
         init,
         payer = owner,
         space = LendingMarket::DISCRIMINATOR.len() + LendingMarket::INIT_SPACE,
-        seeds = [LENDING_MARKET_SEED, owner.key().as_ref()],
+        seeds = [LENDING_MARKET_SEED, &market_id.to_le_bytes()],
         bump,
     )]
     pub lending_market: Account<'info, LendingMarket>,

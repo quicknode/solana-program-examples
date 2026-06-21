@@ -1,6 +1,5 @@
 use anchor_lang::prelude::*;
 
-use crate::constants::LENDING_MARKET_SEED;
 use crate::state::{LendingMarket, Reserve, ReserveConfig};
 
 pub fn handle_update_reserve_config(
@@ -14,11 +13,9 @@ pub fn handle_update_reserve_config(
 
 #[derive(Accounts)]
 pub struct UpdateReserveConfig<'info> {
-    #[account(
-        has_one = owner,
-        seeds = [LENDING_MARKET_SEED, owner.key().as_ref()],
-        bump = lending_market.bump,
-    )]
+    // The market is identified by the reserve's `has_one = lending_market`; we
+    // only need to prove the signer owns it, not re-derive its address.
+    #[account(has_one = owner)]
     pub lending_market: Account<'info, LendingMarket>,
 
     pub owner: Signer<'info>,

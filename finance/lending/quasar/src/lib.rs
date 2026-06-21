@@ -34,8 +34,11 @@ mod quasar_lending {
     use super::*;
 
     #[instruction(discriminator = 0)]
-    pub fn init_lending_market(ctx: Ctx<InitLendingMarket>) -> Result<(), ProgramError> {
-        ctx.accounts.run(&ctx.bumps)
+    pub fn init_lending_market(
+        ctx: Ctx<InitLendingMarket>,
+        market_id: u64,
+    ) -> Result<(), ProgramError> {
+        ctx.accounts.run(market_id, &ctx.bumps)
     }
 
     #[instruction(discriminator = 1)]

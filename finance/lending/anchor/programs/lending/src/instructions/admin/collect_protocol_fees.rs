@@ -3,7 +3,6 @@ use anchor_spl::token_interface::{
     transfer_checked, Mint, TokenAccount, TokenInterface, TransferChecked,
 };
 
-use crate::constants::LENDING_MARKET_SEED;
 use crate::errors::LendingError;
 use crate::state::{reserve_signer_seeds, LendingMarket, Reserve};
 
@@ -51,11 +50,9 @@ pub fn handle_collect_protocol_fees(context: Context<CollectProtocolFees>) -> Re
 
 #[derive(Accounts)]
 pub struct CollectProtocolFees<'info> {
-    #[account(
-        has_one = owner,
-        seeds = [LENDING_MARKET_SEED, owner.key().as_ref()],
-        bump = lending_market.bump,
-    )]
+    // Identified by the reserve's `has_one = lending_market`; we only prove the
+    // signer owns it.
+    #[account(has_one = owner)]
     pub lending_market: Account<'info, LendingMarket>,
 
     #[account(mut)]
