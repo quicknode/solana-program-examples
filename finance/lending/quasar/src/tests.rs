@@ -25,17 +25,17 @@ const OWNER: Pubkey = Pubkey::new_from_array([1; 32]);
 const SUPPLIER: Pubkey = Pubkey::new_from_array([2; 32]);
 const BORROWER: Pubkey = Pubkey::new_from_array([3; 32]);
 const LIQUIDATOR: Pubkey = Pubkey::new_from_array([4; 32]);
-const COLL_MINT: Pubkey = Pubkey::new_from_array([5; 32]);
+const COLLATERAL_MINT: Pubkey = Pubkey::new_from_array([5; 32]);
 const BORROW_MINT: Pubkey = Pubkey::new_from_array([6; 32]);
 const QUOTE_MINT: Pubkey = Pubkey::new_from_array([7; 32]);
 // Token accounts.
 const SUPPLIER_BORROW: Pubkey = Pubkey::new_from_array([10; 32]);
 const SUPPLIER_BORROW_SHARE: Pubkey = Pubkey::new_from_array([11; 32]);
-const BORROWER_COLL: Pubkey = Pubkey::new_from_array([12; 32]);
-const BORROWER_COLL_SHARE: Pubkey = Pubkey::new_from_array([13; 32]);
+const BORROWER_COLLATERAL: Pubkey = Pubkey::new_from_array([12; 32]);
+const BORROWER_COLLATERAL_SHARE: Pubkey = Pubkey::new_from_array([13; 32]);
 const BORROWER_BORROW: Pubkey = Pubkey::new_from_array([14; 32]);
 const LIQUIDATOR_BORROW: Pubkey = Pubkey::new_from_array([15; 32]);
-const LIQUIDATOR_COLL_SHARE: Pubkey = Pubkey::new_from_array([16; 32]);
+const LIQUIDATOR_COLLATERAL_SHARE: Pubkey = Pubkey::new_from_array([16; 32]);
 const OWNER_BORROW: Pubkey = Pubkey::new_from_array([17; 32]);
 // Per-owner market index this market is seeded from (owner's market 0).
 const MARKET_ID: u64 = 0;
@@ -107,10 +107,10 @@ fn balance(result: &quasar_svm::ExecutionResult, address: Pubkey) -> u64 {
 struct World {
     svm: QuasarSvm,
     market: Pubkey,
-    coll_reserve: Pubkey,
-    coll_vault: Pubkey,
-    coll_share_mint: Pubkey,
-    coll_price: Pubkey,
+    collateral_reserve: Pubkey,
+    collateral_vault: Pubkey,
+    collateral_share_mint: Pubkey,
+    collateral_price: Pubkey,
     borrow_reserve: Pubkey,
     borrow_vault: Pubkey,
     borrow_share_mint: Pubkey,
@@ -127,47 +127,47 @@ impl World {
             .with_token_program();
 
         let (market, _) = pda(&[b"lending_market", &MARKET_ID.to_le_bytes()]);
-        let (coll_reserve, _) = pda(&[b"reserve", market.as_ref(), COLL_MINT.as_ref()]);
+        let (collateral_reserve, _) = pda(&[b"reserve", market.as_ref(), COLLATERAL_MINT.as_ref()]);
         let (borrow_reserve, _) = pda(&[b"reserve", market.as_ref(), BORROW_MINT.as_ref()]);
-        let (coll_vault, _) = pda(&[b"liquidity_vault", coll_reserve.as_ref()]);
+        let (collateral_vault, _) = pda(&[b"liquidity_vault", collateral_reserve.as_ref()]);
         let (borrow_vault, _) = pda(&[b"liquidity_vault", borrow_reserve.as_ref()]);
-        let (coll_share_mint, _) = pda(&[b"share_mint", coll_reserve.as_ref()]);
+        let (collateral_share_mint, _) = pda(&[b"share_mint", collateral_reserve.as_ref()]);
         let (borrow_share_mint, _) = pda(&[b"share_mint", borrow_reserve.as_ref()]);
-        // Feed PDAs are seeded by their writing authority (the market owner here).
-        let (coll_price, _) = pda(&[b"price_feed", market.as_ref(), COLL_MINT.as_ref()]);
+        // Feed PDAs are seeded by (market, mint) — scoped to the market, not to any individual.
+        let (collateral_price, _) = pda(&[b"price_feed", market.as_ref(), COLLATERAL_MINT.as_ref()]);
         let (borrow_price, _) = pda(&[b"price_feed", market.as_ref(), BORROW_MINT.as_ref()]);
         let (obligation, _) = pda(&[b"obligation", market.as_ref(), BORROWER.as_ref()]);
         let (obligation_vault, _) =
-            pda(&[b"obligation_vault", coll_reserve.as_ref(), obligation.as_ref()]);
+            pda(&[b"obligation_vault", collateral_reserve.as_ref(), obligation.as_ref()]);
 
         for account in [
             system(OWNER),
             system(SUPPLIER),
             system(BORROWER),
             system(LIQUIDATOR),
-            mint(COLL_MINT, OWNER),
+            mint(COLLATERAL_MINT, OWNER),
             mint(BORROW_MINT, OWNER),
             mint(QUOTE_MINT, OWNER),
             // PDAs created by the program.
             empty(market),
-            empty(coll_reserve),
+            empty(collateral_reserve),
             empty(borrow_reserve),
-            empty(coll_vault),
+            empty(collateral_vault),
             empty(borrow_vault),
-            empty(coll_share_mint),
+            empty(collateral_share_mint),
             empty(borrow_share_mint),
-            empty(coll_price),
+            empty(collateral_price),
             empty(borrow_price),
             empty(obligation),
             empty(obligation_vault),
             // Funded user token accounts.
             token(SUPPLIER_BORROW, BORROW_MINT, SUPPLIER, 1_000 * UNIT),
             token(SUPPLIER_BORROW_SHARE, borrow_share_mint, SUPPLIER, 0),
-            token(BORROWER_COLL, COLL_MINT, BORROWER, 1_000 * UNIT),
-            token(BORROWER_COLL_SHARE, coll_share_mint, BORROWER, 0),
+            token(BORROWER_COLLATERAL, COLLATERAL_MINT, BORROWER, 1_000 * UNIT),
+            token(BORROWER_COLLATERAL_SHARE, collateral_share_mint, BORROWER, 0),
             token(BORROWER_BORROW, BORROW_MINT, BORROWER, 0),
             token(LIQUIDATOR_BORROW, BORROW_MINT, LIQUIDATOR, 1_000 * UNIT),
-            token(LIQUIDATOR_COLL_SHARE, coll_share_mint, LIQUIDATOR, 0),
+            token(LIQUIDATOR_COLLATERAL_SHARE, collateral_share_mint, LIQUIDATOR, 0),
             // Where the market owner receives collected protocol fees.
             token(OWNER_BORROW, BORROW_MINT, OWNER, 0),
         ] {
@@ -177,10 +177,10 @@ impl World {
         World {
             svm,
             market,
-            coll_reserve,
-            coll_vault,
-            coll_share_mint,
-            coll_price,
+            collateral_reserve,
+            collateral_vault,
+            collateral_share_mint,
+            collateral_price,
             borrow_reserve,
             borrow_vault,
             borrow_share_mint,
@@ -251,9 +251,9 @@ impl World {
 
     fn setup_markets(&mut self) {
         self.init_market();
-        self.set_price(COLL_MINT, self.coll_price, dollars(1));
+        self.set_price(COLLATERAL_MINT, self.collateral_price, dollars(1));
         self.set_price(BORROW_MINT, self.borrow_price, dollars(1));
-        self.init_reserve(COLL_MINT, self.coll_reserve, self.coll_vault, self.coll_share_mint, self.coll_price);
+        self.init_reserve(COLLATERAL_MINT, self.collateral_reserve, self.collateral_vault, self.collateral_share_mint, self.collateral_price);
         self.init_reserve(BORROW_MINT, self.borrow_reserve, self.borrow_vault, self.borrow_share_mint, self.borrow_price);
     }
 
@@ -322,10 +322,10 @@ impl World {
             meta(BORROWER, true, true),
             meta(self.market, false, false),
             meta(self.obligation, true, false),
-            meta(self.coll_reserve, false, false),
-            meta(self.coll_share_mint, false, false),
+            meta(self.collateral_reserve, false, false),
+            meta(self.collateral_share_mint, false, false),
             meta(self.obligation_vault, true, false),
-            meta(BORROWER_COLL_SHARE, true, false),
+            meta(BORROWER_COLLATERAL_SHARE, true, false),
             meta(quasar_svm::solana_sdk_ids::sysvar::rent::ID, false, false),
             meta(token_program(), false, false),
             meta(system_program(), false, false),
@@ -340,8 +340,8 @@ impl World {
             meta(BORROWER, true, true),
             meta(self.market, false, false),
             meta(self.obligation, true, false),
-            meta(self.coll_reserve, true, false),
-            meta(self.coll_price, false, false),
+            meta(self.collateral_reserve, true, false),
+            meta(self.collateral_price, false, false),
             meta(self.borrow_reserve, true, false),
             meta(self.borrow_price, false, false),
             meta(BORROW_MINT, false, false),
@@ -374,11 +374,11 @@ impl World {
             meta(LIQUIDATOR, true, true),
             meta(self.obligation, true, false),
             meta(self.market, false, false),
-            meta(self.coll_reserve, true, false),
-            meta(self.coll_price, false, false),
-            meta(self.coll_share_mint, false, false),
+            meta(self.collateral_reserve, true, false),
+            meta(self.collateral_price, false, false),
+            meta(self.collateral_share_mint, false, false),
             meta(self.obligation_vault, true, false),
-            meta(LIQUIDATOR_COLL_SHARE, true, false),
+            meta(LIQUIDATOR_COLLATERAL_SHARE, true, false),
             meta(self.borrow_reserve, true, false),
             meta(self.borrow_price, false, false),
             meta(BORROW_MINT, false, false),
@@ -398,8 +398,8 @@ impl World {
         )
         .assert_success();
         self.deposit(
-            BORROWER, self.coll_reserve, COLL_MINT, self.coll_vault,
-            self.coll_share_mint, BORROWER_COLL, BORROWER_COLL_SHARE, 1_000 * UNIT,
+            BORROWER, self.collateral_reserve, COLLATERAL_MINT, self.collateral_vault,
+            self.collateral_share_mint, BORROWER_COLLATERAL, BORROWER_COLLATERAL_SHARE, 1_000 * UNIT,
         )
         .assert_success();
         self.init_obligation();
@@ -475,7 +475,7 @@ fn interest_accrues_and_lifts_share_value() {
 
     // ~0.1 year passes; re-publish prices so feeds stay fresh.
     world.svm.sysvars.warp_to_slot(7_884_000);
-    world.set_price(COLL_MINT, world.coll_price, dollars(1));
+    world.set_price(COLLATERAL_MINT, world.collateral_price, dollars(1));
     world.set_price(BORROW_MINT, world.borrow_price, dollars(1));
 
     // Supplier redeems 100 shares; interest on the 500 borrowed means each share
@@ -499,14 +499,14 @@ fn unhealthy_position_is_liquidated_and_healthy_is_rejected() {
     assert!(world.liquidate(350 * UNIT).is_err(), "healthy obligation must not be liquidatable");
 
     // Collateral price halves to $0.50: $500 collateral, $400 threshold < $700 debt.
-    world.set_price(COLL_MINT, world.coll_price, cents(50));
+    world.set_price(COLLATERAL_MINT, world.collateral_price, cents(50));
 
     let result = world.liquidate(350 * UNIT);
     result.assert_success();
     // Liquidator repaid 350 of the borrow token and seized collateral share tokens.
     assert_eq!(balance(&result, LIQUIDATOR_BORROW), 650 * UNIT);
     assert!(
-        balance(&result, LIQUIDATOR_COLL_SHARE) > 0,
+        balance(&result, LIQUIDATOR_COLLATERAL_SHARE) > 0,
         "liquidator should receive seized collateral shares"
     );
 }
