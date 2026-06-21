@@ -1,9 +1,8 @@
-# Order Book - Central Limit Order Book (CLOB)
+# Order Book — Central Limit Order Book (CLOB) Exchange
 
-This is an **[order book](https://www.investopedia.com/terms/o/order-book.asp)** - specifically, a **[central limit order
-book (CLOB)](https://www.investopedia.com/terms/o/order-book.asp)**, the standard piece of market infrastructure used by
-NYSE, NASDAQ, LSE, CME, and every major crypto venue. An Anchor
-program that runs an onchain order book for a single pair of token mints:
+This is an **[order book](https://www.investopedia.com/terms/o/order-book.asp)** — specifically, a **[central limit order
+book (CLOB)](https://www.investopedia.com/terms/l/limitorderbook.asp)**, the standard piece of market infrastructure used by
+NYSE, NASDAQ, LSE, CME, and every crypto venues like Phoenix and Cube and OpenBook. An Anchor program that runs an onchain order book for a single pair of token mints:
 users post buy or sell offers at the prices they want, the program
 matches crossing offers in price-time priority, and settles the
 resulting token movements.
