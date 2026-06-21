@@ -15,8 +15,11 @@ declare_id!("4bvT6A8S7ZVL6bSvK2KoL2nQ4F5H6AF9133kCYbMJj1t");
 pub mod lending {
     use super::*;
 
-    pub fn init_lending_market(context: Context<InitLendingMarket>) -> Result<()> {
-        instructions::handle_init_lending_market(context)
+    pub fn init_lending_market(
+        context: Context<InitLendingMarket>,
+        market_id: Pubkey,
+    ) -> Result<()> {
+        instructions::handle_init_lending_market(context, market_id)
     }
 
     pub fn init_reserve(context: Context<InitReserve>, config: ReserveConfig) -> Result<()> {

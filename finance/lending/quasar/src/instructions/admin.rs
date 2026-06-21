@@ -22,7 +22,10 @@ use {
 pub struct InitLendingMarket {
     #[account(mut)]
     pub owner: Signer,
-    #[account(init, payer = owner, address = LendingMarket::seeds(owner.address()))]
+    /// Only its address is used — as the market's unique seed — so one owner can
+    /// open many markets. Typically a fresh keypair the client generates.
+    pub market_id: UncheckedAccount,
+    #[account(init, payer = owner, address = LendingMarket::seeds(market_id.address()))]
     pub lending_market: Account<LendingMarket>,
     pub quote_mint: Account<Mint>,
     pub system_program: Program<SystemProgram>,
@@ -32,6 +35,7 @@ impl InitLendingMarket {
     #[inline(always)]
     pub fn run(&mut self, bumps: &InitLendingMarketBumps) -> Result<(), ProgramError> {
         self.lending_market.set_inner(LendingMarketInner {
+            market_id: *self.market_id.address(),
             owner: *self.owner.address(),
             quote_mint: *self.quote_mint.address(),
             bump: bumps.lending_market,
@@ -48,7 +52,7 @@ impl InitLendingMarket {
 pub struct InitReserve {
     #[account(mut)]
     pub owner: Signer,
-    #[account(has_one(owner), address = LendingMarket::seeds(owner.address()))]
+    #[account(has_one(owner))]
     pub lending_market: Account<LendingMarket>,
     #[account(init, payer = owner, address = Reserve::seeds(lending_market.address(), liquidity_mint.address()))]
     pub reserve: Account<Reserve>,
@@ -222,7 +226,7 @@ impl SetPrice {
 pub struct CollectProtocolFees {
     #[account(mut)]
     pub owner: Signer,
-    #[account(has_one(owner), address = LendingMarket::seeds(owner.address()))]
+    #[account(has_one(owner))]
     pub lending_market: Account<LendingMarket>,
     #[account(mut, has_one(lending_market), has_one(liquidity_mint), has_one(liquidity_vault))]
     pub reserve: Account<Reserve>,

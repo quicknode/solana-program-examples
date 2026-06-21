@@ -2,7 +2,7 @@ use anchor_lang::prelude::*;
 use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
 
 use crate::constants::{
-    FIXED_POINT_SCALE, LENDING_MARKET_SEED, LIQUIDITY_VAULT_SEED, RESERVE_SEED, SHARE_MINT_SEED,
+    FIXED_POINT_SCALE, LIQUIDITY_VAULT_SEED, RESERVE_SEED, SHARE_MINT_SEED,
 };
 use crate::state::{LendingMarket, PriceFeed, Reserve, ReserveConfig};
 
@@ -29,11 +29,9 @@ pub fn handle_init_reserve(context: Context<InitReserve>, config: ReserveConfig)
 
 #[derive(Accounts)]
 pub struct InitReserve<'info> {
-    #[account(
-        has_one = owner,
-        seeds = [LENDING_MARKET_SEED, owner.key().as_ref()],
-        bump = lending_market.bump,
-    )]
+    // The reserve PDA below is seeded by this market's address, so the market is
+    // pinned by that seed; we only need to prove the signer owns it.
+    #[account(has_one = owner)]
     pub lending_market: Account<'info, LendingMarket>,
 
     #[account(mut)]

@@ -37,6 +37,8 @@ const BORROWER_BORROW: Pubkey = Pubkey::new_from_array([14; 32]);
 const LIQUIDATOR_BORROW: Pubkey = Pubkey::new_from_array([15; 32]);
 const LIQUIDATOR_COLL_SHARE: Pubkey = Pubkey::new_from_array([16; 32]);
 const OWNER_BORROW: Pubkey = Pubkey::new_from_array([17; 32]);
+// Unique id the market PDA is seeded from (a stand-in for a fresh keypair).
+const MARKET_ID: Pubkey = Pubkey::new_from_array([20; 32]);
 
 fn token_program() -> Pubkey {
     quasar_svm::SPL_TOKEN_PROGRAM_ID
@@ -124,7 +126,7 @@ impl World {
             .with_program(&crate::ID, &elf)
             .with_token_program();
 
-        let (market, _) = pda(&[b"lending_market", OWNER.as_ref()]);
+        let (market, _) = pda(&[b"lending_market", MARKET_ID.as_ref()]);
         let (coll_reserve, _) = pda(&[b"reserve", market.as_ref(), COLL_MINT.as_ref()]);
         let (borrow_reserve, _) = pda(&[b"reserve", market.as_ref(), BORROW_MINT.as_ref()]);
         let (coll_vault, _) = pda(&[b"liquidity_vault", coll_reserve.as_ref()]);
@@ -146,6 +148,8 @@ impl World {
             mint(COLL_MINT, OWNER),
             mint(BORROW_MINT, OWNER),
             mint(QUOTE_MINT, OWNER),
+            // Reference-only account whose address seeds the market.
+            empty(MARKET_ID),
             // PDAs created by the program.
             empty(market),
             empty(coll_reserve),
@@ -200,6 +204,7 @@ impl World {
     fn init_market(&mut self) {
         let metas = vec![
             meta(OWNER, true, true),
+            meta(MARKET_ID, false, false),
             meta(self.market, true, false),
             meta(QUOTE_MINT, false, false),
             meta(system_program(), false, false),

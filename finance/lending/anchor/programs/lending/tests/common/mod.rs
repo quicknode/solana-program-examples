@@ -97,7 +97,10 @@ impl Env {
 
         let owner = create_wallet(&mut svm, 1_000_000_000_000).unwrap();
         let quote_mint = create_token_mint(&mut svm, &owner, 6, None).unwrap();
-        let market = pda(&[LENDING_MARKET_SEED, owner.pubkey().as_ref()]);
+        // The market is seeded by a unique id (a fresh keypair pubkey), not by
+        // the owner, so one owner can run several markets.
+        let market_id = Keypair::new().pubkey();
+        let market = pda(&[LENDING_MARKET_SEED, market_id.as_ref()]);
 
         let instruction = Instruction {
             program_id: lending::id(),
@@ -108,7 +111,7 @@ impl Env {
                 system_program: system_program::id(),
             }
             .to_account_metas(None),
-            data: lending::instruction::InitLendingMarket {}.data(),
+            data: lending::instruction::InitLendingMarket { market_id }.data(),
         };
         send(&mut svm, vec![instruction], &[&owner], &owner.pubkey()).unwrap();
 
@@ -124,7 +127,8 @@ impl Env {
     pub fn init_market_for(&mut self, market_owner: &Keypair) -> Pubkey {
         let env_owner = self.owner.insecure_clone();
         let quote_mint = create_token_mint(&mut self.svm, &env_owner, 6, None).unwrap();
-        let market = pda(&[LENDING_MARKET_SEED, market_owner.pubkey().as_ref()]);
+        let market_id = Keypair::new().pubkey();
+        let market = pda(&[LENDING_MARKET_SEED, market_id.as_ref()]);
         let instruction = Instruction {
             program_id: lending::id(),
             accounts: lending::accounts::InitLendingMarket {
@@ -134,7 +138,7 @@ impl Env {
                 system_program: system_program::id(),
             }
             .to_account_metas(None),
-            data: lending::instruction::InitLendingMarket {}.data(),
+            data: lending::instruction::InitLendingMarket { market_id }.data(),
         };
         send(&mut self.svm, vec![instruction], &[market_owner], &market_owner.pubkey()).unwrap();
         market
