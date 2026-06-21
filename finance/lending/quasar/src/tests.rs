@@ -228,7 +228,7 @@ impl World {
 
     #[allow(clippy::too_many_arguments)]
     fn init_reserve(&mut self, the_mint: Pubkey, reserve: Pubkey, vault: Pubkey, share: Pubkey, price: Pubkey) {
-        // 75% LTV, 80% liq threshold, 5% bonus, 50% close factor, 10% reserve
+        // 75% LTV, 80% liquidation threshold, 5% bonus, 50% close factor, 10% reserve
         // factor, kink 80%, 2% / 20% / 150% APR curve.
         let config: [u16; 9] = [7_500, 8_000, 500, 5_000, 1_000, 8_000, 200, 2_000, 15_000];
         let mut data = vec![1u8];
