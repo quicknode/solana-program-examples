@@ -126,7 +126,7 @@ impl World {
             .with_program(&crate::ID, &elf)
             .with_token_program();
 
-        let (market, _) = pda(&[b"lending_market", OWNER.as_ref(), &MARKET_ID.to_le_bytes()]);
+        let (market, _) = pda(&[b"lending_market", &MARKET_ID.to_le_bytes()]);
         let (coll_reserve, _) = pda(&[b"reserve", market.as_ref(), COLL_MINT.as_ref()]);
         let (borrow_reserve, _) = pda(&[b"reserve", market.as_ref(), BORROW_MINT.as_ref()]);
         let (coll_vault, _) = pda(&[b"liquidity_vault", coll_reserve.as_ref()]);
@@ -134,8 +134,8 @@ impl World {
         let (coll_share_mint, _) = pda(&[b"share_mint", coll_reserve.as_ref()]);
         let (borrow_share_mint, _) = pda(&[b"share_mint", borrow_reserve.as_ref()]);
         // Feed PDAs are seeded by their writing authority (the market owner here).
-        let (coll_price, _) = pda(&[b"price_feed", OWNER.as_ref(), COLL_MINT.as_ref()]);
-        let (borrow_price, _) = pda(&[b"price_feed", OWNER.as_ref(), BORROW_MINT.as_ref()]);
+        let (coll_price, _) = pda(&[b"price_feed", market.as_ref(), COLL_MINT.as_ref()]);
+        let (borrow_price, _) = pda(&[b"price_feed", market.as_ref(), BORROW_MINT.as_ref()]);
         let (obligation, _) = pda(&[b"obligation", market.as_ref(), BORROWER.as_ref()]);
         let (obligation_vault, _) =
             pda(&[b"obligation_vault", coll_reserve.as_ref(), obligation.as_ref()]);
@@ -218,6 +218,7 @@ impl World {
         data.extend_from_slice(&EXP.to_le_bytes());
         let metas = vec![
             meta(OWNER, true, true),
+            meta(self.market, false, false),
             meta(price_feed, true, false),
             meta(the_mint, false, false),
             meta(system_program(), false, false),

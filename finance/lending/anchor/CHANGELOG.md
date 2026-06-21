@@ -27,6 +27,8 @@ Initial lending program: a Kamino/Solend-style borrow/lend market.
 - Reserve factor: the protocol keeps `reserve_factor_bps` of accrued interest as
   fees the market owner withdraws with `collect_protocol_fees`; the fees are
   carved out of `total_liquidity` so they never inflate the supplier exchange rate.
-- LendingMarket is seeded by `(owner, market_id)` — a per-owner `u64` index —
-  so one owner can run several independent markets; admin handlers authorize via
-  `has_one = owner`.
+- LendingMarket is seeded by a `market_id` index (`["lending_market", market_id]`),
+  not by any individual; one owner can run several independent markets, and admin
+  handlers authorize via `has_one = owner`.
+- Price feeds are seeded `["price_feed", market, mint]` (scoped to a market, not
+  to an individual); only the market owner may write one (`has_one = owner`).

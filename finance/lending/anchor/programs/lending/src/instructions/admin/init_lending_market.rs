@@ -19,13 +19,14 @@ pub fn handle_init_lending_market(
 #[derive(Accounts)]
 #[instruction(market_id: u64)]
 pub struct InitLendingMarket<'info> {
-    // Seeded by (owner, market_id), so one owner can run several markets and no
-    // two owners contend for the same address.
+    // Seeded by `market_id` alone — the market is not identified by any
+    // individual's address. `owner` is stored as a field and used only for
+    // authorization (`has_one = owner`) on admin instructions.
     #[account(
         init,
         payer = owner,
         space = LendingMarket::DISCRIMINATOR.len() + LendingMarket::INIT_SPACE,
-        seeds = [LENDING_MARKET_SEED, owner.key().as_ref(), &market_id.to_le_bytes()],
+        seeds = [LENDING_MARKET_SEED, &market_id.to_le_bytes()],
         bump,
     )]
     pub lending_market: Account<'info, LendingMarket>,

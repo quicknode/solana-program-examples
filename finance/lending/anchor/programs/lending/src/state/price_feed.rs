@@ -5,9 +5,9 @@ use crate::errors::LendingError;
 use crate::math::price_mantissa_to_scaled;
 
 /// A price for one token, denominated in the market's quote currency.
-/// PDA seeds: `[b"price_feed", authority, mint]` — the writer is part of the
-/// address, so no two authorities can contend for the same feed account, and a
-/// reserve trusts exactly the feed its market owner selected at `init_reserve`.
+/// PDA seeds: `[b"price_feed", market, mint]` — scoped to a market (not to any
+/// individual), so each market prices its own assets and one market can never
+/// write another's feed. Only the market's `owner` may write it (`set_price`).
 ///
 /// The layout mirrors a Switchboard On-Demand pull feed: a signed mantissa plus
 /// an exponent (`price = price_mantissa * 10^exponent`) and the slot the value
@@ -21,6 +21,9 @@ use crate::math::price_mantissa_to_scaled;
 #[account]
 #[derive(InitSpace)]
 pub struct PriceFeed {
+    /// The lending market this feed serves; part of the PDA seeds.
+    pub market: Pubkey,
+
     pub mint: Pubkey,
 
     pub price_mantissa: i128,
@@ -28,11 +31,6 @@ pub struct PriceFeed {
     pub exponent: i32,
 
     pub last_updated_slot: u64,
-
-    /// The signer whose key is in this feed's PDA seeds; the only account that
-    /// can write it. In production this field does not exist — the feed is
-    /// owned and written by Switchboard.
-    pub authority: Pubkey,
 
     pub bump: u8,
 }

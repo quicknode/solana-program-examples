@@ -107,10 +107,11 @@ round-trips.
 `PriceFeed` mirrors a Switchboard On-Demand pull feed: a signed mantissa, an
 exponent (`price = mantissa * 10^exponent`), and the slot the price was written.
 Freshness is checked in **slots** (`MAX_PRICE_STALENESS_SLOTS`), not wall-clock
-time. The feed PDA is seeded by `[b"price_feed", authority, mint]`, so a signer
-can only ever write the feed derived from their own key — there is no shared
-per-mint feed to claim first — and a reserve trusts exactly one feed: the
-account its market owner passed to `init_reserve`.
+time. The feed PDA is seeded by `[b"price_feed", market, mint]` — scoped to a
+market, not to any individual — and only that market's `owner` may write it
+(`set_price` checks `has_one = owner`). So prices can't be squatted, a reserve
+trusts exactly its own market's feed for the mint, and isolated markets can
+price the same asset independently.
 
 The `set_price` handler writes the feed directly so the LiteSVM tests are
 deterministic; in production a reserve points at the real Switchboard feed and the

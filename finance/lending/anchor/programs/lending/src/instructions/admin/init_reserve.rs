@@ -2,7 +2,7 @@ use anchor_lang::prelude::*;
 use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
 
 use crate::constants::{
-    FIXED_POINT_SCALE, LIQUIDITY_VAULT_SEED, RESERVE_SEED, SHARE_MINT_SEED,
+    FIXED_POINT_SCALE, LIQUIDITY_VAULT_SEED, PRICE_FEED_SEED, RESERVE_SEED, SHARE_MINT_SEED,
 };
 use crate::state::{LendingMarket, PriceFeed, Reserve, ReserveConfig};
 
@@ -68,7 +68,12 @@ pub struct InitReserve<'info> {
     )]
     pub share_mint: InterfaceAccount<'info, Mint>,
 
-    #[account(constraint = price_feed.mint == liquidity_mint.key() @ crate::errors::LendingError::InvalidConfig)]
+    // Bound by seeds to this market's feed for this mint — the reserve can only
+    // trust the price its own market publishes.
+    #[account(
+        seeds = [PRICE_FEED_SEED, lending_market.key().as_ref(), liquidity_mint.key().as_ref()],
+        bump = price_feed.bump,
+    )]
     pub price_feed: Account<'info, PriceFeed>,
 
     pub token_program: Interface<'info, TokenInterface>,

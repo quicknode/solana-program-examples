@@ -5,11 +5,12 @@
 
 use quasar_lang::prelude::*;
 
-/// Top-level market config. PDA: `["lending_market", owner, market_id]`.
-/// Seeded by a per-owner index, so one owner can run several isolated markets
-/// ("their market 0, 1, 2 …") with no cross-owner collisions.
+/// Top-level market config. PDA: `["lending_market", market_id]`.
+/// Seeded by its `market_id` index alone — the market is not identified by any
+/// individual. `owner` is a stored field used only for authorization. Distinct
+/// ids (0, 1, 2 …) give independent, risk-isolated markets.
 #[account(discriminator = 1, set_inner)]
-#[seeds(b"lending_market", owner: Address, market_id: u64)]
+#[seeds(b"lending_market", market_id: u64)]
 pub struct LendingMarket {
     pub owner: Address,
     pub market_id: u64,
@@ -64,19 +65,19 @@ pub struct Obligation {
     pub bump: u8,
 }
 
-/// Switchboard-On-Demand-shaped price feed. PDA: `["price_feed", authority, mint]`
-/// — the writer is part of the address, so no two authorities can contend for
-/// the same feed, and a reserve trusts exactly the feed its market owner passed
-/// to `init_reserve`. `price = price_mantissa * 10^exponent`; freshness is
-/// checked in slots. In production this account would be the real Switchboard feed.
+/// Switchboard-On-Demand-shaped price feed. PDA: `["price_feed", market, mint]`
+/// — scoped to a market (not to any individual); only the market's `owner` may
+/// write it, so prices can't be squatted and each market prices its own assets.
+/// `price = price_mantissa * 10^exponent`; freshness is checked in slots. In
+/// production this account would be the real Switchboard feed.
 #[account(discriminator = 4, set_inner)]
-#[seeds(b"price_feed", authority: Address, mint: Address)]
+#[seeds(b"price_feed", market: Address, mint: Address)]
 pub struct PriceFeed {
+    pub market: Address,
     pub mint: Address,
     pub price_mantissa: i128,
     pub exponent: i32,
     pub last_updated_slot: u64,
-    pub authority: Address,
     pub bump: u8,
 }
 
