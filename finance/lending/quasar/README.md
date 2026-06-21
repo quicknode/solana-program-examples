@@ -29,8 +29,10 @@ Everything else mirrors the Anchor version.
 ## Major concepts
 
 - **`LendingMarket`** — market config (owner, quote-currency mint). PDA:
-  `["lending_market", owner, market_id]`, where `market_id` is a per-owner `u64`
-  index, so one owner can run several isolated markets (their market 0, 1, 2 …).
+  `["lending_market", market_id]`, where `market_id` is a `u64` index. Owner is
+  stored as a field for authorization, not baked into the address, so one owner
+  can run several isolated markets (their market 0, 1, 2 …) with no individual's
+  key in a shared struct's address.
 - **`Reserve`** — one asset's pool. Owns a program-controlled liquidity vault and
   a share-token mint (both PDAs, authority = the reserve), and stores the
   interest-rate config, the cumulative borrow-rate index, available liquidity, and
