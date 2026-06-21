@@ -17,7 +17,7 @@ pub mod lending {
 
     pub fn init_lending_market(
         context: Context<InitLendingMarket>,
-        market_id: Pubkey,
+        market_id: u64,
     ) -> Result<()> {
         instructions::handle_init_lending_market(context, market_id)
     }

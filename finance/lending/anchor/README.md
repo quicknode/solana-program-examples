@@ -32,9 +32,10 @@ crosses the liquidation threshold and a liquidator can close part of the positio
 ### Accounts
 
 - **`LendingMarket`** — top-level config (owner, quote-currency mint). PDA seeds
-  `["lending_market", market_id]`, where `market_id` is a client-chosen `Pubkey`
-  (typically a fresh keypair). Seeding by an id rather than the owner lets one
-  owner run several independent, risk-isolated markets.
+  `["lending_market", owner, market_id]`, where `market_id` is a per-owner `u64`
+  index. Seeding by an index (not the owner alone) lets one owner run several
+  independent, risk-isolated markets — their market 0, 1, 2 … — with no
+  cross-owner collisions.
 - **`Reserve`** — one per asset. Owns a program-controlled liquidity vault and a
   share-token mint, and stores the interest-rate config, the cumulative borrow-
   rate index, available liquidity, and scaled total debt. PDA seeds

@@ -5,10 +5,11 @@ use anchor_lang::prelude::*;
 #[account]
 #[derive(InitSpace)]
 pub struct LendingMarket {
-    /// Unique id this market's PDA is derived from (a client-chosen `Pubkey`,
-    /// typically a fresh keypair). Seeding by an id rather than `owner` lets one
-    /// owner run several independent, risk-isolated markets.
-    pub market_id: Pubkey,
+    /// Per-owner index this market's PDA is derived from. Seeding by
+    /// `(owner, market_id)` rather than the owner alone lets one owner run
+    /// several independent, risk-isolated markets ("their market 0, 1, 2 …")
+    /// while keeping each owner's index space free of cross-owner collisions.
+    pub market_id: u64,
 
     pub owner: Pubkey,
 

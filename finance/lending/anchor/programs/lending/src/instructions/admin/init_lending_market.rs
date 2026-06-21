@@ -6,7 +6,7 @@ use crate::state::LendingMarket;
 
 pub fn handle_init_lending_market(
     context: Context<InitLendingMarket>,
-    market_id: Pubkey,
+    market_id: u64,
 ) -> Result<()> {
     let market = &mut context.accounts.lending_market;
     market.market_id = market_id;
@@ -17,14 +17,15 @@ pub fn handle_init_lending_market(
 }
 
 #[derive(Accounts)]
-#[instruction(market_id: Pubkey)]
+#[instruction(market_id: u64)]
 pub struct InitLendingMarket<'info> {
-    // Seeded by `market_id`, not `owner`, so one owner can run several markets.
+    // Seeded by (owner, market_id), so one owner can run several markets and no
+    // two owners contend for the same address.
     #[account(
         init,
         payer = owner,
         space = LendingMarket::DISCRIMINATOR.len() + LendingMarket::INIT_SPACE,
-        seeds = [LENDING_MARKET_SEED, market_id.as_ref()],
+        seeds = [LENDING_MARKET_SEED, owner.key().as_ref(), &market_id.to_le_bytes()],
         bump,
     )]
     pub lending_market: Account<'info, LendingMarket>,

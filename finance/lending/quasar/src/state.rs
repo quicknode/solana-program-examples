@@ -5,14 +5,14 @@
 
 use quasar_lang::prelude::*;
 
-/// Top-level market config. PDA: `["lending_market", market_id]`.
-/// Seeded by a unique `market_id` (a client-chosen address, typically a fresh
-/// keypair) rather than `owner`, so one owner can run several isolated markets.
+/// Top-level market config. PDA: `["lending_market", owner, market_id]`.
+/// Seeded by a per-owner index, so one owner can run several isolated markets
+/// ("their market 0, 1, 2 …") with no cross-owner collisions.
 #[account(discriminator = 1, set_inner)]
-#[seeds(b"lending_market", market_id: Address)]
+#[seeds(b"lending_market", owner: Address, market_id: u64)]
 pub struct LendingMarket {
-    pub market_id: Address,
     pub owner: Address,
+    pub market_id: u64,
     pub quote_mint: Address,
     pub bump: u8,
 }
