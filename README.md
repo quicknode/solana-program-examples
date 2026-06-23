@@ -31,11 +31,15 @@ The programs below implement the core primitives of Solana DeFi: peer-to-peer tr
 
 [⚓ Anchor](./finance/escrow/anchor) [💫 Quasar](./finance/escrow/quasar) [🦀 Native](./finance/escrow/native)
 
+[![🎬 Escrow video: you don't need a bootcamp - build a Solana program (smart contract) in 30 minutes](https://img.youtube.com/vi/B5eBWWQfQuM/0.jpg)](https://www.youtube.com/watch?v=B5eBWWQfQuM)
+
 ### Order Book based Exchange
 
 A typical NYSE/NASDAQ-style order book-based exchange. Buyers post **bids** (the price they'll pay), sellers post **asks** (the price they'll accept), and a trade happens when a bid and an ask meet. The exchange operator collects fees from trading. Similar to popular Solana exchanges like Openbook and Phoenix.
 
 [⚓ Anchor](./finance/order-book/anchor)
+
+[![🎬 Order book exchange video - How to make a crypto exchange on Solana](https://img.youtube.com/vi/ioFkpaKHXgg/0.jpg)](https://www.youtube.com/watch?v=ioFkpaKHXgg)
 
 ### AMM based Exchange
 
