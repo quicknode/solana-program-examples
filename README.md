@@ -1,6 +1,8 @@
 # Solana Program Examples
 
-Working, tested, up-to-date examples of common Solana programs - maintained by [Quicknode](https://quicknode.com). Each example compiles and passes CI on the current Solana and Anchor toolchain.
+![Quicknode Solana Program Examples](assets/banner.png)
+
+Working, tested, up-to-date examples of common Solana programs - maintained by [Quicknode](https://quicknode.com). Each example compiles and passes CI on the current Solana and Anchor toolchain, and uses current defaults like the multiple files layout and LiteSVM.
 
 [![Anchor](../../actions/workflows/anchor.yml/badge.svg)](../../actions/workflows/anchor.yml) [![Quasar](../../actions/workflows/quasar.yml/badge.svg)](../../actions/workflows/quasar.yml) [![Pinocchio](../../actions/workflows/pinocchio.yml/badge.svg)](../../actions/workflows/pinocchio.yml) [![Native](../../actions/workflows/native.yml/badge.svg)](../../actions/workflows/native.yml) [![ASM](../../actions/workflows/solana-asm.yml/badge.svg)](../../actions/workflows/solana-asm.yml)
 
@@ -14,6 +16,8 @@ Each example is available in one or more of the following frameworks:
 
 > [!NOTE]
 > You don't need to write your own program for basic tasks like creating [accounts](https://solana.com/docs/terminology#account), transferring SOL, or minting tokens. These are handled by existing programs like the System Program and Token Program.
+
+Big thanks to Joe Caulfield and Solana Foundation for originally creating this repository!
 
 ## Getting started
 
