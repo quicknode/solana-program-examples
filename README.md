@@ -1,6 +1,6 @@
 # Solana Program Examples
 
-![Quicknode Solana Program Examples](assets/banner.png)
+![Quicknode Solana Program Examples](assets/banner.png?v=1)
 
 Working, tested, up-to-date examples of common Solana programs - maintained by [Quicknode](https://quicknode.com). Each example compiles and passes CI on the current Solana and Anchor toolchain, and uses current defaults like the multiple files layout and LiteSVM.
 
