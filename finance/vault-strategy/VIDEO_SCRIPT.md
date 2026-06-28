@@ -1,28 +1,18 @@
-# Vault Strategy: a five-minute walkthrough
+# Vault Strategy: a walkthrough
 
 A video script for the `vault-strategy` example. Target runtime is roughly seven minutes at a normal speaking pace. Narration lines are what the presenter says; the indented blocks are what is on screen as a running ledger of onchain state.
 
-Prices for TSLAx and NVDAx in this script are illustrative and match the rates the example's tests configure. They are not live quotes. USDC, TSLAx (Tesla stock) and NVDAx (NVIDIA stock) are real assets; the swap behind the scenes is a deterministic test stand-in, which we will be honest about when we reach it.
+Prices for TSLAx and NVDAx in this script are illustrative and match the rates the example's tests configure. They are not live quotes. USDC (US dollars), TSLAx (Tesla stock) and NVDAx (NVIDIA stock) are real assets; the swap behind the scenes is a deterministic test stand-in, which we will be honest about when we reach it.
 
-## Cold open: where everyone ends up
-
-NARRATION:
-
-Here is the ending first, then we will earn it.
-
-Maria runs a managed basket: forty percent Tesla stock, sixty percent NVIDIA stock, with a one percent annual management fee. Alice puts in 900 dollars because she wants that basket without having to buy and rebalance two stocks herself. NVIDIA rises. Bob shows up later and pays the new, higher price per share, not a discount. Maria collects her fee. Alice cashes out and walks away with about 957 dollars, paid not in pure cash but as her exact slice of everything the vault holds.
-
-Nobody trusted anybody to hold cash off to the side. Every dollar lived in a program-owned vault the entire time. Let us watch it happen, one instruction handler at a time.
-
-## What it is, in finance you already know
+## What we are building
 
 NARRATION:
 
-Strip the jargon and this is an actively managed fund. In traditional finance you would call it a mutual fund, or an actively managed ETF: you hand cash to a portfolio manager, you receive units, the manager buys a basket and rebalances it over time, the fund prices your units at net asset value, and the manager takes an expense ratio every year for running it. When you leave an ETF, it can even pay you in kind, handing back the underlying shares instead of cash.
+Let's build a vault strategy: the onchain equivalent of a mutual fund, or an actively managed ETF. You hand cash to a manager, you receive units, the manager buys a basket of assets and rebalances it over time, your units are priced at net asset value, and the manager earns a fee for running the book. By the end you will have watched someone buy in, a manager invest and rebalance, a fee come due, and someone redeem, and you will know exactly which instruction handler does each one. The whole time, every dollar stays in a program-owned vault. Nobody hands their cash to a person to hold.
 
-Every one of those pieces has a line in this program. Units are share tokens. Net asset value is computed live from a Pyth oracle. The expense ratio is the management fee. In-kind redemption is exactly how `withdraw` works. The portfolio manager is Maria.
+Each piece of that fund maps to a line in this program. Units are share tokens. Net asset value is computed live from a Pyth oracle. The expense ratio is the management fee. In-kind redemption is exactly how `withdraw` works. The portfolio manager is Maria.
 
-You have seen this shape on Solana, too. Drift Vaults let a manager trade depositors' pooled funds for a fee. Symmetry runs weighted token baskets that rebalance. Kamino issues vault shares priced at net asset value. This example is the teaching-sized version of that family.
+You have seen this shape on Solana before. Drift Vaults let a manager trade depositors' pooled funds for a fee. Symmetry runs weighted token baskets that rebalance. Kamino issues vault shares priced at net asset value. This example is the teaching-sized version of that family.
 
 So what actually changes when the fund is onchain, past the buzzwords? Four things that matter:
 
@@ -52,7 +42,7 @@ share_mint          [off curve - PDA, seeds: "share_mint" + strategy]   authorit
 vault_usdc / _a / _b [off curve - ATAs]                                  authority = Strategy PDA
 ```
 
-## Step 1: Maria opens the strategy
+## Maria opens the strategy
 
 NARRATION:
 
@@ -75,7 +65,7 @@ TOKEN MOVEMENT: none - setup only
 Fee generated: none
 ```
 
-## Step 2: Alice deposits 900 USDC
+## Alice deposits 900 USDC
 
 NARRATION:
 
@@ -104,7 +94,7 @@ TOKEN MOVEMENT:
 Fee generated: none - deposits do not accrue fees
 ```
 
-## Steps 3 and 4: Maria puts the cash to work
+## Maria puts the cash to work
 
 NARRATION:
 
@@ -132,7 +122,7 @@ Net asset value now: 0 + 1.44 x 250 + 3.0 x 180 = 360 + 540 = 900 USDC
 Fee generated: none
 ```
 
-## Step 5 and 6: NVIDIA rises, and Bob pays the new price
+## NVIDIA rises, and Bob pays the new price
 
 NARRATION:
 
@@ -158,7 +148,7 @@ TOKEN MOVEMENT:
 Fee generated: none
 ```
 
-## Step 7: Maria rebalances back toward target
+## Maria rebalances back toward target
 
 NARRATION:
 
@@ -181,7 +171,7 @@ Net asset value: 480 + 1.08 x 250 + 3.5 x 200 = 480 + 270 + 700 = 1,450 USDC
 Fee generated: none - rebalance moves assets, it does not charge a fee
 ```
 
-## Step 8: Maria collects her fee
+## Maria collects her fee
 
 NARRATION:
 
@@ -207,7 +197,7 @@ TOKEN MOVEMENT:
 Fee generated: 13.5 shares to the manager; all other holders diluted ~1%
 ```
 
-## Step 9: Alice withdraws
+## Alice withdraws
 
 NARRATION:
 
@@ -243,7 +233,7 @@ NARRATION:
 
 Let us check the books. USDC into the vault was 900 from Alice plus 480 from Bob, 1,380 total. The invests sent 900 to the router; rebalance was a wash. That leaves 480 in the vault, and after Alice's withdrawal, 163.17 remains. Tokens in equal tokens out.
 
-So: Alice came in with 900 dollars, rode NVIDIA up, paid her share of a one percent fee through dilution, and left with about 957 dollars worth of basket, in kind. Bob bought in fairly at the higher share price and still holds 450 shares worth roughly 478 dollars. Maria earned 13.5 shares, about 14 dollars, for running the book. The vault held custody from the first deposit to the last withdrawal, the manager never touched the vaults with her own key, and the fee she could charge was capped in the bytecode.
+So: Alice came in with 900 dollars, rode NVIDIA up, paid her share of a one percent fee through dilution, and left with about 957 dollars worth of basket, in kind. The vault passes returns through in both directions: had NVIDIA fallen instead of risen, the same arithmetic would have redeemed Alice for less than her 900 dollars. That market risk is hers, and the program neither cushions it nor hides it. Bob bought in fairly at the higher share price and still holds 450 shares worth roughly 478 dollars. Maria earned 13.5 shares, about 14 dollars, for running the book. The vault held custody from the first deposit to the last withdrawal, the manager never touched the vaults with her own key, and the fee she could charge was capped in the bytecode.
 
 ## Two honest footnotes
 
