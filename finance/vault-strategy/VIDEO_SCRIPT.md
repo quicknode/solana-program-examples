@@ -14,15 +14,24 @@ Maria runs a managed basket: forty percent Tesla stock, sixty percent NVIDIA sto
 
 Nobody trusted anybody to hold cash off to the side. Every dollar lived in a program-owned vault the entire time. Let us watch it happen, one instruction handler at a time.
 
-## The cast
+## What it is, in finance you already know
 
 NARRATION:
 
-- Maria is the manager. She wants to operate the basket and earn the one percent annual fee on the assets under management.
-- Alice wants exposure to a Tesla-plus-NVIDIA basket without managing the two positions herself.
-- Bob wants the same thing, but he arrives after the basket has gained value, so he is the one who shows us how shares are priced.
+Strip the jargon and this is an actively managed fund. In traditional finance you would call it a mutual fund, or an actively managed ETF: you hand cash to a portfolio manager, you receive units, the manager buys a basket and rebalances it over time, the fund prices your units at net asset value, and the manager takes an expense ratio every year for running it. When you leave an ETF, it can even pay you in kind, handing back the underlying shares instead of cash.
 
-This is a vault in the family of Solana basket and vault managers like Symmetry and Kamino: deposit one asset, receive shares in a managed portfolio, redeem your shares later for your proportional slice.
+Every one of those pieces has a line in this program. Units are share tokens. Net asset value is computed live from a Pyth oracle. The expense ratio is the management fee. In-kind redemption is exactly how `withdraw` works. The portfolio manager is Maria.
+
+You have seen this shape on Solana, too. Drift Vaults let a manager trade depositors' pooled funds for a fee. Symmetry runs weighted token baskets that rebalance. Kamino issues vault shares priced at net asset value. This example is the teaching-sized version of that family.
+
+So what actually changes when the fund is onchain, past the buzzwords? Four things that matter:
+
+- The rules are the deployed bytecode, not a prospectus you trust a custodian to honor. Maria cannot freeze redemptions or quietly raise the fee. The fee is even capped in code at ten percent.
+- Entry and exit are permissionless and settle instantly. No minimum, no transfer agent, no end-of-day cutoff. Alice deposits and redeems in single transactions, and so can anyone.
+- The price comes from an oracle, not an end-of-day accountant. That is a real dependency, not a free lunch: a stale or wrong Pyth price would misprice every deposit, which is why the program refuses any price older than sixty seconds.
+- You custody your own units. Your shares live in your wallet, not on a broker's ledger, and an onchain bug is final in a way a fund's back-office error is not.
+
+Keep that mapping in your head. We will hit each piece as it shows up.
 
 ## The accounts, and who can move what
 
@@ -47,7 +56,7 @@ vault_usdc / _a / _b [off curve - ATAs]                                  authori
 
 NARRATION:
 
-Maria calls `initialize_strategy`. She sets the two weights, which must sum to ten thousand basis points, a fee of one hundred basis points, which is one percent a year, and she registers the swap router and the two Pyth price feeds the vault will trust.
+Maria is our portfolio manager, and she wants to run the basket and earn the fee. She calls `initialize_strategy`. She sets the two weights, which must sum to ten thousand basis points, a fee of one hundred basis points, which is one percent a year, and she registers the swap router and the two Pyth price feeds the vault will trust.
 
 One honest detail up front: those weights are a target Maria maintains by hand. The program records them, but no handler reads them to force an allocation. Deposits arrive as plain USDC and sit idle until Maria chooses to invest. The forty-sixty split is a promise Maria keeps with `invest` and `rebalance`, not a rule the bytecode enforces on each deposit.
 
@@ -70,7 +79,7 @@ Fee generated: none
 
 NARRATION:
 
-Alice calls `deposit` with 900 USDC. `deposit` is permissionless: any user can call it, not just the manager.
+Alice wants the Tesla-plus-NVIDIA basket without buying and rebalancing two stocks herself, so she calls `deposit` with 900 USDC. `deposit` is permissionless: any user can call it, not just the manager. This is buying into the fund.
 
 The handler prices her shares against net asset value, the total worth of the vault. It reads both Pyth feeds straight from the raw account bytes at fixed offsets, checks each price is positive and no more than sixty seconds stale, and computes net asset value as the USDC balance plus each asset balance times its price. The vault is empty, so net asset value is zero, and the first deposit is defined as one to one. Alice gets 900 shares. Shares carry six decimals, so under the hood that is 900 million minor units, but think of it as 900 shares worth a dollar each.
 
@@ -129,7 +138,7 @@ NARRATION:
 
 Time passes. NVDAx climbs from 180 to 200. Nothing onchain changes from a price move by itself; the vault simply holds 3 NVDAx that are now worth more. Net asset value rises to 960 dollars while the share count is still 900. Each share is now worth about a dollar and seven cents.
 
-Bob calls `deposit` with 480 dollars. This is the moment the share math matters. Bob does not get 480 shares. The handler computes shares as his deposit times total shares divided by net asset value: 480 times 900 divided by 960, which is exactly 450 shares. He pays the current price, so he does not dilute Alice's gain, and Alice's earlier deposit does not subsidize his.
+Bob wants the same basket Alice does, but he arrives now, after the gain, so he is the one who shows us how units are priced. He calls `deposit` with 480 dollars. This is the moment the share math matters, and it is the same rule a mutual fund uses: you buy units at today's net asset value. Bob does not get 480 shares. The handler computes shares as his deposit times total shares divided by net asset value: 480 times 900 divided by 960, which is exactly 450 shares. He pays the current price, so he does not dilute Alice's gain, and Alice's earlier deposit does not subsidize his.
 
 ON SCREEN:
 
@@ -178,7 +187,7 @@ NARRATION:
 
 Maria calls `collect_fees`. This is a streaming management fee, and the mechanism is the point: the program does not skim tokens from a vault. It mints new shares to the manager, proportional to time elapsed and the fee rate. Over a full year at one percent, that is one percent of the share supply, 13.5 shares, minted to Maria.
 
-New shares with no new assets behind them means every existing share is now a slightly thinner slice. That dilution, spread across all holders, is how Alice and Bob actually pay the fee. It is honest to say so out loud: there is no separate performance fee here, only this management fee on assets under management, and it is the cap from step one that stops it from ever becoming a drain.
+New shares with no new assets behind them means every existing share is now a slightly thinner slice. That dilution, spread across all holders, is how Alice and Bob actually pay the fee. This is the expense ratio of a mutual fund, charged the Solana way: by minting the manager new units rather than by selling fund assets to cut her a check. It is honest to say so out loud: there is no separate performance fee here, only this management fee on assets under management, and it is the cap from step one that stops it from ever becoming a drain.
 
 ON SCREEN:
 
@@ -202,7 +211,7 @@ Fee generated: 13.5 shares to the manager; all other holders diluted ~1%
 
 NARRATION:
 
-Alice calls `withdraw` and burns all 900 of her shares. Here is the part people miss: withdrawal is in kind and proportional. She does not get cash. She gets her exact fraction of every balance the vault holds, USDC and TSLAx and NVDAx alike.
+Alice calls `withdraw` and burns all 900 of her shares. Here is the part people miss: withdrawal is in kind and proportional. She does not get cash. She gets her exact fraction of every balance the vault holds, USDC and TSLAx and NVDAx alike. This is an ETF in-kind redemption: just as an authorized participant hands back fund units and receives the underlying shares, Alice's burn returns her slice of the actual holdings, not a cash settlement.
 
 Her fraction is 900 shares out of the 1,363.5 that now exist. The handler floors each amount in the protocol's favor, so any rounding dust stays with the remaining holders.
 
