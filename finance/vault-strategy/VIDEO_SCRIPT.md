@@ -8,20 +8,18 @@ Prices for TSLAx and NVDAx in this script are illustrative and match the rates t
 
 NARRATION:
 
-Let's build a vault strategy: the onchain equivalent of a mutual fund, or an actively managed ETF. You hand cash to a manager, you receive units, the manager buys a basket of assets and rebalances it over time, your units are priced at net asset value, and the manager earns a fee for running the book. By the end you will have watched someone buy in, a manager invest and rebalance, a fee come due, and someone redeem, and you will know exactly which instruction handler does each one. The whole time, every dollar stays in a program-owned vault. Nobody hands their cash to a person to hold.
+Let's build a vault strategy: the onchain equivalent of a mutual fund, or an actively managed ETF. You deposit cash with a manager, you receive shares in the vault, the manager buys a basket of assets and rebalances it over time, and your shares are priced at net asset value: the worth of everything the vault holds, divided by the shares outstanding. The word net is a fund convention for value after subtracting what the fund owes; this vault borrows nothing, so its net asset value is simply its holdings. For running the book, the manager earns a fee.
 
-Each piece of that fund maps to a line in this program. Units are share tokens. Net asset value is computed live from a Pyth oracle. The expense ratio is the management fee. In-kind redemption is exactly how `withdraw` works. The portfolio manager is Maria.
+By the end you will have watched someone deposit, the manager invest and rebalance, a fee accrue, and someone redeem, and you will know which instruction handler does each one. The program controls every dollar the whole time: the manager invests the funds but has no access to them for herself.
 
-You have seen this shape on Solana before. Drift Vaults let a manager trade depositors' pooled funds for a fee. Symmetry runs weighted token baskets that rebalance. Kamino issues vault shares priced at net asset value. This example is the teaching-sized version of that family.
+You have seen this shape on Solana, in protocols like Symmetry, Kamino, and Meteora. This is the teaching-sized version.
 
-So what actually changes when the fund is onchain, past the buzzwords? Four things that matter:
+Two things genuinely change once the fund is onchain:
 
-- The rules are the deployed bytecode, not a prospectus you trust a custodian to honor. Maria cannot freeze redemptions or quietly raise the fee. The fee is even capped in code at ten percent.
-- Entry and exit are permissionless and settle instantly. No minimum, no transfer agent, no end-of-day cutoff. Alice deposits and redeems in single transactions, and so can anyone.
-- The price comes from an oracle, not an end-of-day accountant. That is a real dependency, not a free lunch: a stale or wrong Pyth price would misprice every deposit, which is why the program refuses any price older than sixty seconds.
-- You custody your own units. Your shares live in your wallet, not on a broker's ledger, and an onchain bug is final in a way a fund's back-office error is not.
+- The rules are the deployed bytecode. Maria cannot freeze redemptions, and the fee is fixed at creation and capped in code at ten percent. There is no admin lever to pull.
+- Entry and exit are permissionless and settle instantly. Anyone can deposit or redeem in a single transaction, priced live, with no minimum and no end-of-day cutoff.
 
-Keep that mapping in your head. We will hit each piece as it shows up.
+We will hit each piece as it shows up.
 
 ## The accounts, and who can move what
 
@@ -128,7 +126,7 @@ NARRATION:
 
 Time passes. NVDAx climbs from 180 to 200. Nothing onchain changes from a price move by itself; the vault simply holds 3 NVDAx that are now worth more. Net asset value rises to 960 dollars while the share count is still 900. Each share is now worth about a dollar and seven cents.
 
-Bob wants the same basket Alice does, but he arrives now, after the gain, so he is the one who shows us how units are priced. He calls `deposit` with 480 dollars. This is the moment the share math matters, and it is the same rule a mutual fund uses: you buy units at today's net asset value. Bob does not get 480 shares. The handler computes shares as his deposit times total shares divided by net asset value: 480 times 900 divided by 960, which is exactly 450 shares. He pays the current price, so he does not dilute Alice's gain, and Alice's earlier deposit does not subsidize his.
+Bob wants the same basket Alice does, but he arrives now, after the gain, so he is the one who shows us how shares are priced. He calls `deposit` with 480 dollars. This is the moment the share math matters, and it is the same rule a mutual fund uses: you buy shares at today's net asset value. Bob does not get 480 shares. The handler computes shares as his deposit times total shares divided by net asset value: 480 times 900 divided by 960, which is exactly 450 shares. He pays the current price, so he does not dilute Alice's gain, and Alice's earlier deposit does not subsidize his.
 
 ON SCREEN:
 
@@ -177,7 +175,7 @@ NARRATION:
 
 Maria calls `collect_fees`. This is a streaming management fee, and the mechanism is the point: the program does not skim tokens from a vault. It mints new shares to the manager, proportional to time elapsed and the fee rate. Over a full year at one percent, that is one percent of the share supply, 13.5 shares, minted to Maria.
 
-New shares with no new assets behind them means every existing share is now a slightly thinner slice. That dilution, spread across all holders, is how Alice and Bob actually pay the fee. This is the expense ratio of a mutual fund, charged the Solana way: by minting the manager new units rather than by selling fund assets to cut her a check. It is honest to say so out loud: there is no separate performance fee here, only this management fee on assets under management, and it is the cap from step one that stops it from ever becoming a drain.
+New shares with no new assets behind them means every existing share is now a slightly thinner slice. That dilution, spread across all holders, is how Alice and Bob actually pay the fee. This is the expense ratio of a mutual fund, charged the Solana way: by minting the manager new shares rather than by selling fund assets to cut her a check. It is honest to say so out loud: there is no separate performance fee here, only this management fee on assets under management, and it is the cap from the start that stops it from ever becoming a drain.
 
 ON SCREEN:
 
@@ -201,7 +199,7 @@ Fee generated: 13.5 shares to the manager; all other holders diluted ~1%
 
 NARRATION:
 
-Alice calls `withdraw` and burns all 900 of her shares. Here is the part people miss: withdrawal is in kind and proportional. She does not get cash. She gets her exact fraction of every balance the vault holds, USDC and TSLAx and NVDAx alike. This is an ETF in-kind redemption: just as an authorized participant hands back fund units and receives the underlying shares, Alice's burn returns her slice of the actual holdings, not a cash settlement.
+Alice calls `withdraw` and burns all 900 of her shares. Here is the part people miss: withdrawal is in kind and proportional. She does not get cash. She gets her exact fraction of every balance the vault holds, USDC and TSLAx and NVDAx alike. It is the same move an ETF makes when it redeems in kind, handing back the underlying holdings instead of cash.
 
 Her fraction is 900 shares out of the 1,363.5 that now exist. The handler floors each amount in the protocol's favor, so any rounding dust stays with the remaining holders.
 
