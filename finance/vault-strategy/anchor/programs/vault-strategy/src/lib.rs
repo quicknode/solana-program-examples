@@ -52,6 +52,14 @@ pub mod vault_strategy {
         instructions::add_asset::handle_add_asset(context, weight_bps)
     }
 
+    /// Change an asset's target weight, or set it to zero to retire it. Manager only.
+    pub fn set_weight(
+        context: Context<SetWeightAccountConstraints>,
+        weight_bps: u16,
+    ) -> Result<()> {
+        instructions::set_weight::handle_set_weight(context, weight_bps)
+    }
+
     pub fn deposit<'info>(
         context: Context<'info, DepositAccountConstraints<'info>>,
         usdc_amount: u64,
