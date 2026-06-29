@@ -29,7 +29,7 @@ Custody is the whole game, so let us name the boxes before we move money.
 
 First, the word vault, because it gets overloaded. By the common standard a vault holds a single asset: you put one kind of token in, you get shares out. A managed mix of several assets is not one vault; it lives in several vaults, one per asset, and is usually called a basket or a fund. Symmetry calls its multi-asset products baskets. We will keep it simple: a vault is one single-asset token account, and the strategy is the whole construct that owns them. So vault strategy reads literally, a strategy built from vaults.
 
-The center of everything is the `Strategy` account, whose address is a PDA derived from the seeds `"strategy"` plus an index: zero for the first strategy, one for the next, and so on. A PDA is an address with no private key: it is found deliberately off the signing curve, so no key can sign for it and only the program can, by supplying the seeds. The strategy PDA is the authority over the USDC vault, every asset vault, and the share mint. Each vault is an associated token account owned by the strategy PDA and holds exactly one asset. The share mint's address is also a PDA, seeds `"share_mint"` plus the strategy address, so it is deterministic, one share mint per strategy, with the strategy PDA as its mint authority.
+The center of everything is the `Strategy` account, whose address is a PDA derived from the seeds `"strategy"` plus Maria's public key. A PDA is an address with no private key: it is found deliberately off the signing curve, so no key can sign for it and only the program can, by supplying the seeds. The strategy PDA is the authority over the USDC vault, every asset vault, and the share mint. Each vault is an associated token account owned by the strategy PDA and holds exactly one asset. The share mint's address is also a PDA, seeds `"share_mint"` plus the strategy address, so it is deterministic, one share mint per strategy, with the strategy PDA as its mint authority.
 
 The asset set is not fixed. Each asset the strategy holds gets its own small account, an `AssetConfig`, whose address is a PDA seeded by the strategy and an index: zero, one, two, and so on. That indexing matters later: the assets are exactly the range zero up to the count, so any handler that values the whole strategy can re-derive every one and refuse to run if a single asset account is missing.
 
@@ -39,7 +39,7 @@ ON SCREEN:
 
 ```
 Registry            [off curve - PDA, seeds: "registry" + authority]   owner = curator, not a manager
-Strategy            [off curve - PDA, seeds: "strategy" + index]   manager stored as a field, not a seed
+Strategy            [off curve - PDA, seeds: "strategy" + manager]
     authority over: vault_usdc, every asset vault, share_mint
 share_mint          [off curve - PDA, seeds: "share_mint" + strategy]   authority = Strategy PDA
 AssetConfig #i      [off curve - PDA, seeds: "asset" + strategy + index]  one per asset
@@ -72,15 +72,15 @@ Fee generated: none
 
 NARRATION:
 
-Maria is our portfolio manager, and she wants to run the basket and earn the fee. She calls `initialize_strategy`, picking index zero, which fixes her strategy's address at the seeds `"strategy"` plus zero, and binding it to Victor's registry. Her own key is still recorded on the strategy as the manager, the account that holds her management powers; it is just no longer part of the address. She sets two numbers and no assets yet: a fee of one hundred basis points, which is one percent a year, and a maximum slippage of one hundred basis points, which we will use when she trades. Both are capped in code, the fee at ten percent and the slippage tolerance at ten percent, and both are fixed here at creation with no setter to change them later.
+Maria is our portfolio manager, and she wants to run the basket and earn the fee. She calls `initialize_strategy`, binding her strategy to Victor's registry. She sets two numbers and no assets yet: a fee of one hundred basis points, which is one percent a year, and a maximum slippage of one hundred basis points, which we will use when she trades. Both are capped in code, the fee at ten percent and the slippage tolerance at ten percent, and both are fixed here at creation with no setter to change them later.
 
 The fee cap exists because the fee is paid by minting new shares to the manager; an uncapped fee would let a manager dilute depositors to nothing by configuration alone.
 
 ON SCREEN:
 
 ```
-ADDED - Strategy            [off curve - PDA, seeds: "strategy" + 0]
-    index: 0   manager: Maria   registry: Victor's registry
+ADDED - Strategy            [off curve - PDA]
+    manager: Maria   registry: Victor's registry
     fee_bps: 100   max_slippage_bps: 100   total_shares: 0
     asset_count: 0   total_weight_bps: 0   last_fee_accrual_timestamp: now
 
