@@ -2,18 +2,34 @@ use anchor_lang::prelude::*;
 
 #[error_code]
 pub enum VaultError {
-    #[msg("Weights must sum to 10000 basis points")]
-    InvalidWeights,
     #[msg("Shares minted are below the minimum - slippage exceeded")]
     SlippageTooHigh,
     #[msg("USDC out is below minimum - slippage exceeded")]
     UsdcSlippage,
-    #[msg("Asset A out is below minimum - slippage exceeded")]
-    AssetASlippage,
-    #[msg("Asset B out is below minimum - slippage exceeded")]
-    AssetBSlippage,
-    #[msg("Asset mint is neither asset_a nor asset_b")]
-    InvalidAssetMint,
+    #[msg("Swap output deviates from the oracle price by more than the allowed slippage")]
+    SwapSlippageExceeded,
+    #[msg("Max slippage exceeds the maximum allowed configuration")]
+    SlippageConfigTooHigh,
+    #[msg("Asset mint is not part of this strategy")]
+    AssetNotFound,
+    #[msg("Asset mint is not whitelisted in the registry")]
+    AssetNotWhitelisted,
+    #[msg("Strategy already holds the maximum number of assets")]
+    TooManyAssets,
+    #[msg("Asset is already part of this strategy")]
+    DuplicateAsset,
+    #[msg("Total target weight would exceed 10000 basis points")]
+    WeightOverflow,
+    #[msg("Wrong number of asset accounts supplied for the strategy's assets")]
+    IncompleteAssetAccounts,
+    #[msg("An asset account does not match the strategy's registered asset")]
+    InvalidAssetAccount,
+    #[msg("Token account could not be read")]
+    InvalidVaultAccount,
+    #[msg("Recipient token account is not owned by the withdrawing user")]
+    InvalidRecipient,
+    #[msg("Registry does not match the strategy's registered registry")]
+    InvalidRegistry,
     #[msg("No time has elapsed since last fee accrual")]
     NoTimeElapsed,
     #[msg("Arithmetic overflow")]
@@ -24,7 +40,7 @@ pub enum VaultError {
     ZeroDeposit,
     #[msg("Total shares are zero - cannot compute proportional withdraw")]
     ZeroTotalShares,
-    #[msg("Price feed account does not match the strategy's registered feed")]
+    #[msg("Price feed account does not match the registered feed")]
     InvalidPriceFeed,
     #[msg("Pyth price is zero or negative")]
     NegativePrice,

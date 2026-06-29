@@ -1,5 +1,6 @@
 pub mod error;
 pub mod instructions;
+pub mod oracle;
 pub mod state;
 
 use anchor_lang::prelude::*;
@@ -13,75 +14,69 @@ declare_id!("VLT5W7bqhRN4nCdRpXm8UfHRxZd9EuZGqiSAkGHQfGh");
 pub mod vault_strategy {
     use super::*;
 
+    /// Create a curated whitelist of assets, owned by `authority` (not a manager).
+    pub fn initialize_registry(
+        context: Context<InitializeRegistryAccountConstraints>,
+    ) -> Result<()> {
+        instructions::initialize_registry::handle_initialize_registry(context)
+    }
+
+    /// Approve a mint and bind it to its official price feed. Registry authority only.
+    pub fn whitelist_asset(
+        context: Context<WhitelistAssetAccountConstraints>,
+        price_feed: Pubkey,
+    ) -> Result<()> {
+        instructions::whitelist_asset::handle_whitelist_asset(context, price_feed)
+    }
+
     pub fn initialize_strategy(
         context: Context<InitializeStrategyAccountConstraints>,
-        weight_bps_a: u16,
-        weight_bps_b: u16,
         fee_bps: u16,
+        max_slippage_bps: u16,
         swap_router: Pubkey,
-        price_feed_a: Pubkey,
-        price_feed_b: Pubkey,
     ) -> Result<()> {
         instructions::initialize_strategy::handle_initialize_strategy(
             context,
-            weight_bps_a,
-            weight_bps_b,
             fee_bps,
+            max_slippage_bps,
             swap_router,
-            price_feed_a,
-            price_feed_b,
         )
     }
 
-    pub fn deposit(
-        context: Context<DepositAccountConstraints>,
+    /// Add a whitelisted asset to the strategy at the next index. Manager only.
+    pub fn add_asset(context: Context<AddAssetAccountConstraints>, weight_bps: u16) -> Result<()> {
+        instructions::add_asset::handle_add_asset(context, weight_bps)
+    }
+
+    pub fn deposit<'info>(
+        context: Context<'info, DepositAccountConstraints<'info>>,
         usdc_amount: u64,
         minimum_shares: u64,
     ) -> Result<()> {
         instructions::deposit::handle_deposit(context, usdc_amount, minimum_shares)
     }
 
-    pub fn invest(
-        context: Context<InvestAccountConstraints>,
-        usdc_amount: u64,
-        minimum_asset_out: u64,
-    ) -> Result<()> {
-        instructions::invest::handle_invest(context, usdc_amount, minimum_asset_out)
+    pub fn invest(context: Context<InvestAccountConstraints>, usdc_amount: u64) -> Result<()> {
+        instructions::invest::handle_invest(context, usdc_amount)
     }
 
     pub fn collect_fees(context: Context<CollectFeesAccountConstraints>) -> Result<()> {
         instructions::collect_fees::handle_collect_fees(context)
     }
 
-    pub fn withdraw(
-        context: Context<WithdrawAccountConstraints>,
+    pub fn withdraw<'info>(
+        context: Context<'info, WithdrawAccountConstraints<'info>>,
         shares_to_burn: u64,
         min_usdc_out: u64,
-        min_asset_a_out: u64,
-        min_asset_b_out: u64,
     ) -> Result<()> {
-        instructions::withdraw::handle_withdraw(
-            context,
-            shares_to_burn,
-            min_usdc_out,
-            min_asset_a_out,
-            min_asset_b_out,
-        )
+        instructions::withdraw::handle_withdraw(context, shares_to_burn, min_usdc_out)
     }
 
     pub fn rebalance(
         context: Context<RebalanceAccountConstraints>,
         sell_amount: u64,
-        minimum_usdc_from_sell: u64,
         usdc_to_invest: u64,
-        minimum_buy_amount: u64,
     ) -> Result<()> {
-        instructions::rebalance::handle_rebalance(
-            context,
-            sell_amount,
-            minimum_usdc_from_sell,
-            usdc_to_invest,
-            minimum_buy_amount,
-        )
+        instructions::rebalance::handle_rebalance(context, sell_amount, usdc_to_invest)
     }
 }
