@@ -9,6 +9,16 @@ use {
     solana_signer::Signer,
 };
 
+/// Decimals configured by the program's `mint::decimals` constraint in
+/// `CreateTokenAccountConstraints`.
+const MINT_DECIMALS: u32 = 9;
+
+/// Converts a whole-token (major unit) count to minor units, the form the
+/// program's instruction handlers take amounts in.
+fn to_minor_units(major_units: u64) -> u64 {
+    major_units.checked_mul(10u64.pow(MINT_DECIMALS)).unwrap()
+}
+
 fn metadata_program_id() -> Pubkey {
     "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
         .parse()
@@ -84,7 +94,7 @@ fn test_create_mint_and_transfer() {
             token_uri: "https://example.com/token.json".to_string(),
         }
         .data(),
-        transfer_tokens::accounts::CreateToken {
+        transfer_tokens::accounts::CreateTokenAccountConstraints {
             payer: payer.pubkey(),
             mint_account: mint_keypair.pubkey(),
             metadata_account,
@@ -109,14 +119,17 @@ fn test_create_mint_and_transfer() {
         .expect("Mint should exist");
     assert!(!mint_account.data.is_empty());
 
-    // 2. Mint tokens (100 tokens to payer's ATA)
+    // 2. Mint 100 tokens to payer's ATA. The handler takes minor units.
     svm.expire_blockhash();
     let sender_ata = derive_ata(&payer.pubkey(), &mint_keypair.pubkey());
 
     let mint_ix = Instruction::new_with_bytes(
         program_id,
-        &transfer_tokens::instruction::MintToken { amount: 100 }.data(),
-        transfer_tokens::accounts::MintToken {
+        &transfer_tokens::instruction::MintToken {
+            amount: to_minor_units(100),
+        }
+        .data(),
+        transfer_tokens::accounts::MintTokenAccountConstraints {
             mint_authority: payer.pubkey(),
             recipient: payer.pubkey(),
             mint_account: mint_keypair.pubkey(),
@@ -135,21 +148,24 @@ fn test_create_mint_and_transfer() {
     )
     .unwrap();
 
-    // Verify tokens minted — 100 * 10^9 = 100_000_000_000 (9 decimals)
+    // Verify 100 tokens minted (in minor units)
     assert_eq!(
         get_token_account_balance(&svm, &sender_ata).unwrap(),
-        100_000_000_000
+        to_minor_units(100)
     );
 
-    // 3. Transfer tokens (50 tokens to recipient)
+    // 3. Transfer 50 tokens to recipient. The handler takes minor units.
     svm.expire_blockhash();
     let recipient = Keypair::new();
     let recipient_ata = derive_ata(&recipient.pubkey(), &mint_keypair.pubkey());
 
     let transfer_ix = Instruction::new_with_bytes(
         program_id,
-        &transfer_tokens::instruction::TransferTokens { amount: 50 }.data(),
-        transfer_tokens::accounts::TransferTokens {
+        &transfer_tokens::instruction::TransferTokens {
+            amount: to_minor_units(50),
+        }
+        .data(),
+        transfer_tokens::accounts::TransferTokensAccountConstraints {
             sender: payer.pubkey(),
             recipient: recipient.pubkey(),
             mint_account: mint_keypair.pubkey(),
@@ -169,13 +185,13 @@ fn test_create_mint_and_transfer() {
     )
     .unwrap();
 
-    // Verify: sender 50 tokens, recipient 50 tokens (at 9 decimals)
+    // Verify: sender 50 tokens, recipient 50 tokens (in minor units)
     assert_eq!(
         get_token_account_balance(&svm, &sender_ata).unwrap(),
-        50_000_000_000
+        to_minor_units(50)
     );
     assert_eq!(
         get_token_account_balance(&svm, &recipient_ata).unwrap(),
-        50_000_000_000
+        to_minor_units(50)
     );
 }

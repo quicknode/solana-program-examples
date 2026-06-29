@@ -8,7 +8,7 @@ pub const AB_WALLET_SIZE: u64 = 33;
 /// Total = 33 bytes.
 pub const CONFIG_SIZE: u64 = 33;
 
-/// Mode discriminator values stored in Token-2022 metadata.
+/// Mode discriminator values stored in Token Extensions metadata.
 pub const MODE_ALLOW: &[u8] = b"Allow";
 pub const MODE_BLOCK: &[u8] = b"Block";
 pub const MODE_MIXED: &[u8] = b"Mixed";

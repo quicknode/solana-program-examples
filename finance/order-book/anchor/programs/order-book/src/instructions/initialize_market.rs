@@ -9,12 +9,16 @@ use crate::state::{Market, OrderBook, MARKET_SEED};
 const MAX_FEE_BASIS_POINTS: u16 = 10_000;
 
 pub fn handle_initialize_market(
-    context: Context<InitializeMarket>,
+    context: Context<InitializeMarketAccountConstraints>,
     fee_basis_points: u16,
     tick_size: u64,
+    base_lot_size: u64,
+    quote_lot_size: u64,
     min_order_size: u64,
 ) -> Result<()> {
     require!(tick_size > 0, ErrorCode::InvalidTickSize);
+    require!(base_lot_size > 0, ErrorCode::InvalidBaseLotSize);
+    require!(quote_lot_size > 0, ErrorCode::InvalidQuoteLotSize);
     require!(min_order_size > 0, ErrorCode::BelowMinOrderSize);
     require!(
         fee_basis_points <= MAX_FEE_BASIS_POINTS,
@@ -31,12 +35,14 @@ pub fn handle_initialize_market(
     market.order_book = context.accounts.order_book.key();
     market.fee_basis_points = fee_basis_points;
     market.tick_size = tick_size;
+    market.base_lot_size = base_lot_size;
+    market.quote_lot_size = quote_lot_size;
     market.min_order_size = min_order_size;
     market.is_active = true;
     market.bump = context.bumps.market;
 
     // Zero-copy account: initialize the slab in place. `load_init` is the
-    // first-write path — every subsequent handler uses `load` / `load_mut`.
+    // first-write path - every subsequent handler uses `load` / `load_mut`.
     // The order book is not a PDA (see the comment on the `order_book`
     // account below), so `bump` is unused and stored as 0.
     let mut order_book = context.accounts.order_book.load_init()?;
@@ -46,7 +52,7 @@ pub fn handle_initialize_market(
 }
 
 #[derive(Accounts)]
-pub struct InitializeMarket<'info> {
+pub struct InitializeMarketAccountConstraints<'info> {
     #[account(
         init,
         payer = authority,
@@ -58,7 +64,7 @@ pub struct InitializeMarket<'info> {
 
     // The order book is a zero-copy account (~180 KB: two 1024-slot critbit
     // slabs back to back). Solana's BPF runtime caps inner-CPI account
-    // allocations at 10 KB, so we can't use Anchor's `init` here — the
+    // allocations at 10 KB, so we can't use Anchor's `init` here - the
     // client must call system_program::create_account directly before this
     // instruction, sizing the account to ORDER_BOOK_ACCOUNT_SIZE, owned by
     // this program, and zero-initialized.
@@ -68,10 +74,11 @@ pub struct InitializeMarket<'info> {
     // create_account-d account looks like. The handler then stamps the
     // discriminator + struct via `load_init()`.
     //
-    // The account is not a PDA; it is a plain account whose keypair the
-    // client generates. The README recommends deriving that keypair
-    // deterministically (e.g. from `["order_book", market]`) so the address
-    // is predictable — but the program doesn't enforce the derivation.
+    // This is not a PDA. create_account requires the new account to sign
+    // its own creation, and a PDA has no private key to sign with, so the
+    // client must generate a real keypair for it. The program ties this
+    // account to its market via `has_one = order_book` on `market`, not via
+    // seeds.
     #[account(zero)]
     pub order_book: AccountLoader<'info, OrderBook>,
 

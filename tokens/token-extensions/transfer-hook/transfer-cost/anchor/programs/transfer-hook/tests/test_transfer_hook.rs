@@ -57,7 +57,7 @@ fn test_initialize_extra_account_meta_list() {
     let init_extra_ix = Instruction::new_with_bytes(
         program_id,
         &transfer_hook::instruction::InitializeExtraAccountMetaList {}.data(),
-        transfer_hook::accounts::InitializeExtraAccountMetaList {
+        transfer_hook::accounts::InitializeExtraAccountMetaListAccountConstraints {
             payer: payer.pubkey(),
             extra_account_meta_list,
             mint,

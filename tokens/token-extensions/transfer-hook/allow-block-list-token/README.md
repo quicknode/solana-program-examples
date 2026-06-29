@@ -2,7 +2,7 @@
 
 A [Token Extensions](https://solana.com/docs/terminology#token-extensions-program) example that gates transfers through an allow/block list managed by a separate authority. The list is consumed by a transfer hook.
 
-One list authority can manage lists for many [mints](https://solana.com/docs/terminology#token-mint) — useful when an issuer wants a third-party-managed list or wants to share a single list across a set of assets.
+One list authority can manage lists for many [mints](https://solana.com/docs/terminology#token-mint) - useful when an issuer wants a third-party-managed list or wants to share a single list across a set of assets.
 
 ## Features
 
@@ -33,9 +33,12 @@ pnpm run build     # build the UI
 pnpm run dev       # serve the UI
 ```
 
-### Local testing
+### Program tests
 
-Scripts manage the local validator and deployment:
+From `anchor/`:
 
-- `./scripts/start.sh` — start the local validator and deploy the [program](https://solana.com/docs/terminology#program) (uses the [Anchor](https://solana.com/docs/terminology#anchor) CLI and the default Anchor keypair).
-- `./scripts/stop.sh` — stop the local validator.
+```bash
+pnpm test
+```
+
+LiteSVM integration tests run via `cargo test` (see `Anchor.toml`). The UI is optional and targets devnet or your own cluster configuration.

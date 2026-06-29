@@ -8,7 +8,7 @@ pub mod rent_example {
     use super::*;
 
     pub fn create_system_account(
-        context: Context<CreateSystemAccount>,
+        context: Context<CreateSystemAccountAccountConstraints>,
         address_data: AddressData,
     ) -> Result<()> {
         msg!("Program invoked. Creating a system account...");
@@ -39,13 +39,13 @@ pub mod rent_example {
             &context.accounts.system_program.key(),
         )?;
 
-        msg!("Account created succesfully.");
+        msg!("Account created successfully.");
         Ok(())
     }
 }
 
 #[derive(Accounts)]
-pub struct CreateSystemAccount<'info> {
+pub struct CreateSystemAccountAccountConstraints<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
     #[account(mut)]

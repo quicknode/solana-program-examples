@@ -15,9 +15,9 @@ use crate::{check_is_transferring, CounterAccount, TransferError};
 // Box<InterfaceAccount> used for source_token, destination_token, wsol_mint,
 // delegate_wsol_token_account, and sender_wsol_token_account to avoid exceeding
 // the 4096-byte BPF stack frame limit in try_accounts deserialization.
-// This struct has 12 accounts — without Box, the generated code uses ~4160 bytes of stack.
+// This struct has 12 accounts - without Box, the generated code uses ~4160 bytes of stack.
 #[derive(Accounts)]
-pub struct TransferHook<'info> {
+pub struct TransferHookAccountConstraints<'info> {
     #[account(token::mint = mint, token::authority = owner)]
     pub source_token: Box<InterfaceAccount<'info, TokenAccount>>,
     pub mint: Box<InterfaceAccount<'info, Mint>>,
@@ -53,7 +53,7 @@ pub struct TransferHook<'info> {
     pub counter_account: Account<'info, CounterAccount>,
 }
 
-pub fn handler(context: Context<TransferHook>, amount: u64) -> Result<()> {
+pub fn handler(context: Context<TransferHookAccountConstraints>, amount: u64) -> Result<()> {
     // Fail this instruction if it is not called from within a transfer hook
     check_is_transferring(&context)?;
 

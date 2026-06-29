@@ -3,7 +3,7 @@ use anchor_lang::prelude::*;
 use crate::Counter;
 
 #[derive(Accounts)]
-pub struct InitializeCounter<'info> {
+pub struct InitializeCounterAccountConstraints<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
 
@@ -16,6 +16,6 @@ pub struct InitializeCounter<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handler(_context: Context<InitializeCounter>) -> Result<()> {
+pub fn handler(_context: Context<InitializeCounterAccountConstraints>) -> Result<()> {
     Ok(())
 }

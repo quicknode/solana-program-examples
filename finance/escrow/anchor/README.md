@@ -1,43 +1,46 @@
 # Anchor Escrow
 
-## Introduction
+This Solana [program](https://solana.com/docs/terminology#program) is an **escrow** - it lets a **maker** swap a specific amount of one token for a desired amount of another token with a **taker**, atomically and without either party having to trust the other.
 
-This Solana [program](https://solana.com/docs/terminology#program) is an **escrow** — it lets a user swap a specific amount of one token for a desired amount of another token.
+For example: Alice offers 10 USDC and wants 100 WIF in return. The program holds Alice's USDC in a vault until someone delivers the WIF, then releases both sides in a single transaction. Neither party can take the other's tokens and run, and there is no spread or middleman fee on the swap.
 
-For example: Alice offers 10 USDC and wants 100 WIF in return.
+See also the [native](../native/) and [Quasar](../quasar/) variants of the same program.
 
-Without an escrow, users would have to swap tokens manually and trust each other. The escrow program acts as a trusted third party that only releases tokens to both sides when the swap can complete atomically. Neither party can take the other's tokens and run.
+## Accounts and PDAs
 
-Alice and Bob transact directly with each other through the program, so there's no spread or middleman fee taken on the swap.
+- **Offer**: a [PDA](https://solana.com/docs/terminology#program-derived-address-pda) with seeds `["offer", maker, id]` storing the offer `id`, the `maker`, the two mints (`token_mint_a` is what the maker offers, `token_mint_b` is what the maker wants), the `token_b_wanted_amount`, and the PDA `bump`. The `id` lets one maker keep multiple offers open at once.
+- **Vault**: the offer PDA's associated token account for token A. It holds the maker's offered tokens while the offer is open; only the offer PDA can sign transfers out of it.
 
-## Usage
+The maker pays the rent for the offer account and the vault, and every path that closes them (`take_offer`, `cancel_offer`) refunds that rent to the maker.
 
-Run the tests with `pnpm test` (as configured in `Anchor.toml`).
+## Lifecycle
+
+A maker opens an offer with `make_offer`, passing the `id`, `token_a_offered_amount`, and `token_b_wanted_amount`. The maker signs and pays all rent. The handler creates the offer PDA and the vault, creates the maker's token-B associated token account if needed (paid by the maker, so the eventual taker never funds a maker-owned account), moves the offered token A into the vault with `transfer_checked`, and records the offer state.
+
+A taker settles the offer with `take_offer`. The taker signs. Anchor's constraints bind every account to the stored offer state (`has_one` on the maker and both mints, associated-token constraints on the vault and all token accounts, and the PDA seeds on the offer itself). The handler sends the wanted token B from the taker to the maker, releases the vault's token A to the taker signed by the offer PDA, and closes both the vault and the offer account back to the maker, who paid their rent. The taker's own token-A account is created on the fly if needed, paid by the taker.
+
+A maker abandons an offer with `cancel_offer`. Only the maker can call it; without it, an unwanted offer would lock the maker's tokens in the vault forever. The handler returns the vault's token A to the maker and closes the vault and offer accounts, refunding both rents to the maker.
+
+## Setup
+
+Prerequisites: Rust, the [Agave](https://docs.anza.xyz/) toolchain, and the Anchor CLI. Build the program with:
+
+```bash
+anchor build
+```
+
+(or `cargo build-sbf` from `programs/escrow/`). The tests load the resulting `target/deploy/escrow.so`.
+
+## Testing
+
+The tests are Rust integration tests running against [LiteSVM](https://www.anchor-lang.com/docs/testing/litesvm) (with [solana-kite](https://crates.io/crates/solana-kite) helpers). After building, run:
+
+```bash
+cargo test
+```
+
+(`anchor test` runs the same command, per `Anchor.toml`.) The tests cover the make/take flow, the make/cancel flow, rejection of a non-maker cancel, token balances on every leg, and the rent refunds (the maker's lamports recover the offer and vault rent after both take and cancel).
 
 ## Credit
 
-Based on [Dean Little's Anchor Escrow](https://github.com/deanmlittle/anchor-escrow-2024), with a few changes to make it easier to discuss in class.
-
-### Changes from the original
-
-One challenge when teaching is avoiding ambiguity — names have to be clear and not confused with anything else.
-
-- Several custom handler functions were replaced by helpers from `@solana-developers/helpers` to reduce file size.
-- Shared token-transfer logic now lives in `instructions/shared.rs`.
-- The upstream project uses a custom file layout. This version uses the 'multiple files' [Anchor](https://solana.com/docs/terminology#anchor) layout.
-- Contexts are separate data structures from the functions that use them. There's no need for OO-style `impl` patterns here — no mutable state is stored in the context, and the methods don't mutate it.
-- The name 'deposit' was overloaded. `deposit` is both a verb and a noun, which made the code hard to read:
-  - deposit #1 → `token_a_offered_amount`
-  - deposit #2 (in `make()`) → `send_offered_tokens_to_vault`
-  - deposit #3 (in `take()`) → `send_wanted_tokens_to_maker`
-- `seed` was renamed to `id`, because it conflicted with the `seeds` used for [PDA](https://solana.com/docs/terminology#program-derived-address-pda) derivation.
-- `Escrow` was used for both the program name and the [account](https://solana.com/docs/terminology#account) that records an offer. People kept confusing the offer account with the vault.
-  - `Escrow` (the program) → still `Escrow`.
-  - `Escrow` (the offer) → `Offer`.
-- `receive` was renamed to `token_b_wanted_amount`, since `receive` is a verb and not a good name for an integer.
-- `mint_a` → `token_mint_a` (what the maker offered and what the taker wants).
-- `mint_b` → `token_mint_b` (what the maker wants and what the taker must offer).
-- `makerAtaA` → `makerTokenAccountA`
-- `makerAtaB` → `makerTokenAccountB`
-- `takerAtaA` → `takerTokenAccountA`
-- `takerAtaB` → `takerTokenAccountB`
+Based on [Dean Little's Anchor Escrow](https://github.com/deanmlittle/anchor-escrow-2024), restructured for teaching.

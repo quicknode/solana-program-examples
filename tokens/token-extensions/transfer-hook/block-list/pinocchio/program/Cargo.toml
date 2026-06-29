@@ -7,7 +7,7 @@ edition = "2021"
 crate-type = ["lib", "cdylib"]
 name = "block_list"
 
-# pinocchio 0.9.3 — 0.8.x's `nostd_panic_handler!` macro emits `#[no_mangle]`
+# pinocchio 0.9.3 - 0.8.x's `nostd_panic_handler!` macro emits `#[no_mangle]`
 # on a lang item, which rustc 1.89 (current platform-tools v1.52) rejects.
 # 0.9 fixes that without breaking the surface used here. 0.10 renamed
 # `Pubkey` → `Address`, which would require porting the rest of the code.
@@ -17,3 +17,14 @@ pinocchio = "0.9.3"
 pinocchio-pubkey = "0.3.0"
 pinocchio-system = "0.3.0"
 pinocchio-log = "0.5.1"
+
+# The generated Rust client (sdk/rust) is built on solana-program 2.x types,
+# so the test stack pins litesvm and SPL crate versions from the same
+# generation. Bump these together when the client is regenerated against a
+# newer solana-program.
+[dev-dependencies]
+block-list-client = { workspace = true }
+litesvm = "0.6.1"
+solana-sdk = "2.2"
+spl-token-2022 = "7.0"
+spl-associated-token-account = "6.0"

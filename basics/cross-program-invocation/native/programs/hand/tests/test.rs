@@ -11,6 +11,11 @@ fn test_cpi() {
     let hand_program_id = Pubkey::new_unique();
     let lever_program_id = Pubkey::new_unique();
     let hand_program_bytes =
+    // The .so files are built into the workspace target/deploy by
+    // `cargo build-sbf --manifest-path=./programs/hand/Cargo.toml` and
+    // `cargo build-sbf --manifest-path=./programs/lever/Cargo.toml` (run from the
+    // project root). Rebuild after every program change: the binaries are embedded
+    // at test-compile time, so a stale .so silently tests old code.
         include_bytes!("../../../target/deploy/cross_program_invocatio_native_hand.so");
     let lever_program_bytes =
         include_bytes!("../../../target/deploy/cross_program_invocatio_native_lever.so");

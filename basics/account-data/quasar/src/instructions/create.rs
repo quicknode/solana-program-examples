@@ -5,7 +5,7 @@ use {
 
 /// Accounts for creating a new address info account.
 #[derive(Accounts)]
-pub struct CreateAddressInfo {
+pub struct CreateAddressInfoAccountConstraints {
     #[account(mut)]
     pub payer: Signer,
     #[account(mut, init, payer = payer, address = AddressInfo::seeds(payer.address()))]
@@ -15,7 +15,7 @@ pub struct CreateAddressInfo {
 
 #[inline(always)]
 pub fn handle_create_address_info(
-    accounts: &mut CreateAddressInfo,
+    accounts: &mut CreateAddressInfoAccountConstraints,
     name: &str,
     house_number: u8,
     street: &str,

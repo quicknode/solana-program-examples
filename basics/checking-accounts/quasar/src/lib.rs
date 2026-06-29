@@ -18,7 +18,7 @@ mod quasar_checking_accounts {
     /// - UncheckedAccount: no validation (opt-in to unchecked access)
     /// - Program<System>: checks account is executable and is the system program
     #[instruction(discriminator = 0)]
-    pub fn check_accounts(ctx: Ctx<CheckAccounts>) -> Result<(), ProgramError> {
+    pub fn check_accounts(ctx: Ctx<CheckAccountsAccountConstraints>) -> Result<(), ProgramError> {
         instructions::handle_check_accounts(&mut ctx.accounts)
     }
 }

@@ -19,7 +19,7 @@ pub struct InitializeRouterAccountConstraints<'info> {
     )]
     pub router_config: Account<'info, RouterConfig>,
 
-    /// CHECK: PDA used as mint authority only — no data stored
+    /// CHECK: PDA used as mint authority only - no data stored
     #[account(
         seeds = [b"router_authority"],
         bump

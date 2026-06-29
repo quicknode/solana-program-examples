@@ -2,7 +2,7 @@ use anchor_lang::prelude::*;
 use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
 
 #[derive(Accounts)]
-pub struct CreateTokenAccount<'info> {
+pub struct CreateTokenAccountAccountConstraints<'info> {
     #[account(mut)]
     pub signer: Signer<'info>,
     pub mint: InterfaceAccount<'info, Mint>,
@@ -19,7 +19,7 @@ pub struct CreateTokenAccount<'info> {
     pub token_program: Interface<'info, TokenInterface>,
 }
 
-pub fn handler(_context: Context<CreateTokenAccount>) -> Result<()> {
+pub fn handler(_context: Context<CreateTokenAccountAccountConstraints>) -> Result<()> {
     msg!("Create Token Account");
     Ok(())
 }

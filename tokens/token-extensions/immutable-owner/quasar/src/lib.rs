@@ -9,7 +9,7 @@ use quasar_lang::{
 #[cfg(test)]
 mod tests;
 
-declare_id!("22222222222222222222222222222222222222222222");
+declare_id!("6g5URpqqurW8RbKjuGeRCVZBKky3J4kYcLeotQ6vj6UT");
 
 pub struct Token2022Program;
 impl Id for Token2022Program {
@@ -26,13 +26,13 @@ mod quasar_immutable_owner {
     use super::*;
 
     #[instruction(discriminator = 0)]
-    pub fn initialize(ctx: Ctx<Initialize>) -> Result<(), ProgramError> {
+    pub fn initialize(ctx: Ctx<InitializeAccountConstraints>) -> Result<(), ProgramError> {
         handle_initialize(&mut ctx.accounts)
     }
 }
 
 #[derive(Accounts)]
-pub struct Initialize {
+pub struct InitializeAccountConstraints {
     #[account(mut)]
     pub payer: Signer,
     #[account(mut)]
@@ -43,7 +43,7 @@ pub struct Initialize {
 }
 
 #[inline(always)]
-fn handle_initialize(accounts: &mut Initialize) -> Result<(), ProgramError> {
+fn handle_initialize(accounts: &mut InitializeAccountConstraints) -> Result<(), ProgramError> {
     // 165 (base) + 1 (account type) + 4 (TLV header, ImmutableOwner is zero-size) = 170 bytes
     let account_size: u64 = 170;
     let lamports = Rent::get()?.try_minimum_balance(account_size as usize)?;

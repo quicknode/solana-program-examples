@@ -15,7 +15,7 @@ mod quasar_pyth_example {
 
     /// Read and log Pyth price feed data from a PriceUpdateV2 account.
     #[instruction(discriminator = 0)]
-    pub fn read_price(ctx: Ctx<ReadPrice>) -> Result<(), ProgramError> {
+    pub fn read_price(ctx: Ctx<ReadPriceAccountConstraints>) -> Result<(), ProgramError> {
         instructions::handle_read_price(&mut ctx.accounts)
     }
 }

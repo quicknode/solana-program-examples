@@ -24,6 +24,10 @@ fn ata_program_id() -> Pubkey {
         .unwrap()
 }
 
+fn lamports(svm: &LiteSVM, address: &Pubkey) -> u64 {
+    svm.get_account(address).map(|a| a.lamports).unwrap_or(0)
+}
+
 fn derive_ata(wallet: &Pubkey, mint: &Pubkey) -> Pubkey {
     let (ata, _bump) = Pubkey::find_program_address(
         &[wallet.as_ref(), token_program_id().as_ref(), mint.as_ref()],
@@ -130,7 +134,7 @@ fn test_make_offer() {
             token_b_wanted_amount,
         }
         .data(),
-        escrow::accounts::MakeOffer {
+        escrow::accounts::MakeOfferAccountConstraints {
             maker: es.alice.pubkey(),
             token_mint_a: es.mint_a,
             token_mint_b: es.mint_b,
@@ -188,6 +192,13 @@ fn test_take_offer() {
 
     let vault = derive_ata(&offer_pda, &es.mint_a);
 
+    // Alice pays the offer + vault rent in make_offer and must recover it all
+    // when the offer is taken. (Alice's token-B ATA already exists, and the
+    // payer covers transaction fees, so her lamports should round-trip
+    // exactly.)
+    let alice_lamports_before_make = lamports(&es.svm, &es.alice.pubkey());
+    let bob_lamports_before_take = lamports(&es.svm, &es.bob.pubkey());
+
     // Step 1: Alice makes the offer
     let make_offer_ix = Instruction::new_with_bytes(
         es.program_id,
@@ -197,7 +208,7 @@ fn test_take_offer() {
             token_b_wanted_amount,
         }
         .data(),
-        escrow::accounts::MakeOffer {
+        escrow::accounts::MakeOfferAccountConstraints {
             maker: es.alice.pubkey(),
             token_mint_a: es.mint_a,
             token_mint_b: es.mint_b,
@@ -230,7 +241,7 @@ fn test_take_offer() {
     let take_offer_ix = Instruction::new_with_bytes(
         es.program_id,
         &escrow::instruction::TakeOffer {}.data(),
-        escrow::accounts::TakeOffer {
+        escrow::accounts::TakeOfferAccountConstraints {
             taker: es.bob.pubkey(),
             maker: es.alice.pubkey(),
             token_mint_a: es.mint_a,
@@ -278,6 +289,20 @@ fn test_take_offer() {
         es.svm.get_account(&offer_pda).is_none(),
         "Offer should be closed after take_offer"
     );
+
+    // Rent destinations: Alice (the maker) recovers the offer + vault rent in
+    // full. Bob (the taker) only paid the rent of his own new token-A ATA.
+    assert_eq!(
+        lamports(&es.svm, &es.alice.pubkey()),
+        alice_lamports_before_make,
+        "maker must recover the offer and vault rent after take_offer"
+    );
+    let bob_ata_a_rent = lamports(&es.svm, &es.bob_ata_a);
+    assert_eq!(
+        lamports(&es.svm, &es.bob.pubkey()),
+        bob_lamports_before_take - bob_ata_a_rent,
+        "taker must only pay the rent of their own token-A ATA"
+    );
 }
 
 #[test]
@@ -298,8 +323,9 @@ fn test_cancel_offer() {
     );
     let vault = derive_ata(&offer_pda, &es.mint_a);
 
-    // Snapshot Alice's token-A balance before the offer.
+    // Snapshot Alice's token-A balance and lamports before the offer.
     let alice_a_before = get_token_account_balance(&es.svm, &es.alice_ata_a).unwrap();
+    let alice_lamports_before_make = lamports(&es.svm, &es.alice.pubkey());
 
     // Alice makes the offer.
     let make_offer_ix = Instruction::new_with_bytes(
@@ -310,7 +336,7 @@ fn test_cancel_offer() {
             token_b_wanted_amount,
         }
         .data(),
-        escrow::accounts::MakeOffer {
+        escrow::accounts::MakeOfferAccountConstraints {
             maker: es.alice.pubkey(),
             token_mint_a: es.mint_a,
             token_mint_b: es.mint_b,
@@ -341,7 +367,7 @@ fn test_cancel_offer() {
     let cancel_offer_ix = Instruction::new_with_bytes(
         es.program_id,
         &escrow::instruction::CancelOffer {}.data(),
-        escrow::accounts::CancelOffer {
+        escrow::accounts::CancelOfferAccountConstraints {
             maker: es.alice.pubkey(),
             token_mint_a: es.mint_a,
             maker_token_account_a: es.alice_ata_a,
@@ -374,6 +400,13 @@ fn test_cancel_offer() {
     // Alice should have her token-A back to its pre-make balance.
     let alice_a_after = get_token_account_balance(&es.svm, &es.alice_ata_a).unwrap();
     assert_eq!(alice_a_after, alice_a_before);
+
+    // Rent destination: Alice recovers the offer + vault rent in full.
+    assert_eq!(
+        lamports(&es.svm, &es.alice.pubkey()),
+        alice_lamports_before_make,
+        "maker must recover the offer and vault rent after cancel_offer"
+    );
 }
 
 #[test]
@@ -403,7 +436,7 @@ fn test_cancel_offer_rejects_non_maker() {
             token_b_wanted_amount,
         }
         .data(),
-        escrow::accounts::MakeOffer {
+        escrow::accounts::MakeOfferAccountConstraints {
             maker: es.alice.pubkey(),
             token_mint_a: es.mint_a,
             token_mint_b: es.mint_b,
@@ -433,7 +466,7 @@ fn test_cancel_offer_rejects_non_maker() {
     let cancel_offer_ix = Instruction::new_with_bytes(
         es.program_id,
         &escrow::instruction::CancelOffer {}.data(),
-        escrow::accounts::CancelOffer {
+        escrow::accounts::CancelOfferAccountConstraints {
             maker: es.bob.pubkey(),
             token_mint_a: es.mint_a,
             maker_token_account_a: bob_ata_a,

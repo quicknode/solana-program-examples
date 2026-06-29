@@ -29,7 +29,7 @@ pub struct Fill {
     pub fill_quantity: u64,
 
     /// Price at which the fill clears. Always the resting (maker) order's
-    /// price — standard order-book rule: maker's posted price wins; the taker
+    /// price - standard order-book rule: maker's posted price wins; the taker
     /// gets price improvement vs their limit on bids, and a higher payout
     /// vs their limit on asks. Also the high 64 bits of the tree key when
     /// we look the leaf up again at apply time.
@@ -39,7 +39,7 @@ pub struct Fill {
 /// Walk the opposite side of the book and produce the list of fills that
 /// should occur for the incoming taker order. Does not mutate the book.
 ///
-/// Returns `(fills, taker_remaining)` — `taker_remaining` is what's left
+/// Returns `(fills, taker_remaining)` - `taker_remaining` is what's left
 /// over after crossing, to be rested on the book at the taker's limit price.
 pub fn plan_fills(
     order_book: &OrderBook,
@@ -65,7 +65,7 @@ pub fn plan_fills(
         // ask's price; ask takes when its limit is <= the resting bid's
         // price. The tree walk is in best-price-first order on the resting
         // side, so the first leaf that fails to cross means every
-        // subsequent leaf also fails — break, don't continue.
+        // subsequent leaf also fails - break, don't continue.
         let resting_price = leaf.price();
         let crosses = match incoming_side {
             OrderSide::Bid => incoming_price >= resting_price,

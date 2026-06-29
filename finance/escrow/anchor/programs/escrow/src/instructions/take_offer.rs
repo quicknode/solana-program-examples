@@ -2,18 +2,15 @@ use anchor_lang::prelude::*;
 
 use anchor_spl::{
     associated_token::AssociatedToken,
-    token_interface::{
-        close_account, transfer_checked, CloseAccount, Mint, TokenAccount, TokenInterface,
-        TransferChecked,
-    },
+    token_interface::{Mint, TokenAccount, TokenInterface},
 };
 
 use crate::Offer;
 
-use super::transfer_tokens;
+use super::{close_token_account, transfer_tokens};
 
 #[derive(Accounts)]
-pub struct TakeOffer<'info> {
+pub struct TakeOfferAccountConstraints<'info> {
     #[account(mut)]
     pub taker: Signer<'info>,
 
@@ -41,9 +38,7 @@ pub struct TakeOffer<'info> {
     )]
     pub taker_token_account_b: Box<InterfaceAccount<'info, TokenAccount>>,
 
-    // The maker's token-B ATA is initialized in make_offer (paid by the maker),
-    // so the taker no longer pays its rent. Treat it as a plain existing account
-    // here.
+    // The maker's token-B ATA is initialized in make_offer, paid by the maker.
     #[account(
         mut,
         associated_token::mint = token_mint_b,
@@ -76,56 +71,43 @@ pub struct TakeOffer<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handle_send_wanted_tokens_to_maker(context: &Context<TakeOffer>) -> Result<()> {
+pub fn handle_send_wanted_tokens_to_maker(
+    context: &Context<TakeOfferAccountConstraints>,
+) -> Result<()> {
     transfer_tokens(
         &context.accounts.taker_token_account_b,
         &context.accounts.maker_token_account_b,
         &context.accounts.offer.token_b_wanted_amount,
         &context.accounts.token_mint_b,
-        &context.accounts.taker,
+        &context.accounts.taker.to_account_info(),
         &context.accounts.token_program,
+        None,
     )
 }
 
-pub fn handle_withdraw_and_close_vault(context: Context<TakeOffer>) -> Result<()> {
-    let seeds = &[
-        b"offer",
-        context.accounts.maker.to_account_info().key.as_ref(),
-        &context.accounts.offer.id.to_le_bytes()[..],
-        &[context.accounts.offer.bump],
-    ];
-    let signer_seeds = [&seeds[..]];
+pub fn handle_withdraw_and_close_vault(context: Context<TakeOfferAccountConstraints>) -> Result<()> {
+    let maker_key = context.accounts.maker.key();
+    let id_bytes = context.accounts.offer.id.to_le_bytes();
+    let bump = [context.accounts.offer.bump];
+    let offer_seeds: &[&[u8]] = &[b"offer", maker_key.as_ref(), id_bytes.as_ref(), &bump];
 
-    let accounts = TransferChecked {
-        from: context.accounts.vault.to_account_info(),
-        mint: context.accounts.token_mint_a.to_account_info(),
-        to: context.accounts.taker_token_account_a.to_account_info(),
-        authority: context.accounts.offer.to_account_info(),
-    };
-
-    let cpi_context = CpiContext::new_with_signer(
-        context.accounts.token_program.key(),
-        accounts,
-        &signer_seeds,
-    );
-
-    transfer_checked(
-        cpi_context,
-        context.accounts.vault.amount,
-        context.accounts.token_mint_a.decimals,
+    transfer_tokens(
+        &context.accounts.vault,
+        &context.accounts.taker_token_account_a,
+        &context.accounts.vault.amount,
+        &context.accounts.token_mint_a,
+        &context.accounts.offer.to_account_info(),
+        &context.accounts.token_program,
+        Some(offer_seeds),
     )?;
 
-    let accounts = CloseAccount {
-        account: context.accounts.vault.to_account_info(),
-        destination: context.accounts.taker.to_account_info(),
-        authority: context.accounts.offer.to_account_info(),
-    };
-
-    let cpi_context = CpiContext::new_with_signer(
-        context.accounts.token_program.key(),
-        accounts,
-        &signer_seeds,
-    );
-
-    close_account(cpi_context)
+    // The maker paid the vault's rent in make_offer, so the vault closes back
+    // to the maker (the offer account does the same via `close = maker`).
+    close_token_account(
+        &context.accounts.vault,
+        &context.accounts.maker.to_account_info(),
+        &context.accounts.offer.to_account_info(),
+        &context.accounts.token_program,
+        Some(offer_seeds),
+    )
 }

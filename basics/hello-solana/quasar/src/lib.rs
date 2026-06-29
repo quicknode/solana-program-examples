@@ -7,14 +7,14 @@ use instructions::*;
 #[cfg(test)]
 mod tests;
 
-declare_id!("FLUH9c5oAfXb1eYbkZvdGK9r9SLQJBUi2DZQaBVj7Tzr");
+declare_id!("2phbC62wekpw95XuBk4i1KX4uA8zBUWmYbiTMhicSuBV");
 
 #[program]
 mod quasar_hello_solana {
     use super::*;
 
     #[instruction(discriminator = 0)]
-    pub fn hello(ctx: Ctx<Hello>) -> Result<(), ProgramError> {
+    pub fn hello(ctx: Ctx<HelloAccountConstraints>) -> Result<(), ProgramError> {
         instructions::handle_hello(&mut ctx.accounts)
     }
 }

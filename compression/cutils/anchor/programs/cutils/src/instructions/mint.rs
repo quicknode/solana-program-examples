@@ -1,6 +1,6 @@
 use crate::bubblegum_types::{
-    Collection, Creator, MetadataArgs, MintToCollectionV1InstructionArgs,
-    TokenProgramVersion, TokenStandard, MINT_TO_COLLECTION_V1_DISCRIMINATOR,
+    Collection, Creator, MetadataArgs, MintToCollectionV1InstructionArgs, TokenProgramVersion,
+    TokenStandard, MINT_TO_COLLECTION_V1_DISCRIMINATOR,
 };
 use crate::*;
 use anchor_lang::solana_program::{
@@ -11,7 +11,7 @@ use borsh::BorshSerialize;
 
 #[derive(Accounts)]
 #[instruction(params: MintParams)]
-pub struct Mint<'info> {
+pub struct MintAccountConstraints<'info> {
     pub payer: Signer<'info>,
 
     #[account(
@@ -30,7 +30,8 @@ pub struct Mint<'info> {
     pub leaf_delegate: UncheckedAccount<'info>,
 
     #[account(mut)]
-    /// CHECK: unsafe
+    /// CHECK: Written by the Bubblegum/Account Compression CPI (the mint
+    /// appends a leaf and updates the tree root); validated downstream.
     pub merkle_tree: UncheckedAccount<'info>,
 
     pub tree_delegate: Signer<'info>,
@@ -70,137 +71,137 @@ pub struct MintParams {
     uri: String,
 }
 
-impl Mint<'_> {
-    pub fn validate(&self, _context: &Context<Self>, _params: &MintParams) -> Result<()> {
-        Ok(())
-    }
+// `with_capacity` + push is intentional here: it documents the exact 16-account
+// MintToCollectionV1 layout in CPI order, so allow clippy's vec_init_then_push.
+#[allow(clippy::vec_init_then_push)]
+pub fn handle_mint<'info>(
+    context: Context<'info, MintAccountConstraints<'info>>,
+    params: MintParams,
+) -> Result<()> {
+    // Build MintToCollectionV1 instruction data
+    let args = MintToCollectionV1InstructionArgs {
+        metadata: MetadataArgs {
+            name: "BURGER".to_string(),
+            symbol: "BURG".to_string(),
+            uri: params.uri,
+            creators: vec![Creator {
+                address: context.accounts.collection_authority.key(),
+                verified: false,
+                share: 100,
+            }],
+            seller_fee_basis_points: 0,
+            primary_sale_happened: false,
+            is_mutable: false,
+            edition_nonce: Some(0),
+            uses: None,
+            collection: Some(Collection {
+                verified: false,
+                key: context.accounts.collection_mint.key(),
+            }),
+            token_program_version: TokenProgramVersion::Original,
+            token_standard: Some(TokenStandard::NonFungible),
+        },
+    };
 
-    pub fn actuate<'info>(
-        context: Context<'info, Mint<'info>>,
-        params: MintParams,
-    ) -> Result<()> {
-        // Build MintToCollectionV1 instruction data
-        let args = MintToCollectionV1InstructionArgs {
-            metadata: MetadataArgs {
-                name: "BURGER".to_string(),
-                symbol: "BURG".to_string(),
-                uri: params.uri,
-                creators: vec![Creator {
-                    address: context.accounts.collection_authority.key(),
-                    verified: false,
-                    share: 100,
-                }],
-                seller_fee_basis_points: 0,
-                primary_sale_happened: false,
-                is_mutable: false,
-                edition_nonce: Some(0),
-                uses: None,
-                collection: Some(Collection {
-                    verified: false,
-                    key: context.accounts.collection_mint.key(),
-                }),
-                token_program_version: TokenProgramVersion::Original,
-                token_standard: Some(TokenStandard::NonFungible),
-            },
-        };
+    let mut data = MINT_TO_COLLECTION_V1_DISCRIMINATOR.to_vec();
+    args.serialize(&mut data)?;
 
-        let mut data = MINT_TO_COLLECTION_V1_DISCRIMINATOR.to_vec();
-        args.serialize(&mut data)?;
+    // Build account metas matching MintToCollectionV1 instruction layout
+    let mut accounts = Vec::with_capacity(16);
+    accounts.push(AccountMeta::new(
+        context.accounts.tree_authority.key(),
+        false,
+    ));
+    accounts.push(AccountMeta::new_readonly(
+        context.accounts.leaf_owner.key(),
+        false,
+    ));
+    accounts.push(AccountMeta::new_readonly(
+        context.accounts.leaf_delegate.key(),
+        false,
+    ));
+    accounts.push(AccountMeta::new(context.accounts.merkle_tree.key(), false));
+    accounts.push(AccountMeta::new_readonly(
+        context.accounts.payer.key(),
+        true,
+    ));
+    accounts.push(AccountMeta::new_readonly(
+        context.accounts.tree_delegate.key(),
+        true,
+    ));
+    accounts.push(AccountMeta::new_readonly(
+        context.accounts.collection_authority.key(),
+        true,
+    ));
+    // collection_authority_record_pda - pass as-is
+    accounts.push(AccountMeta::new_readonly(
+        context.accounts.collection_authority_record_pda.key(),
+        false,
+    ));
+    accounts.push(AccountMeta::new_readonly(
+        context.accounts.collection_mint.key(),
+        false,
+    ));
+    accounts.push(AccountMeta::new(
+        context.accounts.collection_metadata.key(),
+        false,
+    ));
+    accounts.push(AccountMeta::new_readonly(
+        context.accounts.edition_account.key(),
+        false,
+    ));
+    accounts.push(AccountMeta::new_readonly(
+        context.accounts.bubblegum_signer.key(),
+        false,
+    ));
+    accounts.push(AccountMeta::new_readonly(
+        context.accounts.log_wrapper.key(),
+        false,
+    ));
+    accounts.push(AccountMeta::new_readonly(
+        context.accounts.compression_program.key(),
+        false,
+    ));
+    accounts.push(AccountMeta::new_readonly(
+        context.accounts.token_metadata_program.key(),
+        false,
+    ));
+    accounts.push(AccountMeta::new_readonly(
+        context.accounts.system_program.key(),
+        false,
+    ));
 
-        // Build account metas matching MintToCollectionV1 instruction layout
-        let mut accounts = Vec::with_capacity(16);
-        accounts.push(AccountMeta::new(
-            context.accounts.tree_authority.key(),
-            false,
-        ));
-        accounts.push(AccountMeta::new_readonly(
-            context.accounts.leaf_owner.key(),
-            false,
-        ));
-        accounts.push(AccountMeta::new_readonly(
-            context.accounts.leaf_delegate.key(),
-            false,
-        ));
-        accounts.push(AccountMeta::new(context.accounts.merkle_tree.key(), false));
-        accounts.push(AccountMeta::new_readonly(
-            context.accounts.payer.key(),
-            true,
-        ));
-        accounts.push(AccountMeta::new_readonly(
-            context.accounts.tree_delegate.key(),
-            true,
-        ));
-        accounts.push(AccountMeta::new_readonly(
-            context.accounts.collection_authority.key(),
-            true,
-        ));
-        // collection_authority_record_pda — pass as-is
-        accounts.push(AccountMeta::new_readonly(
-            context.accounts.collection_authority_record_pda.key(),
-            false,
-        ));
-        accounts.push(AccountMeta::new_readonly(
-            context.accounts.collection_mint.key(),
-            false,
-        ));
-        accounts.push(AccountMeta::new(
-            context.accounts.collection_metadata.key(),
-            false,
-        ));
-        accounts.push(AccountMeta::new_readonly(
-            context.accounts.edition_account.key(),
-            false,
-        ));
-        accounts.push(AccountMeta::new_readonly(
-            context.accounts.bubblegum_signer.key(),
-            false,
-        ));
-        accounts.push(AccountMeta::new_readonly(
-            context.accounts.log_wrapper.key(),
-            false,
-        ));
-        accounts.push(AccountMeta::new_readonly(
-            context.accounts.compression_program.key(),
-            false,
-        ));
-        accounts.push(AccountMeta::new_readonly(
-            context.accounts.token_metadata_program.key(),
-            false,
-        ));
-        accounts.push(AccountMeta::new_readonly(
-            context.accounts.system_program.key(),
-            false,
-        ));
+    let instruction = Instruction {
+        program_id: MPL_BUBBLEGUM_ID,
+        accounts,
+        data,
+    };
 
-        let instruction = Instruction {
-            program_id: MPL_BUBBLEGUM_ID,
-            accounts,
-            data,
-        };
+    // Gather all account infos for the CPI
+    let account_infos = vec![
+        context.accounts.bubblegum_program.to_account_info(),
+        context.accounts.tree_authority.to_account_info(),
+        context.accounts.leaf_owner.to_account_info(),
+        context.accounts.leaf_delegate.to_account_info(),
+        context.accounts.merkle_tree.to_account_info(),
+        context.accounts.payer.to_account_info(),
+        context.accounts.tree_delegate.to_account_info(),
+        context.accounts.collection_authority.to_account_info(),
+        context
+            .accounts
+            .collection_authority_record_pda
+            .to_account_info(),
+        context.accounts.collection_mint.to_account_info(),
+        context.accounts.collection_metadata.to_account_info(),
+        context.accounts.edition_account.to_account_info(),
+        context.accounts.bubblegum_signer.to_account_info(),
+        context.accounts.log_wrapper.to_account_info(),
+        context.accounts.compression_program.to_account_info(),
+        context.accounts.token_metadata_program.to_account_info(),
+        context.accounts.system_program.to_account_info(),
+    ];
 
-        // Gather all account infos for the CPI
-        let account_infos = vec![
-            context.accounts.bubblegum_program.to_account_info(),
-            context.accounts.tree_authority.to_account_info(),
-            context.accounts.leaf_owner.to_account_info(),
-            context.accounts.leaf_delegate.to_account_info(),
-            context.accounts.merkle_tree.to_account_info(),
-            context.accounts.payer.to_account_info(),
-            context.accounts.tree_delegate.to_account_info(),
-            context.accounts.collection_authority.to_account_info(),
-            context.accounts.collection_authority_record_pda.to_account_info(),
-            context.accounts.collection_mint.to_account_info(),
-            context.accounts.collection_metadata.to_account_info(),
-            context.accounts.edition_account.to_account_info(),
-            context.accounts.bubblegum_signer.to_account_info(),
-            context.accounts.log_wrapper.to_account_info(),
-            context.accounts.compression_program.to_account_info(),
-            context.accounts.token_metadata_program.to_account_info(),
-            context.accounts.system_program.to_account_info(),
-        ];
+    invoke(&instruction, &account_infos)?;
 
-        invoke(&instruction, &account_infos)?;
-
-        Ok(())
-    }
+    Ok(())
 }

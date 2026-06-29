@@ -11,6 +11,16 @@ use {
     solana_signer::Signer,
 };
 
+/// Decimals configured by the program's `mint::decimals` constraint in
+/// `CreateTokenAccountConstraints`.
+const MINT_DECIMALS: u32 = 9;
+
+/// Converts a whole-token (major unit) count to minor units, the form the
+/// program's `mint_token` handler takes amounts in.
+fn to_minor_units(major_units: u64) -> u64 {
+    major_units.checked_mul(10u64.pow(MINT_DECIMALS)).unwrap()
+}
+
 fn metadata_program_id() -> Pubkey {
     "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
         .parse()
@@ -85,7 +95,7 @@ fn test_create_token() {
             token_uri: "https://example.com/token.json".to_string(),
         }
         .data(),
-        token_minter::accounts::CreateToken {
+        token_minter::accounts::CreateTokenAccountConstraints {
             payer: payer.pubkey(),
             mint_account: mint_keypair.pubkey(),
             metadata_account,
@@ -132,7 +142,7 @@ fn test_create_and_mint_tokens() {
             token_uri: "https://example.com/token.json".to_string(),
         }
         .data(),
-        token_minter::accounts::CreateToken {
+        token_minter::accounts::CreateTokenAccountConstraints {
             payer: payer.pubkey(),
             mint_account: mint_keypair.pubkey(),
             metadata_account,
@@ -151,14 +161,17 @@ fn test_create_and_mint_tokens() {
     )
     .unwrap();
 
-    // 2. Mint 100 tokens
+    // 2. Mint 100 tokens. The handler takes minor units.
     svm.expire_blockhash();
     let ata = derive_ata(&payer.pubkey(), &mint_keypair.pubkey());
 
     let mint_ix = Instruction::new_with_bytes(
         program_id,
-        &token_minter::instruction::MintToken { amount: 100 }.data(),
-        token_minter::accounts::MintToken {
+        &token_minter::instruction::MintToken {
+            amount: to_minor_units(100),
+        }
+        .data(),
+        token_minter::accounts::MintTokenAccountConstraints {
             mint_authority: payer.pubkey(),
             recipient: payer.pubkey(),
             mint_account: mint_keypair.pubkey(),
@@ -177,7 +190,7 @@ fn test_create_and_mint_tokens() {
     )
     .unwrap();
 
-    // Verify: 100 * 10^9 = 100_000_000_000 tokens minted (9 decimals)
+    // Verify 100 tokens minted (in minor units)
     let balance = get_token_account_balance(&svm, &ata).unwrap();
-    assert_eq!(balance, 100_000_000_000, "Should have 100 tokens");
+    assert_eq!(balance, to_minor_units(100), "Should have 100 tokens");
 }

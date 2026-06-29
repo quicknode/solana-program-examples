@@ -9,7 +9,7 @@ use quasar_lang::{
 #[cfg(test)]
 mod tests;
 
-declare_id!("22222222222222222222222222222222222222222222");
+declare_id!("A9rxKS84ZoJVyeTfQbCEfxME2vvAM4uwSMjkmhR5XWb1");
 
 pub struct Token2022Program;
 impl Id for Token2022Program {
@@ -19,20 +19,20 @@ impl Id for Token2022Program {
     ]);
 }
 
-/// Creates a mint with the PermanentDelegate extension — a delegate that
+/// Creates a mint with the PermanentDelegate extension - a delegate that
 /// can transfer or burn any tokens from any account of this mint.
 #[program]
 mod quasar_permanent_delegate {
     use super::*;
 
     #[instruction(discriminator = 0)]
-    pub fn initialize(ctx: Ctx<Initialize>) -> Result<(), ProgramError> {
+    pub fn initialize(ctx: Ctx<InitializeAccountConstraints>) -> Result<(), ProgramError> {
         handle_initialize(&mut ctx.accounts)
     }
 }
 
 #[derive(Accounts)]
-pub struct Initialize {
+pub struct InitializeAccountConstraints {
     #[account(mut)]
     pub payer: Signer,
     #[account(mut)]
@@ -42,7 +42,7 @@ pub struct Initialize {
 }
 
 #[inline(always)]
-fn handle_initialize(accounts: &mut Initialize) -> Result<(), ProgramError> {
+fn handle_initialize(accounts: &mut InitializeAccountConstraints) -> Result<(), ProgramError> {
     // 165 (base) + 1 (account type) + 4 (TLV header) + 32 (PermanentDelegate data) = 202 bytes
     let mint_size: u64 = 202;
     let lamports = Rent::get()?.try_minimum_balance(mint_size as usize)?;

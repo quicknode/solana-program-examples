@@ -1,5 +1,6 @@
 use {
     crate::{
+        error::AmmError,
         state::{Config, PoolConfig},
         ConfigPda, LiquidityMintPda, PoolAuthorityPda, PoolPda,
     },
@@ -8,7 +9,7 @@ use {
 };
 
 #[derive(Accounts)]
-pub struct WithdrawLiquidityAccounts {
+pub struct WithdrawLiquidityAccountConstraints {
     #[account(address = ConfigPda::seeds())]
     pub config: Account<Config>,
     #[account(address = PoolPda::seeds(config.address(), mint_a.address(), mint_b.address()))]
@@ -58,9 +59,11 @@ pub struct WithdrawLiquidityAccounts {
 
 #[inline(always)]
 pub fn handle_withdraw_liquidity(
-    accounts: &mut WithdrawLiquidityAccounts,
+    accounts: &mut WithdrawLiquidityAccountConstraints,
     amount: u64,
-    bumps: &WithdrawLiquidityAccountsBumps,
+    minimum_token_a_out: u64,
+    minimum_token_b_out: u64,
+    bumps: &WithdrawLiquidityAccountConstraintsBumps,
 ) -> Result<(), ProgramError> {
     // Seed order matches PoolAuthorityPda: [b"authority", config, mint_a, mint_b, bump].
     let bump = [bumps.pool_authority];
@@ -83,29 +86,44 @@ pub fn handle_withdraw_liquidity(
         .pool_a
         .amount()
         .checked_sub(accounts.pool_config.admin_fees_owed_a())
-        .ok_or(ProgramError::ArithmeticOverflow)?;
+        .ok_or(AmmError::MathOverflow)?;
     let effective_pool_b = accounts
         .pool_b
         .amount()
         .checked_sub(accounts.pool_config.admin_fees_owed_b())
-        .ok_or(ProgramError::ArithmeticOverflow)?;
+        .ok_or(AmmError::MathOverflow)?;
     let total_liquidity = accounts
         .liquidity_provider_mint
         .supply()
         .checked_add(crate::MINIMUM_LIQUIDITY)
-        .ok_or(ProgramError::ArithmeticOverflow)?;
+        .ok_or(AmmError::MathOverflow)?;
 
-    let amount_a = (amount as u128)
+    let amount_a_u128 = (amount as u128)
         .checked_mul(effective_pool_a as u128)
-        .ok_or(ProgramError::ArithmeticOverflow)?
+        .ok_or(AmmError::MathOverflow)?
         .checked_div(total_liquidity as u128)
-        .ok_or(ProgramError::ArithmeticOverflow)? as u64;
+        .ok_or(AmmError::MathOverflow)?;
+    let amount_a = u64::try_from(amount_a_u128).map_err(|_| AmmError::MathOverflow)?;
 
-    let amount_b = (amount as u128)
+    let amount_b_u128 = (amount as u128)
         .checked_mul(effective_pool_b as u128)
-        .ok_or(ProgramError::ArithmeticOverflow)?
+        .ok_or(AmmError::MathOverflow)?
         .checked_div(total_liquidity as u128)
-        .ok_or(ProgramError::ArithmeticOverflow)? as u64;
+        .ok_or(AmmError::MathOverflow)?;
+    let amount_b = u64::try_from(amount_b_u128).map_err(|_| AmmError::MathOverflow)?;
+
+    // LP's slippage protection: if the pool ratio shifted between the LP
+    // quoting their exit and this transaction landing (e.g. a big swap
+    // drained one side), the proportional share comes back with a different
+    // mix than expected. Revert so the LP can requote.
+    require!(
+        amount_a >= minimum_token_a_out,
+        AmmError::WithdrawalBelowMinimum
+    );
+    require!(
+        amount_b >= minimum_token_b_out,
+        AmmError::WithdrawalBelowMinimum
+    );
 
     // Transfer token A from pool to depositor.
     accounts.token_program

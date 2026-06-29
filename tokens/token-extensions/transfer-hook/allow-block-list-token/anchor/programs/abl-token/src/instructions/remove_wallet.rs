@@ -3,7 +3,7 @@ use anchor_lang::prelude::*;
 use crate::{ABWallet, Config};
 
 #[derive(Accounts)]
-pub struct RemoveWallet<'info> {
+pub struct RemoveWalletAccountConstraints<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
 
@@ -23,7 +23,7 @@ pub struct RemoveWallet<'info> {
     pub system_program: Program<'info, System>,
 }
 
-impl RemoveWallet<'_> {
+impl RemoveWalletAccountConstraints<'_> {
     pub fn remove_wallet(&mut self) -> Result<()> {
         Ok(())
     }

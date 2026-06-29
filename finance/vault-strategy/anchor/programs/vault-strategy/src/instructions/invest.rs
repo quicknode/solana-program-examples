@@ -8,7 +8,8 @@ use mock_swap_router::{
 };
 
 use crate::error::VaultError;
-use crate::state::Strategy;
+use crate::oracle::{load_price, PYTH_PRICE_PRECISION};
+use crate::state::{AssetConfig, Strategy};
 
 #[derive(Accounts)]
 pub struct InvestAccountConstraints<'info> {
@@ -18,16 +19,30 @@ pub struct InvestAccountConstraints<'info> {
     #[account(
         mut,
         has_one = manager,
+        has_one = usdc_mint @ VaultError::InvalidUsdcMint,
         seeds = [b"strategy", strategy.manager.as_ref()],
         bump = strategy.bump
     )]
-    pub strategy: Account<'info, Strategy>,
+    pub strategy: Box<Account<'info, Strategy>>,
 
-    pub usdc_mint: InterfaceAccount<'info, Mint>,
+    /// The asset to buy. Validated against its registered config below.
+    #[account(
+        constraint = asset_config.strategy == strategy.key() @ VaultError::InvalidAssetAccount,
+        constraint = asset_config.mint == asset_mint.key() @ VaultError::AssetNotFound,
+        constraint = asset_config.vault == vault_asset.key() @ VaultError::InvalidAssetAccount,
+    )]
+    pub asset_config: Box<Account<'info, AssetConfig>>,
 
-    /// The asset mint to buy — must be asset_mint_a or asset_mint_b
+    pub usdc_mint: Box<InterfaceAccount<'info, Mint>>,
+
     #[account(mut)]
-    pub asset_mint: InterfaceAccount<'info, Mint>,
+    pub asset_mint: Box<InterfaceAccount<'info, Mint>>,
+
+    /// CHECK: Pyth feed - validated against the asset's registered feed
+    #[account(
+        constraint = price_feed.key() == asset_config.price_feed @ VaultError::InvalidPriceFeed
+    )]
+    pub price_feed: UncheckedAccount<'info>,
 
     #[account(
         mut,
@@ -35,16 +50,15 @@ pub struct InvestAccountConstraints<'info> {
         associated_token::authority = strategy,
         associated_token::token_program = token_program
     )]
-    pub vault_usdc: InterfaceAccount<'info, TokenAccount>,
+    pub vault_usdc: Box<InterfaceAccount<'info, TokenAccount>>,
 
-    /// Vault's asset token account for the asset being bought
     #[account(
         mut,
         associated_token::mint = asset_mint,
         associated_token::authority = strategy,
         associated_token::token_program = token_program
     )]
-    pub vault_asset: InterfaceAccount<'info, TokenAccount>,
+    pub vault_asset: Box<InterfaceAccount<'info, TokenAccount>>,
 
     pub asset_rate: Account<'info, AssetRate>,
 
@@ -60,6 +74,9 @@ pub struct InvestAccountConstraints<'info> {
     #[account(mut)]
     pub router_authority: UncheckedAccount<'info>,
 
+    #[account(
+        constraint = swap_router_program.key() == strategy.swap_router @ VaultError::InvalidSwapRouter
+    )]
     pub swap_router_program: Program<'info, mock_swap_router::program::MockSwapRouter>,
 
     pub associated_token_program: Program<'info, AssociatedToken>,
@@ -67,22 +84,35 @@ pub struct InvestAccountConstraints<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handle_invest(
-    context: Context<InvestAccountConstraints>,
-    usdc_amount: u64,
-    minimum_asset_out: u64,
-) -> Result<()> {
+pub fn handle_invest(context: Context<InvestAccountConstraints>, usdc_amount: u64) -> Result<()> {
     let strategy = &context.accounts.strategy;
-
-    // Validate asset mint is one of the two basket assets
-    require!(
-        context.accounts.asset_mint.key() == strategy.asset_mint_a
-            || context.accounts.asset_mint.key() == strategy.asset_mint_b,
-        VaultError::InvalidAssetMint
-    );
-
     let manager_key = strategy.manager;
     let strategy_bump = strategy.bump;
+    let max_slippage_bps = strategy.max_slippage_bps;
+
+    // Slippage floor anchored to the oracle, not to a manager-supplied number:
+    // expected_out = usdc_amount * 10^8 / price, then allow it to fall short by at
+    // most max_slippage_bps. The router rejects any fill below this.
+    let now = Clock::get()?.unix_timestamp;
+    let price = load_price(
+        &context.accounts.price_feed,
+        &context.accounts.asset_config.price_feed,
+        now,
+    )?;
+
+    let expected_out = (usdc_amount as u128)
+        .checked_mul(PYTH_PRICE_PRECISION)
+        .ok_or(VaultError::MathOverflow)?
+        .checked_div(price)
+        .ok_or(VaultError::MathOverflow)?;
+    let minimum_asset_out: u64 = expected_out
+        .checked_mul((10_000 - max_slippage_bps) as u128)
+        .ok_or(VaultError::MathOverflow)?
+        .checked_div(10_000)
+        .ok_or(VaultError::MathOverflow)?
+        .try_into()
+        .map_err(|_| VaultError::MathOverflow)?;
+
     let signer_seeds: &[&[&[u8]]] = &[&[b"strategy", manager_key.as_ref(), &[strategy_bump]]];
 
     let cpi_accounts = RouterSwapAccounts {

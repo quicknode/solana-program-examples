@@ -31,6 +31,35 @@ pub struct Market {
 
     pub tick_size: u64,
 
+    // Two-lot model (mirrors Serum/Openbook): both sides of the book are
+    // denominated in their respective lots rather than raw token units.
+    // This makes `price` and `quantity` human-readable regardless of the
+    // individual mints' decimal counts.
+    //
+    //   raw_base  = quantity  × base_lot_size
+    //   raw_quote = quantity  × price × quote_lot_size
+    //
+    // Choose:
+    //   base_lot_size  = 10^max(d_base  − d_quote, 0)
+    //   quote_lot_size = 10^max(d_quote − d_base,  0)
+    //
+    // so that exactly one of the two is > 1 (or both are 1 when d_base == d_quote).
+    // With those values `price` equals the human-readable quote/base rate and
+    // `tick_size = 1` is a single atomic increment.
+    //
+    // Examples:
+    //   NVDAx (8 dec) / USDC (6 dec):  base_lot_size=100, quote_lot_size=1
+    //     price=130, qty=1 lot  → 130 × 1 × 1 = 130 raw USDC per 100 raw NVDAx
+    //     = $130.00 per NVDAx share ✓
+    //
+    //   WBTC (8 dec) / HD-USDC (18 dec): base_lot_size=1, quote_lot_size=10^10
+    //     price=60_000, qty=1 satoshi-lot → 60_000 × 1 × 10^10 = 6×10^14 raw HD-USDC
+    //     = $60,000 per BTC ✓
+    pub base_lot_size: u64,
+
+    // Raw quote-token units per quote lot. See base_lot_size comment above.
+    pub quote_lot_size: u64,
+
     pub min_order_size: u64,
 
     pub is_active: bool,

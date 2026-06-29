@@ -16,7 +16,7 @@ use crate::{get_extra_account_metas, get_meta_list_size, Mode, META_LIST_ACCOUNT
 
 #[derive(Accounts)]
 #[instruction(args: InitMintArgs)]
-pub struct InitMint<'info> {
+pub struct InitMintAccountConstraints<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
 
@@ -50,7 +50,7 @@ pub struct InitMint<'info> {
     pub token_program: Program<'info, Token2022>,
 }
 
-impl InitMint<'_> {
+impl InitMintAccountConstraints<'_> {
     pub fn init_mint(&mut self, args: InitMintArgs) -> Result<()> {
         let cpi_accounts = TokenMetadataInitialize {
             program_id: self.token_program.to_account_info(),

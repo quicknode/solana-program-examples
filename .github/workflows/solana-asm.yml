@@ -50,7 +50,14 @@ jobs:
           # anything containing the substring "asm" (e.g. "wasm/", "plasma/") can
           # never enter the build list.
           function get_projects() {
-            find . -type d -name "asm" | grep -vE "$ignore_pattern" | sort
+            # An empty .ghaignore makes ignore_pattern empty, and `grep -vE ""`
+            # matches everything, silently emptying the project list - only
+            # filter when there is actually a pattern.
+            if [[ -n "$ignore_pattern" ]]; then
+              find . -type d -name "asm" | grep -vE "$ignore_pattern" | sort
+            else
+              find . -type d -name "asm" | sort
+            fi
           }
 
           # Filter the full project list down to projects touched by the given
@@ -129,17 +136,6 @@ jobs:
       failed_projects: ${{ steps.set-failed.outputs.failed_projects }}
     steps:
       - uses: actions/checkout@v4
-      # The previous `npm install --global pnpm` step picked up a pnpm release that
-      # treats ignored build scripts (bufferutil, utf-8-validate) as a hard error and
-      # fails `pnpm install --frozen-lockfile`. The other workflows (anchor, native,
-      # pinocchio, typescript) use pnpm/action-setup@v4, which pins a known-good pnpm
-      # release (10.33.0 at time of writing) that only warns. Match that here.
-      - uses: pnpm/action-setup@v4
-      - name: Use Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "lts/*"
-          check-latest: true
       - name: Setup build environment
         id: setup
         run: |
@@ -151,31 +147,22 @@ jobs:
             echo "Building and Testing $project with Solana $solana_version"
             cd "$project" || return 1
 
-            # Install dependencies
-            if ! pnpm install --frozen-lockfile; then
-              echo "::error::pnpm install failed for $project"
-              echo "$project: pnpm install failed with $solana_version" >> $GITHUB_WORKSPACE/failed_projects.txt
+            # Build the .so into deploy/: the Rust + LiteSVM tests embed it at
+            # compile time via include_bytes!, so the tests cannot even compile
+            # without a build, and a stale .so would test old code.
+            if ! sbpf build; then
+              echo "::error::sbpf build failed for $project"
+              echo "$project: sbpf build failed with $solana_version" >> $GITHUB_WORKSPACE/failed_projects.txt
               cd - > /dev/null
               return 1
             fi
 
-            # Build and Test
-            if ! pnpm build-and-test; then
-              echo "::error::build-and-test failed for $project"
-              echo "$project: build-and-test failed with $solana_version" >> $GITHUB_WORKSPACE/failed_projects.txt
+            # Run the Rust + LiteSVM tests (inline in src/lib.rs)
+            if ! cargo test --manifest-path=./Cargo.toml; then
+              echo "::error::tests failed for $project"
+              echo "$project: tests failed with $solana_version" >> $GITHUB_WORKSPACE/failed_projects.txt
               cd - > /dev/null
               return 1
-            fi
-
-          # Run Rust unit tests
-            if [ -d "program" ]; then
-              echo "Running Rust unit tests for $project"
-              if ! cargo test --manifest-path=./program/Cargo.toml; then
-                echo "::error::Rust unit tests failed for $project"
-                echo "$project: Rust unit tests failed with $solana_version" >> $GITHUB_WORKSPACE/failed_projects.txt
-                cd - > /dev/null
-                return 1
-              fi
             fi
 
             echo "Build and tests succeeded for $project with $solana_version version."
@@ -211,9 +198,6 @@ jobs:
 
           # Make the script executable
           chmod +x build_and_test.sh
-
-          # pnpm is installed by pnpm/action-setup@v4 above. Avoid `npm install --global pnpm`
-          # here because that resolves to pnpm 10+, which errors on ignored build scripts.
 
           # Install sbpf assembler
           cargo install --git https://github.com/blueshift-gg/sbpf.git

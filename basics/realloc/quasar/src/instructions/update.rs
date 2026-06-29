@@ -7,7 +7,7 @@ use {
 /// Quasar's `set_inner` automatically handles realloc when the new message
 /// is longer than the current account data. No explicit realloc needed.
 #[derive(Accounts)]
-pub struct Update {
+pub struct UpdateAccountConstraints {
     #[account(mut)]
     pub payer: Signer,
     #[account(mut)]
@@ -16,7 +16,7 @@ pub struct Update {
 }
 
 #[inline(always)]
-pub fn handle_update(accounts: &mut Update, message: &str) -> Result<(), ProgramError> {
+pub fn handle_update(accounts: &mut UpdateAccountConstraints, message: &str) -> Result<(), ProgramError> {
     let rent = Rent::get()?;
     accounts.message_account.set_inner(
         MessageAccountInner { message },

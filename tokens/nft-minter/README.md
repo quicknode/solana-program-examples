@@ -10,4 +10,4 @@ The way to do that is to remove the mint authority from the mint:
 
 Setting the mint authority to `null` permanently disables minting. **This is irreversible.**
 
-You can do this manually, or use Metaplex to mark the NFT as a Limited Edition. When you use an Edition — such as a Master Edition — for your NFT, you get extra Metaplex metadata, and the mint authority is delegated to the Master Edition account. That delegation effectively disables future minting. Be sure you understand the trade-offs of letting the Master Edition account hold the mint authority instead of setting it permanently to `null`.
+You can do this manually, or use Metaplex to mark the NFT as a Limited Edition. When you use an Edition - such as a Master Edition - for your NFT, you get extra Metaplex metadata, and the mint authority is delegated to the Master Edition account. That delegation effectively disables future minting. Be sure you understand the trade-offs of letting the Master Edition account hold the mint authority instead of setting it permanently to `null`.

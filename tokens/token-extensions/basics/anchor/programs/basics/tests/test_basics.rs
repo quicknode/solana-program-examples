@@ -54,7 +54,7 @@ fn test_create_token_and_mint_and_transfer() {
             token_name: token_name.clone(),
         }
         .data(),
-        anchor::accounts::CreateToken {
+        anchor::accounts::CreateTokenAccountConstraints {
             signer: payer.pubkey(),
             mint,
             system_program: system_program::id(),
@@ -77,7 +77,7 @@ fn test_create_token_and_mint_and_transfer() {
     let create_ata_ix = Instruction::new_with_bytes(
         program_id,
         &anchor::instruction::CreateAssociatedTokenAccount {}.data(),
-        anchor::accounts::CreateAssociatedTokenAccount {
+        anchor::accounts::CreateAssociatedTokenAccountAccountConstraints {
             signer: payer.pubkey(),
             mint,
             token_account: payer_ata,
@@ -107,7 +107,7 @@ fn test_create_token_and_mint_and_transfer() {
             amount: mint_amount,
         }
         .data(),
-        anchor::accounts::MintToken {
+        anchor::accounts::MintTokenAccountConstraints {
             signer: payer.pubkey(),
             mint,
             receiver: payer_ata,
@@ -139,7 +139,7 @@ fn test_create_token_and_mint_and_transfer() {
             amount: transfer_amount,
         }
         .data(),
-        anchor::accounts::TransferToken {
+        anchor::accounts::TransferTokenAccountConstraints {
             signer: payer.pubkey(),
             from: payer_ata,
             to: receiver.pubkey(),

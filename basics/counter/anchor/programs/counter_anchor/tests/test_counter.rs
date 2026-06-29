@@ -40,7 +40,7 @@ fn test_initialize_counter() {
     let instruction = Instruction::new_with_bytes(
         counter_anchor::id(),
         &counter_anchor::instruction::InitializeCounter {}.data(),
-        counter_anchor::accounts::InitializeCounter {
+        counter_anchor::accounts::InitializeCounterAccountConstraints {
             payer: payer.pubkey(),
             counter: counter_keypair.pubkey(),
             system_program: system_program::id(),
@@ -69,7 +69,7 @@ fn test_increment_counter() {
     let init_ix = Instruction::new_with_bytes(
         counter_anchor::id(),
         &counter_anchor::instruction::InitializeCounter {}.data(),
-        counter_anchor::accounts::InitializeCounter {
+        counter_anchor::accounts::InitializeCounterAccountConstraints {
             payer: payer.pubkey(),
             counter: counter_keypair.pubkey(),
             system_program: system_program::id(),
@@ -88,7 +88,7 @@ fn test_increment_counter() {
     let inc_ix = Instruction::new_with_bytes(
         counter_anchor::id(),
         &counter_anchor::instruction::Increment {}.data(),
-        counter_anchor::accounts::Increment {
+        counter_anchor::accounts::IncrementAccountConstraints {
             counter: counter_keypair.pubkey(),
         }
         .to_account_metas(None),
@@ -108,7 +108,7 @@ fn test_increment_counter_again() {
     let init_ix = Instruction::new_with_bytes(
         counter_anchor::id(),
         &counter_anchor::instruction::InitializeCounter {}.data(),
-        counter_anchor::accounts::InitializeCounter {
+        counter_anchor::accounts::InitializeCounterAccountConstraints {
             payer: payer.pubkey(),
             counter: counter_keypair.pubkey(),
             system_program: system_program::id(),
@@ -128,7 +128,7 @@ fn test_increment_counter_again() {
         let inc_ix = Instruction::new_with_bytes(
             counter_anchor::id(),
             &counter_anchor::instruction::Increment {}.data(),
-            counter_anchor::accounts::Increment {
+            counter_anchor::accounts::IncrementAccountConstraints {
                 counter: counter_keypair.pubkey(),
             }
             .to_account_metas(None),

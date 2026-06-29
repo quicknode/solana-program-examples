@@ -1,51 +1,73 @@
-# Quicknode Solana Program Examples
+# Solana Program Examples
 
-> A fork of the [Solana Foundation program examples](https://github.com/solana-developers/program-examples) with current versions, more [programs](https://solana.com/docs/terminology#program), and additional frameworks.
+![Quicknode Solana Program Examples](assets/banner.png?v=1)
+
+Working, tested, up-to-date examples of common Solana programs - maintained by [Quicknode](https://quicknode.com). Each example compiles and passes CI on the current Solana and Anchor toolchain, and uses current defaults like the multiple files layout and LiteSVM.
 
 [![Anchor](../../actions/workflows/anchor.yml/badge.svg)](../../actions/workflows/anchor.yml) [![Quasar](../../actions/workflows/quasar.yml/badge.svg)](../../actions/workflows/quasar.yml) [![Pinocchio](../../actions/workflows/pinocchio.yml/badge.svg)](../../actions/workflows/pinocchio.yml) [![Native](../../actions/workflows/native.yml/badge.svg)](../../actions/workflows/native.yml) [![ASM](../../actions/workflows/solana-asm.yml/badge.svg)](../../actions/workflows/solana-asm.yml)
 
 Each example is available in one or more of the following frameworks:
 
-- [⚓ Anchor](https://www.anchor-lang.com/) — the most popular framework for Solana development. Build with `anchor build`, test with `pnpm test` as defined in `Anchor.toml`.
-- [💫 Quasar](https://quasar-lang.com/docs) — a newer, more performant framework with Anchor-compatible ergonomics. Run `pnpm test` to execute tests.
-- [🤥 Pinocchio](https://github.com/anza-xyz/pinocchio) — a zero-copy, zero-allocation library for Solana programs. Run `pnpm test` to execute tests.
-- [🦀 Native Rust](https://docs.anza.xyz/) — vanilla Rust using Solana's native crates. Run `pnpm test` to execute tests.
-- [🧬 ASM](https://github.com/blueshift-gg/sbpf) — hand-written sBPF assembly built with the `sbpf` toolchain. Run `pnpm build-and-test` to build and test.
+- [⚓ Anchor](https://www.anchor-lang.com/) - the most popular framework for Solana development. Build with `anchor build`, test with `cargo test` as defined in `Anchor.toml`.
+- [💫 Quasar](https://quasar-lang.com/docs) - a newer, more performant framework with Anchor-compatible ergonomics. Build with `quasar build`, test with `quasar test`.
+- [🤥 Pinocchio](https://github.com/anza-xyz/pinocchio) - a zero-copy, zero-allocation library for Solana programs. Build with `cargo build-sbf --manifest-path=./program/Cargo.toml`, test with `cargo test --manifest-path=./program/Cargo.toml`.
+- [🦀 Native Rust](https://docs.anza.xyz/) - vanilla Rust using Solana's native crates. Build with `cargo build-sbf --manifest-path=./program/Cargo.toml`, test with `cargo test --manifest-path=./program/Cargo.toml`.
+- [🧬 ASM](https://github.com/blueshift-gg/sbpf) - hand-written sBPF assembly built with the `sbpf` toolchain. Build with `sbpf build`, test with `cargo test`.
 
 > [!NOTE]
 > You don't need to write your own program for basic tasks like creating [accounts](https://solana.com/docs/terminology#account), transferring SOL, or minting tokens. These are handled by existing programs like the System Program and Token Program.
 
+Big thanks to Joe Caulfield and Solana Foundation for originally creating this repository!
+
+## Getting started
+
+You need [Rust](https://www.rust-lang.org/tools/install), [Solana CLI](https://docs.anza.xyz/cli/install), [Anchor](https://www.anchor-lang.com/docs/installation), and [pnpm](https://pnpm.io/installation) installed. Clone the repo, `cd` into any example directory, and run `pnpm test`.
+
+To deploy to mainnet or devnet you'll need an RPC endpoint. [Quicknode](https://quicknode.com) provides free and paid Solana endpoints - create one and set it as your cluster in `Anchor.toml` or with `solana config set --url <your-endpoint>`.
+
 ## Financial Software
+
+The programs below implement the core primitives of Solana DeFi: peer-to-peer trading (escrow), decentralized exchanges (AMM and order book), fundraising, yield-bearing vaults, and prediction markets. These are the building blocks used by protocols like Raydium, Orca, Openbook, and Kamino.
 
 ### Escrow
 
-**Start here — this is the best first finance program to learn on Solana.** An escrow is a neutral holding account that lets two people who don't trust each other trade safely. One person (the maker) deposits token A and specifies how much token B they want in return. When a second person (the taker) supplies that token B, the program hands each side what it was promised in a single transaction — so either the whole trade happens, or none of it does. This "all-or-nothing" swap is the core idea behind every onchain exchange, which is why it's the right place to begin.
+**Start here - the best first finance program to learn on Solana.** A neutral account that holds funds until both sides deliver, like a real-estate escrow or a lawyer's trust account. The maker deposits token A and names how much token B they want; when a taker supplies token B, the program swaps both in a single all-or-nothing transaction. This swap is the core idea behind every onchain exchange.
 
 [⚓ Anchor](./finance/escrow/anchor) [💫 Quasar](./finance/escrow/quasar) [🦀 Native](./finance/escrow/native)
 
+🎬 Video: [![Escrow video: you don't need a bootcamp - build a Solana program (smart contract) in 30 minutes](https://img.youtube.com/vi/B5eBWWQfQuM/0.jpg?v=1)](https://www.youtube.com/watch?v=B5eBWWQfQuM)
+
 ### Order Book based Exchange
 
-An order book is the list of buy and sell offers behind most exchanges. Buyers post **bids** (the price they'll pay), sellers post **asks** (the price they'll accept), and a trade happens when a bid and an ask meet. This program implements that idea: traders post limit orders at chosen prices, their tokens are locked in program-controlled vaults, and orders are matched against the opposite side using **price-time priority** (best price first, and for equal prices, whoever was there first). Trading fees collect in a dedicated fee vault, proceeds wait as unsettled balances, and traders withdraw them with `settle_funds`. A minimal teaching example of the mechanics behind exchanges like Openbook and Phoenix.
+A typical NYSE/NASDAQ-style order book-based exchange. Buyers post **bids** (the price they'll pay), sellers post **asks** (the price they'll accept), and a trade happens when a bid and an ask meet. The exchange operator collects fees from trading. Similar to popular Solana exchanges like Openbook and Phoenix.
 
 [⚓ Anchor](./finance/order-book/anchor)
 
+🎬 Video: [![How to make a crypto exchange on Solana](https://img.youtube.com/vi/ioFkpaKHXgg/0.jpg)](https://www.youtube.com/watch?v=ioFkpaKHXgg)
+
 ### AMM based Exchange
 
-An automated market maker (AMM) is an exchange with no order book. Instead of matching buyers with sellers, swaps fill instantly against a shared, onchain liquidity pool that other users fund — those users are **liquidity providers**, and they earn a cut of the trading fees in return. Prices are set algorithmically by the pool's balances and move to reflect demand: buying an asset shrinks its share of the pool and pushes its price up. This program lets anyone create a pool, deposit or withdraw liquidity, and swap one token for another, with fees paid to liquidity providers and slippage protection so a swap can't execute at a worse price than expected. This is how exchanges like Raydium and Orca work.
+An exchange with no order book: swaps fill instantly against a shared liquidity pool funded by **liquidity providers**, who earn a cut of the trading fees. Prices are set algorithmically by the pool's balances. Anyone can create a pool, add or remove liquidity, and swap tokens, with slippage protection on every trade. Similar to Solana exchanges like Raydium and Orca.
 
 [⚓ Anchor](./finance/token-swap/anchor) [💫 Quasar](./finance/token-swap/quasar)
 
 ### Token Fundraiser
 
-A crowdfunding campaign onchain. A creator opens a fundraiser by choosing which token they want to raise and a target amount. Contributors deposit that token into the fundraiser's account until the goal is reached — a simple introduction to collecting funds from many people into a single program-controlled account.
+Onchain crowdfunding, like Kickstarter or GoFundMe. A creator sets a target amount in a chosen token, and contributors deposit into the fundraiser's account until the goal is reached.
 
 [⚓ Anchor](./finance/token-fundraiser/anchor) [💫 Quasar](./finance/token-fundraiser/quasar)
 
 ### Vault Strategy
 
-A managed investment fund onchain. Investors deposit USDC and receive shares representing their slice of the fund. A manager allocates the pooled money across a basket of assets (here, stocks like TSLAx and NVDAx), and each share's value tracks the fund's net asset value — its total holdings divided by the number of shares. The manager earns a management fee over time, and investors withdraw a proportional, in-kind slice of the underlying assets. Demonstrates share minting, value-per-share pricing, fee accrual, and calling another program (CPI) to swap assets.
+A managed investment fund onchain, like an ETF or mutual fund. Investors deposit USDC for shares, a manager allocates the pool across a basket of assets (here, stocks like TSLAx and NVDAx), and each share's value tracks the fund's net asset value. The manager earns a management fee, and investors redeem a proportional slice of the underlying assets.
 
 [⚓ Anchor](./finance/vault-strategy/anchor)
+
+### Betting Market
+
+Parimutuel (pooled) prediction market - an admin opens an event with multiple outcomes, bettors stake tokens on an outcome, and at settlement the losing pool (minus a protocol fee) is split among winners in proportion to their stake.
+
+[⚓ Anchor](./finance/betting-market/anchor)
 
 ### Perpetual Futures
 
@@ -69,7 +91,7 @@ Store and retrieve data using Solana accounts.
 
 ### Counter
 
-Use a [PDA](https://solana.com/docs/terminology#program-derived-address-pda) to store global state — a counter that increments when called.
+Use a [PDA](https://solana.com/docs/terminology#program-derived-address-pda) to store global state - a counter that increments when called.
 
 [⚓ Anchor](./basics/counter/anchor) [💫 Quasar](./basics/counter/quasar) [🤥 Pinocchio](./basics/counter/pinocchio) [🦀 Native](./basics/counter/native)
 
@@ -99,7 +121,7 @@ Create new accounts on the blockchain.
 
 ### Cross-Program Invocation
 
-Call one program from another — the hand program invokes the lever program to toggle a switch.
+Call one program from another - the hand program invokes the lever program to toggle a switch.
 
 [⚓ Anchor](./basics/cross-program-invocation/anchor) [💫 Quasar](./basics/cross-program-invocation/quasar) [🦀 Native](./basics/cross-program-invocation/native)
 
@@ -147,7 +169,7 @@ Send SOL between two accounts.
 
 ### Pyth Price Feeds
 
-Finance programs often need real-world prices — what a dollar, a stock, or another token is worth right now. An **oracle** brings that offchain market data [onchain](https://solana.com/docs/terminology#onchain). [Pyth](https://pyth.network/) is an oracle that publishes low-latency prices from institutional sources, with each asset's price living in its own account called a price feed. This minimal example reads a feed and logs its price, confidence interval, and exponent — the building block a program like an AMM, a lending market, or a vault uses to value assets.
+An **oracle** brings real-world market prices - a dollar, a stock, a token - [onchain](https://solana.com/docs/terminology#onchain), like a Bloomberg terminal feeding live quotes. [Pyth](https://pyth.network/) publishes low-latency prices from institutional sources, each in its own price feed account. This example reads a feed and logs its price, confidence interval, and exponent - the building block an AMM, lending market, or vault uses to value assets.
 
 [⚓ Anchor](./basics/pyth/anchor) [💫 Quasar](./basics/pyth/quasar)
 
@@ -281,43 +303,43 @@ Create tokens with a built-in transfer fee.
 
 [⚓ Anchor](./tokens/token-extensions/transfer-fee/anchor) [💫 Quasar](./tokens/token-extensions/transfer-fee/quasar) [🦀 Native](./tokens/token-extensions/transfer-fee/native)
 
-### Transfer Hook — Hello World
+### Transfer Hook - Hello World
 
 A minimal transfer hook that executes custom logic on every token transfer.
 
 [⚓ Anchor](./tokens/token-extensions/transfer-hook/hello-world/anchor) [💫 Quasar](./tokens/token-extensions/transfer-hook/hello-world/quasar)
 
-### Transfer Hook — Counter
+### Transfer Hook - Counter
 
 Count how many times tokens have been transferred.
 
 [⚓ Anchor](./tokens/token-extensions/transfer-hook/counter/anchor) [💫 Quasar](./tokens/token-extensions/transfer-hook/counter/quasar)
 
-### Transfer Hook — Account Data as Seed
+### Transfer Hook - Account Data as Seed
 
 Use token account owner data as seeds to derive extra accounts in a transfer hook.
 
 [⚓ Anchor](./tokens/token-extensions/transfer-hook/account-data-as-seed/anchor) [💫 Quasar](./tokens/token-extensions/transfer-hook/account-data-as-seed/quasar)
 
-### Transfer Hook — Allow/Block List
+### Transfer Hook - Allow/Block List
 
 Restrict or allow token transfers using an onchain list managed by a list authority.
 
 [⚓ Anchor](./tokens/token-extensions/transfer-hook/allow-block-list-token/anchor) [💫 Quasar](./tokens/token-extensions/transfer-hook/allow-block-list-token/quasar)
 
-### Transfer Hook — Transfer Cost
+### Transfer Hook - Transfer Cost
 
 Charge an additional fee on every token transfer.
 
 [⚓ Anchor](./tokens/token-extensions/transfer-hook/transfer-cost/anchor) [💫 Quasar](./tokens/token-extensions/transfer-hook/transfer-cost/quasar)
 
-### Transfer Hook — Transfer Switch
+### Transfer Hook - Transfer Switch
 
 Enable or disable token transfers with an onchain switch.
 
 [⚓ Anchor](./tokens/token-extensions/transfer-hook/transfer-switch/anchor) [💫 Quasar](./tokens/token-extensions/transfer-hook/transfer-switch/quasar)
 
-### Transfer Hook — Whitelist
+### Transfer Hook - Whitelist
 
 Restrict transfers so only whitelisted accounts can receive tokens.
 
@@ -343,6 +365,14 @@ Work with Metaplex compressed NFTs.
 
 [⚓ Anchor](./compression/cutils/anchor) [💫 Quasar](./compression/cutils/quasar)
 
+## Tools
+
+### Shank and Codama
+
+Generate an IDL from a native Rust program with [Shank](https://github.com/metaplex-foundation/shank), then generate a Rust client from that IDL with [Codama](https://github.com/codama-idl/codama).
+
+[🦀 Native](./tools/shank-and-codama/native)
+
 ---
 
-**PRs welcome!** Follow the [contributing guidelines](./CONTRIBUTING.md) to keep things consistent.
+**PRs welcome!** Follow the [contributing guidelines](./CONTRIBUTING.md) and see [CHANGELOG.md](./CHANGELOG.md) for release history.

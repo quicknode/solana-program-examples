@@ -9,7 +9,7 @@ use quasar_lang::{
 #[cfg(test)]
 mod tests;
 
-declare_id!("22222222222222222222222222222222222222222222");
+declare_id!("AcfQLsYKuzprcCNH1n96pKKgAbAnZchwpbr3gbVN742n");
 
 pub struct Token2022Program;
 impl Id for Token2022Program {
@@ -27,19 +27,19 @@ mod quasar_mint_close_authority {
 
     /// Create a mint with the MintCloseAuthority extension.
     #[instruction(discriminator = 0)]
-    pub fn initialize(ctx: Ctx<Initialize>) -> Result<(), ProgramError> {
+    pub fn initialize(ctx: Ctx<InitializeAccountConstraints>) -> Result<(), ProgramError> {
         handle_initialize(&mut ctx.accounts)
     }
 
     /// Close the mint account, reclaiming lamports to the authority.
     #[instruction(discriminator = 1)]
-    pub fn close(ctx: Ctx<Close>) -> Result<(), ProgramError> {
+    pub fn close(ctx: Ctx<CloseAccountConstraints>) -> Result<(), ProgramError> {
         handle_close(&mut ctx.accounts)
     }
 }
 
 #[derive(Accounts)]
-pub struct Initialize {
+pub struct InitializeAccountConstraints {
     #[account(mut)]
     pub payer: Signer,
     #[account(mut)]
@@ -49,7 +49,7 @@ pub struct Initialize {
 }
 
 #[inline(always)]
-fn handle_initialize(accounts: &mut Initialize) -> Result<(), ProgramError> {
+fn handle_initialize(accounts: &mut InitializeAccountConstraints) -> Result<(), ProgramError> {
     // 165 (base) + 1 (account type) + 4 (TLV header) + 32 (MintCloseAuthority data) = 202 bytes
     let mint_size: u64 = 202;
     let lamports = Rent::get()?.try_minimum_balance(mint_size as usize)?;
@@ -100,7 +100,7 @@ fn handle_initialize(accounts: &mut Initialize) -> Result<(), ProgramError> {
 }
 
 #[derive(Accounts)]
-pub struct Close {
+pub struct CloseAccountConstraints {
     #[account(mut)]
     pub authority: Signer,
     #[account(mut)]
@@ -109,7 +109,7 @@ pub struct Close {
 }
 
 #[inline(always)]
-fn handle_close(accounts: &mut Close) -> Result<(), ProgramError> {
+fn handle_close(accounts: &mut CloseAccountConstraints) -> Result<(), ProgramError> {
     // CloseAccount: opcode 9
     CpiCall::new(
         accounts.token_program.to_account_view().address(),

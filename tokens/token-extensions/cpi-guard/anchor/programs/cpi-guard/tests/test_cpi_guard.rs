@@ -31,7 +31,7 @@ fn setup() -> (LiteSVM, Pubkey, Keypair) {
 }
 
 /// Create a basic Token Extensions token account (165 bytes, no extensions).
-/// Uses explicit keypair — kite's ATA creation won't work here because
+/// Uses explicit keypair - kite's ATA creation won't work here because
 /// we need to reallocate and add the CPI Guard extension later.
 fn create_basic_token_account_instructions(
     payer: &Pubkey,
@@ -154,14 +154,14 @@ fn test_cpi_guard_prevents_transfer_then_allows_after_disable() {
     ).unwrap();
     svm.expire_blockhash();
 
-    // Step 6: Try CPI transfer — should fail because CPI Guard is enabled
+    // Step 6: Try CPI transfer - should fail because CPI Guard is enabled
     let (recipient_token_account, _bump) =
         Pubkey::find_program_address(&[b"pda"], &program_id);
 
     let transfer_ix = Instruction::new_with_bytes(
         program_id,
         &cpi_guard::instruction::CpiTransfer {}.data(),
-        cpi_guard::accounts::CpiTransfer {
+        cpi_guard::accounts::CpiTransferAccountConstraints {
             sender: payer.pubkey(),
             sender_token_account: token_keypair.pubkey(),
             recipient_token_account,
@@ -188,7 +188,7 @@ fn test_cpi_guard_prevents_transfer_then_allows_after_disable() {
     let transfer_ix2 = Instruction::new_with_bytes(
         program_id,
         &cpi_guard::instruction::CpiTransfer {}.data(),
-        cpi_guard::accounts::CpiTransfer {
+        cpi_guard::accounts::CpiTransferAccountConstraints {
             sender: payer.pubkey(),
             sender_token_account: token_keypair.pubkey(),
             recipient_token_account,

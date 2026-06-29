@@ -3,7 +3,7 @@ use anchor_lang::prelude::*;
 use crate::PowerStatus;
 
 #[derive(Accounts)]
-pub struct InitializeLever<'info> {
+pub struct InitializeLeverAccountConstraints<'info> {
     #[account(init, payer = user, space = PowerStatus::DISCRIMINATOR.len() + PowerStatus::INIT_SPACE)]
     pub power: Account<'info, PowerStatus>,
     #[account(mut)]
@@ -11,6 +11,6 @@ pub struct InitializeLever<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handler(_context: Context<InitializeLever>) -> Result<()> {
+pub fn handler(_context: Context<InitializeLeverAccountConstraints>) -> Result<()> {
     Ok(())
 }

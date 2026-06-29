@@ -53,14 +53,14 @@ pub fn handle_deposit_liquidity(
     // is scaled down to match the current price. This mirrors Uniswap V2's
     // `mint()` pattern (UniswapV2Router._addLiquidity): try the first side at
     // its requested amount, compute what the other side needs at the current
-    // ratio, and if it fits we're done — otherwise swap roles and try the
+    // ratio, and if it fits we're done - otherwise swap roles and try the
     // other side.
     //
     // We use the *effective* (LP-claimable) reserves, not the raw vault
     // balances, so the admin's accumulated fees don't drag the deposit ratio
     // off the LP-relevant price.
     //
-    // All ratio math is in u128 with checked arithmetic — no floats for
+    // All ratio math is in u128 with checked arithmetic - no floats for
     // money. The intermediate `amount_a * pool_b` can overflow u64 (both
     // factors are u64), but u128 absorbs that with room to spare.
     let pool_a = &context.accounts.pool_a;
@@ -123,9 +123,15 @@ pub fn handle_deposit_liquidity(
 
     // LP-mint math. Two branches:
     //   - Initial deposit (pool creation): `liquidity = sqrt(a * b) - MINIMUM_LIQUIDITY`.
-    //     One-time bootstrap; the `MINIMUM_LIQUIDITY` floor is locked
-    //     forever and prevents the first depositor from later draining the
-    //     pool to a sub-base-unit ratio.
+    //     The `MINIMUM_LIQUIDITY` floor is never minted to anyone: the first
+    //     depositor receives `sqrt(a * b) - MINIMUM_LIQUIDITY` LP tokens, and
+    //     withdraw_liquidity adds the floor back into its supply denominator,
+    //     so the floor's share of the reserves stays in the pool, claimable by
+    //     nobody while any LP supply exists. This stops the first depositor
+    //     from draining the pool to a sub-minor-unit ratio. (Uniswap V2
+    //     instead mints the floor to the zero address; here, if every LP
+    //     token is burned, the floor's leftover reserves simply seed the next
+    //     bootstrap deposit.)
     //   - Subsequent deposit: `liquidity = min(a * supply / pool_a, b * supply / pool_b)`.
     //     This is the canonical Uniswap V2 formula: mint LP tokens in
     //     proportion to the depositor's share of each reserve, taking the

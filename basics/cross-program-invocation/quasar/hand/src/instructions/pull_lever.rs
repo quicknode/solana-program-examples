@@ -2,17 +2,17 @@ use quasar_lang::prelude::*;
 
 /// Accounts for the hand program's pull_lever instruction.
 /// The lever_program uses `Program<LeverProgram>` with a custom marker type
-/// that implements `Id` — this lets Quasar verify the program address and
+/// that implements `Id` - this lets Quasar verify the program address and
 /// the executable flag during account parsing.
 #[derive(Accounts)]
-pub struct PullLever {
+pub struct PullLeverAccountConstraints {
     #[account(mut)]
     pub power: UncheckedAccount,
     pub lever_program: Program<crate::LeverProgram>,
 }
 
 #[inline(always)]
-pub fn handle_pull_lever(accounts: &PullLever, name: &str) -> Result<(), ProgramError> {
+pub fn handle_pull_lever(accounts: &PullLeverAccountConstraints, name: &str) -> Result<(), ProgramError> {
     log("Hand is pulling the lever!");
 
     // Build the switch_power instruction data for the lever program.

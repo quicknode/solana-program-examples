@@ -22,9 +22,14 @@ custom-panic = []
 
 [dependencies]
 anchor-lang = "1.0.0"
-pyth-solana-receiver-sdk = "1.1.0"
 
 [dev-dependencies]
+# Self-dependency with no-entrypoint: host test builds otherwise export a
+# #[no_mangle] `entrypoint` symbol from this crate AND from spl-token (via
+# solana-kite), and the linker rejects the duplicate. The SBF build
+# (cargo build-sbf) ignores dev-dependencies, so the deployed program keeps
+# its entrypoint.
+pythexample = { path = ".", features = ["no-entrypoint"] }
 litesvm = "0.11.0"
 solana-signer = "3.0.0"
 solana-keypair = "3.0.1"

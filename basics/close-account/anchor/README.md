@@ -31,10 +31,17 @@ Two [instruction handlers](https://solana.com/docs/terminology#instruction-handl
 
    See [`programs/close-account/src/instructions/close_user.rs`](programs/close-account/src/instructions/close_user.rs).
 
-## Tests
-
-Tests live in [`programs/close-account/tests/test_close_account.rs`](programs/close-account/tests/test_close_account.rs) and run against litesvm. `Anchor.toml`'s `scripts.test` is `cargo test`, so `anchor test` builds the [program](https://solana.com/docs/terminology#program) and runs the Rust tests:
+## Setup
 
 ```bash
-anchor test
+pnpm install
+anchor build
+```
+
+## Testing
+
+Tests live in [`programs/close-account/tests/test_close_account.rs`](programs/close-account/tests/test_close_account.rs) and run in-process with LiteSVM:
+
+```bash
+pnpm test
 ```

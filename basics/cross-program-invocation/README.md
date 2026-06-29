@@ -11,7 +11,7 @@ Consider this sequence in a token [mint](https://solana.com/docs/terminology#tok
 3. Create and initialize a user's [token account](https://solana.com/docs/terminology#token-account) for the mint.
 4. Mint some tokens to the user's token account.
 
-You cannot create a metadata account without first having the mint. Once you decide that steps 1 and 4 must be onchain, the only sensible option is to also do steps 2 and 3 onchain — you cannot pause a program mid-flight to let the client do work.
+You cannot create a metadata account without first having the mint. Once you decide that steps 1 and 4 must be onchain, the only sensible option is to also do steps 2 and 3 onchain - you cannot pause a program mid-flight to let the client do work.
 
 ## Native setup notes
 

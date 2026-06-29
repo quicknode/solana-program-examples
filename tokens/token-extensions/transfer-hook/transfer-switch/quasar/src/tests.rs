@@ -95,7 +95,7 @@ fn test_transfer_switch_flow() {
     assert!(result.is_ok(), "switch on failed: {:?}", result.raw_result);
     println!("  SWITCH ON CU: {}", result.compute_units_consumed);
 
-    // 4. Transfer hook with switch ON — should succeed
+    // 4. Transfer hook with switch ON - should succeed
     let source_token = Pubkey::new_unique();
     let dest_token = Pubkey::new_unique();
 
@@ -141,7 +141,7 @@ fn test_transfer_switch_flow() {
     result.print_logs();
     assert!(result.is_ok(), "switch off failed: {:?}", result.raw_result);
 
-    // 6. Transfer hook with switch OFF — should fail
+    // 6. Transfer hook with switch OFF - should fail
     let hook_ix2 = Instruction {
         program_id: crate::ID,
         accounts: vec![

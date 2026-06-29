@@ -74,7 +74,7 @@ pub enum AmmError {
 
     // Returned by `create_pool` when `mint_a >= mint_b`. Requiring a strict
     // ascending order ensures each (mint_a, mint_b) pair has exactly one
-    // canonical pool PDA — without it, a (X, Y) pool and a (Y, X) pool would
+    // canonical pool PDA - without it, a (X, Y) pool and a (Y, X) pool would
     // both be valid, fragmenting liquidity.
     #[msg("mint_a must be less than mint_b for canonical pool ordering")]
     InvalidMintOrder,

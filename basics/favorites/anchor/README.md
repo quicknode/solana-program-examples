@@ -1,9 +1,29 @@
-# Favorites
+# Favorites (Anchor)
 
-A basic [Anchor](https://solana.com/docs/terminology#anchor) app that uses [PDAs](https://solana.com/docs/terminology#program-derived-address-pda) to store per-user data, and Anchor [account](https://solana.com/docs/terminology#account) constraints to ensure each user can only modify their own data.
+Store per-user favorites in a [PDA](https://solana.com/docs/terminology#program-derived-address-pda). [Account](https://solana.com/docs/terminology#account) constraints ensure each user can only modify their own data.
 
-Used by the [Solana Professional Education](https://github.com/solana-developers/professional-education) course.
+See also: the [repository catalog](../../README.md).
+
+## Major concepts
+
+- Per-user PDA keyed by signer
+- Anchor constraints for authority checks
+
+## Setup
+
+```bash
+pnpm install
+anchor build
+```
+
+## Testing
+
+```bash
+pnpm test
+```
+
+LiteSVM tests in `programs/` assert that users cannot overwrite each other's state.
 
 ## Usage
 
-Run the tests with `pnpm test` (as configured in `Anchor.toml`). Deploy with `anchor deploy`.
+`anchor deploy` targets the cluster in `Anchor.toml`. Used in [Solana Professional Education](https://github.com/solana-developers/professional-education).

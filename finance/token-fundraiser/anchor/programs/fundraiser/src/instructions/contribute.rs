@@ -1,26 +1,20 @@
 use anchor_lang::prelude::*;
-use anchor_spl::token::{
-    Mint, 
-    transfer, 
-    Token, 
-    TokenAccount, 
-    Transfer
+use anchor_spl::token_interface::{
+    transfer_checked, Mint, TokenAccount, TokenInterface, TransferChecked,
 };
 
 use crate::{
-    state::{
-        Contributor, 
-        Fundraiser
-    }, FundraiserError, 
-    MAX_CONTRIBUTION_PERCENTAGE, 
-    PERCENTAGE_SCALER, SECONDS_TO_DAYS
+    state::{Contributor, Fundraiser},
+    FundraiserError, MAX_CONTRIBUTION_PERCENTAGE, PERCENTAGE_SCALER, SECONDS_TO_DAYS,
 };
 
 #[derive(Accounts)]
-pub struct Contribute<'info> {
+pub struct ContributeAccountConstraints<'info> {
     #[account(mut)]
     pub contributor: Signer<'info>,
-    pub mint_to_raise: Account<'info, Mint>,
+
+    pub mint_to_raise: InterfaceAccount<'info, Mint>,
+
     #[account(
         mut,
         has_one = mint_to_raise,
@@ -28,6 +22,7 @@ pub struct Contribute<'info> {
         bump = fundraiser.bump,
     )]
     pub fundraiser: Account<'info, Fundraiser>,
+
     #[account(
         init_if_needed,
         payer = contributor,
@@ -36,77 +31,106 @@ pub struct Contribute<'info> {
         space = Contributor::DISCRIMINATOR.len() + Contributor::INIT_SPACE,
     )]
     pub contributor_account: Account<'info, Contributor>,
+
     #[account(
         mut,
         associated_token::mint = mint_to_raise,
-        associated_token::authority = contributor
+        associated_token::authority = contributor,
+        associated_token::token_program = token_program,
     )]
-    pub contributor_ata: Account<'info, TokenAccount>,
+    pub contributor_ata: InterfaceAccount<'info, TokenAccount>,
+
     #[account(
         mut,
         associated_token::mint = fundraiser.mint_to_raise,
-        associated_token::authority = fundraiser
+        associated_token::authority = fundraiser,
+        associated_token::token_program = token_program,
     )]
-    pub vault: Account<'info, TokenAccount>,
-    pub token_program: Program<'info, Token>,
+    pub vault: InterfaceAccount<'info, TokenAccount>,
+
+    pub token_program: Interface<'info, TokenInterface>,
+
     pub system_program: Program<'info, System>,
 }
 
-pub fn handle_contribute(accounts: &mut Contribute, amount: u64, bumps: &ContributeBumps) -> Result<()> {
+/// Caps a single contributor at MAX_CONTRIBUTION_PERCENTAGE percent of the
+/// target. Multiplies in u128 so the product cannot overflow u64.
+fn calculate_max_contribution(amount_to_raise: u64) -> Result<u64> {
+    (amount_to_raise as u128)
+        .checked_mul(MAX_CONTRIBUTION_PERCENTAGE as u128)
+        .ok_or(FundraiserError::MathOverflow)?
+        .checked_div(PERCENTAGE_SCALER as u128)
+        .ok_or(FundraiserError::MathOverflow)?
+        .try_into()
+        .map_err(|_| error!(FundraiserError::MathOverflow))
+}
 
-        // Check if the amount to contribute meets the minimum amount required
-        require!(
-            amount >= 1_u64.pow(accounts.mint_to_raise.decimals as u32), 
-            FundraiserError::ContributionTooSmall
-        );
+pub fn handle_contribute(
+    accounts: &mut ContributeAccountConstraints,
+    amount: u64,
+    bumps: &ContributeAccountConstraintsBumps,
+) -> Result<()> {
+    // The minimum contribution is one major unit, which is 10^decimals minor units.
+    let one_major_unit = 10_u64
+        .checked_pow(accounts.mint_to_raise.decimals as u32)
+        .ok_or(FundraiserError::MathOverflow)?;
+    require!(
+        amount >= one_major_unit,
+        FundraiserError::ContributionTooSmall
+    );
 
-        // Check if the amount to contribute is less than the maximum allowed contribution
-        require!(
-            amount <= (accounts.fundraiser.amount_to_raise * MAX_CONTRIBUTION_PERCENTAGE) / PERCENTAGE_SCALER, 
-            FundraiserError::ContributionTooBig
-        );
+    let max_contribution = calculate_max_contribution(accounts.fundraiser.amount_to_raise)?;
+    require!(
+        amount <= max_contribution,
+        FundraiserError::ContributionTooBig
+    );
 
-        // Check if the fundraising duration has been reached
-        let current_time = Clock::get()?.unix_timestamp;
-        require!(
-            accounts.fundraiser.duration <= ((current_time - accounts.fundraiser.time_started) / SECONDS_TO_DAYS) as u16,
-            crate::FundraiserError::FundraiserEnded
-        );
+    // Contributions are allowed while elapsed_days < duration.
+    let current_time = Clock::get()?.unix_timestamp;
+    let elapsed_days = current_time
+        .checked_sub(accounts.fundraiser.time_started)
+        .ok_or(FundraiserError::MathOverflow)?
+        .checked_div(SECONDS_TO_DAYS)
+        .ok_or(FundraiserError::MathOverflow)?;
+    require!(
+        elapsed_days < accounts.fundraiser.duration as i64,
+        FundraiserError::FundraiserEnded
+    );
 
-        // Check if the maximum contributions per contributor have been reached
-        require!(
-            (accounts.contributor_account.amount <= (accounts.fundraiser.amount_to_raise * MAX_CONTRIBUTION_PERCENTAGE) / PERCENTAGE_SCALER)
-                && (accounts.contributor_account.amount + amount <= (accounts.fundraiser.amount_to_raise * MAX_CONTRIBUTION_PERCENTAGE) / PERCENTAGE_SCALER),
-            FundraiserError::MaximumContributionsReached
-        );
+    // The contributor's cumulative total must also stay within the cap.
+    let cumulative_contribution = accounts
+        .contributor_account
+        .amount
+        .checked_add(amount)
+        .ok_or(FundraiserError::MathOverflow)?;
+    require!(
+        cumulative_contribution <= max_contribution,
+        FundraiserError::MaximumContributionsReached
+    );
 
-        // Transfer the funds to the vault
-        // CPI to the token program to transfer the funds
-        let cpi_program = accounts.token_program.key();
+    // Checks-effects-interactions: update state before the transfer CPI.
+    accounts.fundraiser.current_amount = accounts
+        .fundraiser
+        .current_amount
+        .checked_add(amount)
+        .ok_or(FundraiserError::MathOverflow)?;
+    accounts.contributor_account.amount = cumulative_contribution;
 
-        // Transfer the funds from the contributor to the vault
-        let cpi_accounts = Transfer {
-            from: accounts.contributor_ata.to_account_info(),
-            to: accounts.vault.to_account_info(),
-            authority: accounts.contributor.to_account_info(),
-        };
-
-        // Crete a CPI context
-        let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
-
-        // Transfer the funds from the contributor to the vault
-        transfer(cpi_ctx, amount)?;
-
-        // Update the fundraiser and contributor accounts with the new amounts
-        accounts.fundraiser.current_amount += amount;
-
-        accounts.contributor_account.amount += amount;
-
-        // Save the contributor PDA bump on first init (init_if_needed only
-        // runs the init branch once; stored bump is zero until set).
-        if accounts.contributor_account.bump == 0 {
-            accounts.contributor_account.bump = bumps.contributor_account;
-        }
-
-        Ok(())
+    // Save the contributor PDA bump on first init (init_if_needed only
+    // runs the init branch once; stored bump is zero until set).
+    if accounts.contributor_account.bump == 0 {
+        accounts.contributor_account.bump = bumps.contributor_account;
     }
+
+    // Transfer the funds from the contributor to the vault.
+    let cpi_accounts = TransferChecked {
+        from: accounts.contributor_ata.to_account_info(),
+        mint: accounts.mint_to_raise.to_account_info(),
+        to: accounts.vault.to_account_info(),
+        authority: accounts.contributor.to_account_info(),
+    };
+    let cpi_context = CpiContext::new(accounts.token_program.key(), cpi_accounts);
+    transfer_checked(cpi_context, amount, accounts.mint_to_raise.decimals)?;
+
+    Ok(())
+}

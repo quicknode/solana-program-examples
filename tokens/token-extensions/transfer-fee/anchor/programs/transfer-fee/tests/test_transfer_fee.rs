@@ -54,7 +54,7 @@ fn test_transfer_fee_full_flow() {
             maximum_fee: 1,
         }
         .data(),
-        transfer_fee::accounts::Initialize {
+        transfer_fee::accounts::InitializeAccountConstraints {
             payer: payer.pubkey(),
             mint_account: mint_keypair.pubkey(),
             token_program: TOKEN_EXTENSIONS_PROGRAM_ID,
@@ -87,7 +87,7 @@ fn test_transfer_fee_full_flow() {
     let transfer_ix = Instruction::new_with_bytes(
         program_id,
         &transfer_fee::instruction::Transfer { amount: 100 }.data(),
-        transfer_fee::accounts::Transfer {
+        transfer_fee::accounts::TransferAccountConstraints {
             sender: payer.pubkey(),
             recipient: recipient.pubkey(),
             mint_account: mint_keypair.pubkey(),
@@ -106,7 +106,7 @@ fn test_transfer_fee_full_flow() {
     let transfer_ix2 = Instruction::new_with_bytes(
         program_id,
         &transfer_fee::instruction::Transfer { amount: 200 }.data(),
-        transfer_fee::accounts::Transfer {
+        transfer_fee::accounts::TransferAccountConstraints {
             sender: payer.pubkey(),
             recipient: recipient.pubkey(),
             mint_account: mint_keypair.pubkey(),
@@ -126,7 +126,7 @@ fn test_transfer_fee_full_flow() {
         program_id,
         &transfer_fee::instruction::Harvest {}.data(),
         {
-            let mut metas = transfer_fee::accounts::Harvest {
+            let mut metas = transfer_fee::accounts::HarvestAccountConstraints {
                 mint_account: mint_keypair.pubkey(),
                 token_program: TOKEN_EXTENSIONS_PROGRAM_ID,
             }
@@ -142,7 +142,7 @@ fn test_transfer_fee_full_flow() {
     let withdraw_ix = Instruction::new_with_bytes(
         program_id,
         &transfer_fee::instruction::Withdraw {}.data(),
-        transfer_fee::accounts::Withdraw {
+        transfer_fee::accounts::WithdrawAccountConstraints {
             authority: payer.pubkey(),
             mint_account: mint_keypair.pubkey(),
             token_account: sender_ata,
@@ -161,7 +161,7 @@ fn test_transfer_fee_full_flow() {
             maximum_fee: 0,
         }
         .data(),
-        transfer_fee::accounts::UpdateFee {
+        transfer_fee::accounts::UpdateFeeAccountConstraints {
             authority: payer.pubkey(),
             mint_account: mint_keypair.pubkey(),
             token_program: TOKEN_EXTENSIONS_PROGRAM_ID,

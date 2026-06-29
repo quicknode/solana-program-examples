@@ -1,7 +1,8 @@
 use pinocchio::{account_info::AccountInfo, pubkey::Pubkey};
 use pinocchio_pubkey::from_str;
 
-pub const TOKEN_EXTENSIONS_PROGRAM_ID: Pubkey = from_str("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb");
+pub const TOKEN_EXTENSIONS_PROGRAM_ID: Pubkey =
+    from_str("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb");
 
 pub const EXTRA_METAS_SEED: &[u8] = b"extra-account-metas";
 
@@ -47,14 +48,9 @@ fn get_extension_data_(acc_data_bytes: &[u8], extension_type: u16) -> Option<&[u
         // SBF (like x86_64) tolerates unaligned reads but doing it via a raw
         // `&*(ptr as *const u16)` is undefined behaviour and can produce
         // garbage when the optimiser folds the read with surrounding ops.
-        let ext_type = u16::from_le_bytes([
-            ext_bytes[ext_type_idx],
-            ext_bytes[ext_type_idx + 1],
-        ]);
-        let ext_len = u16::from_le_bytes([
-            ext_bytes[ext_len_idx],
-            ext_bytes[ext_len_idx + 1],
-        ]) as usize;
+        let ext_type = u16::from_le_bytes([ext_bytes[ext_type_idx], ext_bytes[ext_type_idx + 1]]);
+        let ext_len =
+            u16::from_le_bytes([ext_bytes[ext_len_idx], ext_bytes[ext_len_idx + 1]]) as usize;
 
         if ext_data_idx + ext_len > end {
             return None;
@@ -78,7 +74,7 @@ pub fn is_token_extensions_mint(mint: &AccountInfo) -> bool {
     // Order of checks matters: read the type byte ONLY after we have proven
     // the buffer is long enough. The previous implementation indexed first
     // and length-checked second, which faulted (out-of-bounds) on any account
-    // shorter than 166 bytes — every mint that isn't a Token Extensions mint hits this.
+    // shorter than 166 bytes - every mint that isn't a Token Extensions mint hits this.
     if !mint.is_owned_by(&TOKEN_EXTENSIONS_PROGRAM_ID) {
         return false;
     }

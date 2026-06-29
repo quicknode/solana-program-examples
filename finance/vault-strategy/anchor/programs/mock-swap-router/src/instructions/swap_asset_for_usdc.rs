@@ -25,39 +25,39 @@ pub struct SwapAssetForUsdcAccountConstraints<'info> {
     pub asset_rate: Account<'info, AssetRate>,
 
     #[account(constraint = usdc_mint.key() == router_config.usdc_mint @ RouterError::WrongUsdcMint)]
-    pub usdc_mint: InterfaceAccount<'info, Mint>,
+    pub usdc_mint: Box<InterfaceAccount<'info, Mint>>,
 
     #[account(mut)]
-    pub asset_mint: InterfaceAccount<'info, Mint>,
+    pub asset_mint: Box<InterfaceAccount<'info, Mint>>,
 
-    /// Caller's asset token account — asset tokens are burned from here
+    /// Caller's asset token account - asset tokens are burned from here
     #[account(
         mut,
         associated_token::mint = asset_mint,
         associated_token::authority = caller,
         associated_token::token_program = token_program
     )]
-    pub caller_asset_account: InterfaceAccount<'info, TokenAccount>,
+    pub caller_asset_account: Box<InterfaceAccount<'info, TokenAccount>>,
 
-    /// Caller's USDC account — receives the USDC
+    /// Caller's USDC account - receives the USDC
     #[account(
         mut,
         associated_token::mint = usdc_mint,
         associated_token::authority = caller,
         associated_token::token_program = token_program
     )]
-    pub caller_usdc_account: InterfaceAccount<'info, TokenAccount>,
+    pub caller_usdc_account: Box<InterfaceAccount<'info, TokenAccount>>,
 
-    /// Router's USDC treasury — sends the USDC
+    /// Router's USDC treasury - sends the USDC
     #[account(
         mut,
         associated_token::mint = usdc_mint,
         associated_token::authority = router_authority,
         associated_token::token_program = token_program
     )]
-    pub router_usdc_treasury: InterfaceAccount<'info, TokenAccount>,
+    pub router_usdc_treasury: Box<InterfaceAccount<'info, TokenAccount>>,
 
-    /// CHECK: PDA used as treasury authority — validated by seeds constraint
+    /// CHECK: PDA used as treasury authority - validated by seeds constraint
     #[account(
         seeds = [b"router_authority"],
         bump
@@ -96,7 +96,7 @@ pub fn handle_swap_asset_for_usdc(
         asset_amount_in,
     )?;
 
-    // Transfer USDC from router treasury to caller — router_authority PDA signs
+    // Transfer USDC from router treasury to caller - router_authority PDA signs
     let router_authority_bump = context.bumps.router_authority;
     let signer_seeds: &[&[&[u8]]] = &[&[b"router_authority", &[router_authority_bump]]];
 

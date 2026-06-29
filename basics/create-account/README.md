@@ -2,7 +2,7 @@
 
 Create a Solana [account](https://solana.com/docs/terminology#account).
 
-The account is a **system account** — owned by the System Program, which means only the System Program can modify its data. In this example, the account simply holds some SOL.
+The account is a **system account** - owned by the System Program, which means only the System Program can modify its data. In this example, the account simply holds some SOL.
 
 The tests cover two ways to create the account:
 
@@ -13,5 +13,5 @@ See [cross-program-invocation](../cross-program-invocation) for more CPI example
 
 ## Links
 
-- [Solana Cookbook — How to Create a System Account](https://solana.com/developers/cookbook/accounts/create-account)
-- [Rust Docs — `solana_system_interface::instruction::create_account`](https://docs.rs/solana-system-interface/latest/solana_system_interface/instruction/fn.create_account.html)
+- [Solana Cookbook - How to Create a System Account](https://solana.com/developers/cookbook/accounts/create-account)
+- [Rust Docs - `solana_system_interface::instruction::create_account`](https://docs.rs/solana-system-interface/latest/solana_system_interface/instruction/fn.create_account.html)

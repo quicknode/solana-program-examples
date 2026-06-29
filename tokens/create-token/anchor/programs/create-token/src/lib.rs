@@ -16,7 +16,7 @@ pub mod create_token {
     use super::*;
 
     pub fn create_token_mint(
-        context: Context<CreateTokenMint>,
+        context: Context<CreateTokenMintAccountConstraints>,
         _token_decimals: u8,
         token_name: String,
         token_symbol: String,
@@ -65,7 +65,7 @@ pub mod create_token {
 
 #[derive(Accounts)]
 #[instruction(_token_decimals: u8)]
-pub struct CreateTokenMint<'info> {
+pub struct CreateTokenMintAccountConstraints<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
 

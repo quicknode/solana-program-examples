@@ -9,11 +9,14 @@ declare_id!("E64FVeubGC4NPNF2UBJYX4AkrVowf74fRJD9q6YhwstN");
 pub mod lever {
     use super::*;
 
-    pub fn initialize(context: Context<InitializeLever>) -> Result<()> {
+    pub fn initialize(context: Context<InitializeLeverAccountConstraints>) -> Result<()> {
         instructions::initialize::handler(context)
     }
 
-    pub fn switch_power(context: Context<SetPowerStatus>, name: String) -> Result<()> {
+    pub fn switch_power(
+        context: Context<SetPowerStatusAccountConstraints>,
+        name: String,
+    ) -> Result<()> {
         instructions::switch_power::handler(context, name)
     }
 }

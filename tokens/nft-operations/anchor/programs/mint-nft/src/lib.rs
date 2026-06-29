@@ -2,6 +2,7 @@ use anchor_lang::prelude::*;
 
 declare_id!("3EMcczaGi9ivdLxvvFwRbGYeEUEHpGwabXegARw4jLxa");
 
+pub mod error;
 pub mod instructions;
 
 pub use instructions::*;
@@ -10,15 +11,40 @@ pub use instructions::*;
 pub mod mint_nft {
 
     use super::*;
-    pub fn create_collection(mut context: Context<CreateCollection>) -> Result<()> {
-        instructions::create_collection::handler(&mut context.accounts, &context.bumps)
+
+    /// Create a collection NFT with the given metadata.
+    pub fn create_collection(
+        mut context: Context<CreateCollectionAccountConstraints>,
+        name: String,
+        symbol: String,
+        uri: String,
+    ) -> Result<()> {
+        instructions::create_collection::handle_create_collection(
+            &mut context.accounts,
+            &context.bumps,
+            name,
+            symbol,
+            uri,
+        )
     }
 
-    pub fn mint_nft(mut context: Context<MintNFT>) -> Result<()> {
-        instructions::mint_nft::handler(&mut context.accounts, &context.bumps)
+    /// Mint an NFT into the collection with the given metadata.
+    pub fn mint_nft(
+        mut context: Context<MintNftAccountConstraints>,
+        name: String,
+        symbol: String,
+        uri: String,
+    ) -> Result<()> {
+        instructions::mint_nft::handle_mint_nft(&mut context.accounts, &context.bumps, name, symbol, uri)
     }
 
-    pub fn verify_collection(mut context: Context<VerifyCollectionMint>) -> Result<()> {
-        instructions::verify_collection::handler(&mut context.accounts, &context.bumps)
+    /// Verify an NFT as a member of the collection.
+    pub fn verify_collection(
+        mut context: Context<VerifyCollectionMintAccountConstraints>,
+    ) -> Result<()> {
+        instructions::verify_collection::handle_verify_collection(
+            &mut context.accounts,
+            &context.bumps,
+        )
     }
 }

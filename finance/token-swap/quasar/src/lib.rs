@@ -2,13 +2,14 @@
 
 use quasar_lang::prelude::*;
 
+pub mod error;
 mod instructions;
 use instructions::*;
 pub mod state;
 #[cfg(test)]
 mod tests;
 
-declare_id!("22222222222222222222222222222222222222222222");
+declare_id!("GahM6PrXesrBkHiGJ5no4EskLNnVBCaSwVKbM4UtzyK6");
 
 /// Minimum liquidity locked on first deposit to prevent manipulation.
 pub const MINIMUM_LIQUIDITY: u64 = 100;
@@ -32,7 +33,7 @@ pub const LIQUIDITY_SEED: &[u8] = b"liquidity";
 #[seeds(b"config")]
 pub struct ConfigPda;
 
-/// `PoolConfig` PDA at seeds = [config, mint_a, mint_b] — no string prefix.
+/// `PoolConfig` PDA at seeds = [config, mint_a, mint_b] - no string prefix.
 #[derive(Seeds)]
 #[seeds(b"", config: Address, mint_a: Address, mint_b: Address)]
 pub struct PoolPda;
@@ -41,8 +42,8 @@ pub struct PoolPda;
 /// Modelled with prefix b"authority" + the three Address args; the
 /// rendered slice list ends up [config, mint_a, mint_b, b"authority"] when
 /// you use `with_bump`. Note: the new \`#[seeds]\` puts the literal
-/// prefix first, so the on-chain derivation order is
-/// [b"authority", config, mint_a, mint_b] — different from the original
+/// prefix first, so the onchain derivation order is
+/// [b"authority", config, mint_a, mint_b] - different from the original
 /// Anchor scheme. Programs are independent so this is consistent and
 /// correct on its own; the addresses just won't match the Anchor copy.
 #[derive(Seeds)]
@@ -57,20 +58,20 @@ pub struct LiquidityMintPda;
 /// Simple constant-product AMM (token swap).
 ///
 /// Six instructions:
-/// 1. `create_config` — initialise the singleton AMM config (admin, fee,
+/// 1. `create_config` - initialise the singleton AMM config (admin, fee,
 ///    admin share)
-/// 2. `create_pool` — create a liquidity pool for a token pair
-/// 3. `deposit_liquidity` — add liquidity and receive LP tokens
-/// 4. `withdraw_liquidity` — burn LP tokens and receive pool tokens
-/// 5. `swap_tokens` — swap one token for another
-/// 6. `claim_admin_fees` — admin sweeps accumulated fee slice from a pool
+/// 2. `create_pool` - create a liquidity pool for a token pair
+/// 3. `deposit_liquidity` - add liquidity and receive LP tokens
+/// 4. `withdraw_liquidity` - burn LP tokens and receive pool tokens
+/// 5. `swap_tokens` - swap one token for another
+/// 6. `claim_admin_fees` - admin sweeps accumulated fee slice from a pool
 #[program]
 mod quasar_token_swap {
     use super::*;
 
     #[instruction(discriminator = 0)]
     pub fn create_config(
-        ctx: Ctx<CreateConfigAccounts>,
+        ctx: Ctx<CreateConfigAccountConstraints>,
         fee: u16,
         admin_share_bps: u16,
     ) -> Result<(), ProgramError> {
@@ -78,30 +79,45 @@ mod quasar_token_swap {
     }
 
     #[instruction(discriminator = 1)]
-    pub fn create_pool(ctx: Ctx<CreatePoolAccounts>) -> Result<(), ProgramError> {
+    pub fn create_pool(ctx: Ctx<CreatePoolAccountConstraints>) -> Result<(), ProgramError> {
         instructions::handle_create_pool(&mut ctx.accounts)
     }
 
     #[instruction(discriminator = 2)]
     pub fn deposit_liquidity(
-        ctx: Ctx<DepositLiquidityAccounts>,
+        ctx: Ctx<DepositLiquidityAccountConstraints>,
         amount_a: u64,
         amount_b: u64,
+        minimum_lp_tokens_out: u64,
     ) -> Result<(), ProgramError> {
-        instructions::handle_deposit_liquidity(&mut ctx.accounts, amount_a, amount_b, &ctx.bumps)
+        instructions::handle_deposit_liquidity(
+            &mut ctx.accounts,
+            amount_a,
+            amount_b,
+            minimum_lp_tokens_out,
+            &ctx.bumps,
+        )
     }
 
     #[instruction(discriminator = 3)]
     pub fn withdraw_liquidity(
-        ctx: Ctx<WithdrawLiquidityAccounts>,
+        ctx: Ctx<WithdrawLiquidityAccountConstraints>,
         amount: u64,
+        minimum_token_a_out: u64,
+        minimum_token_b_out: u64,
     ) -> Result<(), ProgramError> {
-        instructions::handle_withdraw_liquidity(&mut ctx.accounts, amount, &ctx.bumps)
+        instructions::handle_withdraw_liquidity(
+            &mut ctx.accounts,
+            amount,
+            minimum_token_a_out,
+            minimum_token_b_out,
+            &ctx.bumps,
+        )
     }
 
     #[instruction(discriminator = 4)]
     pub fn swap_tokens(
-        ctx: Ctx<SwapTokensAccounts>,
+        ctx: Ctx<SwapTokensAccountConstraints>,
         input_is_token_a: bool,
         input_amount: u64,
         min_output_amount: u64,
@@ -117,7 +133,7 @@ mod quasar_token_swap {
 
     #[instruction(discriminator = 5)]
     pub fn claim_admin_fees(
-        ctx: Ctx<ClaimAdminFeesAccounts>,
+        ctx: Ctx<ClaimAdminFeesAccountConstraints>,
     ) -> Result<(), ProgramError> {
         instructions::handle_claim_admin_fees(&mut ctx.accounts, &ctx.bumps)
     }

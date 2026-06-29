@@ -1,0 +1,20 @@
+{
+  "type": "module",
+  "scripts": {
+    "build": "cargo build-sbf --manifest-path=./program/Cargo.toml",
+    "generate-idl": "shank idl --crate-root ./program --out-dir ./program/idl",
+    "generate-client": "tsx ./codama.ts",
+    "test": "cargo test --manifest-path=./program/Cargo.toml",
+    "build-and-test": "pnpm build && pnpm test"
+  },
+  "dependencies": {
+    "@codama/nodes-from-anchor": "^1.5.0",
+    "@codama/renderers-rust": "^1.1.2",
+    "codama": "^1.7.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "tsx": "^4.22.4",
+    "typescript": "^5.9.0"
+  }
+}

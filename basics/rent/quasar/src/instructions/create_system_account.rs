@@ -2,7 +2,7 @@ use quasar_lang::{prelude::*, sysvars::Sysvar};
 
 /// Accounts for creating a system account sized for address data.
 #[derive(Accounts)]
-pub struct CreateSystemAccount {
+pub struct CreateSystemAccountAccountConstraints {
     #[account(mut)]
     pub payer: Signer,
     #[account(mut)]
@@ -11,7 +11,7 @@ pub struct CreateSystemAccount {
 }
 
 #[inline(always)]
-pub fn handle_create_system_account(accounts: &mut CreateSystemAccount, name: &str, address: &str) -> Result<(), ProgramError> {
+pub fn handle_create_system_account(accounts: &mut CreateSystemAccountAccountConstraints, name: &str, address: &str) -> Result<(), ProgramError> {
     // Calculate space needed for the serialised AddressData:
     // borsh-style: 4-byte length prefix + bytes for each String field.
     let space = 4 + name.len() + 4 + address.len();

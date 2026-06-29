@@ -91,7 +91,7 @@ fn test_transfer_switch() {
     let configure_admin_ix = Instruction::new_with_bytes(
         program_id,
         &transfer_switch::instruction::ConfigureAdmin {}.data(),
-        transfer_switch::accounts::ConfigureAdmin {
+        transfer_switch::accounts::ConfigureAdminAccountConstraints {
             admin: payer.pubkey(),
             new_admin: payer.pubkey(),
             admin_config,
@@ -106,7 +106,7 @@ fn test_transfer_switch() {
     let init_extra_ix = Instruction::new_with_bytes(
         program_id,
         &transfer_switch::instruction::InitializeExtraAccountMetasList {}.data(),
-        transfer_switch::accounts::InitializeExtraAccountMetas {
+        transfer_switch::accounts::InitializeExtraAccountMetasAccountConstraints {
             payer: payer.pubkey(),
             token_mint: mint,
             extra_account_metas_list: extra_account_meta_list,
@@ -121,7 +121,7 @@ fn test_transfer_switch() {
     let switch_off_ix = Instruction::new_with_bytes(
         program_id,
         &transfer_switch::instruction::Switch { on: false }.data(),
-        transfer_switch::accounts::Switch {
+        transfer_switch::accounts::SwitchAccountConstraints {
             admin: payer.pubkey(),
             wallet: sender.pubkey(),
             admin_config,
@@ -133,7 +133,7 @@ fn test_transfer_switch() {
     send_transaction_from_instructions(&mut svm, vec![switch_off_ix], &[&payer], &payer.pubkey()).unwrap();
     svm.expire_blockhash();
 
-    // Step 6: Try transfer — should FAIL (switch is off)
+    // Step 6: Try transfer - should FAIL (switch is off)
     let transfer_amount: u64 = 1 * 10u64.pow(decimals as u32);
     let extra_accounts = build_hook_accounts(
         &mint,
@@ -164,7 +164,7 @@ fn test_transfer_switch() {
     let switch_on_ix = Instruction::new_with_bytes(
         program_id,
         &transfer_switch::instruction::Switch { on: true }.data(),
-        transfer_switch::accounts::Switch {
+        transfer_switch::accounts::SwitchAccountConstraints {
             admin: payer.pubkey(),
             wallet: sender.pubkey(),
             admin_config,
@@ -176,7 +176,7 @@ fn test_transfer_switch() {
     send_transaction_from_instructions(&mut svm, vec![switch_on_ix], &[&payer], &payer.pubkey()).unwrap();
     svm.expire_blockhash();
 
-    // Step 8: Transfer — should SUCCEED (switch is on)
+    // Step 8: Transfer - should SUCCEED (switch is on)
     transfer_checked_token_extensions(
         &mut svm,
         &source_ata,

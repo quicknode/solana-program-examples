@@ -6,7 +6,7 @@ use crate::state::{
     MarketUser, ORDER_SEED, MARKET_USER_SEED,
 };
 
-pub fn handle_cancel_order(context: Context<CancelOrder>) -> Result<()> {
+pub fn handle_cancel_order(context: Context<CancelOrderAccountConstraints>) -> Result<()> {
     let order = &mut context.accounts.order;
 
     require!(
@@ -27,13 +27,12 @@ pub fn handle_cancel_order(context: Context<CancelOrder>) -> Result<()> {
         let market_user = &mut context.accounts.market_user;
         match order.side {
             OrderSide::Bid => {
-                // u128 intermediate: the lock was originally taken on a
-                // u64 quote balance, so price * remaining must fit u64
-                // — but the multiplication itself can transiently exceed
-                // u64. Mirror the same pattern as place_order: widen,
-                // multiply, narrow.
+                // u128 intermediates mirror the bid-lock formula in place_order:
+                // raw_quote = price × remaining × quote_lot_size
                 let quote_amount: u64 = (order.price as u128)
                     .checked_mul(remaining as u128)
+                    .ok_or(ErrorCode::NumericalOverflow)?
+                    .checked_mul(context.accounts.market.quote_lot_size as u128)
                     .ok_or(ErrorCode::NumericalOverflow)?
                     .try_into()
                     .map_err(|_| error!(ErrorCode::NumericalOverflow))?;
@@ -43,16 +42,21 @@ pub fn handle_cancel_order(context: Context<CancelOrder>) -> Result<()> {
                     .ok_or(ErrorCode::NumericalOverflow)?;
             }
             OrderSide::Ask => {
+                let base_amount: u64 = (remaining as u128)
+                    .checked_mul(context.accounts.market.base_lot_size as u128)
+                    .ok_or(ErrorCode::NumericalOverflow)?
+                    .try_into()
+                    .map_err(|_| error!(ErrorCode::NumericalOverflow))?;
                 market_user.unsettled_base = market_user
                     .unsettled_base
-                    .checked_add(remaining)
+                    .checked_add(base_amount)
                     .ok_or(ErrorCode::NumericalOverflow)?;
             }
         }
     }
 
     // Remove the leaf from the slab. The current cancel API doesn't tell us
-    // which side the order is on without reading the Order PDA — which we
+    // which side the order is on without reading the Order PDA - which we
     // already have, so use it.
     let mut order_book = context.accounts.order_book.load_mut()?;
     let removed = order_book.remove_from(order.side, order.order_id).is_some();
@@ -68,7 +72,7 @@ pub fn handle_cancel_order(context: Context<CancelOrder>) -> Result<()> {
 }
 
 #[derive(Accounts)]
-pub struct CancelOrder<'info> {
+pub struct CancelOrderAccountConstraints<'info> {
     #[account(has_one = order_book @ ErrorCode::InvalidOrderBook)]
     pub market: Account<'info, Market>,
 

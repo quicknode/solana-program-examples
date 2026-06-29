@@ -1,1 +1,20 @@
-npx lint-staged
+#!/usr/bin/env sh
+
+# GUI git clients (Fork, SourceTree, etc.) often omit nvm/fnm from PATH.
+export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+
+if [ -s "$HOME/.nvm/nvm.sh" ]; then
+  # shellcheck disable=SC1090
+  . "$HOME/.nvm/nvm.sh"
+elif [ -d "$HOME/.fnm" ]; then
+  export PATH="$HOME/.fnm/current/bin:$PATH"
+fi
+
+cd "$(dirname "$0")/.." || exit 1
+
+if ! command -v pnpm >/dev/null 2>&1; then
+  echo "husky: pnpm not found. Open a terminal in this repo and run: pnpm install"
+  exit 1
+fi
+
+pnpm exec lint-staged

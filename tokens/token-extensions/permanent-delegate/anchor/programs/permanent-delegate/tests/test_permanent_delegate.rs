@@ -87,7 +87,7 @@ fn test_create_mint_with_permanent_delegate_and_burn() {
     let initialize_ix = Instruction::new_with_bytes(
         program_id,
         &permanent_delegate::instruction::Initialize {}.data(),
-        permanent_delegate::accounts::Initialize {
+        permanent_delegate::accounts::InitializeAccountConstraints {
             payer: payer.pubkey(),
             mint_account: mint_keypair.pubkey(),
             token_program: TOKEN_EXTENSIONS_PROGRAM_ID,

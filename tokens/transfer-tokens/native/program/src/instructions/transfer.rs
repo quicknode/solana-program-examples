@@ -5,9 +5,10 @@ use {
         entrypoint::ProgramResult,
         msg,
         program::invoke,
+        program_pack::Pack,
     },
-    spl_associated_token_account::instruction as associated_token_account_instruction,
-    spl_token::instruction as token_instruction,
+    spl_associated_token_account_interface::instruction as associated_token_account_instruction,
+    spl_token_interface::{instruction as token_instruction, state::Mint},
 };
 
 #[derive(BorshSerialize, BorshDeserialize, Debug)]
@@ -55,6 +56,8 @@ pub fn transfer_tokens(accounts: &[AccountInfo], args: TransferTokensArgs) -> Pr
         to_associated_token_account.key
     );
 
+    let mint = Mint::unpack(&mint_account.data.borrow())?;
+
     msg!("Transferring {} tokens...", args.quantity);
     msg!("Mint: {}", mint_account.key);
     msg!("Owner Token Address: {}", from_associated_token_account.key);
@@ -63,13 +66,15 @@ pub fn transfer_tokens(accounts: &[AccountInfo], args: TransferTokensArgs) -> Pr
         to_associated_token_account.key
     );
     invoke(
-        &token_instruction::transfer(
+        &token_instruction::transfer_checked(
             token_program.key,
             from_associated_token_account.key,
+            mint_account.key,
             to_associated_token_account.key,
             owner.key,
             &[owner.key, recipient.key],
             args.quantity,
+            mint.decimals,
         )?,
         &[
             mint_account.clone(),

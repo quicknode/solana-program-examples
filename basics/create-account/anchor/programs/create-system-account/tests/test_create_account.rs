@@ -22,7 +22,7 @@ fn test_create_the_account() {
     let instruction = Instruction::new_with_bytes(
         program_id,
         &create_system_account::instruction::CreateSystemAccount {}.data(),
-        create_system_account::accounts::CreateSystemAccount {
+        create_system_account::accounts::CreateSystemAccountAccountConstraints {
             payer: payer.pubkey(),
             new_account: new_account.pubkey(),
             system_program: system_program::id(),

@@ -98,7 +98,7 @@ fn test_mint_nft() {
             nft_uri: "https://example.com/nft.json".to_string(),
         }
         .data(),
-        nft_minter::accounts::CreateToken {
+        nft_minter::accounts::MintNftAccountConstraints {
             payer: payer.pubkey(),
             metadata_account,
             edition_account,

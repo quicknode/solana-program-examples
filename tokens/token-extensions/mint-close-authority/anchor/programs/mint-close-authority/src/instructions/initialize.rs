@@ -12,7 +12,7 @@ use anchor_spl::token_interface::{
 };
 
 #[derive(Accounts)]
-pub struct Initialize<'info> {
+pub struct InitializeAccountConstraints<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
 
@@ -28,13 +28,13 @@ pub struct Initialize<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handler(mut context: Context<Initialize>) -> Result<()> {
+pub fn handler(mut context: Context<InitializeAccountConstraints>) -> Result<()> {
     handle_check_mint_data(&mut context.accounts)?;
     Ok(())
 }
 
 // helper to check mint data, and demonstrate how to read mint extension data within a program
-fn handle_check_mint_data(accounts: &mut Initialize) -> Result<()> {
+fn handle_check_mint_data(accounts: &mut InitializeAccountConstraints) -> Result<()> {
     let mint = &accounts.mint_account.to_account_info();
     let mint_data = mint.data.borrow();
     let mint_with_extension = StateWithExtensions::<MintState>::unpack(&mint_data)?;

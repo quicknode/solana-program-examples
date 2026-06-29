@@ -19,7 +19,7 @@ use crate::state::OrderSide;
 /// is kept wide to match upstream so the layout stays compatible.
 pub type NodeHandle = u32;
 
-/// Every node — Inner, Leaf, Free — is padded to the same 88 bytes so the
+/// Every node - Inner, Leaf, Free - is padded to the same 88 bytes so the
 /// underlying `[AnyNode; N]` array is a true slab: we can swap a Leaf for an
 /// Inner in place without reallocating. Matches the upstream Openbook layout.
 pub const NODE_SIZE: usize = 88;
@@ -79,8 +79,8 @@ pub fn price_from_key(key: u128) -> u64 {
 /// holding the shared prefix bits, and `prefix_len` telling consumers how many
 /// of the high bits of `key` are meaningful.
 ///
-/// `tag` is the first byte at offset 0 — same offset as on `LeafNode` and
-/// `FreeNode` — so `AnyNode::tag` reads the variant tag from a fixed offset
+/// `tag` is the first byte at offset 0 - same offset as on `LeafNode` and
+/// `FreeNode` - so `AnyNode::tag` reads the variant tag from a fixed offset
 /// regardless of which variant is in the slot.
 ///
 /// `repr(C, packed(8))` caps field alignment at 8 bytes. Without this, u128
@@ -99,7 +99,7 @@ pub struct InnerNode {
     /// Number of high `key` bits that all descendants share.
     pub prefix_len: u32,
 
-    /// Only the top `prefix_len` bits of `key` are meaningful — the rest is
+    /// Only the top `prefix_len` bits of `key` are meaningful - the rest is
     /// whichever leaf happened to be inserted first below this node.
     pub key: u128,
 
@@ -143,7 +143,7 @@ impl InnerNode {
 /// One resting order in the slab.
 ///
 /// All the per-order metadata callers care about lives on the corresponding
-/// `Order` PDA — the slab leaf only stores what the matching engine needs:
+/// `Order` PDA - the slab leaf only stores what the matching engine needs:
 /// the tree key (price + tie-break), the remaining quantity, the owner, and
 /// the order_id (which the handler uses to verify the matching `Order`
 /// account the caller passed in).
@@ -175,7 +175,7 @@ pub struct LeafNode {
     pub order_id: u64,
 
     /// Unix timestamp at which the order rested. Not used by matching (the
-    /// seq_num inside `key` is the tie-break) — kept so offchain tooling
+    /// seq_num inside `key` is the tie-break) - kept so offchain tooling
     /// can show an "age" without re-deriving it from a different account.
     pub timestamp: i64,
 
@@ -205,7 +205,7 @@ impl LeafNode {
         }
     }
 
-    /// Price half of the tree key — convenience for callers.
+    /// Price half of the tree key - convenience for callers.
     #[inline(always)]
     pub fn price(&self) -> u64 {
         price_from_key(self.key)

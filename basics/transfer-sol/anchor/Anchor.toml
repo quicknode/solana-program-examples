@@ -6,8 +6,6 @@ seeds = false
 [programs.localnet]
 transfer_sol = "4fQVnLWKKKYxtxgGn7Haw8v2g2Hzbu8K61JvWKvqAi7W"
 
-# [registry] section removed — no longer used in Anchor 1.0
-
 [provider]
 cluster = "localnet"
 wallet = "~/.config/solana/id.json"

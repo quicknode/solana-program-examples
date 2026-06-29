@@ -21,7 +21,7 @@ fn go_on_ride_ix(
     ticket_count: u32,
     ride_name: &str,
 ) -> Instruction {
-    let accounts = carnival::accounts::CarnivalContext {
+    let accounts = carnival::accounts::CarnivalAccountConstraints {
         payer: payer.pubkey(),
     }
     .to_account_metas(None);
@@ -44,7 +44,7 @@ fn play_game_ix(
     ticket_count: u32,
     game_name: &str,
 ) -> Instruction {
-    let accounts = carnival::accounts::CarnivalContext {
+    let accounts = carnival::accounts::CarnivalAccountConstraints {
         payer: payer.pubkey(),
     }
     .to_account_metas(None);
@@ -66,7 +66,7 @@ fn eat_food_ix(
     ticket_count: u32,
     food_stand_name: &str,
 ) -> Instruction {
-    let accounts = carnival::accounts::CarnivalContext {
+    let accounts = carnival::accounts::CarnivalAccountConstraints {
         payer: payer.pubkey(),
     }
     .to_account_metas(None);

@@ -12,7 +12,7 @@ use super::transfer_tokens;
 // See https://www.anchor-lang.com/docs/references/account-constraints#instruction-attribute
 #[derive(Accounts)]
 #[instruction(id: u64)]
-pub struct MakeOffer<'info> {
+pub struct MakeOfferAccountConstraints<'info> {
     #[account(mut)]
     pub maker: Signer<'info>,
 
@@ -30,10 +30,9 @@ pub struct MakeOffer<'info> {
     )]
     pub maker_token_account_a: InterfaceAccount<'info, TokenAccount>,
 
-    // The maker's token-B ATA used to be init_if_needed on the taker side, which
-    // meant the taker paid the maker's rent. Initialize it here (paid by the
-    // maker) so the rent burden lives with the party who chose to open the
-    // offer.
+    // The maker's token-B ATA is initialized here, paid by the maker, so the
+    // rent burden lives with the party who chose to open the offer (take_offer
+    // requires this account to already exist).
     #[account(
         init_if_needed,
         payer = maker,
@@ -68,7 +67,7 @@ pub struct MakeOffer<'info> {
 
 // Move the tokens from the maker's ATA to the vault
 pub fn handle_send_offered_tokens_to_vault(
-    context: &Context<MakeOffer>,
+    context: &Context<MakeOfferAccountConstraints>,
     token_a_offered_amount: u64,
 ) -> Result<()> {
     transfer_tokens(
@@ -76,13 +75,18 @@ pub fn handle_send_offered_tokens_to_vault(
         &context.accounts.vault,
         &token_a_offered_amount,
         &context.accounts.token_mint_a,
-        &context.accounts.maker,
+        &context.accounts.maker.to_account_info(),
         &context.accounts.token_program,
+        None,
     )
 }
 
 // Save the details of the offer to the offer account
-pub fn handle_save_offer(context: Context<MakeOffer>, id: u64, token_b_wanted_amount: u64) -> Result<()> {
+pub fn handle_save_offer(
+    context: Context<MakeOfferAccountConstraints>,
+    id: u64,
+    token_b_wanted_amount: u64,
+) -> Result<()> {
     context.accounts.offer.set_inner(Offer {
         id,
         maker: context.accounts.maker.key(),

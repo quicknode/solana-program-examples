@@ -8,14 +8,21 @@ node_modules/
 **/*/node_modules
 **/*/package-lock.json
 **/*/Cargo.lock
-# Exception: escrow native needs Cargo.lock to pin blake3 (see tokens/escrow/native/Cargo.toml)
-!tokens/escrow/native/Cargo.lock
+# Exception: escrow native is a standalone (non-workspace) crate, so it keeps
+# its Cargo.lock tracked for reproducible builds.
+!finance/escrow/native/Cargo.lock
+# Exception: shank-and-codama native is also a standalone (non-workspace) crate.
+!tools/shank-and-codama/native/program/Cargo.lock
 
 **/*/.anchor
 **/*/.DS_Store
 **/*/target
 **/*/tests/fixtures/*
 !**/*/tests/fixtures/*.so
+# Exception to the exception: escrow native's fixture .so is OUR program's
+# build output (cargo build-sbf --sbf-out-dir=tests/fixtures regenerates it),
+# not a third-party dump, so it stays untracked.
+finance/escrow/native/tests/fixtures/escrow_native_program.so
 **/*.rs.bk
 **/*/test-ledger
 **/*/yarn.lock

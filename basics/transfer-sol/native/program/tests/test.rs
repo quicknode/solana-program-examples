@@ -12,7 +12,11 @@ fn test_transfer_sol() {
     let mut svm = LiteSVM::new();
 
     let program_id = Pubkey::new_unique();
-    let program_bytes = include_bytes!("../../tests/fixtures/transfer_sol_program.so");
+    // The .so is built into the workspace target/deploy by
+    // `cargo build-sbf --manifest-path=./program/Cargo.toml` (run from the project
+    // root). Rebuild after every program change: the binary is embedded at
+    // test-compile time, so a stale .so silently tests old code.
+    let program_bytes = include_bytes!("../../../../../target/deploy/transfer_sol_program.so");
 
     svm.add_program(program_id, program_bytes).unwrap();
 
@@ -90,4 +94,63 @@ fn test_transfer_sol() {
     );
 
     assert!(svm.send_transaction(tx).is_ok());
+}
+
+#[test]
+fn test_program_transfer_rejects_insufficient_funds() {
+    let mut svm = LiteSVM::new();
+
+    let program_id = Pubkey::new_unique();
+    let program_bytes = include_bytes!("../../../../../target/deploy/transfer_sol_program.so");
+    svm.add_program(program_id, program_bytes).unwrap();
+
+    let payer = Keypair::new();
+    svm.airdrop(&payer.pubkey(), LAMPORTS_PER_SOL * 10).unwrap();
+
+    // A program-owned account holding 1 SOL.
+    let program_owned_account = Keypair::new();
+    let recipient = Keypair::new();
+    let create_ix = create_account(
+        &payer.pubkey(),
+        &program_owned_account.pubkey(),
+        LAMPORTS_PER_SOL,
+        0,
+        &program_id,
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[create_ix],
+        Some(&payer.pubkey()),
+        &[&payer, &program_owned_account],
+        svm.latest_blockhash(),
+    );
+    assert!(svm.send_transaction(tx).is_ok());
+
+    // Ask for more than the account holds: the checked subtraction must
+    // reject the transfer instead of wrapping.
+    let data = borsh::to_vec(&TransferInstruction::ProgramTransfer(2 * LAMPORTS_PER_SOL)).unwrap();
+    let ix = Instruction {
+        program_id,
+        accounts: vec![
+            AccountMeta::new(program_owned_account.pubkey(), false),
+            AccountMeta::new(recipient.pubkey(), false),
+        ],
+        data,
+    };
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        svm.latest_blockhash(),
+    );
+    assert!(
+        svm.send_transaction(tx).is_err(),
+        "overdrawing the payer must fail"
+    );
+
+    // Balances are untouched.
+    assert_eq!(
+        svm.get_balance(&program_owned_account.pubkey()).unwrap(),
+        LAMPORTS_PER_SOL
+    );
+    assert_eq!(svm.get_balance(&recipient.pubkey()).unwrap_or(0), 0);
 }

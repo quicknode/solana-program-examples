@@ -10,5 +10,5 @@ pub const MAX_NAME: usize = 32;
 pub const MAX_SYMBOL: usize = 10;
 pub const MAX_URI: usize = 128;
 
-/// Maximum buffer size for Token-2022 metadata CPI instructions.
+/// Maximum buffer size for Token Extensions metadata CPI instructions.
 pub const MAX_META_IX: usize = 512;

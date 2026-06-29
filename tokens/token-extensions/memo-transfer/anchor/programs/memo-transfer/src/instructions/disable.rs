@@ -2,7 +2,7 @@ use anchor_lang::prelude::*;
 use anchor_spl::token_interface::{memo_transfer_disable, MemoTransfer, Token2022, TokenAccount};
 
 #[derive(Accounts)]
-pub struct Disable<'info> {
+pub struct DisableAccountConstraints<'info> {
     #[account(mut)]
     pub owner: Signer<'info>,
 
@@ -14,7 +14,7 @@ pub struct Disable<'info> {
     pub token_program: Program<'info, Token2022>,
 }
 
-pub fn handler(context: Context<Disable>) -> Result<()> {
+pub fn handler(context: Context<DisableAccountConstraints>) -> Result<()> {
     memo_transfer_disable(CpiContext::new(
         context.accounts.token_program.key(),
         MemoTransfer {

@@ -12,7 +12,7 @@ use anchor_spl::{
 use crate::check_mint_data;
 
 #[derive(Accounts)]
-pub struct Initialize<'info> {
+pub struct InitializeAccountConstraints<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
     #[account(mut)]
@@ -22,7 +22,7 @@ pub struct Initialize<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handler(context: Context<Initialize>, rate: i16) -> Result<()> {
+pub fn handler(context: Context<InitializeAccountConstraints>, rate: i16) -> Result<()> {
     // Calculate space required for mint and extension data
     let mint_size = ExtensionType::try_calculate_account_len::<PodMint>(&[
         ExtensionType::InterestBearingConfig,

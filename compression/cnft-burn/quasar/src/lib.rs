@@ -31,7 +31,7 @@ mod quasar_cnft_burn {
     use super::*;
 
     #[instruction(discriminator = 0)]
-    pub fn burn_cnft(ctx: CtxWithRemaining<BurnCnft>) -> Result<(), ProgramError> {
+    pub fn burn_cnft(ctx: CtxWithRemaining<BurnCnftAccountConstraints>) -> Result<(), ProgramError> {
         let data = ctx.data;
         let remaining = ctx.remaining_accounts();
         instructions::handle_burn_cnft(&mut ctx.accounts, data, remaining)

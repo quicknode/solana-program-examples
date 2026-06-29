@@ -51,7 +51,7 @@ pub fn handle_swap_tokens(
         .ok_or(AmmError::MathOverflow)?;
     // Narrow back to u64 for storage / transfer. The fee can never exceed
     // `input` (`fee_amount <= input * 9999 / 10_000 < input`, and `input`
-    // is u64), so the cast is safe — but use try_into anyway to make the
+    // is u64), so the cast is safe - but use try_into anyway to make the
     // invariant explicit in the type system.
     let fee_amount: u64 = u64::try_from(fee_amount).map_err(|_| AmmError::MathOverflow)?;
     let admin_portion: u64 =
@@ -88,7 +88,7 @@ pub fn handle_swap_tokens(
     // u128 + checked: the numerator `taxed_input * reserve` can fill the
     // full u128 (both factors are u64). Multiply before divide to keep
     // precision. Floor on the divide is protocol-favouring (the pool keeps
-    // sub-base-unit rounding, the trader gets slightly less output) — same
+    // sub-base-unit rounding, the trader gets slightly less output) - same
     // direction as Uniswap V2.
     let (this_reserve, other_reserve) = if input_is_token_a {
         (effective_pool_a, effective_pool_b)
@@ -213,7 +213,7 @@ pub fn handle_swap_tokens(
                     authority: context.accounts.trader.to_account_info(),
                 },
             ),
-            output,
+            input_amount,
             context.accounts.mint_b.decimals,
         )?;
     }
@@ -229,7 +229,7 @@ pub fn handle_swap_tokens(
     // Verify the invariant still holds on the LP-claimable (effective)
     // reserves. This is THE most important defensive check: it catches
     // "I screwed up the swap math and accidentally gave the user too much"
-    // bugs that no other test would catch. Defence in depth — runs *after*
+    // bugs that no other test would catch. Defence in depth - runs *after*
     // the math (and after the transfers, once balances have been reloaded).
     //
     // We tolerate the new invariant being higher because it means a

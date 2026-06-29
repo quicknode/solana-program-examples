@@ -8,7 +8,7 @@ use crate::{check_is_transferring, CounterAccount, TransferError};
 // Remaining accounts are the extra accounts required from the ExtraAccountMetaList account
 // These accounts are provided via CPI to this program from the token2022 program
 #[derive(Accounts)]
-pub struct TransferHook<'info> {
+pub struct TransferHookAccountConstraints<'info> {
     #[account(token::mint = mint, token::authority = owner)]
     pub source_token: InterfaceAccount<'info, TokenAccount>,
     pub mint: InterfaceAccount<'info, Mint>,
@@ -23,7 +23,7 @@ pub struct TransferHook<'info> {
     pub counter_account: Account<'info, CounterAccount>,
 }
 
-pub fn handler(context: Context<TransferHook>, amount: u64) -> Result<()> {
+pub fn handler(context: Context<TransferHookAccountConstraints>, amount: u64) -> Result<()> {
     // Fail this instruction if it is not called from within a transfer hook
     check_is_transferring(&context)?;
 

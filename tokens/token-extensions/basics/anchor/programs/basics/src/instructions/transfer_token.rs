@@ -3,7 +3,7 @@ use anchor_spl::associated_token::AssociatedToken;
 use anchor_spl::token_interface::{self, Mint, TokenAccount, TokenInterface, TransferChecked};
 
 #[derive(Accounts)]
-pub struct TransferToken<'info> {
+pub struct TransferTokenAccountConstraints<'info> {
     #[account(mut)]
     pub signer: Signer<'info>,
     #[account(mut)]
@@ -23,7 +23,7 @@ pub struct TransferToken<'info> {
     pub associated_token_program: Program<'info, AssociatedToken>,
 }
 
-pub fn handler(context: Context<TransferToken>, amount: u64) -> Result<()> {
+pub fn handler(context: Context<TransferTokenAccountConstraints>, amount: u64) -> Result<()> {
     let cpi_accounts = TransferChecked {
         from: context.accounts.from.to_account_info().clone(),
         mint: context.accounts.mint.to_account_info().clone(),

@@ -8,7 +8,11 @@ pub mod processing_instructions {
 
     // With Anchor, we just put instruction data in the function signature!
     //
-    pub fn go_to_park(_context: Context<Park>, name: String, height: u32) -> Result<()> {
+    pub fn go_to_park(
+        _context: Context<ParkAccountConstraints>,
+        name: String,
+        height: u32,
+    ) -> Result<()> {
         msg!("Welcome to the park, {}!", name);
         if height > 5 {
             msg!("You are tall enough to ride this ride. Congratulations.");
@@ -21,4 +25,4 @@ pub mod processing_instructions {
 }
 
 #[derive(Accounts)]
-pub struct Park {}
+pub struct ParkAccountConstraints {}
