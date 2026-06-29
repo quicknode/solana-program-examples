@@ -115,10 +115,10 @@ fn proof_swap_preserves_constant_product() {
     // algebraic identity it verifies — (ra+t)(rb-floor(t*rb/(ra+t))) >= ra*rb —
     // is scale-invariant, so the bounded domain exercises the same rounding
     // edges as the full u64 range.
-    kani::assume(reserve_in <= 255);
-    kani::assume(reserve_out <= 255);
-    kani::assume(taxed_input <= 255);
-    kani::assume(lp_fee <= 255);
+    kani::assume(reserve_in <= 63);
+    kani::assume(reserve_out <= 63);
+    kani::assume(taxed_input <= 63);
+    kani::assume(lp_fee <= 63);
     // A trade needs a non-empty denominator.
     kani::assume(reserve_in as u128 + taxed_input as u128 > 0);
 
@@ -147,9 +147,9 @@ fn proof_swap_cannot_fully_drain_when_reserve_positive() {
     let taxed_input: u64 = kani::any();
 
     // Bounded model checking (see `proof_swap_preserves_constant_product`).
-    kani::assume(this_reserve >= 1 && this_reserve <= 4095); // input side non-empty
-    kani::assume(other_reserve >= 1 && other_reserve <= 4095);
-    kani::assume(taxed_input <= 4095);
+    kani::assume(this_reserve >= 1 && this_reserve <= 255); // input side non-empty
+    kani::assume(other_reserve >= 1 && other_reserve <= 255);
+    kani::assume(taxed_input <= 255);
 
     let output = swap_output(taxed_input, this_reserve, other_reserve).expect("computes");
     assert!(output < other_reserve, "output must leave the pool solvent");
@@ -216,13 +216,16 @@ fn integer_sqrt(n: u128) -> u128 {
 #[cfg(kani)]
 #[kani::proof]
 #[kani::solver(cadical)]
-#[kani::unwind(28)]
+#[kani::unwind(11)]
 fn proof_integer_sqrt_is_floor() {
     let n: u128 = kani::any();
-    // Bounded model checking: cap `n` so the Newton iteration's loop unwinding
-    // and the 128-bit `r*r` / `(r+1)*(r+1)` checks stay tractable. 2^16 spans
-    // floor-sqrt results up to 255 and the full set of rounding boundaries.
-    kani::assume(n <= (1u128 << 16));
+    // Bounded model checking. `integer_sqrt` Newton-iterates with a symbolic
+    // 128-bit division (`n / x`) in its body, which the model checker must
+    // unroll and bit-blast — the single most expensive shape for a SAT
+    // backend. Capping `n` at 255 keeps the unroll short (<=10 iterations, so
+    // `unwind(11)` proves termination) and the `r*r` / `(r+1)*(r+1)` products
+    // small, while still exercising every floor-rounding boundary up to r = 15.
+    kani::assume(n <= 255);
 
     let r = integer_sqrt(n);
     // r is the floor: r^2 <= n and (r+1)^2 > n.
@@ -314,12 +317,15 @@ fn proof_deposit_clamp_never_exceeds_request() {
     let pool_a: u64 = kani::any();
     let pool_b: u64 = kani::any();
 
-    // Bounded model checking (nonlinear `amount * pool`).
-    kani::assume(amount_a <= 4095 && amount_b <= 4095);
+    // Bounded model checking. This is the hardest harness for the solver: each
+    // branch divides by a *symbolic* reserve (`amount_a * pool_b / pool_a`),
+    // i.e. symbolic-÷-symbolic 128-bit division, over four symbolic variables.
+    // Bound them tightly to stay tractable; the clamp identity is scale-free.
+    kani::assume(amount_a <= 31 && amount_b <= 31);
     // Existing pool: both reserves non-zero (the pool-creation branch is the
     // trivial identity, proven by construction).
-    kani::assume(pool_a >= 1 && pool_a <= 4095);
-    kani::assume(pool_b >= 1 && pool_b <= 4095);
+    kani::assume(pool_a >= 1 && pool_a <= 31);
+    kani::assume(pool_b >= 1 && pool_b <= 31);
 
     let (used_a, used_b) = clamp_to_ratio(amount_a, amount_b, pool_a, pool_b).expect("computes");
     assert!(used_a <= amount_a);

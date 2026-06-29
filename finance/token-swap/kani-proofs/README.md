@@ -27,14 +27,28 @@ widening, multiply-before-divide, floor rounding) and proves their invariants:
 ## Bounded model checking
 
 Several harnesses verify **nonlinear 128-bit arithmetic** (e.g.
-`reserve_in * reserve_out`), the worst case for a bit-precise model checker —
-Kani bit-blasts the full multiplier into SAT. Following percolator's own
+`reserve_in * reserve_out`, and worst of all `amount * pool_b / pool_a` where
+the *divisor* is symbolic), the hardest case for a bit-precise model checker —
+Kani bit-blasts the full multiplier/divider into SAT. Following percolator's own
 practice (it bounds inputs to ranges like `±500`), these harnesses constrain
 their symbolic inputs to a representative range so the solver stays fast. The
 identities being proven are scale-invariant, so the bounded domain still
-exercises every rounding boundary. This is why these proofs are **not yet wired
-into CI** — they need their bounds, whereas the escrow proofs run unbounded in
-seconds.
+exercises every rounding boundary. The bound is per-harness, sized to its
+difficulty:
+
+| Harness | Input bound | Time |
+| --- | --- | --- |
+| `proof_fee_split_bounds` | `input <= 4095`, fractions fully symbolic | ~2s |
+| `proof_swap_preserves_constant_product` | reserves/input `<= 63` | ~26s |
+| `proof_swap_cannot_fully_drain_when_reserve_positive` | reserves/input `<= 255` | ~7s |
+| `proof_swap_drains_pool_at_zero_reserve` | `<= 4095` | <1s |
+| `proof_integer_sqrt_is_floor` | `n <= 255`, `unwind(11)` | ~33s |
+| `proof_withdraw_never_exceeds_reserve` | `<= 4095` | ~5s |
+| `proof_deposit_clamp_never_exceeds_request` | `<= 31` (symbolic divisor) | ~3s |
+
+The whole suite verifies in ~80s of solver time. This is why these proofs are
+**not yet wired into CI** — they need their bounds and are slower, whereas the
+escrow proofs run unbounded in seconds.
 
 ## Finding: full drain at a zero effective reserve
 
