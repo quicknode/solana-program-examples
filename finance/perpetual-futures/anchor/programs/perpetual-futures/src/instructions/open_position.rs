@@ -6,7 +6,7 @@ use anchor_spl::{
 
 use crate::constants::{POOL_SEED, POSITION_SEED, VAULT_SEED};
 use crate::errors::PerpError;
-use crate::instructions::shared::{basis_points_of, refresh_price_and_funding, scale_size};
+use crate::instructions::shared::{basis_points_of, refresh_price_and_funding, scale_size, split_fee};
 use crate::state::{Pool, Position, Side};
 
 pub fn handle_open_position(
@@ -48,20 +48,13 @@ pub fn handle_open_position(
     let maintenance = basis_points_of(size, pool.maintenance_margin_bps)?;
     require!(net_collateral > maintenance, PerpError::PositionNotHealthy);
 
-    // Reserve liquidity to cover this position's maximum recoverable profit
-    // (its notional `size`). The reserve must be backed by liquidity-provider
-    // capital, which also caps total open interest at the pool's liquidity.
-    let new_reserved = pool
-        .reserved_liquidity
-        .checked_add(size)
-        .ok_or(PerpError::MathOverflow)?;
-    require!(
-        new_reserved <= pool.liquidity,
-        PerpError::InsufficientLiquidity
-    );
-    pool.reserved_liquidity = new_reserved;
-
+    // No open-interest cap: a position can open even when the pool could not
+    // cover its full winnings. Profit is a junior claim — if traders end up
+    // collectively owed more than the pool holds, the haircut `h` scales every
+    // winner's profit to the available backing rather than reserving capital up
+    // front. Solvency is preserved at exit, not gated at entry.
     let size_scaled = scale_size(size, price)?;
+    let (insurance_cut, protocol_cut) = split_fee(open_fee, pool.insurance_fee_bps)?;
 
     // Effects: record the position and the pool's new aggregates before moving
     // any tokens.
@@ -74,6 +67,7 @@ pub fn handle_open_position(
     position.entry_price = price;
     position.size_scaled = size_scaled;
     position.entry_funding = pool.cumulative_funding;
+    position.entry_slot = Clock::get()?.slot;
     position.bump = context.bumps.position;
 
     pool.total_collateral = pool
@@ -82,7 +76,11 @@ pub fn handle_open_position(
         .ok_or(PerpError::MathOverflow)?;
     pool.protocol_fees = pool
         .protocol_fees
-        .checked_add(open_fee)
+        .checked_add(protocol_cut)
+        .ok_or(PerpError::MathOverflow)?;
+    pool.insurance_fund = pool
+        .insurance_fund
+        .checked_add(insurance_cut)
         .ok_or(PerpError::MathOverflow)?;
 
     match side {

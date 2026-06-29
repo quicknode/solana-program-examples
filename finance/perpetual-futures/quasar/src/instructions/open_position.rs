@@ -2,7 +2,7 @@ use {
     crate::{
         constants::{SIDE_LONG, SIDE_SHORT},
         instructions::shared::{
-            basis_points_of, err, error, refresh_price_and_funding, scale_size,
+            basis_points_of, err, error, refresh_price_and_funding, scale_size, split_fee,
         },
         state::{Pool, Position, PositionInner},
     },
@@ -90,21 +90,12 @@ pub fn handle_open_position(
         return Err(err(error::POSITION_NOT_HEALTHY));
     }
 
-    // Reserve liquidity to cover this position's maximum recoverable profit
-    // (its notional `size`), backed by liquidity-provider capital. This also
-    // caps total open interest at the pool's liquidity.
-    let new_reserved = accounts
-        .pool
-        .reserved_liquidity
-        .get()
-        .checked_add(size)
-        .ok_or_else(|| ProgramError::ArithmeticOverflow)?;
-    if new_reserved > accounts.pool.liquidity.get() {
-        return Err(err(error::INSUFFICIENT_LIQUIDITY));
-    }
-    accounts.pool.reserved_liquidity.set(new_reserved);
-
+    // No open-interest cap: a position can open even when the pool could not
+    // cover its full winnings. Solvency is preserved at exit by the haircut `h`,
+    // which scales every winner's profit to the available backing, not by
+    // reserving capital up front.
     let size_scaled = scale_size(size, price)?;
+    let (insurance_cut, protocol_cut) = split_fee(open_fee, accounts.pool.insurance_fee_bps.get())?;
 
     accounts.position.set_inner(PositionInner {
         owner: *accounts.owner.address(),
@@ -115,6 +106,7 @@ pub fn handle_open_position(
         entry_price: price,
         size_scaled,
         entry_funding: accounts.pool.cumulative_funding.get(),
+        entry_slot: slot,
         bump: bumps.position,
     });
 
@@ -130,9 +122,17 @@ pub fn handle_open_position(
         .pool
         .protocol_fees
         .get()
-        .checked_add(open_fee)
+        .checked_add(protocol_cut)
         .ok_or(ProgramError::ArithmeticOverflow)?;
     accounts.pool.protocol_fees.set(new_protocol_fees);
+
+    let new_insurance_fund = accounts
+        .pool
+        .insurance_fund
+        .get()
+        .checked_add(insurance_cut)
+        .ok_or(ProgramError::ArithmeticOverflow)?;
+    accounts.pool.insurance_fund.set(new_insurance_fund);
 
     if side == SIDE_LONG {
         let long_size = accounts

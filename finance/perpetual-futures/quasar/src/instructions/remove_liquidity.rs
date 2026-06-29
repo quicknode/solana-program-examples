@@ -80,14 +80,13 @@ pub fn handle_remove_liquidity(
     if amount_out == 0 {
         return Err(err(error::AMOUNT_ROUNDS_TO_ZERO));
     }
-    // Only free liquidity can leave; the reserved portion backs open positions.
-    let free_liquidity = accounts
-        .pool
-        .liquidity
-        .get()
-        .checked_sub(accounts.pool.reserved_liquidity.get())
-        .ok_or(ProgramError::ArithmeticOverflow)?;
-    if amount_out > free_liquidity {
+    // Only free liquidity can leave: the backing for the profit traders are
+    // currently owed stays put, so providers cannot withdraw out from under a
+    // winning trader. When traders are net up this also keeps the withdrawal
+    // within `liquidity`; when they are net down the marked gain is not cash yet.
+    let liability = traders.max(0) as u128;
+    let free_liquidity = (accounts.pool.liquidity.get() as u128).saturating_sub(liability);
+    if amount_out as u128 > free_liquidity {
         return Err(err(error::INSUFFICIENT_LIQUIDITY));
     }
     if amount_out < minimum_amount_out {

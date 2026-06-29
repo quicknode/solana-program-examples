@@ -30,15 +30,17 @@ pub struct Pool {
     /// Liquidity-provider-owned assets, in collateral base units. Grows with
     /// deposits, trader losses, fees-to-LPs; shrinks with withdrawals and
     /// trader profits. Trader collateral is tracked separately in
-    /// `total_collateral` and is not part of this figure.
+    /// `total_collateral` and is not part of this figure. Together with
+    /// `insurance_fund` it is the backing for trader profit: when their sum
+    /// cannot cover everyone's matured profit, the haircut `h` scales profit
+    /// down to fit (see `instructions::shared::haircut_ratio`).
     pub liquidity: u64,
 
-    /// Portion of `liquidity` reserved to cover open positions' maximum
-    /// recoverable profit (one notional `size` per position). Liquidity-provider
-    /// withdrawals can only take the free remainder (`liquidity - reserved`), so
-    /// a winning trader can always be paid. Also caps total exposure: a position
-    /// can only open while `reserved + size <= liquidity`.
-    pub reserved_liquidity: u64,
+    /// Senior buffer that absorbs a bankrupt position's deficit (loss beyond its
+    /// collateral) before the loss is socialized to liquidity providers, and
+    /// counts alongside `liquidity` as backing for trader profit in the haircut
+    /// math. Funded by `insurance_fee_bps` of every open/close fee.
+    pub insurance_fund: u64,
 
     /// Sum of every open position's posted collateral, held in the same vault.
     pub total_collateral: u64,
@@ -90,6 +92,17 @@ pub struct Pool {
     /// Maximum oracle confidence band, in basis points of the price, that the
     /// pool will trade against. A wider band is rejected as untrustworthy.
     pub max_confidence_bps: u16,
+
+    /// Fraction of each open/close fee, in basis points, routed to the insurance
+    /// fund instead of to `protocol_fees`. The rest is the protocol's slice.
+    pub insurance_fee_bps: u16,
+
+    /// Slots a position must stay open before its profit *matures* into a
+    /// withdrawable claim. Profit cannot be realized before this elapses, so an
+    /// attacker who spikes the oracle to mint a paper gain cannot cash it out in
+    /// the same block — by the time it matures, the manipulation is gone. Loss
+    /// is never gated this way; an underwater position can be liquidated at once.
+    pub profit_warmup_slots: u64,
 
     pub bump: u8,
 

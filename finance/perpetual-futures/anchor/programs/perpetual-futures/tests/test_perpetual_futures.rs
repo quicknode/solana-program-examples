@@ -63,19 +63,33 @@ struct Market {
 impl Market {
     /// Stand up a market with the given starting oracle price and per-slot
     /// funding rate. The admin is both the pool authority and the oracle feed
-    /// authority.
+    /// authority. Insurance fee and profit warm-up are off by default, so fee
+    /// and profit/loss assertions are exact; the tests that exercise them set
+    /// their own parameters.
     fn new(initial_price: i128, funding_rate_per_slot: u64) -> Market {
         let parameters = PoolParameters {
-            oracle_scale: ORACLE_SCALE,
             funding_rate_per_slot,
+            ..Market::default_parameters()
+        };
+        Market::try_new(initial_price, parameters).expect("pool initialization should succeed")
+    }
+
+    /// The parameter set the other constructors build on. 10× max leverage, 0.1%
+    /// open/close fees, 5% maintenance margin, 1% liquidation fee, 1% maximum
+    /// confidence band; funding, insurance, and warm-up off.
+    fn default_parameters() -> PoolParameters {
+        PoolParameters {
+            oracle_scale: ORACLE_SCALE,
+            funding_rate_per_slot: 0,
             open_fee_bps: 10,
             close_fee_bps: 10,
             max_leverage: 10,
             maintenance_margin_bps: 500,
             liquidation_fee_bps: 100,
             max_confidence_bps: 100,
-        };
-        Market::try_new(initial_price, parameters).expect("pool initialization should succeed")
+            insurance_fee_bps: 0,
+            profit_warmup_slots: 0,
+        }
     }
 
     /// Like `new`, but takes the full parameter set and surfaces an
@@ -960,25 +974,29 @@ fn test_collect_fees_requires_authority() {
 }
 
 #[test]
-fn test_open_rejects_when_pool_cannot_back_it() {
+fn test_open_allowed_without_full_backing() {
+    // There is no open-interest cap: a position can open even when the pool
+    // could not pay its full winnings. Solvency is kept at exit by the haircut,
+    // not gated at entry. Here a 10,000 position opens against only 6,000 of
+    // liquidity.
     let mut market = Market::default_market();
-    // Only 3,000 of liquidity, but a 5,000 position must reserve 5,000.
-    market.seed_liquidity(3_000 * ONE_USDC);
-    let (trader, trader_collateral) = market.funded_trader(1_000 * ONE_USDC);
-    assert!(market
+    market.seed_liquidity(6_000 * ONE_USDC);
+    let (trader, trader_collateral) = market.funded_trader(1_100 * ONE_USDC);
+    market
         .open_position(
             &trader,
             trader_collateral,
             Side::Long,
-            1_000 * ONE_USDC,
-            5_000 * ONE_USDC,
-            0
+            1_100 * ONE_USDC,
+            10_000 * ONE_USDC,
+            0,
         )
-        .is_err());
+        .unwrap();
+    assert_eq!(market.pool_state().long_size, (10_000 * ONE_USDC) as u128);
 }
 
 #[test]
-fn test_profit_capped_at_reserved_notional() {
+fn test_profit_runs_uncapped_when_backed() {
     let mut market = Market::default_market();
     market.seed_liquidity(100_000 * ONE_USDC);
     let collateral = 2_000 * ONE_USDC;
@@ -988,8 +1006,8 @@ fn test_profit_capped_at_reserved_notional() {
         .open_position(&trader, trader_collateral, Side::Long, collateral, size, 0)
         .unwrap();
 
-    // Price triples: uncapped profit would be 2x the notional, but recoverable
-    // profit is capped at the reserved notional (`size`).
+    // Price triples: profit is 2x the notional. The deep pool fully backs it, so
+    // the haircut is 1 and the trader keeps every cent — profit runs uncapped.
     market.set_price(dollars(300));
     market
         .close_position(&trader, trader_collateral, Side::Long, 0)
@@ -998,7 +1016,8 @@ fn test_profit_capped_at_reserved_notional() {
     let open_fee = size / 1_000;
     let close_fee = size / 1_000;
     let net_collateral = collateral - open_fee;
-    let expected = net_collateral + size - close_fee;
+    let profit = 2 * size; // 200% of notional, uncapped
+    let expected = net_collateral + profit - close_fee;
     assert_eq!(
         get_token_account_balance(&market.svm, &trader_collateral).unwrap(),
         expected
@@ -1006,7 +1025,49 @@ fn test_profit_capped_at_reserved_notional() {
 }
 
 #[test]
-fn test_remove_liquidity_blocked_by_reserved() {
+fn test_haircut_scales_profit_when_pool_stressed() {
+    // A thin pool, a large long, and a doubling price: traders are owed more
+    // profit than the pool holds, so the haircut scales the winner down to what
+    // the backing can cover instead of letting them drain it and reverting on
+    // the next withdrawal.
+    let mut market = Market::default_market();
+    market.seed_liquidity(6_000 * ONE_USDC);
+
+    let collateral = 1_100 * ONE_USDC;
+    let size = 10_000 * ONE_USDC;
+    let (trader, trader_collateral) = market.funded_trader(collateral);
+    market
+        .open_position(&trader, trader_collateral, Side::Long, collateral, size, 0)
+        .unwrap();
+
+    // Price doubles: full profit would be the whole 10,000 notional, but backing
+    // is only 6,000 of liquidity (no insurance), so h = 6,000 / 10,000 = 0.6.
+    market.set_price(dollars(200));
+    market
+        .close_position(&trader, trader_collateral, Side::Long, 0)
+        .unwrap();
+
+    let open_fee = size / 1_000;
+    let close_fee = size / 1_000;
+    let net_collateral = collateral - open_fee;
+    let full_profit = size; // 100% of notional at a doubling
+    let haircut_profit = 6_000 * ONE_USDC; // 0.6 of full_profit
+    assert!(haircut_profit < full_profit);
+    let expected = net_collateral + haircut_profit - close_fee;
+    assert_eq!(
+        get_token_account_balance(&market.svm, &trader_collateral).unwrap(),
+        expected
+    );
+    // The winner was paid down to the backing, leaving the pool solvent at zero.
+    assert_eq!(market.pool_state().liquidity, 0);
+}
+
+#[test]
+fn test_remove_liquidity_capped_at_liquidity() {
+    // Assets-under-management marks open trader losses as provider gains, but
+    // that gain is not cash until the position closes — it still sits in the
+    // trader's collateral. A provider therefore cannot withdraw more than the
+    // tracked liquidity, even when their marked share is worth more.
     let mut market = Market::default_market();
     let (provider, provider_collateral) = market.seed_liquidity(10_000 * ONE_USDC);
     let (trader, trader_collateral) = market.funded_trader(1_000 * ONE_USDC);
@@ -1021,8 +1082,10 @@ fn test_remove_liquidity_blocked_by_reserved() {
         )
         .unwrap();
 
-    // 5,000 of the 10,000 liquidity is now reserved. Pulling everything fails,
-    // but withdrawing within the free half succeeds.
+    // Price falls 20%: the long is down 1,000, so AUM marks to 11,000 while
+    // liquidity is still 10,000. Redeeming every share would demand 11,000 and
+    // is refused; redeeming half stays within liquidity and succeeds.
+    market.set_price(dollars(80));
     let provider_lp = derive_ata(&provider.pubkey(), &market.lp_mint);
     let shares = get_token_account_balance(&market.svm, &provider_lp).unwrap();
     assert!(market
@@ -1039,14 +1102,181 @@ fn test_initialize_pool_rejects_close_fee_at_or_above_maintenance_margin() {
     // position that is too healthy to liquidate but too poor to pay the fee to
     // close, so initialize_pool refuses the configuration.
     let parameters = PoolParameters {
-        oracle_scale: ORACLE_SCALE,
-        funding_rate_per_slot: 0,
-        open_fee_bps: 10,
         close_fee_bps: 600,
-        max_leverage: 10,
-        maintenance_margin_bps: 500,
-        liquidation_fee_bps: 100,
-        max_confidence_bps: 100,
+        ..Market::default_parameters()
     };
     assert!(Market::try_new(dollars(100), parameters).is_err());
+}
+
+#[test]
+fn test_profit_blocked_before_maturation() {
+    // A 100-slot warm-up: profit cannot be realized in the same block it
+    // appears, so an oracle spike cannot be opened against and cashed out at
+    // once. The position is opened and the price jumps within the warm-up.
+    let parameters = PoolParameters {
+        profit_warmup_slots: 100,
+        ..Market::default_parameters()
+    };
+    let mut market = Market::try_new(dollars(100), parameters).unwrap();
+    market.seed_liquidity(100_000 * ONE_USDC);
+
+    let collateral = 1_000 * ONE_USDC;
+    let size = 5_000 * ONE_USDC;
+    let (trader, trader_collateral) = market.funded_trader(collateral);
+    market
+        .open_position(&trader, trader_collateral, Side::Long, collateral, size, 0)
+        .unwrap();
+
+    // Price jumps 20%; closing for profit before the warm-up elapses is refused.
+    market.set_price(dollars(120));
+    assert!(market
+        .close_position(&trader, trader_collateral, Side::Long, 0)
+        .is_err());
+}
+
+#[test]
+fn test_profit_realized_after_maturation() {
+    let parameters = PoolParameters {
+        profit_warmup_slots: 100,
+        ..Market::default_parameters()
+    };
+    let mut market = Market::try_new(dollars(100), parameters).unwrap();
+    market.seed_liquidity(100_000 * ONE_USDC);
+
+    let collateral = 1_000 * ONE_USDC;
+    let size = 5_000 * ONE_USDC;
+    let (trader, trader_collateral) = market.funded_trader(collateral);
+    market
+        .open_position(&trader, trader_collateral, Side::Long, collateral, size, 0)
+        .unwrap();
+
+    // Wait past the warm-up, then close: the profit has matured and is paid in
+    // full (the deep pool means no haircut).
+    market.warp(200);
+    market.set_price(dollars(120));
+    market
+        .close_position(&trader, trader_collateral, Side::Long, 0)
+        .unwrap();
+
+    let open_fee = size / 1_000;
+    let close_fee = size / 1_000;
+    let net_collateral = collateral - open_fee;
+    let profit = size / 5; // 20% of notional
+    let expected = net_collateral + profit - close_fee;
+    assert_eq!(
+        get_token_account_balance(&market.svm, &trader_collateral).unwrap(),
+        expected
+    );
+}
+
+#[test]
+fn test_loss_not_gated_by_maturation() {
+    // The warm-up gates profit only. A losing position can always be closed at
+    // once — there is no manipulation incentive to lock down a loss.
+    let parameters = PoolParameters {
+        profit_warmup_slots: 100,
+        ..Market::default_parameters()
+    };
+    let mut market = Market::try_new(dollars(100), parameters).unwrap();
+    market.seed_liquidity(100_000 * ONE_USDC);
+
+    let collateral = 1_000 * ONE_USDC;
+    let size = 5_000 * ONE_USDC;
+    let (trader, trader_collateral) = market.funded_trader(collateral);
+    market
+        .open_position(&trader, trader_collateral, Side::Long, collateral, size, 0)
+        .unwrap();
+
+    // Price falls 10%; closing the loss within the warm-up still succeeds.
+    market.set_price(dollars(90));
+    market
+        .close_position(&trader, trader_collateral, Side::Long, 0)
+        .unwrap();
+
+    let open_fee = size / 1_000;
+    let close_fee = size / 1_000;
+    let net_collateral = collateral - open_fee;
+    let loss = size / 10;
+    let expected = net_collateral - loss - close_fee;
+    assert_eq!(
+        get_token_account_balance(&market.svm, &trader_collateral).unwrap(),
+        expected
+    );
+}
+
+#[test]
+fn test_insurance_fund_funded_by_fees() {
+    // Half of every fee is routed to the insurance fund.
+    let parameters = PoolParameters {
+        insurance_fee_bps: 5_000,
+        ..Market::default_parameters()
+    };
+    let mut market = Market::try_new(dollars(100), parameters).unwrap();
+    market.seed_liquidity(100_000 * ONE_USDC);
+
+    let collateral = 1_000 * ONE_USDC;
+    let size = 5_000 * ONE_USDC;
+    let (trader, trader_collateral) = market.funded_trader(collateral);
+    market
+        .open_position(&trader, trader_collateral, Side::Long, collateral, size, 0)
+        .unwrap();
+
+    let open_fee = size / 1_000;
+    let insurance_cut = open_fee / 2;
+    let pool = market.pool_state();
+    assert_eq!(pool.insurance_fund, insurance_cut);
+    assert_eq!(pool.protocol_fees, open_fee - insurance_cut);
+}
+
+#[test]
+fn test_insurance_absorbs_bankruptcy_deficit() {
+    // A position that gaps through zero equity owes more than its collateral.
+    // The insurance fund covers that deficit so liquidity providers don't.
+    // Open fee is 5% and the whole of it funds insurance, so the fund has
+    // enough to absorb the deficit in this test.
+    let parameters = PoolParameters {
+        open_fee_bps: 500,
+        insurance_fee_bps: 10_000,
+        ..Market::default_parameters()
+    };
+    let mut market = Market::try_new(dollars(100), parameters).unwrap();
+    market.seed_liquidity(100_000 * ONE_USDC);
+
+    let collateral = 160 * ONE_USDC;
+    let size = 1_000 * ONE_USDC;
+    let (trader, trader_collateral) = market.funded_trader(collateral);
+    market
+        .open_position(&trader, trader_collateral, Side::Long, collateral, size, 0)
+        .unwrap();
+
+    // Open fee (5% of 1,000 = 50) all went to insurance.
+    let open_fee = size * 500 / 10_000;
+    assert_eq!(market.pool_state().insurance_fund, open_fee);
+    let liquidity_before = market.pool_state().liquidity;
+
+    // Price falls 15%: a 1,000 long loses 150 against ~110 of net collateral, so
+    // equity is about -40 — a 40 deficit beyond the collateral.
+    market.set_price(dollars(85));
+    let net_collateral = collateral - open_fee;
+    let loss = size * 15 / 100;
+    let deficit = loss - net_collateral; // 40 USDC
+
+    let liquidator = create_wallet(&mut market.svm, 100_000_000_000).unwrap();
+    create_associated_token_account(
+        &mut market.svm,
+        &liquidator.pubkey(),
+        &market.collateral_mint,
+        &market.payer,
+    )
+    .unwrap();
+    market
+        .liquidate(&liquidator, &trader.pubkey(), trader_collateral, Side::Long)
+        .unwrap();
+
+    let pool = market.pool_state();
+    // The fund paid the deficit; what remains is the fee cut minus the deficit.
+    assert_eq!(pool.insurance_fund, open_fee - deficit);
+    // Providers kept the collateral and were topped up by the insurance draw,
+    // rather than eating the deficit.
+    assert_eq!(pool.liquidity, liquidity_before + net_collateral + deficit);
 }

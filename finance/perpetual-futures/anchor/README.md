@@ -36,9 +36,29 @@ short profit/loss = size * (entry_price - price) / entry_price
 
 There is no order book. Every trade is against one shared [liquidity pool](https://www.investopedia.com/terms/l/liquidity.asp) that other users fund; the pool is the counterparty to all of them — it pays trader profits and keeps trader losses. Providers receive shares priced against [mark-to-market](https://www.investopedia.com/terms/m/marktomarket.asp) assets-under-management (the pool's value if every open position were settled now), derived from running per-side accumulators rather than by iterating positions. Pricing against the marked value stops a provider exiting just before an in-flight trader profit is realized. The first deposit mints `deposit - MINIMUM_LIQUIDITY` shares (the Uniswap V2 convention) so the share supply never starts at a dust amount.
 
-### Reserved liquidity
+### Profit is a junior claim — the haircut `h`
 
-So a winning trader can always be paid, the pool **reserves** liquidity to back each open position's maximum recoverable profit (its notional `size`). An open is allowed only while `reserved + size <= liquidity`, which doubles as an open-interest cap. `close_position` caps a winner's payout at the reserved `size` (for a long, profit is capped on a more-than-doubling move; a short's profit is naturally within `size`), and provider withdrawals can take only the *free* remainder (`liquidity - reserved`). This is the simplified, single-collateral form of the reserve accounting in `solana-labs/perpetuals`. The reserve covers price profit only — funding owed *to* a position (the lighter side receives funding) is not reserved, so in the extreme a payout the pool cannot cover makes the close fail closed (revert) rather than leave the pool insolvent.
+This example takes its risk model from [Percolator](https://github.com/aeyakovenko/percolator), Anatoly Yakovenko's formally-verified perp risk engine. The one idea everything rests on: **deposited capital is senior, profit is junior.** A trader's posted collateral is always theirs to reclaim; their *profit* is only as real as the money behind it.
+
+So there is no per-position profit cap and no up-front reserve. Positions open freely — even when the pool could not pay their full winnings — and profit runs uncapped. Solvency is kept at *exit* instead, by a single global number, the **haircut ratio `h`**:
+
+```
+backing   = liquidity + insurance_fund          // what can pay profit
+liability  = max(0, traders' aggregate unrealized profit)   // the junior claim
+h          = min(1, backing / liability)         // floored, so payouts never exceed backing
+```
+
+When the pool can back every winner, `h = 1` and profit is paid in full. When a sharp move leaves traders owed more than the pool holds, `h` drops below one and *every* closing winner is paid the same fraction of their profit — no queue, no chosen victims, the way an auto-deleveraging queue would pick them. As losses settle back in, `backing` recovers and `h` rises on its own. The withheld `(1 - h)` of each winner's profit stays in `liquidity`: this is how a single-counterparty pool socializes a shortfall across its providers.
+
+### Profit maturation (warm-up)
+
+A haircut alone is gameable: spike the oracle, open against the paper gain, cash out in the same block. So profit must **mature** before it can be realized — a position cannot be closed in profit until `profit_warmup_slots` have passed since it opened. By the time a manipulated price's profit would mature, the manipulation is gone. Loss is never gated this way: an underwater position can always be closed or liquidated at once.
+
+### The insurance fund
+
+A fraction of every open/close fee (`insurance_fee_bps`) accrues to an **insurance fund** — a senior buffer. When a position gaps straight through zero equity and owes more than its collateral, that deficit is drawn from the insurance fund first, and only what the fund cannot cover is socialized to liquidity providers. The fund also counts as `backing` in the haircut math above, so a healthy fund keeps `h` at one for longer. This is the pool-model stand-in for the bankruptcy-overhang clearing that a peer-to-peer venue does with an auto-deleveraging queue.
+
+Provider withdrawals can still only take *free* liquidity — the backing for the profit traders are currently owed stays put, so a provider cannot withdraw out from under a winning trader. (See [Design notes](#design-notes-and-further-reading) for why Percolator's per-side `A`/`K` overhang indices don't map onto a single-counterparty pool.)
 
 ### Funding
 
@@ -46,7 +66,7 @@ So a winning trader can always be paid, the pool **reserves** liquidity to back 
 
 ### Maintenance margin and liquidation
 
-A position's *equity* is its net collateral plus profit/loss minus funding. Once equity falls to or below the [maintenance margin](https://www.investopedia.com/terms/m/maintenancemargin.asp) (`maintenance_margin_bps` of notional), the position can be [liquidated](https://www.investopedia.com/terms/l/liquidation.asp). Liquidation is permissionless — anyone can crank it and earn the liquidation fee.
+A position's *equity* is its net collateral plus profit/loss minus funding. Once equity falls to or below the [maintenance margin](https://www.investopedia.com/terms/m/maintenancemargin.asp) (`maintenance_margin_bps` of notional), the position can be [liquidated](https://www.investopedia.com/terms/l/liquidation.asp). Liquidation is permissionless — anyone can crank it and earn the liquidation fee. If the position gapped through zero equity and owes more than its collateral, the deficit is taken from the insurance fund before any of it reaches the liquidity providers.
 
 ### Oracle
 
@@ -54,7 +74,7 @@ The mark price comes from an oracle feed. This example validates the price for s
 
 ### Fees and slippage
 
-Open and close fees are charged in [basis points](https://www.investopedia.com/terms/b/basispoint.asp) (1 bp = 0.01%) of notional and accrue to the protocol. Every state-changing handler takes a `minimum_*` / acceptable-price bound — protection against [slippage](https://www.investopedia.com/terms/s/slippage.asp), the gap between the expected and actual fill — and reverts if the bound is breached. Pass `0` to opt out.
+Open and close fees are charged in [basis points](https://www.investopedia.com/terms/b/basispoint.asp) (1 bp = 0.01%) of notional. Each fee is split: `insurance_fee_bps` of it tops up the insurance fund and the rest accrues to the protocol. Every state-changing handler takes a `minimum_*` / acceptable-price bound — protection against [slippage](https://www.investopedia.com/terms/s/slippage.asp), the gap between the expected and actual fill — and reverts if the bound is breached. Pass `0` to opt out.
 
 ---
 
@@ -70,7 +90,7 @@ Open and close fees are charged in [basis points](https://www.investopedia.com/t
 | **Bob** | Short trader | He thinks NVDA will fall and wants to profit from the downside. |
 | **Dave** | Liquidator | Runs a bot that closes under-margined positions to earn the liquidation fee. |
 
-Amounts below are shown in whole USDC; on-chain they are base units (× 10⁶). The pool is configured with 10× max leverage, 0.1% open/close fees, a 5% maintenance margin, a 1% liquidation fee, and a 1% maximum oracle confidence band.
+Amounts below are shown in whole USDC; on-chain they are base units (× 10⁶). The pool is configured with 10× max leverage, 0.1% open/close fees, a 5% maintenance margin, a 1% liquidation fee, and a 1% maximum oracle confidence band. The insurance-fee cut and profit warm-up are left at zero in this walkthrough so the numbers stay exact; the [risk-model concepts](#profit-is-a-junior-claim--the-haircut-h) above cover what they do.
 
 ---
 
@@ -82,7 +102,7 @@ Amounts below are shown in whole USDC; on-chain they are base units (× 10⁶). 
 
 | Account | Seeds / Derivation | What it stores |
 |---------|--------------------|----------------|
-| `Pool` [PDA](https://solana.com/docs/terminology#program-derived-address-pda) | `["pool", collateral_mint, oracle_feed]` | parameters, liquidity, reserved liquidity, collateral total, per-side open-interest accumulators, funding index, protocol fees |
+| `Pool` [PDA](https://solana.com/docs/terminology#program-derived-address-pda) | `["pool", collateral_mint, oracle_feed]` | parameters, liquidity, insurance fund, collateral total, per-side open-interest accumulators, funding index, protocol fees |
 | `pool_authority` PDA | `["authority", pool]` | nothing; signs vault and mint CPIs |
 | `custody_vault` [token account](https://solana.com/docs/terminology#token-account) PDA | `["vault", pool]` | all USDC — both provider liquidity and trader collateral |
 | `lp_mint` PDA | `["lp_mint", pool]` | the share [mint](https://solana.com/docs/terminology#mint-account); `pool_authority` is the mint authority |
@@ -116,13 +136,14 @@ NVDAx is at $100. The 0.1% open fee ($5) comes out of her collateral, leaving $9
 
 | Account | Change |
 |---------|--------|
-| `Position` PDA `["position", pool, alice, Long]` (created) | side Long, collateral $995, size $5,000, entry price $100 |
+| `Position` PDA `["position", pool, alice, Long]` (created) | side Long, collateral $995, size $5,000, entry price $100, entry slot |
 | `alice_usdc` | −1,000 USDC |
 | `custody_vault` | +1,000 USDC |
 | `Pool.total_collateral` | +$995 |
-| `Pool.protocol_fees` | +$5 |
-| `Pool.reserved_liquidity` | +$5,000 (must stay ≤ liquidity) |
+| `Pool.protocol_fees` | +$5 (the protocol's share of the open fee) |
 | `Pool` long open-interest accumulators | += this position |
+
+No liquidity is reserved and there is no open-interest cap: the position can open even if the pool could not pay its full winnings, because the haircut keeps the pool solvent at exit (see [the haircut `h`](#profit-is-a-junior-claim--the-haircut-h)).
 
 ---
 
@@ -130,7 +151,7 @@ NVDAx is at $100. The 0.1% open fee ($5) comes out of her collateral, leaving $9
 
 **Instruction:** `open_position(side = Short, collateral_amount = 1,000 USDC, size = 5,000 USDC, acceptable_price)`
 
-**Accounts modified:** a `Position` PDA `["position", pool, bob, Short]` is created; `custody_vault` +1,000 USDC; `Pool.total_collateral` +$995; `Pool.protocol_fees` +$5; `Pool.reserved_liquidity` +$5,000 (now $10,000 of the $100,000 reserved); short open-interest accumulators rise.
+**Accounts modified:** a `Position` PDA `["position", pool, bob, Short]` is created; `custody_vault` +1,000 USDC; `Pool.total_collateral` +$995; `Pool.protocol_fees` +$5; short open-interest accumulators rise.
 
 While both are open, **funding** accrues to the pool from the heavier side; it is settled when each position closes.
 
@@ -140,14 +161,13 @@ While both are open, **funding** accrues to the pool from the heavier side; it i
 
 **Instruction:** `close_position(minimum_payout)`
 
-Her profit is `5,000 × (116 − 100) / 100 = $800` (well under the $5,000 reserve cap), minus the $5 close fee.
+Her profit is `5,000 × (116 − 100) / 100 = $800`, minus the $5 close fee. The pool's $100,000 of backing dwarfs the profit traders are owed, so the haircut `h` is one and her profit is paid in full. (Had the pool been stressed, she would have been paid `h × $800` — the same fraction every other winner gets at that moment.)
 
 **Accounts modified:**
 
 | Account | Change |
 |---------|--------|
 | `Pool.liquidity` | −$800 (providers pay her profit) |
-| `Pool.reserved_liquidity` | −$5,000 (reserve released) |
 | `Pool.total_collateral` | −$995 |
 | `Pool.protocol_fees` | +$5 |
 | long open-interest accumulators | −= this position |
@@ -167,12 +187,13 @@ At $116 Bob's short has lost $800; his equity ($995 − $800 = $195) has fallen 
 | Account | Change |
 |---------|--------|
 | short open-interest accumulators | −= Bob's position |
-| `Pool.reserved_liquidity` | −$5,000 (reserve released) |
 | `Pool.total_collateral` | −$995 |
 | `Pool.liquidity` | +$800 (the loss accrues to providers) |
 | `custody_vault` → `dave_usdc` (created) | $50 liquidation fee |
 | `custody_vault` → `bob_usdc` | $145 remaining equity refunded |
 | `Position` (Bob) | closed; rent returned to Bob |
+
+Bob still had positive equity here, so the insurance fund is untouched. Had he gapped below zero — owing more than his $995 collateral — the shortfall would have been drawn from the insurance fund first, and only the remainder socialized to `Pool.liquidity`.
 
 ---
 
@@ -188,7 +209,7 @@ At $116 Bob's short has lost $800; his equity ($995 − $800 = $195) has fallen 
 
 **Instruction:** `remove_liquidity(shares, minimum_amount_out)`
 
-Carol burns her shares and redeems USDC. Her balance now reflects the fees the pool earned plus the net of traders' wins and losses while she was in. She can withdraw only the *free* liquidity — while a position is open, the part backing it is reserved and cannot be pulled out.
+Carol burns her shares and redeems USDC. Her balance now reflects the fees the pool earned plus the net of traders' wins and losses while she was in. She can withdraw only the *free* liquidity — the part backing the profit traders are currently owed stays put, so she cannot pull capital out from under a winning trader.
 
 **Accounts modified:** `lp_mint` burns Carol's shares; `Pool.liquidity` falls; `custody_vault` pays out USDC to `carol_usdc`.
 
@@ -196,13 +217,15 @@ Carol burns her shares and redeems USDC. Her balance now reflects the fees the p
 
 ## Design notes and further reading
 
-The genuinely hard part of a perpetual-futures venue is keeping it solvent and permissionless *without* re-evaluating the entire market on every action. For a rigorous, formally-verified (Kani) treatment, see Anatoly Yakovenko's [percolator](https://github.com/aeyakovenko/percolator), an educational perp risk engine. It states three invariants this example also leans on, in simplified form:
+The genuinely hard part of a perpetual-futures venue is keeping it solvent and permissionless *without* re-evaluating the entire market on every action. The risk model here is adapted from Anatoly Yakovenko's [percolator](https://github.com/aeyakovenko/percolator), an educational, formally-verified (Kani) perp risk engine. The pieces it contributes:
 
-- **Realizable credit** — "protected principal is senior, positive PnL is junior, and source-domain positive credit cannot exceed realizable backing reserved for that domain." Here, provider capital is senior and trader profit is a junior claim against it: shares are priced against marked assets-under-management, and the pool reserves each position's payout up front (capping recoverable profit at the reserve) so a winner's price profit can always be paid.
-- **Account-local safety** — "every favorable action refreshes the account's full active portfolio first; … stale … legs fail closed." Here, every position and liquidity action reads a fresh oracle (stale or wide-confidence prices are rejected) and recomputes pool exposure before any payout.
-- **Bounded progress** — "no public instruction needs to evaluate the whole market." Here, assets-under-management comes from running per-side accumulators, and liquidation acts on one position at a time, so no handler's cost grows with the number of open positions.
+- **Profit is junior; the haircut `h`.** Percolator's core rule — "deposited capital is senior, positive PnL is junior" — is exactly the haircut above. Profit is honoured only up to the backing the pool actually holds, every winner scaled by the same global `h`, with the division floored so the payouts can never sum past the vault. No queue, no chosen victims.
+- **Maturation.** Percolator only lets profit count once it has matured past a warm-up; this example's `profit_warmup_slots` is that rule, the defense against an oracle spike being opened against and cashed out in one block.
+- **Account-local safety / bounded progress.** Percolator requires that "every favorable action refreshes the account first" and that "no public instruction evaluates the whole market." Here, every action reads a fresh oracle (stale or wide-confidence prices are rejected), and assets-under-management plus the haircut are both derived from running per-side accumulators — so no handler's cost grows with the number of open positions.
 
-What production pool-perps (`solana-labs/perpetuals`) add that this example still leaves out: multi-asset custody with reserves in the payout token, utilization-based borrow fees, auto-deleveraging (ADL) and an insurance fund for the bad-debt tail, and using the oracle's EMA for a less manipulable mark.
+**Why not `A`/`K`?** Percolator's *other* mechanism — the per-side `A` (position-scaling) and `K` (PnL-accumulator) indices, with their DrainOnly → ResetPending → Normal state machine — clears bankruptcy overhang in a **peer-to-peer** vault, where profitable traders on the opposite side are the ones who must absorb a bankrupt account's loss without being individually named. This venue is **pool-collateralized**: the liquidity pool is the single counterparty to every trader, so there is no opposite side to deleverage. The pool-model equivalent of `K`'s loss socialization is the drop in `liquidity_provider_aum` (every provider's share absorbs the loss pro-rata), and the equivalent of the bankruptcy buffer is the **insurance fund**. So `A`/`K` are deliberately not ported — naming a coefficient after them here would not do what they do upstream.
+
+What production pool-perps (`solana-labs/perpetuals`) still add beyond this example: multi-asset custody with reserves in the payout token, utilization-based borrow fees, and using the oracle's EMA for a less manipulable mark.
 
 ---
 
@@ -211,15 +234,16 @@ What production pool-perps (`solana-labs/perpetuals`) add that this example stil
 This is a teaching example, not an audited exchange. Notably:
 
 - A single position per side per trader, and one collateral token per pool.
-- Recoverable profit is capped at the reserved notional, so the cap binds on a more-than-doubling move; a production venue would let profit run and absorb extreme moves with ADL, an insurance fund, and bankruptcy-residual accounting.
-- The liquidation reward is paid from the position's remaining equity, so a position that gaps straight through zero equity pays the liquidator nothing — production venues fund the reward from collateral or an insurance fund so the worst positions are still worth liquidating.
+- The haircut's profit liability is the *net* of the per-side accumulators, an O(1) proxy for the gross profit owed. When longs and shorts are both deep in profit at once it can understate the true liability, in which case a close that the pool genuinely cannot fund fails closed (reverts) rather than over-paying — the same conservative direction Percolator takes, but its `spec.md` tracks the realizable figure more precisely.
+- Maturation is a single per-position warm-up since open, not Percolator's persistent maturity reserve that ages each increment of fresh profit separately.
+- The liquidation reward is paid from the position's remaining equity, so a position that gaps straight through zero equity pays the liquidator nothing — production venues fund the reward from the insurance fund so the worst positions are still worth liquidating.
 - Funding is a single time-decay index on the heavier side rather than a skew-weighted rate.
 
 ---
 
 ## Testing
 
-The tests run in-process with [LiteSVM](https://www.anchor-lang.com/docs/testing/litesvm) and [solana-kite](https://solanakite.org); no local validator is needed. They deploy both programs, drive the mock oracle, and cover liquidity round-trips, opening and closing longs and shorts in profit and loss, leverage and slippage rejection, stale-price and wide-confidence rejection, funding accrual, liquidation (and the refusal to liquidate a healthy position), reserved-liquidity behaviour (profit capped at the reserve, opens rejected when the pool can't back them, withdrawals blocked by reserved liquidity), and fee collection.
+The tests run in-process with [LiteSVM](https://www.anchor-lang.com/docs/testing/litesvm) and [solana-kite](https://solanakite.org); no local validator is needed. They deploy both programs, drive the mock oracle, and cover liquidity round-trips, opening and closing longs and shorts in profit and loss, leverage and slippage rejection, stale-price and wide-confidence rejection, funding accrual, liquidation (and the refusal to liquidate a healthy position), and fee collection — plus the risk model: profit running uncapped when the pool can back it, the haircut scaling profit when the pool is stressed, the warm-up blocking unmatured profit (but never a loss), the withdrawal guard, and the insurance fund taking its fee cut and absorbing a bankruptcy deficit.
 
 ```bash
 anchor build

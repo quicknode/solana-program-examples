@@ -30,6 +30,13 @@ pub struct PoolParameters {
 
     /// Maximum oracle confidence band tolerated, in basis points of the price.
     pub max_confidence_bps: u16,
+
+    /// Fraction of every open/close fee, in basis points, routed to the
+    /// insurance fund rather than to protocol fees.
+    pub insurance_fee_bps: u16,
+
+    /// Slots a position must stay open before its profit can be realized.
+    pub profit_warmup_slots: u64,
 }
 
 pub fn handle_initialize_pool(
@@ -74,6 +81,13 @@ pub fn handle_initialize_pool(
         parameters.max_confidence_bps > 0 && parameters.max_confidence_bps < denominator,
         PerpError::InvalidParameter
     );
+    // The insurance cut is a fraction of the fee, so it cannot exceed the whole
+    // fee. `denominator` (100%) would route every fee to insurance, leaving the
+    // protocol nothing — allowed, but anything above it is meaningless.
+    require!(
+        parameters.insurance_fee_bps <= denominator,
+        PerpError::InvalidParameter
+    );
 
     let pool = &mut context.accounts.pool;
     pool.authority = context.accounts.authority.key();
@@ -83,7 +97,7 @@ pub fn handle_initialize_pool(
     pool.custody_vault = context.accounts.custody_vault.key();
     pool.lp_mint = context.accounts.lp_mint.key();
     pool.liquidity = 0;
-    pool.reserved_liquidity = 0;
+    pool.insurance_fund = 0;
     pool.total_collateral = 0;
     pool.protocol_fees = 0;
     pool.long_size = 0;
@@ -99,6 +113,8 @@ pub fn handle_initialize_pool(
     pool.maintenance_margin_bps = parameters.maintenance_margin_bps;
     pool.liquidation_fee_bps = parameters.liquidation_fee_bps;
     pool.max_confidence_bps = parameters.max_confidence_bps;
+    pool.insurance_fee_bps = parameters.insurance_fee_bps;
+    pool.profit_warmup_slots = parameters.profit_warmup_slots;
     pool.bump = context.bumps.pool;
     pool.authority_bump = context.bumps.pool_authority;
 

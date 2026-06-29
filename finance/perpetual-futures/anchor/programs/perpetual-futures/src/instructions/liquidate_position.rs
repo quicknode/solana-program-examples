@@ -17,13 +17,8 @@ pub fn handle_liquidate_position(
 
     let position = &context.accounts.position;
     let position_size = position.size;
+    let position_collateral = position.collateral;
     let settlement = settle_position(pool, position, price)?;
-
-    // Release the position's reserved liquidity now that it is closing.
-    pool.reserved_liquidity = pool
-        .reserved_liquidity
-        .checked_sub(position_size)
-        .ok_or(PerpError::MathOverflow)?;
 
     // Liquidatable only once equity has fallen to or below the maintenance
     // margin. A healthy position can only be closed by its owner.
@@ -40,17 +35,35 @@ pub fn handle_liquidate_position(
         .max(0)
         .try_into()
         .map_err(|_| PerpError::MathOverflow)?;
-    let liquidation_fee = basis_points_of(position.size, pool.liquidation_fee_bps)?;
+    let liquidation_fee = basis_points_of(position_size, pool.liquidation_fee_bps)?;
     let liquidator_payout = liquidation_fee.min(remaining_equity);
     let trader_refund = remaining_equity
         .checked_sub(liquidator_payout)
         .ok_or(PerpError::MathOverflow)?;
 
+    // A position that gapped through zero equity owes more than its collateral.
+    // That deficit is drawn from the insurance fund first; only what the fund
+    // cannot cover is socialized to liquidity providers.
+    let deficit: u64 = settlement
+        .equity
+        .min(0)
+        .unsigned_abs()
+        .try_into()
+        .map_err(|_| PerpError::MathOverflow)?;
+    let insurance_drawn = deficit.min(pool.insurance_fund);
+    pool.insurance_fund = pool
+        .insurance_fund
+        .checked_sub(insurance_drawn)
+        .ok_or(PerpError::MathOverflow)?;
+
     // Everything the trader does not get back stays with the liquidity
-    // providers. Derived from vault conservation: the pool keeps the position's
-    // collateral minus whatever is paid out as equity.
-    let liquidity_delta = (position.collateral as i128)
+    // providers, topped up by the insurance draw. Derived from vault
+    // conservation: the pool keeps the position's collateral minus whatever is
+    // paid out as equity, plus the insurance that absorbed the deficit.
+    let liquidity_delta = (position_collateral as i128)
         .checked_sub(remaining_equity as i128)
+        .ok_or(PerpError::MathOverflow)?
+        .checked_add(insurance_drawn as i128)
         .ok_or(PerpError::MathOverflow)?;
     let new_liquidity = (pool.liquidity as i128)
         .checked_add(liquidity_delta)

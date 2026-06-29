@@ -98,15 +98,6 @@ pub fn handle_liquidate_position(
 
     remove_open_interest(&mut accounts.pool, side, size, size_scaled)?;
 
-    // Release the position's reserved liquidity now that it is closing.
-    let new_reserved = accounts
-        .pool
-        .reserved_liquidity
-        .get()
-        .checked_sub(size)
-        .ok_or(ProgramError::ArithmeticOverflow)?;
-    accounts.pool.reserved_liquidity.set(new_reserved);
-
     let new_total_collateral = accounts
         .pool
         .total_collateral
@@ -115,9 +106,26 @@ pub fn handle_liquidate_position(
         .ok_or(ProgramError::ArithmeticOverflow)?;
     accounts.pool.total_collateral.set(new_total_collateral);
 
-    // The pool keeps the position's collateral minus whatever equity is paid out.
+    // A position that gapped through zero equity owes more than its collateral.
+    // The insurance fund covers that deficit first; only what it cannot cover is
+    // socialized to liquidity providers.
+    let deficit = u64::try_from(equity.min(0).unsigned_abs())
+        .map_err(|_| ProgramError::ArithmeticOverflow)?;
+    let insurance_drawn = deficit.min(accounts.pool.insurance_fund.get());
+    let new_insurance_fund = accounts
+        .pool
+        .insurance_fund
+        .get()
+        .checked_sub(insurance_drawn)
+        .ok_or(ProgramError::ArithmeticOverflow)?;
+    accounts.pool.insurance_fund.set(new_insurance_fund);
+
+    // The pool keeps the position's collateral minus whatever equity is paid
+    // out, topped up by the insurance that absorbed the deficit.
     let liquidity_delta = (collateral as i128)
         .checked_sub(remaining_equity as i128)
+        .ok_or(ProgramError::ArithmeticOverflow)?
+        .checked_add(insurance_drawn as i128)
         .ok_or(ProgramError::ArithmeticOverflow)?;
     let new_liquidity = (accounts.pool.liquidity.get() as i128)
         .checked_add(liquidity_delta)

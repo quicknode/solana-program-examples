@@ -6,7 +6,10 @@ use anchor_spl::{
 
 use crate::constants::{AUTHORITY_SEED, POOL_SEED, POSITION_SEED, VAULT_SEED};
 use crate::errors::PerpError;
-use crate::instructions::shared::{basis_points_of, refresh_price_and_funding, settle_position};
+use crate::instructions::shared::{
+    apply_haircut, basis_points_of, haircut_ratio, refresh_price_and_funding, settle_position,
+    split_fee,
+};
 use crate::state::{Pool, Position};
 
 pub fn handle_close_position(
@@ -16,15 +19,30 @@ pub fn handle_close_position(
     let pool = &mut context.accounts.pool;
     let price = refresh_price_and_funding(pool, &context.accounts.oracle_feed)?;
 
+    // Compute the haircut against the whole pool *before* this position leaves
+    // the accumulators, so the closer is one of the winners being scaled rather
+    // than scaling only those left behind.
+    let haircut = haircut_ratio(pool, price)?;
+
     let position = &context.accounts.position;
     let position_size = position.size;
+    let entry_slot = position.entry_slot;
     let settlement = settle_position(pool, position, price)?;
     let close_fee = basis_points_of(position_size, pool.close_fee_bps)?;
 
-    // Recoverable profit is capped at the reserved amount (the position's
-    // notional `size`), so the pool can always cover a winner. Losses are not
-    // capped.
-    let realized_pnl = settlement.profit_and_loss.min(position_size as i128);
+    // Profit is a junior claim, gated twice before it is paid; a loss settles in
+    // full and skips both gates. First it must have *matured* — the warm-up
+    // since open must have elapsed, so a freshly minted oracle gain cannot be
+    // cashed out in the block it appears. Then it is *haircut* to the fraction
+    // `h` the pool can currently back, the same fraction for every winner.
+    let realized_pnl = if settlement.profit_and_loss > 0 {
+        let matured =
+            Clock::get()?.slot >= entry_slot.saturating_add(pool.profit_warmup_slots);
+        require!(matured, PerpError::ProfitNotMatured);
+        apply_haircut(settlement.profit_and_loss, haircut)?
+    } else {
+        settlement.profit_and_loss
+    };
     let equity = settlement
         .equity
         .checked_sub(settlement.profit_and_loss)
@@ -42,14 +60,12 @@ pub fn handle_close_position(
     let payout: u64 = payout.try_into().map_err(|_| PerpError::MathOverflow)?;
     require!(payout >= minimum_payout, PerpError::SlippageExceeded);
 
-    // Release the position's reserved liquidity now that it is closing.
-    pool.reserved_liquidity = pool
-        .reserved_liquidity
-        .checked_sub(position_size)
-        .ok_or(PerpError::MathOverflow)?;
+    let (insurance_cut, protocol_cut) = split_fee(close_fee, pool.insurance_fee_bps)?;
 
-    // Liquidity providers are the counterparty: they pay the trader's (capped)
+    // Liquidity providers are the counterparty: they pay the trader's (haircut)
     // profit and receive their loss, and collect the funding the trader owed.
+    // The part of a winner's profit withheld by the haircut stays in liquidity —
+    // the pool-model way bankruptcy overhang is socialized to providers.
     let liquidity_delta = settlement
         .funding
         .checked_sub(realized_pnl)
@@ -63,7 +79,11 @@ pub fn handle_close_position(
         .map_err(|_| PerpError::MathOverflow)?;
     pool.protocol_fees = pool
         .protocol_fees
-        .checked_add(close_fee)
+        .checked_add(protocol_cut)
+        .ok_or(PerpError::MathOverflow)?;
+    pool.insurance_fund = pool
+        .insurance_fund
+        .checked_add(insurance_cut)
         .ok_or(PerpError::MathOverflow)?;
 
     let pool_key = pool.key();

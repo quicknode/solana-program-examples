@@ -1,6 +1,8 @@
 use anchor_lang::prelude::*;
 
-use crate::constants::{BASIS_POINTS_DENOMINATOR, FUNDING_PRECISION, SIZE_PRECISION};
+use crate::constants::{
+    BASIS_POINTS_DENOMINATOR, FUNDING_PRECISION, HAIRCUT_PRECISION, SIZE_PRECISION,
+};
 use crate::errors::PerpError;
 use crate::state::{Pool, Position, Side};
 
@@ -132,9 +134,9 @@ pub fn position_pnl(side: Side, size: u64, entry_price: u64, price: u64) -> Resu
 /// from the pool's running accumulators rather than iterating positions.
 /// Positive means traders are collectively up (and the pool is down).
 ///
-/// Profit is marked uncapped here: a position already past the reserved-profit
-/// cap is carried at more than the pool will actually pay out, so
-/// assets-under-management reads slightly low until that position closes.
+/// This is marked at full value, before any haircut: in a stressed pool the
+/// winners will actually be paid only `h` of their profit, so the figure is the
+/// pool's *gross* liability to traders, an upper bound on what leaves the vault.
 pub fn traders_unrealized_pnl(pool: &Pool, price: u64) -> Result<i128> {
     let price = price as i128;
     let size_precision = SIZE_PRECISION as i128;
@@ -171,6 +173,65 @@ pub fn liquidity_provider_aum(pool: &Pool, price: u64) -> Result<i128> {
     (pool.liquidity as i128)
         .checked_sub(traders)
         .ok_or(PerpError::MathOverflow.into())
+}
+
+/// The pool's gross profit liability at `price`: how much it would owe traders
+/// beyond their own collateral if every winner closed now. This is the *junior*
+/// claim the haircut applies to. Floored at zero — when traders are collectively
+/// down the pool owes them no profit.
+pub fn pool_profit_liability(pool: &Pool, price: u64) -> Result<u128> {
+    Ok(traders_unrealized_pnl(pool, price)?.max(0) as u128)
+}
+
+/// The haircut ratio `h`, scaled by `HAIRCUT_PRECISION`.
+///
+/// Profit is a junior claim, backed by liquidity-provider capital plus the
+/// insurance fund. When that backing covers the whole profit liability, `h` is
+/// one and profit is paid in full. When it falls short — a sharp move leaves
+/// traders owed more than the pool holds — `h` drops below one and *every*
+/// winner is paid the same fraction of their profit. No queue, no chosen
+/// victims. The division floors, so the haircut payouts can never sum to more
+/// than the backing. As losses settle back in, the backing recovers and `h`
+/// rises on its own.
+pub fn haircut_ratio(pool: &Pool, price: u64) -> Result<u128> {
+    let liability = pool_profit_liability(pool, price)?;
+    if liability == 0 {
+        return Ok(HAIRCUT_PRECISION);
+    }
+    let backing = (pool.liquidity as u128)
+        .checked_add(pool.insurance_fund as u128)
+        .ok_or(PerpError::MathOverflow)?;
+    if backing >= liability {
+        return Ok(HAIRCUT_PRECISION);
+    }
+    backing
+        .checked_mul(HAIRCUT_PRECISION)
+        .ok_or(PerpError::MathOverflow)?
+        .checked_div(liability)
+        .ok_or(PerpError::MathOverflow.into())
+}
+
+/// Apply the haircut ratio to a non-negative profit, rounding down. `profit`
+/// must be `>= 0` (only profit is haircut; losses are taken in full).
+pub fn apply_haircut(profit: i128, haircut: u128) -> Result<i128> {
+    (profit as u128)
+        .checked_mul(haircut)
+        .ok_or(PerpError::MathOverflow)?
+        .checked_div(HAIRCUT_PRECISION)
+        .ok_or(PerpError::MathOverflow)?
+        .try_into()
+        .map_err(|_| PerpError::MathOverflow.into())
+}
+
+/// Split a fee into the insurance-fund cut and the protocol cut. The insurance
+/// cut is `insurance_fee_bps` of the fee (rounded down); the protocol keeps the
+/// remainder, so no base unit is lost between the two.
+pub fn split_fee(fee: u64, insurance_fee_bps: u16) -> Result<(u64, u64)> {
+    let insurance_cut = basis_points_of(fee, insurance_fee_bps)?;
+    let protocol_cut = fee
+        .checked_sub(insurance_cut)
+        .ok_or(PerpError::MathOverflow)?;
+    Ok((insurance_cut, protocol_cut))
 }
 
 /// Funding a position owes since it opened, in collateral base units. Positive
