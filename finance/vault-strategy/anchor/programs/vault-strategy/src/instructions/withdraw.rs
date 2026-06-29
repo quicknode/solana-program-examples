@@ -18,7 +18,7 @@ pub struct WithdrawAccountConstraints<'info> {
     #[account(
         mut,
         has_one = usdc_mint @ VaultError::InvalidUsdcMint,
-        seeds = [b"strategy", strategy.manager.as_ref()],
+        seeds = [b"strategy", strategy.index.to_le_bytes().as_ref()],
         bump = strategy.bump
     )]
     pub strategy: Box<Account<'info, Strategy>>,
@@ -77,7 +77,7 @@ pub fn handle_withdraw<'info>(
 
     let vault_usdc_amount = context.accounts.vault_usdc.amount;
     let usdc_decimals = context.accounts.usdc_mint.decimals;
-    let manager_key = context.accounts.strategy.manager;
+    let strategy_index = context.accounts.strategy.index;
     let strategy_bump = context.accounts.strategy.bump;
     let strategy_key = context.accounts.strategy.key();
     let user_key = context.accounts.user.key();
@@ -104,7 +104,8 @@ pub fn handle_withdraw<'info>(
         .checked_sub(shares_to_burn)
         .ok_or(VaultError::MathOverflow)?;
 
-    let signer_seeds: &[&[&[u8]]] = &[&[b"strategy", manager_key.as_ref(), &[strategy_bump]]];
+    let index_bytes = strategy_index.to_le_bytes();
+    let signer_seeds: &[&[&[u8]]] = &[&[b"strategy", index_bytes.as_ref(), &[strategy_bump]]];
 
     // Hoist owned account-info handles for every CPI up front, so the asset loop
     // can borrow remaining_accounts without also re-borrowing `context.accounts`

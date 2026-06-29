@@ -91,6 +91,7 @@ const NVDA_RATE: u64 = 180;
 
 const FEE_BPS: u16 = 100; // 1%
 const SLIPPAGE_BPS: u16 = 100; // 1%
+const STRATEGY_INDEX: u64 = 0; // strategy PDA seed: "strategy" + 0
 
 struct TestContext {
     svm: LiteSVM,
@@ -178,8 +179,10 @@ fn setup_full() -> TestContext {
         send_transaction_from_instructions(&mut svm, vec![ix], &[&payer], &payer.pubkey()).unwrap();
     }
 
-    let (strategy_pda, _) =
-        Pubkey::find_program_address(&[b"strategy", manager.pubkey().as_ref()], &vault_program_id);
+    let (strategy_pda, _) = Pubkey::find_program_address(
+        &[b"strategy", STRATEGY_INDEX.to_le_bytes().as_ref()],
+        &vault_program_id,
+    );
     let (share_mint_pda, _) =
         Pubkey::find_program_address(&[b"share_mint", strategy_pda.as_ref()], &vault_program_id);
     let (registry_pda, _) =
@@ -332,6 +335,7 @@ fn init_strategy(ctx: &mut TestContext, fee_bps: u16, slippage_bps: u16, router:
     let ix = Instruction::new_with_bytes(
         ctx.vault_program_id,
         &vault_strategy::instruction::InitializeStrategy {
+            index: STRATEGY_INDEX,
             fee_bps,
             max_slippage_bps: slippage_bps,
             swap_router: router,

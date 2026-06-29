@@ -20,7 +20,7 @@ pub struct InvestAccountConstraints<'info> {
         mut,
         has_one = manager,
         has_one = usdc_mint @ VaultError::InvalidUsdcMint,
-        seeds = [b"strategy", strategy.manager.as_ref()],
+        seeds = [b"strategy", strategy.index.to_le_bytes().as_ref()],
         bump = strategy.bump
     )]
     pub strategy: Box<Account<'info, Strategy>>,
@@ -86,7 +86,7 @@ pub struct InvestAccountConstraints<'info> {
 
 pub fn handle_invest(context: Context<InvestAccountConstraints>, usdc_amount: u64) -> Result<()> {
     let strategy = &context.accounts.strategy;
-    let manager_key = strategy.manager;
+    let strategy_index = strategy.index;
     let strategy_bump = strategy.bump;
     let max_slippage_bps = strategy.max_slippage_bps;
 
@@ -113,7 +113,8 @@ pub fn handle_invest(context: Context<InvestAccountConstraints>, usdc_amount: u6
         .try_into()
         .map_err(|_| VaultError::MathOverflow)?;
 
-    let signer_seeds: &[&[&[u8]]] = &[&[b"strategy", manager_key.as_ref(), &[strategy_bump]]];
+    let index_bytes = strategy_index.to_le_bytes();
+    let signer_seeds: &[&[&[u8]]] = &[&[b"strategy", index_bytes.as_ref(), &[strategy_bump]]];
 
     let cpi_accounts = RouterSwapAccounts {
         caller: context.accounts.strategy.to_account_info(),

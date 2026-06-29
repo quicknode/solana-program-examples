@@ -18,7 +18,7 @@ pub struct DepositAccountConstraints<'info> {
     #[account(
         mut,
         has_one = usdc_mint @ VaultError::InvalidUsdcMint,
-        seeds = [b"strategy", strategy.manager.as_ref()],
+        seeds = [b"strategy", strategy.index.to_le_bytes().as_ref()],
         bump = strategy.bump
     )]
     pub strategy: Box<Account<'info, Strategy>>,
@@ -74,7 +74,7 @@ pub fn handle_deposit<'info>(
     let vault_usdc_amount = context.accounts.vault_usdc.amount;
     let total_shares = context.accounts.strategy.total_shares;
     let usdc_decimals = context.accounts.usdc_mint.decimals;
-    let manager_key = context.accounts.strategy.manager;
+    let strategy_index = context.accounts.strategy.index;
     let strategy_bump = context.accounts.strategy.bump;
     let strategy_key = context.accounts.strategy.key();
     let asset_count = context.accounts.strategy.asset_count as usize;
@@ -146,7 +146,8 @@ pub fn handle_deposit<'info>(
     let cpi_ctx = CpiContext::new(context.accounts.token_program.key(), transfer_accounts);
     transfer_checked(cpi_ctx, usdc_amount, usdc_decimals)?;
 
-    let signer_seeds: &[&[&[u8]]] = &[&[b"strategy", manager_key.as_ref(), &[strategy_bump]]];
+    let index_bytes = strategy_index.to_le_bytes();
+    let signer_seeds: &[&[&[u8]]] = &[&[b"strategy", index_bytes.as_ref(), &[strategy_bump]]];
     let mint_accounts = MintTo {
         mint: context.accounts.share_mint.to_account_info(),
         to: context.accounts.depositor_share_account.to_account_info(),

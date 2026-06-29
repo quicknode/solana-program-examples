@@ -29,14 +29,18 @@ pub mod vault_strategy {
         instructions::whitelist_asset::handle_whitelist_asset(context, price_feed)
     }
 
+    /// Open a strategy at a caller-chosen index, e.g. index 0 derives the PDA
+    /// from seeds `"strategy" + 0`. Manager pays and becomes the strategy's manager.
     pub fn initialize_strategy(
         context: Context<InitializeStrategyAccountConstraints>,
+        index: u64,
         fee_bps: u16,
         max_slippage_bps: u16,
         swap_router: Pubkey,
     ) -> Result<()> {
         instructions::initialize_strategy::handle_initialize_strategy(
             context,
+            index,
             fee_bps,
             max_slippage_bps,
             swap_router,

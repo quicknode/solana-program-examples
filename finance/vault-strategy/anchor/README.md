@@ -78,7 +78,7 @@ An [in-kind distribution](https://www.investopedia.com/terms/i/in-kind.asp) retu
 
 ### Step 2 - Maria initializes the strategy
 
-`initialize_strategy(fee_bps=100, max_slippage_bps=100, swap_router)` creates the `Strategy` PDA (`["strategy", maria]`), the share mint, and the USDC vault, binding the strategy to Victor's registry. No assets yet.
+`initialize_strategy(index=0, fee_bps=100, max_slippage_bps=100, swap_router)` creates the `Strategy` PDA (`["strategy", 0]`), the share mint, and the USDC vault, binding the strategy to Victor's registry. The strategy is addressed by a caller-chosen index (`"strategy" + 0`, `"strategy" + 1`, …) rather than the manager's key. No assets yet.
 
 ### Step 3 - Maria adds assets
 

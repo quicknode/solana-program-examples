@@ -6,9 +6,15 @@ use anchor_lang::prelude::*;
 /// is the base currency, held separately, and does not count against this.
 pub const MAX_ASSETS: u8 = 8;
 
+/// One strategy (basket). Its address is a PDA seeded by a caller-chosen index,
+/// e.g. seeds `"strategy" + 0`, so strategies are addressed by a simple counter
+/// rather than by the manager's key. The index is stored here so every handler
+/// can re-derive the PDA to sign for the vaults and share mint.
 #[account]
 #[derive(InitSpace)]
 pub struct Strategy {
+    /// Index used as the PDA seed, e.g. 0 for the first strategy.
+    pub index: u64,
     pub manager: Pubkey,
     /// Whitelist this strategy draws assets from. add_asset only accepts mints
     /// approved in this registry.

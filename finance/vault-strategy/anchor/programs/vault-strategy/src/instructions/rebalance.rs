@@ -20,7 +20,7 @@ pub struct RebalanceAccountConstraints<'info> {
         mut,
         has_one = manager,
         has_one = usdc_mint @ VaultError::InvalidUsdcMint,
-        seeds = [b"strategy", strategy.manager.as_ref()],
+        seeds = [b"strategy", strategy.index.to_le_bytes().as_ref()],
         bump = strategy.bump
     )]
     pub strategy: Box<Account<'info, Strategy>>,
@@ -116,7 +116,7 @@ pub fn handle_rebalance(
     );
 
     let strategy = &context.accounts.strategy;
-    let manager_key = strategy.manager;
+    let strategy_index = strategy.index;
     let strategy_bump = strategy.bump;
     let slip = (10_000 - strategy.max_slippage_bps) as u128;
 
@@ -160,7 +160,8 @@ pub fn handle_rebalance(
         .try_into()
         .map_err(|_| VaultError::MathOverflow)?;
 
-    let signer_seeds: &[&[&[u8]]] = &[&[b"strategy", manager_key.as_ref(), &[strategy_bump]]];
+    let index_bytes = strategy_index.to_le_bytes();
+    let signer_seeds: &[&[&[u8]]] = &[&[b"strategy", index_bytes.as_ref(), &[strategy_bump]]];
 
     // Step 1: sell basket token -> USDC
     let sell_cpi_accounts = RouterSellAccounts {

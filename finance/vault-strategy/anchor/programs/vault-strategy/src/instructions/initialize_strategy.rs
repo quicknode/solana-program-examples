@@ -20,6 +20,7 @@ pub const MAX_FEE_BPS: u16 = 1_000;
 pub const MAX_SLIPPAGE_BPS: u16 = 1_000;
 
 #[derive(Accounts)]
+#[instruction(index: u64)]
 pub struct InitializeStrategyAccountConstraints<'info> {
     #[account(mut)]
     pub manager: Signer<'info>,
@@ -33,7 +34,7 @@ pub struct InitializeStrategyAccountConstraints<'info> {
         init,
         payer = manager,
         space = Strategy::DISCRIMINATOR.len() + Strategy::INIT_SPACE,
-        seeds = [b"strategy", manager.key().as_ref()],
+        seeds = [b"strategy", index.to_le_bytes().as_ref()],
         bump
     )]
     pub strategy: Box<Account<'info, Strategy>>,
@@ -67,6 +68,7 @@ pub struct InitializeStrategyAccountConstraints<'info> {
 
 pub fn handle_initialize_strategy(
     context: Context<InitializeStrategyAccountConstraints>,
+    index: u64,
     fee_bps: u16,
     max_slippage_bps: u16,
     swap_router: Pubkey,
@@ -80,6 +82,7 @@ pub fn handle_initialize_strategy(
     let clock = Clock::get()?;
 
     context.accounts.strategy.set_inner(Strategy {
+        index,
         manager: context.accounts.manager.key(),
         registry: context.accounts.registry.key(),
         share_mint: context.accounts.share_mint.key(),
