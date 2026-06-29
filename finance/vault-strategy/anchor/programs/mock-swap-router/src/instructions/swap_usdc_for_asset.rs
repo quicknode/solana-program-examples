@@ -25,10 +25,10 @@ pub struct SwapUsdcForAssetAccountConstraints<'info> {
     )]
     pub asset_rate: Account<'info, AssetRate>,
 
-    pub usdc_mint: InterfaceAccount<'info, Mint>,
+    pub usdc_mint: Box<InterfaceAccount<'info, Mint>>,
 
     #[account(mut)]
-    pub asset_mint: InterfaceAccount<'info, Mint>,
+    pub asset_mint: Box<InterfaceAccount<'info, Mint>>,
 
     /// Caller's USDC token account - USDC flows from here to the treasury
     #[account(
@@ -37,7 +37,7 @@ pub struct SwapUsdcForAssetAccountConstraints<'info> {
         associated_token::authority = caller,
         associated_token::token_program = token_program
     )]
-    pub caller_usdc_account: InterfaceAccount<'info, TokenAccount>,
+    pub caller_usdc_account: Box<InterfaceAccount<'info, TokenAccount>>,
 
     /// Caller's asset token account - minted asset tokens land here
     #[account(
@@ -46,7 +46,7 @@ pub struct SwapUsdcForAssetAccountConstraints<'info> {
         associated_token::authority = caller,
         associated_token::token_program = token_program
     )]
-    pub caller_asset_account: InterfaceAccount<'info, TokenAccount>,
+    pub caller_asset_account: Box<InterfaceAccount<'info, TokenAccount>>,
 
     /// Router's USDC treasury - receives the USDC payment
     #[account(
@@ -55,7 +55,7 @@ pub struct SwapUsdcForAssetAccountConstraints<'info> {
         associated_token::authority = router_authority,
         associated_token::token_program = token_program
     )]
-    pub router_usdc_treasury: InterfaceAccount<'info, TokenAccount>,
+    pub router_usdc_treasury: Box<InterfaceAccount<'info, TokenAccount>>,
 
     /// CHECK: PDA used as mint authority - validated by seeds constraint
     #[account(

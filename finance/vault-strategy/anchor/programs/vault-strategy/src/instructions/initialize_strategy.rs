@@ -5,13 +5,19 @@ use anchor_spl::{
 };
 
 use crate::error::VaultError;
-use crate::state::Strategy;
+use crate::state::{Registry, Strategy};
 
 /// Highest annual management fee a manager may set, in basis points (10%).
 /// `collect_fees` mints shares to the manager and dilutes every depositor,
 /// so an uncapped fee would let a manager drain the vault by configuration;
 /// 10% per year is already far above typical fund management fees.
 pub const MAX_FEE_BPS: u16 = 1_000;
+
+/// Highest slippage tolerance a manager may set, in basis points (10%).
+/// invest/rebalance reject a swap whose output deviates from the Pyth price by
+/// more than this; capping it stops a manager from setting a tolerance so loose
+/// that the bound is meaningless.
+pub const MAX_SLIPPAGE_BPS: u16 = 1_000;
 
 #[derive(Accounts)]
 pub struct InitializeStrategyAccountConstraints<'info> {
@@ -20,9 +26,8 @@ pub struct InitializeStrategyAccountConstraints<'info> {
 
     pub usdc_mint: InterfaceAccount<'info, Mint>,
 
-    pub asset_mint_a: InterfaceAccount<'info, Mint>,
-
-    pub asset_mint_b: InterfaceAccount<'info, Mint>,
+    /// The whitelist this strategy will draw its assets from.
+    pub registry: Account<'info, Registry>,
 
     #[account(
         init,
@@ -31,7 +36,7 @@ pub struct InitializeStrategyAccountConstraints<'info> {
         seeds = [b"strategy", manager.key().as_ref()],
         bump
     )]
-    pub strategy: Account<'info, Strategy>,
+    pub strategy: Box<Account<'info, Strategy>>,
 
     #[account(
         init,
@@ -43,7 +48,7 @@ pub struct InitializeStrategyAccountConstraints<'info> {
         seeds = [b"share_mint", strategy.key().as_ref()],
         bump
     )]
-    pub share_mint: InterfaceAccount<'info, Mint>,
+    pub share_mint: Box<InterfaceAccount<'info, Mint>>,
 
     /// Vault's USDC token account - strategy PDA is the authority
     #[account(
@@ -53,27 +58,7 @@ pub struct InitializeStrategyAccountConstraints<'info> {
         associated_token::authority = strategy,
         associated_token::token_program = token_program
     )]
-    pub vault_usdc: InterfaceAccount<'info, TokenAccount>,
-
-    /// Vault's asset_a token account - strategy PDA is the authority
-    #[account(
-        init,
-        payer = manager,
-        associated_token::mint = asset_mint_a,
-        associated_token::authority = strategy,
-        associated_token::token_program = token_program
-    )]
-    pub vault_asset_a: InterfaceAccount<'info, TokenAccount>,
-
-    /// Vault's asset_b token account - strategy PDA is the authority
-    #[account(
-        init,
-        payer = manager,
-        associated_token::mint = asset_mint_b,
-        associated_token::authority = strategy,
-        associated_token::token_program = token_program
-    )]
-    pub vault_asset_b: InterfaceAccount<'info, TokenAccount>,
+    pub vault_usdc: Box<InterfaceAccount<'info, TokenAccount>>,
 
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub token_program: Interface<'info, TokenInterface>,
@@ -82,39 +67,30 @@ pub struct InitializeStrategyAccountConstraints<'info> {
 
 pub fn handle_initialize_strategy(
     context: Context<InitializeStrategyAccountConstraints>,
-    weight_bps_a: u16,
-    weight_bps_b: u16,
     fee_bps: u16,
+    max_slippage_bps: u16,
     swap_router: Pubkey,
-    price_feed_a: Pubkey,
-    price_feed_b: Pubkey,
 ) -> Result<()> {
-    require!(
-        weight_bps_a
-            .checked_add(weight_bps_b)
-            .ok_or(VaultError::InvalidWeights)?
-            == 10_000,
-        VaultError::InvalidWeights
-    );
-
     require!(fee_bps <= MAX_FEE_BPS, VaultError::FeeTooHigh);
+    require!(
+        max_slippage_bps <= MAX_SLIPPAGE_BPS,
+        VaultError::SlippageConfigTooHigh
+    );
 
     let clock = Clock::get()?;
 
     context.accounts.strategy.set_inner(Strategy {
         manager: context.accounts.manager.key(),
+        registry: context.accounts.registry.key(),
         share_mint: context.accounts.share_mint.key(),
         usdc_mint: context.accounts.usdc_mint.key(),
-        asset_mint_a: context.accounts.asset_mint_a.key(),
-        asset_mint_b: context.accounts.asset_mint_b.key(),
-        weight_bps_a,
-        weight_bps_b,
+        swap_router,
         fee_bps,
+        max_slippage_bps,
         total_shares: 0,
         last_fee_accrual_timestamp: clock.unix_timestamp,
-        swap_router,
-        price_feed_a,
-        price_feed_b,
+        asset_count: 0,
+        total_weight_bps: 0,
         bump: context.bumps.strategy,
     });
 
