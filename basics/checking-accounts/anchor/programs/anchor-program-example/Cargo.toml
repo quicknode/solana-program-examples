@@ -20,7 +20,7 @@ custom-heap = []
 custom-panic = []
 
 [dependencies]
-anchor-lang = "1.0.0"
+anchor-lang = "1.1.2"
 
 [dev-dependencies]
 litesvm = "0.11.0"

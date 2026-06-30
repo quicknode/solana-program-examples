@@ -20,8 +20,8 @@ custom-heap = []
 custom-panic = []
 
 [dependencies]
-anchor-lang = "1.0.0"
-anchor-spl = "1.0.0"
+anchor-lang = "1.1.2"
+anchor-spl = "1.1.2"
 # Used by the ported Openbook slab - `bytemuck::Pod` / `Zeroable` on every node
 # variant + `min_const_generics` so `[AnyNode; 1024]` can derive Pod without
 # hitting bytemuck's default-32 array cap. `static_assertions` keeps the slab

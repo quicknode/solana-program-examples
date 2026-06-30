@@ -88,11 +88,16 @@ impl Market {
             include_bytes!("../../../target/deploy/perpetual_futures.so"),
         )
         .unwrap();
-        svm.add_program(
-            mock_switchboard::id(),
-            include_bytes!("../../../target/deploy/mock_switchboard.so"),
-        )
-        .unwrap();
+        // Use std::fs::read() instead of include_bytes!() for the switchboard program because
+        // include_bytes!() runs at compile time, and during `anchor build` the IDL generation
+        // step compiles tests before the .so files exist. Since this is a cross-program
+        // dependency (not our own program), mock_switchboard.so may not be built yet at compile time.
+        let switchboard_bytes = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../target/deploy/mock_switchboard.so"
+        ))
+        .expect("mock_switchboard.so not found - run `anchor build` first");
+        svm.add_program(mock_switchboard::id(), &switchboard_bytes).unwrap();
 
         let payer = create_wallet(&mut svm, 100_000_000_000).unwrap();
         let admin = create_wallet(&mut svm, 100_000_000_000).unwrap();

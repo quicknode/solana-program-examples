@@ -4,6 +4,17 @@ All notable changes to this repository are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-06-30] - Anchor 1.1.2
+
+### Changed
+
+- Upgraded every Anchor program from `anchor-lang`/`anchor-spl` `1.0.0` to the latest stable `1.1.2`, and bumped the Anchor CLI used by `anchor.yml` CI to match (`anchor-version: 1.1.2`).
+
+### Fixed
+
+- `anchor.yml` built no projects when `.ghaignore` was empty: `find … | grep -vE "$ignore_pattern"` treated the empty pattern as "match everything" and dropped the whole list, so the workflow passed without building anything. Guarded the filter (as `native.yml`, `pinocchio.yml` and `solana-asm.yml` already do).
+- `vault-strategy` and `perpetual-futures` LiteSVM tests loaded their sibling mock program's `.so` with `include_bytes!`, which is evaluated at compile time. Anchor's IDL build compiles the tests before that sibling `.so` is built, so the build failed. They now read the sibling `.so` at runtime with `std::fs::read`, matching the existing `cross-program-invocation/hand` test.
+
 ## [2026-06-12] - Rust + LiteSVM tests everywhere
 
 ### Changed
