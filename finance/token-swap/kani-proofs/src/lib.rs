@@ -155,26 +155,25 @@ fn proof_swap_cannot_fully_drain_when_reserve_positive() {
     assert!(output < other_reserve, "output must leave the pool solvent");
 }
 
-/// FINDING, proven as a positive characterization (not a `should_panic`): the
-/// solvency bound above is *tight*. When the input-side effective reserve is
-/// exactly `0`, the curve outputs the ENTIRE opposite reserve (`output ==
-/// other_reserve`), draining that side to zero — and the program's end-of-swap
-/// `require!(new_invariant >= invariant)` guard does NOT catch it, because with
-/// `this_reserve == 0` the pre-trade product `k = 0 * other_reserve = 0`, so the
-/// post-trade product (also 0) trivially satisfies `0 >= 0`.
+/// FINDING (now FIXED in the program) — this proof is the justification for the
+/// fix. It characterizes *why* `swap_tokens` must reject empty reserves: when an
+/// input-side effective reserve is exactly `0`, the curve outputs the ENTIRE
+/// opposite reserve (`output == other_reserve`), draining that side — and the
+/// program's end-of-swap `require!(new_invariant >= invariant)` guard does NOT
+/// catch it, because with `this_reserve == 0` the pre-trade product
+/// `k = 0 * other_reserve = 0` makes `0 >= 0` hold vacuously.
 ///
-/// Severity in practice: reaching `effective_reserve == 0` on one side while the
-/// other is non-empty is a degenerate state the deposit path is designed to
-/// prevent — the `MINIMUM_LIQUIDITY` floor keeps the bootstrap product positive,
-/// and `proof_swap_preserves_constant_product` shows ordinary swaps keep both
-/// sides positive. So this is a latent edge, not a live exploit, but it shows
-/// the invariant check alone is not sufficient for solvency: it leans on the
-/// deposit flow never letting a reserve hit zero. A belt-and-suspenders
-/// `require!(this_reserve > 0)` in `swap_tokens` would close it directly.
+/// The fix: `handle_swap_tokens` now does
+/// `require!(effective_pool_a > 0 && effective_pool_b > 0, AmmError::EmptyPoolReserve)`
+/// before computing `output`, so this drained state is unreachable on-chain
+/// regardless of any argument about whether a reserve could ever hit zero. The
+/// `MINIMUM_LIQUIDITY` deposit floor and `proof_swap_preserves_constant_product`
+/// already make it unreachable in normal operation; the guard means solvency no
+/// longer *depends* on that reachability argument.
 ///
-/// Encoding this as a *positive* proof (every assertion below holds) is
-/// deliberate: a `#[kani::should_panic]` would invert the maintenance signal —
-/// adding the `require!` fix would make a should-panic harness start failing.
+/// We keep this as a *positive* proof (every assertion below holds) characterizing
+/// the raw `swap_output` formula at the boundary — not a `#[kani::should_panic]`,
+/// which would have started failing the moment the `require!` fix landed.
 #[cfg(kani)]
 #[kani::proof]
 #[kani::solver(cadical)]

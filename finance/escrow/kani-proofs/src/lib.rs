@@ -87,17 +87,20 @@ fn proof_token_transfer_conserves() {
 // Lamport accounting: utils::close_offer_account
 // ---------------------------------------------------------------------------
 //
-// The native program closes the offer account like this (native/.../utils.rs):
+// The native program closes the offer account like this (native/.../utils.rs),
+// using compute-then-commit so the fallible add happens BEFORE any mutation:
 //
 //     let offer_lamports = offer_info.lamports();
 //     let destination_lamports = destination.lamports();
-//     **offer_info.lamports.borrow_mut() = 0;                    // (1) zero source
-//     **destination.lamports.borrow_mut() = destination_lamports // (2) credit dest
+//     let new_destination_lamports = destination_lamports     // fallible, no mutation yet
 //         .checked_add(offer_lamports)
 //         .ok_or(EscrowError::ArithmeticOverflow)?;
+//     **destination.lamports.borrow_mut() = new_destination_lamports;  // (1) credit dest
+//     **offer_info.lamports.borrow_mut() = 0;                          // (2) zero source
 //
-// This model preserves that exact statement ordering, including the fact that
-// the source is zeroed *before* the (fallible) credit of the destination.
+// This model preserves that ordering. Because the credit is computed before any
+// account is touched, the error path mutates nothing, so lamport conservation
+// holds with EQUALITY on every path (see proof below) — not merely "no inflation".
 
 /// Lamport-overflow error, mirroring `EscrowError::ArithmeticOverflow`.
 #[derive(Debug, PartialEq, Eq)]
@@ -106,10 +109,12 @@ pub struct LamportOverflow;
 pub fn close_offer_account(offer: &mut u64, destination: &mut u64) -> Result<(), LamportOverflow> {
     let offer_lamports = *offer;
     let destination_lamports = *destination;
-    *offer = 0; // (1)
-    *destination = destination_lamports
+    // Compute-then-commit: the fallible add first, no mutation until it succeeds.
+    let new_destination = destination_lamports
         .checked_add(offer_lamports)
-        .ok_or(LamportOverflow)?; // (2)
+        .ok_or(LamportOverflow)?;
+    *destination = new_destination; // (1)
+    *offer = 0; // (2)
     Ok(())
 }
 
@@ -132,28 +137,22 @@ fn proof_close_offer_conserves_on_success() {
     assert_eq!(offer as u128 + dest as u128, offer0 as u128 + dest0 as u128);
 }
 
-/// SAFETY (no inflation): `close_offer_account` never *creates* lamports on any
-/// path. On success it conserves the total exactly (see
-/// `proof_close_offer_conserves_on_success`); on the overflow error path it has
-/// already zeroed the source but not yet credited the destination, so the total
-/// is strictly lower. Either way `after <= before`, so the function can never
-/// inflate the lamport supply — the security-relevant direction, and it holds
-/// unconditionally.
+/// Unconditional lamport conservation, on EVERY path — the property the
+/// compute-then-commit ordering buys us.
 ///
-/// DOCUMENTED WART (not a live bug): the error path *transiently destroys*
-/// lamports, because the source is zeroed before the fallible `checked_add` that
-/// credits the destination (statements (1) then (2) above). Kani's witness is
-/// `offer0 == dest0 == u64::MAX`. On-chain this is invisible: the Solana runtime
-/// reverts all account mutations when an instruction returns `Err`, and the
-/// destination (the maker's wallet) cannot hold anywhere near `u64::MAX`
-/// lamports, so the overflow branch is unreachable in practice. A one-line
-/// hardening — credit the destination *before* zeroing the source — would make
-/// conservation hold with equality on every path; we assert the weaker-but-
-/// unconditional "no inflation" here rather than encode the wart as an
-/// (inverted, fragile) `#[kani::should_panic]`.
+/// History: `close_offer_account` originally zeroed the source before the
+/// fallible `checked_add` that credits the destination, so on an overflow it
+/// returned `Err` having already destroyed the source's lamports (Kani witness:
+/// `offer0 == dest0 == u64::MAX`). That was masked on-chain — the runtime
+/// reverts on `Err`, and a wallet can't hold near `u64::MAX` lamports — but it
+/// meant conservation held only because of those *external* guarantees. The
+/// function now computes the credited balance before touching any account
+/// (`native/.../utils.rs`), so the error path mutates nothing and conservation
+/// holds with equality regardless of the result. This proof asserts exactly
+/// that, with no precondition on the inputs.
 #[cfg(kani)]
 #[kani::proof]
-fn proof_close_offer_never_creates_lamports() {
+fn proof_close_offer_conserves_lamports_unconditionally() {
     let offer0: u64 = kani::any();
     let dest0: u64 = kani::any();
 
@@ -161,10 +160,16 @@ fn proof_close_offer_never_creates_lamports() {
     let mut dest = dest0;
     let total_before = offer0 as u128 + dest0 as u128;
 
-    let _ = close_offer_account(&mut offer, &mut dest);
-
-    // No path ever increases the total lamports: the function cannot inflate.
-    assert!(offer as u128 + dest as u128 <= total_before);
+    match close_offer_account(&mut offer, &mut dest) {
+        Ok(()) => assert_eq!(offer, 0), // source emptied on success
+        Err(_) => {
+            // Error path is now a no-op: nothing was mutated.
+            assert_eq!(offer, offer0);
+            assert_eq!(dest, dest0);
+        }
+    }
+    // Total lamports are conserved exactly on both paths.
+    assert_eq!(offer as u128 + dest as u128, total_before);
 }
 
 // ---------------------------------------------------------------------------

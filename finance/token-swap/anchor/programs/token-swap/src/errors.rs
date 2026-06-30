@@ -78,4 +78,11 @@ pub enum AmmError {
     // both be valid, fragmenting liquidity.
     #[msg("mint_a must be less than mint_b for canonical pool ordering")]
     InvalidMintOrder,
+
+    // Returned by `swap_tokens` when either LP-claimable (effective) reserve is
+    // zero. Swapping against an empty reserve would let the constant-product
+    // curve drain the opposite side while the invariant check passes vacuously
+    // (k = 0 >= 0), so the swap is rejected outright.
+    #[msg("Pool reserves must both be positive to swap")]
+    EmptyPoolReserve,
 }

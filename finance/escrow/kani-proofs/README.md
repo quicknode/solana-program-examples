@@ -18,7 +18,7 @@ invariants the program relies on:
 | --- | --- |
 | `proof_token_transfer_conserves` | An SPL transfer either fails atomically or conserves the two accounts' total balance. |
 | `proof_close_offer_conserves_on_success` | Closing the offer account conserves lamports and empties the source. |
-| `proof_close_offer_never_creates_lamports` | **Finding**, proven as the unconditional "no inflation" property (see below). |
+| `proof_close_offer_conserves_lamports_unconditionally` | **Finding (now fixed)**: lamport conservation holds with equality on every path (see below). |
 | `proof_take_offer_conserves_value` | A take conserves total mint A and total mint B, drains the vault, and pays the maker exactly the price. |
 | `proof_take_offer_guard_never_overflows` | The `checked_add` conservation guards in `take_offer` are unreachable dead code. |
 | `proof_take_offer_guard_dead_under_spl_invariant` | Same, shown explicitly under the SPL supply invariant. |
@@ -26,10 +26,10 @@ invariants the program relies on:
 | `proof_make_offer_vault_equals_offered` | After a deposit the vault holds exactly the offered amount. |
 | `proof_offer_id_le_bytes_roundtrip` / `proof_offer_id_seed_injective` | The PDA `id` seed encoding is a lossless, injective round-trip. |
 
-## Finding: lamport ordering in `close_offer_account`
+## Finding (now fixed): lamport ordering in `close_offer_account`
 
-`utils::close_offer_account` zeroes the offer account's lamports *before* the
-fallible `checked_add` that credits the destination:
+`utils::close_offer_account` originally zeroed the offer account's lamports
+*before* the fallible `checked_add` that credits the destination:
 
 ```rust
 **offer_info.lamports.borrow_mut() = 0;                     // (1) zero source
@@ -39,21 +39,28 @@ fallible `checked_add` that credits the destination:
 ```
 
 At `offer == dest == u64::MAX` the credit overflows and returns `Err` after the
-source was already zeroed, so the total *transiently* drops from `2·MAX` to
-`MAX` — lamports are momentarily destroyed on the error path.
+source was already zeroed, so the total *transiently* dropped from `2·MAX` to
+`MAX` — lamports momentarily destroyed on the error path. Not exploitable (the
+runtime reverts on `Err`, and a wallet can't hold near `u64::MAX` lamports), but
+conservation held only because of those *external* guarantees.
 
-**Severity: not exploitable.** The Solana runtime reverts all account mutations
-when an instruction returns `Err`, so the zeroing rolls back; and the
-destination is the maker's wallet, which cannot hold anywhere near `u64::MAX`
-lamports. A hardened version would credit the destination before zeroing the
-source.
+**The fix (applied):** `close_offer_account` now uses *compute-then-commit* —
+the `checked_add` runs **before** any account is mutated, so the error path
+changes nothing:
 
-**How it's encoded.** Rather than a fragile `#[kani::should_panic]` (which would
-*start failing* the day someone applies that hardening — fixing the code breaks
-the test), `proof_close_offer_never_creates_lamports` proves the
-security-relevant direction that holds **unconditionally**: the function can
-never *create* lamports (`after <= before` on every path). The transient-
-destruction wart is recorded in the harness comment, not as an inverted test.
+```rust
+let new_destination_lamports = destination_lamports
+    .checked_add(offer_lamports)
+    .ok_or(EscrowError::ArithmeticOverflow)?;   // fallible first, no mutation yet
+**destination.lamports.borrow_mut() = new_destination_lamports;
+**offer_info.lamports.borrow_mut() = 0;
+```
+
+`proof_close_offer_conserves_lamports_unconditionally` now proves lamport
+conservation holds with **equality on every path**, with no precondition — the
+invariant no longer depends on the runtime reverting a failed instruction. (This
+is also why it's a plain proof, not a `#[kani::should_panic]`: a should-panic
+encoding would have *started failing* the moment this fix landed.)
 
 ## CI
 

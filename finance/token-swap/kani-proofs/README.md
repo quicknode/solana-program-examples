@@ -50,7 +50,7 @@ The whole suite verifies in ~90s of solver time. This is why these proofs run
 **weekly in CI** (the `kani.yml` `verify` job), not on every push/PR. A fast
 unit-test job runs per push/PR.
 
-## Finding: full drain at a zero effective reserve
+## Finding (now fixed): full drain at a zero effective reserve
 
 `proof_swap_at_zero_reserve_drains_whole_pool` shows the `output < other_reserve`
 bound is tight: when the input-side *effective* reserve is exactly `0`, the
@@ -60,19 +60,28 @@ other_reserve`), draining that side to zero. The end-of-swap
 `this_reserve == 0` the pre-trade product `k = 0 * other_reserve = 0`, so the
 post-trade product (also `0`) trivially satisfies `0 >= 0`.
 
-It is encoded as a **positive** proof (every assertion holds — `output ==
-other_reserve` and `0 >= 0`), not a `#[kani::should_panic]`. A should-panic would
-invert the maintenance signal: adding the `require!(this_reserve > 0)` fix would
-make a should-panic harness start failing.
+**The fix (applied):** `handle_swap_tokens` now rejects an empty pool up front,
+before computing `output`:
 
-**Severity: latent edge, not a live exploit.** Reaching `effective_reserve == 0`
-on one side while the other is non-empty is a degenerate state the deposit path
-is designed to prevent (the `MINIMUM_LIQUIDITY` floor keeps the bootstrap
-product positive, and `proof_swap_preserves_constant_product` shows ordinary
-swaps keep both sides positive). The finding shows the invariant check alone is
-not sufficient for solvency — it leans on the deposit flow never letting a
-reserve hit zero. A belt-and-suspenders `require!(this_reserve > 0)` in
-`swap_tokens` would close it directly.
+```rust
+require!(
+    effective_pool_a > 0 && effective_pool_b > 0,
+    AmmError::EmptyPoolReserve
+);
+```
+
+so the drained state is unreachable on-chain regardless of any reachability
+argument. Reaching `effective_reserve == 0` was already a degenerate state the
+deposit path prevents (the `MINIMUM_LIQUIDITY` floor keeps the bootstrap product
+positive, and `proof_swap_preserves_constant_product` shows ordinary swaps keep
+both sides positive), so this was a latent edge, not a live exploit — but the
+guard means solvency no longer *depends* on that argument.
+
+The harness is kept as a **positive** proof (every assertion holds — `output ==
+other_reserve` and `0 >= 0`) characterizing the raw `swap_output` formula at the
+boundary, which is exactly the justification for the program guard. It is not a
+`#[kani::should_panic]`, which would have started failing the moment the
+`require!` fix landed.
 
 ## Running
 
