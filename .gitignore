@@ -31,3 +31,7 @@ finance/escrow/native/tests/fixtures/escrow_native_program.so
 deploy
 .claude/*
 !.claude/skills/
+# Track the SessionStart hook (installs Kani) so Claude Code on the web can run
+# the formal-verification proof crates in future sessions.
+!.claude/settings.json
+!.claude/hooks/

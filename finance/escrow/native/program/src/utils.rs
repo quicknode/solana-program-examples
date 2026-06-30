@@ -27,10 +27,19 @@ pub fn close_offer_account<'info>(
     let offer_lamports = offer_info.lamports();
     let destination_lamports = destination.lamports();
 
-    **offer_info.lamports.borrow_mut() = 0;
-    **destination.lamports.borrow_mut() = destination_lamports
+    // Compute-then-commit: do the fallible add BEFORE mutating either account.
+    // The destination is a wallet, so on mainnet this can never overflow (total
+    // SOL supply is far below u64::MAX), but ordering the check first means an
+    // overflow returns Err with no state changed - conservation holds on every
+    // path from the function's own logic, not just because the runtime reverts a
+    // failed instruction. Zeroing the source before the fallible credit would
+    // transiently destroy lamports on the error path.
+    let new_destination_lamports = destination_lamports
         .checked_add(offer_lamports)
         .ok_or(EscrowError::ArithmeticOverflow)?;
+
+    **destination.lamports.borrow_mut() = new_destination_lamports;
+    **offer_info.lamports.borrow_mut() = 0;
 
     offer_info.resize(0)?;
     offer_info.assign(system_program.key);
