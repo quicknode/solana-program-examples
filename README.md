@@ -2,7 +2,7 @@
 
 ![Quicknode Solana Program Examples](assets/banner.png?v=1)
 
-Working, tested, up-to-date examples of common Solana programs (what other chains call smart contracts), maintained by [Quicknode](https://www.quicknode.com/chains/solana). Every example builds and passes CI on a current toolchain — **Anchor 1.1**, the current multi-file program layout (one file per instruction), and [LiteSVM](https://github.com/LiteSVM/litesvm) tests rather than the older `solana-test-validator` / web3.js stack.
+Working, tested, up-to-date examples of common Solana programs (what other chains call smart contracts), maintained by [Quicknode](https://www.quicknode.com/chains/solana). Every example builds and passes CI on a current toolchain — **Anchor 1.1**, the current multi-file program layout (one file per instruction handker, no giant `lib.rs`), and [LiteSVM](https://github.com/LiteSVM/litesvm) tests rather than the older `solana-test-validator` / web3.js stack.
 
 [![Anchor](../../actions/workflows/anchor.yml/badge.svg)](../../actions/workflows/anchor.yml) [![Quasar](../../actions/workflows/quasar.yml/badge.svg)](../../actions/workflows/quasar.yml) [![Pinocchio](../../actions/workflows/pinocchio.yml/badge.svg)](../../actions/workflows/pinocchio.yml) [![Native](../../actions/workflows/native.yml/badge.svg)](../../actions/workflows/native.yml) [![ASM](../../actions/workflows/solana-asm.yml/badge.svg)](../../actions/workflows/solana-asm.yml)
 
@@ -25,9 +25,7 @@ To deploy to mainnet or devnet you'll need an RPC endpoint. [Quicknode](https://
 
 ## Financial Software
 
-The programs are examples of common financial primitives on Solana.
-
-> **Formal verification.** Every finance program ships with [Kani](https://github.com/model-checking/kani) proofs that verify its money-math invariants exhaustively over all inputs, instead of just sampling them with unit tests. See each program's `kani-proofs/` directory for the harnesses and what they prove.
+The programs are examples of common financial primitives on Solana. As well as tests these all have formal verification. Every finance program ships with [Kani](https://github.com/model-checking/kani) proofs that verify its money-math invariants exhaustively over all inputs. See each program's `kani-proofs/` directory for the harnesses and what they prove.
 
 ### Escrow
 
