@@ -80,6 +80,20 @@ pub fn handle_swap_tokens(
         .checked_sub(pool_config.admin_fees_owed_b)
         .ok_or(AmmError::MathOverflow)?;
 
+    // Both LP-claimable reserves must be positive. Defence in depth: if an input
+    // reserve were 0, the constant-product formula below would output the ENTIRE
+    // opposite reserve (output = taxed_input * other / (0 + taxed_input) = other),
+    // draining that side - and the end-of-swap `new_invariant >= invariant` check
+    // would NOT catch it, because the pre-trade product k = 0 * other = 0 makes
+    // `0 >= 0` hold vacuously. A bootstrapped pool keeps both sides positive (the
+    // MINIMUM_LIQUIDITY floor on the first deposit, and swaps preserve the
+    // product), so this is not reachable in normal operation, but the curve's
+    // solvency must not rest on that argument alone.
+    require!(
+        effective_pool_a > 0 && effective_pool_b > 0,
+        AmmError::EmptyPoolReserve
+    );
+
     // Constant-product output formula:
     //   output = taxed_input * other_reserve / (this_reserve + taxed_input)
     // (where `this_reserve` is the input side, `other_reserve` the output

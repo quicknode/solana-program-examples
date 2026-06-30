@@ -1,0 +1,94 @@
+name: Kani
+
+# Formal-verification proofs (https://github.com/model-checking/kani) for the
+# finance/ example programs. Each <program>/kani-proofs crate models its
+# program's pure money-math and lets the Kani model checker prove the invariants
+# exhaustively, in the spirit of aeyakovenko/percolator.
+#
+# WHY THIS RUNS ON A WEEKLY SCHEDULE, NOT ON EVERY PUSH/PR
+# -------------------------------------------------------
+# Most of the finance proofs verify NONLINEAR 128-bit arithmetic (constant-
+# product curves, mul_div with a symbolic divisor, integer sqrt, pari-mutuel
+# payouts, share exchange rates). Kani is a bit-precise model checker: it
+# bit-blasts that arithmetic into SAT, and nonlinear / symbolic-divisor terms
+# are the worst case for the solver. Even with bounded inputs, individual
+# harnesses take tens of seconds and a full crate runs for minutes; the whole
+# finance suite is far too slow to gate every push/PR. So the heavy
+# `cargo kani` verification runs once a week (and on demand via
+# workflow_dispatch), while a fast unit-test job still runs on every push/PR to
+# catch model regressions early. See each finance/<program>/kani-proofs/README.md
+# for the per-harness bounds and timings.
+
+on:
+  schedule:
+    # Mondays at 06:00 UTC. Weekly because the proofs are slow (see header).
+    - cron: "0 6 * * 1"
+  workflow_dispatch: {}
+  # Fast feedback only: the unit-test job below is gated to these events; the
+  # slow `verify` job is gated to schedule / manual dispatch.
+  push:
+    branches:
+      - main
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # See https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  # Fast feedback on every push/PR: the proof crates compile and their plain
+  # unit tests pass on stable, independently of the (slow) Kani toolchain. This
+  # catches model regressions without paying for full verification.
+  unit-tests:
+    name: Proof unit tests (${{ matrix.program }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        program:
+          - escrow
+          - token-swap
+          - order-book
+          - lending
+          - betting-market
+          - vault-strategy
+          - token-fundraiser
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Run unit tests
+        working-directory: finance/${{ matrix.program }}/kani-proofs
+        run: cargo test
+
+  # The formal verification itself. SLOW (minutes per crate), so it only runs on
+  # the weekly schedule or when triggered manually — never on push/PR. The
+  # official Kani action installs the verifier + CBMC toolchain (with caching)
+  # and runs `cargo kani` in each proof crate; any failed proof fails the job.
+  verify:
+    name: Kani proofs (${{ matrix.program }})
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        program:
+          - escrow
+          - token-swap
+          - order-book
+          - lending
+          - betting-market
+          - vault-strategy
+          - token-fundraiser
+    steps:
+      - uses: actions/checkout@v5
+      - name: Run Kani
+        uses: model-checking/kani-github-action@v1
+        with:
+          working-directory: finance/${{ matrix.program }}/kani-proofs

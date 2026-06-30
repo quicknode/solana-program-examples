@@ -1,0 +1,23 @@
+# Standalone workspace - intentionally NOT part of the root program-examples
+# workspace. These are Kani (https://github.com/model-checking/kani) proof
+# harnesses that model the escrow's value-conservation and lamport-accounting
+# invariants as pure Rust, so Kani can verify them without dragging the whole
+# Solana / SPL-token dependency tree (and its CPI syscalls, which Kani cannot
+# symbolically execute) into the model checker.
+[workspace]
+
+[package]
+name = "escrow-kani-proofs"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+# `kani` is a custom cfg set by the Kani model checker; teach a plain `cargo
+# build`/`cargo test` that it is expected so it does not warn.
+[lints.rust]
+unexpected_cfgs = { level = "allow", check-cfg = ['cfg(kani)'] }
+
+[dependencies]
