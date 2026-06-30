@@ -27,7 +27,7 @@ To deploy to mainnet or devnet you'll need an RPC endpoint. [Quicknode](https://
 
 The programs are examples of common financial primitives on Solana.
 
-> **Formal verification.** Every finance program ships with [Kani](https://github.com/model-checking/kani) formal-verification proofs (in `finance/<program>/kani-proofs/`), in the spirit of [aeyakovenko/percolator](https://github.com/aeyakovenko/percolator). The model checker proves each program's money-math invariants — value conservation, the AMM constant product, matching conservation, lending rounding/interest/liquidation safety, pari-mutuel solvency, share-vault solvency — exhaustively over all inputs, rather than just sampling them with unit tests. Most proofs verify nonlinear 128-bit arithmetic and are slow, so the full Kani run is [scheduled weekly](./.github/workflows/kani.yml) rather than gating every push. The proofs surfaced two (non-exploitable) edge cases — a lamport-write ordering in the native escrow and a zero-reserve drain in the AMM swap — both now hardened in the programs. See each crate's `README.md` for the harnesses, invariants, and findings.
+> **Formal verification.** Every finance program ships with [Kani](https://github.com/model-checking/kani) proofs that verify its money-math invariants exhaustively over all inputs, instead of just sampling them with unit tests. See each program's `kani-proofs/` directory for the harnesses and what they prove.
 
 ### Escrow
 
