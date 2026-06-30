@@ -27,7 +27,7 @@ To deploy to mainnet or devnet you'll need an RPC endpoint. [Quicknode](https://
 
 ## Financial Software
 
-Each program below is an example of a common financial primitive on Solana: peer-to-peer trading (escrow), lending and borrowing, decentralized exchanges (AMM and order book), fundraising, yield-bearing vaults, prediction markets, and perpetual futures. Each one writes down the invariant it depends on - the AMM's `x * y = k`, the lending market's always-round-against-the-user math, the perp engine's solvency bounds (itself traced back to a formally-verified reference) - and a Rust test suite built on LiteSVM checks that the code actually holds to it.
+The programs are examples of common financial primitives on Solana.
 
 ### Escrow
 
