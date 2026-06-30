@@ -1,0 +1,46 @@
+[package]
+name = "perpetual_futures"
+version = "0.1.0"
+description = "Oracle-priced, LP-pool perpetual futures example (Jupiter Perps / GMX-style)"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "perpetual_futures"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
+anchor-debug = []
+custom-heap = []
+custom-panic = []
+
+[dependencies]
+# init-if-needed lets add_liquidity create the provider's liquidity-provider
+# token account on their first deposit. The provider is the payer, so this does
+# not let one party fund another's rent.
+anchor-lang = { version = "1.1.2", features = ["init-if-needed"] }
+anchor-spl = "1.1.2"
+# Not used directly. Declared so Cargo feature unification turns on
+# `no-entrypoint` for the spl-token that anchor-spl pulls in; without it the
+# integration-test binary links two `entrypoint` symbols (this program's and
+# spl-token's) and fails.
+spl-token = { version = "9.0.0", features = ["no-entrypoint"] }
+spl-associated-token-account = { version = "8.0.0", features = ["no-entrypoint"] }
+
+[dev-dependencies]
+litesvm = "0.11.0"
+solana-signer = "3.0.0"
+solana-keypair = "3.0.1"
+solana-kite = "0.3.0"
+borsh = "1.6.1"
+# The LiteSVM tests load the compiled mock oracle program; depending on the
+# crate here lets the tests reuse its instruction-argument types and program ID.
+mock_switchboard = { path = "../mock-switchboard", features = ["no-entrypoint"] }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }

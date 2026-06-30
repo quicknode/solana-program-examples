@@ -20,8 +20,8 @@ custom-heap = []
 custom-panic = []
 
 [dependencies]
-anchor-lang = { version = "1.0.0", features = ["init-if-needed"] }
-anchor-spl = { version = "1.0.0", features = ["metadata", "spl-token-interface"] }
+anchor-lang = { version = "1.1.2", features = ["init-if-needed"] }
+anchor-spl = { version = "1.1.2", features = ["metadata", "spl-token-interface"] }
 # `fixed` removed: all financial math is now u128 + checked_*, matching how
 # production Solana AMMs (Orca, Raydium, Meteora, Saber) do it. Floats /
 # fixed-point types are not used for money in this program.

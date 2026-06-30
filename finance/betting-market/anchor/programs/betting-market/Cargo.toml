@@ -21,8 +21,8 @@ custom-panic = []
 
 [dependencies]
 # init-if-needed: place_bet and the lazy User index create accounts only on first use.
-anchor-lang = { version = "1.0.0", features = ["init-if-needed"] }
-anchor-spl = "1.0.0"
+anchor-lang = { version = "1.1.2", features = ["init-if-needed"] }
+anchor-spl = "1.1.2"
 
 [dev-dependencies]
 # no-entrypoint: solana-kite pulls these SPL program crates into the host test
