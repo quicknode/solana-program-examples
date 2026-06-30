@@ -199,8 +199,17 @@ jobs:
           # Make the script executable
           chmod +x build_and_test.sh
 
-          # Install sbpf assembler
-          cargo install --git https://github.com/blueshift-gg/sbpf.git
+          # Install sbpf assembler.
+          #
+          # Pin to a specific revision: installing from the branch HEAD makes the
+          # build non-reproducible and breaks CI whenever sbpf changes its output.
+          # On 2026-06-29 sbpf merged its SBPF v3 work (PR #127), switching the
+          # emitted ELF to the v3 / 0x03 OS-ABI format. litesvm 0.11.0's loader
+          # rejects that format, so every asm test started failing at
+          # `svm.add_program(...).unwrap()` with Instruction(InvalidAccountData).
+          # This rev is the last commit before the v3 changes and matches the
+          # toolchain from the last green run; bump it together with litesvm.
+          cargo install --git https://github.com/blueshift-gg/sbpf.git --rev 0223df0e7ba622d4956b4ecf3cf2397f6945b76b
       - name: Setup Solana Stable
         uses: heyAyushh/setup-solana@v5.9
         with:
