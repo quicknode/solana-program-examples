@@ -20,8 +20,8 @@ custom-heap = []
 custom-panic = []
 
 [dependencies]
-anchor-lang = "1.0.0"
-anchor-spl = "1.0.0"
+anchor-lang = "1.1.2"
+anchor-spl = "1.1.2"
 # SPL crates v3.x-compatible - uses solana-program-error 3.x matching anchor-lang 1.0
 spl-discriminator = "0.5.2"
 spl-tlv-account-resolution = "0.11.1"

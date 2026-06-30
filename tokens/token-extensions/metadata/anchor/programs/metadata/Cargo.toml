@@ -20,8 +20,8 @@ custom-heap = []
 custom-panic = []
 
 [dependencies]
-anchor-lang = "1.0.0"
-anchor-spl = "1.0.0"
+anchor-lang = "1.1.2"
+anchor-spl = "1.1.2"
 spl-token-metadata-interface = "0.8.0"
 spl-type-length-value = "0.9.1"
 

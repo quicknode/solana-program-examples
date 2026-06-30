@@ -4,6 +4,12 @@ All notable changes to this repository are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-06-30] - Anchor 1.1.2
+
+### Changed
+
+- Upgraded every Anchor program from `anchor-lang`/`anchor-spl` `1.0.0` to the latest stable `1.1.2`, and bumped the Anchor CLI used by `anchor.yml` CI to match (`anchor-version: 1.1.2`).
+
 ## [2026-06-12] - Rust + LiteSVM tests everywhere
 
 ### Changed

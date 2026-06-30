@@ -164,7 +164,8 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: heyAyushh/setup-anchor@v4.999
         with:
-          anchor-version: 1.0.0
+          # Pinned to match the anchor-lang/anchor-spl crate version the programs depend on.
+          anchor-version: 1.1.2
           # setup-anchor resolves tags like stable by querying GitHub API for latest release which can fail with 429 errors
           solana-cli-version: 3.1.14
       - name: Install Surfpool
@@ -195,7 +196,7 @@ jobs:
               return 1
             fi
 
-            # Sync program IDs (Anchor 1.0.0 requires keypair and declare_id! to match)
+            # Sync program IDs (Anchor 1.0+ requires keypair and declare_id! to match)
             anchor keys sync
 
             # Update IDL address fields to match the synced keys.
