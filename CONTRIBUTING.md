@@ -34,7 +34,7 @@ For an existing test pattern to follow, see `basics/counter/anchor/programs/coun
 ### Native and Pinocchio
 
 - Use LiteSVM for tests. Native, Pinocchio, and ASM examples are tested exclusively with Rust + LiteSVM; the old `@solana/web3.js` v1 / `solana-bankrun` / ts-mocha TypeScript suites were removed (see [CHANGELOG.md](./CHANGELOG.md)).
-- The only remaining `@solana/web3.js` v1 usage is in a couple of wallet-adapter frontend demo apps under `tokens/token-extensions/` (the wallet-adapter ecosystem still depends on it). Don't introduce it in program tests or new client code — use Solana Kit, preferably via [Kite](https://github.com/helius-labs/kite).
+- The only remaining `@solana/web3.js` v1 usage is in a couple of wallet-adapter frontend demo apps under `tokens/token-extensions/`.
 
 ### ASM
 
