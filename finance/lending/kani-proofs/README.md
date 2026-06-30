@@ -54,8 +54,8 @@ so the proof can use a small one:
 | `proof_liquidation_repay_bounded_by_debt` | `debt <= 4095` | <1s |
 | `proof_seize_value_includes_bonus` | `repay_value <= 4095` | <1s |
 
-These proofs are **not wired into CI** (they need their bounds and are slower);
-the fast, unbounded escrow proofs gate CI.
+These proofs run **weekly in CI** (the `kani.yml` `verify` job), not on every
+push/PR, because they are slow. A fast unit-test job runs per push/PR.
 
 ## Running
 

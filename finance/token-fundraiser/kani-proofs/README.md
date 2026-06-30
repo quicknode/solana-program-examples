@@ -23,8 +23,8 @@ bounded model checking; the two accounting/refund proofs are pure linear logic
 and run at full `u64` width (bounded only in the number of contributors). The
 whole suite verifies in under a second.
 
-Not wired into CI (the cap proof is bounded); the fast, unbounded escrow proofs
-gate CI.
+Run weekly in CI (the `kani.yml` `verify` job), not on every push/PR, because
+the nonlinear proofs are slow. A fast unit-test job runs per push/PR.
 
 ## Running
 

@@ -18,7 +18,7 @@ invariants the program relies on:
 | --- | --- |
 | `proof_token_transfer_conserves` | An SPL transfer either fails atomically or conserves the two accounts' total balance. |
 | `proof_close_offer_conserves_on_success` | Closing the offer account conserves lamports and empties the source. |
-| `proof_close_offer_conserves_unconditionally` | **Finding** (expected-fail, see below). |
+| `proof_close_offer_never_creates_lamports` | **Finding**, proven as the unconditional "no inflation" property (see below). |
 | `proof_take_offer_conserves_value` | A take conserves total mint A and total mint B, drains the vault, and pays the maker exactly the price. |
 | `proof_take_offer_guard_never_overflows` | The `checked_add` conservation guards in `take_offer` are unreachable dead code. |
 | `proof_take_offer_guard_dead_under_spl_invariant` | Same, shown explicitly under the SPL supply invariant. |
@@ -38,20 +38,29 @@ fallible `checked_add` that credits the destination:
     .ok_or(EscrowError::ArithmeticOverflow)?;
 ```
 
-`proof_close_offer_conserves_unconditionally` asserts conservation on *every*
-path and Kani finds the counterexample `offer == dest == u64::MAX`: the credit
-overflows and returns `Err` after the source was already zeroed, so the total
-drops from `2·MAX` to `MAX`.
+At `offer == dest == u64::MAX` the credit overflows and returns `Err` after the
+source was already zeroed, so the total *transiently* drops from `2·MAX` to
+`MAX` — lamports are momentarily destroyed on the error path.
 
 **Severity: not exploitable.** The Solana runtime reverts all account mutations
 when an instruction returns `Err`, so the zeroing rolls back; and the
 destination is the maker's wallet, which cannot hold anywhere near `u64::MAX`
-lamports. The harness documents that conservation holds because of those
-*external* guarantees, not the function's own statement ordering — a hardened
-version would credit the destination before zeroing the source. The harness
-carries `#[kani::should_panic]` so it is green in CI precisely because the
-assertion fails as predicted; remove that attribute to see Kani print the
-counterexample.
+lamports. A hardened version would credit the destination before zeroing the
+source.
+
+**How it's encoded.** Rather than a fragile `#[kani::should_panic]` (which would
+*start failing* the day someone applies that hardening — fixing the code breaks
+the test), `proof_close_offer_never_creates_lamports` proves the
+security-relevant direction that holds **unconditionally**: the function can
+never *create* lamports (`after <= before` on every path). The transient-
+destruction wart is recorded in the harness comment, not as an inverted test.
+
+## CI
+
+These proofs run **weekly** (and on demand) in the `.github/workflows/kani.yml`
+`verify` job, alongside the other `finance/` proof crates — the nonlinear ones
+are slow, so the full Kani run is scheduled rather than gating every push/PR. A
+fast `cargo test` job runs per push/PR to catch model regressions early.
 
 ## Running
 

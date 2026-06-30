@@ -45,7 +45,7 @@ the number of bettors).
 | `proof_parimutuel_solvency` | 3 winners, stakes `<= 7`, `distributable <= 63` | ~3s |
 | `proof_refund_conserves_pool` | 4 bettors, full `u64` | <1s |
 
-Not wired into CI (bounded); the fast, unbounded escrow proofs gate CI.
+Run weekly in CI (the `.github/workflows/kani.yml` `verify` job), not on every push/PR, because the bounded nonlinear proofs are slow. A fast unit-test job runs per push/PR.
 
 ## Running
 

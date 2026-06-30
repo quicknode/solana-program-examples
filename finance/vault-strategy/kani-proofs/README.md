@@ -30,7 +30,8 @@ representative range; the share identities are scale-invariant.
 | `proof_deposit_withdraw_cannot_extract` | `<= 31` | ~3s |
 | `proof_fee_shares_bounded_by_supply` | `<= 255` | ~4s |
 
-Not wired into CI (bounded); the fast, unbounded escrow proofs gate CI.
+Run weekly in CI (the `kani.yml` `verify` job), not on every push/PR, because
+the bounded nonlinear proofs are slow. A fast unit-test job runs per push/PR.
 
 ## Running
 

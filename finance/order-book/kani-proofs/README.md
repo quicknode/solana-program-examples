@@ -40,8 +40,8 @@ every rounding / crossing boundary.
 | `proof_bid_rebate_is_non_negative` | prices/qty/lot `<= 31` | ~3s |
 | `proof_remaining_quantity_consistent` | full `u64` | <1s |
 
-These proofs are **not wired into CI** (they need their bounds and are slower);
-the fast, unbounded escrow proofs are the ones gating CI.
+These proofs run **weekly in CI** (the `kani.yml` `verify` job), not on every
+push/PR, because they are slow. A fast unit-test job runs per push/PR.
 
 ## Observations
 

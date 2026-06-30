@@ -155,37 +155,48 @@ fn proof_swap_cannot_fully_drain_when_reserve_positive() {
     assert!(output < other_reserve, "output must leave the pool solvent");
 }
 
-/// FINDING (expected-fail harness, `should_panic`): the bound above is *tight*.
-/// When the input-side effective reserve is exactly `0`, the curve outputs the
-/// ENTIRE opposite reserve (`output == other_reserve`), draining that side to
-/// zero.
+/// FINDING, proven as a positive characterization (not a `should_panic`): the
+/// solvency bound above is *tight*. When the input-side effective reserve is
+/// exactly `0`, the curve outputs the ENTIRE opposite reserve (`output ==
+/// other_reserve`), draining that side to zero — and the program's end-of-swap
+/// `require!(new_invariant >= invariant)` guard does NOT catch it, because with
+/// `this_reserve == 0` the pre-trade product `k = 0 * other_reserve = 0`, so the
+/// post-trade product (also 0) trivially satisfies `0 >= 0`.
 ///
-/// And critically, the program's end-of-swap `require!(new_invariant >=
-/// invariant)` guard does NOT catch it: with `this_reserve == 0` the pre-trade
-/// product `k = 0 * other_reserve = 0`, so the post-trade product (also 0,
-/// since the output side is emptied) trivially satisfies `0 >= 0`.
-///
-/// Severity in practice: reaching `effective_reserve == 0` on one side while
-/// the other is non-empty is a degenerate state the deposit path is designed to
+/// Severity in practice: reaching `effective_reserve == 0` on one side while the
+/// other is non-empty is a degenerate state the deposit path is designed to
 /// prevent — the `MINIMUM_LIQUIDITY` floor keeps the bootstrap product positive,
 /// and `proof_swap_preserves_constant_product` shows ordinary swaps keep both
 /// sides positive. So this is a latent edge, not a live exploit, but it shows
-/// the invariant check alone is not sufficient to guarantee solvency: it leans
-/// on the deposit flow never letting a reserve hit zero. A belt-and-suspenders
+/// the invariant check alone is not sufficient for solvency: it leans on the
+/// deposit flow never letting a reserve hit zero. A belt-and-suspenders
 /// `require!(this_reserve > 0)` in `swap_tokens` would close it directly.
+///
+/// Encoding this as a *positive* proof (every assertion below holds) is
+/// deliberate: a `#[kani::should_panic]` would invert the maintenance signal —
+/// adding the `require!` fix would make a should-panic harness start failing.
 #[cfg(kani)]
 #[kani::proof]
 #[kani::solver(cadical)]
-#[kani::should_panic]
-fn proof_swap_drains_pool_at_zero_reserve() {
+fn proof_swap_at_zero_reserve_drains_whole_pool() {
     let other_reserve: u64 = kani::any();
     let taxed_input: u64 = kani::any();
-    kani::assume(other_reserve >= 1 && other_reserve <= 4095);
-    kani::assume(taxed_input >= 1 && taxed_input <= 4095); // non-empty trade vs empty side
+    // Bounded model checking: proving `floor(taxed*other/taxed) == other` for all
+    // inputs is a symbolic exact-division (divisor == a factor of the numerator),
+    // costlier than the old refute-by-counterexample form, so bound tightly.
+    kani::assume(other_reserve >= 1 && other_reserve <= 255);
+    kani::assume(taxed_input >= 1 && taxed_input <= 255); // non-empty trade vs empty side
 
     let output = swap_output(taxed_input, 0, other_reserve).expect("computes");
-    // Fails (as intended): output equals the whole opposite reserve.
-    assert!(output < other_reserve);
+
+    // With an empty input reserve the curve releases the WHOLE opposite reserve.
+    assert_eq!(output, other_reserve);
+
+    // ...and the constant-product guard does not catch the drain: pre- and
+    // post-trade k are both 0, so `new_invariant >= invariant` holds vacuously.
+    let pre_k = 0u128 * other_reserve as u128; // this_reserve == 0
+    let post_k = (taxed_input as u128) * 0u128; // output side emptied to 0
+    assert!(post_k >= pre_k); // 0 >= 0: guard passes despite the full drain
 }
 
 // ===========================================================================

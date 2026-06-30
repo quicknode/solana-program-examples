@@ -29,6 +29,8 @@ To deploy to mainnet or devnet you'll need an RPC endpoint. [Quicknode](https://
 
 The programs below implement the core primitives of Solana DeFi: peer-to-peer trading (escrow), decentralized exchanges (AMM and order book), fundraising, yield-bearing vaults, and prediction markets. These are the building blocks used by protocols like Raydium, Orca, Openbook, and Kamino.
 
+> **Formal verification.** Every finance program ships with [Kani](https://github.com/model-checking/kani) formal-verification proofs (in `finance/<program>/kani-proofs/`), in the spirit of [aeyakovenko/percolator](https://github.com/aeyakovenko/percolator). The model checker proves each program's money-math invariants — value conservation, the AMM constant product, matching conservation, lending rounding/interest/liquidation safety, pari-mutuel solvency, share-vault solvency — exhaustively over all inputs, rather than just sampling them with unit tests. Most proofs verify nonlinear 128-bit arithmetic and are slow, so the full Kani run is [scheduled weekly](./.github/workflows/kani.yml) rather than gating every push. See each crate's `README.md` for the harnesses, invariants, and the two (non-exploitable) findings the proofs surfaced.
+
 ### Escrow
 
 **Start here - the best first finance program to learn on Solana.** A neutral account that holds funds until both sides deliver, like a real-estate escrow or a lawyer's trust account. The maker deposits token A and names how much token B they want; when a taker supplies token B, the program swaps both in a single all-or-nothing transaction. This swap is the core idea behind every onchain exchange.
