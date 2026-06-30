@@ -2,13 +2,13 @@
 
 ![Quicknode Solana Program Examples](assets/banner.png?v=1)
 
-Working, tested, up-to-date examples of common Solana programs - maintained by [Quicknode](https://quicknode.com). Each example compiles and passes CI on the current Solana and Anchor toolchain, and uses current defaults like the multiple files layout and LiteSVM.
+Working, tested, up-to-date examples of common Solana programs (what other chains call smart contracts), maintained by [Quicknode](https://www.quicknode.com/chains/solana). Every example builds and passes CI on a current toolchain — **Anchor 1.1**, the current multi-file program layout (one file per instruction), and [LiteSVM](https://github.com/LiteSVM/litesvm) tests rather than the older `solana-test-validator` / web3.js stack.
 
 [![Anchor](../../actions/workflows/anchor.yml/badge.svg)](../../actions/workflows/anchor.yml) [![Quasar](../../actions/workflows/quasar.yml/badge.svg)](../../actions/workflows/quasar.yml) [![Pinocchio](../../actions/workflows/pinocchio.yml/badge.svg)](../../actions/workflows/pinocchio.yml) [![Native](../../actions/workflows/native.yml/badge.svg)](../../actions/workflows/native.yml) [![ASM](../../actions/workflows/solana-asm.yml/badge.svg)](../../actions/workflows/solana-asm.yml)
 
 Each example is available in one or more of the following frameworks:
 
-- [⚓ Anchor](https://www.anchor-lang.com/) - the most popular framework for Solana development. Build with `anchor build`, test with `cargo test` as defined in `Anchor.toml`.
+- [⚓ Anchor](https://www.anchor-lang.com/) - the most popular framework for Solana development. Build with `anchor build`, test with `anchor test`.
 - [💫 Quasar](https://quasar-lang.com/docs) - a newer, more performant framework with Anchor-compatible ergonomics. Build with `quasar build`, test with `quasar test`.
 - [🤥 Pinocchio](https://github.com/anza-xyz/pinocchio) - a zero-copy, zero-allocation library for Solana programs. Build with `cargo build-sbf --manifest-path=./program/Cargo.toml`, test with `cargo test --manifest-path=./program/Cargo.toml`.
 - [🦀 Native Rust](https://docs.anza.xyz/) - vanilla Rust using Solana's native crates. Build with `cargo build-sbf --manifest-path=./program/Cargo.toml`, test with `cargo test --manifest-path=./program/Cargo.toml`.
@@ -17,19 +17,17 @@ Each example is available in one or more of the following frameworks:
 > [!NOTE]
 > You don't need to write your own program for basic tasks like creating [accounts](https://solana.com/docs/terminology#account), transferring SOL, or minting tokens. These are handled by existing programs like the System Program and Token Program.
 
-Big thanks to Joe Caulfield and Solana Foundation for originally creating this repository!
-
 ## Getting started
 
-You need [Rust](https://www.rust-lang.org/tools/install), [Solana CLI](https://docs.anza.xyz/cli/install), [Anchor](https://www.anchor-lang.com/docs/installation), and [pnpm](https://pnpm.io/installation) installed. Clone the repo, `cd` into any example directory, and run `pnpm test`.
+You need [Rust](https://www.rust-lang.org/tools/install), [Solana CLI](https://docs.anza.xyz/cli/install), [Anchor](https://www.anchor-lang.com/docs/installation), and [pnpm](https://pnpm.io/installation) installed. Clone the repo and `cd` into any example directory, then run its tests with the command for that framework (shown above) - for an Anchor example, `anchor test`. `pnpm` is used for repo-wide formatting and linting, not for running an example's tests.
 
-To deploy to mainnet or devnet you'll need an RPC endpoint. [Quicknode](https://quicknode.com) provides free and paid Solana endpoints - create one and set it as your cluster in `Anchor.toml` or with `solana config set --url <your-endpoint>`.
+To deploy to mainnet or devnet you'll need an RPC endpoint. [Quicknode](https://www.quicknode.com/chains/solana) provides free and paid Solana endpoints - create one and set it as your cluster in `Anchor.toml` or with `solana config set --url <your-endpoint>`.
 
 ## Financial Software
 
-The programs below implement the core primitives of Solana DeFi: peer-to-peer trading (escrow), decentralized exchanges (AMM and order book), fundraising, yield-bearing vaults, and prediction markets. These are the building blocks used by protocols like Raydium, Orca, Openbook, and Kamino.
+The programs are examples of common financial primitives on Solana.
 
-> **Formal verification.** Every finance program ships with [Kani](https://github.com/model-checking/kani) formal-verification proofs (in `finance/<program>/kani-proofs/`), in the spirit of [aeyakovenko/percolator](https://github.com/aeyakovenko/percolator). The model checker proves each program's money-math invariants — value conservation, the AMM constant product, matching conservation, lending rounding/interest/liquidation safety, pari-mutuel solvency, share-vault solvency — exhaustively over all inputs, rather than just sampling them with unit tests. Most proofs verify nonlinear 128-bit arithmetic and are slow, so the full Kani run is [scheduled weekly](./.github/workflows/kani.yml) rather than gating every push. The proofs surfaced two (non-exploitable) edge cases — a lamport-write ordering in the native escrow and a zero-reserve drain in the AMM swap — both now hardened in the programs. See each crate's `README.md` for the harnesses, invariants, and findings.
+> **Formal verification.** Every finance program ships with [Kani](https://github.com/model-checking/kani) proofs that verify its money-math invariants exhaustively over all inputs, instead of just sampling them with unit tests. See each program's `kani-proofs/` directory for the harnesses and what they prove.
 
 ### Escrow
 
@@ -38,6 +36,12 @@ The programs below implement the core primitives of Solana DeFi: peer-to-peer tr
 [⚓ Anchor](./finance/escrow/anchor) [💫 Quasar](./finance/escrow/quasar) [🦀 Native](./finance/escrow/native)
 
 🎬 Video: [![Escrow video: you don't need a bootcamp - build a Solana program (smart contract) in 30 minutes](https://img.youtube.com/vi/B5eBWWQfQuM/0.jpg?v=1)](https://www.youtube.com/watch?v=B5eBWWQfQuM)
+
+### Lending
+
+A borrow/lend market like Solend or Kamino: suppliers deposit a token and receive share tokens whose exchange rate rises as borrowers pay interest, borrowers post those shares as collateral to draw a different token against it up to a loan-to-value limit, and liquidators close part of any position that crosses its health threshold. Interest accrues through a utilization-based rate curve and a cumulative index, so no per-account accrual loop is needed.
+
+[⚓ Anchor](./finance/lending/anchor) [💫 Quasar](./finance/lending/quasar)
 
 ### Order Book based Exchange
 
@@ -374,6 +378,10 @@ Work with Metaplex compressed NFTs.
 Generate an IDL from a native Rust program with [Shank](https://github.com/metaplex-foundation/shank), then generate a Rust client from that IDL with [Codama](https://github.com/codama-idl/codama).
 
 [🦀 Native](./tools/shank-and-codama/native)
+
+## Acknowledgements
+
+Big thanks to Joe Caulfield and Solana Foundation for originally creating this repository.
 
 ---
 
