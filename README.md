@@ -8,7 +8,7 @@ Working, tested, up-to-date examples of common Solana programs (what other chain
 
 Each example is available in one or more of the following frameworks:
 
-- [⚓ Anchor](https://www.anchor-lang.com/) - the most popular framework for Solana development. Build with `anchor build`, test with `anchor test` (which runs `cargo test`, as defined in `Anchor.toml`).
+- [⚓ Anchor](https://www.anchor-lang.com/) - the most popular framework for Solana development. Build with `anchor build`, test with `anchor test`.
 - [💫 Quasar](https://quasar-lang.com/docs) - a newer, more performant framework with Anchor-compatible ergonomics. Build with `quasar build`, test with `quasar test`.
 - [🤥 Pinocchio](https://github.com/anza-xyz/pinocchio) - a zero-copy, zero-allocation library for Solana programs. Build with `cargo build-sbf --manifest-path=./program/Cargo.toml`, test with `cargo test --manifest-path=./program/Cargo.toml`.
 - [🦀 Native Rust](https://docs.anza.xyz/) - vanilla Rust using Solana's native crates. Build with `cargo build-sbf --manifest-path=./program/Cargo.toml`, test with `cargo test --manifest-path=./program/Cargo.toml`.
