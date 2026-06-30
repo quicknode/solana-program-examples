@@ -1,0 +1,22 @@
+# Standalone workspace - intentionally NOT part of the root program-examples
+# workspace. Kani (https://github.com/model-checking/kani) proof harnesses that
+# model the lending program's pure money-math (mul_div floor/ceil with
+# directional rounding, the kinked interest-rate curve, index compounding, the
+# share exchange rate, and liquidation sizing) so the model checker can verify
+# the invariants without the Solana / SPL-token CPI machinery, which Kani
+# cannot symbolically execute.
+[workspace]
+
+[package]
+name = "lending-kani-proofs"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[lints.rust]
+unexpected_cfgs = { level = "allow", check-cfg = ['cfg(kani)'] }
+
+[dependencies]

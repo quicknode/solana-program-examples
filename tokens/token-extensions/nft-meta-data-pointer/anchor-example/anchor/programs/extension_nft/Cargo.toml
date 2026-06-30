@@ -21,8 +21,8 @@ custom-heap = []
 custom-panic = []
 
 [dependencies]
-anchor-lang = { version = "1.0.0", features = ["init-if-needed"] }
-anchor-spl = { version = "1.0.0" }
+anchor-lang = { version = "1.1.2", features = ["init-if-needed"] }
+anchor-spl = { version = "1.1.2" }
 # session-keys 3.1.1 is the first release that supports Anchor >=0.28,<2.0
 # (so it builds against Anchor 1.0). Earlier 2.x releases pin Anchor <=0.30
 # and fail to compile against the Anchor 1.0 / Solana 3.x API. Provides the

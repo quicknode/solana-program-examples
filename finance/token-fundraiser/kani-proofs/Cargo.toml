@@ -1,0 +1,20 @@
+# Standalone workspace - intentionally NOT part of the root program-examples
+# workspace. Kani (https://github.com/model-checking/kani) proof harnesses
+# modelling this program's pure money-math so the model checker can verify the
+# invariants without the Solana / SPL-token CPI machinery, which Kani cannot
+# symbolically execute.
+[workspace]
+
+[package]
+name = "token-fundraiser-kani-proofs"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[lints.rust]
+unexpected_cfgs = { level = "allow", check-cfg = ['cfg(kani)'] }
+
+[dependencies]

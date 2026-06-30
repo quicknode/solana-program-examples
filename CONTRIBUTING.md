@@ -14,21 +14,27 @@ See [CHANGELOG.md](./CHANGELOG.md) for release history. This file had no changel
 - Each example lives at `category/example-name/<framework>/`, e.g. `basics/counter/anchor/`.
 - Supported frameworks: `anchor`, `quasar`, `pinocchio`, `native`, `asm`. Use the existing layout as a reference.
 - Anchor and Quasar programs usually keep Rust tests under `programs/<name>/tests/`.
-- Native and Pinocchio TypeScript tests (where present) live in a `tests/` directory next to the program.
+- Native and Pinocchio tests are Rust + LiteSVM, kept under `program/tests/`.
 
 ## Tooling
 
-- **Package manager:** `pnpm`. Commit `pnpm-lock.yaml`. Do not use yarn or npm here.
+- **Package manager:** `pnpm`. Commit `pnpm-lock.yaml`. Do not use yarn or npm here. `pnpm` is used for repo-wide tooling (formatting, linting, git hooks) and for examples with JavaScript clients, not for running an example's tests.
 - **Formatter / linter:** [Biome](https://biomejs.dev/). Run `pnpm fix` from the repo root before submitting a PR.
 
 ## Testing
 
-Run `pnpm test` from `category/example/anchor/` or `category/example/quasar/`. For existing test patterns follow `basics/counter/anchor/programs/counter_anchor/tests/test_counter.rs`.
+Run an example's tests with the command for its framework, from the framework directory (e.g. `basics/counter/anchor/`):
+
+- **Anchor:** `anchor test` (runs `cargo test`, per the `[scripts]` table in `Anchor.toml`).
+- **Quasar:** `quasar test`.
+- **Native / Pinocchio:** `cargo test --manifest-path=./program/Cargo.toml` (build first with `cargo build-sbf --manifest-path=./program/Cargo.toml`).
+
+For an existing test pattern to follow, see `basics/counter/anchor/programs/counter_anchor/tests/test_counter.rs`.
 
 ### Native and Pinocchio
 
-- Prefer LiteSVM for new tests.
-- Some older Native examples still use `@solana/web3.js` v1 or `solana-bankrun`; do not copy that stack for new work. Migrate toward LiteSVM + Solana Kit when touching those files.
+- Use LiteSVM for tests. Native, Pinocchio, and ASM examples are tested exclusively with Rust + LiteSVM; the old `@solana/web3.js` v1 / `solana-bankrun` / ts-mocha TypeScript suites were removed (see [CHANGELOG.md](./CHANGELOG.md)).
+- The only remaining `@solana/web3.js` v1 usage is in a couple of wallet-adapter frontend demo apps under `tokens/token-extensions/`.
 
 ### ASM
 

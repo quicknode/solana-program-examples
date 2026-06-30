@@ -21,7 +21,7 @@ custom-panic = []
 
 
 [dependencies]
-anchor-lang = "1.0.0"
+anchor-lang = "1.1.2"
 
 [dev-dependencies]
 # Self-dependency with no-entrypoint: host test builds otherwise export a

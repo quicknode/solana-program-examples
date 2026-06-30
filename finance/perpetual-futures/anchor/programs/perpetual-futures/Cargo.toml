@@ -23,8 +23,8 @@ custom-panic = []
 # init-if-needed lets add_liquidity create the provider's liquidity-provider
 # token account on their first deposit. The provider is the payer, so this does
 # not let one party fund another's rent.
-anchor-lang = { version = "1.0.0", features = ["init-if-needed"] }
-anchor-spl = "1.0.0"
+anchor-lang = { version = "1.1.2", features = ["init-if-needed"] }
+anchor-spl = "1.1.2"
 # Not used directly. Declared so Cargo feature unification turns on
 # `no-entrypoint` for the spl-token that anchor-spl pulls in; without it the
 # integration-test binary links two `entrypoint` symbols (this program's and
