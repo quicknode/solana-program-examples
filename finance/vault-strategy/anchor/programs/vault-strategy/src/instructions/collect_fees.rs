@@ -17,7 +17,7 @@ pub struct CollectFeesAccountConstraints<'info> {
     #[account(
         mut,
         has_one = manager,
-        seeds = [b"strategy", strategy.manager.as_ref()],
+        seeds = [b"strategy", strategy.index.to_le_bytes().as_ref()],
         bump = strategy.bump
     )]
     pub strategy: Account<'info, Strategy>,
@@ -57,7 +57,7 @@ pub fn handle_collect_fees(context: Context<CollectFeesAccountConstraints>) -> R
     let elapsed_seconds = (current_ts - last_ts) as u64;
     let total_shares = context.accounts.strategy.total_shares;
     let fee_bps = context.accounts.strategy.fee_bps;
-    let manager_key = context.accounts.strategy.manager;
+    let strategy_index = context.accounts.strategy.index;
     let strategy_bump = context.accounts.strategy.bump;
 
     // fee_shares = total_shares * fee_bps * elapsed / (10_000 * SECONDS_PER_YEAR)
@@ -86,7 +86,8 @@ pub fn handle_collect_fees(context: Context<CollectFeesAccountConstraints>) -> R
         .ok_or(VaultError::MathOverflow)?;
 
     // Mint fee shares to manager - strategy PDA signs
-    let signer_seeds: &[&[&[u8]]] = &[&[b"strategy", manager_key.as_ref(), &[strategy_bump]]];
+    let index_bytes = strategy_index.to_le_bytes();
+    let signer_seeds: &[&[&[u8]]] = &[&[b"strategy", index_bytes.as_ref(), &[strategy_bump]]];
 
     let mint_accounts = MintTo {
         mint: context.accounts.share_mint.to_account_info(),
