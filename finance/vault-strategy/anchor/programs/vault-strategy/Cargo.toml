@@ -25,11 +25,11 @@ anchor-spl = "1.1.2"
 mock-swap-router = { path = "../mock-swap-router", features = ["cpi"] }
 
 [dev-dependencies]
-litesvm = "0.11.0"
+litesvm = "0.13.1"
 solana-account = "3.0.0"
 solana-signer = "3.0.0"
 solana-keypair = "3.0.1"
-solana-kite = "0.3.0"
+solana-kite = "0.4.0"
 borsh = "1.6.1"
 
 [lints.rust]

@@ -24,7 +24,7 @@ pinocchio-log = "0.5.1"
 # newer solana-program.
 [dev-dependencies]
 block-list-client = { workspace = true }
-litesvm = "0.6.1"
+litesvm = "0.13.1"
 solana-sdk = "2.2"
 spl-token-2022 = "7.0"
 spl-associated-token-account = "6.0"

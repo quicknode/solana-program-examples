@@ -29,10 +29,10 @@ solana-secp256k1-recover = "2.0.0"
 # Signs test transfer authorizations with a fixed secp256k1 key so tests can
 # exercise the Ethereum-signature path end to end.
 libsecp256k1 = "0.7.2"
-litesvm = "0.11.0"
+litesvm = "0.13.1"
 solana-signer = "3.0.0"
 solana-keypair = "3.0.1"
-solana-kite = "0.3.0"
+solana-kite = "0.4.0"
 borsh = "1.6.1"
 
 [lints.rust]
