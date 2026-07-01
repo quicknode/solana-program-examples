@@ -552,7 +552,11 @@ fn set_nvda_price(ctx: &mut TestContext, price: i64, rate: u64) {
     set_router_rate(ctx, nvda_mint, rate, nvda_rate_pda);
 }
 
-fn set_weight(ctx: &mut TestContext, index: u8, weight_bps: u16) -> Result<(), solana_kite::SolanaKiteError> {
+fn set_weight(
+    ctx: &mut TestContext,
+    index: u8,
+    weight_bps: u16,
+) -> Result<(), solana_kite::SolanaKiteError> {
     let ix = Instruction::new_with_bytes(
         ctx.vault_program_id,
         &vault_strategy::instruction::SetWeight { weight_bps }.data(),
@@ -563,7 +567,12 @@ fn set_weight(ctx: &mut TestContext, index: u8, weight_bps: u16) -> Result<(), s
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[&ctx.manager], &ctx.manager.pubkey())
+    send_transaction_from_instructions(
+        &mut ctx.svm,
+        vec![ix],
+        &[&ctx.manager],
+        &ctx.manager.pubkey(),
+    )
 }
 
 /// init strategy + add only TSLAx at 40%, so total weight is 4000: the strategy is
@@ -614,7 +623,8 @@ fn do_rebalance(
     sell_amount: u64,
     usdc_to_invest: u64,
 ) {
-    let (sell_mint, sell_config, sell_feed, vault_sell, sell_rate) = asset_accounts(ctx, sell_index);
+    let (sell_mint, sell_config, sell_feed, vault_sell, sell_rate) =
+        asset_accounts(ctx, sell_index);
     let (buy_mint, buy_config, buy_feed, vault_buy, buy_rate) = asset_accounts(ctx, buy_index);
     let ix = Instruction::new_with_bytes(
         ctx.vault_program_id,
@@ -648,8 +658,13 @@ fn do_rebalance(
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[&ctx.manager], &ctx.manager.pubkey())
-        .unwrap();
+    send_transaction_from_instructions(
+        &mut ctx.svm,
+        vec![ix],
+        &[&ctx.manager],
+        &ctx.manager.pubkey(),
+    )
+    .unwrap();
 }
 
 fn advance_one_year(ctx: &mut TestContext) {
@@ -1121,10 +1136,7 @@ fn test_withdraw() {
     send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[&user], &user.pubkey()).unwrap();
 
     // Sole holder withdraws everything in kind: all 16000 TSLAx + 33333 NVDAx, no USDC.
-    assert_eq!(
-        get_token_account_balance(&ctx.svm, &user_usdc).unwrap(),
-        0
-    );
+    assert_eq!(get_token_account_balance(&ctx.svm, &user_usdc).unwrap(), 0);
     assert_eq!(
         get_token_account_balance(&ctx.svm, &derive_ata(&user.pubkey(), &ctx.tsla_mint)).unwrap(),
         16_000
@@ -1274,7 +1286,10 @@ fn test_set_weight_rejects_overflow() {
     standard_strategy(&mut ctx);
     // TSLAx 4000 + NVDAx 6000 = 10000. Raising TSLAx to 6000 would total 12000.
     let r = set_weight(&mut ctx, 0, 6000);
-    assert!(r.is_err(), "weight change pushing total over 10000 must revert");
+    assert!(
+        r.is_err(),
+        "weight change pushing total over 10000 must revert"
+    );
 }
 
 #[test]

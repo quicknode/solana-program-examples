@@ -129,9 +129,20 @@ pub fn handle_deposit<'info>(
         let feed_account = &remaining[index * 5 + 4];
 
         let config = AssetConfig::load_checked(config_account)?;
-        require_keys_eq!(config.strategy, strategy_key, VaultError::InvalidAssetAccount);
-        require!(config.index as usize == index, VaultError::InvalidAssetAccount);
-        require_keys_eq!(vault_account.key(), config.vault, VaultError::InvalidAssetAccount);
+        require_keys_eq!(
+            config.strategy,
+            strategy_key,
+            VaultError::InvalidAssetAccount
+        );
+        require!(
+            config.index as usize == index,
+            VaultError::InvalidAssetAccount
+        );
+        require_keys_eq!(
+            vault_account.key(),
+            config.vault,
+            VaultError::InvalidAssetAccount
+        );
 
         let price = load_price(feed_account, &config.price_feed, now)?;
         let amount = read_token_amount(vault_account)?;
@@ -151,7 +162,10 @@ pub fn handle_deposit<'info>(
             .ok_or(VaultError::MathOverflow)? as u64
     };
 
-    require!(shares_to_mint >= minimum_shares, VaultError::SlippageTooHigh);
+    require!(
+        shares_to_mint >= minimum_shares,
+        VaultError::SlippageTooHigh
+    );
 
     context.accounts.strategy.total_shares = total_shares
         .checked_add(shares_to_mint)
@@ -182,7 +196,11 @@ pub fn handle_deposit<'info>(
         let feed_account = &remaining[index * 5 + 4];
 
         let config = AssetConfig::load_checked(config_account)?;
-        require_keys_eq!(mint_account.key(), config.mint, VaultError::InvalidAssetAccount);
+        require_keys_eq!(
+            mint_account.key(),
+            config.mint,
+            VaultError::InvalidAssetAccount
+        );
 
         if config.weight_bps == 0 {
             continue;
