@@ -755,6 +755,58 @@ fn test_add_asset_rejects_weight_overflow() {
     assert!(result.is_err(), "weights over 10000 bps must fail");
 }
 
+/// Create a fresh mint and whitelist it in the registry. The bound price feed is an
+/// arbitrary pubkey: callers that never value this asset (e.g. the cap boundary test)
+/// do not need a real feed account.
+fn create_and_whitelist_mint(ctx: &mut TestContext) -> (Pubkey, Pubkey) {
+    let mint = create_token_mint(&mut ctx.svm, &ctx.payer, TOKEN_DECIMALS, None).unwrap();
+    let (entry, _) = Pubkey::find_program_address(
+        &[b"whitelist", ctx.registry_pda.as_ref(), mint.as_ref()],
+        &ctx.vault_program_id,
+    );
+    let ix = Instruction::new_with_bytes(
+        ctx.vault_program_id,
+        &vault_strategy::instruction::WhitelistAsset {
+            price_feed: Keypair::new().pubkey(),
+        }
+        .data(),
+        vault_strategy::accounts::WhitelistAssetAccountConstraints {
+            authority: ctx.payer.pubkey(),
+            registry: ctx.registry_pda,
+            asset_mint: mint,
+            whitelist_entry: entry,
+            system_program: system_program::id(),
+        }
+        .to_account_metas(None),
+    );
+    send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[&ctx.payer], &ctx.payer.pubkey())
+        .unwrap();
+    (mint, entry)
+}
+
+#[test]
+fn test_add_asset_enforces_max_assets() {
+    let mut ctx = setup_full();
+    let router = ctx.router_program_id;
+    init_strategy(&mut ctx, FEE_BPS, SLIPPAGE_BPS, router);
+
+    // Fill the basket to the cap: 16 assets at 625 bps each = 10000.
+    for index in 0..16u8 {
+        let (mint, entry) = create_and_whitelist_mint(&mut ctx);
+        let vault = derive_ata(&ctx.strategy_pda, &mint);
+        add_asset(&mut ctx, index, mint, entry, vault, 625).unwrap();
+    }
+    let strategy = read_strategy(&ctx);
+    assert_eq!(strategy.asset_count, 16);
+    assert_eq!(strategy.total_weight_bps, 10_000);
+
+    // The 17th asset must be rejected. Weight 0 so the cap, not the weight sum, trips.
+    let (mint, entry) = create_and_whitelist_mint(&mut ctx);
+    let vault = derive_ata(&ctx.strategy_pda, &mint);
+    let result = add_asset(&mut ctx, 16, mint, entry, vault, 0);
+    assert!(result.is_err(), "adding beyond MAX_ASSETS must revert");
+}
+
 #[test]
 fn test_initialize_rejects_excessive_fee() {
     let mut ctx = setup_full();

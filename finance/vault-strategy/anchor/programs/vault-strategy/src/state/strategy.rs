@@ -4,12 +4,12 @@ use anchor_lang::prelude::*;
 /// (each asset is its own account); the cap bounds how many accounts deposit and
 /// withdraw, which must reference every asset at once, pull into a single
 /// instruction: deposit uses 14 + 5*N accounts and withdraw 10 + 4*N, where N is the
-/// asset count. At the cap of 8 that is 54 accounts for deposit, comfortably within
-/// Solana's 128-account transaction lock limit but past the 1232-byte legacy
+/// asset count. At the cap of 16 that is 94 accounts for deposit (74 for withdraw),
+/// within Solana's 128-account transaction lock limit but past the 1232-byte legacy
 /// transaction size (which fits only ~3 assets), so a client depositing into a large
 /// basket must send a v0 transaction with an Address Lookup Table. USDC is the base
 /// currency, held separately, and does not count against this.
-pub const MAX_ASSETS: u8 = 8;
+pub const MAX_ASSETS: u8 = 16;
 
 /// One strategy (basket). Its address is a PDA seeded by a caller-chosen index,
 /// e.g. seeds `"strategy" + 0`, so strategies are addressed by a simple counter
