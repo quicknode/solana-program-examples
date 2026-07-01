@@ -33,10 +33,10 @@ spl-token = { version = "9.0.0", features = ["no-entrypoint"] }
 spl-associated-token-account = { version = "8.0.0", features = ["no-entrypoint"] }
 
 [dev-dependencies]
-litesvm = "0.11.0"
+litesvm = "0.13.1"
 solana-signer = "3.0.0"
 solana-keypair = "3.0.1"
-solana-kite = "0.3.0"
+solana-kite = "0.4.0"
 borsh = "1.6.1"
 # The LiteSVM tests load the compiled mock oracle program; depending on the
 # crate here lets the tests reuse its instruction-argument types and program ID.

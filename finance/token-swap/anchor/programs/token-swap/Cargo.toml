@@ -27,10 +27,10 @@ anchor-spl = { version = "1.1.2", features = ["metadata", "spl-token-interface"]
 # fixed-point types are not used for money in this program.
 
 [dev-dependencies]
-litesvm = "0.11.0"
+litesvm = "0.13.1"
 solana-signer = "3.0.0"
 solana-keypair = "3.0.1"
-solana-kite = "0.3.0"
+solana-kite = "0.4.0"
 borsh = "1.6.1"
 
 [lints.rust]

@@ -5,15 +5,13 @@ use block_list_client::client::{
     programs::BLOCK_LIST_ID,
 };
 use litesvm::LiteSVM;
-use solana_sdk::{
-    compute_budget::ComputeBudgetInstruction,
-    instruction::{AccountMeta, Instruction},
-    pubkey::Pubkey,
-    signature::Keypair,
-    signer::Signer,
-    system_instruction,
-    transaction::Transaction,
-};
+use solana_compute_budget_interface::ComputeBudgetInstruction;
+use solana_instruction::{AccountMeta, Instruction};
+use solana_keypair::Keypair;
+use solana_pubkey::Pubkey;
+use solana_signer::Signer;
+use solana_system_interface::instruction as system_instruction;
+use solana_transaction::Transaction;
 use spl_associated_token_account::{
     get_associated_token_address_with_program_id, instruction::create_associated_token_account,
 };
@@ -163,7 +161,7 @@ fn block_list_transfer_hook_lifecycle() {
     let init_instruction = Init {
         authority: payer.pubkey(),
         config: find_config_pda(),
-        system_program: solana_sdk::system_program::id(),
+        system_program: solana_system_interface::program::ID,
     }
     .instruction();
     send_expecting_success(&mut svm, &[init_instruction], &payer, &[&payer], "init");
@@ -222,7 +220,7 @@ fn block_list_transfer_hook_lifecycle() {
         config: find_config_pda(),
         mint: mint_keypair.pubkey(),
         extra_metas: find_extra_metas_pda(&mint_keypair.pubkey()),
-        system_program: solana_sdk::system_program::id(),
+        system_program: solana_system_interface::program::ID,
     }
     .instruction(SetupExtraMetasInstructionArgs {
         check_both_wallets: false,
@@ -312,7 +310,7 @@ fn block_list_transfer_hook_lifecycle() {
         config: find_config_pda(),
         wallet: wallet_a.pubkey(),
         wallet_block: find_wallet_block_pda(&wallet_a.pubkey()),
-        system_program: solana_sdk::system_program::id(),
+        system_program: solana_system_interface::program::ID,
     }
     .instruction();
     send_expecting_success(
@@ -378,7 +376,7 @@ fn block_list_transfer_hook_lifecycle() {
         authority: payer.pubkey(),
         config: find_config_pda(),
         wallet_block: find_wallet_block_pda(&wallet_a.pubkey()),
-        system_program: solana_sdk::system_program::id(),
+        system_program: solana_system_interface::program::ID,
     }
     .instruction();
     send_expecting_success(
