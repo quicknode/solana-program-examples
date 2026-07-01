@@ -20,6 +20,8 @@ pub enum VaultError {
     DuplicateAsset,
     #[msg("Total target weight would exceed 10000 basis points")]
     WeightOverflow,
+    #[msg("Strategy weights must sum to 100% before it can accept deposits")]
+    StrategyNotFullyAllocated,
     #[msg("Wrong number of asset accounts supplied for the strategy's assets")]
     IncompleteAssetAccounts,
     #[msg("An asset account does not match the strategy's registered asset")]

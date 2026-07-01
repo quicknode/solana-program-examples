@@ -25,7 +25,7 @@ pub struct Strategy {
     /// Annual management fee in basis points (e.g. 100 = 1%).
     pub fee_bps: u16,
     /// Maximum tolerated deviation, in basis points, between a swap's output and
-    /// the Pyth-implied amount on invest/rebalance. Bounded by MAX_SLIPPAGE_BPS.
+    /// the Pyth-implied amount on deposit/rebalance. Bounded by MAX_SLIPPAGE_BPS.
     pub max_slippage_bps: u16,
     pub total_shares: u64,
     pub last_fee_accrual_timestamp: i64,
@@ -52,8 +52,9 @@ pub struct AssetConfig {
     pub price_feed: Pubkey,
     /// Strategy-owned associated token account holding this asset.
     pub vault: Pubkey,
-    /// Target share of the strategy's value in basis points. Advisory: the
-    /// manager maintains it with invest/rebalance; no handler enforces it on deposit.
+    /// Target share of the strategy's value in basis points. deposit deploys at these
+    /// weights (the sum across assets must reach 10000 before deposits open), and the
+    /// manager maintains them against price drift with rebalance.
     pub weight_bps: u16,
     pub bump: u8,
 }

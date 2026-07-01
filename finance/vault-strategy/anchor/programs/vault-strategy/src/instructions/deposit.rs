@@ -83,17 +83,23 @@ pub struct DepositAccountConstraints<'info> {
 }
 
 /// Deposit USDC, receive shares priced at net asset value, and immediately deploy
-/// the deposit into the basket at its target weights. The USDC does not sit idle:
-/// for each asset the handler swaps `usdc_amount * weight_bps / 10000` through the
-/// registered router, so a depositor's money is invested in the same transaction
-/// they put it in. Any unallocated remainder (when the weights sum below 10000,
-/// e.g. after an asset is retired) stays in the USDC vault for the manager to deploy.
+/// the deposit into the basket at its target weights. The strategy must be fully
+/// allocated first: the weights sum to exactly 10000, so every deposit is fully
+/// invested. For each asset the handler swaps `usdc_amount * weight_bps / 10000`
+/// through the registered router, so a depositor's money is invested in the same
+/// transaction they put it in (only sub-cent rounding dust can remain as USDC).
 pub fn handle_deposit<'info>(
     context: Context<'info, DepositAccountConstraints<'info>>,
     usdc_amount: u64,
     minimum_shares: u64,
 ) -> Result<()> {
     require!(usdc_amount > 0, VaultError::ZeroDeposit);
+    // A strategy accepts deposits only once its weights sum to 100%, so a deposit is
+    // always fully invested. A half-configured or under-allocated basket is closed.
+    require!(
+        context.accounts.strategy.total_weight_bps == 10_000,
+        VaultError::StrategyNotFullyAllocated
+    );
 
     let vault_usdc_amount = context.accounts.vault_usdc.amount;
     let total_shares = context.accounts.strategy.total_shares;
@@ -165,9 +171,9 @@ pub fn handle_deposit<'info>(
     let signer_seeds: &[&[&[u8]]] = &[&[b"strategy", index_bytes.as_ref(), &[strategy_bump]]];
 
     // Deploy the deposit across the basket at its target weights. Each leg swaps a
-    // weight-sized slice of the deposit through the router, with the same
-    // oracle-computed slippage floor `invest` uses. The strategy PDA signs, since
-    // the USDC leaves a vault only it controls.
+    // weight-sized slice of the deposit through the router, under an oracle-computed
+    // slippage floor. The strategy PDA signs, since the USDC leaves a vault only it
+    // controls.
     for index in 0..asset_count {
         let config_account = &remaining[index * 5];
         let vault_account = &remaining[index * 5 + 1];

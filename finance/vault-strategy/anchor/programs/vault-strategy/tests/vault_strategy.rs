@@ -566,8 +566,8 @@ fn set_weight(ctx: &mut TestContext, index: u8, weight_bps: u16) -> Result<(), s
     send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[&ctx.manager], &ctx.manager.pubkey())
 }
 
-/// init strategy + add only TSLAx at 40%, leaving 60% of any deposit as idle USDC
-/// for the manager to deploy with `invest`.
+/// init strategy + add only TSLAx at 40%, so total weight is 4000: the strategy is
+/// under-allocated and rejects deposits until its weights reach 100%.
 fn tsla_only_strategy(ctx: &mut TestContext) {
     let router = ctx.router_program_id;
     init_strategy(ctx, FEE_BPS, SLIPPAGE_BPS, router);
@@ -683,40 +683,6 @@ fn do_collect_fees(ctx: &mut TestContext) -> Pubkey {
     send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[&ctx.payer], &ctx.payer.pubkey())
         .unwrap();
     manager_share
-}
-
-fn invest_ix(
-    ctx: &TestContext,
-    mint: Pubkey,
-    config: Pubkey,
-    feed: Pubkey,
-    vault: Pubkey,
-    rate: Pubkey,
-    usdc_amount: u64,
-) -> Instruction {
-    Instruction::new_with_bytes(
-        ctx.vault_program_id,
-        &vault_strategy::instruction::Invest { usdc_amount }.data(),
-        vault_strategy::accounts::InvestAccountConstraints {
-            manager: ctx.manager.pubkey(),
-            strategy: ctx.strategy_pda,
-            asset_config: config,
-            usdc_mint: ctx.usdc_mint,
-            asset_mint: mint,
-            price_feed: feed,
-            vault_usdc: ctx.vault_usdc,
-            vault_asset: vault,
-            asset_rate: rate,
-            router_config: ctx.router_config_pda,
-            router_usdc_treasury: ctx.router_usdc_treasury,
-            router_authority: ctx.router_authority_pda,
-            swap_router_program: ctx.router_program_id,
-            associated_token_program: ata_program_id(),
-            token_program: token_program_id(),
-            system_program: system_program::id(),
-        }
-        .to_account_metas(None),
-    )
 }
 
 fn fund_user(ctx: &mut TestContext, usdc_amount: u64) -> Keypair {
@@ -893,83 +859,33 @@ fn test_deposit_first() {
 }
 
 #[test]
-fn test_invest() {
+fn test_deposit_rejects_underallocated() {
     let mut ctx = setup_full();
-    // TSLAx-only at 40%, so a deposit leaves 60% idle USDC for the manager to deploy.
+    // TSLAx at 40% only: total weight is 4000, so the strategy is not investable yet.
     tsla_only_strategy(&mut ctx);
 
     let user = fund_user(&mut ctx, 10_000_000);
-    do_deposit_tsla_only(&mut ctx, &user, 10_000_000, 1);
-
-    // Deposit deployed 4 USDC -> 16000 TSLAx, leaving 6 USDC idle.
-    assert_eq!(
-        get_token_account_balance(&ctx.svm, &ctx.vault_tsla).unwrap(),
-        16_000
-    );
-    assert_eq!(
-        get_token_account_balance(&ctx.svm, &ctx.vault_usdc).unwrap(),
-        6_000_000
-    );
-
-    // Manager deploys 4 of the idle USDC into TSLAx.
-    let ix = invest_ix(
-        &ctx,
-        ctx.tsla_mint,
-        ctx.asset_config(0),
-        ctx.price_feed_tsla,
-        ctx.vault_tsla,
-        ctx.tsla_rate_pda,
-        4_000_000,
-    );
-    send_transaction_from_instructions(
-        &mut ctx.svm,
-        vec![ix],
-        &[&ctx.manager],
-        &ctx.manager.pubkey(),
-    )
-    .unwrap();
-
-    // 4 more USDC / 250 = 16000 TSLAx, bringing the vault to 32000; 2 USDC left idle.
-    assert_eq!(
-        get_token_account_balance(&ctx.svm, &ctx.vault_tsla).unwrap(),
-        32_000
-    );
-    assert_eq!(
-        get_token_account_balance(&ctx.svm, &ctx.vault_usdc).unwrap(),
-        2_000_000
-    );
-}
-
-#[test]
-fn test_invest_rejects_slippage() {
-    let mut ctx = setup_full();
-    tsla_only_strategy(&mut ctx);
-    let user = fund_user(&mut ctx, 10_000_000);
-    // Deposit deploys 4 USDC at the honest rate, leaving 6 USDC idle.
-    do_deposit_tsla_only(&mut ctx, &user, 10_000_000, 1);
-
-    // Now make the router quote far worse than the oracle: rate 300 vs Pyth-implied 250.
-    let (tsla_mint, tsla_rate_pda) = (ctx.tsla_mint, ctx.tsla_rate_pda);
-    set_router_rate(&mut ctx, tsla_mint, 300, tsla_rate_pda);
-
-    let ix = invest_ix(
-        &ctx,
-        ctx.tsla_mint,
-        ctx.asset_config(0),
-        ctx.price_feed_tsla,
-        ctx.vault_tsla,
-        ctx.tsla_rate_pda,
-        4_000_000,
-    );
-    let r = send_transaction_from_instructions(
-        &mut ctx.svm,
-        vec![ix],
-        &[&ctx.manager],
-        &ctx.manager.pubkey(),
-    );
+    let ix = deposit_instruction(&ctx, &user, 10_000_000, 1, deposit_remaining_tsla(&ctx));
+    let r = send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[&user], &user.pubkey());
     assert!(
         r.is_err(),
-        "swap worse than oracle beyond tolerance must revert"
+        "deposit into an under-allocated strategy must revert"
+    );
+
+    // Bring TSLAx to 100%; the deposit now succeeds and deploys fully into TSLAx.
+    // Fresh blockhash so the retry is not byte-identical to the reverted attempt.
+    set_weight(&mut ctx, 0, 10_000).unwrap();
+    ctx.svm.expire_blockhash();
+    do_deposit_tsla_only(&mut ctx, &user, 10_000_000, 1);
+
+    // 10 USDC / 250 = 40000 TSLAx, with no idle USDC left.
+    assert_eq!(
+        get_token_account_balance(&ctx.svm, &ctx.vault_tsla).unwrap(),
+        40_000
+    );
+    assert_eq!(
+        get_token_account_balance(&ctx.svm, &ctx.vault_usdc).unwrap(),
+        0
     );
 }
 
@@ -993,32 +909,22 @@ fn test_deposit_rejects_slippage() {
 }
 
 #[test]
-fn test_invest_rejects_unregistered_router() {
+fn test_deposit_rejects_unregistered_router() {
     let mut ctx = setup_full();
-    // Register a different router than the deployed mock.
+    // Register a different router than the deployed mock, then fully allocate 40/60.
     let bogus_router = Pubkey::new_unique();
     init_strategy(&mut ctx, FEE_BPS, SLIPPAGE_BPS, bogus_router);
     let (tm, wt, vt) = (ctx.tsla_mint, ctx.whitelist_tsla, ctx.vault_tsla);
     add_asset(&mut ctx, 0, tm, wt, vt, 4000).unwrap();
+    let (nm, wn, vn) = (ctx.nvda_mint, ctx.whitelist_nvda, ctx.vault_nvda);
+    add_asset(&mut ctx, 1, nm, wn, vn, 6000).unwrap();
 
-    let ix = invest_ix(
-        &ctx,
-        ctx.tsla_mint,
-        ctx.asset_config(0),
-        ctx.price_feed_tsla,
-        ctx.vault_tsla,
-        ctx.tsla_rate_pda,
-        1_000_000,
-    );
-    let r = send_transaction_from_instructions(
-        &mut ctx.svm,
-        vec![ix],
-        &[&ctx.manager],
-        &ctx.manager.pubkey(),
-    );
+    let user = fund_user(&mut ctx, 10_000_000);
+    let ix = deposit_instruction(&ctx, &user, 10_000_000, 1, deposit_remaining(&ctx));
+    let r = send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[&user], &user.pubkey());
     assert!(
         r.is_err(),
-        "invest through an unregistered router must fail"
+        "deposit deploying through an unregistered router must fail"
     );
 }
 
@@ -1274,19 +1180,31 @@ fn test_set_weight_retire() {
     let mut ctx = setup_full();
     standard_strategy(&mut ctx);
 
-    // Retire NVDAx by setting its target weight to zero.
+    // Retire NVDAx by setting its target weight to zero. Total drops to 4000, so the
+    // strategy is under-allocated and stops accepting deposits.
     set_weight(&mut ctx, 1, 0).unwrap();
     let strategy = read_strategy(&ctx);
     assert_eq!(strategy.total_weight_bps, 4000);
     assert_eq!(read_asset_config(&ctx, 1).weight_bps, 0);
 
-    // A deposit now allocates only the 40% TSLAx slice; the rest stays idle USDC and
-    // NVDAx is never bought.
     let user = fund_user(&mut ctx, 100_000_000);
+    let ix = deposit_instruction(&ctx, &user, 100_000_000, 1, deposit_remaining(&ctx));
+    let r = send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[&user], &user.pubkey());
+    assert!(
+        r.is_err(),
+        "an under-allocated (retired) strategy must reject deposits"
+    );
+
+    // Reassign the freed weight to TSLAx (back to 100%); deposits reopen and now deploy
+    // entirely into TSLAx, never touching the retired NVDAx vault. Fresh blockhash so
+    // the retry is not byte-identical to the reverted attempt.
+    set_weight(&mut ctx, 0, 10_000).unwrap();
+    ctx.svm.expire_blockhash();
     do_deposit(&mut ctx, &user, 100_000_000, 1);
+    // 100 USDC / 250 = 400000 TSLAx, nothing to NVDAx, no idle USDC.
     assert_eq!(
         get_token_account_balance(&ctx.svm, &ctx.vault_tsla).unwrap(),
-        160_000
+        400_000
     );
     assert_eq!(
         get_token_account_balance(&ctx.svm, &ctx.vault_nvda).unwrap(),
@@ -1294,7 +1212,7 @@ fn test_set_weight_retire() {
     );
     assert_eq!(
         get_token_account_balance(&ctx.svm, &ctx.vault_usdc).unwrap(),
-        60_000_000
+        0
     );
 }
 

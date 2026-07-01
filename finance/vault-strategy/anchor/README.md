@@ -47,13 +47,13 @@ fee_shares = total_shares × fee_bps × elapsed_seconds / (10_000 × 31_536_000)
 
 ### Weights and Rebalancing
 
-Each asset carries a target **weight** in basis points (e.g. 40% TSLAx, 60% NVDAx); the running sum is kept at or below 10,000. The weights are enforced where it matters most: `deposit` deploys each depositor's USDC straight into the basket at those weights, so money is never left sitting idle by default. When the weights sum below 10,000 (for example after an asset is retired), the unallocated slice stays in the USDC vault for the manager to place with `invest`.
+Each asset carries a target **weight** in basis points (e.g. 40% TSLAx, 60% NVDAx). A strategy accepts deposits only once its weights sum to exactly 10,000 (`add_asset` and `set_weight` keep the running sum at or below 10,000; `deposit` requires it to equal 10,000, else `StrategyNotFullyAllocated`). So a strategy is either still being configured or fully allocated and live, and `deposit` deploys each depositor's USDC straight into the basket at those weights, fully invested bar sub-cent rounding dust. There is no idle-cash mode.
 
 [Rebalancing](https://www.investopedia.com/terms/r/rebalancing.asp) handles the drift that prices create after a deposit: `rebalance` sells an over-weight asset for USDC and buys an under-weight one in a single atomic instruction. `set_weight` changes a target after creation, including setting it to zero to **retire** an asset: deposits stop allocating to it, the manager sells its holdings out with `rebalance`, and the now-empty vault keeps its index so the contiguous `0..asset_count` range stays intact (the index is never reused).
 
 ### Slippage, bounded by the oracle
 
-[Slippage](https://www.investopedia.com/terms/s/slippage.asp) is the gap between the expected and the realized amount of a swap. Rather than trust a manager-supplied minimum, `deposit`, `invest`, and `rebalance` compute the floor themselves from the Pyth price and the strategy's `max_slippage_bps`: a swap whose output falls more than that tolerance below the oracle-implied amount reverts. `max_slippage_bps` is set at creation and capped at `MAX_SLIPPAGE_BPS` (1,000 bps = 10%).
+[Slippage](https://www.investopedia.com/terms/s/slippage.asp) is the gap between the expected and the realized amount of a swap. Rather than trust a manager-supplied minimum, `deposit` and `rebalance` compute the floor themselves from the Pyth price and the strategy's `max_slippage_bps`: a swap whose output falls more than that tolerance below the oracle-implied amount reverts. `max_slippage_bps` is set at creation and capped at `MAX_SLIPPAGE_BPS` (1,000 bps = 10%).
 
 ### In-Kind Withdrawal
 
@@ -72,39 +72,35 @@ An [in-kind distribution](https://www.investopedia.com/terms/i/in-kind.asp) retu
 
 `Maria` and `Victor` are stored as plain `Pubkey`s and may each be a [Squads](https://squads.so/) multisig; the program only checks the signature.
 
-### Step 1 - Victor creates the registry and whitelists assets
+### Victor creates the registry and whitelists assets
 
 `initialize_registry()` creates a `Registry` PDA (`["registry", victor]`) owned by Victor. `whitelist_asset(price_feed)` then creates one `WhitelistEntry` PDA (`["whitelist", registry, mint]`) per approved mint, binding it to its official Pyth feed. Only Victor can do this. This separation is the anti-fraud core: a manager can only ever add assets Victor approved, and the feed comes from the registry, so a manager cannot list a token they mint themselves or pair a real mint with a feed they control.
 
-### Step 2 - Maria initializes the strategy
+### Maria initializes the strategy
 
 `initialize_strategy(index=0, fee_bps=100, max_slippage_bps=100, swap_router)` creates the `Strategy` PDA (`["strategy", 0]`), the share mint, and the USDC vault, binding the strategy to Victor's registry. The strategy is addressed by a caller-chosen index (`"strategy" + 0`, `"strategy" + 1`, …) rather than the manager's key. No assets yet.
 
-### Step 3 - Maria adds assets
+### Maria adds assets
 
-`add_asset(weight_bps)`, once per asset, creates an `AssetConfig` at `["asset", strategy, index]` (index = current `asset_count`), copies the official feed from the whitelist entry, and creates that asset's vault. TSLAx at index 0 (4000 bps), NVDAx at index 1 (6000 bps). Rejected if the mint is not whitelisted, if the weights would exceed 10,000 bps, or once `MAX_ASSETS` (8) is reached.
+`add_asset(weight_bps)`, once per asset, creates an `AssetConfig` at `["asset", strategy, index]` (index = current `asset_count`), copies the official feed from the whitelist entry, and creates that asset's vault. TSLAx at index 0 (4000 bps), NVDAx at index 1 (6000 bps). Rejected if the mint is not whitelisted, if the weights would exceed 10,000 bps, or once `MAX_ASSETS` (8) is reached. Deposits stay closed until the weights sum to exactly 10,000.
 
-### Step 4 - Alice deposits, and her money is deployed at once
+### Alice deposits, and her money is deployed at once
 
-`deposit(usdc_amount, minimum_shares)`, with each asset's `[asset_config, vault, mint, rate, price_feed]` passed as remaining accounts, plus the router accounts. The handler values every asset for NAV (first deposit is 1:1), mints shares to Alice, then deploys her USDC across the basket at its target weights through the router, each leg carrying the same oracle slippage floor `invest` uses. With the weights at 40/60, a 900 USDC deposit lands as 1.44 TSLAx and 3.0 NVDAx with no idle USDC.
+`deposit(usdc_amount, minimum_shares)`, with each asset's `[asset_config, vault, mint, rate, price_feed]` passed as remaining accounts, plus the router accounts. The handler requires the strategy to be fully allocated, values every asset for NAV (first deposit is 1:1), mints shares to Alice, then deploys her USDC across the basket at its target weights through the router, each leg under an oracle slippage floor. With the weights at 40/60, a 900 USDC deposit lands as 1.44 TSLAx and 3.0 NVDAx with no idle USDC.
 
-### Step 5 - Maria invests idle USDC (when there is any)
+### Bob deposits at the current share price
 
-`invest(usdc_amount)` for one registered asset, passing its `asset_config` and `price_feed`. Because `deposit` already deploys at the target weights, the USDC vault is normally empty; `invest` is the tool for the leftover cases, such as the unallocated remainder when the weights sum below 10,000, or the proceeds of a retired asset. The handler reads the Pyth price, computes the minimum acceptable output, and CPIs the router; a fill worse than the bound reverts.
+Same as Alice's deposit. Because shares are priced at NAV, Bob pays the current per-share value and does not dilute Alice's gain; his USDC is deployed at the target weights too.
 
-### Step 6 - Bob deposits at the current share price
+### Maria rebalances
 
-Same as step 4. Because shares are priced at NAV, Bob pays the current per-share value and does not dilute Alice's gain; his USDC is deployed at the target weights too.
+A price move pushes the basket off target. `rebalance(sell_amount, usdc_to_invest)` sells the over-weight asset for USDC and buys the under-weight one, both legs bounded against their Pyth prices, in one atomic instruction. `set_weight(weight_bps)` changes a target between rebalances, or retires an asset by setting it to zero (then reassign that weight to another asset to reach 100% again, and `rebalance` liquidates the retired holdings).
 
-### Step 7 - Maria rebalances
-
-A price move pushes the basket off target. `rebalance(sell_amount, usdc_to_invest)` sells the over-weight asset for USDC and buys the under-weight one, both legs bounded against their Pyth prices, in one atomic instruction. `set_weight(weight_bps)` changes a target between rebalances, or retires an asset by setting it to zero.
-
-### Step 8 - Fees accrue
+### Fees accrue
 
 `collect_fees()` mints time-and-rate-proportional fee shares to Maria, diluting all holders by the fee.
 
-### Step 9 - Alice withdraws in kind
+### Alice withdraws in kind
 
 `withdraw(shares_to_burn, min_usdc_out)`, with each asset's `[asset_config, vault, mint, user_token_account]` as remaining accounts. Alice's shares burn and she receives her proportional slice of USDC and every asset. Amounts floor in the protocol's favour.
 
@@ -118,7 +114,7 @@ A price move pushes the basket off target. `rebalance(sell_amount, usdc_to_inves
 
 ## Mock Swap Router vs Production
 
-The `mock-swap-router` exists only for testing: it stores a `usdc_per_token` rate per asset, holds the basket mints' authority, and mints/burns to simulate swaps. The `Strategy` stores the router program pubkey at creation, and `deposit`, `invest`, and `rebalance` require the router account to match it (`InvalidSwapRouter`). In production, replace the router CPIs with [Jupiter](https://jup.ag); the strategy PDA still signs.
+The `mock-swap-router` exists only for testing: it stores a `usdc_per_token` rate per asset, holds the basket mints' authority, and mints/burns to simulate swaps. The `Strategy` stores the router program pubkey at creation, and `deposit` and `rebalance` require the router account to match it (`InvalidSwapRouter`). In production, replace the router CPIs with [Jupiter](https://jup.ag); the strategy PDA still signs.
 
 ---
 
@@ -155,4 +151,4 @@ cargo build-sbf --manifest-path programs/vault-strategy/Cargo.toml
 cargo test --manifest-path programs/vault-strategy/Cargo.toml
 ```
 
-Tests live in `programs/vault-strategy/tests/vault_strategy.rs` and use [LiteSVM](https://github.com/LiteSVM/litesvm). Both `.so` files are loaded from `target/deploy/`, so build before testing. The suite covers the full lifecycle end to end (deposit with auto-deployment, a price move, rebalance back to target, a second depositor priced at the new NAV, a year's fee, in-kind withdrawal) plus focused tests for each handler, retiring an asset with `set_weight`, and the rejection paths: non-whitelisted asset, weight overflow, over-cap fee and slippage, oracle-bounded slippage on both deposit and invest, non-manager `set_weight`, unregistered router, and incomplete asset accounts on deposit.
+Tests live in `programs/vault-strategy/tests/vault_strategy.rs` and use [LiteSVM](https://github.com/LiteSVM/litesvm). Both `.so` files are loaded from `target/deploy/`, so build before testing. The suite covers the full lifecycle end to end (deposit with auto-deployment, a price move, rebalance back to target, a second depositor priced at the new NAV, a year's fee, in-kind withdrawal), retiring an asset with `set_weight` and reallocating to reopen deposits, and the rejection paths: non-whitelisted asset, weight overflow, over-cap fee and slippage, oracle-bounded deposit slippage, an under-allocated strategy, non-manager `set_weight`, unregistered router, and incomplete asset accounts on deposit.

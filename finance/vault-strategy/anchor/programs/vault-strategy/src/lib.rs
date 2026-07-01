@@ -68,10 +68,6 @@ pub mod vault_strategy {
         instructions::deposit::handle_deposit(context, usdc_amount, minimum_shares)
     }
 
-    pub fn invest(context: Context<InvestAccountConstraints>, usdc_amount: u64) -> Result<()> {
-        instructions::invest::handle_invest(context, usdc_amount)
-    }
-
     pub fn collect_fees(context: Context<CollectFeesAccountConstraints>) -> Result<()> {
         instructions::collect_fees::handle_collect_fees(context)
     }

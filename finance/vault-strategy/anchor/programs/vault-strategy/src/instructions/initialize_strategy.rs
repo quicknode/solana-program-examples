@@ -14,7 +14,7 @@ use crate::state::{Registry, Strategy};
 pub const MAX_FEE_BPS: u16 = 1_000;
 
 /// Highest slippage tolerance a manager may set, in basis points (10%).
-/// invest/rebalance reject a swap whose output deviates from the Pyth price by
+/// deposit/rebalance reject a swap whose output deviates from the Pyth price by
 /// more than this; capping it stops a manager from setting a tolerance so loose
 /// that the bound is meaningless.
 pub const MAX_SLIPPAGE_BPS: u16 = 1_000;
