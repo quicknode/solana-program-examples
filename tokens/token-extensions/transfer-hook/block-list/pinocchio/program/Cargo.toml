@@ -25,6 +25,12 @@ pinocchio-log = "0.5.1"
 [dev-dependencies]
 block-list-client = { workspace = true }
 litesvm = "0.13.1"
-solana-sdk = "2.2"
-spl-token-2022 = "7.0"
-spl-associated-token-account = "6.0"
+solana-pubkey = "3.0.0"
+solana-keypair = "3.0.1"
+solana-signer = "3.0.0"
+solana-instruction = "3.0.0"
+solana-transaction = "3.0.1"
+solana-system-interface = { version = "2.0.0", features = ["bincode"] }
+solana-compute-budget-interface = "3.0.0"
+spl-token-2022 = "10.0.0"
+spl-associated-token-account = "8.0.0"
