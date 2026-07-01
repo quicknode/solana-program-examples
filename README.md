@@ -2,7 +2,7 @@
 
 ![Quicknode Solana Program Examples](assets/banner.png?v=1)
 
-_Solana program examples in Anchor, Quasar, Pinocchio, native Rust, and sBPF assembly, covering the basics, tokens, Token Extensions, NFTs, state compression, and DeFi._
+_Solana program examples ('smart contracts') in Anchor, Quasar, Pinocchio, native Rust, and sBPF assembly. Focused on financial software ('DeFi'), plus the basics, tokens, Token Extensions, state compression, and more._
 
 Working, tested, up-to-date examples of common Solana programs (what other chains call smart contracts), maintained by [Quicknode](https://www.quicknode.com/chains/solana). Every example builds and passes CI on a current toolchain — **Anchor 1.1**, the current multi-file program layout (one file per instruction handler, account type, etc), and [LiteSVM](https://github.com/LiteSVM/litesvm) tests rather than the older `solana-test-validator` / web3.js stack.
 
@@ -25,9 +25,9 @@ You need [Rust](https://www.rust-lang.org/tools/install), [Solana CLI](https://d
 
 To deploy to mainnet or devnet you'll need an RPC endpoint. [Quicknode](https://www.quicknode.com/chains/solana) provides free and paid Solana endpoints - create one and set it as your cluster in `Anchor.toml` or with `solana config set --url <your-endpoint>`.
 
-## DeFi and Financial Software
+## Financial software ("DeFi")
 
-The programs are examples of common DeFi and financial primitives on Solana. As well as tests these all have [formal verification using Kani](https://github.com/model-checking/kani). Every finance program ships with proofs that verify its money-math invariants exhaustively over all inputs. See each program's `kani-proofs/` directory for the harnesses and what they prove.
+The programs are examples of common financial primitives on Solana. As well as tests these all have [formal verification using Kani](https://github.com/model-checking/kani). Every finance program ships with proofs that verify its money-math invariants exhaustively over all inputs. See each program's `kani-proofs/` directory for the harnesses and what they prove.
 
 ### Escrow
 
