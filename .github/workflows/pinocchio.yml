@@ -217,6 +217,21 @@ jobs:
               fi
             done
 
+            # Build the CLI host binary if the project ships one. It is a
+            # normal host crate (not an on-chain program), so cargo build-sbf
+            # and the LiteSVM tests never touch it; build it explicitly so its
+            # client-facing code cannot silently rot. libudev is a build-time
+            # dependency of hidapi, pulled in via solana-remote-wallet.
+            if [ -d "cli" ]; then
+              sudo apt-get update && sudo apt-get install -y libudev-dev
+              if ! cargo build --manifest-path=./cli/Cargo.toml; then
+                echo "::error::cli build failed for $project"
+                echo "$project: cli build failed with $solana_version" >> $GITHUB_WORKSPACE/failed_projects.txt
+                cd - > /dev/null
+                return 1
+              fi
+            fi
+
             echo "Build and tests succeeded for $project with $solana_version version."
             cd - > /dev/null
             return 0
