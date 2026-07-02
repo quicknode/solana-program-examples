@@ -13,11 +13,11 @@ pub struct Pool {
     pub lp_mint: Address,
     pub oracle_scale: u32,
     pub liquidity: u64,
-    /// Portion of `liquidity` reserved to cover open positions' maximum
-    /// recoverable profit (one notional `size` each). Withdrawals can only take
-    /// the free remainder, and a position can open only while
-    /// `reserved + size <= liquidity`.
-    pub reserved_liquidity: u64,
+    /// Senior buffer that absorbs a bankrupt position's deficit before the loss
+    /// is socialized to liquidity providers, and counts alongside `liquidity` as
+    /// backing for trader profit in the haircut math. Funded by
+    /// `insurance_fee_bps` of every open/close fee.
+    pub insurance_fund: u64,
     pub total_collateral: u64,
     pub protocol_fees: u64,
     pub long_size: u128,
@@ -35,6 +35,13 @@ pub struct Pool {
     /// Maximum oracle confidence band, in basis points of the price, the pool
     /// will trade against. A wider band is rejected as untrustworthy.
     pub max_confidence_bps: u16,
+    /// Fraction of each open/close fee, in basis points, routed to the insurance
+    /// fund instead of to `protocol_fees`.
+    pub insurance_fee_bps: u16,
+    /// Slots a position must stay open before its profit matures into a
+    /// withdrawable claim. Profit cannot be realized before this elapses, the
+    /// oracle-manipulation defense; loss is never gated this way.
+    pub profit_warmup_slots: u64,
     pub bump: u8,
     pub authority_bump: u8,
 }
@@ -55,5 +62,8 @@ pub struct Position {
     pub entry_price: u64,
     pub size_scaled: u128,
     pub entry_funding: i128,
+    /// Slot the position opened at. Its profit matures once
+    /// `entry_slot + pool.profit_warmup_slots` has passed.
+    pub entry_slot: u64,
     pub bump: u8,
 }

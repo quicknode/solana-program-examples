@@ -53,6 +53,9 @@ pub enum PerpError {
     #[msg("Position equity is below maintenance margin; it must be liquidated, not closed")]
     PositionNotHealthy,
 
+    #[msg("Profit has not matured yet; wait out the warm-up period before closing in profit")]
+    ProfitNotMatured,
+
     #[msg("No protocol fees are available to collect")]
     NothingToClaim,
 }

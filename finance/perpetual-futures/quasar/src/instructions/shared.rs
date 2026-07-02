@@ -5,8 +5,8 @@
 use quasar_lang::prelude::*;
 
 use crate::constants::{
-    BASIS_POINTS_DENOMINATOR, FUNDING_PRECISION, MAX_PRICE_STALENESS_SLOTS, SIDE_LONG,
-    SIZE_PRECISION,
+    BASIS_POINTS_DENOMINATOR, FUNDING_PRECISION, HAIRCUT_PRECISION, MAX_PRICE_STALENESS_SLOTS,
+    SIDE_LONG, SIZE_PRECISION,
 };
 use crate::state::Pool;
 
@@ -28,6 +28,7 @@ pub mod error {
     pub const AMOUNT_ROUNDS_TO_ZERO: u32 = 15;
     pub const ORACLE_CONFIDENCE_TOO_WIDE: u32 = 16;
     pub const INSUFFICIENT_COLLATERAL: u32 = 17;
+    pub const PROFIT_NOT_MATURED: u32 = 18;
 }
 
 #[inline(always)]
@@ -198,6 +199,72 @@ pub fn traders_unrealized_pnl(
         .ok_or_else(overflow)?;
 
     long_pnl.checked_add(short_pnl).ok_or_else(overflow)
+}
+
+/// The pool's gross profit liability at `price`: how much it would owe traders
+/// beyond their collateral if every winner closed now — the junior claim the
+/// haircut applies to. Floored at zero.
+pub fn pool_profit_liability(
+    long_size: u128,
+    long_size_scaled: u128,
+    short_size: u128,
+    short_size_scaled: u128,
+    price: u64,
+) -> Result<u128, ProgramError> {
+    let net = traders_unrealized_pnl(long_size, long_size_scaled, short_size, short_size_scaled, price)?;
+    Ok(net.max(0) as u128)
+}
+
+/// The haircut ratio `h`, scaled by `HAIRCUT_PRECISION`. Profit is backed by
+/// liquidity plus the insurance fund; when that backing covers the whole profit
+/// liability `h` is one, otherwise it is `backing / liability` and every winner
+/// is paid the same fraction. The division floors, so haircut payouts can never
+/// sum past the backing.
+#[allow(clippy::too_many_arguments)]
+pub fn haircut_ratio(
+    liquidity: u64,
+    insurance_fund: u64,
+    long_size: u128,
+    long_size_scaled: u128,
+    short_size: u128,
+    short_size_scaled: u128,
+    price: u64,
+) -> Result<u128, ProgramError> {
+    let liability =
+        pool_profit_liability(long_size, long_size_scaled, short_size, short_size_scaled, price)?;
+    if liability == 0 {
+        return Ok(HAIRCUT_PRECISION);
+    }
+    let backing = (liquidity as u128)
+        .checked_add(insurance_fund as u128)
+        .ok_or_else(overflow)?;
+    if backing >= liability {
+        return Ok(HAIRCUT_PRECISION);
+    }
+    backing
+        .checked_mul(HAIRCUT_PRECISION)
+        .ok_or_else(overflow)?
+        .checked_div(liability)
+        .ok_or_else(overflow)
+}
+
+/// Apply the haircut to a non-negative profit, rounding down. `profit` must be
+/// `>= 0` — only profit is haircut, losses settle in full.
+pub fn apply_haircut(profit: i128, haircut: u128) -> Result<i128, ProgramError> {
+    let scaled = (profit as u128)
+        .checked_mul(haircut)
+        .ok_or_else(overflow)?
+        .checked_div(HAIRCUT_PRECISION)
+        .ok_or_else(overflow)?;
+    i128::try_from(scaled).map_err(|_| overflow())
+}
+
+/// Split a fee into the insurance-fund cut (`insurance_fee_bps` of it, floored)
+/// and the protocol cut (the remainder), so no base unit is lost between them.
+pub fn split_fee(fee: u64, insurance_fee_bps: u16) -> Result<(u64, u64), ProgramError> {
+    let insurance_cut = basis_points_of(fee, insurance_fee_bps)?;
+    let protocol_cut = fee.checked_sub(insurance_cut).ok_or_else(overflow)?;
+    Ok((insurance_cut, protocol_cut))
 }
 
 pub fn position_funding(

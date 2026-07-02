@@ -112,7 +112,7 @@ struct Env {
 const SLOT: u64 = 10;
 
 /// Build an SVM with the program, token program, a collateral mint, an oracle
-/// feed at $100, and an initialized pool.
+/// feed at $100, and an initialized pool. Insurance fee and profit warm-up off.
 fn setup() -> Env {
     try_setup(500, 10).expect("pool initialization should succeed")
 }
@@ -121,6 +121,19 @@ fn setup() -> Env {
 /// `initialize_pool` rejection surfaced instead of panicking, so tests can
 /// probe the parameter validation.
 fn try_setup(maintenance_margin_bps: u16, close_fee_bps: u16) -> Result<Env, ()> {
+    try_setup_full(maintenance_margin_bps, close_fee_bps, 10, 0, 0)
+}
+
+/// The full pool-parameter builder. Exposes the open fee, the insurance-fund fee
+/// cut, and the profit warm-up so the haircut, maturation, and insurance tests
+/// can configure them.
+fn try_setup_full(
+    maintenance_margin_bps: u16,
+    close_fee_bps: u16,
+    open_fee_bps: u16,
+    insurance_fee_bps: u16,
+    profit_warmup_slots: u64,
+) -> Result<Env, ()> {
     let elf = fs::read("target/deploy/quasar_perpetual_futures.so").unwrap();
     let collateral_mint = Pubkey::new_unique();
     let feed = Pubkey::new_unique();
@@ -142,12 +155,14 @@ fn try_setup(maintenance_margin_bps: u16, close_fee_bps: u16) -> Result<Env, ()>
     let mut data = vec![0u8];
     data.extend_from_slice(&ORACLE_SCALE.to_le_bytes());
     data.extend_from_slice(&0u64.to_le_bytes()); // funding_rate_per_slot = 0
-    data.extend_from_slice(&10u16.to_le_bytes()); // open_fee_bps
+    data.extend_from_slice(&open_fee_bps.to_le_bytes());
     data.extend_from_slice(&close_fee_bps.to_le_bytes());
     data.extend_from_slice(&10u16.to_le_bytes()); // max_leverage
     data.extend_from_slice(&maintenance_margin_bps.to_le_bytes());
     data.extend_from_slice(&100u16.to_le_bytes()); // liquidation_fee_bps
     data.extend_from_slice(&100u16.to_le_bytes()); // max_confidence_bps
+    data.extend_from_slice(&insurance_fee_bps.to_le_bytes());
+    data.extend_from_slice(&profit_warmup_slots.to_le_bytes());
     let metas = vec![
         AccountMeta::new(admin, true),
         AccountMeta::new(pool, false),
@@ -300,6 +315,14 @@ impl Env {
             SLOT,
             confidence,
         ));
+    }
+
+    /// Advance the clock and refresh the feed at the new slot, so the price stays
+    /// fresh past the warm-up window.
+    fn warp_and_set_price(&mut self, slot: u64, price: i128) {
+        self.svm.sysvars.warp_to_slot(slot);
+        self.svm
+            .set_account(feed_account(&self.feed, price, ORACLE_SCALE, slot, 0));
     }
 
     fn close_position(&mut self, owner: &Pubkey) -> bool {
@@ -564,17 +587,20 @@ fn test_wide_oracle_confidence_rejected() {
 }
 
 #[test]
-fn test_open_rejects_when_pool_cannot_back_it() {
+fn test_open_allowed_without_full_backing() {
+    // No open-interest cap: a 10,000 position opens against only 6,000 of
+    // liquidity; solvency is kept at exit by the haircut, not gated at entry.
     let mut env = setup();
-    let (provider, _) = env.funded_wallet(3_000 * ONE_USDC);
-    assert!(env.add_liquidity(&provider, 3_000 * ONE_USDC));
-    let (trader, _) = env.funded_wallet(1_000 * ONE_USDC);
-    // A 5,000 position must reserve 5,000, but the pool only holds 3,000.
-    assert!(!env.open_position(&trader, 0, 1_000 * ONE_USDC, 5_000 * ONE_USDC));
+    let (provider, _) = env.funded_wallet(6_000 * ONE_USDC);
+    assert!(env.add_liquidity(&provider, 6_000 * ONE_USDC));
+    let (trader, _) = env.funded_wallet(1_100 * ONE_USDC);
+    assert!(env.open_position(&trader, 0, 1_100 * ONE_USDC, 10_000 * ONE_USDC));
+    let position = pda(&[b"position", env.pool.as_ref(), trader.as_ref()]);
+    assert!(env.svm.get_account(&position).is_some());
 }
 
 #[test]
-fn test_profit_capped_at_reserved_notional() {
+fn test_profit_runs_uncapped_when_backed() {
     let mut env = setup();
     let (provider, _) = env.funded_wallet(100_000 * ONE_USDC);
     assert!(env.add_liquidity(&provider, 100_000 * ONE_USDC));
@@ -584,32 +610,172 @@ fn test_profit_capped_at_reserved_notional() {
     let (trader, trader_collateral) = env.funded_wallet(collateral);
     assert!(env.open_position(&trader, 0, collateral, size));
 
-    // Price triples: uncapped profit would be 2x the notional, but recoverable
-    // profit is capped at the reserved notional (`size`).
+    // Price triples: profit is 2x the notional. The deep pool fully backs it, so
+    // the haircut is 1 and the trader keeps every cent — profit is uncapped.
     env.set_price(dollars(300));
     assert!(env.close_position(&trader));
 
     let open_fee = size / 1_000;
     let close_fee = size / 1_000;
     let net_collateral = collateral - open_fee;
-    let expected = net_collateral + size - close_fee;
+    let profit = 2 * size;
+    let expected = net_collateral + profit - close_fee;
     assert_eq!(token_amount(&env.svm, &trader_collateral), expected);
 }
 
 #[test]
-fn test_remove_liquidity_blocked_by_reserved() {
+fn test_haircut_scales_profit_when_pool_stressed() {
+    // A thin pool and a doubling price: traders are owed more than the pool
+    // holds, so the haircut scales the winner to the backing. h = 6,000 / 10,000.
+    let mut env = setup();
+    let (provider, _) = env.funded_wallet(6_000 * ONE_USDC);
+    assert!(env.add_liquidity(&provider, 6_000 * ONE_USDC));
+
+    let collateral = 1_100 * ONE_USDC;
+    let size = 10_000 * ONE_USDC;
+    let (trader, trader_collateral) = env.funded_wallet(collateral);
+    assert!(env.open_position(&trader, 0, collateral, size));
+
+    env.set_price(dollars(200));
+    assert!(env.close_position(&trader));
+
+    let open_fee = size / 1_000;
+    let close_fee = size / 1_000;
+    let net_collateral = collateral - open_fee;
+    let haircut_profit = 6_000 * ONE_USDC; // 0.6 of the 10,000 full profit
+    let expected = net_collateral + haircut_profit - close_fee;
+    assert_eq!(token_amount(&env.svm, &trader_collateral), expected);
+}
+
+#[test]
+fn test_remove_liquidity_capped_at_liquidity() {
+    // A provider cannot withdraw more than the tracked liquidity, even when open
+    // trader losses mark their share higher — that gain is not cash yet.
     let mut env = setup();
     let (provider, _) = env.funded_wallet(10_000 * ONE_USDC);
     assert!(env.add_liquidity(&provider, 10_000 * ONE_USDC));
     let (trader, _) = env.funded_wallet(1_000 * ONE_USDC);
     assert!(env.open_position(&trader, 0, 1_000 * ONE_USDC, 5_000 * ONE_USDC));
 
-    // 5,000 of the 10,000 liquidity is reserved: pulling everything fails, but
-    // withdrawing within the free half succeeds.
+    // Price falls 20%: the long is down 1,000, AUM marks to 11,000 while
+    // liquidity is 10,000. Redeeming every share is refused; half succeeds.
+    env.set_price(dollars(80));
     let provider_lp = ata(&provider, &env.lp_mint);
     let shares = token_amount(&env.svm, &provider_lp);
     assert!(!env.remove_liquidity(&provider, shares));
     assert!(env.remove_liquidity(&provider, shares / 2));
+}
+
+#[test]
+fn test_profit_blocked_before_maturation() {
+    // A 100-slot warm-up: profit cannot be realized in the block it appears.
+    let mut env = try_setup_full(500, 10, 10, 0, 100).unwrap();
+    let (provider, _) = env.funded_wallet(100_000 * ONE_USDC);
+    assert!(env.add_liquidity(&provider, 100_000 * ONE_USDC));
+
+    let (trader, _) = env.funded_wallet(1_000 * ONE_USDC);
+    assert!(env.open_position(&trader, 0, 1_000 * ONE_USDC, 5_000 * ONE_USDC));
+
+    // Price jumps 20%; closing for profit before the warm-up elapses is refused.
+    env.set_price(dollars(120));
+    assert!(!env.close_position(&trader));
+}
+
+#[test]
+fn test_profit_realized_after_maturation() {
+    let mut env = try_setup_full(500, 10, 10, 0, 100).unwrap();
+    let (provider, _) = env.funded_wallet(100_000 * ONE_USDC);
+    assert!(env.add_liquidity(&provider, 100_000 * ONE_USDC));
+
+    let size = 5_000 * ONE_USDC;
+    let (trader, trader_collateral) = env.funded_wallet(1_000 * ONE_USDC);
+    assert!(env.open_position(&trader, 0, 1_000 * ONE_USDC, size));
+
+    // Wait past the warm-up (opened at slot 10), refresh the price, then close:
+    // the profit has matured and is paid in full.
+    env.warp_and_set_price(SLOT + 200, dollars(120));
+    assert!(env.close_position(&trader));
+
+    let open_fee = size / 1_000;
+    let close_fee = size / 1_000;
+    let net_collateral = 1_000 * ONE_USDC - open_fee;
+    let profit = size / 5;
+    let expected = net_collateral + profit - close_fee;
+    assert_eq!(token_amount(&env.svm, &trader_collateral), expected);
+}
+
+#[test]
+fn test_loss_not_gated_by_maturation() {
+    // The warm-up gates profit only; a loss can be closed at once.
+    let mut env = try_setup_full(500, 10, 10, 0, 100).unwrap();
+    let (provider, _) = env.funded_wallet(100_000 * ONE_USDC);
+    assert!(env.add_liquidity(&provider, 100_000 * ONE_USDC));
+
+    let size = 5_000 * ONE_USDC;
+    let (trader, trader_collateral) = env.funded_wallet(1_000 * ONE_USDC);
+    assert!(env.open_position(&trader, 0, 1_000 * ONE_USDC, size));
+
+    env.set_price(dollars(90));
+    assert!(env.close_position(&trader));
+
+    let open_fee = size / 1_000;
+    let close_fee = size / 1_000;
+    let net_collateral = 1_000 * ONE_USDC - open_fee;
+    let loss = size / 10;
+    let expected = net_collateral - loss - close_fee;
+    assert_eq!(token_amount(&env.svm, &trader_collateral), expected);
+}
+
+#[test]
+fn test_insurance_fund_funded_by_fees() {
+    // Half of every fee is routed to the insurance fund, so `collect_fees`
+    // sweeps only the protocol's half of the open fee.
+    let mut env = try_setup_full(500, 10, 10, 5_000, 0).unwrap();
+    let (provider, _) = env.funded_wallet(100_000 * ONE_USDC);
+    assert!(env.add_liquidity(&provider, 100_000 * ONE_USDC));
+
+    let size = 5_000 * ONE_USDC;
+    let (trader, _) = env.funded_wallet(1_000 * ONE_USDC);
+    assert!(env.open_position(&trader, 0, 1_000 * ONE_USDC, size));
+
+    assert!(env.collect_fees());
+    let admin_collateral = ata(&env.admin, &env.collateral_mint);
+    let open_fee = size / 1_000;
+    assert_eq!(token_amount(&env.svm, &admin_collateral), open_fee / 2);
+}
+
+#[test]
+fn test_insurance_absorbs_bankruptcy_deficit() {
+    // A position gaps through zero equity, owing 40 beyond its collateral. The
+    // insurance fund (here, the 50 open fee) covers that deficit, so the sole
+    // provider reclaims the trader's collateral *and* the insurance top-up
+    // rather than eating the loss.
+    let mut env = try_setup_full(500, 10, 500, 10_000, 0).unwrap();
+    let (provider, provider_collateral) = env.funded_wallet(100_000 * ONE_USDC);
+    assert!(env.add_liquidity(&provider, 100_000 * ONE_USDC));
+
+    let collateral = 160 * ONE_USDC;
+    let size = 1_000 * ONE_USDC;
+    let (trader, _) = env.funded_wallet(collateral);
+    assert!(env.open_position(&trader, 0, collateral, size));
+
+    // Price falls 15%: a 1,000 long loses 150 against 110 of net collateral.
+    env.set_price(dollars(85));
+    let liquidator = Pubkey::new_unique();
+    env.svm
+        .set_account(create_keyed_system_account(&liquidator, 100_000_000_000));
+    assert!(env.liquidate(&liquidator, &trader));
+
+    // The deficit (150 loss − 110 net collateral = 40) was paid from insurance.
+    // The provider redeems all shares and ends with deposit + collateral + the
+    // insurance top-up: 100,000 + 110 + 40 = 100,150.
+    let provider_lp = ata(&provider, &env.lp_mint);
+    let shares = token_amount(&env.svm, &provider_lp);
+    assert!(env.remove_liquidity(&provider, shares));
+    assert_eq!(
+        token_amount(&env.svm, &provider_collateral),
+        100_150 * ONE_USDC
+    );
 }
 
 #[test]

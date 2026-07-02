@@ -2,7 +2,8 @@ use {
     crate::{
         constants::SIDE_LONG,
         instructions::shared::{
-            basis_points_of, err, error, position_funding, position_pnl, refresh_price_and_funding,
+            apply_haircut, basis_points_of, err, error, haircut_ratio, position_funding,
+            position_pnl, refresh_price_and_funding, split_fee,
         },
         state::{Pool, Position},
         PoolAuthorityPda,
@@ -51,12 +52,25 @@ pub fn handle_close_position(
     let slot = accounts.clock.slot.get();
     let price = refresh_price_and_funding(&mut accounts.pool, &accounts.oracle_feed, slot)?;
 
+    // Compute the haircut against the whole pool before this position leaves the
+    // accumulators, so the closer is one of the winners being scaled.
+    let haircut = haircut_ratio(
+        accounts.pool.liquidity.get(),
+        accounts.pool.insurance_fund.get(),
+        accounts.pool.long_size.get(),
+        accounts.pool.long_size_scaled.get(),
+        accounts.pool.short_size.get(),
+        accounts.pool.short_size_scaled.get(),
+        price,
+    )?;
+
     let side = accounts.position.side;
     let size = accounts.position.size.get();
     let entry_price = accounts.position.entry_price.get();
     let collateral = accounts.position.collateral.get();
     let size_scaled = accounts.position.size_scaled.get();
     let entry_funding = accounts.position.entry_funding.get();
+    let entry_slot = accounts.position.entry_slot.get();
 
     let pnl = position_pnl(side, size, entry_price, price)?;
     let funding = position_funding(
@@ -65,9 +79,17 @@ pub fn handle_close_position(
         entry_funding,
         accounts.pool.cumulative_funding.get(),
     )?;
-    // Recoverable profit is capped at the reserved amount (the notional `size`),
-    // so the pool can always cover a winner. Losses are not capped.
-    let realized_pnl = pnl.min(size as i128);
+    // Profit is a junior claim, gated twice; a loss settles in full. It must
+    // have matured (the warm-up since open elapsed), then it is haircut to the
+    // fraction `h` the pool can back.
+    let realized_pnl = if pnl > 0 {
+        if slot < entry_slot.saturating_add(accounts.pool.profit_warmup_slots.get()) {
+            return Err(err(error::PROFIT_NOT_MATURED));
+        }
+        apply_haircut(pnl, haircut)?
+    } else {
+        pnl
+    };
     let equity = (collateral as i128)
         .checked_add(realized_pnl)
         .ok_or(ProgramError::ArithmeticOverflow)?
@@ -86,16 +108,9 @@ pub fn handle_close_position(
         return Err(err(error::SLIPPAGE_EXCEEDED));
     }
 
-    remove_open_interest(&mut accounts.pool, side, size, size_scaled)?;
+    let (insurance_cut, protocol_cut) = split_fee(close_fee, accounts.pool.insurance_fee_bps.get())?;
 
-    // Release the position's reserved liquidity now that it is closing.
-    let new_reserved = accounts
-        .pool
-        .reserved_liquidity
-        .get()
-        .checked_sub(size)
-        .ok_or(ProgramError::ArithmeticOverflow)?;
-    accounts.pool.reserved_liquidity.set(new_reserved);
+    remove_open_interest(&mut accounts.pool, side, size, size_scaled)?;
 
     let new_total_collateral = accounts
         .pool
@@ -123,9 +138,17 @@ pub fn handle_close_position(
         .pool
         .protocol_fees
         .get()
-        .checked_add(close_fee)
+        .checked_add(protocol_cut)
         .ok_or(ProgramError::ArithmeticOverflow)?;
     accounts.pool.protocol_fees.set(new_protocol_fees);
+
+    let new_insurance_fund = accounts
+        .pool
+        .insurance_fund
+        .get()
+        .checked_add(insurance_cut)
+        .ok_or(ProgramError::ArithmeticOverflow)?;
+    accounts.pool.insurance_fund.set(new_insurance_fund);
 
     let bump = [bumps.pool_authority];
     let seeds: &[Seed] = &[

@@ -20,6 +20,19 @@ Terms used in this example, in the sense they carry here.
   a position must keep to avoid liquidation.
 - **Liquidation** — closing an under-margined position. Permissionless here: any
   caller can trigger it and earns the liquidation fee.
+- **Senior / junior claim** — a trader's deposited collateral is *senior*: always
+  reclaimable in full. Their profit is *junior*: only as real as the backing
+  behind it, and scaled down by the haircut when the pool is stressed.
+- **Haircut ratio (`h`)** — a single global number, between zero and one, that
+  every closing winner's profit is multiplied by. One when the pool can back all
+  profit; below one when it cannot, the same fraction for everyone — no queue, no
+  singled-out trader.
+- **Profit maturation (warm-up)** — profit cannot be realized until a position has
+  been open `profit_warmup_slots` slots. An oracle spike's paper gain cannot be
+  cashed out before the manipulation passes. Loss is never gated this way.
+- **Insurance fund** — a senior buffer, funded by a cut of fees, that absorbs a
+  bankrupt position's deficit before liquidity providers do, and counts as
+  backing for trader profit in the haircut.
 - **Funding** — a periodic payment that anchors the pool's risk. The heavier
   side of open interest pays funding to the pool over time.
 - **Open interest** — the total notional size currently open on a side.

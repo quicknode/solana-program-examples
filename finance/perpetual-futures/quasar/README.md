@@ -25,7 +25,11 @@ math. This page only covers what differs in the Quasar version.
 Tests run in-process with [`quasar-svm`](https://github.com/blueshift-gg/quasar-svm).
 They build the program, set up a collateral mint, oracle feed, and funded
 wallets, then exercise pool initialization, liquidity add/remove, opening and
-closing a long in profit, leverage rejection, liquidation, and fee collection.
+closing a long in profit, leverage rejection, liquidation, and fee collection —
+plus the same risk model as the Anchor sibling: profit running uncapped when the
+pool can back it, the haircut scaling profit when the pool is stressed, the
+warm-up blocking unmatured profit (but never a loss), the withdrawal guard, and
+the insurance fund taking its fee cut and absorbing a bankruptcy deficit.
 
 ```bash
 cargo build-sbf

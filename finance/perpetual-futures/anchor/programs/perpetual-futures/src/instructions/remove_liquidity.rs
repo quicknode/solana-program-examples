@@ -8,7 +8,9 @@ use anchor_spl::{
 
 use crate::constants::{AUTHORITY_SEED, POOL_SEED, VAULT_SEED};
 use crate::errors::PerpError;
-use crate::instructions::shared::{liquidity_provider_aum, refresh_price_and_funding};
+use crate::instructions::shared::{
+    liquidity_provider_aum, pool_profit_liability, refresh_price_and_funding,
+};
 use crate::state::Pool;
 
 pub fn handle_remove_liquidity(
@@ -35,15 +37,14 @@ pub fn handle_remove_liquidity(
         .map_err(|_| PerpError::MathOverflow)?;
 
     require!(amount_out > 0, PerpError::AmountRoundsToZero);
-    // Only free liquidity can leave: the portion reserved to cover open
-    // positions' payouts stays put, so a winning trader can always be paid. A
-    // provider wanting more must wait for positions to close.
-    let free_liquidity = pool
-        .liquidity
-        .checked_sub(pool.reserved_liquidity)
-        .ok_or(PerpError::MathOverflow)?;
+    // Only free liquidity can leave: the backing for the profit traders are
+    // currently owed stays put, so providers cannot withdraw out from under a
+    // winning trader and force their haircut. Profit traders are owed beyond
+    // what liquidity can cover already has `h < 1`, leaving no free liquidity.
+    let liability = pool_profit_liability(pool, price)?;
+    let free_liquidity = (pool.liquidity as u128).saturating_sub(liability);
     require!(
-        amount_out <= free_liquidity,
+        amount_out as u128 <= free_liquidity,
         PerpError::InsufficientLiquidity
     );
     require!(

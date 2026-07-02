@@ -48,5 +48,9 @@ pub struct Position {
     /// Pool `cumulative_funding` at open. Funding owed is the change since.
     pub entry_funding: i128,
 
+    /// Slot the position opened at. Its profit matures (becomes withdrawable)
+    /// once `entry_slot + pool.profit_warmup_slots` has passed.
+    pub entry_slot: u64,
+
     pub bump: u8,
 }

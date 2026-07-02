@@ -4,6 +4,19 @@ All notable changes to this repository are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-06-29] - Perpetual-futures Percolator risk model
+
+### Changed
+
+- `finance/perpetual-futures` (both the Anchor and Quasar implementations) replaced its reserve-and-cap risk model with the haircut model adapted from [Percolator](https://github.com/aeyakovenko/percolator). Trader profit is now a junior claim: positions open with no up-front reserve and no open-interest cap, profit runs uncapped, and solvency is held at exit by a global haircut ratio `h` that scales every winner's profit to the backing the pool can cover. The `Pool.reserved_liquidity` field and the per-position profit cap were removed; provider withdrawals are now gated by the profit traders are currently owed rather than by a reserve.
+- Liquidating a position that gapped through zero equity now draws the deficit from the insurance fund before socializing any of it to liquidity providers.
+
+### Added
+
+- Profit maturation: positions carry an `entry_slot` and cannot be closed in profit until `profit_warmup_slots` have elapsed, an oracle-manipulation defense. Loss is never gated.
+- An insurance fund (`Pool.insurance_fund`), funded by an `insurance_fee_bps` cut of every open/close fee, which absorbs bankruptcy deficits and counts as backing in the haircut.
+- Tests in both implementations for the haircut, maturation, withdrawal guard, and insurance fund; READMEs and `TERMINOLOGY.md` document the model and why Percolator's peer-to-peer `A`/`K` overhang indices do not map onto a single-counterparty pool.
+
 ## [2026-06-30] - Anchor 1.1.2
 
 ### Changed
@@ -14,6 +27,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - `anchor.yml` built no projects when `.ghaignore` was empty: `find … | grep -vE "$ignore_pattern"` treated the empty pattern as "match everything" and dropped the whole list, so the workflow passed without building anything. Guarded the filter (as `native.yml`, `pinocchio.yml` and `solana-asm.yml` already do).
 - `vault-strategy` and `perpetual-futures` LiteSVM tests loaded their sibling mock program's `.so` with `include_bytes!`, which is evaluated at compile time. Anchor's IDL build compiles the tests before that sibling `.so` is built, so the build failed. They now read the sibling `.so` at runtime with `std::fs::read`, matching the existing `cross-program-invocation/hand` test.
+
 
 ## [2026-06-12] - Rust + LiteSVM tests everywhere
 

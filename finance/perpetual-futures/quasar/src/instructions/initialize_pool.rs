@@ -60,6 +60,8 @@ pub fn handle_initialize_pool(
     maintenance_margin_bps: u16,
     liquidation_fee_bps: u16,
     max_confidence_bps: u16,
+    insurance_fee_bps: u16,
+    profit_warmup_slots: u64,
     bumps: &InitializePoolBumps,
 ) -> Result<(), ProgramError> {
     let denominator = BASIS_POINTS_DENOMINATOR as u16;
@@ -86,6 +88,11 @@ pub fn handle_initialize_pool(
     if max_confidence_bps == 0 || max_confidence_bps >= denominator {
         return Err(err(error::INVALID_PARAMETER));
     }
+    // The insurance cut is a fraction of the fee, so it cannot exceed the whole
+    // fee; `denominator` (100%) routes every fee to insurance.
+    if insurance_fee_bps > denominator {
+        return Err(err(error::INVALID_PARAMETER));
+    }
 
     let slot = accounts.clock.slot.get();
     accounts.pool.set_inner(PoolInner {
@@ -96,7 +103,7 @@ pub fn handle_initialize_pool(
         lp_mint: *accounts.lp_mint.address(),
         oracle_scale,
         liquidity: 0,
-        reserved_liquidity: 0,
+        insurance_fund: 0,
         total_collateral: 0,
         protocol_fees: 0,
         long_size: 0,
@@ -112,6 +119,8 @@ pub fn handle_initialize_pool(
         maintenance_margin_bps,
         liquidation_fee_bps,
         max_confidence_bps,
+        insurance_fee_bps,
+        profit_warmup_slots,
         bump: bumps.pool,
         authority_bump: bumps.pool_authority,
     });
