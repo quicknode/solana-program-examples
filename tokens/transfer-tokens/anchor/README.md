@@ -27,10 +27,10 @@ Prerequisites: [Agave](https://docs.anza.xyz/) CLI (version in `Anchor.toml` `[t
 Tests run in-process with [LiteSVM](https://www.anchor-lang.com/docs/testing/litesvm). No local validator.
 
 ```bash
-pnpm test
+anchor test
 ```
 
-This runs `cargo test` as configured in `Anchor.toml`. Tests call instruction handlers and check onchain state.
+(`anchor test` runs the command configured in `Anchor.toml` `[scripts] test`.) Tests call instruction handlers and check onchain state.
 
 ## Usage
 

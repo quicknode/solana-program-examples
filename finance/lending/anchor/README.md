@@ -165,7 +165,7 @@ refreshed in the same transaction, so a typical action transaction is
 
 ```sh
 anchor build   # or: cargo build-sbf — produces target/deploy/lending.so
-anchor test    # or: cargo test     — runs the LiteSVM integration tests
+anchor test    # runs the LiteSVM integration tests
 ```
 
 `anchor build` (or `cargo build-sbf`) must run first: the tests load the compiled

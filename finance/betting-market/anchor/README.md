@@ -113,5 +113,3 @@ remove the Bet's entry, and a wallet whose index is full can bet again after clo
 ```sh
 anchor test
 ```
-
-(`Anchor.toml` sets `test = "cargo test"`, so `cargo test` works too.)

@@ -13,7 +13,8 @@ See [CHANGELOG.md](./CHANGELOG.md) for release history. This file had no changel
 
 - Each example lives at `category/example-name/<framework>/`, e.g. `basics/counter/anchor/`.
 - Supported frameworks: `anchor`, `quasar`, `pinocchio`, `native`, `asm`. Use the existing layout as a reference.
-- Anchor and Quasar programs usually keep Rust tests under `programs/<name>/tests/`.
+- Anchor programs keep Rust tests under `programs/<name>/tests/`.
+- Quasar programs keep tests in `src/tests.rs` (inside the single program crate) and run with `cargo test tests::` (per `[testing.rust.test]` in `Quasar.toml`) or `quasar test`.
 - Native and Pinocchio tests are Rust + LiteSVM, kept under `program/tests/`.
 
 ## Tooling
@@ -50,7 +51,7 @@ npx tsx --test --test-reporter=spec tests/*.ts
 
 ## Documentation
 
-Every `anchor/` (and other framework) directory should include a `README.md`. Use [docs/example-readme-template.md](./docs/example-readme-template.md) as the starting point.
+Every `anchor/` (and other framework) directory should include a `README.md`. Use a complete, up-to-date example such as `basics/counter/anchor/README.md` or `finance/escrow/anchor/README.md` as a model.
 
 Also update [CHANGELOG.md](./CHANGELOG.md) when you ship user-visible changes.
 

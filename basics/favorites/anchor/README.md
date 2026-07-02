@@ -26,4 +26,4 @@ LiteSVM tests in `programs/` assert that users cannot overwrite each other's sta
 
 ## Usage
 
-`anchor deploy` targets the cluster in `Anchor.toml`. Used in [Solana Professional Education](https://github.com/solana-developers/professional-education).
+`anchor deploy` targets the cluster in `Anchor.toml`.

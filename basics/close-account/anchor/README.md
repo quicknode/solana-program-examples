@@ -34,14 +34,17 @@ Two [instruction handlers](https://solana.com/docs/terminology#instruction-handl
 ## Setup
 
 ```bash
-pnpm install
 anchor build
 ```
+
+Prerequisites: the [Agave](https://docs.anza.xyz/) toolchain and the [Anchor](https://www.anchor-lang.com/docs) CLI.
 
 ## Testing
 
 Tests live in [`programs/close-account/tests/test_close_account.rs`](programs/close-account/tests/test_close_account.rs) and run in-process with LiteSVM:
 
 ```bash
-pnpm test
+anchor test
 ```
+
+(`anchor test` runs the command configured in `Anchor.toml` `[scripts] test`.)

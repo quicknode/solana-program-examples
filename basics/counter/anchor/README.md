@@ -15,17 +15,20 @@ See also: the [repository catalog](../../README.md).
 From `basics/counter/anchor/`:
 
 ```bash
-pnpm install
 anchor build
 ```
 
+Prerequisites: the [Agave](https://docs.anza.xyz/) toolchain and the [Anchor](https://www.anchor-lang.com/docs) CLI.
+
 ## Testing
 
+LiteSVM integration tests in `programs/counter_anchor/tests/` call handlers and assert the stored count.
+
 ```bash
-pnpm test
+anchor test
 ```
 
-LiteSVM integration tests in `programs/counter_anchor/tests/` call handlers and assert the stored count.
+(`anchor test` runs the command configured in `Anchor.toml` `[scripts] test`.)
 
 ## Usage
 
