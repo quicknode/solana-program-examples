@@ -57,12 +57,6 @@ An exchange with no order book: swaps fill instantly against a shared liquidity 
 
 [⚓ Anchor](./finance/token-swap/anchor) [💫 Quasar](./finance/token-swap/quasar)
 
-### Token Fundraiser
-
-Onchain crowdfunding, like Kickstarter or GoFundMe. A creator sets a target amount in a chosen token, and contributors deposit into the fundraiser's account until the goal is reached.
-
-[⚓ Anchor](./finance/token-fundraiser/anchor) [💫 Quasar](./finance/token-fundraiser/quasar)
-
 ### Vault Strategy
 
 A managed investment fund onchain, like an ETF or mutual fund. Investors deposit USDC for shares, a manager allocates the pool across a basket of assets (here, stocks like TSLAx and NVDAx), and each share's value tracks the fund's net asset value. The manager earns a management fee, and investors redeem a proportional slice of the underlying assets.
@@ -80,6 +74,12 @@ Parimutuel (pooled) prediction market - an admin opens an event with multiple ou
 A perpetual futures exchange — a venue for making leveraged bets on an asset's price without ever owning the asset. Traders post collateral and open a **long** (betting the price rises) or **short** (betting it falls) sized up to several times their collateral; their profit or loss tracks the price move and is paid in the collateral token. Rather than matching buyers to sellers, every trade is against a shared **liquidity pool** that other users fund and that is the counterparty to all of it — the pool pays winners and keeps losers' collateral, and its providers earn the trading and funding fees in return. The price comes from an oracle, positions accrue a funding fee over time, and anyone can **liquidate** a position whose collateral can no longer cover its loss. This is the design behind venues like Jupiter Perpetuals and GMX.
 
 [⚓ Anchor](./finance/perpetual-futures/anchor) [💫 Quasar](./finance/perpetual-futures/quasar)
+
+### Token Fundraiser
+
+Onchain crowdfunding, like Kickstarter or GoFundMe. A creator sets a target amount in a chosen token, and contributors deposit into the fundraiser's account until the goal is reached.
+
+[⚓ Anchor](./finance/token-fundraiser/anchor) [💫 Quasar](./finance/token-fundraiser/quasar)
 
 ## Single concept examples
 
