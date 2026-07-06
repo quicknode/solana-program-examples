@@ -43,7 +43,7 @@ Tests run in-process with [LiteSVM](https://www.anchor-lang.com/docs/testing/lit
 pnpm test
 ```
 
-This runs `cargo test` as configured in `Anchor.toml`. Tests call instruction handlers and check onchain state.
+This runs `cargo test` as configured in `Anchor.toml`.
 
 ## Usage
 

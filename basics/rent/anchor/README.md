@@ -28,7 +28,7 @@ Tests run in-process with [LiteSVM](https://www.anchor-lang.com/docs/testing/lit
 anchor test
 ```
 
-(`anchor test` runs the command configured in `Anchor.toml` `[scripts] test`.) Tests call instruction handlers and check onchain state.
+(`anchor test` runs the command configured in `Anchor.toml` `[scripts] test`.)
 
 ## Usage
 
