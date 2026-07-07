@@ -117,6 +117,18 @@ Every project must have a `README.md` file in the project root that includes:
 
 Keep the README focused and practical. Avoid generic boilerplate - write documentation that would actually help someone understand and work with this specific project.
 
+### Register a new example (or framework port) in the repository index
+
+The project README is not the only doc that describes your work. If the repository has a top-level `README.md` that indexes examples - and this one does, listing each example with a per-framework link row like `[⚓ Anchor](./finance/escrow/anchor) [💫 Quasar](./finance/escrow/quasar) [🦀 Native](./finance/escrow/native)` - then a new example or a new framework port of an existing example is **not done until it is linked there**. A port that builds and passes CI but isn't in the index is undiscoverable.
+
+So when you add `<example>/<framework>`:
+
+- Find the example's entry in the root README and add your framework's link (matching the existing icon + format, e.g. `[💫 Quasar](./finance/order-book/quasar)`), in the same framework order used elsewhere.
+- If the example is brand new, add a whole new entry in the appropriate section.
+- Grep the root README for the example's path before finishing (`grep -n '<example>' README.md`) to confirm every framework directory that exists on disk is linked, and none that don't.
+
+This is a specific case of the "do the whole thing" and "documentation must be updated" rules above: treat the index link as part of the deliverable, not an afterthought.
+
 ## Writing About Financial Software
 
 These apply to READMEs, docs, blog posts, and PR descriptions for finance-related projects (AMMs, escrows, lending, leasing, CLOBs, prediction markets, stablecoins).
