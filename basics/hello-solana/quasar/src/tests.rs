@@ -31,4 +31,12 @@ fn test_hello() {
     );
 
     result.assert_success();
+
+    // The program only logs; assert it emitted its greeting, not just that the
+    // transaction succeeded.
+    let logs = result.logs.join("\n");
+    assert!(
+        logs.contains("Hello, Solana!"),
+        "expected the program to log its greeting, got:\n{logs}"
+    );
 }
