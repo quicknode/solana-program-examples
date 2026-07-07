@@ -2,7 +2,7 @@
 
 A [Quasar](https://quasar-lang.com/docs) port of the perpetual-futures example.
 The design, math, and behaviour match the Anchor implementation at
-[`../anchor`](../anchor) — read that README for the full walkthrough of the
+[`../anchor`](../anchor). Read that README for the full walkthrough of the
 oracle-priced, pool-collateralized model, the funding mechanism, and the money
 math. This page only covers what differs in the Quasar version.
 
