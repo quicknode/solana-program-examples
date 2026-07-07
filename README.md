@@ -47,7 +47,7 @@ A borrow/lend market like Solend or Kamino: suppliers deposit a token and receiv
 
 A typical NYSE/NASDAQ-style order book-based exchange. Buyers post **bids** (the price they'll pay), sellers post **asks** (the price they'll accept), and a trade happens when a bid and an ask meet. The exchange operator collects fees from trading. Similar to popular Solana exchanges like Openbook and Phoenix.
 
-[⚓ Anchor](./finance/order-book/anchor)
+[⚓ Anchor](./finance/order-book/anchor) [💫 Quasar](./finance/order-book/quasar)
 
 🎬 Video: [![How to make a crypto exchange on Solana](https://img.youtube.com/vi/ioFkpaKHXgg/0.jpg)](https://www.youtube.com/watch?v=ioFkpaKHXgg)
 
