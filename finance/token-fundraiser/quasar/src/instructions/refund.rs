@@ -18,6 +18,7 @@ pub struct RefundAccountConstraints {
         mut,
         has_one(maker),
         has_one(vault),
+        has_one(mint_to_raise),
         address = Fundraiser::seeds(maker.address()),
     )]
     pub fundraiser: Account<Fundraiser>,
@@ -34,6 +35,10 @@ pub struct RefundAccountConstraints {
 
     #[account(mut)]
     pub vault: Account<Token>,
+
+    // Bound to fundraiser.mint_to_raise by has_one above; carries the decimals
+    // that transfer_checked validates against the vault and contributor_ta.
+    pub mint_to_raise: Account<Mint>,
 
     pub token_program: Program<TokenProgram>,
 }
@@ -76,11 +81,13 @@ pub fn handle_refund(accounts: &mut RefundAccountConstraints, bumps: &RefundAcco
 
     accounts
         .token_program
-        .transfer(
+        .transfer_checked(
             &accounts.vault,
+            &accounts.mint_to_raise,
             &accounts.contributor_ta,
             &accounts.fundraiser,
             refund_amount,
+            accounts.mint_to_raise.decimals(),
         )
         .invoke_signed(&seeds)?;
 

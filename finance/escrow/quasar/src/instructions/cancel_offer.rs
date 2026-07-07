@@ -51,11 +51,13 @@ pub fn handle_withdraw_tokens_and_close_cancel_offer(
 
     accounts
         .token_program
-        .transfer(
+        .transfer_checked(
             &accounts.vault,
+            &accounts.token_mint_a,
             &accounts.maker_token_account_a,
             &accounts.offer,
             accounts.vault.amount(),
+            accounts.token_mint_a.decimals(),
         )
         .invoke_signed(&seeds)?;
 

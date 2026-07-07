@@ -168,11 +168,13 @@ pub fn handle_open_position(
 
     accounts
         .token_program
-        .transfer(
+        .transfer_checked(
             &accounts.trader_collateral,
+            &accounts.collateral_mint,
             &accounts.custody_vault,
             &accounts.owner,
             collateral_amount,
+            accounts.collateral_mint.decimals(),
         )
         .invoke()?;
 

@@ -52,11 +52,13 @@ pub fn handle_transfer_tokens(
 ) -> Result<(), ProgramError> {
     accounts
         .token_program
-        .transfer(
+        .transfer_checked(
             &accounts.taker_token_account_b,
+            &accounts.token_mint_b,
             &accounts.maker_token_account_b,
             &accounts.taker,
             accounts.offer.receive,
+            accounts.token_mint_b.decimals(),
         )
         .invoke()
 }
@@ -77,11 +79,13 @@ pub fn handle_withdraw_tokens_and_close_take(
 
     accounts
         .token_program
-        .transfer(
+        .transfer_checked(
             &accounts.vault,
+            &accounts.token_mint_a,
             &accounts.taker_token_account_a,
             &accounts.offer,
             accounts.vault.amount(),
+            accounts.token_mint_a.decimals(),
         )
         .invoke_signed(&seeds)?;
 

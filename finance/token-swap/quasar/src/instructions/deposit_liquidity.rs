@@ -213,12 +213,12 @@ pub fn handle_deposit_liquidity(
 
     // Transfer token A to the pool.
     accounts.token_program
-        .transfer(&accounts.token_a, &accounts.pool_a, &accounts.depositor, amount_a)
+        .transfer_checked(&accounts.token_a, &accounts.mint_a, &accounts.pool_a, &accounts.depositor, amount_a, accounts.mint_a.decimals())
         .invoke()?;
 
     // Transfer token B to the pool.
     accounts.token_program
-        .transfer(&accounts.token_b, &accounts.pool_b, &accounts.depositor, amount_b)
+        .transfer_checked(&accounts.token_b, &accounts.mint_b, &accounts.pool_b, &accounts.depositor, amount_b, accounts.mint_b.decimals())
         .invoke()?;
 
     // Mint LP tokens to the depositor (signed by pool authority).

@@ -13,6 +13,7 @@ pub struct CheckContributionsAccountConstraints {
         mut,
         has_one(maker),
         has_one(vault),
+        has_one(mint_to_raise),
         close(dest = maker),
         address = Fundraiser::seeds(maker.address()),
     )]
@@ -23,6 +24,10 @@ pub struct CheckContributionsAccountConstraints {
 
     #[account(mut)]
     pub maker_ta: Account<Token>,
+
+    // Bound to fundraiser.mint_to_raise by has_one above; carries the decimals
+    // that transfer_checked validates against the vault and maker_ta.
+    pub mint_to_raise: Account<Mint>,
 
     pub token_program: Program<TokenProgram>,
 }
@@ -51,11 +56,13 @@ pub fn handle_check_contributions(
     let vault_amount = accounts.vault.amount();
     accounts
         .token_program
-        .transfer(
+        .transfer_checked(
             &accounts.vault,
+            &accounts.mint_to_raise,
             &accounts.maker_ta,
             &accounts.fundraiser,
             vault_amount,
+            accounts.mint_to_raise.decimals(),
         )
         .invoke_signed(&seeds)?;
 

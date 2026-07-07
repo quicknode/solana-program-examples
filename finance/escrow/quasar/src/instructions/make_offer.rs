@@ -61,11 +61,13 @@ pub fn handle_deposit_tokens(
 ) -> Result<(), ProgramError> {
     accounts
         .token_program
-        .transfer(
+        .transfer_checked(
             &accounts.maker_token_account_a,
+            &accounts.token_mint_a,
             &accounts.vault,
             &accounts.maker,
             amount,
+            accounts.token_mint_a.decimals(),
         )
         .invoke()
 }

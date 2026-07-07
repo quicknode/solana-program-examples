@@ -91,11 +91,13 @@ pub fn handle_claim_admin_fees(
     if owed_a > 0 {
         accounts
             .token_program
-            .transfer(
+            .transfer_checked(
                 &accounts.pool_a,
+                &accounts.mint_a,
                 &accounts.admin_token_a,
                 &accounts.pool_authority,
                 owed_a,
+                accounts.mint_a.decimals(),
             )
             .invoke_signed(seeds)?;
     }
@@ -103,11 +105,13 @@ pub fn handle_claim_admin_fees(
     if owed_b > 0 {
         accounts
             .token_program
-            .transfer(
+            .transfer_checked(
                 &accounts.pool_b,
+                &accounts.mint_b,
                 &accounts.admin_token_b,
                 &accounts.pool_authority,
                 owed_b,
+                accounts.mint_b.decimals(),
             )
             .invoke_signed(seeds)?;
     }

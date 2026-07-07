@@ -127,12 +127,12 @@ pub fn handle_withdraw_liquidity(
 
     // Transfer token A from pool to depositor.
     accounts.token_program
-        .transfer(&accounts.pool_a, &accounts.token_a, &accounts.pool_authority, amount_a)
+        .transfer_checked(&accounts.pool_a, &accounts.mint_a, &accounts.token_a, &accounts.pool_authority, amount_a, accounts.mint_a.decimals())
         .invoke_signed(seeds)?;
 
     // Transfer token B from pool to depositor.
     accounts.token_program
-        .transfer(&accounts.pool_b, &accounts.token_b, &accounts.pool_authority, amount_b)
+        .transfer_checked(&accounts.pool_b, &accounts.mint_b, &accounts.token_b, &accounts.pool_authority, amount_b, accounts.mint_b.decimals())
         .invoke_signed(seeds)?;
 
     // Burn LP tokens.

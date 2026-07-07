@@ -101,11 +101,13 @@ pub fn handle_add_liquidity(
 
     accounts
         .token_program
-        .transfer(
+        .transfer_checked(
             &accounts.provider_collateral,
+            &accounts.collateral_mint,
             &accounts.custody_vault,
             &accounts.provider,
             amount,
+            accounts.collateral_mint.decimals(),
         )
         .invoke()?;
 

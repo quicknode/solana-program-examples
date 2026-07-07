@@ -56,11 +56,13 @@ pub fn handle_collect_fees(
     ];
     accounts
         .token_program
-        .transfer(
+        .transfer_checked(
             &accounts.custody_vault,
+            &accounts.collateral_mint,
             &accounts.authority_collateral,
             &accounts.pool_authority,
             amount,
+            accounts.collateral_mint.decimals(),
         )
         .invoke_signed(seeds)?;
 
