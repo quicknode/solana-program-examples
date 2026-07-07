@@ -32,7 +32,10 @@ fn test_say_hello() {
     let metadata = svm.send_transaction(transaction).unwrap();
 
     assert!(
-        metadata.logs.iter().any(|log| log.contains("Hello, Solana!")),
+        metadata
+            .logs
+            .iter()
+            .any(|log| log.contains("Hello, Solana!")),
         "expected the program to log its greeting, got: {:?}",
         metadata.logs
     );
