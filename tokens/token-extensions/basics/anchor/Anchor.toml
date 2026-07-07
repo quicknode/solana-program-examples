@@ -11,11 +11,5 @@ anchor = "6qNqxkRF791FXFeQwqYQLEzAbGiqDULC5SSHVsfRoG89"
 cluster = "Localnet"
 wallet = "~/.config/solana/id.json"
 
-# This project has both bankrun and validator tests. No [test.validator]
-# section needed because Token-2022 is built into the local validator
-# and doesn't require cloning from mainnet.
-[test]
-startup_wait = 25000
-
 [scripts]
 test = "cargo test"

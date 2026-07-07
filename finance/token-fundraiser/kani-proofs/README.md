@@ -1,4 +1,4 @@
-# Token-fundraiser — Kani proofs
+# Token-fundraiser: Kani proofs
 
 Formal-verification harnesses for the token-fundraiser program, in the spirit of
 [`aeyakovenko/percolator`](https://github.com/aeyakovenko/percolator), which
@@ -12,11 +12,9 @@ deadline, every contributor reclaims their exact stake. Token movement is via
 SPL CPIs Kani cannot symbolically execute, but the accounting (`contribute`,
 `refund`) is pure integer arithmetic:
 
-| Harness | Property |
-| --- | --- |
-| `proof_contribution_cap_bounds` | The per-contributor cap never exceeds the goal, and the `cumulative <= cap` check keeps every contributor at or below it (and below the goal). |
-| `proof_current_amount_is_sum_of_contributions` | `current_amount` always equals the sum of the contributions added to it — no accounting drift. |
-| `proof_refunds_sum_to_current_amount` | On a failed raise, refunds sum back to `current_amount`; no contributor reclaims more than they put in. |
+- `proof_contribution_cap_bounds`: The per-contributor cap never exceeds the goal, and the `cumulative <= cap` check keeps every contributor at or below it (and below the goal).
+- `proof_current_amount_is_sum_of_contributions`: `current_amount` always equals the sum of the contributions added to it, no accounting drift.
+- `proof_refunds_sum_to_current_amount`: On a failed raise, refunds sum back to `current_amount`; no contributor reclaims more than they put in.
 
 The cap proof verifies nonlinear arithmetic (`goal · pct / scaler`) and uses
 bounded model checking; the two accounting/refund proofs are pure linear logic

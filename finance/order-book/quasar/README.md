@@ -1,6 +1,6 @@
-# Order Book — Central Limit Order Book (CLOB), Quasar port
+# Order Book: Central Limit Order Book (CLOB), Quasar port
 
-A [central limit order book (CLOB)](https://www.investopedia.com/terms/l/limitorderbook.asp) — the market
+A [central limit order book (CLOB)](https://www.investopedia.com/terms/l/limitorderbook.asp), the market
 structure NYSE, NASDAQ, CME, and onchain venues like Phoenix and OpenBook run on. Users post buy or sell
 offers at prices they pick; the program matches crossing offers in **price-time priority** and settles the
 resulting token movements.
@@ -14,8 +14,8 @@ focuses on how the program works and what the Quasar port does differently.
 
 ## What the program does
 
-Two users want to swap tokens at prices they each chose. **Alice** holds USDC (the *quote* mint — the pricing
-unit) and wants to buy NVDAx (the *base* mint — the asset being priced), but only at 900 USDC/share or lower.
+Two users want to swap tokens at prices they each chose. **Alice** holds USDC (the *quote* mint, the pricing
+unit) and wants to buy NVDAx (the *base* mint, the asset being priced), but only at 900 USDC/share or lower.
 **Bob** holds NVDAx and will sell at 900 or higher. They post a **bid** and an **ask**; when the prices cross,
 the program fills them.
 
@@ -27,23 +27,21 @@ versus their own limit. The taker pays a fee (in basis points) routed to a fee v
 credited net of that fee.
 
 Funds are held in **program-owned vaults** (the market PDA is their token authority) from the moment an order
-locks them until settlement. There is no admin escape hatch — the market authority can only withdraw
+locks them until settlement. There is no admin escape hatch: the market authority can only withdraw
 accumulated **fees**, never user balances. The deployed program bytecode is the only thing that can move vault
 funds, and it moves them only along the place / cancel / settle paths below.
 
 ## Accounts and PDAs
 
-| Account | Kind | Seeds | Role |
-| --- | --- | --- | --- |
-| `Market` | PDA | `["market", base_mint, quote_mint]` | One trading pair. Stores config + vault addresses. Its PDA is the vaults' token authority. |
-| `OrderBook` | keypair account | — (not a PDA) | Two critbit slabs (bids + asks), ~180 KB. Zero-copy. Bound to its market by the market's stored `order_book`. |
-| `MarketUser` | PDA | `["market_user", market, owner]` | Per-user, per-market. Tracks open order ids and `unsettled_*` balances owed back to the user. |
-| `Order` | PDA | `["order", market, order_id]` | One order. `order_id` is the book's monotonic counter at placement time. |
-| `base_vault` / `quote_vault` | token accounts | — | Hold locked funds while orders are open. Market PDA is the authority. |
-| `fee_vault` | token account | — | Accumulates taker fees (quote mint). Kept separate so user balances and fees can't be confused. |
+- `Market` (PDA, seeds `["market", base_mint, quote_mint]`): One trading pair. Stores config + vault addresses. Its PDA is the vaults' token authority.
+- `OrderBook` (keypair account, not a PDA): Two critbit slabs (bids + asks), ~180 KB. Zero-copy. Bound to its market by the market's stored `order_book`.
+- `MarketUser` (PDA, seeds `["market_user", market, owner]`): Per-user, per-market. Tracks open order ids and `unsettled_*` balances owed back to the user.
+- `Order` (PDA, seeds `["order", market, order_id]`): One order. `order_id` is the book's monotonic counter at placement time.
+- `base_vault` / `quote_vault` (token accounts): Hold locked funds while orders are open. Market PDA is the authority.
+- `fee_vault` (token account): Accumulates taker fees (quote mint). Kept separate so user balances and fees can't be confused.
 
 The order book is **not** a PDA. Solana caps inner-CPI account allocations at 10 KB, so a ~180 KB account can't
-be created with an `init` constraint — the client calls `system_program::create_account` directly (sizing it to
+be created with an `init` constraint: the client calls `system_program::create_account` directly (sizing it to
 `ORDER_BOOK_ACCOUNT_SIZE`, program-owned, zeroed) and passes it to `initialize_market`, which verifies and
 initializes it in place.
 
@@ -63,21 +61,19 @@ NVDAx (9 decimals) / USDC (6 decimals): `base_lot_size = 1000`, `quote_lot_size 
 
 ## Instruction lifecycle
 
-| Handler | What it does |
-| --- | --- |
-| `initialize_market` | Create the `Market` PDA, the two vaults, and the fee vault; initialize the pre-created order-book account. |
-| `create_market_user` | Create a caller's `MarketUser` for a market. |
-| `place_order` | Lock funds, cross the opposing side in price-time priority, credit fills to maker/taker `unsettled_*`, route the taker fee, and rest any remainder. |
-| `cancel_order` | Credit an open order's locked remainder back to the owner's `unsettled_*` and remove it from the book. |
-| `settle_funds` | Move a user's `unsettled_*` balances out of the vaults into their token accounts. |
-| `withdraw_fees` | Authority-only: drain the fee vault to the authority's token account. |
+- `initialize_market`: Create the `Market` PDA, the two vaults, and the fee vault; initialize the pre-created order-book account.
+- `create_market_user`: Create a caller's `MarketUser` for a market.
+- `place_order`: Lock funds, cross the opposing side in price-time priority, credit fills to maker/taker `unsettled_*`, route the taker fee, and rest any remainder.
+- `cancel_order`: Credit an open order's locked remainder back to the owner's `unsettled_*` and remove it from the book.
+- `settle_funds`: Move a user's `unsettled_*` balances out of the vaults into their token accounts.
+- `withdraw_fees`: Authority-only: drain the fee vault to the authority's token account.
 
 `place_order` takes `side` (`0` = bid, `1` = ask), `price`, `quantity`, and `order_id`. The caller passes the
 resting maker orders to cross as **remaining accounts**, in pairs of `(maker_order, maker_market_user)`, in the
 book's price-time priority. `order_id` must equal the book's current `next_order_id` (the program verifies it),
 so the client derives the `Order` PDA deterministically.
 
-Fills never transfer tokens directly to the counterparty — they credit `unsettled_*` balances that each user
+Fills never transfer tokens directly to the counterparty; they credit `unsettled_*` balances that each user
 drains later via `settle_funds`. This keeps the per-fill account footprint small (no maker ATAs in the fill
 path), as in OpenBook v2.
 
@@ -132,8 +128,8 @@ cargo test            # QuasarSVM integration tests (they load the compiled .so)
 
 `quasar build` must run before `cargo test`: the tests load the compiled `.so` into
 [QuasarSVM](https://github.com/blueshift-gg/quasar-svm), an in-process SVM, via `include`/`fs::read`. The suite
-in `src/tests.rs` drives the full lifecycle — initialize a market, create users, rest an ask, cross it with a
-bid, settle both sides, and withdraw the fee — asserting on-chain state, token balances, and fee accounting at
+in `src/tests.rs` drives the full lifecycle (initialize a market, create users, rest an ask, cross it with a
+bid, settle both sides, and withdraw the fee), asserting onchain state, token balances, and fee accounting at
 each step, plus an authorization rejection.
 
 ## Extending

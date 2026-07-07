@@ -10,8 +10,9 @@ where odds are set by the crowd's stakes rather than by an order book or a fixed
 
 ## Purpose
 
-It solves the core problem of trustless betting: collecting stakes from many bettors, holding them
-in one place no single bettor controls, and paying winners by a fixed, public formula. The pool is
+It solves the core custody problem of pooled betting: collecting stakes from many bettors, holding
+them in one place no single bettor controls, and paying winners by a fixed, public formula. Resolution
+still requires trusting the admin, who chooses the winning outcome, as described below. The pool is
 a token account owned by the event's PDA, so payouts are signed by the program with the event's
 seeds - there is no admin key that can move bettors' stakes out of the pool. The admin's only
 powers are creating events/outcomes and choosing the winning outcome (or cancelling).

@@ -1,6 +1,6 @@
-# Order Book — Central Limit Order Book (CLOB) Exchange
+# Order Book: Central Limit Order Book (CLOB) Exchange
 
-This is an **[order book](https://www.investopedia.com/terms/o/order-book.asp)** — specifically, a **[central limit order
+This is an **[order book](https://www.investopedia.com/terms/o/order-book.asp)**: specifically, a **[central limit order
 book (CLOB)](https://www.investopedia.com/terms/l/limitorderbook.asp)**, the standard piece of market infrastructure used by
 NYSE, NASDAQ, LSE, CME, and every crypto venues like Phoenix and Cube and OpenBook. An Anchor program that runs an onchain order book for a single pair of token mints:
 users post buy or sell offers at the prices they want, the program
@@ -184,21 +184,17 @@ This section walks through a complete sequence of trades using four real partici
 
 ### The tokens
 
-| Token | What it is | Role on this market |
-|---|---|---|
-| **NVDAx** | An onchain NVIDIA share (xStock). Its price tracks the underlying stock. | **Base asset** - the thing being bought and sold |
-| **USDC** | A stablecoin redeemable 1:1 for US dollars | **Quote asset** - the currency used for pricing and payment |
+- **NVDAx** (**Base asset** - the thing being bought and sold): An onchain NVIDIA share (xStock). Its price tracks the underlying stock.
+- **USDC** (**Quote asset** - the currency used for pricing and payment): A stablecoin redeemable 1:1 for US dollars
 
 A price of **960** means "960 USDC per NVDAx". The same program logic - identical instruction handlers and account structure - works for any other pair, such as **TSLAx/USDC** (Tesla xStock).
 
 ### The participants
 
-| Name | Role | Motivation |
-|---|---|---|
-| **Maria** | Market authority | Earns 0.25 % ([25 basis points](https://www.investopedia.com/terms/b/basispoint.asp)) on every fill. Her revenue scales with market volume, so she wants a liquid, trusted venue. |
-| **Alice** | Retail investor - buyer | Bullish thesis: she expects NVDAx to rise from ~960 USDC to ~1 100 as demand for NVIDIA's AI chips grows. She wants to accumulate NVDAx at a good price before that move. |
-| **Bob** | [Market maker](https://www.investopedia.com/terms/m/marketmaker.asp) | No directional view on NVDAx. Profits from the [bid-ask spread](https://www.investopedia.com/terms/b/bid-askspread.asp): he simultaneously quotes a buy price (bid) below fair value and a sell price (ask) above it. If both sides fill, the difference is his gross revenue. He provides [liquidity](https://www.investopedia.com/terms/l/liquidity.asp) to the market in exchange for that spread. |
-| **Carol** | Retail investor - seller | Bought NVDAx at 800 USDC six months ago. It is now trading around 960. She wants to sell some to [realise her profit](https://www.investopedia.com/terms/r/realizedprofit.asp) in USDC. |
+- **Maria** (Market authority): Earns 0.25 % ([25 basis points](https://www.investopedia.com/terms/b/basispoint.asp)) on every fill. Her revenue scales with market volume, so she wants a liquid, trusted venue.
+- **Alice** (Retail investor - buyer): Bullish thesis: she expects NVDAx to rise from ~960 USDC to ~1 100 as demand for NVIDIA's AI chips grows. She wants to accumulate NVDAx at a good price before that move.
+- **Bob** ([Market maker](https://www.investopedia.com/terms/m/marketmaker.asp)): No directional view on NVDAx. Profits from the [bid-ask spread](https://www.investopedia.com/terms/b/bid-askspread.asp): he simultaneously quotes a buy price (bid) below fair value and a sell price (ask) above it. If both sides fill, the difference is his gross revenue. He provides [liquidity](https://www.investopedia.com/terms/l/liquidity.asp) to the market in exchange for that spread.
+- **Carol** (Retail investor - seller): Bought NVDAx at 800 USDC six months ago. It is now trading around 960. She wants to sell some to [realise her profit](https://www.investopedia.com/terms/r/realizedprofit.asp) in USDC.
 
 ---
 
@@ -209,13 +205,11 @@ A price of **960** means "960 USDC per NVDAx". The same program logic - identica
 
 Maria's wallet signs. Five accounts are created:
 
-| Account | Type | Seeds / notes | State after |
-|---|---|---|---|
-| `Market` PDA | Program data | `["market", NVDAx_mint, USDC_mint]` | `fee_bps=25`, `tick_size=1`, `is_active=true`; vault addresses recorded |
-| `OrderBook` | Zero-copy slab (~180 KB) | Client-allocated (not a PDA) | Both critbit trees empty |
-| `base_vault` | Token account (NVDAx) | Authority = Market PDA | 0 NVDAx |
-| `quote_vault` | Token account (USDC) | Authority = Market PDA | 0 USDC |
-| `fee_vault` | Token account (USDC) | Authority = Market PDA | 0 USDC |
+- `Market` PDA: type Program data, seeds `["market", NVDAx_mint, USDC_mint]`, state after `fee_bps=25`, `tick_size=1`, `is_active=true`; vault addresses recorded
+- `OrderBook`: type Zero-copy slab (~180 KB), seeds Client-allocated (not a PDA), state after Both critbit trees empty
+- `base_vault`: type Token account (NVDAx), seeds Authority = Market PDA, state after 0 NVDAx
+- `quote_vault`: type Token account (USDC), seeds Authority = Market PDA, state after 0 USDC
+- `fee_vault`: type Token account (USDC), seeds Authority = Market PDA, state after 0 USDC
 
 **No tokens move.** Maria pays the SOL rent for all five accounts.
 
@@ -227,11 +221,9 @@ Maria's wallet signs. Five accounts are created:
 
 Each call creates one `MarketUser` PDA - a per-(trader, market) account that tracks their open orders and any tokens owed to them:
 
-| Account | Seeds | State after |
-|---|---|---|
-| Alice's `MarketUser` PDA | `["market_user", market, alice_pubkey]` | `unsettled_base=0`, `unsettled_quote=0`, `open_orders=[]` |
-| Bob's `MarketUser` PDA | `["market_user", market, bob_pubkey]` | same |
-| Carol's `MarketUser` PDA | `["market_user", market, carol_pubkey]` | same |
+- Alice's `MarketUser` PDA: seeds `["market_user", market, alice_pubkey]`; `unsettled_base=0`, `unsettled_quote=0`, `open_orders=[]`
+- Bob's `MarketUser` PDA: seeds `["market_user", market, bob_pubkey]`; same
+- Carol's `MarketUser` PDA: seeds `["market_user", market, carol_pubkey]`; same
 
 ---
 
@@ -248,12 +240,10 @@ bob_nvdax_ata --[10 NVDAx]--> base_vault
 
 **Accounts changed:**
 
-| Account | Change |
-|---|---|
-| `base_vault` | +10 NVDAx |
-| New `Order` PDA (id=1) | `side=Ask, price=965, qty=10, status=Open` |
-| `OrderBook.asks` | Leaf inserted at price 965 |
-| Bob's `MarketUser.open_orders` | `[1]` |
+- `base_vault`: +10 NVDAx
+- New `Order` PDA (id=1): `side=Ask, price=965, qty=10, status=Open`
+- `OrderBook.asks`: Leaf inserted at price 965
+- Bob's `MarketUser.open_orders`: `[1]`
 
 **Book state:**
 ```
@@ -276,12 +266,10 @@ alice_usdc_ata --[950 × 5 = 4 750 USDC]--> quote_vault
 
 **Accounts changed:**
 
-| Account | Change |
-|---|---|
-| `quote_vault` | +4 750 USDC |
-| New `Order` PDA (id=2) | `side=Bid, price=950, qty=5, status=Open` |
-| `OrderBook.bids` | Leaf inserted at price 950 |
-| Alice's `MarketUser.open_orders` | `[2]` |
+- `quote_vault`: +4 750 USDC
+- New `Order` PDA (id=2): `side=Bid, price=950, qty=5, status=Open`
+- `OrderBook.bids`: Leaf inserted at price 950
+- Alice's `MarketUser.open_orders`: `[2]`
 
 **Book state:**
 ```
@@ -308,25 +296,21 @@ carol_nvdax_ata --[3 NVDAx]--> base_vault
 
 **Fill accounting (fill price = 950, fill qty = 3):**
 
-| Line item | Calculation | Result |
-|---|---|---|
-| Gross quote exchanged | 950 × 3 | 2 850 USDC |
-| Taker fee (25 bps) | ceil(2 850 × 25 / 10 000) = ceil(7.125) | 8 USDC |
-| Carol's net proceeds | 2 850 − 8 | 2 842 USDC → `carol.MarketUser.unsettled_quote` |
-| Alice's base received | 3 NVDAx | → `alice.MarketUser.unsettled_base` |
+- **Gross quote exchanged**: 950 × 3; 2 850 USDC
+- **Taker fee (25 bps)**: ceil(2 850 × 25 / 10 000) = ceil(7.125); 8 USDC
+- **Carol's net proceeds**: 2 850 − 8; 2 842 USDC → `carol.MarketUser.unsettled_quote`
+- **Alice's base received**: 3 NVDAx; → `alice.MarketUser.unsettled_base`
 
 **Accounts changed:**
 
-| Account | Change |
-|---|---|
-| `base_vault` | +3 NVDAx (Carol's lock) |
-| `fee_vault` | +8 USDC (fee CPI from quote_vault) |
-| Alice's `Order` PDA (id=2) | `filled_quantity=3`, `status=PartiallyFilled` |
-| Alice's `MarketUser.unsettled_base` | +3 NVDAx |
-| Alice's `MarketUser.open_orders` | `[2]` (still open - 2 of 5 NVDAx remain) |
-| Carol's `MarketUser.unsettled_quote` | +2 842 USDC |
-| New Carol's `Order` PDA (id=3) | `side=Ask, price=945, qty=3, status=Filled` |
-| `OrderBook.bids` | Alice's leaf quantity: 5 → 2 |
+- `base_vault`: +3 NVDAx (Carol's lock)
+- `fee_vault`: +8 USDC (fee CPI from quote_vault)
+- Alice's `Order` PDA (id=2): `filled_quantity=3`, `status=PartiallyFilled`
+- Alice's `MarketUser.unsettled_base`: +3 NVDAx
+- Alice's `MarketUser.open_orders`: `[2]` (still open - 2 of 5 NVDAx remain)
+- Carol's `MarketUser.unsettled_quote`: +2 842 USDC
+- New Carol's `Order` PDA (id=3): `side=Ask, price=945, qty=3, status=Filled`
+- `OrderBook.bids`: Alice's leaf quantity: 5 → 2
 
 **Book state:**
 ```
@@ -368,12 +352,10 @@ fee_vault --[8 USDC]--> maria_usdc_ata
 
 ### Final position
 
-| Participant | Paid / locked | Received | Outcome |
-|---|---|---|---|
-| **Alice** | 4 750 USDC (for 5 NVDAx) | 3 NVDAx + 1 900 USDC still in `quote_vault` (2-NVDAx bid resting at 950) | Thesis running; waiting for a seller at 950 to fill the rest |
-| **Carol** | 3 NVDAx (cost 800 each) | 2 842 USDC | Locked in ≈ 147 USDC/NVDAx profit net of fee |
-| **Bob** | 10 NVDAx locked | Nothing yet - ask at 965 unfilled | Earns the spread when a buyer at 965 arrives |
-| **Maria** | - | 8 USDC | Fee revenue |
+- **Alice**: paid / locked 4 750 USDC (for 5 NVDAx); received 3 NVDAx + 1 900 USDC still in `quote_vault` (2-NVDAx bid resting at 950); outcome Thesis running; waiting for a seller at 950 to fill the rest
+- **Carol**: paid / locked 3 NVDAx (cost 800 each); received 2 842 USDC; outcome Locked in ≈ 147 USDC/NVDAx profit net of fee
+- **Bob**: paid / locked 10 NVDAx locked; received Nothing yet - ask at 965 unfilled; outcome Earns the spread when a buyer at 965 arrives
+- **Maria**: paid / locked -; received 8 USDC; outcome Fee revenue
 
 Alice's remaining 2-NVDAx [bid](https://www.investopedia.com/terms/b/bid.asp) stays on the book. The next seller willing to part with NVDAx at 950 or below will fill it automatically. A **TSLAx/USDC** market runs the same seven steps with different mint addresses.
 
@@ -383,20 +365,16 @@ Alice's remaining 2-NVDAx [bid](https://www.investopedia.com/terms/b/bid.asp) st
 
 ### State / data accounts
 
-| Account | PDA? | Seeds | Authority | Holds |
-|---|---|---|---|---|
-| `Market` | yes | `["market", base_mint, quote_mint]` | program | fee rate, tick size, min order size, base/quote mint pubkeys, vault pubkeys, order book pubkey, `authority` wallet (allowed to withdraw fees) |
-| `OrderBook` | no (client-allocated keypair) | n/a — too large (~180 KB) for an `init`/CPI PDA, so created via `create_account` (which needs a signing key a PDA lacks); tied to its market via `has_one` | program | two critbit trees (bids highest-first, asks lowest-first, 1024 leaves each), `next_order_id` |
-| `Order` | yes | `["order", market, order_id.to_le_bytes()]` | program | owner, side, price, original_quantity, filled_quantity, status, timestamp |
-| `MarketUser` | yes | `["market_user", market, owner]` | program | `unsettled_base`, `unsettled_quote`, `open_orders: Vec<u64>` (max 20) |
+- `Market`: PDA yes, seeds `["market", base_mint, quote_mint]`, authority program, holds fee rate, tick size, min order size, base/quote mint pubkeys, vault pubkeys, order book pubkey, `authority` wallet (allowed to withdraw fees)
+- `OrderBook`: PDA no (client-allocated keypair), seeds n/a: too large (~180 KB) for an `init`/CPI PDA, so created via `create_account` (which needs a signing key a PDA lacks); tied to its market via `has_one`; authority program, holds two critbit trees (bids highest-first, asks lowest-first, 1024 leaves each), `next_order_id`
+- `Order`: PDA yes, seeds `["order", market, order_id.to_le_bytes()]`, authority program, holds owner, side, price, original_quantity, filled_quantity, status, timestamp
+- `MarketUser`: PDA yes, seeds `["market_user", market, owner]`, authority program, holds `unsettled_base`, `unsettled_quote`, `open_orders: Vec<u64>` (max 20)
 
 ### Token accounts (owned by the Token Program, authority = Market PDA)
 
-| Account | PDA? | Authority | Mint | Holds |
-|---|---|---|---|---|
-| `base_vault` | no (regular token account) | Market PDA | base | bids' locked base IS NOT STORED HERE - only asks' locked base sits here pre-match, plus base owed to bid-takers waiting for `settle_funds` |
-| `quote_vault` | no | Market PDA | quote | bids' locked quote pre-match, plus quote owed to ask-takers and bid-makers waiting for settlement |
-| `fee_vault` | no | Market PDA | quote | taker fees accumulated across all fills; drained by `withdraw_fees` |
+- `base_vault`: PDA no (regular token account), authority Market PDA, mint base, holds bids' locked base IS NOT STORED HERE - only asks' locked base sits here pre-match, plus base owed to bid-takers waiting for `settle_funds`
+- `quote_vault`: PDA no, authority Market PDA, mint quote, holds bids' locked quote pre-match, plus quote owed to ask-takers and bid-makers waiting for settlement
+- `fee_vault`: PDA no, authority Market PDA, mint quote, holds taker fees accumulated across all fills; drained by `withdraw_fees`
 
 Note: the **token vaults are not PDAs**. They are regular token
 accounts created with `init` in `initialize_market.rs`; their
@@ -1294,24 +1272,22 @@ imagine a future instruction handler to reclaim its rent - see §8).
 
 From [`errors.rs`](programs/order-book/src/errors.rs):
 
-| Error | When |
-|---|---|
-| `InvalidPrice` | `place_order` called with `price == 0` |
-| `OrderNotFound` | `cancel_order` failed to locate the order in the book (sanity path) |
-| `MarketPaused` | `place_order` on a market with `is_active = false` (no handler flips this today, but the field is there) |
-| `Unauthorized` | `cancel_order` by someone other than the order owner |
-| `OrderBookFull` | `place_order` remainder would push the taker's side past 1024 leaves |
-| `TooManyOpenOrders` | User already has 20 open orders on this market |
-| `InvalidTickSize` | `tick_size == 0` at init, or `price % tick_size != 0` on place |
-| `BelowMinOrderSize` | `min_order_size == 0` at init, or `quantity < min_order_size` on place |
-| `OrderNotCancellable` | `cancel_order` on a Filled or Cancelled order |
-| `NumericalOverflow` | Any checked arithmetic returned `None` |
-| `InvalidFeeBasisPoints` | `fee_basis_points > 10_000` at init |
-| `InvalidFeeVault` | `market.fee_vault` on the struct does not match the passed `fee_vault` (Anchor `has_one`) |
-| `MakerAccountMismatch` | Wrong number of maker accounts, wrong order, wrong market, or caller walked the book out of order |
-| `MissingMakerAccounts` | `remaining_accounts.len()` not a multiple of 2 |
-| `MakerOwnerMismatch` | Maker Order and MarketUser have different owners |
-| `NotMarketAuthority` | `withdraw_fees` called by wrong signer |
+- `InvalidPrice`: `place_order` called with `price == 0`
+- `OrderNotFound`: `cancel_order` failed to locate the order in the book (sanity path)
+- `MarketPaused`: `place_order` on a market with `is_active = false` (no handler flips this today, but the field is there)
+- `Unauthorized`: `cancel_order` by someone other than the order owner
+- `OrderBookFull`: `place_order` remainder would push the taker's side past 1024 leaves
+- `TooManyOpenOrders`: User already has 20 open orders on this market
+- `InvalidTickSize`: `tick_size == 0` at init, or `price % tick_size != 0` on place
+- `BelowMinOrderSize`: `min_order_size == 0` at init, or `quantity < min_order_size` on place
+- `OrderNotCancellable`: `cancel_order` on a Filled or Cancelled order
+- `NumericalOverflow`: Any checked arithmetic returned `None`
+- `InvalidFeeBasisPoints`: `fee_basis_points > 10_000` at init
+- `InvalidFeeVault`: `market.fee_vault` on the struct does not match the passed `fee_vault` (Anchor `has_one`)
+- `MakerAccountMismatch`: Wrong number of maker accounts, wrong order, wrong market, or caller walked the book out of order
+- `MissingMakerAccounts`: `remaining_accounts.len()` not a multiple of 2
+- `MakerOwnerMismatch`: Maker Order and MarketUser have different owners
+- `NotMarketAuthority`: `withdraw_fees` called by wrong signer
 
 ### 6.2 Guarded design choices worth knowing
 
@@ -1469,46 +1445,38 @@ test taker_partially_fills_resting_order_rest_stays_on_book ... ok
 
 **Setup / happy path (pre-matching):**
 
-| Test | Exercises |
-|---|---|
-| `initialize_market_sets_market_and_order_book` | PDA creation, vault setup, initial field values |
-| `create_market_user_tracks_market_and_owner` | Per-user PDA derivation and zero-initialised counters |
-| `place_bid_locks_quote_in_vault` | Fund lock on bid |
-| `place_ask_locks_base_in_vault` | Fund lock on ask |
-| `settle_funds_moves_unsettled_base_to_user` | Vault → user ATA transfer via market PDA signer |
+- `initialize_market_sets_market_and_order_book`: PDA creation, vault setup, initial field values
+- `create_market_user_tracks_market_and_owner`: Per-user PDA derivation and zero-initialised counters
+- `place_bid_locks_quote_in_vault`: Fund lock on bid
+- `place_ask_locks_base_in_vault`: Fund lock on ask
+- `settle_funds_moves_unsettled_base_to_user`: Vault → user ATA transfer via market PDA signer
 
 **Validation:**
 
-| Test | Exercises |
-|---|---|
-| `place_order_rejects_zero_price` | `price > 0` |
-| `place_order_rejects_unaligned_tick` | `price % tick_size == 0` |
-| `place_order_rejects_below_min_order_size` | `quantity >= min_order_size` |
-| `cancel_order_rejects_non_owner` | Ownership check on cancel |
-| `initialize_market_rejects_zero_tick_size` | Init constraint |
-| `initialize_market_rejects_oversized_fee` | `fee_bps <= 10_000` |
+- `place_order_rejects_zero_price`: `price > 0`
+- `place_order_rejects_unaligned_tick`: `price % tick_size == 0`
+- `place_order_rejects_below_min_order_size`: `quantity >= min_order_size`
+- `cancel_order_rejects_non_owner`: Ownership check on cancel
+- `initialize_market_rejects_zero_tick_size`: Init constraint
+- `initialize_market_rejects_oversized_fee`: `fee_bps <= 10_000`
 
 **Cancel + settle flow:**
 
-| Test | Exercises |
-|---|---|
-| `cancel_ask_credits_unsettled_base` | Ask cancel → `unsettled_base += remaining` |
-| `cancel_and_settle_bid_refunds_full_quote` | Round trip of a Bob-style cancellation |
+- `cancel_ask_credits_unsettled_base`: Ask cancel → `unsettled_base += remaining`
+- `cancel_and_settle_bid_refunds_full_quote`: Round trip of a Bob-style cancellation
 
 **Matching engine:**
 
-| Test | Exercises |
-|---|---|
-| `taker_bid_fully_crosses_best_ask` | Full-fill crossing, fee routed correctly |
-| `taker_ask_fully_crosses_best_bid` | Symmetric path |
-| `taker_partially_fills_resting_order_rest_stays_on_book` | Resting order's `filled_quantity` updated, not removed |
-| `taker_partially_filled_remainder_rests_on_book` | Taker's remainder inserted in correct price order |
-| `taker_crosses_multiple_resting_orders_best_price_first` | Walks multiple makers in price priority |
-| `resting_orders_at_same_price_fill_by_time_priority` | Tie-break at same price is first-in-first-out |
-| `taker_bid_gets_price_improvement_from_resting_ask` | Rebate → `unsettled_quote` |
-| `fee_vault_receives_exactly_bps_of_taker_gross` | Fee math in a single batched CPI |
-| `authority_can_withdraw_fees_after_match` | Fee drain after fills, authority-gated |
-| `settle_funds_after_match_pays_out_both_unsettled_balances` | Both legs paid in one call |
+- `taker_bid_fully_crosses_best_ask`: Full-fill crossing, fee routed correctly
+- `taker_ask_fully_crosses_best_bid`: Symmetric path
+- `taker_partially_fills_resting_order_rest_stays_on_book`: Resting order's `filled_quantity` updated, not removed
+- `taker_partially_filled_remainder_rests_on_book`: Taker's remainder inserted in correct price order
+- `taker_crosses_multiple_resting_orders_best_price_first`: Walks multiple makers in price priority
+- `resting_orders_at_same_price_fill_by_time_priority`: Tie-break at same price is first-in-first-out
+- `taker_bid_gets_price_improvement_from_resting_ask`: Rebate → `unsettled_quote`
+- `fee_vault_receives_exactly_bps_of_taker_gross`: Fee math in a single batched CPI
+- `authority_can_withdraw_fees_after_match`: Fee drain after fills, authority-gated
+- `settle_funds_after_match_pays_out_both_unsettled_balances`: Both legs paid in one call
 
 ### CI note
 

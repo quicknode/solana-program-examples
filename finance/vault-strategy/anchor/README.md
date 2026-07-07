@@ -10,10 +10,8 @@ A note on the word **vault**: by the common standard (ERC-4626) a vault holds a 
 
 ## Programs
 
-| Program | Description |
-|---------|-------------|
-| `vault-strategy` | Registry/whitelist, strategy creation, asset registration, deposits, share minting, fee accrual, rebalancing, withdrawals |
-| `mock-swap-router` | Test-only fake Jupiter. Stores exchange rates, mints/burns basket tokens for USDC. Replaced by real [Jupiter](https://jup.ag) in production. |
+- **`vault-strategy`**: Registry/whitelist, strategy creation, asset registration, deposits, share minting, fee accrual, rebalancing, withdrawals
+- **`mock-swap-router`**: Test-only fake Jupiter. Stores exchange rates, mints/burns basket tokens for USDC. Replaced by real [Jupiter](https://jup.ag) in production.
 
 ---
 

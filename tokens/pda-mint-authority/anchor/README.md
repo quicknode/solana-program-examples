@@ -15,18 +15,17 @@ See also: [Pda Mint Authority overview](../README.md) and the [repository catalo
 From this directory (`tokens/pda-mint-authority/anchor/`):
 
 ```bash
-pnpm install
 anchor build
 ```
 
-Prerequisites: [Agave](https://docs.anza.xyz/) CLI (version in `Anchor.toml` `[toolchain]`), [Anchor](https://www.anchor-lang.com/docs), and `pnpm`.
+Prerequisites: [Agave](https://docs.anza.xyz/) CLI (version in `Anchor.toml` `[toolchain]`), [Anchor](https://www.anchor-lang.com/docs).
 
 ## Testing
 
 Tests run in-process with [LiteSVM](https://www.anchor-lang.com/docs/testing/litesvm). No local validator.
 
 ```bash
-pnpm test
+anchor test
 ```
 
 This runs `cargo test` as configured in `Anchor.toml`. Tests call instruction handlers and check onchain state.
