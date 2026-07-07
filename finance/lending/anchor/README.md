@@ -3,7 +3,7 @@
 A Kamino/Solend-style borrow/lend program: suppliers earn interest on deposits,
 borrowers post collateral and draw other assets against it, and liquidators keep
 the market solvent. It demonstrates the techniques the most-used Solana lending
-protocols share — share-token deposit accounting, a utilization-based interest
+protocols share: share-token deposit accounting, a utilization-based interest
 index, oracle-priced obligation health, and close-factor-capped liquidation.
 
 ## Purpose
@@ -31,38 +31,38 @@ crosses the liquidation threshold and a liquidator can close part of the positio
 
 ### Accounts
 
-- **`LendingMarket`** — top-level config (owner, quote-currency mint). PDA seeds
+- **`LendingMarket`**: top-level config (owner, quote-currency mint). PDA seeds
   `["lending_market", market_id]`, where `market_id` is a `u64` index. Seeding by
   an index alone (owner is stored as a field for authorization, not baked into the
-  address) lets one owner run several independent, risk-isolated markets — their
-  market 0, 1, 2 … — with no cross-owner collisions and no individual's key in a
+  address) lets one owner run several independent, risk-isolated markets (their
+  market 0, 1, 2 …) with no cross-owner collisions and no individual's key in a
   shared struct's address.
-- **`Reserve`** — one per asset. Owns a program-controlled liquidity vault and a
+- **`Reserve`**: one per asset. Owns a program-controlled liquidity vault and a
   share-token mint, and stores the interest-rate config, the cumulative borrow-
   rate index, available liquidity, and scaled total debt. PDA seeds
   `["reserve", market, liquidity_mint]`.
-- **`Obligation`** — one per borrower per market: the share-token collateral
+- **`Obligation`**: one per borrower per market: the share-token collateral
   posted and the liquidity borrowed, with cached quote-currency valuations. PDA
   seeds `["obligation", market, owner]`.
-- **`PriceFeed`** — a price for one token (see Oracle below).
+- **`PriceFeed`**: a price for one token (see Oracle below).
 
 ### Share tokens (the deposit claim)
 
 Supplying liquidity mints share tokens; redeeming burns them. The exchange rate
 is `total_liquidity / share_supply`, where `total_liquidity = available_liquidity
 + current_debt`. `available_liquidity` (not the vault's raw token balance) is the
-source of truth, so a token donated directly to the vault cannot inflate the rate
-— closing the classic empty-pool inflation attack. The first deposit mints 1:1.
+source of truth, so a token donated directly to the vault cannot inflate the rate,
+closing the classic empty-pool inflation attack. The first deposit mints 1:1.
 
 ### Interest: a kinked curve and a cumulative index
 
 Each `refresh_reserve` advances `cumulative_borrow_rate_index` by
 `(1 + rate_per_slot * elapsed_slots)`. `rate_per_slot` comes from a kinked
-utilization curve — linear from `min_borrow_rate_bps` to `optimal_borrow_rate_bps`
+utilization curve: linear from `min_borrow_rate_bps` to `optimal_borrow_rate_bps`
 up to `optimal_utilization_bps`, then steeper to `max_borrow_rate_bps` at full
 utilization. Each borrow stores its principal as **scaled debt** (principal ÷
 index at borrow time), so every obligation's debt grows automatically as the
-index advances — no per-obligation accrual loop.
+index advances: no per-obligation accrual loop.
 
 ### Protocol fees (how the market earns)
 
@@ -97,7 +97,7 @@ less, which would make the liquidator overpay.
 
 ### Fixed-point math
 
-All money math is integer-only `u128` — no floats, no fixed-point crates. Ratios
+All money math is integer-only `u128`: no floats, no fixed-point crates. Ratios
 (rates, the index, the exchange rate, obligation values) are scaled by
 `FIXED_POINT_SCALE` (10^18). Every conversion rounds in the protocol's favour
 (user output floored, debt ceiled), so dust cannot be extracted by repeated
@@ -108,8 +108,8 @@ round-trips.
 `PriceFeed` mirrors a Switchboard On-Demand pull feed: a signed mantissa, an
 exponent (`price = mantissa * 10^exponent`), and the slot the price was written.
 Freshness is checked in **slots** (`MAX_PRICE_STALENESS_SLOTS`), not wall-clock
-time. The feed PDA is seeded by `[b"price_feed", market, mint]` — scoped to a
-market, not to any individual — and only that market's `owner` may write it
+time. The feed PDA is seeded by `[b"price_feed", market, mint]` (scoped to a
+market, not to any individual) and only that market's `owner` may write it
 (`set_price` checks `has_one = owner`). So prices can't be squatted, a reserve
 trusts exactly its own market's feed for the mint, and isolated markets can
 price the same asset independently.
@@ -127,7 +127,7 @@ Supplied liquidity sits in program-owned vault PDAs, and posted collateral sits 
 per-obligation vault PDAs whose authority is the obligation PDA. The market owner
 can update reserve risk parameters (`update_reserve_config`) and withdraw the
 protocol's earned fees (`collect_protocol_fees`), but has no path to a supplier's
-deposits or a borrower's collateral — there is no admin escape hatch over user funds.
+deposits or a borrower's collateral: there is no admin escape hatch over user funds.
 
 ### Known limits
 
@@ -164,12 +164,12 @@ refreshed in the same transaction, so a typical action transaction is
 ## Testing
 
 ```sh
-anchor build   # or: cargo build-sbf — produces target/deploy/lending.so
-anchor test    # or: cargo test     — runs the LiteSVM integration tests
+anchor build   # or: cargo build-sbf - produces target/deploy/lending.so
+anchor test    # or: cargo test     - runs the LiteSVM integration tests
 ```
 
 `anchor build` (or `cargo build-sbf`) must run first: the tests load the compiled
 `target/deploy/lending.so` via `include_bytes!`. The suite covers the
-non-happy-path branches — interest accrual, borrowing at the LTV limit, stale
+non-happy-path branches: interest accrual, borrowing at the LTV limit, stale
 reserve/price rejection, liquidation of an unhealthy obligation after a price
 move, the share-inflation guard, and rounding edges.
