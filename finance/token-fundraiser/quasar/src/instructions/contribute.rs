@@ -18,6 +18,7 @@ pub struct ContributeAccountConstraints {
         mut,
         has_one(maker),
         has_one(vault),
+        has_one(mint_to_raise),
         address = Fundraiser::seeds(maker.address()),
     )]
     pub fundraiser: Account<Fundraiser>,
@@ -35,6 +36,10 @@ pub struct ContributeAccountConstraints {
 
     #[account(mut)]
     pub vault: Account<Token>,
+
+    // Bound to fundraiser.mint_to_raise by has_one above; carries the decimals
+    // that transfer_checked validates against contributor_ta and vault.
+    pub mint_to_raise: Account<Mint>,
 
     pub token_program: Program<TokenProgram>,
 
@@ -77,11 +82,13 @@ pub fn handle_contribute(
 
     accounts
         .token_program
-        .transfer(
+        .transfer_checked(
             &accounts.contributor_ta,
+            &accounts.mint_to_raise,
             &accounts.vault,
             &accounts.contributor,
             amount,
+            accounts.mint_to_raise.decimals(),
         )
         .invoke()?;
 

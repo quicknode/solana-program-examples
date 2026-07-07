@@ -227,6 +227,7 @@ fn contribute_instruction(fixture: &Fixture, amount: u64) -> Instruction {
         contributor_account: fixture.contributor_account,
         contributor_ta: fixture.contributor_ta,
         vault: fixture.vault,
+        mint_to_raise: fixture.mint,
         token_program: quasar_svm::SPL_TOKEN_PROGRAM_ID,
         system_program: quasar_svm::system_program::ID,
         amount,
@@ -266,6 +267,7 @@ fn refund_instruction(fixture: &Fixture) -> Instruction {
         contributor_account: fixture.contributor_account,
         contributor_ta: fixture.contributor_ta,
         vault: fixture.vault,
+        mint_to_raise: fixture.mint,
         token_program: quasar_svm::SPL_TOKEN_PROGRAM_ID,
     }
     .into()
@@ -520,6 +522,7 @@ fn test_check_contributions_pays_maker_when_target_met() {
         fundraiser: fixture.fundraiser,
         vault: fixture.vault,
         maker_ta,
+        mint_to_raise: fixture.mint,
         token_program: quasar_svm::SPL_TOKEN_PROGRAM_ID,
     }
     .into();
@@ -547,6 +550,7 @@ fn test_check_contributions_rejected_below_target() {
         fundraiser: fixture.fundraiser,
         vault: fixture.vault,
         maker_ta,
+        mint_to_raise: fixture.mint,
         token_program: quasar_svm::SPL_TOKEN_PROGRAM_ID,
     }
     .into();
