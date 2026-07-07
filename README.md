@@ -61,7 +61,7 @@ An exchange with no order book: swaps fill instantly against a shared liquidity 
 
 A managed investment fund onchain, like an ETF or mutual fund. Investors deposit USDC for shares, a manager allocates the pool across a basket of assets (here, stocks like TSLAx and NVDAx), and each share's value tracks the fund's net asset value. The manager earns a management fee, and investors redeem a proportional slice of the underlying assets.
 
-[⚓ Anchor](./finance/vault-strategy/anchor)
+[⚓ Anchor](./finance/vault-strategy/anchor) [💫 Quasar](./finance/vault-strategy/quasar)
 
 ### Betting Market
 

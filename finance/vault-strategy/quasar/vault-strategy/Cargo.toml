@@ -1,0 +1,34 @@
+[package]
+name = "quasar-vault-strategy"
+version = "0.1.0"
+edition = "2021"
+
+# Standalone workspace - Quasar uses a different resolver and dependency tree.
+[workspace]
+
+[lints.rust.unexpected_cfgs]
+level = "warn"
+check-cfg = [
+    'cfg(target_os, values("solana"))',
+]
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[features]
+alloc = []
+client = []
+debug = []
+
+[dependencies]
+# Pinned to match the finance/escrow Quasar example (623bb70 is the last rev
+# before a zeropod 0.3 bump that breaks quasar-spl). Unpin once upstream fixes it.
+quasar-lang = { git = "https://github.com/blueshift-gg/quasar", rev = "623bb70" }
+quasar-spl = { git = "https://github.com/blueshift-gg/quasar", rev = "623bb70" }
+solana-address = { version = "2.2.0" }
+solana-instruction = { version = "3.2.0" }
+
+[dev-dependencies]
+quasar-svm = { git = "https://github.com/blueshift-gg/quasar-svm" }
+spl-token-interface = { version = "2.0.0" }
+solana-program-pack = { version = "3.1.0" }
