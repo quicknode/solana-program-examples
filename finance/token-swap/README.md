@@ -299,7 +299,7 @@ Math:
 - New effective B: `(117.844 × 610.9945) / 119.9876 ≈ 600.07`.
 - USDC out: `610.9945 − 600.07 ≈ 10.92`.
 
-Dave paid ~10.75 USDC offchain for 2.15 NVDAx, sold into the pool for ~10.92 USDC. Profit ~0.17 USDC, minus gas.
+Dave paid ~10.75 USDC offchain for 2.15 NVDAx, sold into the pool for ~10.92 USDC. Profit ~0.17 USDC, minus transaction fees.
 
 NVDAx/USDC pool state: **119.987 NVDAx, 600.07 USDC raw**, with `admin_fees_owed_a ≈ 0.001075` and `admin_fees_owed_b ≈ 0.0055`. Mid-price on the effective reserves back to ~5.00 - *because* that's the price at which Dave's profit hit zero and he stopped.
 
