@@ -190,20 +190,20 @@ pub fn handle_swap_tokens(
     if input_is_token_a {
         // Trader sends token A to pool.
         accounts.token_program
-            .transfer(&accounts.token_a, &accounts.pool_a, &accounts.trader, input)
+            .transfer_checked(&accounts.token_a, &accounts.mint_a, &accounts.pool_a, &accounts.trader, input, accounts.mint_a.decimals())
             .invoke()?;
         // Pool sends token B to trader (signed).
         accounts.token_program
-            .transfer(&accounts.pool_b, &accounts.token_b, &accounts.pool_authority, output)
+            .transfer_checked(&accounts.pool_b, &accounts.mint_b, &accounts.token_b, &accounts.pool_authority, output, accounts.mint_b.decimals())
             .invoke_signed(seeds)?;
     } else {
         // Pool sends token A to trader (signed).
         accounts.token_program
-            .transfer(&accounts.pool_a, &accounts.token_a, &accounts.pool_authority, output)
+            .transfer_checked(&accounts.pool_a, &accounts.mint_a, &accounts.token_a, &accounts.pool_authority, output, accounts.mint_a.decimals())
             .invoke_signed(seeds)?;
         // Trader sends token B to pool.
         accounts.token_program
-            .transfer(&accounts.token_b, &accounts.pool_b, &accounts.trader, input)
+            .transfer_checked(&accounts.token_b, &accounts.mint_b, &accounts.pool_b, &accounts.trader, input, accounts.mint_b.decimals())
             .invoke()?;
     }
 

@@ -140,22 +140,26 @@ pub fn handle_liquidate_position(
     if liquidator_payout > 0 {
         accounts
             .token_program
-            .transfer(
+            .transfer_checked(
                 &accounts.custody_vault,
+                &accounts.collateral_mint,
                 &accounts.liquidator_collateral,
                 &accounts.pool_authority,
                 liquidator_payout,
+                accounts.collateral_mint.decimals(),
             )
             .invoke_signed(seeds)?;
     }
     if trader_refund > 0 {
         accounts
             .token_program
-            .transfer(
+            .transfer_checked(
                 &accounts.custody_vault,
+                &accounts.collateral_mint,
                 &accounts.trader_collateral,
                 &accounts.pool_authority,
                 trader_refund,
+                accounts.collateral_mint.decimals(),
             )
             .invoke_signed(seeds)?;
     }

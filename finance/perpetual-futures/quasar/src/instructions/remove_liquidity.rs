@@ -120,11 +120,13 @@ pub fn handle_remove_liquidity(
     ];
     accounts
         .token_program
-        .transfer(
+        .transfer_checked(
             &accounts.custody_vault,
+            &accounts.collateral_mint,
             &accounts.provider_collateral,
             &accounts.pool_authority,
             amount_out,
+            accounts.collateral_mint.decimals(),
         )
         .invoke_signed(seeds)?;
 

@@ -135,11 +135,13 @@ pub fn handle_close_position(
     ];
     accounts
         .token_program
-        .transfer(
+        .transfer_checked(
             &accounts.custody_vault,
+            &accounts.collateral_mint,
             &accounts.trader_collateral,
             &accounts.pool_authority,
             payout,
+            accounts.collateral_mint.decimals(),
         )
         .invoke_signed(seeds)?;
 
