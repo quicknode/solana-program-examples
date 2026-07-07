@@ -14,7 +14,7 @@ cluster = "localnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
-# Only run bankrun tests - the validator tests (test.ts) need Metaplex Token
-# Metadata cloned from mainnet which is too slow/unreliable in CI.
-# bankrun.test.ts uses a local fixture (tests/fixtures/token_metadata.so).
+# The LiteSVM test loads Metaplex Token Metadata from a local fixture
+# (tests/fixtures/mpl_token_metadata.so) instead of cloning it from mainnet,
+# which is too slow and unreliable in CI.
 test = "cargo test"

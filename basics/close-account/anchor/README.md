@@ -34,7 +34,6 @@ Two [instruction handlers](https://solana.com/docs/terminology#instruction-handl
 ## Setup
 
 ```bash
-pnpm install
 anchor build
 ```
 
@@ -43,5 +42,5 @@ anchor build
 Tests live in [`programs/close-account/tests/test_close_account.rs`](programs/close-account/tests/test_close_account.rs) and run in-process with LiteSVM:
 
 ```bash
-pnpm test
+anchor test
 ```

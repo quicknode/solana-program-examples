@@ -15,14 +15,13 @@ See also: the [repository catalog](../../README.md).
 From `basics/counter/anchor/`:
 
 ```bash
-pnpm install
 anchor build
 ```
 
 ## Testing
 
 ```bash
-pnpm test
+anchor test
 ```
 
 LiteSVM integration tests in `programs/counter_anchor/tests/` call handlers and assert the stored count.
