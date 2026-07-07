@@ -269,7 +269,7 @@ jobs:
       - name: Setup Solana Stable
         uses: heyAyushh/setup-solana@v5.9
         with:
-          # setup-anchor resolves tags like stable by querying GitHub API for latest release which can fail with 429 errors
+          # Pin an exact version rather than a tag like "stable", which setup-solana resolves via the GitHub API (can fail with 429).
           solana-cli-version: 3.1.14
       - name: Build and Test with Stable
         run: |
