@@ -34,5 +34,9 @@ fn test_hello_solana() {
         svm.latest_blockhash(),
     );
 
-    assert!(svm.send_transaction(tx).is_ok());
+    let result = svm.send_transaction(tx);
+    assert!(result.is_ok());
+
+    let logs = result.unwrap().logs;
+    assert!(logs.iter().any(|log| log.contains("Hello, Solana!")));
 }

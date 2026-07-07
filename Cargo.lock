@@ -1994,6 +1994,7 @@ dependencies = [
  "litesvm",
  "solana-kite",
  "solana-signer",
+ "solana-transaction",
 ]
 
 [[package]]
