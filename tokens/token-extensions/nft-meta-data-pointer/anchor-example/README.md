@@ -15,7 +15,7 @@ A [video walkthrough](https://www.youtube.com/@SolanaFndn/videos) is available o
 ```bash
 cd anchor
 anchor build
-pnpm test
+anchor test
 ```
 
 ### JS client

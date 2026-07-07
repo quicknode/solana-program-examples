@@ -38,7 +38,7 @@ pnpm run dev       # serve the UI
 From `anchor/`:
 
 ```bash
-pnpm test
+anchor test
 ```
 
 LiteSVM integration tests run via `cargo test` (see `Anchor.toml`). The UI is optional and targets devnet or your own cluster configuration.

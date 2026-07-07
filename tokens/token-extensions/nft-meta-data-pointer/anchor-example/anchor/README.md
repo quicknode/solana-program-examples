@@ -11,5 +11,5 @@ Copy the **[program](https://solana.com/docs/terminology#program) ID** from the 
 anchor build
 anchor deploy
 pnpm install
-pnpm test
+anchor test
 ```

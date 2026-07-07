@@ -12,18 +12,17 @@ See also: the [repository catalog](../../README.md).
 ## Setup
 
 ```bash
-pnpm install
 anchor build
 ```
 
 ## Testing
 
 ```bash
-pnpm test
+anchor test
 ```
 
 LiteSVM tests in `programs/` assert that users cannot overwrite each other's state.
 
 ## Usage
 
-`anchor deploy` targets the cluster in `Anchor.toml`. Used in [Solana Professional Education](https://github.com/solana-developers/professional-education).
+`anchor deploy` targets the cluster in `Anchor.toml`.
