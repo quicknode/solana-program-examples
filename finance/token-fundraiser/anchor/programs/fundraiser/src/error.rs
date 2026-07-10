@@ -18,6 +18,8 @@ pub enum FundraiserError {
     FundraiserEnded,
     #[msg("The amount to raise is below the minimum of 3 major units")]
     InvalidAmount,
+    #[msg("Contributions have not all been refunded yet")]
+    RefundsOutstanding,
     #[msg("Arithmetic overflow")]
     MathOverflow,
 }

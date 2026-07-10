@@ -4,6 +4,13 @@ All notable changes to this repository are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-07-10] - Failed fundraisers can be retired
+
+### Added
+
+- `token-fundraiser` (Anchor): a `close_fundraiser` instruction handler. The Fundraiser PDA is derived from the maker's key alone, so a failed raise used to lock its maker out of ever raising again. The maker can now retire a failed fundraiser (after the deadline, target missed, all contributions refunded), sweeping any direct vault donations to themselves and recovering both rent deposits, then initialize a fresh fundraiser. New error variant `RefundsOutstanding`.
+- `token-fundraiser` (Anchor): tests for both contribution caps (`test_contribute_above_cap_fails`, `test_cumulative_contributions_above_cap_fail`) and for every branch of the close path (before deadline, target met, refunds outstanding, donation sweep, and close-then-raise-again).
+
 ## [2026-06-30] - Anchor 1.1.2
 
 ### Changed
