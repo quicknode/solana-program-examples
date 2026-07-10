@@ -771,7 +771,11 @@ fn test_close_fundraiser_after_failed_raise_allows_a_new_raise() {
         "Fundraiser account must be closed after a failed raise is retired"
     );
 
-    // The same maker can now open a fresh fundraiser at the same PDA.
+    // The same maker can now open a fresh fundraiser at the same PDA. The
+    // retry would otherwise be byte-identical to the first initialize (same
+    // accounts, data, and blockhash), which LiteSVM rejects as already
+    // processed.
+    setup.svm.expire_blockhash();
     initialize_fundraiser(&mut setup, AMOUNT_TO_RAISE, DURATION_DAYS);
     let fundraiser_state = read_fundraiser_state(&setup.svm, &setup.fundraiser_pda);
     assert_eq!(fundraiser_state.current_amount, 0);
