@@ -250,6 +250,24 @@ fn build_check_contributions_instruction(
     )
 }
 
+fn build_close_fundraiser_instruction(setup: &FundraiserSetup, maker_ata: &Pubkey) -> Instruction {
+    Instruction::new_with_bytes(
+        setup.program_id,
+        &fundraiser::instruction::CloseFundraiser {}.data(),
+        fundraiser::accounts::CloseFundraiserAccountConstraints {
+            maker: setup.maker.pubkey(),
+            mint_to_raise: setup.mint,
+            fundraiser: setup.fundraiser_pda,
+            vault: setup.vault,
+            maker_ata: *maker_ata,
+            token_program: token_program_id(),
+            system_program: system_program::id(),
+            associated_token_program: ata_program_id(),
+        }
+        .to_account_metas(None),
+    )
+}
+
 #[test]
 fn test_initialize_fundraiser() {
     let mut setup = full_setup();
@@ -609,6 +627,305 @@ fn test_check_contributions_success_pays_maker_and_closes_vault() {
         setup.svm.get_account(&setup.fundraiser_pda).is_none(),
         "Fundraiser account must be closed after a successful claim"
     );
+}
+
+#[test]
+fn test_contribute_above_cap_fails() {
+    let mut setup = full_setup();
+    initialize_fundraiser(&mut setup, AMOUNT_TO_RAISE, DURATION_DAYS);
+
+    let (contributor, contributor_ata, contributor_account_pda) =
+        create_funded_contributor(&mut setup);
+
+    // One minor unit over the 10% cap must fail with ContributionTooBig.
+    let contribute_instruction = build_contribute_instruction(
+        &setup,
+        &contributor.pubkey(),
+        &contributor_ata,
+        &contributor_account_pda,
+        MAX_CONTRIBUTION + 1,
+    );
+    let result = send_transaction_from_instructions(
+        &mut setup.svm,
+        vec![contribute_instruction],
+        &[&contributor],
+        &contributor.pubkey(),
+    );
+    assert!(
+        result.is_err(),
+        "A single contribution above the 10% cap must fail"
+    );
+    assert_eq!(get_token_account_balance(&setup.svm, &setup.vault).unwrap(), 0);
+}
+
+#[test]
+fn test_cumulative_contributions_above_cap_fail() {
+    let mut setup = full_setup();
+    initialize_fundraiser(&mut setup, AMOUNT_TO_RAISE, DURATION_DAYS);
+
+    let (contributor, contributor_ata, contributor_account_pda) =
+        create_funded_contributor(&mut setup);
+
+    // Each call is under the cap on its own; the second pushes the
+    // cumulative total over it and must fail with
+    // MaximumContributionsReached.
+    let first_contribution = 2 * ONE_TOKEN;
+    let second_contribution = MAX_CONTRIBUTION - ONE_TOKEN;
+
+    let first_instruction = build_contribute_instruction(
+        &setup,
+        &contributor.pubkey(),
+        &contributor_ata,
+        &contributor_account_pda,
+        first_contribution,
+    );
+    send_transaction_from_instructions(
+        &mut setup.svm,
+        vec![first_instruction],
+        &[&contributor],
+        &contributor.pubkey(),
+    )
+    .unwrap();
+
+    let second_instruction = build_contribute_instruction(
+        &setup,
+        &contributor.pubkey(),
+        &contributor_ata,
+        &contributor_account_pda,
+        second_contribution,
+    );
+    let result = send_transaction_from_instructions(
+        &mut setup.svm,
+        vec![second_instruction],
+        &[&contributor],
+        &contributor.pubkey(),
+    );
+    assert!(
+        result.is_err(),
+        "Contributions that cumulatively exceed the 10% cap must fail"
+    );
+
+    assert_eq!(
+        get_token_account_balance(&setup.svm, &setup.vault).unwrap(),
+        first_contribution
+    );
+    let contributor_state = read_contributor_state(&setup.svm, &contributor_account_pda);
+    assert_eq!(contributor_state.amount, first_contribution);
+}
+
+#[test]
+fn test_close_fundraiser_after_failed_raise_allows_a_new_raise() {
+    let mut setup = full_setup();
+    initialize_fundraiser(&mut setup, AMOUNT_TO_RAISE, DURATION_DAYS);
+
+    let (contributor, contributor_ata, contributor_account_pda) =
+        create_funded_contributor(&mut setup);
+    let contribute_instruction = build_contribute_instruction(
+        &setup,
+        &contributor.pubkey(),
+        &contributor_ata,
+        &contributor_account_pda,
+        MAX_CONTRIBUTION,
+    );
+    send_transaction_from_instructions(
+        &mut setup.svm,
+        vec![contribute_instruction],
+        &[&contributor],
+        &contributor.pubkey(),
+    )
+    .unwrap();
+
+    // The raise fails; the contributor takes their refund.
+    warp_days_forward(&mut setup.svm, DURATION_DAYS as i64 + 1);
+    let refund_instruction = build_refund_instruction(
+        &setup,
+        &contributor.pubkey(),
+        &contributor_ata,
+        &contributor_account_pda,
+    );
+    send_transaction_from_instructions(
+        &mut setup.svm,
+        vec![refund_instruction],
+        &[&contributor],
+        &contributor.pubkey(),
+    )
+    .unwrap();
+
+    // The maker retires the failed fundraiser.
+    let maker_ata = derive_ata(&setup.maker.pubkey(), &setup.mint);
+    let close_instruction = build_close_fundraiser_instruction(&setup, &maker_ata);
+    send_transaction_from_instructions(
+        &mut setup.svm,
+        vec![close_instruction],
+        &[&setup.maker],
+        &setup.maker.pubkey(),
+    )
+    .unwrap();
+
+    assert!(
+        setup.svm.get_account(&setup.vault).is_none(),
+        "Vault token account must be closed with the fundraiser"
+    );
+    assert!(
+        setup.svm.get_account(&setup.fundraiser_pda).is_none(),
+        "Fundraiser account must be closed after a failed raise is retired"
+    );
+
+    // The same maker can now open a fresh fundraiser at the same PDA. The
+    // retry would otherwise be byte-identical to the first initialize (same
+    // accounts, data, and blockhash), which LiteSVM rejects as already
+    // processed.
+    setup.svm.expire_blockhash();
+    initialize_fundraiser(&mut setup, AMOUNT_TO_RAISE, DURATION_DAYS);
+    let fundraiser_state = read_fundraiser_state(&setup.svm, &setup.fundraiser_pda);
+    assert_eq!(fundraiser_state.current_amount, 0);
+    assert_eq!(fundraiser_state.amount_to_raise, AMOUNT_TO_RAISE);
+    assert_eq!(get_token_account_balance(&setup.svm, &setup.vault).unwrap(), 0);
+}
+
+#[test]
+fn test_close_fundraiser_before_deadline_fails() {
+    let mut setup = full_setup();
+    initialize_fundraiser(&mut setup, AMOUNT_TO_RAISE, DURATION_DAYS);
+
+    let maker_ata = derive_ata(&setup.maker.pubkey(), &setup.mint);
+    let close_instruction = build_close_fundraiser_instruction(&setup, &maker_ata);
+    let result = send_transaction_from_instructions(
+        &mut setup.svm,
+        vec![close_instruction],
+        &[&setup.maker],
+        &setup.maker.pubkey(),
+    );
+    assert!(
+        result.is_err(),
+        "Closing a fundraiser before its deadline must fail"
+    );
+    assert!(
+        setup.svm.get_account(&setup.fundraiser_pda).is_some(),
+        "Fundraiser account must stay open after a failed close"
+    );
+}
+
+#[test]
+fn test_close_fundraiser_with_unrefunded_contributions_fails() {
+    let mut setup = full_setup();
+    initialize_fundraiser(&mut setup, AMOUNT_TO_RAISE, DURATION_DAYS);
+
+    let (contributor, contributor_ata, contributor_account_pda) =
+        create_funded_contributor(&mut setup);
+    let contribute_instruction = build_contribute_instruction(
+        &setup,
+        &contributor.pubkey(),
+        &contributor_ata,
+        &contributor_account_pda,
+        MAX_CONTRIBUTION,
+    );
+    send_transaction_from_instructions(
+        &mut setup.svm,
+        vec![contribute_instruction],
+        &[&contributor],
+        &contributor.pubkey(),
+    )
+    .unwrap();
+
+    // Past the deadline but the contribution has not been refunded, so
+    // closing would strand it in the vault.
+    warp_days_forward(&mut setup.svm, DURATION_DAYS as i64 + 1);
+
+    let maker_ata = derive_ata(&setup.maker.pubkey(), &setup.mint);
+    let close_instruction = build_close_fundraiser_instruction(&setup, &maker_ata);
+    let result = send_transaction_from_instructions(
+        &mut setup.svm,
+        vec![close_instruction],
+        &[&setup.maker],
+        &setup.maker.pubkey(),
+    );
+    assert!(
+        result.is_err(),
+        "Closing must fail while contributions remain unrefunded"
+    );
+    assert_eq!(
+        get_token_account_balance(&setup.svm, &setup.vault).unwrap(),
+        MAX_CONTRIBUTION
+    );
+}
+
+#[test]
+fn test_close_fundraiser_when_target_met_fails() {
+    let mut setup = full_setup();
+    initialize_fundraiser(&mut setup, AMOUNT_TO_RAISE, DURATION_DAYS);
+
+    // 10 contributors at the 10% cap reach the target exactly.
+    for _ in 0..10 {
+        let (contributor, contributor_ata, contributor_account_pda) =
+            create_funded_contributor(&mut setup);
+        let contribute_instruction = build_contribute_instruction(
+            &setup,
+            &contributor.pubkey(),
+            &contributor_ata,
+            &contributor_account_pda,
+            MAX_CONTRIBUTION,
+        );
+        send_transaction_from_instructions(
+            &mut setup.svm,
+            vec![contribute_instruction],
+            &[&contributor],
+            &contributor.pubkey(),
+        )
+        .unwrap();
+    }
+
+    warp_days_forward(&mut setup.svm, DURATION_DAYS as i64 + 1);
+
+    // A successful raise exits through check_contributions, never close.
+    let maker_ata = derive_ata(&setup.maker.pubkey(), &setup.mint);
+    let close_instruction = build_close_fundraiser_instruction(&setup, &maker_ata);
+    let result = send_transaction_from_instructions(
+        &mut setup.svm,
+        vec![close_instruction],
+        &[&setup.maker],
+        &setup.maker.pubkey(),
+    );
+    assert!(
+        result.is_err(),
+        "Closing must fail when the target was met; the claim is the exit"
+    );
+    assert_eq!(
+        get_token_account_balance(&setup.svm, &setup.vault).unwrap(),
+        AMOUNT_TO_RAISE
+    );
+}
+
+#[test]
+fn test_close_fundraiser_sweeps_direct_donations_to_maker() {
+    let mut setup = full_setup();
+    initialize_fundraiser(&mut setup, AMOUNT_TO_RAISE, DURATION_DAYS);
+
+    // Tokens sent straight to the vault are outside the program's
+    // accounting; on close they go to the maker instead of being burned
+    // with the account.
+    let donation = 5 * ONE_TOKEN;
+    mint_tokens_to_token_account(&mut setup.svm, &setup.mint, &setup.vault, donation, &setup.payer)
+        .unwrap();
+
+    warp_days_forward(&mut setup.svm, DURATION_DAYS as i64 + 1);
+
+    let maker_ata = derive_ata(&setup.maker.pubkey(), &setup.mint);
+    let close_instruction = build_close_fundraiser_instruction(&setup, &maker_ata);
+    send_transaction_from_instructions(
+        &mut setup.svm,
+        vec![close_instruction],
+        &[&setup.maker],
+        &setup.maker.pubkey(),
+    )
+    .unwrap();
+
+    assert_eq!(
+        get_token_account_balance(&setup.svm, &maker_ata).unwrap(),
+        donation
+    );
+    assert!(setup.svm.get_account(&setup.fundraiser_pda).is_none());
+    assert!(setup.svm.get_account(&setup.vault).is_none());
 }
 
 #[test]
