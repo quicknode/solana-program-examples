@@ -1,4 +1,4 @@
-# Vault Strategy
+# Solana Vault Strategy (Anchor)
 
 A manager-run investment vault on Solana. Users deposit [USDC](https://www.investopedia.com/terms/u/usd-coin-usdc.asp) and receive shares representing proportional ownership of a portfolio of assets. The manager adds assets from a curated whitelist and sets their target weights; each deposit is deployed across those assets at its weights in the same transaction. The manager rebalances as prices drift, earns a fee, and depositors withdraw their proportional slice in kind when they choose.
 
@@ -152,3 +152,17 @@ cargo test --manifest-path programs/vault-strategy/Cargo.toml
 ```
 
 Tests live in `programs/vault-strategy/tests/vault_strategy.rs` and use [LiteSVM](https://github.com/LiteSVM/litesvm). Both `.so` files are loaded from `target/deploy/`, so build before testing. The suite covers the full lifecycle end to end (deposit with auto-deployment, a price move, rebalance back to target, a second depositor priced at the new NAV, a year's fee, in-kind withdrawal), retiring an asset with `set_weight` and reallocating to reopen deposits, and the rejection paths: non-whitelisted asset, weight overflow, over-cap fee and slippage, oracle-bounded deposit slippage, an under-allocated strategy, non-manager `set_weight`, unregistered router, and incomplete asset accounts on deposit.
+
+## FAQ
+
+### How do I build an onchain investment fund on Solana?
+
+A manager creates a strategy with `initialize_strategy`, registers whitelisted assets with `add_asset` at target weights, and investors `deposit` USDC for shares. Each deposit is deployed across the basket in the same transaction, and `withdraw` redeems a proportional slice of every vault in kind.
+
+### How are share prices calculated?
+
+Shares are priced at the strategy's net asset value: the total value of the vault balances at current prices divided by shares outstanding. A later depositor pays the current share price rather than diluting earlier ones.
+
+### How does the manager operate the fund?
+
+`rebalance` trades the vaults back to their target weights as prices drift, `set_weight` reweights or retires an asset, and a management fee accrues over time and is collected with `collect_fees`.

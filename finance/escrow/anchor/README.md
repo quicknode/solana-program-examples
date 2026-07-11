@@ -1,4 +1,4 @@
-# Anchor Escrow
+# Solana Escrow (Anchor)
 
 This Solana [program](https://solana.com/docs/terminology#program) is an **escrow** - it lets a **maker** swap a specific amount of one token for a desired amount of another token with a **taker**, atomically and without either party having to trust the other.
 
@@ -40,6 +40,24 @@ cargo test
 ```
 
 (`anchor test` runs the same command, per `Anchor.toml`.) The tests cover the make/take flow, the make/cancel flow, rejection of a non-maker cancel, token balances on every leg, and the rent refunds (the maker's lamports recover the offer and vault rent after both take and cancel).
+
+## FAQ
+
+### How does an escrow work on Solana?
+
+A Solana escrow is a program that holds a maker's tokens in a program-controlled vault until a taker delivers the tokens the maker asked for, then releases both sides in one atomic transaction. This example implements the whole lifecycle in three instruction handlers: `make_offer`, `take_offer`, and `cancel_offer`.
+
+### Is this a good first Solana finance program to learn?
+
+Yes. Escrow is the smallest complete finance program: one state PDA, one vault, three instruction handlers, and the atomic swap idea that underlies every onchain exchange. Start here before the [AMM](../../token-swap/anchor/), [order book](../../order-book/anchor/), and [lending](../../lending/anchor/) examples.
+
+### How do I run and test this escrow example?
+
+Build with `anchor build`, then run `cargo test`. The tests are Rust integration tests against [LiteSVM](https://www.anchor-lang.com/docs/testing/litesvm), so no local validator is needed.
+
+### How is this escrow program verified?
+
+Two ways: LiteSVM integration tests covering the make, take, and cancel flows, and [Kani](https://github.com/model-checking/kani) proofs in [`../kani-proofs/`](../kani-proofs/) that check the money-math invariants over all possible inputs, not just test cases.
 
 ## Credit
 

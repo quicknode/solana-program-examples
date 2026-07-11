@@ -1,6 +1,6 @@
-# Token Fundraiser (Quasar)
+# Solana Token Fundraiser (Quasar)
 
-Onchain crowdfunding toward a target amount in a chosen token, written with [Quasar](https://quasar-lang.com/docs). A **maker** opens a fundraiser with a target amount and a deadline; **contributors** deposit tokens into a program-controlled vault. If the target is met the maker withdraws everything; if the deadline passes without the target being met, each contributor reclaims exactly what they put in.
+Onchain crowdfunding on Solana toward a target amount in a chosen token, written with [Quasar](https://quasar-lang.com/docs). A **maker** opens a fundraiser with a target amount and a deadline; **contributors** deposit tokens into a program-controlled vault. If the target is met the maker withdraws everything; if the deadline passes without the target being met, each contributor reclaims exactly what they put in.
 
 See also: the [repository catalog](../../../README.md) and the [Anchor variant](../anchor/) of the same program.
 

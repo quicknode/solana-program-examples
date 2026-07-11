@@ -1,8 +1,8 @@
-# Prop AMM
+# Solana Prop AMM (Anchor)
 
-An oracle-quoted **proprietary AMM**: a market-making firm funds a trading
-venue with its own capital and quotes both sides of it — anyone can buy the
-base token at the oracle price plus a spread, or sell at the oracle price
+An oracle-quoted **proprietary AMM** on Solana: a market-making firm funds a
+trading venue with its own capital and quotes both sides of it. Anyone can buy
+the base token at the oracle price plus a spread, or sell at the oracle price
 minus it. There is no pricing curve, there are no liquidity providers, and
 there are no pool shares: the operator is the only capital in the market,
 which is the property that gives the design its name. This is the
@@ -12,9 +12,9 @@ via Jupiter routing rather than their own user interfaces.
 
 ## Programs
 
-- **`prop-amm`** — the market: one operator, one base/quote pair, one oracle
+- **`prop-amm`**: the market. One operator, one base/quote pair, one oracle
   feed, two vaults, five instruction handlers.
-- **`mock-switchboard`** — a minimal stand-in for a Switchboard On-Demand
+- **`mock-switchboard`**: a minimal stand-in for a Switchboard On-Demand
   price feed, so tests can drive deterministic price scenarios. Not for
   production.
 
@@ -28,7 +28,7 @@ all of it: the firm quotes prices taken from an oracle, earns the spread
 instead of a fee, and risks only its own inventory. Because the price does
 not depend on the pool's balances, big trades pay the same unit price as
 small ones (no price impact), and there is nothing for a sandwich attacker to
-squeeze — the classic front-run/back-run pattern needs a price that moves
+squeeze: the classic front-run/back-run pattern needs a price that moves
 with each trade.
 
 ### The quote: oracle, spread, bid and ask
@@ -46,7 +46,7 @@ raw oracle price, never exceeds the value coming in.
 The vault balances are not a pricing input; they only bound what the market
 can deliver. A swap bigger than the inventory is rejected whole
 (`InsufficientInventory`) rather than partially filled or mispriced. The
-operator deposits and withdraws inventory freely — including all of it, at any
+operator deposits and withdraws inventory freely, including all of it, at any
 time. Nobody else has a claim on the vaults, so there is no share mint, no
 pro-rata withdrawal math, and no inflation attack surface: the empty-pool
 games that plague shared pools need shares to dilute, and there are none.
@@ -56,7 +56,7 @@ games that plague shared pools need shares to dilute, and there are none.
 A market maker's enemy is informed flow: traders who know the price is about
 to move and hit the stale side of the quote. The two defenses this program
 ships are the oracle gates (below) and `set_quote`, which lets the operator
-widen the spread or pause quoting entirely. Real prop AMMs do exactly this —
+widen the spread or pause quoting entirely. Real prop AMMs do exactly this:
 during fast markets their quotes vanish and return minutes later.
 
 ### Oracle staleness and confidence
@@ -92,14 +92,14 @@ nobody else to account for.
 ### Step 3: Alice buys 10 NVDAx at the ask
 
 At $165 with a 10 bps spread the ask is $165.165. Alice's `swap`
-(`Direction::BuyBase`) spends exactly 1,651.65 USDC for 10 NVDAx —
+(`Direction::BuyBase`) spends exactly 1,651.65 USDC for 10 NVDAx;
 whether she bought 1 or 500, the unit price would be the same.
 
 ### Step 4: Bob sells 10 NVDAx at the bid
 
 The bid is $164.835, so Bob's `swap` (`Direction::SellBase`) receives
 exactly 1,648.35 USDC. A round trip through both sides costs exactly the
-3.30 USDC spread — the spread is the fee, and it lands in the inventory,
+3.30 USDC spread: the spread is the fee, and it lands in the inventory,
 not in a fee ledger.
 
 ### Step 5: The oracle reprices; the quote follows
@@ -117,7 +117,7 @@ AMM gets from one price to another.
 ### Step 7: Maria withdraws her inventory
 
 `withdraw_inventory` returns every token in both vaults to the firm. The
-market still exists but rejects fills — an empty prop AMM refuses rather than
+market still exists but rejects fills: an empty prop AMM refuses rather than
 misprices.
 
 ## Design notes and further reading
@@ -125,8 +125,8 @@ misprices.
 - Production prop AMMs on Solana are closed-source and considerably more
   sophisticated: they blend multiple price sources, run inventory-skewed
   quoting (shading the quote to reduce a lopsided inventory), and integrate
-  with aggregators via quote APIs. The skeleton — operator capital, oracle
-  price, spread, hard oracle gates — is this program.
+  with aggregators via quote APIs. The skeleton (operator capital, oracle
+  price, spread, hard oracle gates) is this program.
 - Lifinity's public design notes and the Helius write-up
   "Solana's Proprietary AMM Revolution" are good next reads.
 - The oracle reader deliberately reads raw bytes at fixed offsets and
@@ -135,7 +135,7 @@ misprices.
 
 ## Limitations
 
-- The oracle feed's owning program is not verified — the operator picks the
+- The oracle feed's owning program is not verified: the operator picks the
   feed, and a bad choice loses the operator's money, not the traders'. A
   production reader must still check the account owner.
 - One flat spread both ways; no inventory skew, no size-dependent pricing.
@@ -154,3 +154,21 @@ quote math to the minor unit in both directions, the exact round-trip spread,
 oracle repricing and re-quoting, and that every gate shuts: slippage,
 staleness, confidence, pause, zero amounts, inventory bounds, and operator
 access control.
+
+## FAQ
+
+### What is a proprietary AMM on Solana?
+
+A venue where a single market-making firm supplies all the capital and quotes both sides from an oracle price plus a spread, instead of pricing from pool reserves. The operator stocks it with `deposit_inventory`, traders call `swap`, and the operator adjusts or pauses the quote with `set_quote`. Venues like Lifinity, SolFi, and HumidiFi use this design.
+
+### Why do trades have no price impact?
+
+The price comes from the oracle, not from the pool's balances, so a large swap pays the same unit price as a small one. That also removes the sandwich-attack surface: front-running only pays when each trade moves the price.
+
+### How does the operator make money?
+
+The spread is the fee: buyers pay the oracle price plus `spread_bps`, sellers receive the oracle price minus it, and the difference accumulates in the operator's inventory. There is no separate fee ledger, and `withdraw_inventory` returns everything to the firm.
+
+### What stops the venue from quoting a stale price?
+
+Every `swap` re-validates the feed: the price must be fresh (no older than 150 slots), at the pinned scale, and inside the configured confidence band. A stale quote is a free option for whoever notices first, so the staleness checks are the business model, not hygiene.
