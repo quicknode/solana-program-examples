@@ -245,33 +245,33 @@ mod tests {
     }
 
     #[test]
-    fn buy_ten_nvdax() {
-        // 1,651.65 USDC buys exactly 10 NVDAx at the ask.
+    fn buy_five_nvdax() {
+        // 825.825 USDC buys exactly 5 NVDAx at the ask.
         let ask = ask_price(PRICE, 10).unwrap();
         assert_eq!(
-            base_out_for_quote_in(1_651_650_000, ask, SCALE, DEC, DEC).unwrap(),
-            10_000_000
+            base_out_for_quote_in(825_825_000, ask, SCALE, DEC, DEC).unwrap(),
+            5_000_000
         );
     }
 
     #[test]
-    fn sell_ten_nvdax() {
-        // 10 NVDAx sells for exactly 1,648.35 USDC at the bid.
+    fn sell_five_nvdax() {
+        // 5 NVDAx sells for exactly 824.175 USDC at the bid.
         let bid = bid_price(PRICE, 10).unwrap();
         assert_eq!(
-            quote_out_for_base_in(10_000_000, bid, SCALE, DEC, DEC).unwrap(),
-            1_648_350_000
+            quote_out_for_base_in(5_000_000, bid, SCALE, DEC, DEC).unwrap(),
+            824_175_000
         );
     }
 
     #[test]
     fn round_trip_costs_the_spread() {
-        // In 1,651.65, back 1,648.35: the market keeps exactly 3.30 USDC.
+        // In 825.825, back 824.175: the market keeps exactly 1.65 USDC.
         let ask = ask_price(PRICE, 10).unwrap();
         let bid = bid_price(PRICE, 10).unwrap();
-        let base = base_out_for_quote_in(1_651_650_000, ask, SCALE, DEC, DEC).unwrap();
+        let base = base_out_for_quote_in(825_825_000, ask, SCALE, DEC, DEC).unwrap();
         let back = quote_out_for_base_in(base, bid, SCALE, DEC, DEC).unwrap();
-        assert_eq!(1_651_650_000 - back, 3_300_000);
+        assert_eq!(825_825_000 - back, 1_650_000);
     }
 
     #[test]

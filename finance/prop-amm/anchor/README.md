@@ -89,17 +89,17 @@ the deployment is the firm.
 tokens into the vaults. No shares are minted to anyone, because there is
 nobody else to account for.
 
-### Step 3: Alice buys 10 NVDAx at the ask
+### Step 3: Alice buys 5 NVDAx at the ask
 
 At $165 with a 10 bps spread the ask is $165.165. Alice's `swap`
-(`Direction::BuyBase`) spends exactly 1,651.65 USDC for 10 NVDAx —
+(`Direction::BuyBase`) spends exactly 825.825 USDC for 5 NVDAx —
 whether she bought 1 or 500, the unit price would be the same.
 
-### Step 4: Bob sells 10 NVDAx at the bid
+### Step 4: Bob sells 5 NVDAx at the bid
 
 The bid is $164.835, so Bob's `swap` (`Direction::SellBase`) receives
-exactly 1,648.35 USDC. A round trip through both sides costs exactly the
-3.30 USDC spread — the spread is the fee, and it lands in the inventory,
+exactly 824.175 USDC. A round trip through both sides costs exactly the
+1.65 USDC spread — the spread is the fee, and it lands in the inventory,
 not in a fee ledger.
 
 ### Step 5: The oracle reprices; the quote follows

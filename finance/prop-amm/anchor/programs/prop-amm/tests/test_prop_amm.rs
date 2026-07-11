@@ -443,106 +443,106 @@ impl Market {
 // Happy paths: exact quote math in both directions
 // ===========================================================================
 
-/// Alice buys 10 NVDAx. At $165 with a 10 bps spread the ask is $165.165, so
-/// 10 NVDAx costs exactly 1,651.65 USDC.
+/// Alice buys 5 NVDAx. At $165 with a 10 bps spread the ask is $165.165, so
+/// 5 NVDAx costs exactly 825.825 USDC.
 #[test]
 fn test_swap_buys_base_at_the_ask() {
     let mut market = Market::default_market();
-    let quote_in = 1_651_650_000; // 1,651.65 USDC
+    let quote_in = 825_825_000; // 825.825 USDC
     let (alice, alice_base, alice_quote) = market.funded_trader(0, quote_in);
 
     market
-        .swap(&alice, Direction::BuyBase, quote_in, 10 * ONE_TOKEN)
+        .swap(&alice, Direction::BuyBase, quote_in, 5 * ONE_TOKEN)
         .unwrap();
 
-    assert_eq!(market.balance(&alice_base), 10 * ONE_TOKEN);
+    assert_eq!(market.balance(&alice_base), 5 * ONE_TOKEN);
     assert_eq!(market.balance(&alice_quote), 0);
     // Conservation: the vaults moved by exactly the two legs of the fill.
-    assert_eq!(market.balance(&market.base_vault), 990 * ONE_TOKEN);
+    assert_eq!(market.balance(&market.base_vault), 995 * ONE_TOKEN);
     assert_eq!(
         market.balance(&market.quote_vault),
         200_000 * ONE_TOKEN + quote_in
     );
 }
 
-/// Bob sells 10 NVDAx. At $165 with a 10 bps spread the bid is $164.835, so
-/// he receives exactly 1,648.35 USDC.
+/// Bob sells 5 NVDAx. At $165 with a 10 bps spread the bid is $164.835, so
+/// he receives exactly 824.175 USDC.
 #[test]
 fn test_swap_sells_base_at_the_bid() {
     let mut market = Market::default_market();
-    let (bob, bob_base, bob_quote) = market.funded_trader(10 * ONE_TOKEN, 0);
+    let (bob, bob_base, bob_quote) = market.funded_trader(5 * ONE_TOKEN, 0);
 
     market
-        .swap(&bob, Direction::SellBase, 10 * ONE_TOKEN, 1_648_350_000)
+        .swap(&bob, Direction::SellBase, 5 * ONE_TOKEN, 824_175_000)
         .unwrap();
 
     assert_eq!(market.balance(&bob_base), 0);
-    assert_eq!(market.balance(&bob_quote), 1_648_350_000); // 1,648.35 USDC
-    assert_eq!(market.balance(&market.base_vault), 1_010 * ONE_TOKEN);
+    assert_eq!(market.balance(&bob_quote), 824_175_000); // 824.175 USDC
+    assert_eq!(market.balance(&market.base_vault), 1_005 * ONE_TOKEN);
     assert_eq!(
         market.balance(&market.quote_vault),
-        200_000 * ONE_TOKEN - 1_648_350_000
+        200_000 * ONE_TOKEN - 824_175_000
     );
 }
 
-/// A buy immediately followed by a sell of the same 10 NVDAx costs exactly the
-/// round-trip spread: 3.30 USDC on a $1,650 position, all of which stays in
+/// A buy immediately followed by a sell of the same 5 NVDAx costs exactly the
+/// round-trip spread: 1.65 USDC on an $825 position, all of which stays in
 /// the market's inventory. The spread IS the fee; there is no other one.
 #[test]
 fn test_round_trip_costs_exactly_the_spread() {
     let mut market = Market::default_market();
-    let quote_in = 1_651_650_000;
+    let quote_in = 825_825_000;
     let (carol, carol_base, carol_quote) = market.funded_trader(0, quote_in);
 
     market
         .swap(&carol, Direction::BuyBase, quote_in, 0)
         .unwrap();
     market
-        .swap(&carol, Direction::SellBase, 10 * ONE_TOKEN, 0)
+        .swap(&carol, Direction::SellBase, 5 * ONE_TOKEN, 0)
         .unwrap();
 
     assert_eq!(market.balance(&carol_base), 0);
-    // 1,651.65 in, 1,648.35 back: the market kept 3.30 USDC.
-    assert_eq!(market.balance(&carol_quote), quote_in - 3_300_000);
+    // 825.825 in, 824.175 back: the market kept 1.65 USDC.
+    assert_eq!(market.balance(&carol_quote), quote_in - 1_650_000);
     assert_eq!(market.balance(&market.base_vault), 1_000 * ONE_TOKEN);
     assert_eq!(
         market.balance(&market.quote_vault),
-        200_000 * ONE_TOKEN + 3_300_000
+        200_000 * ONE_TOKEN + 1_650_000
     );
 }
 
 /// When the oracle reprices, the quote follows instantly — no trade has to
-/// drag the price there through a curve. At $170 the ask is $170.17, so 10
-/// NVDAx costs exactly 1,701.70 USDC.
+/// drag the price there through a curve. At $170 the ask is $170.17, so 5
+/// NVDAx costs exactly 850.85 USDC.
 #[test]
 fn test_quote_follows_the_oracle() {
     let mut market = Market::default_market();
     market.set_price(dollars(170));
 
-    let quote_in = 1_701_700_000; // 1,701.70 USDC
+    let quote_in = 850_850_000; // 850.85 USDC
     let (alice, alice_base, _) = market.funded_trader(0, quote_in);
     market
-        .swap(&alice, Direction::BuyBase, quote_in, 10 * ONE_TOKEN)
+        .swap(&alice, Direction::BuyBase, quote_in, 5 * ONE_TOKEN)
         .unwrap();
 
-    assert_eq!(market.balance(&alice_base), 10 * ONE_TOKEN);
+    assert_eq!(market.balance(&alice_base), 5 * ONE_TOKEN);
 }
 
 /// The operator re-quotes to a 50 bps spread; the next fill prices at
-/// $165.825, so 10 NVDAx costs exactly 1,658.25 USDC.
+/// $165.825, so 5 NVDAx costs exactly 829.125 USDC.
 #[test]
 fn test_set_quote_changes_the_spread() {
     let mut market = Market::default_market();
     market.set_quote(50, false).unwrap();
     assert_eq!(market.market_state().spread_bps, 50);
 
-    let quote_in = 1_658_250_000; // 1,658.25 USDC
+    let quote_in = 829_125_000; // 829.125 USDC
     let (alice, alice_base, _) = market.funded_trader(0, quote_in);
     market
-        .swap(&alice, Direction::BuyBase, quote_in, 10 * ONE_TOKEN)
+        .swap(&alice, Direction::BuyBase, quote_in, 5 * ONE_TOKEN)
         .unwrap();
 
-    assert_eq!(market.balance(&alice_base), 10 * ONE_TOKEN);
+    assert_eq!(market.balance(&alice_base), 5 * ONE_TOKEN);
 }
 
 // ===========================================================================
@@ -566,9 +566,9 @@ fn test_operator_can_withdraw_everything_and_swaps_then_fail() {
     assert_eq!(market.balance(&operator_base), 10_000 * ONE_TOKEN);
     assert_eq!(market.balance(&operator_quote), 10_000_000 * ONE_TOKEN);
 
-    let (alice, _, _) = market.funded_trader(0, 1_651_650_000);
+    let (alice, _, _) = market.funded_trader(0, 825_825_000);
     assert!(market
-        .swap(&alice, Direction::BuyBase, 1_651_650_000, 0)
+        .swap(&alice, Direction::BuyBase, 825_825_000, 0)
         .is_err());
 }
 
@@ -613,11 +613,11 @@ fn test_set_quote_rejects_non_operator() {
 #[test]
 fn test_swap_rejects_slippage() {
     let mut market = Market::default_market();
-    let quote_in = 1_651_650_000;
+    let quote_in = 825_825_000;
     let (alice, _, _) = market.funded_trader(0, quote_in);
-    // The fill would be exactly 10 NVDAx; demand one minor unit more.
+    // The fill would be exactly 5 NVDAx; demand one minor unit more.
     assert!(market
-        .swap(&alice, Direction::BuyBase, quote_in, 10 * ONE_TOKEN + 1)
+        .swap(&alice, Direction::BuyBase, quote_in, 5 * ONE_TOKEN + 1)
         .is_err());
 }
 
@@ -627,12 +627,12 @@ fn test_swap_rejects_slippage() {
 #[test]
 fn test_swap_rejects_stale_price() {
     let mut market = Market::default_market();
-    let (alice, _, _) = market.funded_trader(0, 1_651_650_000);
+    let (alice, _, _) = market.funded_trader(0, 825_825_000);
     // The feed was last updated near slot 0; 200 slots later it is stale
     // (the bound is 150 slots).
     market.warp(200);
     assert!(market
-        .swap(&alice, Direction::BuyBase, 1_651_650_000, 0)
+        .swap(&alice, Direction::BuyBase, 825_825_000, 0)
         .is_err());
 }
 
@@ -642,9 +642,9 @@ fn test_swap_rejects_stale_price() {
 fn test_swap_rejects_wide_confidence() {
     let mut market = Market::default_market();
     market.set_price_with_confidence(dollars(165), 200_000_000);
-    let (alice, _, _) = market.funded_trader(0, 1_651_650_000);
+    let (alice, _, _) = market.funded_trader(0, 825_825_000);
     assert!(market
-        .swap(&alice, Direction::BuyBase, 1_651_650_000, 0)
+        .swap(&alice, Direction::BuyBase, 825_825_000, 0)
         .is_err());
 }
 
@@ -653,15 +653,15 @@ fn test_swap_rejects_wide_confidence() {
 fn test_swap_rejects_when_paused() {
     let mut market = Market::default_market();
     market.set_quote(SPREAD_BPS, true).unwrap();
-    let (alice, _, _) = market.funded_trader(0, 1_651_650_000);
+    let (alice, _, _) = market.funded_trader(0, 825_825_000);
     assert!(market
-        .swap(&alice, Direction::BuyBase, 1_651_650_000, 0)
+        .swap(&alice, Direction::BuyBase, 825_825_000, 0)
         .is_err());
 
     // Unpausing restores the exact same quote.
     market.set_quote(SPREAD_BPS, false).unwrap();
     market
-        .swap(&alice, Direction::BuyBase, 1_651_650_000, 10 * ONE_TOKEN)
+        .swap(&alice, Direction::BuyBase, 825_825_000, 5 * ONE_TOKEN)
         .unwrap();
 }
 

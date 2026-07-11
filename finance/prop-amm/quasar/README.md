@@ -28,7 +28,7 @@ Quasar version.
 Tests run in-process with [`quasar-svm`](https://github.com/blueshift-gg/quasar-svm).
 They build the program, set up both mints, an oracle feed at $165, and an
 operator with funded inventory, then verify the quote math to the minor unit
-in both directions, the exact 3.30 USDC round-trip spread, oracle repricing
+in both directions, the exact 1.65 USDC round-trip spread, oracle repricing
 and re-quoting, the operator's full exit, and that every gate shuts: slippage,
 staleness, confidence, pause, zero amounts, inventory bounds, and operator
 access control.
