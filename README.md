@@ -57,6 +57,12 @@ An exchange with no order book: swaps fill instantly against a shared liquidity 
 
 [⚓ Anchor](./finance/token-swap/anchor) [💫 Quasar](./finance/token-swap/quasar)
 
+### Prop AMM
+
+A **proprietary AMM**: a market-making firm funds a venue with its own capital and quotes both sides of it, selling the base token at the oracle price plus a spread and buying it back at the oracle price minus the spread. No pricing curve, no liquidity providers, no pool shares — the operator is the only capital in the market, can re-quote or pull its quotes at will, and earns the spread instead of a fee. Because the price comes from an oracle rather than the pool's balances, trades have no price impact and nothing to sandwich. This is the design behind venues like Lifinity, SolFi, and HumidiFi, which fill most Solana swap volume through Jupiter routing.
+
+[⚓ Anchor](./finance/prop-amm/anchor) [💫 Quasar](./finance/prop-amm/quasar)
+
 ### Vault Strategy
 
 A managed investment fund onchain, like an ETF or mutual fund. Investors deposit USDC for shares, a manager allocates the pool across a basket of assets (here, stocks like TSLAx and NVDAx), and each share's value tracks the fund's net asset value. The manager earns a management fee, and investors redeem a proportional slice of the underlying assets.

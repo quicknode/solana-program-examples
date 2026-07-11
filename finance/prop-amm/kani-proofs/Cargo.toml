@@ -1,0 +1,21 @@
+# Standalone workspace - intentionally NOT part of the root program-examples
+# workspace. Kani (https://github.com/model-checking/kani) proof harnesses that
+# model the prop AMM's pure quoting arithmetic (ask/bid construction, output
+# amounts, the oracle-value invariant) so the model checker can verify the
+# invariants without the Solana / SPL-token CPI machinery, which Kani cannot
+# symbolically execute.
+[workspace]
+
+[package]
+name = "prop-amm-kani-proofs"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[lints.rust]
+unexpected_cfgs = { level = "allow", check-cfg = ['cfg(kani)'] }
+
+[dependencies]
