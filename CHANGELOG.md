@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [2026-07-11] - Discoverability and FAQ pass
 
+### Fixed
+
+- Quasar CI broke repo-wide when `quasar-svm`'s HEAD (`c63afd2`, "sbpf v3") moved to `solana-program-runtime` 4.1 / `solana-address` 2.6, which cannot co-resolve with the pinned `quasar-lang` rev `623bb70` (needs `solana-address` <2.6). Pinned `quasar-svm` to `cb7565d` (the last rev before the bump) in every Quasar example that pins `quasar-lang`, matching the pin `prop-amm` already carried. `basics/pyth` and the three `compression` Quasar examples float both dependencies and are left as-is.
+
 ### Added
 
 - FAQ sections, written as the questions people actually ask, in the root README and every finance example's `anchor/` README.
