@@ -1,6 +1,6 @@
-# Lending
+# Solana Lending (Anchor)
 
-A Kamino/Solend-style borrow/lend program: suppliers earn interest on deposits,
+A Kamino/Solend-style borrow/lend program on Solana: suppliers earn interest on deposits,
 borrowers post collateral and draw other assets against it, and liquidators keep
 the market solvent. It demonstrates the techniques the most-used Solana lending
 protocols share: share-token deposit accounting, a utilization-based interest
@@ -173,3 +173,21 @@ anchor test    # or: cargo test     - runs the LiteSVM integration tests
 non-happy-path branches: interest accrual, borrowing at the LTV limit, stale
 reserve/price rejection, liquidation of an unhealthy obligation after a price
 move, the share-inflation guard, and rounding edges.
+
+## FAQ
+
+### How does a lending protocol work on Solana?
+
+Suppliers deposit a token with `deposit_reserve_liquidity` and receive share tokens that grow in value as borrowers pay interest. Borrowers post those shares as collateral (`deposit_obligation_collateral`) and draw a different token with `borrow_obligation_liquidity`, up to a loan-to-value limit. When a position's collateral no longer covers its debt, anyone can call `liquidate_obligation` to repay part of the debt in exchange for discounted collateral.
+
+### How does interest accrue without looping over every account?
+
+Through a cumulative interest index: `refresh_reserve` advances a per-reserve index along a utilization-based rate curve, and each obligation stores the index value from its last interaction. The gap between the two is the interest owed, so no per-account accrual loop is needed. This is the same technique the most-used Solana lending protocols share.
+
+### How are prices fed into the protocol?
+
+The admin `set_price` instruction handler stands in for an oracle feed in this example. `refresh_obligation` re-values collateral and debt at those prices before any borrow, withdraw, or liquidation is allowed, and stale reserves or prices are rejected.
+
+### How is this lending program tested and verified?
+
+`anchor build` then `cargo test` runs LiteSVM integration tests covering interest accrual, borrowing at the LTV limit, liquidation after a price move, and the share-inflation guard. The money math also has [Kani](https://github.com/model-checking/kani) proofs in [`../kani-proofs/`](../kani-proofs/).

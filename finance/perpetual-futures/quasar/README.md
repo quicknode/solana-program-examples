@@ -1,6 +1,6 @@
-# Perpetual Futures (Quasar)
+# Solana Perpetual Futures (Quasar)
 
-A [Quasar](https://quasar-lang.com/docs) port of the perpetual-futures example.
+A [Quasar](https://quasar-lang.com/docs) port of the Solana perpetual futures example.
 The design, math, and behaviour match the Anchor implementation at
 [`../anchor`](../anchor). Read that README for the full walkthrough of the
 oracle-priced, pool-collateralized model, the funding mechanism, and the money

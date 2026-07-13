@@ -33,6 +33,10 @@ quasar-spl = { git = "https://github.com/blueshift-gg/quasar", rev = "623bb70" }
 solana-instruction = { version = "3.2.0" }
 
 [dev-dependencies]
-quasar-svm = { git = "https://github.com/blueshift-gg/quasar-svm" }
+# Pinned: quasar-svm HEAD (c63afd2, "sbpf v3") moved to solana-program-runtime
+# 4.1 / solana-address 2.6, which cannot co-resolve with the quasar-lang rev
+# pinned above (needs solana-address <2.6). cb7565d is the last rev before the
+# bump. Unpin together with the quasar-lang pin once upstream is consistent again.
+quasar-svm = { git = "https://github.com/blueshift-gg/quasar-svm", rev = "cb7565d" }
 spl-token-interface = { version = "2.0.0" }
 solana-program-pack = { version = "3.1.0" }

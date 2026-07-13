@@ -4,7 +4,7 @@
 
 _Solana program examples ('smart contracts') in Anchor, Quasar, Pinocchio, native Rust, and sBPF assembly. Focused on financial software ('DeFi'), plus the basics, tokens, Token Extensions, state compression, and more._
 
-Working, tested, up-to-date examples of common Solana programs (what other chains call smart contracts), maintained by [Quicknode](https://www.quicknode.com/chains/solana). Every example builds and passes CI on a current toolchain — **Anchor 1.1**, the current multi-file program layout (one file per instruction handler, account type, etc), and [LiteSVM](https://github.com/LiteSVM/litesvm) tests rather than the older `solana-test-validator` / web3.js stack.
+Working, tested, up-to-date examples of common Solana programs (what other chains call smart contracts), maintained by [Quicknode](https://www.quicknode.com/chains/solana). Current as of July 2026 (see [CHANGELOG.md](./CHANGELOG.md)): every example builds and passes CI on **Anchor 1.1**, the current multi-file program layout (one file per instruction handler, account type, etc), and [LiteSVM](https://github.com/LiteSVM/litesvm) tests rather than the older `solana-test-validator` / web3.js stack.
 
 [![Anchor](../../actions/workflows/anchor.yml/badge.svg)](../../actions/workflows/anchor.yml) [![Quasar](../../actions/workflows/quasar.yml/badge.svg)](../../actions/workflows/quasar.yml) [![Pinocchio](../../actions/workflows/pinocchio.yml/badge.svg)](../../actions/workflows/pinocchio.yml) [![Native](../../actions/workflows/native.yml/badge.svg)](../../actions/workflows/native.yml) [![ASM](../../actions/workflows/solana-asm.yml/badge.svg)](../../actions/workflows/solana-asm.yml)
 
@@ -59,7 +59,7 @@ An exchange with no order book: swaps fill instantly against a shared liquidity 
 
 ### Prop AMM
 
-A **proprietary AMM**: a market-making firm funds a venue with its own capital and quotes both sides of it, selling the base token at the oracle price plus a spread and buying it back at the oracle price minus the spread. No pricing curve, no liquidity providers, no pool shares — the operator is the only capital in the market, can re-quote or pull its quotes at will, and earns the spread instead of a fee. Because the price comes from an oracle rather than the pool's balances, trades have no price impact and nothing to sandwich. This is the design behind venues like Lifinity, SolFi, and HumidiFi, which fill most Solana swap volume through Jupiter routing.
+A **proprietary AMM**: a market-making firm funds a venue with its own capital and quotes both sides of it, selling the base token at the oracle price plus a spread and buying it back at the oracle price minus the spread. No pricing curve, no liquidity providers, no pool shares: the operator is the only capital in the market, can re-quote or pull its quotes at will, and earns the spread instead of a fee. Because the price comes from an oracle rather than the pool's balances, trades have no price impact and nothing to sandwich. This is the design behind venues like Lifinity, SolFi, and HumidiFi, which fill most Solana swap volume through Jupiter routing.
 
 [⚓ Anchor](./finance/prop-amm/anchor) [💫 Quasar](./finance/prop-amm/quasar)
 
@@ -77,7 +77,7 @@ Parimutuel (pooled) prediction market - an admin opens an event with multiple ou
 
 ### Perpetual Futures
 
-A perpetual futures exchange — a venue for making leveraged bets on an asset's price without ever owning the asset. Traders post collateral and open a **long** (betting the price rises) or **short** (betting it falls) sized up to several times their collateral; their profit or loss tracks the price move and is paid in the collateral token. Rather than matching buyers to sellers, every trade is against a shared **liquidity pool** that other users fund and that is the counterparty to all of it — the pool pays winners and keeps losers' collateral, and its providers earn the trading and funding fees in return. The price comes from an oracle, positions accrue a funding fee over time, and anyone can **liquidate** a position whose collateral can no longer cover its loss. This is the design behind venues like Jupiter Perpetuals and GMX.
+A perpetual futures exchange: a venue for making leveraged bets on an asset's price without ever owning the asset. Traders post collateral and open a **long** (betting the price rises) or **short** (betting it falls) sized up to several times their collateral; their profit or loss tracks the price move and is paid in the collateral token. Rather than matching buyers to sellers, every trade is against a shared **liquidity pool** that other users fund and that is the counterparty to all of it: the pool pays winners and keeps losers' collateral, and its providers earn the trading and funding fees in return. The price comes from an oracle, positions accrue a funding fee over time, and anyone can **liquidate** a position whose collateral can no longer cover its loss. This is the design behind venues like Jupiter Perpetuals and GMX.
 
 [⚓ Anchor](./finance/perpetual-futures/anchor) [💫 Quasar](./finance/perpetual-futures/quasar)
 
@@ -384,6 +384,32 @@ Work with Metaplex compressed NFTs.
 Generate an IDL from a native Rust program with [Shank](https://github.com/metaplex-foundation/shank), then generate a Rust client from that IDL with [Codama](https://github.com/codama-idl/codama).
 
 [🦀 Native](./tools/shank-and-codama/native)
+
+## FAQ
+
+### Is a Solana program the same as a smart contract?
+
+Yes. "Program" is Solana's term for what other chains call a smart contract: code deployed onchain that holds state in accounts and executes instructions. Everything in this repository is a Solana program.
+
+### How do I build an escrow on Solana?
+
+Start with the [escrow example](./finance/escrow/anchor/), the best first finance program to learn: one state PDA, one vault, and three instruction handlers that swap two tokens atomically. There is also a [30-minute video walkthrough](https://www.youtube.com/watch?v=B5eBWWQfQuM) building it from scratch.
+
+### How do I test a Solana program without running a validator?
+
+Use [LiteSVM](https://www.anchor-lang.com/docs/testing/litesvm): Rust integration tests that run the program in-process, orders of magnitude faster than `solana-test-validator`. Every example in this repository tests this way, and `anchor init` scaffolds it by default since Anchor 1.0.
+
+### What is the difference between Anchor, Quasar, Pinocchio, and native Rust?
+
+[Anchor](https://www.anchor-lang.com/) is the most popular Solana framework, generating account validation and serialization from declarative constraints. [Quasar](https://quasar-lang.com/docs) offers Anchor-like ergonomics with zero-copy, `no_std` performance and smaller binaries. [Pinocchio](https://github.com/anza-xyz/pinocchio) is a zero-allocation library for hand-rolled programs, and native Rust uses Solana's crates directly with no framework. Most examples here ship several variants of the same program so you can compare.
+
+### What is the best way to learn Solana finance programming?
+
+Work through the [finance examples](#financial-software-defi) in order of complexity: [escrow](./finance/escrow/anchor/), then [token swap AMM](./finance/token-swap/anchor/), [order book](./finance/order-book/anchor/), [lending](./finance/lending/anchor/), and [perpetual futures](./finance/perpetual-futures/anchor/). Each README explains the financial mechanics in plain terms before the code.
+
+### Are these examples production-ready?
+
+They are teaching examples: every one builds and passes CI, and the finance programs additionally carry [Kani](https://github.com/model-checking/kani) formal-verification proofs of their money math. None are audited or deployed to mainnet, so treat them as reference implementations to learn from, not code to deploy as-is.
 
 ## Acknowledgements
 

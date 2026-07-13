@@ -58,7 +58,8 @@ Also update [CHANGELOG.md](./CHANGELOG.md) when you ship user-visible changes.
 
 Write American English in prose (e.g. "behavior", "initialize", "favor"). Code identifiers stay as-is.
 
-- One H1 per markdown file.
+- One H1 per markdown file. Example READMEs title it `# Solana <Example> (<Framework>)`, e.g. `# Solana Escrow (Anchor)`.
+- No em-dashes in prose. Use a colon, comma, or a new sentence.
 - Fenced code blocks include a language tag (` ```rust `, ` ```typescript `, ` ```bash `, ` ```toml `).
 - Link canonical Solana terms to the [terminology page](https://solana.com/docs/references/terminology) on first mention in READMEs.
 

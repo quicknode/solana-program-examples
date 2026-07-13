@@ -1,6 +1,6 @@
-# Order Book: Central Limit Order Book (CLOB), Quasar port
+# Solana Order Book Exchange (Quasar)
 
-A [central limit order book (CLOB)](https://www.investopedia.com/terms/l/limitorderbook.asp), the market
+A [central limit order book (CLOB)](https://www.investopedia.com/terms/l/limitorderbook.asp) on Solana, the market
 structure NYSE, NASDAQ, CME, and onchain venues like Phoenix and OpenBook run on. Users post buy or sell
 offers at prices they pick; the program matches crossing offers in **price-time priority** and settles the
 resulting token movements.

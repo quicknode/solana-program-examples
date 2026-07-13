@@ -1,6 +1,6 @@
-# Escrow (Quasar)
+# Solana Escrow (Quasar)
 
-Atomic token swap escrow between maker and taker.
+An atomic token swap escrow on Solana, written with Quasar: the program holds a maker's tokens in a vault until a taker delivers the tokens the maker asked for, then releases both sides in one transaction.
 
 See also: the [repository catalog](../../../README.md).
 

@@ -1,6 +1,6 @@
-# Perpetual Futures
+# Solana Perpetual Futures (Anchor)
 
-A perpetual futures exchange: a venue for making leveraged bets on an asset's price without ever owning the asset. It is modelled on the oracle-priced, pool-collateralized design used by [Jupiter Perpetuals](https://station.jup.ag/guides/perpetual-exchange/overview) and GMX (and the open-source [`solana-labs/perpetuals`](https://github.com/solana-labs/perpetuals) reference that [Adrena](https://github.com/AdrenaFoundation/adrena-program) and [Flash Trade](https://github.com/flash-trade/flash-perpetuals) fork), rather than the order-book design used by [Drift](https://docs.drift.trade/).
+A perpetual futures exchange on Solana: a venue for making leveraged bets on an asset's price without ever owning the asset. It is modelled on the oracle-priced, pool-collateralized design used by [Jupiter Perpetuals](https://station.jup.ag/guides/perpetual-exchange/overview) and GMX (and the open-source [`solana-labs/perpetuals`](https://github.com/solana-labs/perpetuals) reference that [Adrena](https://github.com/AdrenaFoundation/adrena-program) and [Flash Trade](https://github.com/flash-trade/flash-perpetuals) fork), rather than the order-book design used by [Drift](https://docs.drift.trade/).
 
 The collateral is **USDC** (a dollar stablecoin), and the market tracks the price of **NVDAx**, a tokenised Nvidia share whose [oracle](#oracle) price follows the real stock. A second market could track **TSLAx** (Tesla); each market is one collateral token plus one price feed. In the tests these are mock [SPL tokens](https://solana.com/docs/terminology#token).
 
@@ -213,3 +213,21 @@ cargo test --manifest-path programs/perpetual-futures/Cargo.toml
 ```
 
 `anchor build` first, so the LiteSVM tests can load each program's compiled `.so` via `include_bytes!`.
+
+## FAQ
+
+### How do perpetual futures work on Solana?
+
+A perp is a derivative with no expiry: traders post USDC collateral and open a leveraged long or short with `open_position`, and their profit or loss tracks an oracle price, paid in the collateral token when they `close_position`. No stock or coin ever changes hands.
+
+### Who is the counterparty to each trade?
+
+A shared liquidity pool. Providers fund it with `add_liquidity` and earn the trading and funding fees; the pool pays winners and keeps losers' collateral. This is the pool-collateralized design used by Jupiter Perpetuals and GMX, as opposed to the order-book design used by Drift.
+
+### How does liquidation work?
+
+When a position's collateral can no longer cover its loss past the maintenance margin, anyone can call `liquidate_position` to close it. Prices come from the oracle feed on every check.
+
+### How do I run this example?
+
+`anchor build`, then `cargo test --manifest-path programs/perpetual-futures/Cargo.toml`. The tests run against LiteSVM with a mock price feed (`initialize_feed`, `set_price`) to drive deterministic price scenarios.

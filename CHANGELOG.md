@@ -4,6 +4,24 @@ All notable changes to this repository are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-07-11] - Discoverability and FAQ pass
+
+### Fixed
+
+- Quasar CI broke repo-wide when `quasar-svm`'s HEAD (`c63afd2`, "sbpf v3") moved to `solana-program-runtime` 4.1 / `solana-address` 2.6, which cannot co-resolve with the pinned `quasar-lang` rev `623bb70` (needs `solana-address` <2.6). Pinned `quasar-svm` to `cb7565d` (the last rev before the bump) in every Quasar example that pins `quasar-lang`, matching the pin `prop-amm` already carried. `basics/pyth` and the three `compression` Quasar examples float both dependencies and are left as-is.
+
+### Added
+
+- FAQ sections, written as the questions people actually ask, in the root README and every finance example's `anchor/` README.
+- `llms.txt` at the repository root: a summary and link manifest for LLM crawlers and answer engines.
+- `docs/example-readme-template.md`, the example-README template that `CONTRIBUTING.md` referenced but which did not exist. It documents the H1 convention and the definition-first opener.
+
+### Changed
+
+- Every finance example README now titles itself `# Solana <Example> (<Framework>)` (e.g. `# Solana Escrow (Anchor)`) and opens with a self-contained definition that names Solana, so each example page stands alone in search results.
+- The root README states its toolchain currency explicitly (Anchor 1.1, LiteSVM, July 2026) with a pointer to this changelog.
+- `CONTRIBUTING.md` style rules now include the README H1 naming convention and the no-em-dash rule.
+
 ## [2026-07-10] - Failed fundraisers can be retired
 
 ### Added

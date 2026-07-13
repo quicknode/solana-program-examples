@@ -1,6 +1,6 @@
-# Token Fundraiser
+# Solana Token Fundraiser (Anchor)
 
-Create a fundraiser that collects tokens. A **maker** creates a fundraiser [account](https://solana.com/docs/terminology#account), specifies the [mint](https://solana.com/docs/terminology#token-mint) they want to receive, the target amount, and a duration in days. **Contributors** contribute while the window is open. If the target is reached, the maker claims the funds; if it is not reached by the deadline, contributors can refund, and once refunds are complete the maker can retire the fundraiser and open a new one.
+Onchain crowdfunding on Solana: a program that collects tokens toward a target amount, like Kickstarter without a payment processor. A **maker** creates a fundraiser [account](https://solana.com/docs/terminology#account), specifies the [mint](https://solana.com/docs/terminology#token-mint) they want to receive, the target amount, and a duration in days. **Contributors** contribute while the window is open. If the target is reached, the maker claims the funds; if it is not reached by the deadline, contributors can refund, and once refunds are complete the maker can retire the fundraiser and open a new one.
 
 ## Architecture
 
@@ -143,3 +143,17 @@ cargo test
 ```
 
 The suite uses a nonzero duration and warps the LiteSVM `Clock` sysvar to exercise both sides of every deadline: contributing inside the window succeeds, contributing after the deadline fails, refunding before the deadline fails, and refunding after the deadline succeeds when the target was not met. It exercises both contribution caps (a single contribution over the 10% cap, and contributions that cumulatively exceed it), and verifies that the claim pays the maker and closes the vault, that direct vault donations do not unlock the claim, and that `close_fundraiser` retires a failed raise (only after the deadline, only when the target was missed, only once refunds are complete, sweeping direct donations to the maker) and lets the same maker initialize a fresh fundraiser. Assertions check token balances and decoded account state rather than just transaction success.
+
+## FAQ
+
+### How do I build crowdfunding on Solana?
+
+A maker opens a fundraiser with `initialize`, naming the token, target amount, and duration. Contributors deposit with `contribute` while the window is open, and the funds sit in a program-controlled vault that neither side can raid. When the target is reached, the maker claims the raise with `check_contributions`, which pays out the vault and closes the fundraiser.
+
+### What happens if the fundraiser misses its target?
+
+Contributors call `refund` after the deadline to reclaim exactly what they put in. Once refunds are complete, the maker calls `close_fundraiser` to retire the failed raise and can then open a new one.
+
+### How is this fundraiser tested and verified?
+
+`anchor build` then `cargo test` runs LiteSVM tests that warp the clock across the deadline to exercise contribution windows, per-contributor caps, claims, refunds, and closing. The money math has [Kani](https://github.com/model-checking/kani) proofs in [`../kani-proofs/`](../kani-proofs/).
