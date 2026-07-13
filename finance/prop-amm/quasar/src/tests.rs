@@ -367,97 +367,97 @@ fn test_initialize_market() {
     );
 }
 
-/// Alice buys 10 NVDAx. At $165 with a 10 bps spread the ask is $165.165, so
-/// 10 NVDAx costs exactly 1,651.65 USDC.
+/// Alice buys 5 NVDAx. At $165 with a 10 bps spread the ask is $165.165, so
+/// 5 NVDAx costs exactly 825.825 USDC.
 #[test]
 fn test_swap_buys_base_at_the_ask() {
     let mut env = setup();
-    let quote_in = 1_651_650_000;
+    let quote_in = 825_825_000;
     let alice = env.funded_wallet(0, quote_in);
 
-    assert!(env.swap(&alice, DIRECTION_BUY_BASE, quote_in, 10 * ONE_TOKEN));
+    assert!(env.swap(&alice, DIRECTION_BUY_BASE, quote_in, 5 * ONE_TOKEN));
 
     assert_eq!(
         token_amount(&env.svm, &ata(&alice, &env.base_mint)),
-        10 * ONE_TOKEN
+        5 * ONE_TOKEN
     );
     assert_eq!(token_amount(&env.svm, &ata(&alice, &env.quote_mint)), 0);
     // Conservation: the vaults moved by exactly the two legs of the fill.
-    assert_eq!(token_amount(&env.svm, &env.base_vault), 990 * ONE_TOKEN);
+    assert_eq!(token_amount(&env.svm, &env.base_vault), 995 * ONE_TOKEN);
     assert_eq!(
         token_amount(&env.svm, &env.quote_vault),
         200_000 * ONE_TOKEN + quote_in
     );
 }
 
-/// Bob sells 10 NVDAx. At $165 with a 10 bps spread the bid is $164.835, so
-/// he receives exactly 1,648.35 USDC.
+/// Bob sells 5 NVDAx. At $165 with a 10 bps spread the bid is $164.835, so
+/// he receives exactly 824.175 USDC.
 #[test]
 fn test_swap_sells_base_at_the_bid() {
     let mut env = setup();
-    let bob = env.funded_wallet(10 * ONE_TOKEN, 0);
+    let bob = env.funded_wallet(5 * ONE_TOKEN, 0);
 
-    assert!(env.swap(&bob, DIRECTION_SELL_BASE, 10 * ONE_TOKEN, 1_648_350_000));
+    assert!(env.swap(&bob, DIRECTION_SELL_BASE, 5 * ONE_TOKEN, 824_175_000));
 
     assert_eq!(token_amount(&env.svm, &ata(&bob, &env.base_mint)), 0);
     assert_eq!(
         token_amount(&env.svm, &ata(&bob, &env.quote_mint)),
-        1_648_350_000
+        824_175_000
     );
 }
 
-/// A buy immediately followed by a sell of the same 10 NVDAx costs exactly
-/// the round-trip spread: 3.30 USDC, all of which stays in the inventory.
+/// A buy immediately followed by a sell of the same 5 NVDAx costs exactly
+/// the round-trip spread: 1.65 USDC, all of which stays in the inventory.
 #[test]
 fn test_round_trip_costs_exactly_the_spread() {
     let mut env = setup();
-    let quote_in = 1_651_650_000;
+    let quote_in = 825_825_000;
     let carol = env.funded_wallet(0, quote_in);
 
     assert!(env.swap(&carol, DIRECTION_BUY_BASE, quote_in, 0));
-    assert!(env.swap(&carol, DIRECTION_SELL_BASE, 10 * ONE_TOKEN, 0));
+    assert!(env.swap(&carol, DIRECTION_SELL_BASE, 5 * ONE_TOKEN, 0));
 
     assert_eq!(token_amount(&env.svm, &ata(&carol, &env.base_mint)), 0);
     assert_eq!(
         token_amount(&env.svm, &ata(&carol, &env.quote_mint)),
-        quote_in - 3_300_000
+        quote_in - 1_650_000
     );
     assert_eq!(
         token_amount(&env.svm, &env.quote_vault),
-        200_000 * ONE_TOKEN + 3_300_000
+        200_000 * ONE_TOKEN + 1_650_000
     );
 }
 
 /// When the oracle reprices, the quote follows instantly. At $170 the ask is
-/// $170.17, so 10 NVDAx costs exactly 1,701.70 USDC.
+/// $170.17, so 5 NVDAx costs exactly 850.85 USDC.
 #[test]
 fn test_quote_follows_the_oracle() {
     let mut env = setup();
     env.set_price(dollars(170));
 
-    let quote_in = 1_701_700_000;
+    let quote_in = 850_850_000;
     let alice = env.funded_wallet(0, quote_in);
-    assert!(env.swap(&alice, DIRECTION_BUY_BASE, quote_in, 10 * ONE_TOKEN));
+    assert!(env.swap(&alice, DIRECTION_BUY_BASE, quote_in, 5 * ONE_TOKEN));
     assert_eq!(
         token_amount(&env.svm, &ata(&alice, &env.base_mint)),
-        10 * ONE_TOKEN
+        5 * ONE_TOKEN
     );
 }
 
 /// The operator re-quotes to a 50 bps spread; the next fill prices at
-/// $165.825, so 10 NVDAx costs exactly 1,658.25 USDC.
+/// $165.825, so 5 NVDAx costs exactly 829.125 USDC.
 #[test]
 fn test_set_quote_changes_the_spread() {
     let mut env = setup();
     let operator = env.operator;
     assert!(env.set_quote(&operator, 50, 0));
 
-    let quote_in = 1_658_250_000;
+    let quote_in = 829_125_000;
     let alice = env.funded_wallet(0, quote_in);
-    assert!(env.swap(&alice, DIRECTION_BUY_BASE, quote_in, 10 * ONE_TOKEN));
+    assert!(env.swap(&alice, DIRECTION_BUY_BASE, quote_in, 5 * ONE_TOKEN));
     assert_eq!(
         token_amount(&env.svm, &ata(&alice, &env.base_mint)),
-        10 * ONE_TOKEN
+        5 * ONE_TOKEN
     );
 }
 
@@ -471,8 +471,8 @@ fn test_operator_can_withdraw_everything_and_swaps_then_fail() {
     assert_eq!(token_amount(&env.svm, &env.base_vault), 0);
     assert_eq!(token_amount(&env.svm, &env.quote_vault), 0);
 
-    let alice = env.funded_wallet(0, 1_651_650_000);
-    assert!(!env.swap(&alice, DIRECTION_BUY_BASE, 1_651_650_000, 0));
+    let alice = env.funded_wallet(0, 825_825_000);
+    assert!(!env.swap(&alice, DIRECTION_BUY_BASE, 825_825_000, 0));
 }
 
 #[test]
@@ -506,10 +506,10 @@ fn test_set_quote_rejects_non_operator() {
 #[test]
 fn test_swap_rejects_slippage() {
     let mut env = setup();
-    let quote_in = 1_651_650_000;
+    let quote_in = 825_825_000;
     let alice = env.funded_wallet(0, quote_in);
-    // The fill would be exactly 10 NVDAx; demand one minor unit more.
-    assert!(!env.swap(&alice, DIRECTION_BUY_BASE, quote_in, 10 * ONE_TOKEN + 1));
+    // The fill would be exactly 5 NVDAx; demand one minor unit more.
+    assert!(!env.swap(&alice, DIRECTION_BUY_BASE, quote_in, 5 * ONE_TOKEN + 1));
 }
 
 /// An oracle price older than the staleness bound cannot be traded against:
@@ -518,8 +518,8 @@ fn test_swap_rejects_slippage() {
 fn test_swap_rejects_stale_price() {
     let mut env = setup();
     env.make_price_stale();
-    let alice = env.funded_wallet(0, 1_651_650_000);
-    assert!(!env.swap(&alice, DIRECTION_BUY_BASE, 1_651_650_000, 0));
+    let alice = env.funded_wallet(0, 825_825_000);
+    assert!(!env.swap(&alice, DIRECTION_BUY_BASE, 825_825_000, 0));
 }
 
 /// A price the oracle itself is unsure about is rejected: the confidence band
@@ -528,8 +528,8 @@ fn test_swap_rejects_stale_price() {
 fn test_swap_rejects_wide_confidence() {
     let mut env = setup();
     env.set_price_with_confidence(dollars(165), 200_000_000);
-    let alice = env.funded_wallet(0, 1_651_650_000);
-    assert!(!env.swap(&alice, DIRECTION_BUY_BASE, 1_651_650_000, 0));
+    let alice = env.funded_wallet(0, 825_825_000);
+    assert!(!env.swap(&alice, DIRECTION_BUY_BASE, 825_825_000, 0));
 }
 
 /// While the operator has pulled its quotes, nobody can swap; unpausing
@@ -540,11 +540,11 @@ fn test_swap_rejects_when_paused() {
     let operator = env.operator;
     assert!(env.set_quote(&operator, SPREAD_BPS, 1));
 
-    let alice = env.funded_wallet(0, 1_651_650_000);
-    assert!(!env.swap(&alice, DIRECTION_BUY_BASE, 1_651_650_000, 0));
+    let alice = env.funded_wallet(0, 825_825_000);
+    assert!(!env.swap(&alice, DIRECTION_BUY_BASE, 825_825_000, 0));
 
     assert!(env.set_quote(&operator, SPREAD_BPS, 0));
-    assert!(env.swap(&alice, DIRECTION_BUY_BASE, 1_651_650_000, 10 * ONE_TOKEN));
+    assert!(env.swap(&alice, DIRECTION_BUY_BASE, 825_825_000, 5 * ONE_TOKEN));
 }
 
 #[test]
