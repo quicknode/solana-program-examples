@@ -1,6 +1,6 @@
-# Betting Market, Quasar port
+# Solana Betting Market (Quasar)
 
-A parimutuel betting market. An admin opens events (markets), adds the possible
+A parimutuel betting market on Solana, written with Quasar. An admin opens events (markets), adds the possible
 outcomes, and later settles or cancels each one. Bettors stake a fixed token on
 the outcome they think will happen; when the event is settled, the winners split
 the losing side's stakes in proportion to their own, after a protocol fee. This
@@ -107,7 +107,7 @@ cargo test            # QuasarSVM integration tests (they load the compiled .so)
 [QuasarSVM](https://github.com/blueshift-gg/quasar-svm), an in-process SVM. The
 suite in `src/tests.rs` drives the full lifecycle (open a market, add outcomes,
 place opposing bets, settle, claim the winnings, close the losing bet) and the
-cancel-and-refund path, asserting on-chain state, token balances, and fee
+cancel-and-refund path, asserting onchain state, token balances, and fee
 accounting at each step, plus an admin-authorization rejection.
 
 ## Extending

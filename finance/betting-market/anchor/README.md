@@ -1,6 +1,6 @@
-# Betting Market
+# Solana Betting Market (Anchor)
 
-A parimutuel (pooled) betting market. An admin opens an **event**, adds the possible
+A parimutuel (pooled) betting market on Solana. An admin opens an **event**, adds the possible
 **outcomes**, and bettors stake a token on the outcome they think will win. Every stake across
 every outcome goes into one pool. When the admin settles the event to the winning outcome, the
 losing stakes - minus a protocol fee - are split among the winners in proportion to their stake.
@@ -116,3 +116,17 @@ anchor test
 ```
 
 (`Anchor.toml` sets `test = "cargo test"`, so `cargo test` works too.)
+
+## FAQ
+
+### How does a prediction market work on Solana?
+
+This example uses the parimutuel (pooled) model: an admin opens an event with `create_event` and `add_outcome`, and bettors stake tokens on an outcome with `place_bet`. Every stake goes into one pool; after `settle_event` names the winning outcome, winners call `claim_winnings` to split the losing stakes, minus a protocol fee, in proportion to their own stake.
+
+### How are the odds set?
+
+By the crowd, not a bookmaker: each winner's payout scales with their share of the winning pool, so the implied odds shift as stakes arrive. This is the model used by Solana prediction-market platforms such as Hedgehog Markets and by racetrack tote boards.
+
+### What happens if an event is cancelled?
+
+The admin calls `cancel_event` and every bettor reclaims their full stake with `claim_refund`. After a settled event, losers reclaim their bet account's rent with `close_losing_bet`.

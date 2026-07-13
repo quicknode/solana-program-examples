@@ -1,8 +1,8 @@
-# Order Book: Central Limit Order Book (CLOB) Exchange
+# Solana Order Book Exchange (Anchor)
 
-This is an **[order book](https://www.investopedia.com/terms/o/order-book.asp)**: specifically, a **[central limit order
+This Solana program is an **[order book](https://www.investopedia.com/terms/o/order-book.asp)** exchange: specifically, a **[central limit order
 book (CLOB)](https://www.investopedia.com/terms/l/limitorderbook.asp)**, the standard piece of market infrastructure used by
-NYSE, NASDAQ, LSE, CME, and every crypto venues like Phoenix and Cube and OpenBook. An Anchor program that runs an onchain order book for a single pair of token mints:
+NYSE, NASDAQ, LSE, CME, and crypto venues like Phoenix, Cube, and OpenBook. Written with Anchor, it runs an onchain order book for a single pair of token mints:
 users post buy or sell offers at the prices they want, the program
 matches crossing offers in price-time priority, and settles the
 resulting token movements.
@@ -1609,3 +1609,21 @@ finance/order-book/anchor/
     └── tests/
         └── test_order_book.rs              LiteSVM tests
 ```
+
+## FAQ
+
+### How does an order book exchange work on Solana?
+
+Traders post limit orders with `place_order`: bids to buy and asks to sell, each at a named price. The program matches crossing orders in price-time priority, holds all funds in program-owned vaults, and pays out matched balances when a trader calls `settle_funds`. This is the same central limit order book (CLOB) design used by NYSE and by Solana venues like Phoenix and OpenBook.
+
+### How can order matching be fast enough onchain?
+
+Each side of the book is a critbit tree, so finding the best price takes O(log n) comparisons instead of a full scan; at 1024 resting orders that is at most 10 steps. The implementation is ported from [Openbook v2](https://github.com/openbook-dex/openbook-v2), a production Solana CLOB.
+
+### Why are matching and settlement separate steps?
+
+A taker crossing many makers would otherwise pay for a token transfer CPI per maker. Instead, fills only update the `unsettled_base` and `unsettled_quote` counters, and one later `settle_funds` call moves the tokens. Cancelling with `cancel_order` works the same way: it credits the counters, and the tokens move at settlement.
+
+### How does the exchange operator earn fees?
+
+Every fill charges the taker a fee in basis points, batched into a fee vault during `place_order`. The market authority sweeps it with `withdraw_fees`.

@@ -1,6 +1,6 @@
-# Prop AMM (Quasar)
+# Solana Prop AMM (Quasar)
 
-A [Quasar](https://quasar-lang.com/docs) port of the prop-amm example. The
+A [Quasar](https://quasar-lang.com/docs) port of the Solana prop-amm example. The
 design, math, and behaviour match the Anchor implementation at
 [`../anchor`](../anchor). Read that README for the full walkthrough of the
 oracle-quoted, operator-owned model. This page only covers what differs in the

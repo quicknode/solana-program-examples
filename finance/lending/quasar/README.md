@@ -1,4 +1,4 @@
-# Lending (Quasar)
+# Solana Lending (Quasar)
 
 A Kamino/Solend-style borrow/lend program written with [Quasar](https://quasar-lang.com),
 a zero-copy, `no_std` Solana framework. It is the Quasar counterpart to the Anchor

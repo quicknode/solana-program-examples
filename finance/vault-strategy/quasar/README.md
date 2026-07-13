@@ -1,6 +1,6 @@
-# Vault Strategy, Quasar port
+# Solana Vault Strategy (Quasar)
 
-A tokenized multi-asset vault. A manager assembles a basket of whitelisted
+A tokenized multi-asset vault on Solana, written with Quasar. A manager assembles a basket of whitelisted
 assets at target weights; anyone can deposit USDC and receive shares priced at
 the vault's net asset value, and each deposit is immediately deployed into the
 basket by swapping USDC into every asset at its weight. Withdrawals burn shares

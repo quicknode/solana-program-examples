@@ -1,0 +1,28 @@
+# Solana Program Examples
+
+> Working, tested, up-to-date Solana program ('smart contract') examples, maintained by Quicknode. Focused on financial software ('DeFi'): every finance example ships LiteSVM integration tests and Kani formal-verification proofs of its money math, and builds in CI on Anchor 1.1. Most examples are available in several frameworks: Anchor, Quasar, Pinocchio, native Rust, and sBPF assembly.
+
+A Solana program is what other chains call a smart contract. These examples are reference implementations for learning: tested and formally verified, but not audited or deployed to mainnet.
+
+## Finance examples
+
+- [Solana Escrow](https://github.com/quicknode/solana-program-examples/tree/main/finance/escrow/anchor): the best first Solana finance program. Holds a maker's tokens in a vault until a taker delivers the requested tokens, then swaps both atomically.
+- [Solana Lending](https://github.com/quicknode/solana-program-examples/tree/main/finance/lending/anchor): a Kamino/Solend-style borrow/lend market with share-token deposits, a utilization-based interest index, oracle-priced health, and liquidation.
+- [Solana Order Book Exchange](https://github.com/quicknode/solana-program-examples/tree/main/finance/order-book/anchor): a central limit order book (CLOB) with price-time priority matching on a critbit tree, ported from Openbook v2.
+- [Solana Token Swap AMM](https://github.com/quicknode/solana-program-examples/tree/main/finance/token-swap/anchor): a constant-product automated market maker with liquidity pools, LP tokens, and slippage guards, like Raydium or Orca.
+- [Solana Prop AMM](https://github.com/quicknode/solana-program-examples/tree/main/finance/prop-amm/anchor): an oracle-quoted proprietary AMM where one market-making firm supplies all capital and earns the spread, like Lifinity or SolFi.
+- [Solana Perpetual Futures](https://github.com/quicknode/solana-program-examples/tree/main/finance/perpetual-futures/anchor): a pool-collateralized leveraged perps exchange with funding, maintenance margin, and liquidation, like Jupiter Perpetuals.
+- [Solana Vault Strategy](https://github.com/quicknode/solana-program-examples/tree/main/finance/vault-strategy/anchor): a manager-run onchain fund. Investors deposit USDC for shares priced at net asset value across a weighted asset basket.
+- [Solana Betting Market](https://github.com/quicknode/solana-program-examples/tree/main/finance/betting-market/anchor): a parimutuel prediction market where winners split the losing pool in proportion to their stake.
+- [Solana Token Fundraiser](https://github.com/quicknode/solana-program-examples/tree/main/finance/token-fundraiser/anchor): onchain crowdfunding toward a target amount, with refunds if the deadline passes unmet.
+
+## Getting started
+
+- [Repository README](https://github.com/quicknode/solana-program-examples/blob/main/README.md): full catalog including basics, tokens, Token Extensions, and state compression examples, plus setup instructions.
+- [Contributing guidelines](https://github.com/quicknode/solana-program-examples/blob/main/CONTRIBUTING.md): how examples are structured, tested, and documented.
+- [Changelog](https://github.com/quicknode/solana-program-examples/blob/main/CHANGELOG.md): release history and toolchain currency.
+
+## Testing and verification
+
+- Tests are Rust integration tests against [LiteSVM](https://www.anchor-lang.com/docs/testing/litesvm), run with `cargo test`; no local validator is needed.
+- Every finance example has a `kani-proofs/` directory with [Kani](https://github.com/model-checking/kani) harnesses proving money-math invariants over all inputs, for example [escrow's proofs](https://github.com/quicknode/solana-program-examples/tree/main/finance/escrow/kani-proofs).

@@ -1,4 +1,4 @@
-# Escrow (Native)
+# Solana Escrow (Native)
 
 This Solana program is an **escrow** written directly against `solana-program`, with no framework. It lets a **maker** swap a specific amount of one token for a desired amount of another token with a **taker**, atomically and without either party having to trust the other.
 

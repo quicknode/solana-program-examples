@@ -1,6 +1,6 @@
-# Token Swap (AMM) (Quasar)
+# Solana Token Swap AMM (Quasar)
 
-Constant-product AMM: pools, liquidity, swaps with slippage guards.
+A constant-product AMM on Solana, written with Quasar: pools, liquidity, swaps with slippage guards.
 
 See also: [Token Swap overview](../README.md) and the [repository catalog](../../../README.md).
 
