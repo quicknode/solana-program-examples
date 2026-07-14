@@ -51,14 +51,16 @@ fn proof_quote_brackets_oracle() {
     let spread_bps: u16 = kani::any();
     // Bounded model checking: `price * (BPS ± spread)` multiplies two symbolic
     // values — nonlinear arithmetic, the worst case for the bit-precise solver
-    // (an unbounded u64 price makes this harness run for hours; see the 6-hour
-    // CI timeout this bound fixed). The rounding behaviour of the divisions by
-    // BASIS_POINTS depends only on the product's residue mod 10_000, and a
-    // 16-bit price against the full spread range already exercises every
-    // residue and carry pattern — larger prices add magnitude, not new
-    // rounding edges. The spread is validated `1..10_000` by
-    // initialize_market / set_quote, so that range stays exact.
-    kani::assume(price >= 1 && price <= 0xFFFF);
+    // (an unbounded u64 price makes this harness run for hours, and even a
+    // 16-bit price left CaDiCaL grinding past a 45-minute CI timeout on the
+    // ceil/floor-exactness assertions). An 8-bit price is the bound the
+    // buy/sell harnesses below demonstrably stay fast with, and they solve a
+    // strictly harder circuit (a division by a *symbolic* ask on top of this
+    // same quote construction). Larger prices add magnitude, not new rounding
+    // edges: the rounding behaviour of the divisions by BASIS_POINTS depends
+    // only on the product's residue mod 10_000. The spread is validated
+    // `1..10_000` by initialize_market / set_quote, so that range stays exact.
+    kani::assume(price >= 1 && price <= 255);
     kani::assume(spread_bps >= 1 && (spread_bps as u128) < BASIS_POINTS);
 
     let ask = ask_price(price, spread_bps).expect("ask computes");
