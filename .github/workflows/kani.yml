@@ -76,6 +76,12 @@ jobs:
     name: Kani proofs (${{ matrix.program }})
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    # Every crate's proofs complete in under ~3 minutes. A harness whose bounds
+    # make the solver blow up otherwise runs into the runner's 6-hour hard
+    # limit and surfaces as an easy-to-miss "cancelled" run (this happened:
+    # prop-amm's quote-bracketing harness with an unbounded u64 price). Fail
+    # fast and loudly instead.
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
