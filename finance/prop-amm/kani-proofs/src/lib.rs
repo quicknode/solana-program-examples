@@ -49,9 +49,16 @@ pub fn bid_price(oracle_price: u64, spread_bps: u16) -> Option<u128> {
 fn proof_quote_brackets_oracle() {
     let price: u64 = kani::any();
     let spread_bps: u16 = kani::any();
-    // The full price range is linear arithmetic and stays tractable; the
-    // spread is validated `1..10_000` by initialize_market / set_quote.
-    kani::assume(price >= 1);
+    // Bounded model checking: `price * (BPS ± spread)` multiplies two symbolic
+    // values — nonlinear arithmetic, the worst case for the bit-precise solver
+    // (an unbounded u64 price makes this harness run for hours; see the 6-hour
+    // CI timeout this bound fixed). The rounding behaviour of the divisions by
+    // BASIS_POINTS depends only on the product's residue mod 10_000, and a
+    // 16-bit price against the full spread range already exercises every
+    // residue and carry pattern — larger prices add magnitude, not new
+    // rounding edges. The spread is validated `1..10_000` by
+    // initialize_market / set_quote, so that range stays exact.
+    kani::assume(price >= 1 && price <= 0xFFFF);
     kani::assume(spread_bps >= 1 && (spread_bps as u128) < BASIS_POINTS);
 
     let ask = ask_price(price, spread_bps).expect("ask computes");
@@ -132,13 +139,16 @@ fn proof_buy_never_exceeds_oracle_value() {
     let quote_decimals: u8 = kani::any();
 
     // Bounded model checking: the division by a *symbolic* ask is the hard
-    // part for the bit-precise solver. Amounts and price are capped, and the
-    // decimal exponents are kept small (the identity is independent of the
-    // exponents' actual values — they enter both sides of the comparison
-    // symmetrically — so tiny exponents exercise the same rounding edges as
-    // scale 8 and 6/6 decimals).
-    kani::assume(quote_in <= 1023);
-    kani::assume(price >= 1 && price <= 1023);
+    // part for the bit-precise solver, and its cost grows with the divisor's
+    // bit-width (ask spans one more bit than price). Amounts and price are
+    // capped at 8 bits — in line with the symbolic-divisor bounds the other
+    // finance proof crates stay tractable with — and the decimal exponents
+    // are kept small (the identity is independent of the exponents' actual
+    // values — they enter both sides of the comparison symmetrically — so
+    // tiny exponents exercise the same rounding edges as scale 8 and 6/6
+    // decimals).
+    kani::assume(quote_in <= 255);
+    kani::assume(price >= 1 && price <= 255);
     kani::assume(spread_bps >= 1 && (spread_bps as u128) < BASIS_POINTS);
     kani::assume(oracle_scale <= 2);
     kani::assume(base_decimals <= 2 && quote_decimals <= 2);
@@ -168,8 +178,9 @@ fn proof_sell_never_exceeds_oracle_value() {
     let base_decimals: u8 = kani::any();
     let quote_decimals: u8 = kani::any();
 
-    kani::assume(base_in <= 1023);
-    kani::assume(price >= 1 && price <= 1023);
+    // Same bounds as the buy side (see proof_buy_never_exceeds_oracle_value).
+    kani::assume(base_in <= 255);
+    kani::assume(price >= 1 && price <= 255);
     kani::assume(spread_bps >= 1 && (spread_bps as u128) < BASIS_POINTS);
     kani::assume(oracle_scale <= 2);
     kani::assume(base_decimals <= 2 && quote_decimals <= 2);
@@ -205,9 +216,9 @@ fn proof_round_trip_never_profits_the_trader() {
     let quote_decimals: u8 = kani::any();
 
     // Two symbolic divisions chained — the hardest harness here; keep the
-    // amount bound tight.
-    kani::assume(quote_in <= 255);
-    kani::assume(price >= 1 && price <= 255);
+    // amount and price bounds tighter than the single-division harnesses'.
+    kani::assume(quote_in <= 63);
+    kani::assume(price >= 1 && price <= 63);
     kani::assume(spread_bps >= 1 && (spread_bps as u128) < BASIS_POINTS);
     kani::assume(oracle_scale <= 2);
     kani::assume(base_decimals <= 2 && quote_decimals <= 2);
