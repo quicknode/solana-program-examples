@@ -27,7 +27,7 @@ pub struct InitializeStrategyAccountConstraints<'info> {
 
     pub usdc_mint: InterfaceAccount<'info, Mint>,
 
-    /// The whitelist this strategy will draw its assets from.
+    /// Registry whose approved assets this strategy may hold.
     pub registry: Account<'info, Registry>,
 
     #[account(

@@ -14,7 +14,8 @@ declare_id!("VLT5W7bqhRN4nCdRpXm8UfHRxZd9EuZGqiSAkGHQfGh");
 pub mod vault_strategy {
     use super::*;
 
-    /// Create a curated whitelist of assets, owned by `authority` (not a manager).
+    /// Create the curator record for an approved-asset set, owned by `authority`
+    /// (not a manager). The set itself lives in per-asset ApprovedAsset accounts.
     pub fn initialize_registry(
         context: Context<InitializeRegistryAccountConstraints>,
     ) -> Result<()> {
@@ -22,11 +23,11 @@ pub mod vault_strategy {
     }
 
     /// Approve a mint and bind it to its official price feed. Registry authority only.
-    pub fn whitelist_asset(
-        context: Context<WhitelistAssetAccountConstraints>,
+    pub fn approve_asset(
+        context: Context<ApproveAssetAccountConstraints>,
         price_feed: Pubkey,
     ) -> Result<()> {
-        instructions::whitelist_asset::handle_whitelist_asset(context, price_feed)
+        instructions::approve_asset::handle_approve_asset(context, price_feed)
     }
 
     /// Open a strategy at a caller-chosen index, e.g. index 0 derives the PDA
@@ -47,7 +48,7 @@ pub mod vault_strategy {
         )
     }
 
-    /// Add a whitelisted asset to the strategy at the next index. Manager only.
+    /// Add a curator-approved asset to the strategy at the next index. Manager only.
     pub fn add_asset(context: Context<AddAssetAccountConstraints>, weight_bps: u16) -> Result<()> {
         instructions::add_asset::handle_add_asset(context, weight_bps)
     }

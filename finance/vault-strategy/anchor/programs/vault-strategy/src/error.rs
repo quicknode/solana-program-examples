@@ -12,8 +12,6 @@ pub enum VaultError {
     SlippageConfigTooHigh,
     #[msg("Asset mint is not part of this strategy")]
     AssetNotFound,
-    #[msg("Asset mint is not whitelisted in the registry")]
-    AssetNotWhitelisted,
     #[msg("Strategy already holds the maximum number of assets")]
     TooManyAssets,
     #[msg("Asset is already part of this strategy")]
