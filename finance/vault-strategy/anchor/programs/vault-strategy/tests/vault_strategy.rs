@@ -105,8 +105,8 @@ struct TestContext {
     strategy_pda: Pubkey,
     share_mint_pda: Pubkey,
     registry_pda: Pubkey,
-    whitelist_tsla: Pubkey,
-    whitelist_nvda: Pubkey,
+    approved_tsla: Pubkey,
+    approved_nvda: Pubkey,
     router_config_pda: Pubkey,
     router_authority_pda: Pubkey,
     tsla_rate_pda: Pubkey,
@@ -130,7 +130,7 @@ impl TestContext {
 }
 
 /// Mints, router (config + rates + treasury), Pyth feeds, a registry with TSLAx
-/// and NVDAx whitelisted, and all derived PDAs. Does not create the strategy.
+/// and NVDAx approved, and all derived PDAs. Does not create the strategy.
 fn setup_full() -> TestContext {
     let vault_program_id = vault_strategy::id();
     let router_program_id = mock_swap_router::id();
@@ -192,12 +192,12 @@ fn setup_full() -> TestContext {
         Pubkey::find_program_address(&[b"share_mint", strategy_pda.as_ref()], &vault_program_id);
     let (registry_pda, _) =
         Pubkey::find_program_address(&[b"registry", payer.pubkey().as_ref()], &vault_program_id);
-    let (whitelist_tsla, _) = Pubkey::find_program_address(
-        &[b"whitelist", registry_pda.as_ref(), tsla_mint.as_ref()],
+    let (approved_tsla, _) = Pubkey::find_program_address(
+        &[b"approved_asset", registry_pda.as_ref(), tsla_mint.as_ref()],
         &vault_program_id,
     );
-    let (whitelist_nvda, _) = Pubkey::find_program_address(
-        &[b"whitelist", registry_pda.as_ref(), nvda_mint.as_ref()],
+    let (approved_nvda, _) = Pubkey::find_program_address(
+        &[b"approved_asset", registry_pda.as_ref(), nvda_mint.as_ref()],
         &vault_program_id,
     );
     let (router_config_pda, _) =
@@ -271,7 +271,7 @@ fn setup_full() -> TestContext {
     )
     .unwrap();
 
-    // Registry with both basket assets whitelisted, bound to their feeds.
+    // Registry with both basket assets approved, bound to their feeds.
     let init_registry_ix = Instruction::new_with_bytes(
         vault_program_id,
         &vault_strategy::instruction::InitializeRegistry {}.data(),
@@ -291,17 +291,17 @@ fn setup_full() -> TestContext {
     .unwrap();
 
     for (mint, feed, entry) in [
-        (tsla_mint, price_feed_tsla, whitelist_tsla),
-        (nvda_mint, price_feed_nvda, whitelist_nvda),
+        (tsla_mint, price_feed_tsla, approved_tsla),
+        (nvda_mint, price_feed_nvda, approved_nvda),
     ] {
         let ix = Instruction::new_with_bytes(
             vault_program_id,
-            &vault_strategy::instruction::WhitelistAsset { price_feed: feed }.data(),
-            vault_strategy::accounts::WhitelistAssetAccountConstraints {
+            &vault_strategy::instruction::ApproveAsset { price_feed: feed }.data(),
+            vault_strategy::accounts::ApproveAssetAccountConstraints {
                 authority: payer.pubkey(),
                 registry: registry_pda,
                 asset_mint: mint,
-                whitelist_entry: entry,
+                approved_asset: entry,
                 system_program: system_program::id(),
             }
             .to_account_metas(None),
@@ -321,8 +321,8 @@ fn setup_full() -> TestContext {
         strategy_pda,
         share_mint_pda,
         registry_pda,
-        whitelist_tsla,
-        whitelist_nvda,
+        approved_tsla,
+        approved_nvda,
         router_config_pda,
         router_authority_pda,
         tsla_rate_pda,
@@ -372,7 +372,7 @@ fn add_asset(
     ctx: &mut TestContext,
     index: u8,
     mint: Pubkey,
-    whitelist_entry: Pubkey,
+    approved_asset: Pubkey,
     vault: Pubkey,
     weight_bps: u16,
 ) -> Result<(), solana_kite::SolanaKiteError> {
@@ -385,7 +385,7 @@ fn add_asset(
             strategy: ctx.strategy_pda,
             registry: ctx.registry_pda,
             asset_mint: mint,
-            whitelist_entry,
+            approved_asset,
             asset_config,
             vault_asset: vault,
             associated_token_program: ata_program_id(),
@@ -406,9 +406,9 @@ fn add_asset(
 fn standard_strategy(ctx: &mut TestContext) {
     let router = ctx.router_program_id;
     init_strategy(ctx, FEE_BPS, SLIPPAGE_BPS, router);
-    let (tm, wt, vt) = (ctx.tsla_mint, ctx.whitelist_tsla, ctx.vault_tsla);
+    let (tm, wt, vt) = (ctx.tsla_mint, ctx.approved_tsla, ctx.vault_tsla);
     add_asset(ctx, 0, tm, wt, vt, 4000).unwrap();
-    let (nm, wn, vn) = (ctx.nvda_mint, ctx.whitelist_nvda, ctx.vault_nvda);
+    let (nm, wn, vn) = (ctx.nvda_mint, ctx.approved_nvda, ctx.vault_nvda);
     add_asset(ctx, 1, nm, wn, vn, 6000).unwrap();
 }
 
@@ -585,7 +585,7 @@ fn set_weight(
 fn tsla_only_strategy(ctx: &mut TestContext) {
     let router = ctx.router_program_id;
     init_strategy(ctx, FEE_BPS, SLIPPAGE_BPS, router);
-    let (tm, wt, vt) = (ctx.tsla_mint, ctx.whitelist_tsla, ctx.vault_tsla);
+    let (tm, wt, vt) = (ctx.tsla_mint, ctx.approved_tsla, ctx.vault_tsla);
     add_asset(ctx, 0, tm, wt, vt, 4000).unwrap();
 }
 
@@ -746,21 +746,25 @@ fn test_initialize_and_add_assets() {
 }
 
 #[test]
-fn test_add_asset_rejects_non_whitelisted() {
+fn test_add_asset_rejects_unapproved() {
     let mut ctx = setup_full();
     let router = ctx.router_program_id;
     init_strategy(&mut ctx, FEE_BPS, SLIPPAGE_BPS, router);
 
-    // A mint that was never whitelisted: its whitelist_entry PDA does not exist.
+    // A mint that was never approved: its approved_asset PDA does not exist.
     let rogue_mint = create_token_mint(&mut ctx.svm, &ctx.payer, TOKEN_DECIMALS, None).unwrap();
     let (rogue_entry, _) = Pubkey::find_program_address(
-        &[b"whitelist", ctx.registry_pda.as_ref(), rogue_mint.as_ref()],
+        &[
+            b"approved_asset",
+            ctx.registry_pda.as_ref(),
+            rogue_mint.as_ref(),
+        ],
         &ctx.vault_program_id,
     );
     let rogue_vault = derive_ata(&ctx.strategy_pda, &rogue_mint);
 
     let result = add_asset(&mut ctx, 0, rogue_mint, rogue_entry, rogue_vault, 5000);
-    assert!(result.is_err(), "adding a non-whitelisted mint must fail");
+    assert!(result.is_err(), "adding an unapproved mint must fail");
 }
 
 #[test]
@@ -768,33 +772,33 @@ fn test_add_asset_rejects_weight_overflow() {
     let mut ctx = setup_full();
     let router = ctx.router_program_id;
     init_strategy(&mut ctx, FEE_BPS, SLIPPAGE_BPS, router);
-    let (tm, wt, vt) = (ctx.tsla_mint, ctx.whitelist_tsla, ctx.vault_tsla);
+    let (tm, wt, vt) = (ctx.tsla_mint, ctx.approved_tsla, ctx.vault_tsla);
     add_asset(&mut ctx, 0, tm, wt, vt, 6000).unwrap();
-    let (nm, wn, vn) = (ctx.nvda_mint, ctx.whitelist_nvda, ctx.vault_nvda);
+    let (nm, wn, vn) = (ctx.nvda_mint, ctx.approved_nvda, ctx.vault_nvda);
     let result = add_asset(&mut ctx, 1, nm, wn, vn, 6000);
     assert!(result.is_err(), "weights over 10000 bps must fail");
 }
 
-/// Create a fresh mint and whitelist it in the registry. The bound price feed is an
+/// Create a fresh mint and approve it in the registry. The bound price feed is an
 /// arbitrary pubkey: callers that never value this asset (e.g. the cap boundary test)
 /// do not need a real feed account.
-fn create_and_whitelist_mint(ctx: &mut TestContext) -> (Pubkey, Pubkey) {
+fn create_and_approve_mint(ctx: &mut TestContext) -> (Pubkey, Pubkey) {
     let mint = create_token_mint(&mut ctx.svm, &ctx.payer, TOKEN_DECIMALS, None).unwrap();
     let (entry, _) = Pubkey::find_program_address(
-        &[b"whitelist", ctx.registry_pda.as_ref(), mint.as_ref()],
+        &[b"approved_asset", ctx.registry_pda.as_ref(), mint.as_ref()],
         &ctx.vault_program_id,
     );
     let ix = Instruction::new_with_bytes(
         ctx.vault_program_id,
-        &vault_strategy::instruction::WhitelistAsset {
+        &vault_strategy::instruction::ApproveAsset {
             price_feed: Keypair::new().pubkey(),
         }
         .data(),
-        vault_strategy::accounts::WhitelistAssetAccountConstraints {
+        vault_strategy::accounts::ApproveAssetAccountConstraints {
             authority: ctx.payer.pubkey(),
             registry: ctx.registry_pda,
             asset_mint: mint,
-            whitelist_entry: entry,
+            approved_asset: entry,
             system_program: system_program::id(),
         }
         .to_account_metas(None),
@@ -812,7 +816,7 @@ fn test_add_asset_enforces_max_assets() {
 
     // Fill the basket to the cap: 16 assets at 625 bps each = 10000.
     for index in 0..16u8 {
-        let (mint, entry) = create_and_whitelist_mint(&mut ctx);
+        let (mint, entry) = create_and_approve_mint(&mut ctx);
         let vault = derive_ata(&ctx.strategy_pda, &mint);
         add_asset(&mut ctx, index, mint, entry, vault, 625).unwrap();
     }
@@ -821,7 +825,7 @@ fn test_add_asset_enforces_max_assets() {
     assert_eq!(strategy.total_weight_bps, 10_000);
 
     // The 17th asset must be rejected. Weight 0 so the cap, not the weight sum, trips.
-    let (mint, entry) = create_and_whitelist_mint(&mut ctx);
+    let (mint, entry) = create_and_approve_mint(&mut ctx);
     let vault = derive_ata(&ctx.strategy_pda, &mint);
     let result = add_asset(&mut ctx, 16, mint, entry, vault, 0);
     assert!(result.is_err(), "adding beyond MAX_ASSETS must revert");
@@ -986,9 +990,9 @@ fn test_deposit_rejects_unregistered_router() {
     // Register a different router than the deployed mock, then fully allocate 40/60.
     let bogus_router = Pubkey::new_unique();
     init_strategy(&mut ctx, FEE_BPS, SLIPPAGE_BPS, bogus_router);
-    let (tm, wt, vt) = (ctx.tsla_mint, ctx.whitelist_tsla, ctx.vault_tsla);
+    let (tm, wt, vt) = (ctx.tsla_mint, ctx.approved_tsla, ctx.vault_tsla);
     add_asset(&mut ctx, 0, tm, wt, vt, 4000).unwrap();
-    let (nm, wn, vn) = (ctx.nvda_mint, ctx.whitelist_nvda, ctx.vault_nvda);
+    let (nm, wn, vn) = (ctx.nvda_mint, ctx.approved_nvda, ctx.vault_nvda);
     add_asset(&mut ctx, 1, nm, wn, vn, 6000).unwrap();
 
     let user = fund_user(&mut ctx, 10_000_000);

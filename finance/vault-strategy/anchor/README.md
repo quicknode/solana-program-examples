@@ -1,6 +1,6 @@
 # Solana Vault Strategy (Anchor)
 
-A manager-run investment vault on Solana. Users deposit [USDC](https://www.investopedia.com/terms/u/usd-coin-usdc.asp) and receive shares representing proportional ownership of a portfolio of assets. The manager adds assets from a curated whitelist and sets their target weights; each deposit is deployed across those assets at its weights in the same transaction. The manager rebalances as prices drift, earns a fee, and depositors withdraw their proportional slice in kind when they choose.
+A manager-run investment vault on Solana. Users deposit [USDC](https://www.investopedia.com/terms/u/usd-coin-usdc.asp) and receive shares representing proportional ownership of a portfolio of assets. The manager adds assets a curator has approved and sets their target weights; each deposit is deployed across those assets at its weights in the same transaction. The manager rebalances as prices drift, earns a fee, and depositors withdraw their proportional slice in kind when they choose.
 
 The example uses two stocks as the portfolio assets: **TSLAx** (Tesla) and **NVDAx** (NVIDIA) - [xStocks](https://backed.fi/xstocks) issued on Solana by Backed Finance. In tests these are mock [tokens](https://solana.com/docs/terminology#token).
 
@@ -10,7 +10,7 @@ A note on the word **vault**: by the common standard (ERC-4626) a vault holds a 
 
 ## Programs
 
-- **`vault-strategy`**: Registry/whitelist, strategy creation, asset registration, deposits, share minting, fee accrual, rebalancing, withdrawals
+- **`vault-strategy`**: Registry and approved assets, strategy creation, asset registration, deposits, share minting, fee accrual, rebalancing, withdrawals
 - **`mock-swap-router`**: Test-only fake Jupiter. Stores exchange rates, mints/burns basket tokens for USDC. Replaced by real [Jupiter](https://jup.ag) in production.
 
 ---
@@ -72,9 +72,9 @@ An [in-kind distribution](https://www.investopedia.com/terms/i/in-kind.asp) retu
 
 `Maria` and `Victor` are stored as plain `Pubkey`s and may each be a [Squads](https://squads.so/) multisig; the program only checks the signature.
 
-### Victor creates the registry and whitelists assets
+### Victor creates the registry and approves assets
 
-`initialize_registry()` creates a `Registry` PDA (`["registry", victor]`) owned by Victor. `whitelist_asset(price_feed)` then creates one `WhitelistEntry` PDA (`["whitelist", registry, mint]`) per approved mint, binding it to its official Pyth feed. Only Victor can do this. This separation is the anti-fraud core: a manager can only ever add assets Victor approved, and the feed comes from the registry, so a manager cannot list a token they mint themselves or pair a real mint with a feed they control.
+`initialize_registry()` creates a `Registry` PDA (`["registry", victor]`) owned by Victor. The registry holds no list; it only names the curator. The approved set is the collection of `ApprovedAsset` accounts under it: `approve_asset(price_feed)` creates one `ApprovedAsset` PDA (`["approved_asset", registry, mint]`) per approved mint, binding it to its official Pyth feed, and an asset counts as approved exactly when that account exists. Only Victor can create them. This separation is the anti-fraud core: a manager can only ever add assets Victor approved, and the feed comes from the registry, so a manager cannot list a token they mint themselves or pair a real mint with a feed they control.
 
 ### Maria initializes the strategy
 
@@ -82,7 +82,7 @@ An [in-kind distribution](https://www.investopedia.com/terms/i/in-kind.asp) retu
 
 ### Maria adds assets
 
-`add_asset(weight_bps)`, once per asset, creates an `AssetConfig` at `["asset", strategy, index]` (index = current `asset_count`), copies the official feed from the whitelist entry, and creates that asset's vault. TSLAx at index 0 (4000 bps), NVDAx at index 1 (6000 bps). Rejected if the mint is not whitelisted, if the weights would exceed 10,000 bps, or once `MAX_ASSETS` (8) is reached. Deposits stay closed until the weights sum to exactly 10,000.
+`add_asset(weight_bps)`, once per asset, creates an `AssetConfig` at `["asset", strategy, index]` (index = current `asset_count`), copies the official feed from the ApprovedAsset account, and creates that asset's vault. TSLAx at index 0 (4000 bps), NVDAx at index 1 (6000 bps). Rejected if the mint is not approved (its ApprovedAsset account does not exist), if the weights would exceed 10,000 bps, or once `MAX_ASSETS` (16) is reached. Deposits stay closed until the weights sum to exactly 10,000.
 
 ### Alice deposits, and her money is deployed at once
 
@@ -122,7 +122,7 @@ The `mock-swap-router` exists only for testing: it stores a `usdc_per_token` rat
 
 The strategy PDA holds all assets; no instruction moves a vault's tokens to the manager. The manager's powers are fenced:
 
-- **Assets** are limited to mints whitelisted by the registry authority, with the price feed taken from the registry, not the manager.
+- **Assets** are limited to mints approved by the registry authority, with the price feed taken from the registry, not the manager.
 - **Swaps** go only through the one router registered at creation, and each leg's minimum output is computed from the oracle, not supplied by the manager.
 - **The fee** is fixed at creation and capped at 10%, paid only in minted shares.
 
@@ -151,13 +151,13 @@ cargo build-sbf --manifest-path programs/vault-strategy/Cargo.toml
 cargo test --manifest-path programs/vault-strategy/Cargo.toml
 ```
 
-Tests live in `programs/vault-strategy/tests/vault_strategy.rs` and use [LiteSVM](https://github.com/LiteSVM/litesvm). Both `.so` files are loaded from `target/deploy/`, so build before testing. The suite covers the full lifecycle end to end (deposit with auto-deployment, a price move, rebalance back to target, a second depositor priced at the new NAV, a year's fee, in-kind withdrawal), retiring an asset with `set_weight` and reallocating to reopen deposits, and the rejection paths: non-whitelisted asset, weight overflow, over-cap fee and slippage, oracle-bounded deposit slippage, an under-allocated strategy, non-manager `set_weight`, unregistered router, and incomplete asset accounts on deposit.
+Tests live in `programs/vault-strategy/tests/vault_strategy.rs` and use [LiteSVM](https://github.com/LiteSVM/litesvm). Both `.so` files are loaded from `target/deploy/`, so build before testing. The suite covers the full lifecycle end to end (deposit with auto-deployment, a price move, rebalance back to target, a second depositor priced at the new NAV, a year's fee, in-kind withdrawal), retiring an asset with `set_weight` and reallocating to reopen deposits, and the rejection paths: unapproved asset, weight overflow, over-cap fee and slippage, oracle-bounded deposit slippage, an under-allocated strategy, non-manager `set_weight`, unregistered router, and incomplete asset accounts on deposit.
 
 ## FAQ
 
 ### How do I build an onchain investment fund on Solana?
 
-A manager creates a strategy with `initialize_strategy`, registers whitelisted assets with `add_asset` at target weights, and investors `deposit` USDC for shares. Each deposit is deployed across the basket in the same transaction, and `withdraw` redeems a proportional slice of every vault in kind.
+A manager creates a strategy with `initialize_strategy`, registers curator-approved assets with `add_asset` at target weights, and investors `deposit` USDC for shares. Each deposit is deployed across the basket in the same transaction, and `withdraw` redeems a proportional slice of every vault in kind.
 
 ### How are share prices calculated?
 

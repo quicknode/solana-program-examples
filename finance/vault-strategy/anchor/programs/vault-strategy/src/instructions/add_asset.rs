@@ -5,7 +5,7 @@ use anchor_spl::{
 };
 
 use crate::error::VaultError;
-use crate::state::{AssetConfig, Registry, Strategy, WhitelistEntry, MAX_ASSETS};
+use crate::state::{ApprovedAsset, AssetConfig, Registry, Strategy, MAX_ASSETS};
 
 #[derive(Accounts)]
 pub struct AddAssetAccountConstraints<'info> {
@@ -26,12 +26,12 @@ pub struct AddAssetAccountConstraints<'info> {
     pub asset_mint: Box<InterfaceAccount<'info, Mint>>,
 
     /// Proof the mint is approved, and the source of its official price feed.
-    /// Seeds tie it to this registry and this mint; existence means whitelisted.
+    /// Seeds tie it to this registry and this mint; existence means approved.
     #[account(
-        seeds = [b"whitelist", registry.key().as_ref(), asset_mint.key().as_ref()],
-        bump = whitelist_entry.bump
+        seeds = [b"approved_asset", registry.key().as_ref(), asset_mint.key().as_ref()],
+        bump = approved_asset.bump
     )]
-    pub whitelist_entry: Box<Account<'info, WhitelistEntry>>,
+    pub approved_asset: Box<Account<'info, ApprovedAsset>>,
 
     #[account(
         init,
@@ -77,7 +77,7 @@ pub fn handle_add_asset(
         index,
         mint: context.accounts.asset_mint.key(),
         // Copied from the registry entry, never supplied by the manager.
-        price_feed: context.accounts.whitelist_entry.price_feed,
+        price_feed: context.accounts.approved_asset.price_feed,
         vault: context.accounts.vault_asset.key(),
         weight_bps,
         bump: context.bumps.asset_config,

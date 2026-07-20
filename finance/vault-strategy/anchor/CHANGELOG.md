@@ -1,11 +1,15 @@
 # Changelog
 
-## Unreleased
+## 2026-07-20
+
+- **`WhitelistEntry` renamed `ApprovedAsset`** (and `whitelist_asset` renamed `approve_asset`, PDA seed `"whitelist"` renamed `"approved_asset"`), naming the account after what it is: one curator-approved asset bound to its official price feed. The unused `AssetNotWhitelisted` error is removed; approval is checked by the `ApprovedAsset` account's existence. Doc comments and README now state that the `Registry` account is the curator record at the root of the approved set, not the list itself.
+
+## 2026-07-01
 
 ### Added
 
 - **Curated asset registry.** A `Registry` plus per-mint `WhitelistEntry` accounts, maintained by a protocol authority separate from strategy managers. Each entry binds an approved mint to its official Pyth price feed. New instructions: `initialize_registry`, `whitelist_asset`.
-- **Dynamic assets.** A strategy now grows its portfolio with `add_asset`, which registers a whitelisted mint at the next index as an `AssetConfig` PDA (`["asset", strategy, index]`) and creates its vault. Assets occupy the contiguous range `0..asset_count`, up to `MAX_ASSETS` (8). Replaces the previous fixed two-asset layout.
+- **Dynamic assets.** A strategy now grows its portfolio with `add_asset`, which registers a whitelisted mint at the next index as an `AssetConfig` PDA (`["asset", strategy, index]`) and creates its vault. Assets occupy the contiguous range `0..asset_count`, up to `MAX_ASSETS` (16). Replaces the previous fixed two-asset layout.
 - **Oracle-bounded slippage.** `deposit` and `rebalance` compute each swap's minimum output from the Pyth price and a strategy-level `max_slippage_bps` (capped at `MAX_SLIPPAGE_BPS` = 10%), instead of trusting a caller-supplied minimum. Set at creation via `initialize_strategy`.
 - **Full-allocation invariant with immediate deployment.** A strategy accepts deposits only once its weights sum to exactly 10,000 bps (`deposit` reverts with `StrategyNotFullyAllocated` otherwise). `deposit` then swaps each depositor's USDC into the basket at its target weights through the registered router in the same transaction, so every deposit is fully invested (bar sub-cent rounding dust) and the USDC vault holds no idle cash.
 - **Retirable assets.** `set_weight(weight_bps)` changes an asset's target weight after creation, including setting it to zero to retire it (reassign that weight to another asset to reach 100% and reopen deposits; `rebalance` liquidates the retired holdings). The asset's index is preserved, so the `0..asset_count` range the valuation handlers depend on stays contiguous.

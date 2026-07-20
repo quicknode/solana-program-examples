@@ -2,7 +2,9 @@ use quasar_lang::prelude::*;
 use quasar_spl::prelude::*;
 
 use crate::errors::RouterError;
-use crate::state::{AssetRate, RouterAuthorityPda, RouterConfig, TreasuryPda, ROUTER_AUTHORITY_SEED};
+use crate::state::{
+    AssetRate, RouterAuthorityPda, RouterConfig, TreasuryPda, ROUTER_AUTHORITY_SEED,
+};
 
 #[derive(Accounts)]
 pub struct SwapUsdcForAssetAccountConstraints {
@@ -56,7 +58,10 @@ pub fn handle_swap_usdc_for_asset(
         .ok_or(RouterError::MathOverflow)?
         .try_into()
         .map_err(|_| RouterError::MathOverflow)?;
-    require!(asset_out >= minimum_asset_out, RouterError::SlippageExceeded);
+    require!(
+        asset_out >= minimum_asset_out,
+        RouterError::SlippageExceeded
+    );
 
     // USDC from caller to the router treasury (caller signs).
     accounts

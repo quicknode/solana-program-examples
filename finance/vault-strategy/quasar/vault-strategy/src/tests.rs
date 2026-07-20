@@ -1,5 +1,5 @@
 //! QuasarSVM integration tests. `test_strategy_setup` drives the manager-side
-//! setup (registry, whitelist, strategy, add asset) and asserts state.
+//! setup (registry, approve asset, strategy, add asset) and asserts state.
 //! `test_deposit` is a two-program test: it loads the mock swap router too,
 //! wires up rates and a Pyth-shaped price feed, and deposits, checking that the
 //! deposit is priced 1:1 on the first deposit and deployed into the basket
@@ -16,7 +16,7 @@ use {
     std::println,
 };
 
-use crate::state::{ASSET_CONFIG_SEED, REGISTRY_SEED, STRATEGY_SEED, WHITELIST_SEED};
+use crate::state::{APPROVED_ASSET_SEED, ASSET_CONFIG_SEED, REGISTRY_SEED, STRATEGY_SEED};
 
 const DECIMALS: u8 = 6;
 const FEE_BPS: u16 = 100;
@@ -102,9 +102,9 @@ fn pyth_feed_account(address: Pubkey, price: i64, publish_time: i64) -> Account 
 fn registry_pda(authority: &Pubkey) -> Pubkey {
     Pubkey::find_program_address(&[REGISTRY_SEED, authority.as_ref()], &program_id()).0
 }
-fn whitelist_pda(registry: &Pubkey, mint: &Pubkey) -> Pubkey {
+fn approved_asset_pda(registry: &Pubkey, mint: &Pubkey) -> Pubkey {
     Pubkey::find_program_address(
-        &[WHITELIST_SEED, registry.as_ref(), mint.as_ref()],
+        &[APPROVED_ASSET_SEED, registry.as_ref(), mint.as_ref()],
         &program_id(),
     )
     .0
@@ -150,7 +150,7 @@ fn router_rate_pda(mint: &Pubkey) -> Pubkey {
 fn init_registry_data() -> Vec<u8> {
     vec![0u8]
 }
-fn whitelist_data(price_feed: &Pubkey) -> Vec<u8> {
+fn approve_asset_data(price_feed: &Pubkey) -> Vec<u8> {
     let mut data = vec![1u8];
     data.extend_from_slice(price_feed.as_ref());
     data
@@ -198,11 +198,11 @@ fn init_registry_ix(authority: Pubkey, registry: Pubkey) -> Instruction {
     }
 }
 
-fn whitelist_ix(
+fn approve_asset_ix(
     authority: Pubkey,
     registry: Pubkey,
     asset_mint: Pubkey,
-    whitelist: Pubkey,
+    approved_asset: Pubkey,
     price_feed: Pubkey,
 ) -> Instruction {
     Instruction {
@@ -211,11 +211,11 @@ fn whitelist_ix(
             AccountMeta::new(authority, true),
             AccountMeta::new_readonly(registry, false),
             AccountMeta::new_readonly(asset_mint, false),
-            AccountMeta::new(whitelist, false),
+            AccountMeta::new(approved_asset, false),
             AccountMeta::new_readonly(rent_id(), false),
             AccountMeta::new_readonly(system_program_id(), false),
         ],
-        data: whitelist_data(&price_feed),
+        data: approve_asset_data(&price_feed),
     }
 }
 
@@ -253,7 +253,7 @@ fn add_asset_ix(
     strategy: Pubkey,
     registry: Pubkey,
     asset_mint: Pubkey,
-    whitelist: Pubkey,
+    approved_asset: Pubkey,
     asset_config: Pubkey,
     vault_asset: Pubkey,
     weight_bps: u16,
@@ -265,7 +265,7 @@ fn add_asset_ix(
             AccountMeta::new(strategy, false),
             AccountMeta::new_readonly(registry, false),
             AccountMeta::new_readonly(asset_mint, false),
-            AccountMeta::new_readonly(whitelist, false),
+            AccountMeta::new_readonly(approved_asset, false),
             AccountMeta::new(asset_config, false),
             AccountMeta::new(vault_asset, false),
             AccountMeta::new_readonly(rent_id(), false),
@@ -289,7 +289,10 @@ fn read_u16(data: &[u8], offset: usize) -> u16 {
 #[test]
 fn test_strategy_setup() {
     let mut svm = QuasarSvm::new()
-        .with_program(&program_id(), &std::fs::read("target/deploy/quasar_vault_strategy.so").unwrap())
+        .with_program(
+            &program_id(),
+            &std::fs::read("target/deploy/quasar_vault_strategy.so").unwrap(),
+        )
         .with_token_program();
 
     let authority = Pubkey::new_unique();
@@ -300,7 +303,7 @@ fn test_strategy_setup() {
     let swap_router = router_id();
 
     let registry = registry_pda(&authority);
-    let whitelist = whitelist_pda(&registry, &asset_mint);
+    let approved_asset = approved_asset_pda(&registry, &asset_mint);
     let index = 0u64;
     let strategy = strategy_pda(index);
     let share_mint = share_mint_pda(&strategy);
@@ -314,7 +317,7 @@ fn test_strategy_setup() {
         mint_account(usdc_mint, authority),
         mint_account(asset_mint, authority),
         empty_account(registry),
-        empty_account(whitelist),
+        empty_account(approved_asset),
         empty_account(strategy),
         empty_account(share_mint),
         empty_account(vault_usdc),
@@ -324,22 +327,52 @@ fn test_strategy_setup() {
 
     let instructions = vec![
         init_registry_ix(authority, registry),
-        whitelist_ix(authority, registry, asset_mint, whitelist, price_feed),
-        init_strategy_ix(manager, usdc_mint, registry, strategy, share_mint, vault_usdc, index, swap_router),
-        add_asset_ix(manager, strategy, registry, asset_mint, whitelist, asset_config, vault_asset, 10_000),
+        approve_asset_ix(authority, registry, asset_mint, approved_asset, price_feed),
+        init_strategy_ix(
+            manager,
+            usdc_mint,
+            registry,
+            strategy,
+            share_mint,
+            vault_usdc,
+            index,
+            swap_router,
+        ),
+        add_asset_ix(
+            manager,
+            strategy,
+            registry,
+            asset_mint,
+            approved_asset,
+            asset_config,
+            vault_asset,
+            10_000,
+        ),
     ];
 
     let result = svm.process_instruction_chain(&instructions, &accounts);
-    assert!(result.is_ok(), "setup chain failed: {:?}", result.raw_result);
+    assert!(
+        result.is_ok(),
+        "setup chain failed: {:?}",
+        result.raw_result
+    );
 
     let strategy_data = &result.account(&strategy).unwrap().data;
     assert_eq!(strategy_data[0], 3, "strategy discriminator");
     assert_eq!(strategy_data[STRATEGY_ASSET_COUNT_OFFSET], 1, "asset_count");
-    assert_eq!(read_u16(strategy_data, STRATEGY_TOTAL_WEIGHT_OFFSET), 10_000, "total_weight_bps");
+    assert_eq!(
+        read_u16(strategy_data, STRATEGY_TOTAL_WEIGHT_OFFSET),
+        10_000,
+        "total_weight_bps"
+    );
 
     let asset_config_data = &result.account(&asset_config).unwrap().data;
     assert_eq!(asset_config_data[0], 4, "asset_config discriminator");
-    assert_eq!(read_u16(asset_config_data, ASSET_CONFIG_WEIGHT_OFFSET), 10_000, "weight_bps");
+    assert_eq!(
+        read_u16(asset_config_data, ASSET_CONFIG_WEIGHT_OFFSET),
+        10_000,
+        "weight_bps"
+    );
 
     println!("  STRATEGY SETUP CU: {}", result.compute_units_consumed);
 }
@@ -350,8 +383,14 @@ fn test_strategy_setup() {
 #[test]
 fn test_deposit() {
     let mut svm = QuasarSvm::new()
-        .with_program(&program_id(), &std::fs::read("target/deploy/quasar_vault_strategy.so").unwrap())
-        .with_program(&router_id(), &std::fs::read("../mock-swap-router/target/deploy/quasar_mock_swap_router.so").unwrap())
+        .with_program(
+            &program_id(),
+            &std::fs::read("target/deploy/quasar_vault_strategy.so").unwrap(),
+        )
+        .with_program(
+            &router_id(),
+            &std::fs::read("../mock-swap-router/target/deploy/quasar_mock_swap_router.so").unwrap(),
+        )
         .with_token_program();
     svm.warp_to_timestamp(NOW);
 
@@ -363,7 +402,7 @@ fn test_deposit() {
     let price_feed = Pubkey::new_unique();
 
     let registry = registry_pda(&authority);
-    let whitelist = whitelist_pda(&registry, &asset_mint);
+    let approved_asset = approved_asset_pda(&registry, &asset_mint);
     let index = 0u64;
     let strategy = strategy_pda(index);
     let share_mint = share_mint_pda(&strategy);
@@ -400,7 +439,7 @@ fn test_deposit() {
         empty_account(r_rate),
         // Vault-strategy accounts.
         empty_account(registry),
-        empty_account(whitelist),
+        empty_account(approved_asset),
         empty_account(strategy),
         empty_account(share_mint),
         empty_account(vault_usdc),
@@ -481,19 +520,47 @@ fn test_deposit() {
         router_init,
         router_set_rate,
         init_registry_ix(authority, registry),
-        whitelist_ix(authority, registry, asset_mint, whitelist, price_feed),
-        init_strategy_ix(manager, usdc_mint, registry, strategy, share_mint, vault_usdc, index, router_id()),
-        add_asset_ix(manager, strategy, registry, asset_mint, whitelist, asset_config, vault_asset, 10_000),
+        approve_asset_ix(authority, registry, asset_mint, approved_asset, price_feed),
+        init_strategy_ix(
+            manager,
+            usdc_mint,
+            registry,
+            strategy,
+            share_mint,
+            vault_usdc,
+            index,
+            router_id(),
+        ),
+        add_asset_ix(
+            manager,
+            strategy,
+            registry,
+            asset_mint,
+            approved_asset,
+            asset_config,
+            vault_asset,
+            10_000,
+        ),
         deposit_ix,
     ];
 
     let result = svm.process_instruction_chain(&instructions, &accounts);
-    assert!(result.is_ok(), "deposit chain failed: {:?}", result.raw_result);
+    assert!(
+        result.is_ok(),
+        "deposit chain failed: {:?}",
+        result.raw_result
+    );
 
     // First deposit mints shares 1:1 with USDC.
-    assert_eq!(token_amount(result.account(&depositor_share).unwrap()), DEPOSIT);
+    assert_eq!(
+        token_amount(result.account(&depositor_share).unwrap()),
+        DEPOSIT
+    );
     // The deposit was deployed into the asset via the router.
-    assert_eq!(token_amount(result.account(&vault_asset).unwrap()), ASSET_OUT);
+    assert_eq!(
+        token_amount(result.account(&vault_asset).unwrap()),
+        ASSET_OUT
+    );
     assert_eq!(token_amount(result.account(&depositor_usdc).unwrap()), 0);
     assert_eq!(token_amount(result.account(&r_treasury).unwrap()), DEPOSIT);
     // All USDC was swapped out of the vault into the asset.

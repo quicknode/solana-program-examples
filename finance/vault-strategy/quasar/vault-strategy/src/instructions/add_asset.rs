@@ -3,8 +3,8 @@ use quasar_spl::prelude::*;
 
 use crate::errors::VaultError;
 use crate::state::{
-    snapshot_strategy, AssetConfig, AssetConfigInner, AssetVaultPda, Registry, Strategy,
-    WhitelistEntry, MAX_ASSETS,
+    snapshot_strategy, ApprovedAsset, AssetConfig, AssetConfigInner, AssetVaultPda, Registry,
+    Strategy, MAX_ASSETS,
 };
 
 #[derive(Accounts)]
@@ -25,8 +25,8 @@ pub struct AddAssetAccountConstraints {
     pub asset_mint: Account<Mint>,
 
     /// Proof the mint is approved and the source of its official price feed.
-    #[account(address = WhitelistEntry::seeds(registry.address(), asset_mint.address()))]
-    pub whitelist_entry: Account<WhitelistEntry>,
+    #[account(address = ApprovedAsset::seeds(registry.address(), asset_mint.address()))]
+    pub approved_asset: Account<ApprovedAsset>,
 
     #[account(
         init,
@@ -73,7 +73,7 @@ pub fn handle_add_asset(
         index,
         mint: *accounts.asset_mint.address(),
         // Copied from the registry entry, never supplied by the manager.
-        price_feed: accounts.whitelist_entry.price_feed,
+        price_feed: accounts.approved_asset.price_feed,
         vault: *accounts.vault_asset.address(),
         weight_bps,
         bump: bumps.asset_config,

@@ -21,7 +21,7 @@ pub struct Strategy {
     /// Index used as the PDA seed, e.g. 0 for the first strategy.
     pub index: u64,
     pub manager: Pubkey,
-    /// Whitelist this strategy draws assets from. add_asset only accepts mints
+    /// Registry whose curator approves assets. add_asset only accepts mints
     /// approved in this registry.
     pub registry: Pubkey,
     pub share_mint: Pubkey,
@@ -52,7 +52,7 @@ pub struct AssetConfig {
     pub strategy: Pubkey,
     pub index: u8,
     pub mint: Pubkey,
-    /// Pyth PriceUpdateV2 account, copied from the registry whitelist entry at
+    /// Pyth PriceUpdateV2 account, copied from the registry's ApprovedAsset at
     /// add time so the manager cannot substitute a feed they control.
     pub price_feed: Pubkey,
     /// Strategy-owned associated token account holding this asset.

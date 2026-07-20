@@ -1,9 +1,7 @@
 use quasar_lang::prelude::*;
 use quasar_spl::prelude::*;
 
-use crate::state::{
-    AssetRate, AssetRateInner, RouterAuthorityPda, RouterConfig, TreasuryPda,
-};
+use crate::state::{AssetRate, AssetRateInner, RouterAuthorityPda, RouterConfig, TreasuryPda};
 
 #[derive(Accounts)]
 pub struct SetRateAccountConstraints {

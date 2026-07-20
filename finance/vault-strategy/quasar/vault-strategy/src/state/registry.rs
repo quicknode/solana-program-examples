@@ -1,13 +1,17 @@
 use quasar_lang::prelude::*;
 
 pub const REGISTRY_SEED: &[u8] = b"registry";
-pub const WHITELIST_SEED: &[u8] = b"whitelist";
+pub const APPROVED_ASSET_SEED: &[u8] = b"approved_asset";
 
-/// A curated set of assets that strategies may hold, maintained by a protocol
-/// authority that is deliberately not the strategy manager: the authority vets
-/// which real assets (and which official price feed) are safe, and the manager
-/// only chooses among them. This is what stops a manager from listing a token
-/// they mint themselves, or pairing a real mint with a feed they control.
+/// The curator record at the root of an approved-asset set. This account holds
+/// no list: it only names the authority allowed to approve assets under it. The
+/// set itself is the collection of `ApprovedAsset` accounts derived from this
+/// registry, and an asset counts as approved exactly when its account exists.
+///
+/// The authority is deliberately not a strategy manager: the curator vets which
+/// real assets (and which official price feed) are safe, and a manager only
+/// chooses among them. This is what stops a manager from listing a token they
+/// mint themselves, or pairing a real mint with a feed they control.
 ///
 /// PDA: `["registry", authority]`.
 #[account(discriminator = 1, set_inner)]
@@ -21,10 +25,10 @@ pub struct Registry {
 /// registry authority; `add_asset` copies `price_feed` from here so the manager
 /// never supplies the feed.
 ///
-/// PDA: `["whitelist", registry, mint]`.
+/// PDA: `["approved_asset", registry, mint]`.
 #[account(discriminator = 2, set_inner)]
-#[seeds(b"whitelist", registry: Address, mint: Address)]
-pub struct WhitelistEntry {
+#[seeds(b"approved_asset", registry: Address, mint: Address)]
+pub struct ApprovedAsset {
     pub registry: Address,
     pub mint: Address,
     pub price_feed: Address,
