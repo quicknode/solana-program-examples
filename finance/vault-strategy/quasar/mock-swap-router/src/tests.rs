@@ -230,11 +230,18 @@ fn test_initialize_and_swap_usdc_for_asset() {
     ];
 
     let result = svm.process_instruction_chain(&instructions, &accounts);
-    assert!(result.is_ok(), "router chain failed: {:?}", result.raw_result);
+    assert!(
+        result.is_ok(),
+        "router chain failed: {:?}",
+        result.raw_result
+    );
 
     // Caller paid all USDC and received the minted asset; treasury holds the USDC.
     assert_eq!(token_amount(result.account(&caller_usdc).unwrap()), 0);
-    assert_eq!(token_amount(result.account(&caller_asset).unwrap()), ASSET_OUT);
+    assert_eq!(
+        token_amount(result.account(&caller_asset).unwrap()),
+        ASSET_OUT
+    );
     assert_eq!(token_amount(result.account(&treasury).unwrap()), USDC_IN);
 
     println!("  ROUTER SWAP CU: {}", result.compute_units_consumed);

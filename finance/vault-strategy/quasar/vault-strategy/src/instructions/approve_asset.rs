@@ -1,10 +1,10 @@
 use quasar_lang::prelude::*;
 use quasar_spl::prelude::*;
 
-use crate::state::{Registry, WhitelistEntry, WhitelistEntryInner};
+use crate::state::{ApprovedAsset, ApprovedAssetInner, Registry};
 
 #[derive(Accounts)]
-pub struct WhitelistAssetAccountConstraints {
+pub struct ApproveAssetAccountConstraints {
     #[account(mut)]
     pub authority: Signer,
 
@@ -16,25 +16,25 @@ pub struct WhitelistAssetAccountConstraints {
     #[account(
         init,
         payer = authority,
-        address = WhitelistEntry::seeds(registry.address(), asset_mint.address()),
+        address = ApprovedAsset::seeds(registry.address(), asset_mint.address()),
     )]
-    pub whitelist_entry: Account<WhitelistEntry>,
+    pub approved_asset: Account<ApprovedAsset>,
 
     pub rent: Sysvar<Rent>,
     pub system_program: Program<SystemProgram>,
 }
 
 #[inline(always)]
-pub fn handle_whitelist_asset(
-    accounts: &mut WhitelistAssetAccountConstraints,
+pub fn handle_approve_asset(
+    accounts: &mut ApproveAssetAccountConstraints,
     price_feed: Address,
-    bumps: &WhitelistAssetAccountConstraintsBumps,
+    bumps: &ApproveAssetAccountConstraintsBumps,
 ) -> Result<(), ProgramError> {
-    accounts.whitelist_entry.set_inner(WhitelistEntryInner {
+    accounts.approved_asset.set_inner(ApprovedAssetInner {
         registry: *accounts.registry.address(),
         mint: *accounts.asset_mint.address(),
         price_feed,
-        bump: bumps.whitelist_entry,
+        bump: bumps.approved_asset,
     });
     Ok(())
 }

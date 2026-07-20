@@ -8,7 +8,6 @@ pub enum VaultError {
     SwapSlippageExceeded,
     SlippageConfigTooHigh,
     AssetNotFound,
-    AssetNotWhitelisted,
     TooManyAssets,
     DuplicateAsset,
     WeightOverflow,

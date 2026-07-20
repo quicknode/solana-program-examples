@@ -41,7 +41,7 @@ pub struct AssetConfig {
     pub strategy: Address,
     pub index: u8,
     pub mint: Address,
-    /// Price feed account, copied from the registry whitelist entry at add time
+    /// Price feed account, copied from the registry's ApprovedAsset at add time
     /// so the manager cannot substitute a feed they control.
     pub price_feed: Address,
     /// Strategy-owned token account holding this asset.

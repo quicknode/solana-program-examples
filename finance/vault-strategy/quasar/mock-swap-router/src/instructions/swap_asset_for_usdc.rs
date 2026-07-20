@@ -2,7 +2,9 @@ use quasar_lang::prelude::*;
 use quasar_spl::prelude::*;
 
 use crate::errors::RouterError;
-use crate::state::{AssetRate, RouterAuthorityPda, RouterConfig, TreasuryPda, ROUTER_AUTHORITY_SEED};
+use crate::state::{
+    AssetRate, RouterAuthorityPda, RouterConfig, TreasuryPda, ROUTER_AUTHORITY_SEED,
+};
 
 #[derive(Accounts)]
 pub struct SwapAssetForUsdcAccountConstraints {

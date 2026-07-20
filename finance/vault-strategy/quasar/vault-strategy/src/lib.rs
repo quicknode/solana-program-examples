@@ -15,7 +15,7 @@ mod tests;
 declare_id!("VLT5W7bqhRN4nCdRpXm8UfHRxZd9EuZGqiSAkGHQfGh");
 
 /// Tokenized multi-asset vault strategy. A manager assembles a basket of
-/// whitelisted assets at target weights; depositors receive shares priced at
+/// curator-approved assets at target weights; depositors receive shares priced at
 /// net asset value, and each deposit is immediately deployed into the basket by
 /// swapping USDC through a registered router. Withdrawals redeem shares for a
 /// proportional slice of every vault. See README.md for the full walkthrough.
@@ -23,7 +23,7 @@ declare_id!("VLT5W7bqhRN4nCdRpXm8UfHRxZd9EuZGqiSAkGHQfGh");
 mod quasar_vault_strategy {
     use super::*;
 
-    /// Create a curated whitelist of assets, owned by `authority` (not a
+    /// Create a curated approved_asset of assets, owned by `authority` (not a
     /// manager).
     #[instruction(discriminator = 0)]
     pub fn initialize_registry(
@@ -35,15 +35,11 @@ mod quasar_vault_strategy {
     /// Approve a mint and bind it to its official price feed. Registry authority
     /// only.
     #[instruction(discriminator = 1)]
-    pub fn whitelist_asset(
-        ctx: Ctx<WhitelistAssetAccountConstraints>,
+    pub fn approve_asset(
+        ctx: Ctx<ApproveAssetAccountConstraints>,
         price_feed: Address,
     ) -> Result<(), ProgramError> {
-        instructions::whitelist_asset::handle_whitelist_asset(
-            &mut ctx.accounts,
-            price_feed,
-            &ctx.bumps,
-        )
+        instructions::approve_asset::handle_approve_asset(&mut ctx.accounts, price_feed, &ctx.bumps)
     }
 
     /// Open a strategy at a caller-chosen index. Manager pays and becomes the
@@ -66,7 +62,7 @@ mod quasar_vault_strategy {
         )
     }
 
-    /// Add a whitelisted asset to the strategy at the next index. Manager only.
+    /// Add a curator-approved asset to the strategy at the next index. Manager only.
     #[instruction(discriminator = 3)]
     pub fn add_asset(
         ctx: Ctx<AddAssetAccountConstraints>,

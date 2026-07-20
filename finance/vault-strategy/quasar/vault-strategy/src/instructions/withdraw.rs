@@ -137,10 +137,22 @@ pub fn handle_withdraw(
         let user_ata_view = get_view(&remaining, i * ACCOUNTS_PER_ASSET + 3)?;
 
         let config = load_asset_config(&config_view)?;
-        require_keys_eq!(config.strategy, strategy_key, VaultError::InvalidAssetAccount);
+        require_keys_eq!(
+            config.strategy,
+            strategy_key,
+            VaultError::InvalidAssetAccount
+        );
         require!(config.index as usize == i, VaultError::InvalidAssetAccount);
-        require_keys_eq!(*vault_view.address(), config.vault, VaultError::InvalidAssetAccount);
-        require_keys_eq!(*mint_view.address(), config.mint, VaultError::InvalidAssetAccount);
+        require_keys_eq!(
+            *vault_view.address(),
+            config.vault,
+            VaultError::InvalidAssetAccount
+        );
+        require_keys_eq!(
+            *mint_view.address(),
+            config.mint,
+            VaultError::InvalidAssetAccount
+        );
 
         let (recipient_mint, recipient_owner) = read_token_mint_and_owner(&user_ata_view)?;
         require_keys_eq!(recipient_owner, user_key, VaultError::InvalidRecipient);

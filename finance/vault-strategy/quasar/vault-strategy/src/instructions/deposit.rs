@@ -117,9 +117,20 @@ pub fn handle_deposit(
         let feed_view = get_view(&remaining, index * ACCOUNTS_PER_ASSET + 4)?;
 
         let config = load_asset_config(&config_view)?;
-        require_keys_eq!(config.strategy, strategy_key, VaultError::InvalidAssetAccount);
-        require!(config.index as usize == index, VaultError::InvalidAssetAccount);
-        require_keys_eq!(*vault_view.address(), config.vault, VaultError::InvalidAssetAccount);
+        require_keys_eq!(
+            config.strategy,
+            strategy_key,
+            VaultError::InvalidAssetAccount
+        );
+        require!(
+            config.index as usize == index,
+            VaultError::InvalidAssetAccount
+        );
+        require_keys_eq!(
+            *vault_view.address(),
+            config.vault,
+            VaultError::InvalidAssetAccount
+        );
 
         let price = load_price(&feed_view, &config.price_feed, now)?;
         let amount = read_token_amount(&vault_view)?;
@@ -140,7 +151,10 @@ pub fn handle_deposit(
             .try_into()
             .map_err(|_| VaultError::MathOverflow)?
     };
-    require!(shares_to_mint >= minimum_shares, VaultError::SlippageTooHigh);
+    require!(
+        shares_to_mint >= minimum_shares,
+        VaultError::SlippageTooHigh
+    );
 
     let mut strategy = snapshot_strategy(&accounts.strategy);
     strategy.total_shares = total_shares
@@ -180,7 +194,11 @@ pub fn handle_deposit(
         let feed_view = get_view(&remaining, index * ACCOUNTS_PER_ASSET + 4)?;
 
         let config = load_asset_config(&config_view)?;
-        require_keys_eq!(*mint_view.address(), config.mint, VaultError::InvalidAssetAccount);
+        require_keys_eq!(
+            *mint_view.address(),
+            config.mint,
+            VaultError::InvalidAssetAccount
+        );
 
         if config.weight_bps == 0 {
             continue;

@@ -14,7 +14,7 @@ mod tests;
 declare_id!("SWPR8Rk3aq3DrDGLdaANq7xCMnXoUFUJWJJmCWxc8Jm");
 
 /// A mock constant-rate swap router used by the vault-strategy example. It
-/// swaps a whitelisted asset against USDC at an admin-set fixed rate: buying an
+/// swaps an approved asset against USDC at an admin-set fixed rate: buying an
 /// asset mints it against USDC paid into the treasury; selling burns it and
 /// pays USDC out. Stand-in for a real AMM or aggregator so the vault-strategy
 /// example is self-contained.

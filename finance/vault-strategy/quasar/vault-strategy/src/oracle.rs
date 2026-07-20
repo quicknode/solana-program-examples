@@ -16,7 +16,7 @@ const MAX_PRICE_AGE_SECONDS: i64 = 60;
 const TOKEN_MINT_OFFSET: usize = 0; // mint: Pubkey [0..32]
 const TOKEN_OWNER_OFFSET: usize = 32; // owner: Pubkey [32..64]
 const TOKEN_AMOUNT_OFFSET: usize = 64; // amount: u64 [64..72]
-// Mint layout: mint_authority option(36) + supply(8) = 44.
+                                       // Mint layout: mint_authority option(36) + supply(8) = 44.
 const MINT_DECIMALS_OFFSET: usize = 44;
 
 /// Borrow an account's raw data as a slice. Read-only; used for accounts that
@@ -83,7 +83,9 @@ pub fn read_mint_decimals(account: &AccountView) -> Result<u8, ProgramError> {
 }
 
 /// Read the `mint` and `owner` addresses of a token account from its raw data.
-pub fn read_token_mint_and_owner(account: &AccountView) -> Result<(Address, Address), ProgramError> {
+pub fn read_token_mint_and_owner(
+    account: &AccountView,
+) -> Result<(Address, Address), ProgramError> {
     let data = account_data(account);
     if data.len() < TOKEN_OWNER_OFFSET + 32 {
         return Err(VaultError::InvalidVaultAccount.into());

@@ -1,6 +1,6 @@
 # Solana Vault Strategy (Quasar)
 
-A tokenized multi-asset vault on Solana, written with Quasar. A manager assembles a basket of whitelisted
+A multi-asset vault on Solana, written with Quasar. A manager assembles a basket of curator-approved
 assets at target weights; anyone can deposit USDC and receive shares priced at
 the vault's net asset value, and each deposit is immediately deployed into the
 basket by swapping USDC into every asset at its weight. Withdrawals burn shares
@@ -28,10 +28,11 @@ strategy manager: it vets which real assets and feeds are safe, and the manager
 only chooses among them, so a manager can never list a token they mint
 themselves or pair a real mint with a feed they control.
 
-- `initialize_registry` opens the registry; `whitelist_asset` approves a mint
-  and records its price feed.
+- `initialize_registry` records the curator; `approve_asset` approves a mint
+  and records its price feed. The registry holds no list: an asset is approved
+  exactly when its `ApprovedAsset` account exists.
 - A manager opens a basket with `initialize_strategy` (choosing a management fee
-  and a slippage tolerance), then adds whitelisted assets with `add_asset`, each
+  and a slippage tolerance), then adds approved assets with `add_asset`, each
   at a target weight in basis points. The weights must sum to 100% before the
   vault accepts deposits, so every deposit is fully invested. `set_weight`
   retunes a weight or retires an asset by setting it to zero.
@@ -54,9 +55,9 @@ by more than the strategy's slippage tolerance.
 
 ## Accounts and PDAs
 
-- **Registry** `["registry", authority]` and **WhitelistEntry**
-  `["whitelist", registry, mint]` - the curated asset set and each approved
-  mint's price feed.
+- **Registry** `["registry", authority]` and **ApprovedAsset**
+  `["approved_asset", registry, mint]` - the curator record and, one account per
+  approved mint, the asset set with each mint's price feed.
 - **Strategy** `["strategy", index]` - one basket, addressed by a counter. Holds
   the manager, registry, share mint, USDC mint, router, fee, slippage, total
   shares, and running weight sum. The Strategy PDA is the authority of the share
@@ -119,7 +120,7 @@ cargo install --git https://github.com/blueshift-gg/quasar quasar-cli --locked
 
 The router suite (`mock-swap-router/src/tests.rs`) exercises initialize, set-rate,
 and a USDC-for-asset swap. The vault suite (`vault-strategy/src/tests.rs`) drives
-the manager setup (registry, whitelist, strategy, add asset) and a two-program
+the manager setup (registry, approve asset, strategy, add asset) and a two-program
 deposit that deploys USDC into the basket through the router CPI, asserting share
 minting, vault balances, and treasury flow.
 
