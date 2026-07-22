@@ -1,3 +1,11 @@
+# NOT migrated to Quasar 0.1.0: this example depends on quasar-metadata,
+# which was removed from the quasar repo before the 0.1.0 release (no
+# replacement shipped). It stays pinned to the last working pre-0.1.0 revs
+# (quasar 623bb70 / quasar-svm cb7565d) and is built in CI by the separate
+# legacy-metadata-examples job in .github/workflows/quasar.yml, which
+# installs the older quasar CLI (rev 3d6fb0d8) that still parses this
+# project's pre-0.1.0 Quasar.toml. Migrate once upstream ships a metadata
+# story for 0.1.x.
 [package]
 name = "quasar-token-minter"
 version = "0.1.0"
