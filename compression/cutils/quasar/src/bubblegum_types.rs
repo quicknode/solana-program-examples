@@ -106,7 +106,7 @@ pub fn get_asset_id(tree: &Address, nonce: u64) -> Address {
     let nonce_bytes = nonce.to_le_bytes();
     let seeds: &[&[u8]] = &[b"asset", tree.as_ref(), &nonce_bytes];
     let (pda, _bump) =
-        quasar_lang::pda::based_try_find_program_address(seeds, &crate::MPL_BUBBLEGUM_ID)
+        quasar_lang::pda::try_find_program_address(seeds, &crate::MPL_BUBBLEGUM_ID)
             .expect("asset PDA derivation failed");
     pda
 }
