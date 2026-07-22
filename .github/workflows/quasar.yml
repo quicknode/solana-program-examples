@@ -31,6 +31,7 @@ jobs:
       changed_projects: ${{ steps.analyze.outputs.changed_projects }}
       total_projects: ${{ steps.analyze.outputs.total_projects }}
       matrix: ${{ steps.matrix.outputs.matrix }}
+      legacy: ${{ steps.changes.outputs.legacy }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -44,6 +45,11 @@ jobs:
             quasar:
               - added|modified: '**/quasar/**'
             workflow:
+              - added|modified: '.github/workflows/quasar.yml'
+            legacy:
+              - added|modified: 'tokens/token-minter/quasar/**'
+              - added|modified: 'tokens/nft-minter/quasar/**'
+              - added|modified: 'tokens/nft-operations/quasar/**'
               - added|modified: '.github/workflows/quasar.yml'
       - name: Analyze Changes
         id: analyze
@@ -201,9 +207,11 @@ jobs:
               return 1
             fi
 
-            # Build every program first.
+            # Build every program first. The 0.1.0 CLI generates the IDL and
+            # clients before compiling and runs `cargo metadata --locked`, so
+            # a lockfile must exist before the first `quasar build`.
             for d in "${prog_dirs[@]}"; do
-              if ! ( cd "$d" && quasar build ); then
+              if ! ( cd "$d" && cargo generate-lockfile && quasar build ); then
                 echo "::error::quasar build failed for $project ($d)"
                 echo "$project: quasar build failed with $solana_version" >> $GITHUB_WORKSPACE/failed_projects.txt
                 cd - > /dev/null
@@ -211,7 +219,7 @@ jobs:
               fi
             done
 
-            # Then run Rust tests (quasar examples use cargo test with quasar-svm).
+            # Then run Rust tests (quasar examples use cargo test with quasar-test).
             for d in "${prog_dirs[@]}"; do
               if ! ( cd "$d" && cargo test ); then
                 echo "::error::cargo test failed for $project ($d)"
@@ -259,16 +267,13 @@ jobs:
           # Pin an exact version rather than a tag like "stable", which setup-solana resolves via the GitHub API (can fail with 429).
           solana-cli-version: 3.1.14
       - name: Install Quasar CLI
-        # Pinned to quasar rev 3d6fb0d8 (the HEAD this migration was written
-        # against, immediately after PRs #195 + #196). The next merged PR
-        # (#198 "idl-redesign-clean", rev 096c8f7c) regressed `quasar build`
-        # for flat-layout projects: the new IDL flow chdirs to
-        # `crate_path.parent()` which evaluates to an empty PathBuf when
-        # the program crate is at the project root (src/lib.rs in `.`),
-        # causing posix_spawn child chdir("") to fail with ENOENT before
-        # any compilation begins. Symptom in CI is a bare "Anyhow error".
-        # Unpin once upstream lands a fix that handles the flat layout.
-        run: cargo install --git https://github.com/blueshift-gg/quasar --rev 3d6fb0d8 quasar-cli --locked
+        # Pinned to the 0.1.0-release branch head. crates.io still hosts
+        # 0.0.0 placeholders for quasar-cli, so the release line installs
+        # from git. Keep this rev in lockstep with the `rev = "be60fca"`
+        # pins in every quasar Cargo.toml. Switch to
+        # `cargo install quasar-cli --version 0.1.0 --locked` once the
+        # 0.1.0 crates are published.
+        run: cargo install --git https://github.com/blueshift-gg/quasar --rev be60fca quasar-cli --locked
       - name: Build and Test with Stable
         run: |
           source build_and_test.sh
@@ -290,6 +295,55 @@ jobs:
       - name: Show sccache stats
         if: always()
         run: sccache --show-stats
+
+  legacy-metadata-examples:
+    # tokens/{token-minter,nft-minter,nft-operations} are NOT migrated to
+    # Quasar 0.1.0: they depend on quasar-metadata, which was removed
+    # upstream before the 0.1.0 release with no replacement. They stay on
+    # the last working pre-0.1.0 revs (quasar 623bb70 / quasar-svm cb7565d,
+    # listed in .github/.ghaignore so the main matrix skips them) and build
+    # with the older CLI, which still parses their pre-0.1.0 Quasar.toml
+    # schema. Migrate them and remove this job once upstream ships a
+    # metadata story for 0.1.x.
+    needs: changes
+    if: github.event_name == 'push' || needs.changes.outputs.legacy == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+      - name: Configure sccache
+        run: |
+          echo "SCCACHE_GHA_ENABLED=true" >> $GITHUB_ENV
+          echo "RUSTC_WRAPPER=sccache" >> $GITHUB_ENV
+      - name: Cache Cargo registry and git
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-legacy-${{ runner.os }}-${{ hashFiles('tokens/token-minter/quasar/Cargo.toml', 'tokens/nft-minter/quasar/Cargo.toml', 'tokens/nft-operations/quasar/Cargo.toml') }}
+          restore-keys: |
+            cargo-legacy-${{ runner.os }}-
+      - name: Setup Solana Stable
+        uses: heyAyushh/setup-solana@v5.9
+        with:
+          # Pin an exact version rather than a tag like "stable", which setup-solana resolves via the GitHub API (can fail with 429).
+          solana-cli-version: 3.1.14
+      - name: Install Quasar CLI (pre-0.1.0)
+        # Rev 3d6fb0d8: the HEAD the original Quasar migration was written
+        # against (immediately after PRs #195 + #196). The next merged PR
+        # (#198 "idl-redesign-clean") regressed `quasar build` for
+        # flat-layout projects, and the 0.1.0 line removed quasar-metadata
+        # entirely, so these examples need this exact older CLI.
+        run: cargo install --git https://github.com/blueshift-gg/quasar --rev 3d6fb0d8 quasar-cli --locked
+      - name: Build and test legacy metadata examples
+        run: |
+          for project in tokens/token-minter/quasar tokens/nft-minter/quasar tokens/nft-operations/quasar; do
+            echo "::group::$project"
+            ( cd "$project" && quasar build && cargo test )
+            echo "::endgroup::"
+          done
 
   summary:
     needs: [changes, build-and-test]

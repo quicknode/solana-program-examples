@@ -1,0 +1,6 @@
+# Not migrated to Quasar 0.1.0: quasar-metadata was removed upstream before
+# the 0.1.0 release with no replacement. These build in the
+# legacy-metadata-examples job in quasar.yml with the pre-0.1.0 CLI.
+tokens/token-minter/quasar
+tokens/nft-minter/quasar
+tokens/nft-operations/quasar
