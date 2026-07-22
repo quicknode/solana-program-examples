@@ -1,7 +1,7 @@
 #![cfg_attr(not(test), no_std)]
 
-use quasar_lang::{prelude::*, sysvars::Sysvar};
-use quasar_spl::{initialize_mint2, prelude::*};
+use quasar_lang::{cpi::Seed, prelude::*, sysvars::Sysvar};
+use quasar_spl::prelude::*;
 
 #[cfg(test)]
 mod tests;
@@ -85,14 +85,10 @@ fn handle_create_mint(
         )
         .invoke_signed(seeds)?;
 
-    initialize_mint2(
-        accounts.token_program.to_account_view(),
-        accounts.mint.to_account_view(),
-        decimals,
-        &mint_address,
-        None,
-    )
-    .invoke()
+    accounts
+        .token_program
+        .initialize_mint2(&accounts.mint, decimals, &mint_address, None)
+        .invoke()
 }
 
 /// Mint tokens to a token account, signing with the PDA mint authority.

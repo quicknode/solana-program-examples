@@ -1,7 +1,7 @@
 #![cfg_attr(not(test), no_std)]
 
 use quasar_lang::{prelude::*, sysvars::Sysvar};
-use quasar_spl::{initialize_mint2, prelude::*};
+use quasar_spl::prelude::*;
 
 #[cfg(test)]
 mod tests;
@@ -89,14 +89,10 @@ fn handle_create_token(
         )
         .invoke()?;
 
-    initialize_mint2(
-        accounts.token_program.to_account_view(),
-        accounts.mint.to_account_view(),
-        decimals,
-        &payer_address,
-        None,
-    )
-    .invoke()
+    accounts
+        .token_program
+        .initialize_mint2(&accounts.mint, decimals, &payer_address, None)
+        .invoke()
 }
 
 #[inline(always)]
