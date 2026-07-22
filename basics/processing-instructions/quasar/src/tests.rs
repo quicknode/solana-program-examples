@@ -1,74 +1,36 @@
-use quasar_svm::{Account, Instruction, Pubkey, QuasarSvm};
-use solana_address::Address;
+use {crate::cpi::GoToParkInstruction, quasar_test::prelude::*};
 
-fn setup() -> QuasarSvm {
-    let elf = include_bytes!("../target/deploy/quasar_processing_instructions.so");
-    QuasarSvm::new().with_program(&Pubkey::from(crate::ID), elf)
-}
+// Deterministic addresses keep tests independent of discovery order.
+const USER: Pubkey = Pubkey::new_from_array([1; 32]);
 
-fn signer(address: Pubkey) -> Account {
-    quasar_svm::token::create_keyed_system_account(&address, 10_000_000_000)
-}
+#[quasar_test]
+fn tall_visitor_is_allowed_on_the_ride(test: &mut Test) {
+    test.add(Wallet::new().at(USER));
 
-/// Build go_to_park instruction data.
-/// Wire format: [disc=0] [ZC: height(u32)] [name: u32 prefix + bytes]
-fn build_go_to_park(name: &str, height: u32) -> Vec<u8> {
-    let mut data = vec![0u8]; // discriminator = 0
+    let outcome = test.send(GoToParkInstruction {
+        signer: USER,
+        height: 6,
+        name: "Alice".to_string().into(),
+    });
+    outcome.succeeds();
 
-    // Fixed ZC: height
-    data.extend_from_slice(&height.to_le_bytes());
-
-    // Dynamic String: name
-    data.extend_from_slice(&(name.len() as u32).to_le_bytes());
-    data.extend_from_slice(name.as_bytes());
-
-    data
-}
-
-#[test]
-fn test_tall_enough() {
-    let mut svm = setup();
-    let user = Pubkey::new_unique();
-
-    let ix = Instruction {
-        program_id: Pubkey::from(crate::ID),
-        accounts: vec![
-            solana_instruction::AccountMeta::new_readonly(
-                Address::from(user.to_bytes()),
-                true,
-            ),
-        ],
-        data: build_go_to_park("Alice", 6),
-    };
-
-    let result = svm.process_instruction(&ix, &[signer(user)]);
-    result.assert_success();
-
-    let logs = result.logs.join("\n");
+    let logs = outcome.logs().join("\n");
     assert!(logs.contains("Welcome to the park!"), "should welcome");
     assert!(logs.contains("tall enough to ride"), "should say tall enough");
 }
 
-#[test]
-fn test_not_tall_enough() {
-    let mut svm = setup();
-    let user = Pubkey::new_unique();
+#[quasar_test]
+fn short_visitor_is_turned_away(test: &mut Test) {
+    test.add(Wallet::new().at(USER));
 
-    let ix = Instruction {
-        program_id: Pubkey::from(crate::ID),
-        accounts: vec![
-            solana_instruction::AccountMeta::new_readonly(
-                Address::from(user.to_bytes()),
-                true,
-            ),
-        ],
-        data: build_go_to_park("Bob", 3),
-    };
+    let outcome = test.send(GoToParkInstruction {
+        signer: USER,
+        height: 3,
+        name: "Bob".to_string().into(),
+    });
+    outcome.succeeds();
 
-    let result = svm.process_instruction(&ix, &[signer(user)]);
-    result.assert_success();
-
-    let logs = result.logs.join("\n");
+    let logs = outcome.logs().join("\n");
     assert!(logs.contains("Welcome to the park!"), "should welcome");
     assert!(logs.contains("NOT tall enough"), "should say not tall enough");
 }

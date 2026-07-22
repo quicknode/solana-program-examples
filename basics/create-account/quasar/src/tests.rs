@@ -1,52 +1,34 @@
-use quasar_svm::{Account, Instruction, Pubkey, QuasarSvm};
-use solana_address::Address;
+use {crate::cpi::CreateSystemAccountInstruction, quasar_test::prelude::*};
 
-use quasar_create_account_client::CreateSystemAccountInstruction;
+// Deterministic addresses keep tests independent of discovery order.
+const PAYER: Pubkey = Pubkey::new_from_array([1; 32]);
+const NEW_ACCOUNT: Pubkey = Pubkey::new_from_array([2; 32]);
 
-fn setup() -> QuasarSvm {
-    let elf = include_bytes!("../target/deploy/quasar_create_account.so");
-    QuasarSvm::new().with_program(&Pubkey::from(crate::ID), elf)
-}
+#[quasar_test]
+fn create_system_account_funds_a_rent_exempt_account(test: &mut Test) {
+    test.add(Wallet::new().at(PAYER));
+    // NEW_ACCOUNT stays absent: a missing writable account enters the
+    // transaction as an empty system account, the exact shape the system
+    // program's create_account CPI expects.
 
-fn signer(address: Pubkey) -> Account {
-    quasar_svm::token::create_keyed_system_account(&address, 10_000_000_000)
-}
-
-fn empty(address: Pubkey) -> Account {
-    Account {
-        address,
-        lamports: 0,
-        data: vec![],
-        owner: quasar_svm::system_program::ID,
-        executable: false,
-    }
-}
-
-#[test]
-fn test_create_system_account() {
-    let mut svm = setup();
-
-    let payer = Pubkey::new_unique();
-    let new_account = Pubkey::new_unique();
-    let system_program = quasar_svm::system_program::ID;
-
-    let instruction: Instruction = CreateSystemAccountInstruction {
-        payer: Address::from(payer.to_bytes()),
-        new_account: Address::from(new_account.to_bytes()),
-        system_program: Address::from(system_program.to_bytes()),
-    }
-    .into();
-
-    let result = svm.process_instruction(
-        &instruction,
-        &[signer(payer), empty(new_account)],
-    );
-
-    result.assert_success();
+    // The system program is a canonical derivation, so the generated
+    // instruction only asks for the two signers.
+    test.send(CreateSystemAccountInstruction {
+        payer: PAYER,
+        new_account: NEW_ACCOUNT,
+    })
+    .succeeds();
 
     // Verify the new account exists and is owned by the system program.
-    let account = result.account(&new_account).unwrap();
-    assert_eq!(account.owner, system_program, "account should be system-owned");
-    assert!(account.lamports > 0, "account should have rent-exempt lamports");
+    let account = test.account(NEW_ACCOUNT).unwrap();
+    assert_eq!(
+        account.owner,
+        system_program::ID,
+        "account should be system-owned"
+    );
+    assert!(
+        account.lamports > 0,
+        "account should have rent-exempt lamports"
+    );
     assert_eq!(account.data.len(), 0, "account should have zero data");
 }

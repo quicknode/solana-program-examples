@@ -1,137 +1,62 @@
-use quasar_svm::{Account, Instruction, Pubkey, QuasarSvm};
-use solana_address::Address;
+use {
+    crate::cpi::{InitializeInstruction, UpdateInstruction},
+    quasar_test::prelude::*,
+};
 
-fn setup() -> QuasarSvm {
-    let elf = include_bytes!("../target/deploy/quasar_realloc.so");
-    QuasarSvm::new().with_program(&Pubkey::from(crate::ID), elf)
-}
+// Deterministic addresses keep tests independent of discovery order.
+const PAYER: Pubkey = Pubkey::new_from_array([1; 32]);
+// The message account is a random keypair (not a PDA) - same as the Anchor
+// version - so the caller passes its address explicitly.
+const MESSAGE_ACCOUNT: Pubkey = Pubkey::new_from_array([2; 32]);
 
-fn signer(address: Pubkey) -> Account {
-    quasar_svm::token::create_keyed_system_account(&address, 10_000_000_000)
-}
-
-fn empty(address: Pubkey) -> Account {
-    Account {
-        address,
-        lamports: 0,
-        data: vec![],
-        owner: quasar_svm::system_program::ID,
-        executable: false,
-    }
-}
-
-/// Build initialize instruction data using Quasar's compact wire format.
-/// `String<1024>` defaults to a u8 length prefix (the second `String` generic
-/// argument is the prefix type and its default is `u8`).
-///
-///   header: [disc: u8 = 0][message_len: u8]
-///   tail:   [message bytes]
-fn build_initialize(message: &str) -> Vec<u8> {
-    let mut data = Vec::with_capacity(2 + message.len());
-    data.push(0u8); // discriminator
-    data.push(message.len() as u8);
-    data.extend_from_slice(message.as_bytes());
-    data
-}
-
-/// Build update instruction data using the same compact wire format.
-fn build_update(message: &str) -> Vec<u8> {
-    let mut data = Vec::with_capacity(2 + message.len());
-    data.push(1u8); // discriminator
-    data.push(message.len() as u8);
-    data.extend_from_slice(message.as_bytes());
-    data
-}
-
-#[test]
-fn test_initialize() {
-    let mut svm = setup();
-
-    let payer = Pubkey::new_unique();
-    let message_account = Pubkey::new_unique();
-    let system_program = quasar_svm::system_program::ID;
-
-    let ix = Instruction {
-        program_id: Pubkey::from(crate::ID),
-        accounts: vec![
-            solana_instruction::AccountMeta::new(Address::from(payer.to_bytes()), true),
-            solana_instruction::AccountMeta::new(
-                Address::from(message_account.to_bytes()),
-                true,
-            ),
-            solana_instruction::AccountMeta::new_readonly(
-                Address::from(system_program.to_bytes()),
-                false,
-            ),
-        ],
-        data: build_initialize("Hello, World!"),
-    };
-
-    let result = svm.process_instruction(&ix, &[signer(payer), empty(message_account)]);
-    result.assert_success();
-
-    // Verify: disc(1) + message (u8 prefix + bytes)
-    let account = result.account(&message_account).unwrap();
+/// Assert the account holds the expected message in Quasar's compact wire
+/// layout: disc(1 byte = 1) + u16 LE length prefix + message bytes.
+/// `String<1024, 2>` uses a 2-byte length prefix: zeropod 0.3.3 rejects a
+/// capacity that exceeds the prefix's range at compile time, so a 1024-byte
+/// string can no longer use the default u8 prefix. Byte layout is part of
+/// what this example demonstrates, so it is checked directly.
+fn assert_message(test: &Test, expected: &str) {
+    let account = test.account(MESSAGE_ACCOUNT).unwrap();
     assert_eq!(account.data[0], 1, "discriminator");
-
-    let msg_len = account.data[1] as usize;
-    assert_eq!(msg_len, 13);
-    assert_eq!(&account.data[2..2 + msg_len], b"Hello, World!");
+    let msg_len = u16::from_le_bytes(account.data[1..3].try_into().unwrap()) as usize;
+    assert_eq!(msg_len, expected.len());
+    assert_eq!(&account.data[3..3 + msg_len], expected.as_bytes());
 }
 
-#[test]
-fn test_update_longer_message() {
-    let mut svm = setup();
+#[quasar_test]
+fn initialize_stores_the_message(test: &mut Test) {
+    test.add(Wallet::new().at(PAYER));
 
-    let payer = Pubkey::new_unique();
-    let message_account = Pubkey::new_unique();
-    let system_program = quasar_svm::system_program::ID;
-    let program_id = Pubkey::from(crate::ID);
+    test.send(InitializeInstruction {
+        payer: PAYER,
+        message_account: MESSAGE_ACCOUNT,
+        message: "Hello, World!".to_string().into(),
+    })
+    .succeeds();
 
-    // Initialize with short message
-    let init_ix = Instruction {
-        program_id,
-        accounts: vec![
-            solana_instruction::AccountMeta::new(Address::from(payer.to_bytes()), true),
-            solana_instruction::AccountMeta::new(
-                Address::from(message_account.to_bytes()),
-                true,
-            ),
-            solana_instruction::AccountMeta::new_readonly(
-                Address::from(system_program.to_bytes()),
-                false,
-            ),
-        ],
-        data: build_initialize("Hi"),
-    };
+    assert_message(test, "Hello, World!");
+}
 
-    let result = svm.process_instruction(&init_ix, &[signer(payer), empty(message_account)]);
-    result.assert_success();
+#[quasar_test]
+fn update_with_a_longer_message_reallocs(test: &mut Test) {
+    test.add(Wallet::new().at(PAYER));
 
-    let payer_after_init = result.account(&payer).unwrap().clone();
-    let msg_after_init = result.account(&message_account).unwrap().clone();
+    // Initialize with a short message.
+    test.send(InitializeInstruction {
+        payer: PAYER,
+        message_account: MESSAGE_ACCOUNT,
+        message: "Hi".to_string().into(),
+    })
+    .succeeds();
 
-    // Update with longer message - triggers realloc
-    let update_ix = Instruction {
-        program_id,
-        accounts: vec![
-            solana_instruction::AccountMeta::new(Address::from(payer.to_bytes()), true),
-            solana_instruction::AccountMeta::new(
-                Address::from(message_account.to_bytes()),
-                false,
-            ),
-            solana_instruction::AccountMeta::new_readonly(
-                Address::from(system_program.to_bytes()),
-                false,
-            ),
-        ],
-        data: build_update("Hello, this is a much longer message!"),
-    };
+    // Update with a longer message - set_inner grows the account (realloc).
+    let longer = "Hello, this is a much longer message!";
+    test.send(UpdateInstruction {
+        payer: PAYER,
+        message_account: MESSAGE_ACCOUNT,
+        message: longer.to_string().into(),
+    })
+    .succeeds();
 
-    let result = svm.process_instruction(&update_ix, &[payer_after_init, msg_after_init]);
-    result.assert_success();
-
-    // Note: QuasarSvm may not fully reflect realloc changes (data length change)
-    // in test results. The realloc is handled by set_inner which modifies the
-    // RuntimeAccount data_len field directly. Onchain this works correctly.
+    assert_message(test, longer);
 }

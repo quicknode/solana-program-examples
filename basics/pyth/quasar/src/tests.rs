@@ -1,17 +1,17 @@
-use quasar_svm::{Account, Instruction, Pubkey, QuasarSvm};
-use solana_address::Address;
-
-use crate::instructions::{
-    PythExampleError, MAXIMUM_PRICE_AGE_SECONDS, PYTH_RECEIVER_PROGRAM_ID,
+use {
+    crate::{
+        cpi::ReadPriceInstruction,
+        instructions::{PythExampleError, MAXIMUM_PRICE_AGE_SECONDS, PYTH_RECEIVER_PROGRAM_ID},
+    },
+    quasar_test::prelude::*,
 };
+
+// Deterministic addresses keep tests independent of discovery order.
+const PRICE_UPDATE: Pubkey = Pubkey::new_from_array([1; 32]);
+const WRONG_OWNER: Pubkey = Pubkey::new_from_array([2; 32]);
 
 /// The `publish_time` baked into the mock price update below.
 const MOCK_PUBLISH_TIME: i64 = 1_700_000_000;
-
-fn setup() -> QuasarSvm {
-    let elf = include_bytes!("../target/deploy/quasar_pyth_example.so");
-    QuasarSvm::new().with_program(&Pubkey::from(crate::ID), elf)
-}
 
 /// Build a minimal mock PriceUpdateV2 account body (133 bytes).
 ///
@@ -28,7 +28,7 @@ fn setup() -> QuasarSvm {
 ///   [109..117] ema_price = 14_900_000_000 i64 LE
 ///   [117..125] ema_conf = 120_000 u64 LE
 ///   [125..133] posted_slot = 42 u64 LE
-fn build_mock_price_update_account() -> Vec<u8> {
+fn build_mock_price_update_data() -> Vec<u8> {
     let discriminator: [u8; 8] = [34, 241, 35, 99, 157, 126, 244, 205];
     let mut data = Vec::with_capacity(133);
 
@@ -48,75 +48,50 @@ fn build_mock_price_update_account() -> Vec<u8> {
     data
 }
 
-fn price_update_account(address: Pubkey, owner: Pubkey) -> Account {
-    Account {
-        address,
-        lamports: 1_000_000_000,
-        data: build_mock_price_update_account(),
+/// Install a hand-built Pyth oracle account (owner + raw data) into the world.
+fn add_price_update_account(test: &mut Test, owner: Pubkey) {
+    test.set_account(Account::new(
+        PRICE_UPDATE,
         owner,
-        executable: false,
-    }
-}
-
-fn read_price_instruction(price_update: Pubkey) -> Instruction {
-    Instruction {
-        program_id: Pubkey::from(crate::ID),
-        accounts: vec![solana_instruction::AccountMeta::new_readonly(
-            Address::from(price_update.to_bytes()),
-            false,
-        )],
-        data: vec![0u8], // read_price discriminator
-    }
-}
-
-#[test]
-fn test_read_price() {
-    let mut svm = setup();
-
-    // A price exactly at the maximum allowed age is still accepted.
-    svm.warp_to_timestamp(MOCK_PUBLISH_TIME + MAXIMUM_PRICE_AGE_SECONDS);
-
-    let price_update = Pubkey::new_unique();
-    let price_account =
-        price_update_account(price_update, Pubkey::from(PYTH_RECEIVER_PROGRAM_ID));
-
-    let result =
-        svm.process_instruction(&read_price_instruction(price_update), &[price_account]);
-    result.assert_success();
-}
-
-#[test]
-fn test_read_price_rejects_stale_price() {
-    let mut svm = setup();
-
-    // One second past the maximum age: rejected as stale.
-    svm.warp_to_timestamp(MOCK_PUBLISH_TIME + MAXIMUM_PRICE_AGE_SECONDS + 1);
-
-    let price_update = Pubkey::new_unique();
-    let price_account =
-        price_update_account(price_update, Pubkey::from(PYTH_RECEIVER_PROGRAM_ID));
-
-    let result =
-        svm.process_instruction(&read_price_instruction(price_update), &[price_account]);
-    result.assert_error(quasar_svm::ProgramError::Custom(
-        PythExampleError::PriceTooOld as u32,
+        1_000_000_000,
+        build_mock_price_update_data(),
     ));
 }
 
-#[test]
-fn test_read_price_rejects_wrong_owner() {
-    let mut svm = setup();
+#[quasar_test]
+fn read_price_accepts_a_fresh_price(test: &mut Test) {
+    // A price exactly at the maximum allowed age is still accepted.
+    test.warp_to_timestamp(MOCK_PUBLISH_TIME + MAXIMUM_PRICE_AGE_SECONDS);
+    add_price_update_account(test, Pubkey::from(PYTH_RECEIVER_PROGRAM_ID));
 
-    svm.warp_to_timestamp(MOCK_PUBLISH_TIME);
+    test.send(ReadPriceInstruction {
+        price_update: PRICE_UPDATE,
+    })
+    .succeeds();
+}
+
+#[quasar_test]
+fn read_price_rejects_a_stale_price(test: &mut Test) {
+    // One second past the maximum age: rejected as stale.
+    test.warp_to_timestamp(MOCK_PUBLISH_TIME + MAXIMUM_PRICE_AGE_SECONDS + 1);
+    add_price_update_account(test, Pubkey::from(PYTH_RECEIVER_PROGRAM_ID));
+
+    test.send(ReadPriceInstruction {
+        price_update: PRICE_UPDATE,
+    })
+    .fails_with(PythExampleError::PriceTooOld);
+}
+
+#[quasar_test]
+fn read_price_rejects_an_account_with_the_wrong_owner(test: &mut Test) {
+    test.warp_to_timestamp(MOCK_PUBLISH_TIME);
 
     // Plausible price bytes, but the account is owned by some random program
     // instead of the Pyth Receiver: the owner constraint must reject it.
-    let price_update = Pubkey::new_unique();
-    let price_account = price_update_account(price_update, Pubkey::new_unique());
+    add_price_update_account(test, WRONG_OWNER);
 
-    let result =
-        svm.process_instruction(&read_price_instruction(price_update), &[price_account]);
-    result.assert_error(quasar_svm::ProgramError::Custom(
-        PythExampleError::PriceUpdateNotOwnedByPythReceiver as u32,
-    ));
+    test.send(ReadPriceInstruction {
+        price_update: PRICE_UPDATE,
+    })
+    .fails_with(PythExampleError::PriceUpdateNotOwnedByPythReceiver);
 }

@@ -16,14 +16,14 @@ mod quasar_realloc {
 
     /// Create a message account with an initial message.
     #[instruction(discriminator = 0)]
-    pub fn initialize(ctx: Ctx<InitializeAccountConstraints>, message: String<1024>) -> Result<(), ProgramError> {
+    pub fn initialize(ctx: Ctx<InitializeAccountConstraints>, message: String<1024, 2>) -> Result<(), ProgramError> {
         instructions::handle_initialize(&mut ctx.accounts, message)
     }
 
     /// Update the message, reallocating if the new message is longer.
     /// Quasar's `set_inner` handles realloc transparently.
     #[instruction(discriminator = 1)]
-    pub fn update(ctx: Ctx<UpdateAccountConstraints>, message: String<1024>) -> Result<(), ProgramError> {
+    pub fn update(ctx: Ctx<UpdateAccountConstraints>, message: String<1024, 2>) -> Result<(), ProgramError> {
         instructions::handle_update(&mut ctx.accounts, message)
     }
 }

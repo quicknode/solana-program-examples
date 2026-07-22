@@ -1,81 +1,55 @@
-use quasar_svm::{Account, Instruction, Pubkey, QuasarSvm};
-use solana_address::Address;
-
-/// Lever program's program ID - must match the lever's declare_id!().
-fn lever_program_id() -> Pubkey {
-    Pubkey::from(crate::LEVER_PROGRAM_ID)
-}
+use {
+    crate::cpi::PullLeverInstruction,
+    quasar_lang::client::DynString,
+    quasar_test::prelude::*,
+};
 
 /// PowerStatus discriminator from the lever program.
 const POWER_STATUS_DISCRIMINATOR: u8 = 1;
 
-fn setup() -> QuasarSvm {
-    let hand_elf = include_bytes!("../target/deploy/quasar_hand.so");
-    let lever_elf = include_bytes!("../../lever/target/deploy/quasar_lever.so");
-    QuasarSvm::new()
-        .with_program(&Pubkey::from(crate::ID), hand_elf)
-        .with_program(&lever_program_id(), lever_elf)
+/// The lever program's ID as a test-harness Pubkey.
+fn lever_program_id() -> Pubkey {
+    Pubkey::from(crate::LEVER_PROGRAM_ID)
 }
 
-fn power_account(address: Pubkey, is_on: bool) -> Account {
-    // Account data: [discriminator: u8] [is_on: u8]
-    let data = vec![POWER_STATUS_DISCRIMINATOR, if is_on { 1 } else { 0 }];
-    Account {
+/// Load the lever program next to the hand program. quasar-test only
+/// auto-loads sibling `.so` files from this project's own target/deploy
+/// directory, so the lever ELF is read from the lever project at runtime.
+fn load_lever(test: &mut Test) -> Pubkey {
+    test.add(Program::new(
+        lever_program_id(),
+        &std::fs::read("../lever/target/deploy/quasar_lever.so").unwrap(),
+    ));
+    Pubkey::find_program_address(&[b"power"], &lever_program_id()).0
+}
+
+/// Install the lever's power account. Account data:
+/// [discriminator: u8] [is_on: u8]
+fn add_power_account(test: &mut Test, address: Pubkey, is_on: bool) {
+    test.set_account(Account::new(
         address,
-        lamports: 1_000_000_000,
-        data,
-        owner: lever_program_id(),
-        executable: false,
-    }
+        lever_program_id(),
+        1_000_000_000,
+        vec![POWER_STATUS_DISCRIMINATOR, u8::from(is_on)],
+    ));
 }
 
-/// Build pull_lever instruction data (discriminator = 0).
-///
-/// Wire format: [discriminator = 0] [name: u8 length prefix + bytes].
-///
-/// The hand's pull_lever instruction takes `String<50>`, which Quasar
-/// serialises with a single-byte length prefix. The CPI builder in
-/// `pull_lever.rs` re-serialises the same name into the lever's
-/// instruction data using the same u8 prefix.
-fn build_pull_lever(name: &str) -> Vec<u8> {
-    let mut data = Vec::with_capacity(2 + name.len());
-    data.push(0u8); // discriminator = 0
-    data.push(name.len() as u8);
-    data.extend_from_slice(name.as_bytes());
-    data
-}
+#[quasar_test]
+fn pull_lever_turns_the_power_on(test: &mut Test) {
+    let power = load_lever(test);
+    // Start with power off.
+    add_power_account(test, power, false);
 
-#[test]
-fn test_pull_lever_turns_on() {
-    let mut svm = setup();
+    // The lever program account is a canonical derivation
+    // (Program<LeverProgram>), so the generated instruction only asks for
+    // the power account and the name.
+    let outcome = test.send(PullLeverInstruction {
+        power,
+        name: DynString::new("Alice"),
+    });
+    outcome.succeeds();
 
-    let (power_addr, _bump) = Pubkey::find_program_address(&[b"power"], &lever_program_id());
-
-    let ix = Instruction {
-        program_id: Pubkey::from(crate::ID),
-        accounts: vec![
-            solana_instruction::AccountMeta::new(
-                Address::from(power_addr.to_bytes()),
-                false,
-            ),
-            solana_instruction::AccountMeta::new_readonly(
-                Address::from(lever_program_id().to_bytes()),
-                false,
-            ),
-        ],
-        data: build_pull_lever("Alice"),
-    };
-
-    // The lever program account is provided by the SVM (loaded via with_program).
-    // Only the power data account needs to be passed explicitly.
-    let result = svm.process_instruction(
-        &ix,
-        &[power_account(power_addr, false)],
-    );
-
-    result.assert_success();
-
-    let logs = result.logs.join("\n");
+    let logs = outcome.logs().join("\n");
     assert!(logs.contains("Hand is pulling"), "hand should log");
     assert!(logs.contains("pulling the power switch"), "lever should log");
     assert!(logs.contains("now on"), "power should turn on");
@@ -85,48 +59,32 @@ fn test_pull_lever_turns_on() {
     // this (e.g. "\0\0\0Al" instead of "Alice").
     assert!(
         logs.contains("Alice"),
-        "name should round-trip through hand → lever CPI; logs: {logs}"
+        "name should round-trip through hand -> lever CPI; logs: {logs}"
     );
 
-    let account = result.account(&power_addr).unwrap();
+    let account = test.account(power).unwrap();
     assert_eq!(account.data[1], 1, "power should be on");
 }
 
-#[test]
-fn test_pull_lever_turns_off() {
-    let mut svm = setup();
+#[quasar_test]
+fn pull_lever_turns_the_power_off(test: &mut Test) {
+    let power = load_lever(test);
+    // Start with power on.
+    add_power_account(test, power, true);
 
-    let (power_addr, _bump) = Pubkey::find_program_address(&[b"power"], &lever_program_id());
+    let outcome = test.send(PullLeverInstruction {
+        power,
+        name: DynString::new("Bob"),
+    });
+    outcome.succeeds();
 
-    let ix = Instruction {
-        program_id: Pubkey::from(crate::ID),
-        accounts: vec![
-            solana_instruction::AccountMeta::new(
-                Address::from(power_addr.to_bytes()),
-                false,
-            ),
-            solana_instruction::AccountMeta::new_readonly(
-                Address::from(lever_program_id().to_bytes()),
-                false,
-            ),
-        ],
-        data: build_pull_lever("Bob"),
-    };
-
-    let result = svm.process_instruction(
-        &ix,
-        &[power_account(power_addr, true)],
-    );
-
-    result.assert_success();
-
-    let logs = result.logs.join("\n");
+    let logs = outcome.logs().join("\n");
     assert!(logs.contains("now off"), "power should turn off");
     assert!(
         logs.contains("Bob"),
-        "name should round-trip through hand → lever CPI; logs: {logs}"
+        "name should round-trip through hand -> lever CPI; logs: {logs}"
     );
 
-    let account = result.account(&power_addr).unwrap();
+    let account = test.account(power).unwrap();
     assert_eq!(account.data[1], 0, "power should be off");
 }
