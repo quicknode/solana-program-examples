@@ -1,6 +1,6 @@
 //! QuasarSVM integration tests. They drive the real program instructions
 //! end-to-end: initialize the config, open an event, add outcomes, place bets,
-//! settle, and claim, asserting on-chain state and token balances at each step.
+//! settle, and claim, asserting onchain state and token balances at each step.
 //!
 //! Multi-step flows use `process_instruction_chain`, which runs several
 //! instructions atomically over a shared, evolving account set.
@@ -110,9 +110,9 @@ fn user_pda(bettor: &Pubkey) -> Pubkey {
 // --- Instruction data builders (discriminator byte + args). Strings use
 // Quasar's compact wire format: a u8 length prefix then the bytes. ---
 
-fn initialize_config_data(fee_bps: u16, fee_recipient: &Pubkey) -> Vec<u8> {
+fn initialize_config_data(default_fee_bps: u16, fee_recipient: &Pubkey) -> Vec<u8> {
     let mut data = vec![0u8];
-    data.extend_from_slice(&fee_bps.to_le_bytes());
+    data.extend_from_slice(&default_fee_bps.to_le_bytes());
     data.extend_from_slice(fee_recipient.as_ref());
     data
 }
@@ -388,7 +388,7 @@ fn test_initialize_config() {
     assert_eq!(&config.data[1..33], fx.admin.as_ref(), "admin");
     assert_eq!(&config.data[33..65], fx.token_mint.as_ref(), "token_mint");
     assert_eq!(&config.data[65..97], fx.fee_recipient.as_ref(), "fee_recipient");
-    assert_eq!(&config.data[97..99], &FEE_BPS.to_le_bytes(), "fee_bps");
+    assert_eq!(&config.data[97..99], &FEE_BPS.to_le_bytes(), "default_fee_bps");
 
     println!("  INITIALIZE_CONFIG CU: {}", result.compute_units_consumed);
 }
@@ -422,7 +422,7 @@ fn test_full_lifecycle() {
 
     const STAKE_A: u64 = 100;
     const STAKE_B: u64 = 300;
-    const FEE: u64 = 1; // ceil? no - floor(100 * 100 / 10000) = 1
+    const FEE: u64 = 1; // floor(losing_pool 100 * FEE_BPS 100 / 10000)
     const PAYOUT_B: u64 = STAKE_B + 99; // stake + winnings(99)
 
     let accounts = vec![

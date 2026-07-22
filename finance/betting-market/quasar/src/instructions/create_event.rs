@@ -56,7 +56,7 @@ pub fn handle_create_event(
     let mut description_buffer = [0u8; MAX_DESCRIPTION_LEN];
     description_buffer[..description_bytes.len()].copy_from_slice(description_bytes);
 
-    let fee_bps = u16::from(accounts.config.fee_bps);
+    let fee_bps = u16::from(accounts.config.default_fee_bps);
 
     accounts.event.set_inner(EventInner {
         event_id,

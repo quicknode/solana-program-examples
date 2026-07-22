@@ -23,11 +23,12 @@ powers are creating events/outcomes and choosing the winning outcome (or cancell
 
 - **Config** (`seeds = [b"config"]`) - one per deployment. Holds the `admin` (the only key that can
   create events/outcomes, settle, and cancel), the `token_mint` every market accepts, the
-  `fee_recipient`, and the `fee_bps`.
+  `fee_recipient`, and the `default_fee_bps` each new event copies at creation.
 - **Event** (`seeds = [b"event", event_id]`) - one betting market. Tracks `total_pool`, `status`
   (`Open` / `Settled` / `Cancelled`), and - once settled - the `winning_outcome_index`,
-  `winning_pool`, and `distributable_losing_pool` that the payout formula reads. The `fee_bps` is
-  snapshotted at creation so later Config changes can't alter a market bettors have already joined.
+  `winning_pool`, and `distributable_losing_pool` that the payout formula reads. The event's
+  `fee_bps` is copied from the config's `default_fee_bps` at creation and is what settlement
+  charges, so later Config changes can't alter a market bettors have already joined.
 - **Outcome** (`seeds = [b"outcome", event, index]`) - one possible result. Its `total_amount` is
   the outcome's share of the pool and the denominator for pro-rata payouts when it wins.
 - **Bet** (`seeds = [b"bet", outcome, bettor]`) - a bettor's total stake on one outcome. Re-betting
@@ -74,7 +75,7 @@ division floors each share, leaving at most a few minor units of dust in the vau
 ### Instruction handlers
 
 - `initialize_config` - anyone (the signer becomes admin). One-time setup: sets admin, stake
-  token, fee, fee recipient.
+  token, default fee, fee recipient.
 - `create_event` - admin. Opens a market and creates its vault.
 - `add_outcome` - admin. Adds a possible result. Only before any bet is placed.
 - `place_bet` - bettor. Stakes tokens on one outcome; updates the pools and adds the Bet to the

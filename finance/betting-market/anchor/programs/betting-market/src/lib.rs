@@ -14,13 +14,18 @@ pub mod betting_market {
     use super::*;
 
     // One-time setup: the signer becomes the admin and fixes the stake token and
-    // the settlement fee (basis points) for every market in this deployment.
+    // the default settlement fee (basis points) that each new market copies at
+    // creation.
     pub fn initialize_config(
         context: Context<InitializeConfigAccountConstraints>,
-        fee_bps: u16,
+        default_fee_bps: u16,
         fee_recipient: Pubkey,
     ) -> Result<()> {
-        instructions::initialize_config::handle_initialize_config(context, fee_bps, fee_recipient)
+        instructions::initialize_config::handle_initialize_config(
+            context,
+            default_fee_bps,
+            fee_recipient,
+        )
     }
 
     // Admin opens a new market and creates its pool vault.
