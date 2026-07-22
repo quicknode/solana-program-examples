@@ -1,99 +1,52 @@
-extern crate std;
 use {
-    alloc::vec,
-    quasar_svm::{Account, Instruction, Pubkey, QuasarSvm},
-    std::println,
+    crate::cpi::{InitializeExtraAccountMetaListInstruction, TransferHookInstruction},
+    quasar_test::prelude::*,
 };
 
-fn setup() -> QuasarSvm {
-    let elf = std::fs::read("target/deploy/quasar_transfer_hook_account_data_as_seed.so").unwrap();
-    QuasarSvm::new().with_program(&crate::ID, &elf)
+// Deterministic addresses keep tests independent of discovery order.
+const PAYER: Pubkey = Pubkey::new_from_array([1; 32]);
+const MINT: Pubkey = Pubkey::new_from_array([2; 32]);
+const SOURCE_TOKEN: Pubkey = Pubkey::new_from_array([3; 32]);
+const DESTINATION_TOKEN: Pubkey = Pubkey::new_from_array([4; 32]);
+const OWNER: Pubkey = Pubkey::new_from_array([5; 32]);
+
+/// (extra_account_meta_list, counter) PDAs. The program derives these with
+/// raw seed literals, so the test mirrors the derivation directly.
+fn pdas() -> (Pubkey, Pubkey) {
+    let program_id: Pubkey = crate::ID.into();
+    let (meta_list, _) =
+        Pubkey::find_program_address(&[b"extra-account-metas", MINT.as_ref()], &program_id);
+    let (counter, _) = Pubkey::find_program_address(&[b"counter", PAYER.as_ref()], &program_id);
+    (meta_list, counter)
 }
 
-fn signer(address: Pubkey) -> Account {
-    quasar_svm::token::create_keyed_system_account(&address, 10_000_000_000)
-}
+#[quasar_test]
+fn initialize_then_transfer_hook_increments_the_counter(test: &mut Test) {
+    test.add(Wallet::new().at(PAYER));
+    let (meta_list, counter) = pdas();
 
-fn empty(address: Pubkey) -> Account {
-    Account {
-        address,
-        lamports: 0,
-        data: vec![],
-        owner: quasar_svm::system_program::ID,
-        executable: false,
-    }
-}
+    test.send(InitializeExtraAccountMetaListInstruction {
+        payer: PAYER,
+        extra_account_meta_list: meta_list,
+        mint: MINT,
+        counter_account: counter,
+    })
+    .succeeds();
 
-#[test]
-fn test_initialize_and_transfer_hook() {
-    let mut svm = setup();
+    test.send(TransferHookInstruction {
+        source_token: SOURCE_TOKEN,
+        mint: MINT,
+        destination_token: DESTINATION_TOKEN,
+        owner: OWNER,
+        extra_account_meta_list: meta_list,
+        counter_account: counter,
+        _amount: 1,
+    })
+    .succeeds();
 
-    let payer = Pubkey::new_unique();
-    let mint = Pubkey::new_unique();
-    let system_program = quasar_svm::system_program::ID;
-
-    let (meta_list_pda, _) = Pubkey::find_program_address(
-        &[b"extra-account-metas", mint.as_ref()],
-        &crate::ID.into(),
-    );
-
-    let (counter_pda, _) = Pubkey::find_program_address(
-        &[b"counter", payer.as_ref()],
-        &crate::ID.into(),
-    );
-
-    // Initialize
-    let init_data = vec![43, 34, 13, 49, 167, 88, 235, 235];
-    let init_ix = Instruction {
-        program_id: crate::ID,
-        accounts: vec![
-            solana_instruction::AccountMeta::new(payer.into(), true),
-            solana_instruction::AccountMeta::new(meta_list_pda.into(), false),
-            solana_instruction::AccountMeta::new_readonly(mint.into(), false),
-            solana_instruction::AccountMeta::new(counter_pda.into(), false),
-            solana_instruction::AccountMeta::new_readonly(system_program.into(), false),
-        ],
-        data: init_data,
-    };
-
-    let result = svm.process_instruction(
-        &init_ix,
-        &[signer(payer), empty(meta_list_pda), empty(mint), empty(counter_pda)],
-    );
-    result.print_logs();
-    assert!(result.is_ok(), "init failed: {:?}", result.raw_result);
-    println!("  INIT CU: {}", result.compute_units_consumed);
-
-    // Transfer hook
-    let source_token = Pubkey::new_unique();
-    let destination_token = Pubkey::new_unique();
-    let owner = Pubkey::new_unique();
-
-    let mut hook_data = vec![105, 37, 101, 197, 75, 251, 102, 26];
-    hook_data.extend_from_slice(&1u64.to_le_bytes());
-
-    let hook_ix = Instruction {
-        program_id: crate::ID,
-        accounts: vec![
-            solana_instruction::AccountMeta::new_readonly(source_token.into(), false),
-            solana_instruction::AccountMeta::new_readonly(mint.into(), false),
-            solana_instruction::AccountMeta::new_readonly(destination_token.into(), false),
-            solana_instruction::AccountMeta::new_readonly(owner.into(), false),
-            solana_instruction::AccountMeta::new_readonly(meta_list_pda.into(), false),
-            solana_instruction::AccountMeta::new(counter_pda.into(), false),
-        ],
-        data: hook_data,
-    };
-
-    let result = svm.process_instruction(
-        &hook_ix,
-        &[empty(source_token), empty(destination_token), signer(owner)],
-    );
-    result.print_logs();
-    assert!(result.is_ok(), "transfer_hook failed: {:?}", result.raw_result);
-    println!("  TRANSFER_HOOK CU: {}", result.compute_units_consumed);
-
-    let counter_account = svm.get_account(&counter_pda).expect("counter missing");
-    let counter = u64::from_le_bytes(counter_account.data[8..16].try_into().unwrap());
-    assert_eq!(counter, 1, "counter should be 1");
+    // Layout is [8-byte header][u64 counter]; the byte offset is the point of
+    // this program, so check the bytes directly.
+    let account = test.account(counter).expect("counter missing");
+    let count = u64::from_le_bytes(account.data[8..16].try_into().unwrap());
+    assert_eq!(count, 1, "counter should be 1");
 }

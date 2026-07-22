@@ -76,10 +76,10 @@ pub fn handle_initialize_extra_account_meta_list(accounts: &mut InitializeExtraA
     let lamports = Rent::get()?.try_minimum_balance(meta_list_size as usize)?;
 
     let mint_address = accounts.mint.to_account_view().address();
-    let (expected_pda, bump) = Address::find_program_address(
+    let (expected_pda, bump) = quasar_lang::pda::try_find_program_address(
         &[b"extra-account-metas", mint_address.as_ref()],
         &crate::ID,
-    );
+    )?;
 
     if accounts.extra_account_meta_list.to_account_view().address() != &expected_pda {
         return Err(ProgramError::InvalidSeeds);
@@ -136,7 +136,7 @@ pub fn handle_initialize_extra_account_meta_list(accounts: &mut InitializeExtraA
     let counter_lamports = Rent::get()?.try_minimum_balance(counter_size as usize)?;
 
     let (counter_pda, counter_bump) =
-        Address::find_program_address(&[b"counter", payer_address.as_ref()], &crate::ID);
+        quasar_lang::pda::try_find_program_address(&[b"counter", payer_address.as_ref()], &crate::ID)?;
 
     if accounts.counter_account.to_account_view().address() != &counter_pda {
         return Err(ProgramError::InvalidSeeds);

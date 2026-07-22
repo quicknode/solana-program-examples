@@ -20,7 +20,7 @@ pub struct InitWalletAccountConstraints {
 #[inline(always)]
 pub fn handle_init_wallet(accounts: &mut InitWalletAccountConstraints, allowed: bool) -> Result<(), ProgramError> {
     // Verify config PDA
-    let (config_pda, _) = Address::find_program_address(&[CONFIG_SEED], &crate::ID);
+    let (config_pda, _) = quasar_lang::pda::try_find_program_address(&[CONFIG_SEED], &crate::ID)?;
     if accounts.config.to_account_view().address() != &config_pda {
         return Err(ProgramError::InvalidSeeds);
     }
@@ -39,10 +39,10 @@ pub fn handle_init_wallet(accounts: &mut InitWalletAccountConstraints, allowed: 
 
     // Create ABWallet PDA
     let wallet_key = accounts.wallet.to_account_view().address();
-    let (ab_wallet_pda, bump) = Address::find_program_address(
+    let (ab_wallet_pda, bump) = quasar_lang::pda::try_find_program_address(
         &[AB_WALLET_SEED, wallet_key.as_ref()],
         &crate::ID,
-    );
+    )?;
     if accounts.ab_wallet.to_account_view().address() != &ab_wallet_pda {
         return Err(ProgramError::InvalidSeeds);
     }

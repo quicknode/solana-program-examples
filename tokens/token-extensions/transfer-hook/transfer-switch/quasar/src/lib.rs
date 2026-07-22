@@ -86,7 +86,8 @@ fn handle_configure_admin(accounts: &mut ConfigureAdminAccountConstraints) -> Re
     drop(data);
 
     // Create or reuse admin_config PDA
-    let (admin_config_pda, bump) = Address::find_program_address(&[b"admin-config"], &crate::ID);
+    let (admin_config_pda, bump) =
+        quasar_lang::pda::try_find_program_address(&[b"admin-config"], &crate::ID)?;
     if accounts.admin_config.to_account_view().address() != &admin_config_pda {
         return Err(ProgramError::InvalidSeeds);
     }
@@ -143,10 +144,10 @@ fn handle_initialize_extra_account_metas_list(
         let lamports = Rent::get()?.try_minimum_balance(meta_list_size as usize)?;
 
         let mint_address = accounts.token_mint.to_account_view().address();
-        let (expected_pda, bump) = Address::find_program_address(
+        let (expected_pda, bump) = quasar_lang::pda::try_find_program_address(
             &[b"extra-account-metas", mint_address.as_ref()],
             &crate::ID,
-        );
+        )?;
         if accounts.extra_account_metas_list.to_account_view().address() != &expected_pda {
             return Err(ProgramError::InvalidSeeds);
         }
@@ -217,7 +218,7 @@ fn handle_switch(accounts: &mut SwitchAccountConstraints, on: bool) -> Result<()
     // Create wallet switch PDA if needed
     let wallet_address = accounts.wallet.to_account_view().address();
     let (switch_pda, switch_bump) =
-        Address::find_program_address(&[wallet_address.as_ref()], &crate::ID);
+        quasar_lang::pda::try_find_program_address(&[wallet_address.as_ref()], &crate::ID)?;
     if accounts.wallet_switch.to_account_view().address() != &switch_pda {
         return Err(ProgramError::InvalidSeeds);
     }

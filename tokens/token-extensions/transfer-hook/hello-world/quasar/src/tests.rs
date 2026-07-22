@@ -1,155 +1,65 @@
-extern crate std;
 use {
-    alloc::vec,
-    quasar_svm::{Account, Instruction, Pubkey, QuasarSvm},
-    std::println,
+    crate::cpi::{
+        InitializeExtraAccountMetaListInstruction, InitializeInstruction, TransferHookInstruction,
+    },
+    quasar_test::prelude::*,
 };
 
-fn setup() -> QuasarSvm {
-    let elf = std::fs::read("target/deploy/quasar_transfer_hook_hello_world.so").unwrap();
-    QuasarSvm::new().with_program(&crate::ID, &elf)
+// Deterministic addresses keep tests independent of discovery order.
+const PAYER: Pubkey = Pubkey::new_from_array([1; 32]);
+const MINT: Pubkey = Pubkey::new_from_array([2; 32]);
+const SOURCE_TOKEN: Pubkey = Pubkey::new_from_array([3; 32]);
+const DESTINATION_TOKEN: Pubkey = Pubkey::new_from_array([4; 32]);
+const OWNER: Pubkey = Pubkey::new_from_array([5; 32]);
+
+/// ExtraAccountMetaList PDA. The program derives it with raw seed literals,
+/// so the test mirrors the derivation directly.
+fn meta_list_pda() -> Pubkey {
+    let program_id: Pubkey = crate::ID.into();
+    Pubkey::find_program_address(&[b"extra-account-metas", MINT.as_ref()], &program_id).0
 }
 
-fn signer(address: Pubkey) -> Account {
-    quasar_svm::token::create_keyed_system_account(&address, 10_000_000_000)
+#[quasar_test]
+fn initialize_creates_a_mint_with_the_transfer_hook_extension(test: &mut Test) {
+    test.add(Wallet::new().at(PAYER));
+
+    test.send(InitializeInstruction {
+        payer: PAYER,
+        mint_account: MINT,
+        decimals: 2,
+    })
+    .succeeds();
+
+    // The mint is now owned by Token-2022 and sized for the extension TLV.
+    let mint = test.account(MINT).expect("mint missing");
+    assert_eq!(mint.owner, SPL_TOKEN_2022_PROGRAM_ID);
+    assert_eq!(mint.data.len(), 234);
 }
 
-fn empty(address: Pubkey) -> Account {
-    Account {
-        address,
-        lamports: 0,
-        data: vec![],
-        owner: quasar_svm::system_program::ID,
-        executable: false,
-    }
+#[quasar_test]
+fn initialize_extra_account_meta_list_creates_the_pda(test: &mut Test) {
+    test.add(Wallet::new().at(PAYER));
+
+    // The mint does not need to exist for PDA derivation, just an address.
+    test.send(InitializeExtraAccountMetaListInstruction {
+        payer: PAYER,
+        extra_account_meta_list: meta_list_pda(),
+        mint: MINT,
+    })
+    .succeeds();
 }
 
-#[test]
-fn test_initialize_mint_with_transfer_hook() {
-    let mut svm = setup();
+#[quasar_test]
+fn transfer_hook_logs_and_succeeds(test: &mut Test) {
+    test.add(Wallet::new().at(OWNER));
 
-    let payer = Pubkey::new_unique();
-    let mint = Pubkey::new_unique();
-    let token_program = quasar_svm::SPL_TOKEN_2022_PROGRAM_ID;
-    let system_program = quasar_svm::system_program::ID;
-
-    // 8-byte discriminator [0,0,0,0,0,0,0,1] + decimals = 2
-    let data = vec![0, 0, 0, 0, 0, 0, 0, 1, 2];
-
-    let instruction = Instruction {
-        program_id: crate::ID,
-        accounts: vec![
-            solana_instruction::AccountMeta::new(payer.into(), true),
-            solana_instruction::AccountMeta::new(mint.into(), true),
-            solana_instruction::AccountMeta::new_readonly(token_program.into(), false),
-            solana_instruction::AccountMeta::new_readonly(system_program.into(), false),
-        ],
-        data,
-    };
-
-    let result = svm.process_instruction(
-        &instruction,
-        &[signer(payer), empty(mint)],
-    );
-
-    result.print_logs();
-    assert!(result.is_ok(), "initialize failed: {:?}", result.raw_result);
-    println!("  INITIALIZE CU: {}", result.compute_units_consumed);
-}
-
-#[test]
-fn test_initialize_extra_account_meta_list() {
-    let mut svm = setup();
-
-    let payer = Pubkey::new_unique();
-    let mint = Pubkey::new_unique();
-    let system_program = quasar_svm::system_program::ID;
-
-    // Derive the ExtraAccountMetaList PDA
-    let (meta_list_pda, _bump) = Pubkey::find_program_address(
-        &[b"extra-account-metas", mint.as_ref()],
-        &crate::ID.into(),
-    );
-
-    // InitializeExtraAccountMetaList discriminator
-    let data = vec![43, 34, 13, 49, 167, 88, 235, 235];
-
-    let instruction = Instruction {
-        program_id: crate::ID,
-        accounts: vec![
-            solana_instruction::AccountMeta::new(payer.into(), true),
-            solana_instruction::AccountMeta::new(meta_list_pda.into(), false),
-            solana_instruction::AccountMeta::new_readonly(mint.into(), false),
-            solana_instruction::AccountMeta::new_readonly(system_program.into(), false),
-        ],
-        data,
-    };
-
-    // mint doesn't need to exist for PDA derivation, just needs an address
-    let result = svm.process_instruction(
-        &instruction,
-        &[signer(payer), empty(meta_list_pda), empty(mint)],
-    );
-
-    result.print_logs();
-    assert!(
-        result.is_ok(),
-        "initialize_extra_account_meta_list failed: {:?}",
-        result.raw_result
-    );
-    println!(
-        "  INIT_EXTRA_ACCOUNT_METAS CU: {}",
-        result.compute_units_consumed
-    );
-}
-
-#[test]
-fn test_transfer_hook() {
-    let mut svm = setup();
-
-    let source_token = Pubkey::new_unique();
-    let mint = Pubkey::new_unique();
-    let destination_token = Pubkey::new_unique();
-    let owner = Pubkey::new_unique();
-
-    // Derive ExtraAccountMetaList PDA
-    let (meta_list_pda, _bump) = Pubkey::find_program_address(
-        &[b"extra-account-metas", mint.as_ref()],
-        &crate::ID.into(),
-    );
-
-    // Execute discriminator + amount (1u64 LE)
-    let mut data = vec![105, 37, 101, 197, 75, 251, 102, 26];
-    data.extend_from_slice(&1u64.to_le_bytes());
-
-    let instruction = Instruction {
-        program_id: crate::ID,
-        accounts: vec![
-            solana_instruction::AccountMeta::new_readonly(source_token.into(), false),
-            solana_instruction::AccountMeta::new_readonly(mint.into(), false),
-            solana_instruction::AccountMeta::new_readonly(destination_token.into(), false),
-            solana_instruction::AccountMeta::new_readonly(owner.into(), false),
-            solana_instruction::AccountMeta::new_readonly(meta_list_pda.into(), false),
-        ],
-        data,
-    };
-
-    let result = svm.process_instruction(
-        &instruction,
-        &[
-            empty(source_token),
-            empty(mint),
-            empty(destination_token),
-            signer(owner),
-            empty(meta_list_pda),
-        ],
-    );
-
-    result.print_logs();
-    assert!(
-        result.is_ok(),
-        "transfer_hook failed: {:?}",
-        result.raw_result
-    );
-    println!("  TRANSFER_HOOK CU: {}", result.compute_units_consumed);
+    test.send(TransferHookInstruction {
+        source_token: SOURCE_TOKEN,
+        mint: MINT,
+        destination_token: DESTINATION_TOKEN,
+        owner: OWNER,
+        extra_account_meta_list: meta_list_pda(),
+        _amount: 1,
+    })
+    .succeeds();
 }

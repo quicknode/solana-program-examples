@@ -1,19 +1,9 @@
 [project]
-name = "quasar_transfer_hook_whitelist"
-
-[toolchain]
-type = "solana"
+name = "quasar-transfer-hook-whitelist"
 
 [testing]
-language = "rust"
-
-[testing.rust]
-framework = "quasar-svm"
-
-[testing.rust.test]
-program = "cargo"
-args = ["test", "tests::"]
+command = { program = "cargo", args = ["test"] }
 
 [clients]
 path = "target/client"
-languages = ["rust"]
+targets = ["rust"]

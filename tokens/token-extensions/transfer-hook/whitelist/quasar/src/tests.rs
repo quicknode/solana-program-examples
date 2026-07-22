@@ -1,135 +1,72 @@
-extern crate std;
 use {
-    alloc::vec,
-    quasar_svm::{Account, Instruction, Pubkey, QuasarSvm},
-    std::println,
+    crate::cpi::{
+        AddToWhitelistInstruction, InitializeExtraAccountMetaListInstruction,
+        TransferHookInstruction,
+    },
+    quasar_test::prelude::*,
 };
 
-fn setup() -> QuasarSvm {
-    let elf = std::fs::read("target/deploy/quasar_transfer_hook_whitelist.so").unwrap();
-    QuasarSvm::new().with_program(&crate::ID, &elf)
+// Deterministic addresses keep tests independent of discovery order.
+const PAYER: Pubkey = Pubkey::new_from_array([1; 32]);
+const MINT: Pubkey = Pubkey::new_from_array([2; 32]);
+const SOURCE_TOKEN: Pubkey = Pubkey::new_from_array([3; 32]);
+const DESTINATION_TOKEN: Pubkey = Pubkey::new_from_array([4; 32]);
+const OWNER: Pubkey = Pubkey::new_from_array([5; 32]);
+const BAD_DEST: Pubkey = Pubkey::new_from_array([6; 32]);
+
+/// (extra_account_meta_list, white_list) PDAs. The program derives these with
+/// raw seed literals, so the test mirrors the derivation directly.
+fn pdas() -> (Pubkey, Pubkey) {
+    let program_id: Pubkey = crate::ID.into();
+    let (meta_list, _) =
+        Pubkey::find_program_address(&[b"extra-account-metas", MINT.as_ref()], &program_id);
+    let (white_list, _) = Pubkey::find_program_address(&[b"white_list"], &program_id);
+    (meta_list, white_list)
 }
 
-fn signer(address: Pubkey) -> Account {
-    quasar_svm::token::create_keyed_system_account(&address, 10_000_000_000)
-}
-
-fn empty(address: Pubkey) -> Account {
-    Account {
-        address,
-        lamports: 0,
-        data: vec![],
-        owner: quasar_svm::system_program::ID,
-        executable: false,
+fn hook_instruction(
+    destination_token: Pubkey,
+    meta_list: Pubkey,
+    white_list: Pubkey,
+) -> TransferHookInstruction {
+    TransferHookInstruction {
+        source_token: SOURCE_TOKEN,
+        mint: MINT,
+        destination_token,
+        owner: OWNER,
+        extra_account_meta_list: meta_list,
+        white_list,
+        _amount: 100,
     }
 }
 
-#[test]
-fn test_whitelist_flow() {
-    let mut svm = setup();
+#[quasar_test]
+fn whitelist_gates_transfers_by_destination(test: &mut Test) {
+    test.add(Wallet::new().at(PAYER));
+    let (meta_list, white_list) = pdas();
 
-    let payer = Pubkey::new_unique();
-    let mint = Pubkey::new_unique();
-    let system_program = quasar_svm::system_program::ID;
+    // 1. Initialize the meta list and whitelist (payer becomes authority).
+    test.send(InitializeExtraAccountMetaListInstruction {
+        payer: PAYER,
+        extra_account_meta_list: meta_list,
+        mint: MINT,
+        white_list,
+    })
+    .succeeds();
 
-    let (meta_list_pda, _) = Pubkey::find_program_address(
-        &[b"extra-account-metas", mint.as_ref()],
-        &crate::ID.into(),
-    );
-    let (white_list_pda, _) =
-        Pubkey::find_program_address(&[b"white_list"], &crate::ID.into());
+    // 2. Add the destination token account to the whitelist.
+    test.send(AddToWhitelistInstruction {
+        signer: PAYER,
+        new_account: DESTINATION_TOKEN,
+        white_list,
+    })
+    .succeeds();
 
-    // 1. Initialize
-    let init_ix = Instruction {
-        program_id: crate::ID,
-        accounts: vec![
-            solana_instruction::AccountMeta::new(payer.into(), true),
-            solana_instruction::AccountMeta::new(meta_list_pda.into(), false),
-            solana_instruction::AccountMeta::new_readonly(mint.into(), false),
-            solana_instruction::AccountMeta::new(white_list_pda.into(), false),
-            solana_instruction::AccountMeta::new_readonly(system_program.into(), false),
-        ],
-        data: vec![43, 34, 13, 49, 167, 88, 235, 235],
-    };
+    // 3. Transfer hook with a whitelisted destination succeeds.
+    test.send(hook_instruction(DESTINATION_TOKEN, meta_list, white_list))
+        .succeeds();
 
-    let result = svm.process_instruction(
-        &init_ix,
-        &[signer(payer), empty(meta_list_pda), empty(mint), empty(white_list_pda)],
-    );
-    result.print_logs();
-    assert!(result.is_ok(), "init failed: {:?}", result.raw_result);
-    println!("  INIT CU: {}", result.compute_units_consumed);
-
-    // 2. Add destination to whitelist
-    let destination_token = Pubkey::new_unique();
-    let add_ix = Instruction {
-        program_id: crate::ID,
-        accounts: vec![
-            solana_instruction::AccountMeta::new_readonly(payer.into(), true),
-            solana_instruction::AccountMeta::new_readonly(destination_token.into(), false),
-            solana_instruction::AccountMeta::new(white_list_pda.into(), false),
-        ],
-        data: vec![0, 0, 0, 0, 0, 0, 0, 2],
-    };
-
-    let result = svm.process_instruction(
-        &add_ix,
-        &[signer(payer), empty(destination_token)],
-    );
-    result.print_logs();
-    assert!(result.is_ok(), "add_to_whitelist failed: {:?}", result.raw_result);
-
-    // 3. Transfer hook with whitelisted destination - should succeed
-    let source_token = Pubkey::new_unique();
-    let owner = Pubkey::new_unique();
-
-    let mut hook_data = vec![105, 37, 101, 197, 75, 251, 102, 26];
-    hook_data.extend_from_slice(&100u64.to_le_bytes());
-
-    let hook_ix = Instruction {
-        program_id: crate::ID,
-        accounts: vec![
-            solana_instruction::AccountMeta::new_readonly(source_token.into(), false),
-            solana_instruction::AccountMeta::new_readonly(mint.into(), false),
-            solana_instruction::AccountMeta::new_readonly(destination_token.into(), false),
-            solana_instruction::AccountMeta::new_readonly(owner.into(), false),
-            solana_instruction::AccountMeta::new_readonly(meta_list_pda.into(), false),
-            solana_instruction::AccountMeta::new_readonly(white_list_pda.into(), false),
-        ],
-        data: hook_data,
-    };
-
-    let result = svm.process_instruction(
-        &hook_ix,
-        &[empty(source_token), empty(destination_token), signer(owner)],
-    );
-    result.print_logs();
-    assert!(result.is_ok(), "transfer_hook (whitelisted) failed: {:?}", result.raw_result);
-    println!("  TRANSFER_HOOK (allowed) CU: {}", result.compute_units_consumed);
-
-    // 4. Transfer hook with non-whitelisted destination - should fail
-    let bad_dest = Pubkey::new_unique();
-    let mut hook_data2 = vec![105, 37, 101, 197, 75, 251, 102, 26];
-    hook_data2.extend_from_slice(&100u64.to_le_bytes());
-
-    let bad_hook_ix = Instruction {
-        program_id: crate::ID,
-        accounts: vec![
-            solana_instruction::AccountMeta::new_readonly(source_token.into(), false),
-            solana_instruction::AccountMeta::new_readonly(mint.into(), false),
-            solana_instruction::AccountMeta::new_readonly(bad_dest.into(), false),
-            solana_instruction::AccountMeta::new_readonly(owner.into(), false),
-            solana_instruction::AccountMeta::new_readonly(meta_list_pda.into(), false),
-            solana_instruction::AccountMeta::new_readonly(white_list_pda.into(), false),
-        ],
-        data: hook_data2,
-    };
-
-    let result = svm.process_instruction(
-        &bad_hook_ix,
-        &[empty(source_token), empty(bad_dest), signer(owner)],
-    );
-    result.print_logs();
-    assert!(result.is_err(), "transfer_hook should fail for non-whitelisted destination");
-    println!("  TRANSFER_HOOK (blocked) correctly rejected");
+    // 4. Transfer hook with a non-whitelisted destination is rejected.
+    test.send(hook_instruction(BAD_DEST, meta_list, white_list))
+        .fails(ProgramError::InvalidArgument);
 }
