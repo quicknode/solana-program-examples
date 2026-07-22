@@ -4,6 +4,18 @@ All notable changes to this repository are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-07-22] - Quasar 0.1.0
+
+### Changed
+
+- Migrated 50 of the 53 Quasar examples to the Quasar `0.1.0-release` line, pinned by rev (`be60fca`) because crates.io still hosts `0.0.0` placeholders for `quasar-lang`/`quasar-cli`. Per project: `quasar-lang`/`quasar-spl` repinned (the four previously floating examples — `basics/pyth` and the three `compression` examples — are now pinned too); `Quasar.toml` rewritten to the 0.1.0 schema (`[testing] command`, `[clients] targets`; the old `[toolchain]`/`testing.language`/`testing.rust`/`clients.languages` keys are hard errors in 0.1.0); the `idl-build` feature and `"lib"` crate-type added for the new IDL build; and tests fully rewritten from the direct QuasarSVM harness (`QuasarSvm::new().with_program(...)`, `include_bytes!`, `assert_success`) to the new `quasar-test` fixture harness (`#[quasar_test]`, `Wallet`/`Mint`/`TokenAccount` fixtures, `crate::cpi` instruction builders, `Outcome` assertions). The standalone `quasar-svm` git dev-dependency is gone — `quasar-test` pulls the published `quasar-svm 0.1.0` from crates.io — and generated-client path dev-dependencies were dropped in favor of `crate::cpi` (a path dev-dependency to a not-yet-generated crate now breaks the required `cargo generate-lockfile`).
+- `quasar.yml` CI installs the 0.1.0 CLI (`--rev be60fca`), runs `cargo generate-lockfile` before `quasar build` (the 0.1.0 IDL step runs `cargo metadata --locked`), and builds the three unmigrated examples in a separate `legacy-metadata-examples` job with the pre-0.1.0 CLI.
+- Compute-unit assertions were dropped from the migrated tests pending recalibration under 0.1.0 (correct values are unknowable until the suite first runs on the new line).
+
+### Known limitations
+
+- `tokens/token-minter`, `tokens/nft-minter`, and `tokens/nft-operations` stay on the pre-0.1.0 pins (quasar `623bb70` / quasar-svm `cb7565d`): they depend on `quasar-metadata`, which was removed upstream before 0.1.0 with no replacement. They are listed in `.github/.ghaignore` and built by the legacy CI job.
+
 ## [2026-07-11] - Discoverability and FAQ pass
 
 ### Fixed
