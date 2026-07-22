@@ -3,6 +3,8 @@ name = "quasar-token-2022-permanent-delegate"
 version = "0.1.0"
 edition = "2021"
 
+# Standalone workspace - not part of the root program-examples workspace.
+# Quasar uses a different resolver and dependency tree.
 [workspace]
 
 [lints.rust.unexpected_cfgs]
@@ -12,29 +14,23 @@ check-cfg = [
 ]
 
 [lib]
+# "lib" is required alongside "cdylib": the 0.1.0 IDL build compiles the
+# crate as a host library.
 crate-type = ["cdylib", "lib"]
 
 [features]
 alloc = []
 client = []
 debug = []
+idl-build = ["quasar-lang/idl-build"]
 
 [dependencies]
-# quasar pin rationale: master HEAD currently fails to compile because zeropod 0.3.x
-# auto-generates accessor methods that conflict with hand-written ones in quasar-spl
-# (E0592 duplicate definitions for delegate / close_authority / mint_authority /
-# freeze_authority). Upstream fix is on the zeropod branch (skip_accessor + bump),
-# not yet merged to master. 623bb70 is the last working rev on master before zeropod
-# 0.3 was bumped. Unpin (back to branch = "master") once upstream merges the fix.
-quasar-lang = { git = "https://github.com/blueshift-gg/quasar", rev = "623bb70" }
-quasar-spl = { git = "https://github.com/blueshift-gg/quasar", rev = "623bb70" }
+# Quasar 0.1.0-release, pinned by rev: crates.io still hosts 0.0.0
+# placeholders for quasar-lang/quasar-cli, so the release line installs from
+# git. Keep this rev in lockstep with the CLI rev installed by
+# .github/workflows/quasar.yml.
+quasar-lang = { git = "https://github.com/blueshift-gg/quasar", rev = "be60fca" }
 solana-instruction = { version = "3.2.0" }
 
 [dev-dependencies]
-# Pinned: quasar-svm HEAD (c63afd2, "sbpf v3") moved to solana-program-runtime
-# 4.1 / solana-address 2.6, which cannot co-resolve with the quasar-lang rev
-# pinned above (needs solana-address <2.6). cb7565d is the last rev before the
-# bump. Unpin together with the quasar-lang pin once upstream is consistent again.
-quasar-svm = { git = "https://github.com/blueshift-gg/quasar-svm", rev = "cb7565d" }
-spl-token-interface = { version = "2.0.0" }
-solana-program-pack = { version = "3.1.0" }
+quasar-test = { git = "https://github.com/blueshift-gg/quasar", rev = "be60fca" }

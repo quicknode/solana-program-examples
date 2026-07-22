@@ -1,22 +1,9 @@
 [project]
-name = "quasar_token_2022_basics"
-
-[toolchain]
-type = "solana"
+name = "quasar-token-2022-basics"
 
 [testing]
-language = "rust"
-
-[testing.rust]
-framework = "quasar-svm"
-
-[testing.rust.test]
-program = "cargo"
-args = [
-    "test",
-    "tests::",
-]
+command = { program = "cargo", args = ["test"] }
 
 [clients]
 path = "target/client"
-languages = ["rust"]
+targets = ["rust"]

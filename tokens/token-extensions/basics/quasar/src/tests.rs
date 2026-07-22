@@ -1,124 +1,71 @@
-extern crate std;
 use {
-    alloc::vec,
-    quasar_svm::{Account, Instruction, Pubkey, QuasarSvm},
-    spl_token_interface::state::{Account as TokenAccount, AccountState, Mint},
-    std::println,
+    crate::cpi::{MintTokenInstruction, TransferTokenInstruction},
+    quasar_test::prelude::*,
 };
 
-fn setup() -> QuasarSvm {
-    let elf = std::fs::read("target/deploy/quasar_token_2022_basics.so").unwrap();
-    QuasarSvm::new()
-        .with_program(&crate::ID, &elf)
-}
+// Deterministic addresses keep tests independent of discovery order.
+const AUTHORITY: Pubkey = Pubkey::new_from_array([1; 32]);
+const MINT: Pubkey = Pubkey::new_from_array([2; 32]);
+const RECEIVER_TA: Pubkey = Pubkey::new_from_array([3; 32]);
+const SENDER: Pubkey = Pubkey::new_from_array([4; 32]);
+const FROM_TA: Pubkey = Pubkey::new_from_array([5; 32]);
+const TO_TA: Pubkey = Pubkey::new_from_array([6; 32]);
 
-fn signer(address: Pubkey) -> Account {
-    quasar_svm::token::create_keyed_system_account(&address, 1_000_000_000)
-}
-
-fn mint_account(address: Pubkey, authority: Pubkey) -> Account {
-    quasar_svm::token::create_keyed_mint_account_with_program(
-        &address,
-        &Mint {
-            mint_authority: Some(authority).into(),
-            supply: 0,
-            decimals: 6,
-            is_initialized: true,
-            freeze_authority: None.into(),
-        },
-        &quasar_svm::SPL_TOKEN_2022_PROGRAM_ID,
-    )
-}
-
-fn token_account(address: Pubkey, mint: Pubkey, owner: Pubkey, amount: u64) -> Account {
-    quasar_svm::token::create_keyed_token_account_with_program(
-        &address,
-        &TokenAccount {
-            mint,
-            owner,
-            amount,
-            state: AccountState::Initialized,
-            ..TokenAccount::default()
-        },
-        &quasar_svm::SPL_TOKEN_2022_PROGRAM_ID,
-    )
-}
-
-#[test]
-fn test_mint_token() {
-    let mut svm = setup();
-
-    let authority = Pubkey::new_unique();
-    let mint_addr = Pubkey::new_unique();
-    let receiver_addr = Pubkey::new_unique();
-    let token_program = quasar_svm::SPL_TOKEN_2022_PROGRAM_ID;
-
-    let amount = 1_000_000u64;
-    let mut data = vec![0u8]; // discriminator = 0
-    data.extend_from_slice(&amount.to_le_bytes());
-
-    let instruction = Instruction {
-        program_id: crate::ID,
-        accounts: vec![
-            solana_instruction::AccountMeta::new(authority.into(), true),
-            solana_instruction::AccountMeta::new(mint_addr.into(), false),
-            solana_instruction::AccountMeta::new(receiver_addr.into(), false),
-            solana_instruction::AccountMeta::new_readonly(token_program.into(), false),
-        ],
-        data,
-    };
-
-    let result = svm.process_instruction(
-        &instruction,
-        &[
-            signer(authority),
-            mint_account(mint_addr, authority),
-            token_account(receiver_addr, mint_addr, authority, 0),
-        ],
+#[quasar_test]
+fn mint_token_mints_to_the_receiver(test: &mut Test) {
+    test.add(Wallet::new().at(AUTHORITY));
+    test.add(
+        Mint::new(AUTHORITY)
+            .at(MINT)
+            .decimals(6)
+            .token_program(TokenProgram::Token2022),
+    );
+    test.add(
+        TokenAccount::new(MINT, AUTHORITY)
+            .at(RECEIVER_TA)
+            .token_program(TokenProgram::Token2022),
     );
 
-    result.print_logs();
-    assert!(result.is_ok(), "mint_token failed: {:?}", result.raw_result);
-    println!("  MINT TOKEN CU: {}", result.compute_units_consumed);
+    test.send(MintTokenInstruction {
+        authority: AUTHORITY,
+        mint: MINT,
+        receiver: RECEIVER_TA,
+        amount: 1_000_000,
+    })
+    .succeeds()
+    .has_tokens(RECEIVER_TA, 1_000_000)
+    .has_supply(MINT, 1_000_000);
 }
 
-#[test]
-fn test_transfer_token() {
-    let mut svm = setup();
-
-    let sender = Pubkey::new_unique();
-    let from_addr = Pubkey::new_unique();
-    let mint_addr = Pubkey::new_unique();
-    let to_addr = Pubkey::new_unique();
-    let token_program = quasar_svm::SPL_TOKEN_2022_PROGRAM_ID;
-
-    let amount = 500u64;
-    let mut data = vec![1u8]; // discriminator = 1
-    data.extend_from_slice(&amount.to_le_bytes());
-
-    let instruction = Instruction {
-        program_id: crate::ID,
-        accounts: vec![
-            solana_instruction::AccountMeta::new(sender.into(), true),
-            solana_instruction::AccountMeta::new(from_addr.into(), false),
-            solana_instruction::AccountMeta::new_readonly(mint_addr.into(), false),
-            solana_instruction::AccountMeta::new(to_addr.into(), false),
-            solana_instruction::AccountMeta::new_readonly(token_program.into(), false),
-        ],
-        data,
-    };
-
-    let result = svm.process_instruction(
-        &instruction,
-        &[
-            signer(sender),
-            token_account(from_addr, mint_addr, sender, 1_000),
-            mint_account(mint_addr, sender),
-            token_account(to_addr, mint_addr, sender, 0),
-        ],
+#[quasar_test]
+fn transfer_token_moves_tokens_via_transfer_checked(test: &mut Test) {
+    test.add(Wallet::new().at(SENDER));
+    test.add(
+        Mint::new(SENDER)
+            .at(MINT)
+            .decimals(6)
+            .token_program(TokenProgram::Token2022),
+    );
+    test.add(
+        TokenAccount::new(MINT, SENDER)
+            .at(FROM_TA)
+            .amount(1_000)
+            .token_program(TokenProgram::Token2022),
+    );
+    test.add(
+        TokenAccount::new(MINT, SENDER)
+            .at(TO_TA)
+            .token_program(TokenProgram::Token2022),
     );
 
-    result.print_logs();
-    assert!(result.is_ok(), "transfer_token failed: {:?}", result.raw_result);
-    println!("  TRANSFER TOKEN CU: {}", result.compute_units_consumed);
+    test.send(TransferTokenInstruction {
+        sender: SENDER,
+        from: FROM_TA,
+        mint: MINT,
+        to: TO_TA,
+        amount: 500,
+    })
+    .succeeds()
+    .has_tokens(FROM_TA, 500)
+    .has_tokens(TO_TA, 500);
 }

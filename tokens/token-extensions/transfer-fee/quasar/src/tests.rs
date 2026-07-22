@@ -1,61 +1,27 @@
-extern crate std;
-use {
-    alloc::vec,
-    quasar_svm::{Account, Instruction, Pubkey, QuasarSvm},
-    std::println,
-};
+use {crate::cpi::InitializeInstruction, quasar_test::prelude::*};
 
-fn setup() -> QuasarSvm {
-    let elf = std::fs::read("target/deploy/quasar_token_2022_transfer_fee.so").unwrap();
-    QuasarSvm::new().with_program(&crate::ID, &elf)
-}
+// Deterministic addresses keep tests independent of discovery order.
+const PAYER: Pubkey = Pubkey::new_from_array([1; 32]);
+const MINT: Pubkey = Pubkey::new_from_array([2; 32]);
 
-fn signer(address: Pubkey) -> Account {
-    quasar_svm::token::create_keyed_system_account(&address, 10_000_000_000)
-}
+/// Initialize creates a Token-2022 mint with the TransferFeeConfig extension.
+#[quasar_test]
+fn initialize_creates_a_transfer_fee_mint(test: &mut Test) {
+    test.add(Wallet::new().at(PAYER));
+    // The mint enters the transaction as an empty system account; the program
+    // creates and initializes it via CPI.
 
-fn empty(address: Pubkey) -> Account {
-    Account {
-        address,
-        lamports: 0,
-        data: vec![],
-        owner: quasar_svm::system_program::ID,
-        executable: false,
-    }
-}
+    test.send(InitializeInstruction {
+        payer: PAYER,
+        mint_account: MINT,
+        transfer_fee_basis_points: 100, // 1%
+        maximum_fee: 1_000_000,
+    })
+    .succeeds();
 
-#[test]
-fn test_initialize() {
-    let mut svm = setup();
-
-    let payer = Pubkey::new_unique();
-    let mint = Pubkey::new_unique();
-    let token_program = quasar_svm::SPL_TOKEN_2022_PROGRAM_ID;
-    let system_program = quasar_svm::system_program::ID;
-
-    let basis_points: u16 = 100; // 1%
-    let max_fee: u64 = 1_000_000;
-    let mut data = vec![0u8]; // discriminator = 0
-    data.extend_from_slice(&basis_points.to_le_bytes());
-    data.extend_from_slice(&max_fee.to_le_bytes());
-
-    let instruction = Instruction {
-        program_id: crate::ID,
-        accounts: vec![
-            solana_instruction::AccountMeta::new(payer.into(), true),
-            solana_instruction::AccountMeta::new(mint.into(), true),
-            solana_instruction::AccountMeta::new_readonly(token_program.into(), false),
-            solana_instruction::AccountMeta::new_readonly(system_program.into(), false),
-        ],
-        data,
-    };
-
-    let result = svm.process_instruction(
-        &instruction,
-        &[signer(payer), empty(mint)],
-    );
-
-    result.print_logs();
-    assert!(result.is_ok(), "initialize failed: {:?}", result.raw_result);
-    println!("  INITIALIZE CU: {}", result.compute_units_consumed);
+    let mint = test.account(MINT).expect("mint account exists");
+    assert_eq!(mint.owner, SPL_TOKEN_2022_PROGRAM_ID);
+    // 165 base + 1 account-type byte + 4 TLV header
+    // + 108 TransferFeeConfig bytes = 278 bytes.
+    assert_eq!(mint.data.len(), 278);
 }
