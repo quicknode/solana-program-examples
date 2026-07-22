@@ -1,4 +1,5 @@
 use {
+    quasar_lang::cpi::Seed,
     crate::{
         constants::{DIRECTION_BUY_BASE, DIRECTION_SELL_BASE},
         instructions::shared::{self, err, error},

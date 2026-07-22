@@ -20,7 +20,7 @@ pub struct CloseLosingBetAccountConstraints {
         close(dest = bettor),
         has_one(bettor),
         has_one(event),
-        address = Bet::seeds(&bet.outcome, bettor.address()),
+        address = Bet::find_address(bet.outcome, *bettor.address(), &crate::ID),
     )]
     pub bet: Account<Bet>,
 

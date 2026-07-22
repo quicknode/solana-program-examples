@@ -1,3 +1,4 @@
+use quasar_lang::cpi::Seed;
 use {
     crate::{
         error::FundraiserError,

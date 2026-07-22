@@ -1,4 +1,5 @@
 use {
+    quasar_lang::cpi::Seed,
     crate::state::Offer,
     quasar_lang::prelude::*,
     quasar_spl::prelude::*,

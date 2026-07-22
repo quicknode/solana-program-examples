@@ -1,5 +1,26 @@
 # Changelog
 
+## [2026-07-22]
+
+### Changed
+
+- Migrated to Quasar 0.1.0 (`0.1.0-release` branch, rev `be60fca`): Quasar.toml
+  rewritten to the 0.1.0 schema, `idl-build` feature and `lib` crate-type added,
+  and most tests rewritten from the direct QuasarSVM harness to `quasar-test`
+  (`#[quasar_test]` fixtures, `crate::cpi` instruction builders, `Outcome`
+  assertions). Compute-unit assertions were dropped pending recalibration
+  under 0.1.0. Program-source fixes for 0.1.0: `Seed` is now imported from
+  `quasar_lang::cpi`, and the removed `quasar_spl::initialize_account3` /
+  `initialize_mint2` free functions became `TokenCpi` trait method calls on
+  `token_program`. The two slot-warp scenarios
+  (`interest_accrues_and_lifts_share_value`,
+  `protocol_fees_accrue_and_owner_can_collect`) keep a direct
+  `quasar-svm = "=0.1.0"` (crates.io) dev-dependency: interest accrual is
+  computed from `Clock::get()?.slot`, and quasar-test exposes no slot warp
+  (`warp_to_timestamp` only sets `unix_timestamp`), so they drive
+  `QuasarSvm` + `sysvars.warp_to_slot` directly, loading the compiled `.so`
+  at runtime.
+
 ## 0.1.0
 
 Initial Quasar port of the Kamino/Solend-style borrow/lend program.

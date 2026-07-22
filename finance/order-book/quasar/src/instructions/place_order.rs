@@ -1,3 +1,4 @@
+use quasar_lang::cpi::Seed;
 use quasar_lang::prelude::*;
 use quasar_lang::remaining::RemainingAccounts;
 // Anonymous import: brings the `Sysvar` trait's `Clock::get()` into scope

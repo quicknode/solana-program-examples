@@ -1,3 +1,4 @@
+use quasar_lang::cpi::Seed;
 use quasar_lang::prelude::*;
 use quasar_spl::prelude::*;
 

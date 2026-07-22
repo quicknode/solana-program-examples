@@ -1,4 +1,5 @@
 use {
+    quasar_lang::cpi::Seed,
     crate::{
         instructions::shared::{err, error},
         state::Market,

@@ -1,4 +1,5 @@
 use {
+    quasar_lang::cpi::Seed,
     crate::{
         constants::SIDE_LONG,
         instructions::shared::{
