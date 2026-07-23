@@ -1,62 +1,30 @@
-use quasar_svm::{Account, Instruction, Pubkey, QuasarSvm};
-use solana_address::Address;
+use {crate::cpi::CheckAccountsInstruction, quasar_test::prelude::*};
 
-use quasar_checking_accounts_client::CheckAccountsInstruction;
+// Deterministic addresses keep tests independent of discovery order.
+const PAYER: Pubkey = Pubkey::new_from_array([1; 32]);
+const ACCOUNT_TO_CREATE: Pubkey = Pubkey::new_from_array([2; 32]);
+const ACCOUNT_TO_CHANGE: Pubkey = Pubkey::new_from_array([3; 32]);
 
-fn setup() -> QuasarSvm {
-    let elf = include_bytes!("../target/deploy/quasar_checking_accounts.so");
-    QuasarSvm::new().with_program(&Pubkey::from(crate::ID), elf)
-}
+#[quasar_test]
+fn check_accounts_accepts_a_valid_account_set(test: &mut Test) {
+    test.add(Wallet::new().at(PAYER));
+    // The account to create stays absent: a missing writable account enters
+    // the transaction as an empty system account, exactly the "not yet
+    // created" shape this instruction expects.
+    // The account to change already exists and is owned by this program.
+    test.set_account(Account::new(
+        ACCOUNT_TO_CHANGE,
+        crate::ID,
+        1_000_000,
+        vec![0u8; 32],
+    ));
 
-fn signer(address: Pubkey) -> Account {
-    quasar_svm::token::create_keyed_system_account(&address, 10_000_000_000)
-}
-
-fn system_account(address: Pubkey, lamports: u64) -> Account {
-    Account {
-        address,
-        lamports,
-        data: vec![],
-        owner: quasar_svm::system_program::ID,
-        executable: false,
-    }
-}
-
-fn program_owned_account(address: Pubkey, lamports: u64) -> Account {
-    Account {
-        address,
-        lamports,
-        data: vec![0u8; 32],
-        owner: Pubkey::from(crate::ID),
-        executable: false,
-    }
-}
-
-#[test]
-fn test_check_accounts_succeeds() {
-    let mut svm = setup();
-
-    let payer = Pubkey::new_unique();
-    let account_to_create = Pubkey::new_unique();
-    let account_to_change = Pubkey::new_unique();
-    let system_program = quasar_svm::system_program::ID;
-
-    let instruction: Instruction = CheckAccountsInstruction {
-        payer: Address::from(payer.to_bytes()),
-        account_to_create: Address::from(account_to_create.to_bytes()),
-        account_to_change: Address::from(account_to_change.to_bytes()),
-        system_program: Address::from(system_program.to_bytes()),
-    }
-    .into();
-
-    let result = svm.process_instruction(
-        &instruction,
-        &[
-            signer(payer),
-            system_account(account_to_create, 0),
-            program_owned_account(account_to_change, 1_000_000),
-        ],
-    );
-
-    result.assert_success();
+    // The system program is a canonical derivation, so the generated
+    // instruction only asks for the caller-controlled accounts.
+    test.send(CheckAccountsInstruction {
+        payer: PAYER,
+        account_to_create: ACCOUNT_TO_CREATE,
+        account_to_change: ACCOUNT_TO_CHANGE,
+    })
+    .succeeds();
 }

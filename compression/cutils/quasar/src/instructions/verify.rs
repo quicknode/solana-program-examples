@@ -24,18 +24,16 @@ pub struct VerifyAccountConstraints {
     pub compression_program: UncheckedAccount,
 }
 
-pub fn handle_verify(accounts: &mut VerifyAccountConstraints, data: &[u8], remaining: RemainingAccounts<'_>) -> Result<(), ProgramError> {
-    // Parse verify params from instruction data:
-    // root(32) + data_hash(32) + creator_hash(32) + nonce(8) + index(4) = 108 bytes
-    if data.len() < 108 {
-        return Err(ProgramError::InvalidInstructionData);
-    }
-
-    let root: [u8; 32] = data[0..32].try_into().unwrap();
-    let data_hash: [u8; 32] = data[32..64].try_into().unwrap();
-    let creator_hash: [u8; 32] = data[64..96].try_into().unwrap();
-    let nonce = u64::from_le_bytes(data[96..104].try_into().unwrap());
-    let index = u32::from_le_bytes(data[104..108].try_into().unwrap());
+#[allow(clippy::too_many_arguments)]
+pub fn handle_verify(
+    accounts: &mut VerifyAccountConstraints,
+    root: [u8; 32],
+    data_hash: [u8; 32],
+    creator_hash: [u8; 32],
+    nonce: u64,
+    index: u32,
+    remaining: RemainingAccounts<'_>,
+) -> Result<(), ProgramError> {
 
     // Compute asset ID and leaf hash
     let asset_id = get_asset_id(accounts.merkle_tree.address(), nonce);

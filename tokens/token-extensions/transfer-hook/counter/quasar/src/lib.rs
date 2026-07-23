@@ -73,10 +73,10 @@ fn handle_initialize_extra_account_meta_list(
 
         // Derive ExtraAccountMetaList PDA
         let mint_address = accounts.mint.to_account_view().address();
-        let (expected_pda, bump) = Address::find_program_address(
+        let (expected_pda, bump) = quasar_lang::pda::try_find_program_address(
             &[b"extra-account-metas", mint_address.as_ref()],
             &crate::ID,
-        );
+        )?;
 
         let meta_list_address = accounts.extra_account_meta_list.to_account_view().address();
         if meta_list_address != &expected_pda {
@@ -131,7 +131,7 @@ fn handle_initialize_extra_account_meta_list(
         let counter_lamports = Rent::get()?.try_minimum_balance(counter_size as usize)?;
 
         let (counter_pda, counter_bump) =
-            Address::find_program_address(&[b"counter"], &crate::ID);
+            quasar_lang::pda::try_find_program_address(&[b"counter"], &crate::ID)?;
 
         let counter_address = accounts.counter_account.to_account_view().address();
         if counter_address != &counter_pda {

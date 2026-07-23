@@ -1,5 +1,18 @@
 # Changelog
 
+## [2026-07-22]
+
+### Changed
+
+- Migrated to Quasar 0.1.0 (`0.1.0-release` branch, rev `be60fca`): Quasar.toml
+  rewritten to the 0.1.0 schema, `idl-build` feature and `lib` crate-type added,
+  and tests rewritten from the direct QuasarSVM harness to `quasar-test`
+  (`#[quasar_test]` fixtures, `crate::cpi` instruction builders, `Outcome`
+  assertions; the hand-crafted oracle feed account is injected via
+  `test.set_account`). The `quasar-svm` git dev-dependency is gone. Program-
+  source fix for 0.1.0: `Seed` is no longer in the prelude, so the instruction
+  files that build signer seeds now import it from `quasar_lang::cpi`.
+
 ## 2026-07-07
 
 Added this changelog. Changes prior to this date were tracked in git history only.

@@ -1,25 +1,19 @@
-//! QuasarSVM integration tests. They drive the real program instructions
+//! quasar-test integration tests. They drive the real program instructions
 //! end-to-end: initialize a market, create users, place and cross orders,
 //! settle, and withdraw fees, asserting on-chain state and token balances at
 //! each step.
-//!
-//! Multi-step flows use `process_instruction_chain`, which runs several
-//! instructions atomically over a shared, evolving account set - so a resting
-//! order placed by one instruction is visible to the crossing order in the
-//! next, without hand-building the zero-copy slab.
-
-extern crate std;
 
 use {
-    alloc::vec,
-    alloc::vec::Vec,
-    quasar_svm::{Account, AccountMeta, Instruction, Pubkey, QuasarSvm},
-    solana_program_pack::Pack,
-    spl_token_interface::state::{Account as TokenAccount, AccountState, Mint},
-    std::println,
+    crate::{
+        cpi::{
+            CancelOrderInstruction, CreateMarketUserInstruction, InitializeMarketInstruction,
+            PlaceOrderInstruction, SettleFundsInstruction, WithdrawFeesInstruction,
+        },
+        errors::OrderBookError,
+        state::{Market, MarketUser, Order, OrderStatus, ORDER_BOOK_ACCOUNT_SIZE},
+    },
+    quasar_test::prelude::*,
 };
-
-use crate::state::{MARKET_SEED, MARKET_USER_SEED, ORDER_BOOK_ACCOUNT_SIZE, ORDER_SEED};
 
 // --- Market parameters used across the tests (NVDAx-style base / USDC-style
 // quote): base 9 decimals, quote 6 decimals. base_lot_size = 10^(9-6) = 1000,
@@ -32,435 +26,182 @@ const MIN_ORDER_SIZE: u64 = 1;
 const BASE_DECIMALS: u8 = 9;
 const QUOTE_DECIMALS: u8 = 6;
 
-const STARTING_LAMPORTS: u64 = 1_000_000_000;
+// Deterministic addresses keep tests independent of discovery order.
+const AUTHORITY: Pubkey = Pubkey::new_from_array([1; 32]);
+const BASE_MINT: Pubkey = Pubkey::new_from_array([2; 32]);
+const QUOTE_MINT: Pubkey = Pubkey::new_from_array([3; 32]);
+const ORDER_BOOK: Pubkey = Pubkey::new_from_array([4; 32]);
+const BASE_VAULT: Pubkey = Pubkey::new_from_array([5; 32]);
+const QUOTE_VAULT: Pubkey = Pubkey::new_from_array([6; 32]);
+const FEE_VAULT: Pubkey = Pubkey::new_from_array([7; 32]);
+const MAKER: Pubkey = Pubkey::new_from_array([8; 32]);
+const TAKER: Pubkey = Pubkey::new_from_array([9; 32]);
+const MAKER_BASE: Pubkey = Pubkey::new_from_array([10; 32]);
+const MAKER_QUOTE: Pubkey = Pubkey::new_from_array([11; 32]);
+const TAKER_BASE: Pubkey = Pubkey::new_from_array([12; 32]);
+const TAKER_QUOTE: Pubkey = Pubkey::new_from_array([13; 32]);
+const AUTHORITY_QUOTE: Pubkey = Pubkey::new_from_array([14; 32]);
+const ATTACKER: Pubkey = Pubkey::new_from_array([15; 32]);
+const ATTACKER_QUOTE: Pubkey = Pubkey::new_from_array([16; 32]);
 
-fn program_id() -> Pubkey {
-    Pubkey::new_from_array(crate::ID.to_bytes())
+/// Register the authority, both mints, the pre-created order-book account, and
+/// initialize the market. Returns the Market PDA.
+fn init_market(test: &mut Test) -> Pubkey {
+    test.add(Wallet::new().at(AUTHORITY));
+    test.add(
+        Mint::new(AUTHORITY)
+            .at(BASE_MINT)
+            .supply(1_000_000_000_000)
+            .decimals(BASE_DECIMALS),
+    );
+    test.add(
+        Mint::new(AUTHORITY)
+            .at(QUOTE_MINT)
+            .supply(1_000_000_000_000)
+            .decimals(QUOTE_DECIMALS),
+    );
+    // The ~180 KB order book cannot be created via inner CPI (10 KB cap), so
+    // the client pre-creates it program-owned and zeroed; this fixture stands
+    // in for that `create_account` call.
+    let program_id = test.program_id();
+    test.add(Account::new(
+        ORDER_BOOK,
+        program_id,
+        5_000_000_000,
+        vec![0u8; ORDER_BOOK_ACCOUNT_SIZE],
+    ));
+
+    test.send(InitializeMarketInstruction {
+        authority: AUTHORITY,
+        order_book: ORDER_BOOK,
+        base_mint: BASE_MINT,
+        quote_mint: QUOTE_MINT,
+        base_vault: BASE_VAULT,
+        quote_vault: QUOTE_VAULT,
+        fee_vault: FEE_VAULT,
+        fee_basis_points: FEE_BASIS_POINTS,
+        tick_size: TICK_SIZE,
+        base_lot_size: BASE_LOT_SIZE,
+        quote_lot_size: QUOTE_LOT_SIZE,
+        min_order_size: MIN_ORDER_SIZE,
+    })
+    .succeeds();
+
+    test.derive_pda(Market::seeds(&BASE_MINT, &QUOTE_MINT))
 }
 
-fn setup() -> QuasarSvm {
-    let elf = std::fs::read("target/deploy/quasar_order_book.so").unwrap();
-    QuasarSvm::new()
-        .with_program(&program_id(), &elf)
-        .with_token_program()
-}
-
-fn rent_id() -> Pubkey {
-    quasar_svm::solana_sdk_ids::sysvar::rent::ID
-}
-fn token_program_id() -> Pubkey {
-    quasar_svm::SPL_TOKEN_PROGRAM_ID
-}
-fn system_program_id() -> Pubkey {
-    quasar_svm::system_program::ID
-}
-
-fn signer_account(address: Pubkey) -> Account {
-    quasar_svm::token::create_keyed_system_account(&address, STARTING_LAMPORTS)
-}
-
-fn empty_account(address: Pubkey) -> Account {
-    Account {
-        address,
-        lamports: 0,
-        data: vec![],
-        owner: system_program_id(),
-        executable: false,
-    }
-}
-
-fn mint_account(address: Pubkey, authority: Pubkey, decimals: u8) -> Account {
-    quasar_svm::token::create_keyed_mint_account(
-        &address,
-        &Mint {
-            mint_authority: Some(authority).into(),
-            supply: 1_000_000_000_000,
-            decimals,
-            is_initialized: true,
-            freeze_authority: None.into(),
-        },
-    )
-}
-
-fn token_account(address: Pubkey, mint: Pubkey, owner: Pubkey, amount: u64) -> Account {
-    quasar_svm::token::create_keyed_token_account(
-        &address,
-        &TokenAccount {
-            mint,
-            owner,
-            amount,
-            state: AccountState::Initialized,
-            ..TokenAccount::default()
-        },
-    )
-}
-
-/// A program-owned, zeroed order-book account of the exact size the program
-/// expects. Stands in for the client's `create_account` call.
-fn order_book_account(address: Pubkey) -> Account {
-    Account {
-        address,
-        lamports: 5_000_000_000,
-        data: vec![0u8; ORDER_BOOK_ACCOUNT_SIZE],
-        owner: program_id(),
-        executable: false,
-    }
-}
-
-fn token_amount(account: &Account) -> u64 {
-    TokenAccount::unpack(&account.data).unwrap().amount
-}
-
-fn derive_market(base_mint: &Pubkey, quote_mint: &Pubkey) -> Pubkey {
-    Pubkey::find_program_address(
-        &[MARKET_SEED, base_mint.as_ref(), quote_mint.as_ref()],
-        &program_id(),
-    )
-    .0
-}
-
-fn derive_market_user(market: &Pubkey, owner: &Pubkey) -> Pubkey {
-    Pubkey::find_program_address(
-        &[MARKET_USER_SEED, market.as_ref(), owner.as_ref()],
-        &program_id(),
-    )
-    .0
-}
-
-fn derive_order(market: &Pubkey, order_id: u64) -> Pubkey {
-    Pubkey::find_program_address(
-        &[ORDER_SEED, market.as_ref(), &order_id.to_le_bytes()],
-        &program_id(),
-    )
-    .0
-}
-
-// --- Instruction data builders (discriminator byte + little-endian args) ---
-
-fn initialize_market_data() -> Vec<u8> {
-    let mut data = vec![0u8];
-    data.extend_from_slice(&FEE_BASIS_POINTS.to_le_bytes());
-    data.extend_from_slice(&TICK_SIZE.to_le_bytes());
-    data.extend_from_slice(&BASE_LOT_SIZE.to_le_bytes());
-    data.extend_from_slice(&QUOTE_LOT_SIZE.to_le_bytes());
-    data.extend_from_slice(&MIN_ORDER_SIZE.to_le_bytes());
-    data
-}
-
-fn create_market_user_data() -> Vec<u8> {
-    vec![1u8]
-}
-
-fn place_order_data(side: u8, price: u64, quantity: u64, order_id: u64) -> Vec<u8> {
-    let mut data = vec![2u8, side];
-    data.extend_from_slice(&price.to_le_bytes());
-    data.extend_from_slice(&quantity.to_le_bytes());
-    data.extend_from_slice(&order_id.to_le_bytes());
-    data
-}
-
-fn cancel_order_data() -> Vec<u8> {
-    vec![3u8]
-}
-
-fn settle_funds_data() -> Vec<u8> {
-    vec![4u8]
-}
-
-fn withdraw_fees_data() -> Vec<u8> {
-    vec![5u8]
-}
-
-/// A market fixture: the mints, PDA, vaults, and order-book account for one
-/// (base, quote) pair.
-struct MarketFixture {
-    authority: Pubkey,
-    base_mint: Pubkey,
-    quote_mint: Pubkey,
-    market: Pubkey,
-    order_book: Pubkey,
-    base_vault: Pubkey,
-    quote_vault: Pubkey,
-    fee_vault: Pubkey,
-}
-
-fn market_fixture() -> MarketFixture {
-    let authority = Pubkey::new_unique();
-    let base_mint = Pubkey::new_unique();
-    let quote_mint = Pubkey::new_unique();
-    MarketFixture {
-        authority,
-        base_mint,
-        quote_mint,
-        market: derive_market(&base_mint, &quote_mint),
-        order_book: Pubkey::new_unique(),
-        base_vault: Pubkey::new_unique(),
-        quote_vault: Pubkey::new_unique(),
-        fee_vault: Pubkey::new_unique(),
-    }
-}
-
-fn initialize_market_ix(fx: &MarketFixture) -> Instruction {
-    Instruction {
-        program_id: program_id(),
-        accounts: vec![
-            AccountMeta::new(fx.authority, true),
-            AccountMeta::new(fx.market, false),
-            AccountMeta::new(fx.order_book, false),
-            AccountMeta::new_readonly(fx.base_mint, false),
-            AccountMeta::new_readonly(fx.quote_mint, false),
-            AccountMeta::new(fx.base_vault, true),
-            AccountMeta::new(fx.quote_vault, true),
-            AccountMeta::new(fx.fee_vault, true),
-            AccountMeta::new_readonly(rent_id(), false),
-            AccountMeta::new_readonly(token_program_id(), false),
-            AccountMeta::new_readonly(system_program_id(), false),
-        ],
-        data: initialize_market_data(),
-    }
-}
-
-fn create_market_user_ix(fx: &MarketFixture, owner: Pubkey, market_user: Pubkey) -> Instruction {
-    Instruction {
-        program_id: program_id(),
-        accounts: vec![
-            AccountMeta::new(owner, true),
-            AccountMeta::new_readonly(fx.market, false),
-            AccountMeta::new(market_user, false),
-            AccountMeta::new_readonly(rent_id(), false),
-            AccountMeta::new_readonly(system_program_id(), false),
-        ],
-        data: create_market_user_data(),
-    }
-}
-
-/// One trader's per-market accounts.
-struct Trader {
-    owner: Pubkey,
-    market_user: Pubkey,
-    base_account: Pubkey,
-    quote_account: Pubkey,
-}
-
-fn trader(fx: &MarketFixture) -> Trader {
-    let owner = Pubkey::new_unique();
-    Trader {
-        owner,
-        market_user: derive_market_user(&fx.market, &owner),
-        base_account: Pubkey::new_unique(),
-        quote_account: Pubkey::new_unique(),
-    }
+fn create_market_user(test: &mut Test, market: Pubkey, owner: Pubkey) -> Pubkey {
+    test.add(Wallet::new().at(owner));
+    test.send(CreateMarketUserInstruction { owner, market }).succeeds();
+    test.derive_pda(MarketUser::seeds(&market, &owner))
 }
 
 #[allow(clippy::too_many_arguments)]
-fn place_order_ix(
-    fx: &MarketFixture,
-    trader: &Trader,
-    order: Pubkey,
+fn place_order(
+    test: &mut Test,
+    market: Pubkey,
+    owner: Pubkey,
+    user_base_account: Pubkey,
+    user_quote_account: Pubkey,
     side: u8,
     price: u64,
     quantity: u64,
     order_id: u64,
     makers: &[(Pubkey, Pubkey)],
-) -> Instruction {
-    let mut accounts = vec![
-        AccountMeta::new_readonly(fx.market, false),
-        AccountMeta::new(fx.order_book, false),
-        AccountMeta::new(order, false),
-        AccountMeta::new(trader.market_user, false),
-        AccountMeta::new(fx.base_vault, false),
-        AccountMeta::new(fx.quote_vault, false),
-        AccountMeta::new(fx.fee_vault, false),
-        AccountMeta::new(trader.base_account, false),
-        AccountMeta::new(trader.quote_account, false),
-        AccountMeta::new_readonly(fx.base_mint, false),
-        AccountMeta::new_readonly(fx.quote_mint, false),
-        AccountMeta::new(trader.owner, true),
-        AccountMeta::new_readonly(rent_id(), false),
-        AccountMeta::new_readonly(token_program_id(), false),
-        AccountMeta::new_readonly(system_program_id(), false),
-    ];
+) -> Outcome {
+    // Resting maker orders to cross arrive as remaining accounts, in pairs of
+    // (maker_order, maker_market_user), in price-time priority.
+    let mut remaining_accounts = Vec::new();
     for (maker_order, maker_market_user) in makers {
-        accounts.push(AccountMeta::new(*maker_order, false));
-        accounts.push(AccountMeta::new(*maker_market_user, false));
+        remaining_accounts.push(AccountMeta::new(*maker_order, false));
+        remaining_accounts.push(AccountMeta::new(*maker_market_user, false));
     }
-    Instruction {
-        program_id: program_id(),
-        accounts,
-        data: place_order_data(side, price, quantity, order_id),
-    }
+    test.send(PlaceOrderInstruction {
+        market,
+        order_book: ORDER_BOOK,
+        base_vault: BASE_VAULT,
+        quote_vault: QUOTE_VAULT,
+        fee_vault: FEE_VAULT,
+        user_base_account,
+        user_quote_account,
+        base_mint: BASE_MINT,
+        quote_mint: QUOTE_MINT,
+        owner,
+        side,
+        price,
+        quantity,
+        order_id,
+        remaining_accounts,
+    })
 }
 
-fn cancel_order_ix(fx: &MarketFixture, trader: &Trader, order: Pubkey) -> Instruction {
-    Instruction {
-        program_id: program_id(),
-        accounts: vec![
-            AccountMeta::new_readonly(fx.market, false),
-            AccountMeta::new(fx.order_book, false),
-            AccountMeta::new(order, false),
-            AccountMeta::new(trader.market_user, false),
-            AccountMeta::new_readonly(trader.owner, true),
-        ],
-        data: cancel_order_data(),
-    }
+fn settle_funds(
+    test: &mut Test,
+    market: Pubkey,
+    owner: Pubkey,
+    user_base_account: Pubkey,
+    user_quote_account: Pubkey,
+) -> Outcome {
+    test.send(SettleFundsInstruction {
+        owner,
+        market,
+        base_vault: BASE_VAULT,
+        quote_vault: QUOTE_VAULT,
+        user_base_account,
+        user_quote_account,
+        base_mint: BASE_MINT,
+        quote_mint: QUOTE_MINT,
+    })
 }
 
-fn settle_funds_ix(fx: &MarketFixture, trader: &Trader) -> Instruction {
-    Instruction {
-        program_id: program_id(),
-        accounts: vec![
-            AccountMeta::new_readonly(trader.owner, true),
-            AccountMeta::new_readonly(fx.market, false),
-            AccountMeta::new(trader.market_user, false),
-            AccountMeta::new(fx.base_vault, false),
-            AccountMeta::new(fx.quote_vault, false),
-            AccountMeta::new(trader.base_account, false),
-            AccountMeta::new(trader.quote_account, false),
-            AccountMeta::new_readonly(fx.base_mint, false),
-            AccountMeta::new_readonly(fx.quote_mint, false),
-            AccountMeta::new_readonly(token_program_id(), false),
-        ],
-        data: settle_funds_data(),
-    }
-}
+#[quasar_test]
+fn initialize_market_stamps_market_and_order_book(test: &mut Test) {
+    let market = init_market(test);
 
-fn withdraw_fees_ix(fx: &MarketFixture, authority: Pubkey, authority_quote: Pubkey) -> Instruction {
-    Instruction {
-        program_id: program_id(),
-        accounts: vec![
-            AccountMeta::new_readonly(fx.market, false),
-            AccountMeta::new(fx.fee_vault, false),
-            AccountMeta::new(authority_quote, false),
-            AccountMeta::new_readonly(fx.quote_mint, false),
-            AccountMeta::new_readonly(authority, true),
-            AccountMeta::new_readonly(token_program_id(), false),
-        ],
-        data: withdraw_fees_data(),
-    }
-}
+    // Market state records the pair, vaults, and parameters.
+    let state = test.read::<Market>(market);
+    assert_eq!(state.authority, AUTHORITY, "authority");
+    assert_eq!(state.base_mint, BASE_MINT, "base_mint");
+    assert_eq!(state.quote_mint, QUOTE_MINT, "quote_mint");
+    assert_eq!(state.base_vault, BASE_VAULT, "base_vault");
+    assert_eq!(state.quote_vault, QUOTE_VAULT, "quote_vault");
+    assert_eq!(state.fee_vault, FEE_VAULT, "fee_vault");
+    assert_eq!(state.order_book, ORDER_BOOK, "order_book");
+    assert_eq!(u16::from(state.fee_basis_points), FEE_BASIS_POINTS);
 
-// --- Order-account field offsets (dense discriminator + fields, little-endian).
-// disc(1) market(32) owner(32) order_id(8) side(1) price(8) original(8)
-// filled(8) status(1) timestamp(8) bump(1). ---
-const ORDER_STATUS_OFFSET: usize = 1 + 32 + 32 + 8 + 1 + 8 + 8 + 8;
-const ORDER_FILLED_OFFSET: usize = 1 + 32 + 32 + 8 + 1 + 8 + 8;
-
-fn order_status(account: &Account) -> u8 {
-    account.data[ORDER_STATUS_OFFSET]
-}
-fn order_filled(account: &Account) -> u64 {
-    let mut bytes = [0u8; 8];
-    bytes.copy_from_slice(&account.data[ORDER_FILLED_OFFSET..ORDER_FILLED_OFFSET + 8]);
-    u64::from_le_bytes(bytes)
-}
-
-// --- MarketUser field offsets. disc(1) market(32) owner(32) unsettled_base(8)
-// unsettled_quote(8) open_orders_len(1) bump(1) open_orders(160). ---
-const MU_UNSETTLED_BASE_OFFSET: usize = 1 + 32 + 32;
-const MU_UNSETTLED_QUOTE_OFFSET: usize = 1 + 32 + 32 + 8;
-const MU_OPEN_ORDERS_LEN_OFFSET: usize = 1 + 32 + 32 + 8 + 8;
-
-fn mu_unsettled_base(account: &Account) -> u64 {
-    let mut bytes = [0u8; 8];
-    bytes.copy_from_slice(&account.data[MU_UNSETTLED_BASE_OFFSET..MU_UNSETTLED_BASE_OFFSET + 8]);
-    u64::from_le_bytes(bytes)
-}
-fn mu_unsettled_quote(account: &Account) -> u64 {
-    let mut bytes = [0u8; 8];
-    bytes.copy_from_slice(&account.data[MU_UNSETTLED_QUOTE_OFFSET..MU_UNSETTLED_QUOTE_OFFSET + 8]);
-    u64::from_le_bytes(bytes)
-}
-fn mu_open_orders_len(account: &Account) -> u8 {
-    account.data[MU_OPEN_ORDERS_LEN_OFFSET]
-}
-
-// Order status codes (mirror state::OrderStatus).
-const STATUS_FILLED: u8 = 2;
-const STATUS_CANCELLED: u8 = 3;
-
-#[test]
-fn test_initialize_market() {
-    let mut svm = setup();
-    let fx = market_fixture();
-
-    let accounts = vec![
-        signer_account(fx.authority),
-        empty_account(fx.market),
-        order_book_account(fx.order_book),
-        mint_account(fx.base_mint, fx.authority, BASE_DECIMALS),
-        mint_account(fx.quote_mint, fx.authority, QUOTE_DECIMALS),
-        empty_account(fx.base_vault),
-        empty_account(fx.quote_vault),
-        empty_account(fx.fee_vault),
-    ];
-
-    let result = svm.process_instruction(&initialize_market_ix(&fx), &accounts);
-    assert!(result.is_ok(), "initialize_market failed: {:?}", result.raw_result);
-
-    // Market discriminator (dense = 1) is stamped.
-    let market = result.account(&fx.market).unwrap();
-    assert_eq!(market.data[0], 1, "market discriminator");
-
-    // Order-book discriminator + next_order_id == 1. Layout: disc(8) then
-    // market(32), bids_root(8), asks_root(8), next_order_id(8)...
-    let order_book = result.account(&fx.order_book).unwrap();
+    // Order-book discriminator + next_order_id == 1. The byte layout IS the
+    // point here (hand-rolled zero-copy slab): disc(8) then market(32),
+    // bids_root(8), asks_root(8), next_order_id(8)...
+    let order_book = test.account(ORDER_BOOK).unwrap();
     assert_eq!(&order_book.data[0..8], b"ORDRBOOK", "order-book discriminator");
     let next_order_id_offset = 8 + 32 + 8 + 8;
     let mut id_bytes = [0u8; 8];
     id_bytes.copy_from_slice(&order_book.data[next_order_id_offset..next_order_id_offset + 8]);
     assert_eq!(u64::from_le_bytes(id_bytes), 1, "next_order_id starts at 1");
-
-    println!("  INITIALIZE_MARKET CU: {}", result.compute_units_consumed);
 }
 
-#[test]
-fn test_create_market_user() {
-    let mut svm = setup();
-    let fx = market_fixture();
-    let maker = trader(&fx);
+#[quasar_test]
+fn create_market_user_starts_with_empty_balances(test: &mut Test) {
+    let market = init_market(test);
+    let market_user = create_market_user(test, market, MAKER);
 
-    let accounts = vec![
-        signer_account(fx.authority),
-        empty_account(fx.market),
-        order_book_account(fx.order_book),
-        mint_account(fx.base_mint, fx.authority, BASE_DECIMALS),
-        mint_account(fx.quote_mint, fx.authority, QUOTE_DECIMALS),
-        empty_account(fx.base_vault),
-        empty_account(fx.quote_vault),
-        empty_account(fx.fee_vault),
-        signer_account(maker.owner),
-        empty_account(maker.market_user),
-    ];
-
-    let instructions = vec![
-        initialize_market_ix(&fx),
-        create_market_user_ix(&fx, maker.owner, maker.market_user),
-    ];
-    let result = svm.process_instruction_chain(&instructions, &accounts);
-    assert!(result.is_ok(), "chain failed: {:?}", result.raw_result);
-
-    let market_user = result.account(&maker.market_user).unwrap();
-    assert_eq!(market_user.data[0], 2, "market_user discriminator");
-    assert_eq!(mu_unsettled_base(market_user), 0);
-    assert_eq!(mu_unsettled_quote(market_user), 0);
-    assert_eq!(mu_open_orders_len(market_user), 0);
-
-    println!("  CREATE_MARKET_USER CU: {}", result.compute_units_consumed);
+    let state = test.read::<MarketUser>(market_user);
+    assert_eq!(state.market, market, "market");
+    assert_eq!(state.owner, MAKER, "owner");
+    assert_eq!(u64::from(state.unsettled_base), 0);
+    assert_eq!(u64::from(state.unsettled_quote), 0);
+    assert_eq!(state.open_orders_len, 0);
 }
 
 /// Full lifecycle: a maker rests an ask, a taker bid crosses it fully, both
 /// settle, and the authority withdraws the fee. Prices in the NVDAx/USDC lot
 /// model: ask 5 lots @ 100 -> gross 500 quote, 1% fee = 5, maker nets 495
 /// quote, taker receives 5000 raw base.
-#[test]
-fn test_place_match_settle_withdraw() {
-    let mut svm = setup();
-    let fx = market_fixture();
-    let maker = trader(&fx);
-    let taker = trader(&fx);
-    let maker_order = derive_order(&fx.market, 1);
-    let taker_order = derive_order(&fx.market, 2);
-    let authority_quote = Pubkey::new_unique();
+#[quasar_test]
+fn place_match_settle_withdraw_moves_tokens_and_fees(test: &mut Test) {
+    let market = init_market(test);
+    let maker_market_user = create_market_user(test, market, MAKER);
+    let taker_market_user = create_market_user(test, market, TAKER);
 
     // Maker sells 5 base lots (locks 5 * 1000 = 5000 raw base); taker buys 5
     // lots at 100 (locks 100 * 5 * 1 = 500 raw quote).
@@ -472,166 +213,134 @@ fn test_place_match_settle_withdraw() {
     const FEE_QUOTE: u64 = 5; // ceil(500 * 100 / 10000)
     const MAKER_NET_QUOTE: u64 = GROSS_QUOTE - FEE_QUOTE; // 495
 
-    let accounts = vec![
-        signer_account(fx.authority),
-        empty_account(fx.market),
-        order_book_account(fx.order_book),
-        mint_account(fx.base_mint, fx.authority, BASE_DECIMALS),
-        mint_account(fx.quote_mint, fx.authority, QUOTE_DECIMALS),
-        empty_account(fx.base_vault),
-        empty_account(fx.quote_vault),
-        empty_account(fx.fee_vault),
-        // maker
-        signer_account(maker.owner),
-        empty_account(maker.market_user),
-        empty_account(maker_order),
-        token_account(maker.base_account, fx.base_mint, maker.owner, MAKER_BASE_LOCK),
-        token_account(maker.quote_account, fx.quote_mint, maker.owner, 0),
-        // taker
-        signer_account(taker.owner),
-        empty_account(taker.market_user),
-        empty_account(taker_order),
-        token_account(taker.base_account, fx.base_mint, taker.owner, 0),
-        token_account(taker.quote_account, fx.quote_mint, taker.owner, TAKER_QUOTE_LOCK),
-        // fee withdrawal destination
-        token_account(authority_quote, fx.quote_mint, fx.authority, 0),
-    ];
+    test.add(
+        TokenAccount::new(BASE_MINT, MAKER)
+            .at(MAKER_BASE)
+            .amount(MAKER_BASE_LOCK),
+    );
+    test.add(TokenAccount::new(QUOTE_MINT, MAKER).at(MAKER_QUOTE));
+    test.add(TokenAccount::new(BASE_MINT, TAKER).at(TAKER_BASE));
+    test.add(
+        TokenAccount::new(QUOTE_MINT, TAKER)
+            .at(TAKER_QUOTE)
+            .amount(TAKER_QUOTE_LOCK),
+    );
+    // Fee withdrawal destination.
+    test.add(TokenAccount::new(QUOTE_MINT, AUTHORITY).at(AUTHORITY_QUOTE));
 
-    let instructions = vec![
-        initialize_market_ix(&fx),
-        create_market_user_ix(&fx, maker.owner, maker.market_user),
-        create_market_user_ix(&fx, taker.owner, taker.market_user),
-        // Maker ask (id 1) rests on the book.
-        place_order_ix(&fx, &maker, maker_order, 1, PRICE, QUANTITY, 1, &[]),
-        // Taker bid (id 2) crosses the maker ask; maker accounts supplied as
-        // remaining accounts.
-        place_order_ix(
-            &fx,
-            &taker,
-            taker_order,
-            0,
-            PRICE,
-            QUANTITY,
-            2,
-            &[(maker_order, maker.market_user)],
-        ),
-        // Both settle, then the authority sweeps the fee vault.
-        settle_funds_ix(&fx, &maker),
-        settle_funds_ix(&fx, &taker),
-        withdraw_fees_ix(&fx, fx.authority, authority_quote),
-    ];
+    let maker_order = test.derive_pda(Order::seeds(&market, 1));
+    let taker_order = test.derive_pda(Order::seeds(&market, 2));
 
-    let result = svm.process_instruction_chain(&instructions, &accounts);
-    assert!(result.is_ok(), "lifecycle chain failed: {:?}", result.raw_result);
+    // Maker ask (id 1) rests on the book.
+    place_order(test, market, MAKER, MAKER_BASE, MAKER_QUOTE, 1, PRICE, QUANTITY, 1, &[])
+        .succeeds();
+    // Taker bid (id 2) crosses the maker ask; maker accounts supplied as
+    // remaining accounts.
+    place_order(
+        test,
+        market,
+        TAKER,
+        TAKER_BASE,
+        TAKER_QUOTE,
+        0,
+        PRICE,
+        QUANTITY,
+        2,
+        &[(maker_order, maker_market_user)],
+    )
+    .succeeds();
+    // Both settle, then the authority sweeps the fee vault.
+    settle_funds(test, market, MAKER, MAKER_BASE, MAKER_QUOTE).succeeds();
+    settle_funds(test, market, TAKER, TAKER_BASE, TAKER_QUOTE).succeeds();
+    test.send(WithdrawFeesInstruction {
+        market,
+        fee_vault: FEE_VAULT,
+        authority_quote_account: AUTHORITY_QUOTE,
+        quote_mint: QUOTE_MINT,
+        authority: AUTHORITY,
+    })
+    .succeeds();
 
     // Both orders fully filled.
-    assert_eq!(order_status(result.account(&maker_order).unwrap()), STATUS_FILLED);
-    assert_eq!(order_filled(result.account(&maker_order).unwrap()), QUANTITY);
-    assert_eq!(order_status(result.account(&taker_order).unwrap()), STATUS_FILLED);
-    assert_eq!(order_filled(result.account(&taker_order).unwrap()), QUANTITY);
+    let maker_state = test.read::<Order>(maker_order);
+    assert_eq!(maker_state.status, OrderStatus::Filled as u8);
+    assert_eq!(u64::from(maker_state.filled_quantity), QUANTITY);
+    let taker_state = test.read::<Order>(taker_order);
+    assert_eq!(taker_state.status, OrderStatus::Filled as u8);
+    assert_eq!(u64::from(taker_state.filled_quantity), QUANTITY);
 
     // Maker's open-orders list emptied when its resting order fully filled.
-    assert_eq!(mu_open_orders_len(result.account(&maker.market_user).unwrap()), 0);
+    assert_eq!(test.read::<MarketUser>(maker_market_user).open_orders_len, 0);
+    let _ = taker_market_user;
 
     // Settlement moved tokens: maker received net quote, taker received base.
-    assert_eq!(
-        token_amount(result.account(&maker.quote_account).unwrap()),
-        MAKER_NET_QUOTE
-    );
-    assert_eq!(
-        token_amount(result.account(&taker.base_account).unwrap()),
-        MAKER_BASE_LOCK
-    );
+    assert_eq!(test.tokens(MAKER_QUOTE), MAKER_NET_QUOTE);
+    assert_eq!(test.tokens(TAKER_BASE), MAKER_BASE_LOCK);
 
     // Fee swept to the authority.
-    assert_eq!(token_amount(result.account(&authority_quote).unwrap()), FEE_QUOTE);
-    assert_eq!(token_amount(result.account(&fx.fee_vault).unwrap()), 0);
+    assert_eq!(test.tokens(AUTHORITY_QUOTE), FEE_QUOTE);
+    assert_eq!(test.tokens(FEE_VAULT), 0);
 
     // Vaults drained after settlement (maker sold all base, taker paid gross).
-    assert_eq!(token_amount(result.account(&fx.base_vault).unwrap()), 0);
-    assert_eq!(token_amount(result.account(&fx.quote_vault).unwrap()), 0);
-
-    println!("  LIFECYCLE CU: {}", result.compute_units_consumed);
+    assert_eq!(test.tokens(BASE_VAULT), 0);
+    assert_eq!(test.tokens(QUOTE_VAULT), 0);
 }
 
 /// Cancelling a resting order credits the locked base back to the owner's
 /// unsettled balance and marks the order cancelled.
-#[test]
-fn test_cancel_order() {
-    let mut svm = setup();
-    let fx = market_fixture();
-    let maker = trader(&fx);
-    let maker_order = derive_order(&fx.market, 1);
+#[quasar_test]
+fn cancel_order_credits_the_locked_base_back(test: &mut Test) {
+    let market = init_market(test);
+    let maker_market_user = create_market_user(test, market, MAKER);
 
     const PRICE: u64 = 100;
     const QUANTITY: u64 = 5;
     const MAKER_BASE_LOCK: u64 = QUANTITY * BASE_LOT_SIZE;
 
-    let accounts = vec![
-        signer_account(fx.authority),
-        empty_account(fx.market),
-        order_book_account(fx.order_book),
-        mint_account(fx.base_mint, fx.authority, BASE_DECIMALS),
-        mint_account(fx.quote_mint, fx.authority, QUOTE_DECIMALS),
-        empty_account(fx.base_vault),
-        empty_account(fx.quote_vault),
-        empty_account(fx.fee_vault),
-        signer_account(maker.owner),
-        empty_account(maker.market_user),
-        empty_account(maker_order),
-        token_account(maker.base_account, fx.base_mint, maker.owner, MAKER_BASE_LOCK),
-        token_account(maker.quote_account, fx.quote_mint, maker.owner, 0),
-    ];
+    test.add(
+        TokenAccount::new(BASE_MINT, MAKER)
+            .at(MAKER_BASE)
+            .amount(MAKER_BASE_LOCK),
+    );
+    test.add(TokenAccount::new(QUOTE_MINT, MAKER).at(MAKER_QUOTE));
 
-    let instructions = vec![
-        initialize_market_ix(&fx),
-        create_market_user_ix(&fx, maker.owner, maker.market_user),
-        place_order_ix(&fx, &maker, maker_order, 1, PRICE, QUANTITY, 1, &[]),
-        cancel_order_ix(&fx, &maker, maker_order),
-    ];
+    let maker_order = test.derive_pda(Order::seeds(&market, 1));
+    place_order(test, market, MAKER, MAKER_BASE, MAKER_QUOTE, 1, PRICE, QUANTITY, 1, &[])
+        .succeeds();
 
-    let result = svm.process_instruction_chain(&instructions, &accounts);
-    assert!(result.is_ok(), "cancel chain failed: {:?}", result.raw_result);
+    test.send(CancelOrderInstruction {
+        market,
+        order_book: ORDER_BOOK,
+        order_order_id_seed: 1,
+        owner: MAKER,
+    })
+    .succeeds();
 
-    assert_eq!(order_status(result.account(&maker_order).unwrap()), STATUS_CANCELLED);
+    assert_eq!(
+        test.read::<Order>(maker_order).status,
+        OrderStatus::Cancelled as u8
+    );
 
     // The locked base is credited back to the owner's unsettled balance and
     // the open-order slot is freed.
-    let market_user = result.account(&maker.market_user).unwrap();
-    assert_eq!(mu_unsettled_base(market_user), MAKER_BASE_LOCK);
-    assert_eq!(mu_open_orders_len(market_user), 0);
-
-    println!("  CANCEL_ORDER CU: {}", result.compute_units_consumed);
+    let market_user = test.read::<MarketUser>(maker_market_user);
+    assert_eq!(u64::from(market_user.unsettled_base), MAKER_BASE_LOCK);
+    assert_eq!(market_user.open_orders_len, 0);
 }
 
 /// A non-authority signer cannot withdraw the fee vault.
-#[test]
-fn test_withdraw_fees_rejects_non_authority() {
-    let mut svm = setup();
-    let fx = market_fixture();
-    let attacker = Pubkey::new_unique();
-    let attacker_quote = Pubkey::new_unique();
+#[quasar_test]
+fn withdraw_fees_rejects_a_non_authority_signer(test: &mut Test) {
+    let market = init_market(test);
+    test.add(Wallet::new().at(ATTACKER));
+    test.add(TokenAccount::new(QUOTE_MINT, ATTACKER).at(ATTACKER_QUOTE));
 
-    let init_accounts = vec![
-        signer_account(fx.authority),
-        empty_account(fx.market),
-        order_book_account(fx.order_book),
-        mint_account(fx.base_mint, fx.authority, BASE_DECIMALS),
-        mint_account(fx.quote_mint, fx.authority, QUOTE_DECIMALS),
-        empty_account(fx.base_vault),
-        empty_account(fx.quote_vault),
-        empty_account(fx.fee_vault),
-        signer_account(attacker),
-        token_account(attacker_quote, fx.quote_mint, attacker, 0),
-    ];
-
-    let instructions = vec![
-        initialize_market_ix(&fx),
-        withdraw_fees_ix(&fx, attacker, attacker_quote),
-    ];
-    let result = svm.process_instruction_chain(&instructions, &init_accounts);
-    assert!(
-        !result.is_ok(),
-        "withdraw_fees must reject a signer who is not the market authority"
-    );
+    test.send(WithdrawFeesInstruction {
+        market,
+        fee_vault: FEE_VAULT,
+        authority_quote_account: ATTACKER_QUOTE,
+        quote_mint: QUOTE_MINT,
+        authority: ATTACKER,
+    })
+    .fails_with(OrderBookError::NotMarketAuthority);
 }

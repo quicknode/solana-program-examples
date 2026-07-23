@@ -1,164 +1,88 @@
-extern crate std;
 use {
-    alloc::vec,
-    quasar_svm::{Account, Instruction, Pubkey, QuasarSvm},
-    std::println,
+    crate::cpi::{
+        ConfigureAdminInstruction, InitializeExtraAccountMetasListInstruction, SwitchInstruction,
+        TransferHookInstruction,
+    },
+    quasar_test::prelude::*,
 };
 
-fn setup() -> QuasarSvm {
-    let elf = std::fs::read("target/deploy/quasar_transfer_hook_switch.so").unwrap();
-    QuasarSvm::new().with_program(&crate::ID, &elf)
+// Deterministic addresses keep tests independent of discovery order.
+const ADMIN: Pubkey = Pubkey::new_from_array([1; 32]);
+const NEW_ADMIN: Pubkey = Pubkey::new_from_array([2; 32]);
+const WALLET: Pubkey = Pubkey::new_from_array([3; 32]);
+const MINT: Pubkey = Pubkey::new_from_array([4; 32]);
+const SOURCE_TOKEN: Pubkey = Pubkey::new_from_array([5; 32]);
+const DEST_TOKEN: Pubkey = Pubkey::new_from_array([6; 32]);
+
+/// (admin_config, extra_account_metas_list, wallet_switch) PDAs. The program
+/// derives these with raw seed literals, so the test mirrors the derivation.
+fn pdas() -> (Pubkey, Pubkey, Pubkey) {
+    let program_id: Pubkey = crate::ID.into();
+    let (admin_config, _) = Pubkey::find_program_address(&[b"admin-config"], &program_id);
+    let (meta_list, _) =
+        Pubkey::find_program_address(&[b"extra-account-metas", MINT.as_ref()], &program_id);
+    let (wallet_switch, _) = Pubkey::find_program_address(&[WALLET.as_ref()], &program_id);
+    (admin_config, meta_list, wallet_switch)
 }
 
-fn signer(address: Pubkey) -> Account {
-    quasar_svm::token::create_keyed_system_account(&address, 10_000_000_000)
-}
-
-fn empty(address: Pubkey) -> Account {
-    Account {
-        address,
-        lamports: 0,
-        data: vec![],
-        owner: quasar_svm::system_program::ID,
-        executable: false,
+fn hook_instruction(meta_list: Pubkey, wallet_switch: Pubkey) -> TransferHookInstruction {
+    TransferHookInstruction {
+        source_token_account: SOURCE_TOKEN,
+        token_mint: MINT,
+        receiver_token_account: DEST_TOKEN,
+        wallet: WALLET,
+        extra_account_metas_list: meta_list,
+        wallet_switch,
+        _amount: 100,
     }
 }
 
-#[test]
-fn test_transfer_switch_flow() {
-    let mut svm = setup();
+#[quasar_test]
+fn transfer_switch_gates_transfers_per_wallet(test: &mut Test) {
+    test.add(Wallet::new().at(ADMIN));
+    test.add(Wallet::new().at(NEW_ADMIN));
+    let (admin_config, meta_list, wallet_switch) = pdas();
 
-    let admin = Pubkey::new_unique();
-    let new_admin = Pubkey::new_unique();
-    let wallet = Pubkey::new_unique();
-    let mint = Pubkey::new_unique();
-    let system_program = quasar_svm::system_program::ID;
+    // 1. Configure admin: the first caller installs NEW_ADMIN as the admin.
+    test.send(ConfigureAdminInstruction {
+        admin: ADMIN,
+        new_admin: NEW_ADMIN,
+        admin_config,
+    })
+    .succeeds();
 
-    let (admin_config_pda, _) =
-        Pubkey::find_program_address(&[b"admin-config"], &crate::ID.into());
-    let (meta_list_pda, _) = Pubkey::find_program_address(
-        &[b"extra-account-metas", mint.as_ref()],
-        &crate::ID.into(),
-    );
-    let (wallet_switch_pda, _) =
-        Pubkey::find_program_address(&[wallet.as_ref()], &crate::ID.into());
+    // 2. Initialize the extra account metas list.
+    test.send(InitializeExtraAccountMetasListInstruction {
+        payer: ADMIN,
+        token_mint: MINT,
+        extra_account_metas_list: meta_list,
+    })
+    .succeeds();
 
-    // 1. Configure admin
-    let config_ix = Instruction {
-        program_id: crate::ID,
-        accounts: vec![
-            solana_instruction::AccountMeta::new(admin.into(), true),
-            solana_instruction::AccountMeta::new_readonly(new_admin.into(), false),
-            solana_instruction::AccountMeta::new(admin_config_pda.into(), false),
-            solana_instruction::AccountMeta::new_readonly(system_program.into(), false),
-        ],
-        data: vec![0, 0, 0, 0, 0, 0, 0, 1],
-    };
-    let result = svm.process_instruction(&config_ix, &[signer(admin), empty(admin_config_pda)]);
-    result.print_logs();
-    assert!(result.is_ok(), "configure_admin failed: {:?}", result.raw_result);
-    println!("  CONFIGURE_ADMIN CU: {}", result.compute_units_consumed);
+    // 3. Turn the switch ON for the wallet (NEW_ADMIN is now the admin).
+    test.send(SwitchInstruction {
+        admin: NEW_ADMIN,
+        wallet: WALLET,
+        admin_config,
+        wallet_switch,
+        on: 1,
+    })
+    .succeeds();
 
-    // 2. Initialize extra account metas
-    let init_ix = Instruction {
-        program_id: crate::ID,
-        accounts: vec![
-            solana_instruction::AccountMeta::new(admin.into(), true),
-            solana_instruction::AccountMeta::new_readonly(mint.into(), false),
-            solana_instruction::AccountMeta::new(meta_list_pda.into(), false),
-            solana_instruction::AccountMeta::new_readonly(system_program.into(), false),
-        ],
-        data: vec![43, 34, 13, 49, 167, 88, 235, 235],
-    };
-    let result = svm.process_instruction(&init_ix, &[signer(admin), empty(mint), empty(meta_list_pda)]);
-    result.print_logs();
-    assert!(result.is_ok(), "init_metas failed: {:?}", result.raw_result);
+    // 4. Transfer hook with the switch ON succeeds.
+    test.send(hook_instruction(meta_list, wallet_switch)).succeeds();
 
-    // 3. Turn switch ON for wallet (new_admin is now the admin in the config)
-    // discriminator [0,0,0,0,0,0,0,3] + on=1 (u8)
-    let switch_ix = Instruction {
-        program_id: crate::ID,
-        accounts: vec![
-            solana_instruction::AccountMeta::new(new_admin.into(), true),
-            solana_instruction::AccountMeta::new_readonly(wallet.into(), false),
-            solana_instruction::AccountMeta::new_readonly(admin_config_pda.into(), false),
-            solana_instruction::AccountMeta::new(wallet_switch_pda.into(), false),
-            solana_instruction::AccountMeta::new_readonly(system_program.into(), false),
-        ],
-        data: vec![0, 0, 0, 0, 0, 0, 0, 3, 1],
-    };
-    let result = svm.process_instruction(
-        &switch_ix,
-        &[signer(new_admin), empty(wallet), empty(wallet_switch_pda)],
-    );
-    result.print_logs();
-    assert!(result.is_ok(), "switch on failed: {:?}", result.raw_result);
-    println!("  SWITCH ON CU: {}", result.compute_units_consumed);
+    // 5. Turn the switch OFF.
+    test.send(SwitchInstruction {
+        admin: NEW_ADMIN,
+        wallet: WALLET,
+        admin_config,
+        wallet_switch,
+        on: 0,
+    })
+    .succeeds();
 
-    // 4. Transfer hook with switch ON - should succeed
-    let source_token = Pubkey::new_unique();
-    let dest_token = Pubkey::new_unique();
-
-    let mut hook_data = vec![105, 37, 101, 197, 75, 251, 102, 26];
-    hook_data.extend_from_slice(&100u64.to_le_bytes());
-
-    let hook_ix = Instruction {
-        program_id: crate::ID,
-        accounts: vec![
-            solana_instruction::AccountMeta::new_readonly(source_token.into(), false),
-            solana_instruction::AccountMeta::new_readonly(mint.into(), false),
-            solana_instruction::AccountMeta::new_readonly(dest_token.into(), false),
-            solana_instruction::AccountMeta::new_readonly(wallet.into(), false),
-            solana_instruction::AccountMeta::new_readonly(meta_list_pda.into(), false),
-            solana_instruction::AccountMeta::new_readonly(wallet_switch_pda.into(), false),
-        ],
-        data: hook_data.clone(),
-    };
-    let result = svm.process_instruction(
-        &hook_ix,
-        &[empty(source_token), empty(dest_token), signer(wallet)],
-    );
-    result.print_logs();
-    assert!(result.is_ok(), "transfer_hook (switch on) failed: {:?}", result.raw_result);
-    println!("  TRANSFER_HOOK (on) CU: {}", result.compute_units_consumed);
-
-    // 5. Turn switch OFF (new_admin is the admin)
-    let switch_off_ix = Instruction {
-        program_id: crate::ID,
-        accounts: vec![
-            solana_instruction::AccountMeta::new(new_admin.into(), true),
-            solana_instruction::AccountMeta::new_readonly(wallet.into(), false),
-            solana_instruction::AccountMeta::new_readonly(admin_config_pda.into(), false),
-            solana_instruction::AccountMeta::new(wallet_switch_pda.into(), false),
-            solana_instruction::AccountMeta::new_readonly(system_program.into(), false),
-        ],
-        data: vec![0, 0, 0, 0, 0, 0, 0, 3, 0],
-    };
-    let result = svm.process_instruction(
-        &switch_off_ix,
-        &[signer(new_admin), empty(wallet)],
-    );
-    result.print_logs();
-    assert!(result.is_ok(), "switch off failed: {:?}", result.raw_result);
-
-    // 6. Transfer hook with switch OFF - should fail
-    let hook_ix2 = Instruction {
-        program_id: crate::ID,
-        accounts: vec![
-            solana_instruction::AccountMeta::new_readonly(source_token.into(), false),
-            solana_instruction::AccountMeta::new_readonly(mint.into(), false),
-            solana_instruction::AccountMeta::new_readonly(dest_token.into(), false),
-            solana_instruction::AccountMeta::new_readonly(wallet.into(), false),
-            solana_instruction::AccountMeta::new_readonly(meta_list_pda.into(), false),
-            solana_instruction::AccountMeta::new_readonly(wallet_switch_pda.into(), false),
-        ],
-        data: hook_data,
-    };
-    let result = svm.process_instruction(
-        &hook_ix2,
-        &[empty(source_token), empty(dest_token), signer(wallet)],
-    );
-    result.print_logs();
-    assert!(result.is_err(), "transfer_hook should fail with switch off");
-    println!("  TRANSFER_HOOK (off) correctly rejected");
+    // 6. Transfer hook with the switch OFF is rejected.
+    test.send(hook_instruction(meta_list, wallet_switch))
+        .fails(ProgramError::InvalidArgument);
 }

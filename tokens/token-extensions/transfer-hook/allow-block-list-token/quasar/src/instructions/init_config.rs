@@ -16,7 +16,7 @@ pub struct InitConfigAccountConstraints {
 
 #[inline(always)]
 pub fn handle_init_config(accounts: &mut InitConfigAccountConstraints) -> Result<(), ProgramError> {
-    let (config_pda, bump) = Address::find_program_address(&[CONFIG_SEED], &crate::ID);
+    let (config_pda, bump) = quasar_lang::pda::try_find_program_address(&[CONFIG_SEED], &crate::ID)?;
 
     if accounts.config.to_account_view().address() != &config_pda {
         return Err(ProgramError::InvalidSeeds);

@@ -1,158 +1,61 @@
-extern crate std;
 use {
-    alloc::vec,
-    quasar_svm::{Account, Instruction, Pubkey, QuasarSvm},
-    spl_token_interface::state::{Account as TokenAccount, AccountState, Mint},
-    std::println,
+    crate::cpi::{CreateTokenInstruction, MintTokensInstruction},
+    quasar_test::prelude::*,
+    spl_token::{solana_program::program_pack::Pack, state::Mint as MintState},
 };
 
-fn setup() -> QuasarSvm {
-    let elf = std::fs::read("target/deploy/quasar_create_token.so").unwrap();
-    QuasarSvm::new()
-        .with_program(&crate::ID, &elf)
-        .with_token_program()
-}
+// Deterministic addresses keep tests independent of discovery order.
+const PAYER: Pubkey = Pubkey::new_from_array([1; 32]);
+const MINT: Pubkey = Pubkey::new_from_array([2; 32]);
+const TOKEN_ACCOUNT: Pubkey = Pubkey::new_from_array([3; 32]);
 
-fn signer(address: Pubkey) -> Account {
-    quasar_svm::token::create_keyed_system_account(&address, 1_000_000_000)
-}
-
-fn empty(address: Pubkey) -> Account {
-    Account {
-        address,
-        lamports: 0,
-        data: vec![],
-        owner: quasar_svm::system_program::ID,
-        executable: false,
-    }
-}
-
-fn mint(address: Pubkey, authority: Pubkey) -> Account {
-    quasar_svm::token::create_keyed_mint_account(
-        &address,
-        &Mint {
-            mint_authority: Some(authority).into(),
-            supply: 0,
-            decimals: 9,
-            is_initialized: true,
-            freeze_authority: None.into(),
-        },
-    )
-}
-
-fn token_account(address: Pubkey, mint: Pubkey, owner: Pubkey, amount: u64) -> Account {
-    quasar_svm::token::create_keyed_token_account(
-        &address,
-        &TokenAccount {
-            mint,
-            owner,
-            amount,
-            state: AccountState::Initialized,
-            ..TokenAccount::default()
-        },
-    )
-}
-
-/// Build create_token instruction data.
-/// Wire format: [discriminator: u8 = 0] [decimals: u8]
-fn build_create_token_data(decimals: u8) -> Vec<u8> {
-    vec![0u8, decimals]
-}
-
-/// Build mint_tokens instruction data.
-/// Wire format: [discriminator: u8 = 1] [amount: u64 LE]
-fn build_mint_tokens_data(amount: u64) -> Vec<u8> {
-    let mut data = vec![1u8];
-    data.extend_from_slice(&amount.to_le_bytes());
-    data
-}
-
-#[test]
-fn test_create_token() {
-    let mut svm = setup();
-
-    let payer = Pubkey::new_unique();
-    let mint_address = Pubkey::new_unique();
-    let token_program = quasar_svm::SPL_TOKEN_PROGRAM_ID;
-    let system_program = quasar_svm::system_program::ID;
+#[quasar_test]
+fn create_token_initializes_the_mint_with_requested_decimals(test: &mut Test) {
+    test.add(Wallet::new().at(PAYER));
 
     // Deliberately not 9: proves the decimals instruction argument reaches
     // the initialize_mint2 CPI instead of being hardcoded.
     let requested_decimals = 6u8;
-    let data = build_create_token_data(requested_decimals);
 
-    let instruction = Instruction {
-        program_id: crate::ID,
-        accounts: vec![
-            solana_instruction::AccountMeta::new(payer.into(), true),
-            solana_instruction::AccountMeta::new(mint_address.into(), true),
-            solana_instruction::AccountMeta::new_readonly(token_program.into(), false),
-            solana_instruction::AccountMeta::new_readonly(system_program.into(), false),
-        ],
-        data,
-    };
+    // The mint is a fresh keypair account that must co-sign create_account.
+    // The accounts struct types it UncheckedAccount, so the generated builder
+    // marks it writable only; flip the signer bit on the built instruction
+    // (field order: payer, mint, token_program, system_program).
+    let mut instruction: Instruction = CreateTokenInstruction {
+        payer: PAYER,
+        mint: MINT,
+        decimals: requested_decimals,
+    }
+    .into();
+    instruction.accounts[1].is_signer = true;
 
-    let result = svm.process_instruction(
-        &instruction,
-        &[signer(payer), empty(mint_address)],
-    );
+    test.send(instruction).succeeds();
 
-    assert!(result.is_ok(), "create_token failed: {:?}", result.raw_result);
-
-    // The created mint must carry the requested decimals.
-    let mint_account = result.account(&mint_address).expect("mint should exist");
-    let mint_state =
-        <Mint as solana_program_pack::Pack>::unpack(&mint_account.data).expect("valid mint");
+    // The created mint must carry the requested decimals and the payer as
+    // its mint authority.
+    let mint_account = test.account(MINT).expect("mint should exist");
+    let mint_state = MintState::unpack(&mint_account.data).expect("valid mint");
     assert_eq!(mint_state.decimals, requested_decimals);
-    assert_eq!(mint_state.mint_authority, Some(payer).into());
-
-    println!("  CREATE TOKEN CU: {}", result.compute_units_consumed);
+    assert_eq!(mint_state.mint_authority, Some(PAYER).into());
 }
 
-#[test]
-fn test_mint_tokens() {
-    let mut svm = setup();
-
-    let authority = Pubkey::new_unique();
-    let mint_address = Pubkey::new_unique();
-    let token_addr = Pubkey::new_unique();
-    let token_program = quasar_svm::SPL_TOKEN_PROGRAM_ID;
+#[quasar_test]
+fn mint_tokens_mints_the_exact_minor_unit_amount(test: &mut Test) {
+    test.add(Wallet::new().at(PAYER));
+    test.add(Mint::new(PAYER).at(MINT).decimals(9));
+    test.add(TokenAccount::new(MINT, PAYER).at(TOKEN_ACCOUNT));
 
     let amount = 1_000_000_000u64;
-    let data = build_mint_tokens_data(amount);
 
-    let instruction = Instruction {
-        program_id: crate::ID,
-        accounts: vec![
-            solana_instruction::AccountMeta::new(authority.into(), true),
-            solana_instruction::AccountMeta::new(mint_address.into(), false),
-            solana_instruction::AccountMeta::new(token_addr.into(), false),
-            solana_instruction::AccountMeta::new_readonly(token_program.into(), false),
-        ],
-        data,
-    };
-
-    let result = svm.process_instruction(
-        &instruction,
-        &[
-            signer(authority),
-            mint(mint_address, authority),
-            token_account(token_addr, mint_address, authority, 0),
-        ],
-    );
-
-    assert!(result.is_ok(), "mint_tokens failed: {:?}", result.raw_result);
-
-    // The handler mints exactly the minor-unit amount passed: no decimal scaling.
-    let token_after = result.account(&token_addr).expect("token account exists");
-    let token_state = <TokenAccount as solana_program_pack::Pack>::unpack(&token_after.data)
-        .expect("valid token account");
-    assert_eq!(token_state.amount, amount);
-
-    let mint_after = result.account(&mint_address).expect("mint exists");
-    let mint_state =
-        <Mint as solana_program_pack::Pack>::unpack(&mint_after.data).expect("valid mint");
-    assert_eq!(mint_state.supply, amount);
-
-    println!("  MINT TOKENS CU: {}", result.compute_units_consumed);
+    // The handler mints exactly the minor-unit amount passed: no decimal
+    // scaling.
+    test.send(MintTokensInstruction {
+        authority: PAYER,
+        mint: MINT,
+        token_account: TOKEN_ACCOUNT,
+        amount,
+    })
+    .succeeds()
+    .has_tokens(TOKEN_ACCOUNT, amount)
+    .has_supply(MINT, amount);
 }

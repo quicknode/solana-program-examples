@@ -1,85 +1,28 @@
-use quasar_svm::{Account, Instruction, Pubkey, QuasarSvm};
-use solana_address::Address;
+use {crate::cpi::CreateSystemAccountInstruction, quasar_test::prelude::*};
 
-fn setup() -> QuasarSvm {
-    let elf = include_bytes!("../target/deploy/quasar_rent.so");
-    QuasarSvm::new().with_program(&Pubkey::from(crate::ID), elf)
-}
+// Deterministic addresses keep tests independent of discovery order.
+const PAYER: Pubkey = Pubkey::new_from_array([1; 32]);
+// The new account is a fresh keypair whose address the caller chooses.
+const NEW_ACCOUNT: Pubkey = Pubkey::new_from_array([2; 32]);
 
-fn signer(address: Pubkey) -> Account {
-    quasar_svm::token::create_keyed_system_account(&address, 10_000_000_000)
-}
-
-fn empty(address: Pubkey) -> Account {
-    Account {
-        address,
-        lamports: 0,
-        data: vec![],
-        owner: quasar_svm::system_program::ID,
-        executable: false,
-    }
-}
-
-/// Build create_system_account instruction data using Quasar's compact
-/// wire format (header then tail). `String<50>` defaults to a u8 length
-/// prefix (the second `String` generic argument is the prefix type).
-///
-///   header: [disc: u8 = 0][name_len: u8][address_len: u8]
-///   tail:   [name bytes][address bytes]
-fn build_create_system_account(name: &str, address: &str) -> Vec<u8> {
-    let mut data = Vec::with_capacity(3 + name.len() + address.len());
-
-    // Header
-    data.push(0u8); // discriminator
-    data.push(name.len() as u8);
-    data.push(address.len() as u8);
-
-    // Tail
-    data.extend_from_slice(name.as_bytes());
-    data.extend_from_slice(address.as_bytes());
-
-    data
-}
-
-#[test]
-fn test_create_system_account_for_address_data() {
-    let mut svm = setup();
-
-    let payer = Pubkey::new_unique();
-    let new_account = Pubkey::new_unique();
-    let system_program = quasar_svm::system_program::ID;
+#[quasar_test]
+fn create_system_account_sized_for_address_data(test: &mut Test) {
+    test.add(Wallet::new().at(PAYER));
 
     let name = "Joe C";
     let address = "123 Main St";
 
-    let ix = Instruction {
-        program_id: Pubkey::from(crate::ID),
-        accounts: vec![
-            solana_instruction::AccountMeta::new(
-                Address::from(payer.to_bytes()),
-                true,
-            ),
-            solana_instruction::AccountMeta::new(
-                Address::from(new_account.to_bytes()),
-                true,
-            ),
-            solana_instruction::AccountMeta::new_readonly(
-                Address::from(system_program.to_bytes()),
-                false,
-            ),
-        ],
-        data: build_create_system_account(name, address),
-    };
+    let outcome = test.send(CreateSystemAccountInstruction {
+        payer: PAYER,
+        new_account: NEW_ACCOUNT,
+        name: name.to_string().into(),
+        address: address.to_string().into(),
+    });
+    outcome.succeeds();
 
-    let result = svm.process_instruction(
-        &ix,
-        &[signer(payer), empty(new_account)],
-    );
-
-    result.assert_success();
-
-    // Verify the account was created with the expected data size.
-    let account = result.account(&new_account).unwrap();
+    // Verify the account was created with the expected data size:
+    // borsh-style 4-byte length prefix + bytes for each String field.
+    let account = test.account(NEW_ACCOUNT).unwrap();
     let expected_space = 4 + name.len() + 4 + address.len();
     assert_eq!(
         account.data.len(),
@@ -88,7 +31,7 @@ fn test_create_system_account_for_address_data() {
     );
     assert!(account.lamports > 0, "account should have rent-exempt lamports");
 
-    let logs = result.logs.join("\n");
+    let logs = outcome.logs().join("\n");
     assert!(logs.contains("Creating a system account"), "should log creation");
     assert!(logs.contains("Account created successfully"), "should log success");
 }

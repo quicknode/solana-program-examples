@@ -1,3 +1,4 @@
+use super::withdraw::{TransferArgs, TRANSFER_ARGS_LEN};
 use crate::error::VaultError;
 use crate::state::Vault;
 use crate::*;
@@ -11,13 +12,6 @@ const MAX_PROOF_NODES: usize = 24;
 
 /// 8 fixed accounts + proof nodes per CPI call.
 const MAX_CPI_ACCOUNTS: usize = 8 + MAX_PROOF_NODES;
-
-/// Transfer args byte length: root(32) + data_hash(32) + creator_hash(32) + nonce(8) + index(4).
-const TRANSFER_ARGS_LEN: usize = 108;
-
-/// Instruction data length:
-/// args1(108) + proof_1_length(1) + args2(108) + proof_2_length(1).
-const WITHDRAW_TWO_DATA_LEN: usize = TRANSFER_ARGS_LEN * 2 + 2;
 
 /// Accounts for withdrawing two compressed NFTs from the vault in one transaction.
 /// Each cNFT can be from a different merkle tree.
@@ -68,18 +62,18 @@ pub struct WithdrawTwoCnftsAccountConstraints {
 #[allow(clippy::too_many_lines)]
 pub fn handle_withdraw_two_cnfts(
     accounts: &mut WithdrawTwoCnftsAccountConstraints,
-    data: &[u8],
+    args1: TransferArgs,
+    proof_1_length: u8,
+    args2: TransferArgs,
+    proof_2_length: u8,
     remaining: RemainingAccounts<'_>,
     vault_bump: u8,
 ) -> Result<(), ProgramError> {
-    if data.len() < WITHDRAW_TWO_DATA_LEN {
-        return Err(ProgramError::InvalidInstructionData);
-    }
-
-    let args1 = &data[0..TRANSFER_ARGS_LEN];
-    let proof_1_length = data[TRANSFER_ARGS_LEN] as usize;
-    let args2 = &data[TRANSFER_ARGS_LEN + 1..TRANSFER_ARGS_LEN * 2 + 1];
-    let proof_2_length = data[TRANSFER_ARGS_LEN * 2 + 1] as usize;
+    let args1 = args1.to_bytes();
+    let proof_1_length = proof_1_length as usize;
+    let args2 = args2.to_bytes();
+    let proof_2_length = proof_2_length as usize;
+    let (args1, args2) = (&args1[..], &args2[..]);
 
     // PDA signer seeds
     let bump_bytes = [vault_bump];

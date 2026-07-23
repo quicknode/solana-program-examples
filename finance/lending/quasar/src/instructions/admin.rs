@@ -10,8 +10,8 @@ use {
             Reserve, ReserveInner, ShareMintPda,
         },
     },
-    quasar_lang::{prelude::*, sysvars::Sysvar},
-    quasar_spl::{initialize_account3, initialize_mint2, prelude::*},
+    quasar_lang::{cpi::Seed, prelude::*, sysvars::Sysvar},
+    quasar_spl::prelude::*,
 };
 
 // ---------------------------------------------------------------------------
@@ -118,13 +118,9 @@ impl InitReserve {
                 self.token_program.address(),
             )
             .invoke_signed(&vault_seeds)?;
-        initialize_account3(
-            self.token_program.to_account_view(),
-            self.liquidity_vault.to_account_view(),
-            self.liquidity_mint.to_account_view(),
-            &reserve_address,
-        )
-        .invoke()?;
+        self.token_program
+            .initialize_account3(&self.liquidity_vault, &self.liquidity_mint, &reserve_address)
+            .invoke()?;
 
         // Create the share-token mint PDA (authority = reserve, same decimals).
         let mint_bump = [bumps.share_mint];
@@ -142,14 +138,9 @@ impl InitReserve {
                 self.token_program.address(),
             )
             .invoke_signed(&mint_seeds)?;
-        initialize_mint2(
-            self.token_program.to_account_view(),
-            self.share_mint.to_account_view(),
-            decimals,
-            &reserve_address,
-            None,
-        )
-        .invoke()?;
+        self.token_program
+            .initialize_mint2(&self.share_mint, decimals, &reserve_address, None)
+            .invoke()?;
 
         self.reserve.set_inner(ReserveInner {
             lending_market: *self.lending_market.address(),

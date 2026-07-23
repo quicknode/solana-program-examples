@@ -1,621 +1,376 @@
-extern crate std;
+//! quasar-test integration tests. They exercise the full lifecycle: pool
+//! initialization, liquidity add/remove, opening/closing/liquidating leveraged
+//! positions, fee collection, and the oracle/leverage/reserve guard rails.
 
 use {
-    alloc::{vec, vec::Vec},
-    quasar_svm::{
-        token::{
-            create_keyed_associated_token_account, create_keyed_mint_account,
-            create_keyed_system_account, Mint,
+    crate::{
+        cpi::{
+            AddLiquidityInstruction, ClosePositionInstruction, CollectFeesInstruction,
+            InitializePoolInstruction, LiquidatePositionInstruction, OpenPositionInstruction,
+            RemoveLiquidityInstruction,
         },
-        Account, AccountMeta, Instruction, Pubkey, QuasarSvm,
+        state::{Pool, Position},
+        LpMintPda, VaultPda,
     },
-    std::fs,
+    quasar_test::prelude::*,
 };
 
 const ONE_USDC: u64 = 1_000_000;
 const ORACLE_SCALE: u32 = 8;
+// quasar-test worlds run at the default slot (0); the feed is stamped with the
+// same slot so the staleness check passes.
+const SLOT: u64 = 0;
 
-fn program_id() -> Pubkey {
-    crate::ID.into()
-}
-fn token_program() -> Pubkey {
-    quasar_svm::SPL_TOKEN_PROGRAM_ID
-}
-fn ata_program() -> Pubkey {
-    quasar_svm::SPL_ASSOCIATED_TOKEN_PROGRAM_ID
-}
-fn system_program() -> Pubkey {
-    quasar_svm::system_program::ID
-}
-fn clock_sysvar() -> Pubkey {
-    "SysvarC1ock11111111111111111111111111111111"
-        .parse()
-        .unwrap()
-}
-fn rent_sysvar() -> Pubkey {
-    "SysvarRent111111111111111111111111111111111"
-        .parse()
-        .unwrap()
-}
+// Deterministic addresses.
+const ADMIN: Pubkey = Pubkey::new_from_array([1; 32]);
+const COLLATERAL_MINT: Pubkey = Pubkey::new_from_array([2; 32]);
+const FEED: Pubkey = Pubkey::new_from_array([3; 32]);
+const PROVIDER: Pubkey = Pubkey::new_from_array([4; 32]);
+const PROVIDER_COLLATERAL: Pubkey = Pubkey::new_from_array([5; 32]);
+const PROVIDER_LP: Pubkey = Pubkey::new_from_array([6; 32]);
+const TRADER: Pubkey = Pubkey::new_from_array([7; 32]);
+const TRADER_COLLATERAL: Pubkey = Pubkey::new_from_array([8; 32]);
+const LIQUIDATOR: Pubkey = Pubkey::new_from_array([9; 32]);
+const LIQUIDATOR_COLLATERAL: Pubkey = Pubkey::new_from_array([10; 32]);
+const ADMIN_COLLATERAL: Pubkey = Pubkey::new_from_array([11; 32]);
 
 fn dollars(whole: i128) -> i128 {
     whole * 10i128.pow(ORACLE_SCALE)
 }
 
-fn pda(seeds: &[&[u8]]) -> Pubkey {
-    Pubkey::find_program_address(seeds, &program_id()).0
-}
-fn ata(wallet: &Pubkey, mint: &Pubkey) -> Pubkey {
-    Pubkey::find_program_address(
-        &[wallet.as_ref(), token_program().as_ref(), mint.as_ref()],
-        &ata_program(),
-    )
-    .0
-}
-
-fn empty(address: &Pubkey) -> Account {
-    Account {
-        address: *address,
-        lamports: 0,
-        data: vec![],
-        owner: system_program(),
-        executable: false,
-    }
-}
-
-fn mint_account(address: &Pubkey) -> Account {
-    create_keyed_mint_account(
-        address,
-        &Mint {
-            decimals: 6,
-            is_initialized: true,
-            ..Default::default()
-        },
-    )
-}
-
 /// A feed account in this program's layout: price (i128), scale (u32),
 /// last_update_slot (u64), confidence (u64). The tests own this; production
 /// reads a real feed.
-fn feed_account(address: &Pubkey, price: i128, scale: u32, slot: u64, confidence: u64) -> Account {
+fn set_feed(test: &mut Test, price: i128, confidence: u64) {
     let mut data = Vec::with_capacity(36);
     data.extend_from_slice(&price.to_le_bytes());
-    data.extend_from_slice(&scale.to_le_bytes());
-    data.extend_from_slice(&slot.to_le_bytes());
+    data.extend_from_slice(&ORACLE_SCALE.to_le_bytes());
+    data.extend_from_slice(&SLOT.to_le_bytes());
     data.extend_from_slice(&confidence.to_le_bytes());
-    Account {
-        address: *address,
-        lamports: 1_000_000,
-        data,
-        owner: system_program(),
-        executable: false,
-    }
+    test.set_account(Account::new(FEED, system_program::ID, 1_000_000, data));
 }
 
-fn token_amount(svm: &QuasarSvm, address: &Pubkey) -> u64 {
-    let account = svm.get_account(address).expect("token account exists");
-    // SPL token account layout: mint (32) + owner (32) + amount (u64) at offset 64.
-    u64::from_le_bytes(account.data[64..72].try_into().unwrap())
+fn init_pool(test: &mut Test, maintenance_margin_bps: u16, close_fee_bps: u16) -> Outcome {
+    test.send(InitializePoolInstruction {
+        authority: ADMIN,
+        collateral_mint: COLLATERAL_MINT,
+        oracle_feed: FEED,
+        oracle_scale: ORACLE_SCALE,
+        funding_rate_per_slot: 0,
+        open_fee_bps: 10,
+        close_fee_bps,
+        max_leverage: 10,
+        maintenance_margin_bps,
+        liquidation_fee_bps: 100,
+        max_confidence_bps: 100,
+    })
 }
 
+/// The pool and its derived PDAs.
 struct Env {
-    svm: QuasarSvm,
-    collateral_mint: Pubkey,
-    feed: Pubkey,
-    admin: Pubkey,
     pool: Pubkey,
-    pool_authority: Pubkey,
     lp_mint: Pubkey,
     custody_vault: Pubkey,
 }
 
-const SLOT: u64 = 10;
+/// Build a world with a collateral mint, an oracle feed at $100, and an
+/// initialized pool (0.1% open/close fees, 10x max leverage, 5% maintenance
+/// margin, 1% liquidation fee, 1% max confidence).
+fn setup(test: &mut Test) -> Env {
+    test.add(Wallet::new().at(ADMIN));
+    test.add(Mint::new(ADMIN).at(COLLATERAL_MINT).decimals(6));
+    set_feed(test, dollars(100), 0);
+    init_pool(test, 500, 10).succeeds();
 
-/// Build an SVM with the program, token program, a collateral mint, an oracle
-/// feed at $100, and an initialized pool.
-fn setup() -> Env {
-    try_setup(500, 10).expect("pool initialization should succeed")
+    let pool = test.derive_pda(Pool::seeds(&COLLATERAL_MINT, &FEED));
+    Env {
+        pool,
+        lp_mint: test.derive_pda(LpMintPda::seeds(&pool)),
+        custody_vault: test.derive_pda(VaultPda::seeds(&pool)),
+    }
 }
 
-/// Like `setup`, but with the two cross-checked pool parameters exposed and an
-/// `initialize_pool` rejection surfaced instead of panicking, so tests can
-/// probe the parameter validation.
-fn try_setup(maintenance_margin_bps: u16, close_fee_bps: u16) -> Result<Env, ()> {
-    let elf = fs::read("target/deploy/quasar_perpetual_futures.so").unwrap();
-    let collateral_mint = Pubkey::new_unique();
-    let feed = Pubkey::new_unique();
-    let admin = Pubkey::new_unique();
-    let pool = pda(&[b"pool", collateral_mint.as_ref(), feed.as_ref()]);
-    let pool_authority = pda(&[b"authority", pool.as_ref()]);
-    let lp_mint = pda(&[b"lp_mint", pool.as_ref()]);
-    let custody_vault = pda(&[b"vault", pool.as_ref()]);
-
-    let mut svm = QuasarSvm::new()
-        .with_program(&crate::ID, &elf)
-        .with_token_program()
-        .with_slot(SLOT)
-        .with_account(mint_account(&collateral_mint))
-        .with_account(feed_account(&feed, dollars(100), ORACLE_SCALE, SLOT, 0))
-        .with_account(create_keyed_system_account(&admin, 100_000_000_000));
-
-    // initialize_pool
-    let mut data = vec![0u8];
-    data.extend_from_slice(&ORACLE_SCALE.to_le_bytes());
-    data.extend_from_slice(&0u64.to_le_bytes()); // funding_rate_per_slot = 0
-    data.extend_from_slice(&10u16.to_le_bytes()); // open_fee_bps
-    data.extend_from_slice(&close_fee_bps.to_le_bytes());
-    data.extend_from_slice(&10u16.to_le_bytes()); // max_leverage
-    data.extend_from_slice(&maintenance_margin_bps.to_le_bytes());
-    data.extend_from_slice(&100u16.to_le_bytes()); // liquidation_fee_bps
-    data.extend_from_slice(&100u16.to_le_bytes()); // max_confidence_bps
-    let metas = vec![
-        AccountMeta::new(admin, true),
-        AccountMeta::new(pool, false),
-        AccountMeta::new_readonly(collateral_mint, false),
-        AccountMeta::new_readonly(feed, false),
-        AccountMeta::new_readonly(pool_authority, false),
-        AccountMeta::new(lp_mint, false),
-        AccountMeta::new(custody_vault, false),
-        AccountMeta::new_readonly(token_program(), false),
-        AccountMeta::new_readonly(system_program(), false),
-        AccountMeta::new_readonly(clock_sysvar(), false),
-        AccountMeta::new_readonly(rent_sysvar(), false),
-    ];
-    let provided = vec![
-        svm.get_account(&admin).unwrap(),
-        empty(&pool),
-        svm.get_account(&collateral_mint).unwrap(),
-        empty(&lp_mint),
-        empty(&custody_vault),
-    ];
-    let result = svm.process_instruction(
-        &Instruction {
-            program_id: program_id(),
-            accounts: metas,
-            data,
-        },
-        &provided,
+/// Fund a wallet with a collateral token account.
+fn fund(test: &mut Test, wallet: Pubkey, collateral_account: Pubkey, collateral: u64) {
+    test.add(Wallet::new().at(wallet));
+    test.add(
+        TokenAccount::new(COLLATERAL_MINT, wallet)
+            .at(collateral_account)
+            .amount(collateral),
     );
-    if !result.is_ok() {
-        return Err(());
-    }
+}
 
-    Ok(Env {
-        svm,
-        collateral_mint,
-        feed,
-        admin,
-        pool,
-        pool_authority,
-        lp_mint,
-        custody_vault,
+fn add_liquidity(test: &mut Test, env: &Env, amount: u64) -> Outcome {
+    test.send(AddLiquidityInstruction {
+        provider: PROVIDER,
+        oracle_feed: FEED,
+        collateral_mint: COLLATERAL_MINT,
+        custody_vault: env.custody_vault,
+        provider_collateral: PROVIDER_COLLATERAL,
+        provider_lp: PROVIDER_LP,
+        amount,
+        minimum_shares_out: 0,
     })
 }
 
-impl Env {
-    /// Create a wallet with a funded collateral token account, returning the
-    /// wallet and its collateral account.
-    fn funded_wallet(&mut self, collateral: u64) -> (Pubkey, Pubkey) {
-        let wallet = Pubkey::new_unique();
-        let collateral_account = ata(&wallet, &self.collateral_mint);
-        self.svm
-            .set_account(create_keyed_system_account(&wallet, 100_000_000_000));
-        self.svm.set_account(create_keyed_associated_token_account(
-            &wallet,
-            &self.collateral_mint,
-            collateral,
-        ));
-        (wallet, collateral_account)
-    }
-
-    fn lp_account(&mut self, wallet: &Pubkey) -> Pubkey {
-        let account = ata(wallet, &self.lp_mint);
-        self.svm.set_account(create_keyed_associated_token_account(
-            wallet,
-            &self.lp_mint,
-            0,
-        ));
-        account
-    }
-
-    fn add_liquidity(&mut self, provider: &Pubkey, amount: u64) -> bool {
-        let provider_collateral = ata(provider, &self.collateral_mint);
-        let provider_lp = self.lp_account(provider);
-        let mut data = vec![1u8];
-        data.extend_from_slice(&amount.to_le_bytes());
-        data.extend_from_slice(&0u64.to_le_bytes());
-        let metas = vec![
-            AccountMeta::new(*provider, true),
-            AccountMeta::new(self.pool, false),
-            AccountMeta::new_readonly(self.pool_authority, false),
-            AccountMeta::new_readonly(self.feed, false),
-            AccountMeta::new_readonly(self.collateral_mint, false),
-            AccountMeta::new(self.lp_mint, false),
-            AccountMeta::new(self.custody_vault, false),
-            AccountMeta::new(provider_collateral, false),
-            AccountMeta::new(provider_lp, false),
-            AccountMeta::new_readonly(token_program(), false),
-            AccountMeta::new_readonly(system_program(), false),
-            AccountMeta::new_readonly(clock_sysvar(), false),
-        ];
-        self.run(metas, data, &[*provider, provider_collateral, provider_lp])
-    }
-
-    fn remove_liquidity(&mut self, provider: &Pubkey, shares: u64) -> bool {
-        let provider_collateral = ata(provider, &self.collateral_mint);
-        let provider_lp = ata(provider, &self.lp_mint);
-        let mut data = vec![2u8];
-        data.extend_from_slice(&shares.to_le_bytes());
-        data.extend_from_slice(&0u64.to_le_bytes());
-        let metas = vec![
-            AccountMeta::new(*provider, true),
-            AccountMeta::new(self.pool, false),
-            AccountMeta::new_readonly(self.pool_authority, false),
-            AccountMeta::new_readonly(self.feed, false),
-            AccountMeta::new_readonly(self.collateral_mint, false),
-            AccountMeta::new(self.lp_mint, false),
-            AccountMeta::new(self.custody_vault, false),
-            AccountMeta::new(provider_collateral, false),
-            AccountMeta::new(provider_lp, false),
-            AccountMeta::new_readonly(token_program(), false),
-            AccountMeta::new_readonly(system_program(), false),
-            AccountMeta::new_readonly(clock_sysvar(), false),
-        ];
-        self.run(metas, data, &[*provider, provider_collateral, provider_lp])
-    }
-
-    fn open_position(&mut self, owner: &Pubkey, side: u8, collateral: u64, size: u64) -> bool {
-        let trader_collateral = ata(owner, &self.collateral_mint);
-        let position = pda(&[b"position", self.pool.as_ref(), owner.as_ref()]);
-        let mut data = vec![3u8, side];
-        data.extend_from_slice(&collateral.to_le_bytes());
-        data.extend_from_slice(&size.to_le_bytes());
-        data.extend_from_slice(&0u64.to_le_bytes());
-        let metas = vec![
-            AccountMeta::new(*owner, true),
-            AccountMeta::new(self.pool, false),
-            AccountMeta::new(position, false),
-            AccountMeta::new_readonly(self.feed, false),
-            AccountMeta::new_readonly(self.collateral_mint, false),
-            AccountMeta::new(self.custody_vault, false),
-            AccountMeta::new(trader_collateral, false),
-            AccountMeta::new_readonly(token_program(), false),
-            AccountMeta::new_readonly(system_program(), false),
-            AccountMeta::new_readonly(clock_sysvar(), false),
-            AccountMeta::new_readonly(rent_sysvar(), false),
-        ];
-        self.run(metas, data, &[*owner, position, trader_collateral])
-    }
-
-    fn set_price(&mut self, price: i128) {
-        self.svm
-            .set_account(feed_account(&self.feed, price, ORACLE_SCALE, SLOT, 0));
-    }
-
-    fn set_price_with_confidence(&mut self, price: i128, confidence: u64) {
-        self.svm.set_account(feed_account(
-            &self.feed,
-            price,
-            ORACLE_SCALE,
-            SLOT,
-            confidence,
-        ));
-    }
-
-    fn close_position(&mut self, owner: &Pubkey) -> bool {
-        let trader_collateral = ata(owner, &self.collateral_mint);
-        let position = pda(&[b"position", self.pool.as_ref(), owner.as_ref()]);
-        let mut data = vec![4u8];
-        data.extend_from_slice(&0u64.to_le_bytes());
-        let metas = vec![
-            AccountMeta::new(*owner, true),
-            AccountMeta::new(self.pool, false),
-            AccountMeta::new(position, false),
-            AccountMeta::new_readonly(self.pool_authority, false),
-            AccountMeta::new_readonly(self.feed, false),
-            AccountMeta::new_readonly(self.collateral_mint, false),
-            AccountMeta::new(self.custody_vault, false),
-            AccountMeta::new(trader_collateral, false),
-            AccountMeta::new_readonly(token_program(), false),
-            AccountMeta::new_readonly(system_program(), false),
-            AccountMeta::new_readonly(clock_sysvar(), false),
-        ];
-        self.run(metas, data, &[*owner, position, trader_collateral])
-    }
-
-    fn liquidate(&mut self, liquidator: &Pubkey, owner: &Pubkey) -> bool {
-        let trader_collateral = ata(owner, &self.collateral_mint);
-        let liquidator_collateral = ata(liquidator, &self.collateral_mint);
-        self.svm.set_account(create_keyed_associated_token_account(
-            liquidator,
-            &self.collateral_mint,
-            0,
-        ));
-        let position = pda(&[b"position", self.pool.as_ref(), owner.as_ref()]);
-        let data = vec![5u8];
-        let metas = vec![
-            AccountMeta::new(*liquidator, true),
-            AccountMeta::new(*owner, false),
-            AccountMeta::new(self.pool, false),
-            AccountMeta::new(position, false),
-            AccountMeta::new_readonly(self.pool_authority, false),
-            AccountMeta::new_readonly(self.feed, false),
-            AccountMeta::new_readonly(self.collateral_mint, false),
-            AccountMeta::new(self.custody_vault, false),
-            AccountMeta::new(trader_collateral, false),
-            AccountMeta::new(liquidator_collateral, false),
-            AccountMeta::new_readonly(token_program(), false),
-            AccountMeta::new_readonly(system_program(), false),
-            AccountMeta::new_readonly(clock_sysvar(), false),
-        ];
-        self.run(
-            metas,
-            data,
-            &[
-                *liquidator,
-                *owner,
-                position,
-                trader_collateral,
-                liquidator_collateral,
-            ],
-        )
-    }
-
-    fn collect_fees(&mut self) -> bool {
-        let admin = self.admin;
-        let admin_collateral = ata(&admin, &self.collateral_mint);
-        self.svm.set_account(create_keyed_associated_token_account(
-            &admin,
-            &self.collateral_mint,
-            0,
-        ));
-        let data = vec![6u8];
-        let metas = vec![
-            AccountMeta::new(admin, true),
-            AccountMeta::new(self.pool, false),
-            AccountMeta::new_readonly(self.pool_authority, false),
-            AccountMeta::new_readonly(self.feed, false),
-            AccountMeta::new_readonly(self.collateral_mint, false),
-            AccountMeta::new(self.custody_vault, false),
-            AccountMeta::new(admin_collateral, false),
-            AccountMeta::new_readonly(token_program(), false),
-            AccountMeta::new_readonly(system_program(), false),
-        ];
-        self.run(metas, data, &[admin, admin_collateral])
-    }
-
-    fn run(&mut self, metas: Vec<AccountMeta>, data: Vec<u8>, provide: &[Pubkey]) -> bool {
-        let accounts: Vec<Account> = provide
-            .iter()
-            .map(|pk| self.svm.get_account(pk).unwrap_or_else(|| empty(pk)))
-            .collect();
-        let result = self.svm.process_instruction(
-            &Instruction {
-                program_id: program_id(),
-                accounts: metas,
-                data,
-            },
-            &accounts,
-        );
-        result.is_ok()
-    }
+fn remove_liquidity(test: &mut Test, env: &Env, shares: u64) -> Outcome {
+    test.send(RemoveLiquidityInstruction {
+        provider: PROVIDER,
+        oracle_feed: FEED,
+        collateral_mint: COLLATERAL_MINT,
+        custody_vault: env.custody_vault,
+        provider_collateral: PROVIDER_COLLATERAL,
+        provider_lp: PROVIDER_LP,
+        shares,
+        minimum_amount_out: 0,
+    })
 }
 
-#[test]
-fn test_initialize_pool() {
-    let env = setup();
+fn open_position(test: &mut Test, env: &Env, side: u8, collateral: u64, size: u64) -> Outcome {
+    test.send(OpenPositionInstruction {
+        owner: TRADER,
+        oracle_feed: FEED,
+        collateral_mint: COLLATERAL_MINT,
+        custody_vault: env.custody_vault,
+        trader_collateral: TRADER_COLLATERAL,
+        side,
+        collateral_amount: collateral,
+        size,
+        acceptable_price: 0,
+    })
+}
+
+fn close_position(test: &mut Test, env: &Env) -> Outcome {
+    test.send(ClosePositionInstruction {
+        owner: TRADER,
+        oracle_feed: FEED,
+        collateral_mint: COLLATERAL_MINT,
+        custody_vault: env.custody_vault,
+        trader_collateral: TRADER_COLLATERAL,
+        minimum_payout: 0,
+    })
+}
+
+#[quasar_test]
+fn initialize_pool_creates_pool_vault_and_lp_mint(test: &mut Test) {
+    let env = setup(test);
     // The pool, vault, and liquidity-provider mint were created.
-    assert!(env.svm.get_account(&env.pool).is_some());
-    assert!(env.svm.get_account(&env.custody_vault).is_some());
-    assert!(env.svm.get_account(&env.lp_mint).is_some());
+    assert!(test.account(env.pool).is_some());
+    assert!(test.account(env.custody_vault).is_some());
+    assert!(test.account(env.lp_mint).is_some());
 }
 
-#[test]
-fn test_add_liquidity() {
-    let mut env = setup();
-    let (provider, _) = env.funded_wallet(10_000 * ONE_USDC);
-    assert!(env.add_liquidity(&provider, 10_000 * ONE_USDC));
+#[quasar_test]
+fn add_liquidity_deposits_and_mints_shares(test: &mut Test) {
+    let env = setup(test);
+    fund(test, PROVIDER, PROVIDER_COLLATERAL, 10_000 * ONE_USDC);
 
-    // The vault holds the deposit and the provider received shares.
-    assert_eq!(
-        token_amount(&env.svm, &env.custody_vault),
-        10_000 * ONE_USDC
-    );
-    let provider_lp = ata(&provider, &env.lp_mint);
-    assert_eq!(
-        token_amount(&env.svm, &provider_lp),
-        10_000 * ONE_USDC - 1_000
-    );
+    add_liquidity(test, &env, 10_000 * ONE_USDC)
+        .succeeds()
+        // The vault holds the deposit and the provider received shares
+        // (minus the withheld minimum liquidity).
+        .has_tokens(env.custody_vault, 10_000 * ONE_USDC)
+        .has_tokens(PROVIDER_LP, 10_000 * ONE_USDC - 1_000);
 }
 
-#[test]
-fn test_remove_liquidity_round_trip() {
-    let mut env = setup();
-    let (provider, provider_collateral) = env.funded_wallet(10_000 * ONE_USDC);
-    assert!(env.add_liquidity(&provider, 10_000 * ONE_USDC));
+#[quasar_test]
+fn remove_liquidity_round_trip_returns_the_deposit(test: &mut Test) {
+    let env = setup(test);
+    fund(test, PROVIDER, PROVIDER_COLLATERAL, 10_000 * ONE_USDC);
+    add_liquidity(test, &env, 10_000 * ONE_USDC).succeeds();
 
-    let provider_lp = ata(&provider, &env.lp_mint);
-    let shares = token_amount(&env.svm, &provider_lp);
-    let mut data = vec![2u8];
-    data.extend_from_slice(&shares.to_le_bytes());
-    data.extend_from_slice(&0u64.to_le_bytes());
-    let metas = vec![
-        AccountMeta::new(provider, true),
-        AccountMeta::new(env.pool, false),
-        AccountMeta::new_readonly(env.pool_authority, false),
-        AccountMeta::new_readonly(env.feed, false),
-        AccountMeta::new_readonly(env.collateral_mint, false),
-        AccountMeta::new(env.lp_mint, false),
-        AccountMeta::new(env.custody_vault, false),
-        AccountMeta::new(provider_collateral, false),
-        AccountMeta::new(provider_lp, false),
-        AccountMeta::new_readonly(token_program(), false),
-        AccountMeta::new_readonly(system_program(), false),
-        AccountMeta::new_readonly(clock_sysvar(), false),
-    ];
-    assert!(env.run(metas, data, &[provider, provider_collateral, provider_lp]));
-
-    // Sole provider reclaims the full deposit.
-    assert_eq!(
-        token_amount(&env.svm, &provider_collateral),
-        10_000 * ONE_USDC
-    );
+    let shares = test.tokens(PROVIDER_LP);
+    remove_liquidity(test, &env, shares)
+        .succeeds()
+        // Sole provider reclaims the full deposit.
+        .has_tokens(PROVIDER_COLLATERAL, 10_000 * ONE_USDC);
 }
 
-#[test]
-fn test_open_long_position() {
-    let mut env = setup();
-    let (provider, _) = env.funded_wallet(100_000 * ONE_USDC);
-    assert!(env.add_liquidity(&provider, 100_000 * ONE_USDC));
+#[quasar_test]
+fn open_long_position_creates_the_position(test: &mut Test) {
+    let env = setup(test);
+    fund(test, PROVIDER, PROVIDER_COLLATERAL, 100_000 * ONE_USDC);
+    add_liquidity(test, &env, 100_000 * ONE_USDC).succeeds();
 
-    let (trader, _) = env.funded_wallet(1_000 * ONE_USDC);
-    assert!(env.open_position(&trader, 0, 1_000 * ONE_USDC, 5_000 * ONE_USDC));
+    fund(test, TRADER, TRADER_COLLATERAL, 1_000 * ONE_USDC);
+    open_position(test, &env, 0, 1_000 * ONE_USDC, 5_000 * ONE_USDC).succeeds();
 
-    let position = pda(&[b"position", env.pool.as_ref(), trader.as_ref()]);
-    assert!(env.svm.get_account(&position).is_some());
+    let position = test.derive_pda(Position::seeds(&env.pool, &TRADER));
+    assert!(test.account(position).is_some());
 }
 
-#[test]
-fn test_close_long_in_profit() {
-    let mut env = setup();
-    let (provider, _) = env.funded_wallet(100_000 * ONE_USDC);
-    assert!(env.add_liquidity(&provider, 100_000 * ONE_USDC));
+#[quasar_test]
+fn close_long_in_profit_pays_collateral_plus_pnl_minus_fees(test: &mut Test) {
+    let env = setup(test);
+    fund(test, PROVIDER, PROVIDER_COLLATERAL, 100_000 * ONE_USDC);
+    add_liquidity(test, &env, 100_000 * ONE_USDC).succeeds();
 
-    let (trader, trader_collateral) = env.funded_wallet(1_000 * ONE_USDC);
+    fund(test, TRADER, TRADER_COLLATERAL, 1_000 * ONE_USDC);
     let size = 5_000 * ONE_USDC;
-    assert!(env.open_position(&trader, 0, 1_000 * ONE_USDC, size));
+    open_position(test, &env, 0, 1_000 * ONE_USDC, size).succeeds();
 
     // Price rises 20%: a $5,000 long earns $1,000.
-    env.set_price(dollars(120));
-    assert!(env.close_position(&trader));
+    set_feed(test, dollars(120), 0);
 
     let open_fee = size / 1_000;
     let close_fee = size / 1_000;
     let net_collateral = 1_000 * ONE_USDC - open_fee;
     let profit = size / 5;
     let expected = net_collateral + profit - close_fee;
-    assert_eq!(token_amount(&env.svm, &trader_collateral), expected);
+    close_position(test, &env)
+        .succeeds()
+        .has_tokens(TRADER_COLLATERAL, expected);
 }
 
-#[test]
-fn test_open_rejects_excess_leverage() {
-    let mut env = setup();
-    let (provider, _) = env.funded_wallet(100_000 * ONE_USDC);
-    assert!(env.add_liquidity(&provider, 100_000 * ONE_USDC));
+#[quasar_test]
+fn open_rejects_excess_leverage(test: &mut Test) {
+    let env = setup(test);
+    fund(test, PROVIDER, PROVIDER_COLLATERAL, 100_000 * ONE_USDC);
+    add_liquidity(test, &env, 100_000 * ONE_USDC).succeeds();
 
-    let (trader, _) = env.funded_wallet(1_000 * ONE_USDC);
+    fund(test, TRADER, TRADER_COLLATERAL, 1_000 * ONE_USDC);
     // 11x exceeds the 10x maximum.
-    assert!(!env.open_position(&trader, 0, 1_000 * ONE_USDC, 11_000 * ONE_USDC));
+    assert!(
+        open_position(test, &env, 0, 1_000 * ONE_USDC, 11_000 * ONE_USDC).is_err(),
+        "11x leverage must be rejected"
+    );
 }
 
-#[test]
-fn test_liquidate_underwater_long() {
-    let mut env = setup();
-    let (provider, _) = env.funded_wallet(100_000 * ONE_USDC);
-    assert!(env.add_liquidity(&provider, 100_000 * ONE_USDC));
+#[quasar_test]
+fn liquidate_underwater_long_pays_the_liquidator_and_closes(test: &mut Test) {
+    let env = setup(test);
+    fund(test, PROVIDER, PROVIDER_COLLATERAL, 100_000 * ONE_USDC);
+    add_liquidity(test, &env, 100_000 * ONE_USDC).succeeds();
 
-    let (trader, _) = env.funded_wallet(1_100 * ONE_USDC);
+    fund(test, TRADER, TRADER_COLLATERAL, 1_100 * ONE_USDC);
     let size = 10_000 * ONE_USDC;
-    assert!(env.open_position(&trader, 0, 1_100 * ONE_USDC, size));
+    open_position(test, &env, 0, 1_100 * ONE_USDC, size).succeeds();
 
     // Price falls 9%: a $10,000 long loses $900, dropping below maintenance.
-    env.set_price(dollars(91));
-    let liquidator = Pubkey::new_unique();
-    env.svm
-        .set_account(create_keyed_system_account(&liquidator, 100_000_000_000));
-    assert!(env.liquidate(&liquidator, &trader));
+    set_feed(test, dollars(91), 0);
+    test.add(Wallet::new().at(LIQUIDATOR));
 
-    let liquidator_collateral = ata(&liquidator, &env.collateral_mint);
-    assert!(token_amount(&env.svm, &liquidator_collateral) > 0);
-    let position = pda(&[b"position", env.pool.as_ref(), trader.as_ref()]);
-    assert!(env
-        .svm
-        .get_account(&position)
-        .map(|a| a.data.is_empty())
-        .unwrap_or(true));
+    let position = test.derive_pda(Position::seeds(&env.pool, &TRADER));
+    test.send(LiquidatePositionInstruction {
+        liquidator: LIQUIDATOR,
+        owner: TRADER,
+        oracle_feed: FEED,
+        collateral_mint: COLLATERAL_MINT,
+        custody_vault: env.custody_vault,
+        trader_collateral: TRADER_COLLATERAL,
+        liquidator_collateral: LIQUIDATOR_COLLATERAL,
+    })
+    .succeeds()
+    .is_closed(position);
+
+    assert!(
+        test.tokens(LIQUIDATOR_COLLATERAL) > 0,
+        "liquidator should earn the liquidation fee"
+    );
 }
 
-#[test]
-fn test_collect_fees() {
-    let mut env = setup();
-    let (provider, _) = env.funded_wallet(100_000 * ONE_USDC);
-    assert!(env.add_liquidity(&provider, 100_000 * ONE_USDC));
-    let (trader, _) = env.funded_wallet(1_000 * ONE_USDC);
+#[quasar_test]
+fn collect_fees_sweeps_the_open_fee_to_the_admin(test: &mut Test) {
+    let env = setup(test);
+    fund(test, PROVIDER, PROVIDER_COLLATERAL, 100_000 * ONE_USDC);
+    add_liquidity(test, &env, 100_000 * ONE_USDC).succeeds();
+    fund(test, TRADER, TRADER_COLLATERAL, 1_000 * ONE_USDC);
     let size = 5_000 * ONE_USDC;
-    assert!(env.open_position(&trader, 0, 1_000 * ONE_USDC, size));
+    open_position(test, &env, 0, 1_000 * ONE_USDC, size).succeeds();
 
-    assert!(env.collect_fees());
-    let admin_collateral = ata(&env.admin, &env.collateral_mint);
+    test.send(CollectFeesInstruction {
+        authority: ADMIN,
+        oracle_feed: FEED,
+        collateral_mint: COLLATERAL_MINT,
+        custody_vault: env.custody_vault,
+        authority_collateral: ADMIN_COLLATERAL,
+    })
+    .succeeds()
     // The open fee (0.1% of notional) was swept to the admin.
-    assert_eq!(token_amount(&env.svm, &admin_collateral), size / 1_000);
+    .has_tokens(ADMIN_COLLATERAL, size / 1_000);
 }
 
-#[test]
-fn test_wide_oracle_confidence_rejected() {
-    let mut env = setup();
-    let (provider, _) = env.funded_wallet(100_000 * ONE_USDC);
-    assert!(env.add_liquidity(&provider, 100_000 * ONE_USDC));
-    let (trader, _) = env.funded_wallet(1_000 * ONE_USDC);
+#[quasar_test]
+fn wide_oracle_confidence_is_rejected(test: &mut Test) {
+    let env = setup(test);
+    fund(test, PROVIDER, PROVIDER_COLLATERAL, 100_000 * ONE_USDC);
+    add_liquidity(test, &env, 100_000 * ONE_USDC).succeeds();
+    fund(test, TRADER, TRADER_COLLATERAL, 1_000 * ONE_USDC);
 
     // The pool tolerates a 1% confidence band (max_confidence_bps = 100). Widen
     // the feed's band to 2% of the price and the open must be rejected.
-    env.set_price_with_confidence(dollars(100), dollars(2) as u64);
-    assert!(!env.open_position(&trader, 0, 1_000 * ONE_USDC, 5_000 * ONE_USDC));
+    set_feed(test, dollars(100), dollars(2) as u64);
+    assert!(
+        open_position(test, &env, 0, 1_000 * ONE_USDC, 5_000 * ONE_USDC).is_err(),
+        "a confidence band wider than max_confidence_bps must be rejected"
+    );
 }
 
-#[test]
-fn test_open_rejects_when_pool_cannot_back_it() {
-    let mut env = setup();
-    let (provider, _) = env.funded_wallet(3_000 * ONE_USDC);
-    assert!(env.add_liquidity(&provider, 3_000 * ONE_USDC));
-    let (trader, _) = env.funded_wallet(1_000 * ONE_USDC);
+#[quasar_test]
+fn open_rejects_when_pool_cannot_back_it(test: &mut Test) {
+    let env = setup(test);
+    fund(test, PROVIDER, PROVIDER_COLLATERAL, 3_000 * ONE_USDC);
+    add_liquidity(test, &env, 3_000 * ONE_USDC).succeeds();
+    fund(test, TRADER, TRADER_COLLATERAL, 1_000 * ONE_USDC);
     // A 5,000 position must reserve 5,000, but the pool only holds 3,000.
-    assert!(!env.open_position(&trader, 0, 1_000 * ONE_USDC, 5_000 * ONE_USDC));
+    assert!(
+        open_position(test, &env, 0, 1_000 * ONE_USDC, 5_000 * ONE_USDC).is_err(),
+        "a position larger than the pool's free liquidity must be rejected"
+    );
 }
 
-#[test]
-fn test_profit_capped_at_reserved_notional() {
-    let mut env = setup();
-    let (provider, _) = env.funded_wallet(100_000 * ONE_USDC);
-    assert!(env.add_liquidity(&provider, 100_000 * ONE_USDC));
+#[quasar_test]
+fn profit_is_capped_at_the_reserved_notional(test: &mut Test) {
+    let env = setup(test);
+    fund(test, PROVIDER, PROVIDER_COLLATERAL, 100_000 * ONE_USDC);
+    add_liquidity(test, &env, 100_000 * ONE_USDC).succeeds();
 
     let collateral = 2_000 * ONE_USDC;
     let size = 5_000 * ONE_USDC;
-    let (trader, trader_collateral) = env.funded_wallet(collateral);
-    assert!(env.open_position(&trader, 0, collateral, size));
+    fund(test, TRADER, TRADER_COLLATERAL, collateral);
+    open_position(test, &env, 0, collateral, size).succeeds();
 
     // Price triples: uncapped profit would be 2x the notional, but recoverable
     // profit is capped at the reserved notional (`size`).
-    env.set_price(dollars(300));
-    assert!(env.close_position(&trader));
+    set_feed(test, dollars(300), 0);
 
     let open_fee = size / 1_000;
     let close_fee = size / 1_000;
     let net_collateral = collateral - open_fee;
     let expected = net_collateral + size - close_fee;
-    assert_eq!(token_amount(&env.svm, &trader_collateral), expected);
+    close_position(test, &env)
+        .succeeds()
+        .has_tokens(TRADER_COLLATERAL, expected);
 }
 
-#[test]
-fn test_remove_liquidity_blocked_by_reserved() {
-    let mut env = setup();
-    let (provider, _) = env.funded_wallet(10_000 * ONE_USDC);
-    assert!(env.add_liquidity(&provider, 10_000 * ONE_USDC));
-    let (trader, _) = env.funded_wallet(1_000 * ONE_USDC);
-    assert!(env.open_position(&trader, 0, 1_000 * ONE_USDC, 5_000 * ONE_USDC));
+#[quasar_test]
+fn remove_liquidity_is_blocked_by_reserved_notional(test: &mut Test) {
+    let env = setup(test);
+    fund(test, PROVIDER, PROVIDER_COLLATERAL, 10_000 * ONE_USDC);
+    add_liquidity(test, &env, 10_000 * ONE_USDC).succeeds();
+    fund(test, TRADER, TRADER_COLLATERAL, 1_000 * ONE_USDC);
+    open_position(test, &env, 0, 1_000 * ONE_USDC, 5_000 * ONE_USDC).succeeds();
 
     // 5,000 of the 10,000 liquidity is reserved: pulling everything fails, but
     // withdrawing within the free half succeeds.
-    let provider_lp = ata(&provider, &env.lp_mint);
-    let shares = token_amount(&env.svm, &provider_lp);
-    assert!(!env.remove_liquidity(&provider, shares));
-    assert!(env.remove_liquidity(&provider, shares / 2));
+    let shares = test.tokens(PROVIDER_LP);
+    assert!(
+        remove_liquidity(test, &env, shares).is_err(),
+        "withdrawing reserved liquidity must fail"
+    );
+    remove_liquidity(test, &env, shares / 2).succeeds();
 }
 
-#[test]
-fn test_initialize_pool_rejects_close_fee_at_or_above_maintenance_margin() {
+#[quasar_test]
+fn initialize_pool_rejects_close_fee_at_or_above_maintenance_margin(test: &mut Test) {
     // A pool whose close fee reached the maintenance margin could strand a
     // position that is too healthy to liquidate but too poor to pay the fee to
     // close, so initialize_pool refuses the configuration.
-    assert!(try_setup(500, 600).is_err());
+    test.add(Wallet::new().at(ADMIN));
+    test.add(Mint::new(ADMIN).at(COLLATERAL_MINT).decimals(6));
+    set_feed(test, dollars(100), 0);
+    assert!(
+        init_pool(test, 500, 600).is_err(),
+        "close_fee_bps >= maintenance_margin_bps must be rejected"
+    );
 }

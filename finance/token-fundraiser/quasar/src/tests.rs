@@ -1,15 +1,18 @@
-extern crate std;
+//! quasar-test integration tests: create a fundraiser, contribute inside the
+//! window, refund after a failed raise, and pay the maker after a successful
+//! one — plus the deadline, target, and account-binding guard rails.
+
 use {
-    crate::state::SECONDS_PER_DAY,
-    quasar_lang::error::QuasarError,
-    quasar_svm::{Account, Instruction, ProgramError, Pubkey, QuasarSvm},
-    quasar_token_fundraiser_client::{
-        CheckContributionsInstruction, ContributeInstruction, InitializeInstruction,
-        QuasarTokenFundraiserError, RefundInstruction,
+    crate::{
+        cpi::{
+            CheckContributionsInstruction, ContributeInstruction, InitializeInstruction,
+            RefundInstruction,
+        },
+        error::FundraiserError,
+        state::{Contributor, Fundraiser, SECONDS_PER_DAY},
     },
-    solana_program_pack::Pack,
-    spl_token_interface::state::{Account as TokenAccount, AccountState, Mint},
-    std::{vec, vec::Vec},
+    quasar_lang::error::QuasarError,
+    quasar_test::prelude::*,
 };
 
 /// Fundraising target in minor units of the raised token.
@@ -26,536 +29,292 @@ const CONTRIBUTOR_STARTING_BALANCE: u64 = 100_000;
 /// A contribution below the target, used by the refund-path tests.
 const PARTIAL_CONTRIBUTION: u64 = 500;
 
-fn setup() -> QuasarSvm {
-    let elf = std::fs::read("target/deploy/quasar_token_fundraiser.so").unwrap();
-    let mut svm = QuasarSvm::new()
-        .with_program(&crate::ID, &elf)
-        .with_token_program();
-    svm.warp_to_timestamp(START_TIME);
-    svm
-}
-
-fn signer(address: Pubkey) -> Account {
-    quasar_svm::token::create_keyed_system_account(&address, 1_000_000_000)
-}
-
-fn empty(address: Pubkey) -> Account {
-    Account {
-        address,
-        lamports: 0,
-        data: vec![],
-        owner: quasar_svm::system_program::ID,
-        executable: false,
-    }
-}
-
-fn mint(address: Pubkey, authority: Pubkey) -> Account {
-    quasar_svm::token::create_keyed_mint_account(
-        &address,
-        &Mint {
-            mint_authority: Some(authority).into(),
-            supply: 1_000_000_000,
-            decimals: 9,
-            is_initialized: true,
-            freeze_authority: None.into(),
-        },
-    )
-}
-
-fn token(address: Pubkey, mint: Pubkey, owner: Pubkey, amount: u64) -> Account {
-    quasar_svm::token::create_keyed_token_account(
-        &address,
-        &TokenAccount {
-            mint,
-            owner,
-            amount,
-            state: AccountState::Initialized,
-            ..TokenAccount::default()
-        },
-    )
-}
-
-fn token_balance(svm: &QuasarSvm, address: &Pubkey) -> u64 {
-    let account = svm.get_account(address).unwrap();
-    TokenAccount::unpack(&account.data).unwrap().amount
-}
-
-fn find_fundraiser(maker: &Pubkey) -> (Pubkey, u8) {
-    Pubkey::find_program_address(&[b"fundraiser", maker.as_ref()], &crate::ID)
-}
-
-fn find_contributor_account(fundraiser: &Pubkey, contributor: &Pubkey) -> (Pubkey, u8) {
-    Pubkey::find_program_address(
-        &[b"contributor", fundraiser.as_ref(), contributor.as_ref()],
-        &crate::ID,
-    )
-}
-
-/// Deserialized Fundraiser account state, parsed from the zero-copy layout:
-/// [disc:1] [maker:32] [mint_to_raise:32] [vault:32] [amount_to_raise:8]
-/// [current_amount:8] [time_started:8] [duration:2] [bump:1]
-struct FundraiserState {
-    maker: Pubkey,
-    mint_to_raise: Pubkey,
-    vault: Pubkey,
-    amount_to_raise: u64,
-    current_amount: u64,
-    time_started: i64,
-    duration: u16,
-    bump: u8,
-}
-
-fn parse_fundraiser(data: &[u8]) -> FundraiserState {
-    assert_eq!(data[0], 1, "Fundraiser discriminator");
-    let mut cursor = Cursor {
-        data,
-        offset: 1usize,
-    };
-    FundraiserState {
-        maker: Pubkey::new_from_array(cursor.take()),
-        mint_to_raise: Pubkey::new_from_array(cursor.take()),
-        vault: Pubkey::new_from_array(cursor.take()),
-        amount_to_raise: u64::from_le_bytes(cursor.take()),
-        current_amount: u64::from_le_bytes(cursor.take()),
-        time_started: i64::from_le_bytes(cursor.take()),
-        duration: u16::from_le_bytes(cursor.take()),
-        bump: cursor.take::<1>()[0],
-    }
-}
-
-/// Deserialized Contributor account state, parsed from the zero-copy layout:
-/// [disc:1] [amount:8] [bump:1]
-struct ContributorState {
-    amount: u64,
-    bump: u8,
-}
-
-fn parse_contributor(data: &[u8]) -> ContributorState {
-    assert_eq!(data[0], 2, "Contributor discriminator");
-    let mut cursor = Cursor {
-        data,
-        offset: 1usize,
-    };
-    ContributorState {
-        amount: u64::from_le_bytes(cursor.take()),
-        bump: cursor.take::<1>()[0],
-    }
-}
-
-struct Cursor<'a> {
-    data: &'a [u8],
-    offset: usize,
-}
-
-impl Cursor<'_> {
-    fn take<const N: usize>(&mut self) -> [u8; N] {
-        let bytes: [u8; N] = self.data[self.offset..self.offset + N].try_into().unwrap();
-        self.offset += N;
-        bytes
-    }
-}
-
-/// Addresses for one fundraiser plus one contributor, shared by every test.
-struct Fixture {
-    maker: Pubkey,
-    mint: Pubkey,
-    fundraiser: Pubkey,
-    vault: Pubkey,
-    contributor: Pubkey,
-    contributor_ta: Pubkey,
-    contributor_account: Pubkey,
-}
-
-fn fixture() -> Fixture {
-    let maker = Pubkey::new_unique();
-    let contributor = Pubkey::new_unique();
-    let (fundraiser, _) = find_fundraiser(&maker);
-    let (contributor_account, _) = find_contributor_account(&fundraiser, &contributor);
-    Fixture {
-        maker,
-        mint: Pubkey::new_unique(),
-        fundraiser,
-        vault: Pubkey::new_unique(),
-        contributor,
-        contributor_ta: Pubkey::new_unique(),
-        contributor_account,
-    }
-}
-
-fn initialize_instruction(fixture: &Fixture, amount_to_raise: u64, duration: u16) -> Instruction {
-    let mut instruction: Instruction = InitializeInstruction {
-        maker: fixture.maker,
-        mint_to_raise: fixture.mint,
-        fundraiser: fixture.fundraiser,
-        vault: fixture.vault,
-        rent: quasar_svm::solana_sdk_ids::sysvar::rent::ID,
-        token_program: quasar_svm::SPL_TOKEN_PROGRAM_ID,
-        system_program: quasar_svm::system_program::ID,
-        amount_to_raise,
-        duration,
-    }
-    .into();
-    // The vault is a fresh keypair account, so it must sign its own
-    // system-program creation inside the init CPI.
-    instruction.accounts[3].is_signer = true;
-    instruction
-}
-
-fn initialize_accounts(fixture: &Fixture) -> Vec<Account> {
-    vec![
-        signer(fixture.maker),
-        mint(fixture.mint, fixture.maker),
-        empty(fixture.fundraiser),
-        empty(fixture.vault),
-    ]
-}
-
-/// Run initialize through the program and assert it succeeded.
-fn initialize_fundraiser(svm: &mut QuasarSvm, fixture: &Fixture) {
-    let result = svm.process_instruction(
-        &initialize_instruction(fixture, TARGET_AMOUNT, DURATION_DAYS),
-        &initialize_accounts(fixture),
-    );
-    result.assert_success();
-}
-
-fn contribute_instruction(fixture: &Fixture, amount: u64) -> Instruction {
-    ContributeInstruction {
-        contributor: fixture.contributor,
-        maker: fixture.maker,
-        fundraiser: fixture.fundraiser,
-        contributor_account: fixture.contributor_account,
-        contributor_ta: fixture.contributor_ta,
-        vault: fixture.vault,
-        mint_to_raise: fixture.mint,
-        token_program: quasar_svm::SPL_TOKEN_PROGRAM_ID,
-        system_program: quasar_svm::system_program::ID,
-        amount,
-    }
-    .into()
-}
-
-/// Accounts a first-time contributor brings to contribute. The fundraiser
-/// and vault already live in the SVM's database after initialize.
-fn first_contribution_accounts(fixture: &Fixture) -> Vec<Account> {
-    vec![
-        signer(fixture.contributor),
-        empty(fixture.contributor_account),
-        token(
-            fixture.contributor_ta,
-            fixture.mint,
-            fixture.contributor,
-            CONTRIBUTOR_STARTING_BALANCE,
-        ),
-    ]
-}
-
-/// Run contribute through the program and assert it succeeded.
-fn contribute(svm: &mut QuasarSvm, fixture: &Fixture, amount: u64) {
-    let result = svm.process_instruction(
-        &contribute_instruction(fixture, amount),
-        &first_contribution_accounts(fixture),
-    );
-    result.assert_success();
-}
-
-fn refund_instruction(fixture: &Fixture) -> Instruction {
-    RefundInstruction {
-        contributor: fixture.contributor,
-        maker: fixture.maker,
-        fundraiser: fixture.fundraiser,
-        contributor_account: fixture.contributor_account,
-        contributor_ta: fixture.contributor_ta,
-        vault: fixture.vault,
-        mint_to_raise: fixture.mint,
-        token_program: quasar_svm::SPL_TOKEN_PROGRAM_ID,
-    }
-    .into()
-}
-
-fn fundraiser_error(error: QuasarTokenFundraiserError) -> ProgramError {
-    ProgramError::Custom(error as u32)
-}
+// Deterministic addresses.
+const MAKER: Pubkey = Pubkey::new_from_array([1; 32]);
+const MINT: Pubkey = Pubkey::new_from_array([2; 32]);
+const VAULT: Pubkey = Pubkey::new_from_array([3; 32]);
+const CONTRIBUTOR: Pubkey = Pubkey::new_from_array([4; 32]);
+const CONTRIBUTOR_TA: Pubkey = Pubkey::new_from_array([5; 32]);
+const MAKER_TA: Pubkey = Pubkey::new_from_array([6; 32]);
+const ATTACKER: Pubkey = Pubkey::new_from_array([7; 32]);
+const ATTACKER_TA: Pubkey = Pubkey::new_from_array([8; 32]);
+const DECOY_VAULT: Pubkey = Pubkey::new_from_array([9; 32]);
 
 fn framework_error(error: QuasarError) -> ProgramError {
     ProgramError::Custom(error as u32)
 }
 
-#[test]
-fn test_initialize_records_state_and_clock_time() {
-    let mut svm = setup();
-    let fixture = fixture();
+/// Register the maker, the mint, and warp to the fixed start time.
+fn base_world(test: &mut Test) {
+    test.add(Wallet::new().at(MAKER));
+    test.add(
+        Mint::new(MAKER)
+            .at(MINT)
+            .supply(1_000_000_000)
+            .decimals(9),
+    );
+    test.warp_to_timestamp(START_TIME);
+}
 
-    initialize_fundraiser(&mut svm, &fixture);
+fn initialize(test: &mut Test, amount_to_raise: u64, duration: u16) -> Outcome {
+    test.send(InitializeInstruction {
+        maker: MAKER,
+        mint_to_raise: MINT,
+        vault: VAULT,
+        amount_to_raise,
+        duration,
+    })
+}
 
-    let state = parse_fundraiser(&svm.get_account(&fixture.fundraiser).unwrap().data);
-    assert_eq!(state.maker, fixture.maker);
-    assert_eq!(state.mint_to_raise, fixture.mint);
-    assert_eq!(state.vault, fixture.vault);
-    assert_eq!(state.amount_to_raise, TARGET_AMOUNT);
-    assert_eq!(state.current_amount, 0);
-    assert_eq!(state.time_started, START_TIME);
-    assert_eq!(state.duration, DURATION_DAYS);
-    let (_, expected_bump) = find_fundraiser(&fixture.maker);
+/// A world with an initialized fundraiser and a funded contributor.
+fn initialized_world(test: &mut Test) -> Pubkey {
+    base_world(test);
+    initialize(test, TARGET_AMOUNT, DURATION_DAYS).succeeds();
+    test.add(Wallet::new().at(CONTRIBUTOR));
+    test.add(
+        TokenAccount::new(MINT, CONTRIBUTOR)
+            .at(CONTRIBUTOR_TA)
+            .amount(CONTRIBUTOR_STARTING_BALANCE),
+    );
+    test.derive_pda(Fundraiser::seeds(&MAKER))
+}
+
+fn contribute(test: &mut Test, amount: u64) -> Outcome {
+    test.send(ContributeInstruction {
+        contributor: CONTRIBUTOR,
+        maker: MAKER,
+        contributor_ta: CONTRIBUTOR_TA,
+        vault: VAULT,
+        mint_to_raise: MINT,
+        amount,
+    })
+}
+
+fn refund(test: &mut Test) -> Outcome {
+    test.send(RefundInstruction {
+        contributor: CONTRIBUTOR,
+        maker: MAKER,
+        contributor_ta: CONTRIBUTOR_TA,
+        vault: VAULT,
+        mint_to_raise: MINT,
+    })
+}
+
+fn check_contributions(test: &mut Test) -> Outcome {
+    test.send(CheckContributionsInstruction {
+        maker: MAKER,
+        vault: VAULT,
+        maker_ta: MAKER_TA,
+        mint_to_raise: MINT,
+    })
+}
+
+#[quasar_test]
+fn initialize_records_state_and_clock_time(test: &mut Test) {
+    base_world(test);
+    initialize(test, TARGET_AMOUNT, DURATION_DAYS)
+        .succeeds()
+        .has_tokens(VAULT, 0);
+
+    let (fundraiser, expected_bump) = test.derive_pda_with_bump(Fundraiser::seeds(&MAKER));
+    let state = test.read::<Fundraiser>(fundraiser);
+    assert_eq!(state.maker, MAKER);
+    assert_eq!(state.mint_to_raise, MINT);
+    assert_eq!(state.vault, VAULT);
+    assert_eq!(u64::from(state.amount_to_raise), TARGET_AMOUNT);
+    assert_eq!(u64::from(state.current_amount), 0);
+    assert_eq!(i64::from(state.time_started), START_TIME);
+    assert_eq!(u16::from(state.duration), DURATION_DAYS);
     assert_eq!(state.bump, expected_bump);
-
-    assert_eq!(token_balance(&svm, &fixture.vault), 0);
 }
 
-#[test]
-fn test_initialize_rejects_zero_amount() {
-    let mut svm = setup();
-    let fixture = fixture();
-
-    let result = svm.process_instruction(
-        &initialize_instruction(&fixture, 0, DURATION_DAYS),
-        &initialize_accounts(&fixture),
-    );
-    result.assert_error(fundraiser_error(QuasarTokenFundraiserError::InvalidAmount));
+#[quasar_test]
+fn initialize_rejects_zero_amount(test: &mut Test) {
+    base_world(test);
+    initialize(test, 0, DURATION_DAYS).fails_with(FundraiserError::InvalidAmount);
 }
 
-#[test]
-fn test_initialize_rejects_zero_duration() {
-    let mut svm = setup();
-    let fixture = fixture();
-
-    let result = svm.process_instruction(
-        &initialize_instruction(&fixture, TARGET_AMOUNT, 0),
-        &initialize_accounts(&fixture),
-    );
-    result.assert_error(fundraiser_error(
-        QuasarTokenFundraiserError::InvalidDuration,
-    ));
+#[quasar_test]
+fn initialize_rejects_zero_duration(test: &mut Test) {
+    base_world(test);
+    initialize(test, TARGET_AMOUNT, 0).fails_with(FundraiserError::InvalidDuration);
 }
 
-#[test]
-fn test_contribute_creates_contributor_account_and_moves_tokens() {
-    let mut svm = setup();
-    let fixture = fixture();
-    initialize_fundraiser(&mut svm, &fixture);
+#[quasar_test]
+fn contribute_creates_contributor_account_and_moves_tokens(test: &mut Test) {
+    let fundraiser = initialized_world(test);
 
-    contribute(&mut svm, &fixture, PARTIAL_CONTRIBUTION);
+    contribute(test, PARTIAL_CONTRIBUTION)
+        .succeeds()
+        .has_tokens(VAULT, PARTIAL_CONTRIBUTION)
+        .has_tokens(
+            CONTRIBUTOR_TA,
+            CONTRIBUTOR_STARTING_BALANCE - PARTIAL_CONTRIBUTION,
+        );
 
-    assert_eq!(token_balance(&svm, &fixture.vault), PARTIAL_CONTRIBUTION);
-    assert_eq!(
-        token_balance(&svm, &fixture.contributor_ta),
-        CONTRIBUTOR_STARTING_BALANCE - PARTIAL_CONTRIBUTION
-    );
+    let fundraiser_state = test.read::<Fundraiser>(fundraiser);
+    assert_eq!(u64::from(fundraiser_state.current_amount), PARTIAL_CONTRIBUTION);
 
-    let fundraiser_state = parse_fundraiser(&svm.get_account(&fixture.fundraiser).unwrap().data);
-    assert_eq!(fundraiser_state.current_amount, PARTIAL_CONTRIBUTION);
-
-    let contributor_state =
-        parse_contributor(&svm.get_account(&fixture.contributor_account).unwrap().data);
-    assert_eq!(contributor_state.amount, PARTIAL_CONTRIBUTION);
-    let (_, expected_bump) = find_contributor_account(&fixture.fundraiser, &fixture.contributor);
+    let (contributor_account, expected_bump) =
+        test.derive_pda_with_bump(Contributor::seeds(&fundraiser, &CONTRIBUTOR));
+    let contributor_state = test.read::<Contributor>(contributor_account);
+    assert_eq!(u64::from(contributor_state.amount), PARTIAL_CONTRIBUTION);
     assert_eq!(contributor_state.bump, expected_bump);
 }
 
-#[test]
-fn test_contribute_accumulates_across_calls() {
-    let mut svm = setup();
-    let fixture = fixture();
-    initialize_fundraiser(&mut svm, &fixture);
-    contribute(&mut svm, &fixture, PARTIAL_CONTRIBUTION);
+#[quasar_test]
+fn contribute_accumulates_across_calls(test: &mut Test) {
+    let fundraiser = initialized_world(test);
+    contribute(test, PARTIAL_CONTRIBUTION).succeeds();
 
-    // Second contribution reuses the contributor account created by the
-    // first; everything already lives in the SVM database.
-    let result =
-        svm.process_instruction(&contribute_instruction(&fixture, PARTIAL_CONTRIBUTION), &[]);
-    result.assert_success();
-
+    // Second contribution reuses the contributor account created by the first.
     let expected_total = PARTIAL_CONTRIBUTION * 2;
-    assert_eq!(token_balance(&svm, &fixture.vault), expected_total);
-    let contributor_state =
-        parse_contributor(&svm.get_account(&fixture.contributor_account).unwrap().data);
-    assert_eq!(contributor_state.amount, expected_total);
-    let fundraiser_state = parse_fundraiser(&svm.get_account(&fixture.fundraiser).unwrap().data);
-    assert_eq!(fundraiser_state.current_amount, expected_total);
-}
+    contribute(test, PARTIAL_CONTRIBUTION)
+        .succeeds()
+        .has_tokens(VAULT, expected_total);
 
-#[test]
-fn test_contribute_rejected_after_deadline() {
-    let mut svm = setup();
-    let fixture = fixture();
-    initialize_fundraiser(&mut svm, &fixture);
-
-    svm.warp_to_timestamp(DEADLINE);
-
-    let result = svm.process_instruction(
-        &contribute_instruction(&fixture, PARTIAL_CONTRIBUTION),
-        &first_contribution_accounts(&fixture),
+    let contributor_account = test.derive_pda(Contributor::seeds(&fundraiser, &CONTRIBUTOR));
+    assert_eq!(
+        u64::from(test.read::<Contributor>(contributor_account).amount),
+        expected_total
     );
-    result.assert_error(fundraiser_error(
-        QuasarTokenFundraiserError::FundraiserEnded,
-    ));
+    assert_eq!(
+        u64::from(test.read::<Fundraiser>(fundraiser).current_amount),
+        expected_total
+    );
 }
 
-#[test]
-fn test_contribute_allowed_just_before_deadline() {
-    let mut svm = setup();
-    let fixture = fixture();
-    initialize_fundraiser(&mut svm, &fixture);
-
-    svm.warp_to_timestamp(DEADLINE - 1);
-
-    contribute(&mut svm, &fixture, PARTIAL_CONTRIBUTION);
-    assert_eq!(token_balance(&svm, &fixture.vault), PARTIAL_CONTRIBUTION);
+#[quasar_test]
+fn contribute_rejected_after_deadline(test: &mut Test) {
+    initialized_world(test);
+    test.warp_to_timestamp(DEADLINE);
+    contribute(test, PARTIAL_CONTRIBUTION).fails_with(FundraiserError::FundraiserEnded);
 }
 
-#[test]
-fn test_contribute_rejects_vault_not_bound_to_fundraiser() {
-    let mut svm = setup();
-    let fixture = fixture();
-    initialize_fundraiser(&mut svm, &fixture);
+#[quasar_test]
+fn contribute_allowed_just_before_deadline(test: &mut Test) {
+    initialized_world(test);
+    test.warp_to_timestamp(DEADLINE - 1);
+    contribute(test, PARTIAL_CONTRIBUTION)
+        .succeeds()
+        .has_tokens(VAULT, PARTIAL_CONTRIBUTION);
+}
+
+#[quasar_test]
+fn contribute_rejects_vault_not_bound_to_fundraiser(test: &mut Test) {
+    let fundraiser = initialized_world(test);
 
     // The attacker tries to credit the fundraiser while depositing into a
     // decoy token account instead of the fundraiser's stored vault.
-    let decoy_vault = Pubkey::new_unique();
-    let mut accounts = first_contribution_accounts(&fixture);
-    accounts.push(token(decoy_vault, fixture.mint, fixture.fundraiser, 0));
+    test.add(TokenAccount::new(MINT, fundraiser).at(DECOY_VAULT));
 
-    let mut instruction = contribute_instruction(&fixture, PARTIAL_CONTRIBUTION);
-    // Account index 5 is the vault (see ContributeInstruction ordering).
-    instruction.accounts[5].pubkey = decoy_vault;
+    let mut instruction: Instruction = ContributeInstruction {
+        contributor: CONTRIBUTOR,
+        maker: MAKER,
+        contributor_ta: CONTRIBUTOR_TA,
+        vault: DECOY_VAULT,
+        mint_to_raise: MINT,
+        amount: PARTIAL_CONTRIBUTION,
+    }
+    .into();
+    // Account index 5 is the vault (accounts-struct field order); the builder
+    // already put the decoy there, this documents the tampered position.
+    instruction.accounts[5].pubkey = DECOY_VAULT;
 
-    let result = svm.process_instruction(&instruction, &accounts);
-    result.assert_error(framework_error(QuasarError::HasOneMismatch));
+    test.send(instruction)
+        .fails(framework_error(QuasarError::HasOneMismatch));
 }
 
-#[test]
-fn test_refund_returns_tokens_after_failed_fundraiser() {
-    let mut svm = setup();
-    let fixture = fixture();
-    initialize_fundraiser(&mut svm, &fixture);
-    contribute(&mut svm, &fixture, PARTIAL_CONTRIBUTION);
+#[quasar_test]
+fn refund_returns_tokens_after_failed_fundraiser(test: &mut Test) {
+    let fundraiser = initialized_world(test);
+    contribute(test, PARTIAL_CONTRIBUTION).succeeds();
 
-    svm.warp_to_timestamp(DEADLINE);
+    test.warp_to_timestamp(DEADLINE);
 
-    let result = svm.process_instruction(&refund_instruction(&fixture), &[]);
-    result.assert_success();
+    let contributor_account = test.derive_pda(Contributor::seeds(&fundraiser, &CONTRIBUTOR));
+    refund(test)
+        .succeeds()
+        .has_tokens(VAULT, 0)
+        .has_tokens(CONTRIBUTOR_TA, CONTRIBUTOR_STARTING_BALANCE)
+        // The contributor account was closed and its rent returned.
+        .is_closed(contributor_account);
 
-    assert_eq!(token_balance(&svm, &fixture.vault), 0);
-    assert_eq!(
-        token_balance(&svm, &fixture.contributor_ta),
-        CONTRIBUTOR_STARTING_BALANCE
-    );
-    let fundraiser_state = parse_fundraiser(&svm.get_account(&fixture.fundraiser).unwrap().data);
-    assert_eq!(fundraiser_state.current_amount, 0);
-
-    // The contributor account was closed and its rent returned.
-    let closed = svm.get_account(&fixture.contributor_account).unwrap();
-    assert_eq!(closed.lamports, 0, "contributor account rent reclaimed");
+    assert_eq!(u64::from(test.read::<Fundraiser>(fundraiser).current_amount), 0);
 }
 
-#[test]
-fn test_refund_rejected_before_deadline() {
-    let mut svm = setup();
-    let fixture = fixture();
-    initialize_fundraiser(&mut svm, &fixture);
-    contribute(&mut svm, &fixture, PARTIAL_CONTRIBUTION);
+#[quasar_test]
+fn refund_rejected_before_deadline(test: &mut Test) {
+    initialized_world(test);
+    contribute(test, PARTIAL_CONTRIBUTION).succeeds();
 
-    svm.warp_to_timestamp(DEADLINE - 1);
-
-    let result = svm.process_instruction(&refund_instruction(&fixture), &[]);
-    result.assert_error(fundraiser_error(
-        QuasarTokenFundraiserError::FundraiserNotEnded,
-    ));
+    test.warp_to_timestamp(DEADLINE - 1);
+    refund(test).fails_with(FundraiserError::FundraiserNotEnded);
 }
 
-#[test]
-fn test_refund_rejected_when_target_met() {
-    let mut svm = setup();
-    let fixture = fixture();
-    initialize_fundraiser(&mut svm, &fixture);
-    contribute(&mut svm, &fixture, TARGET_AMOUNT);
+#[quasar_test]
+fn refund_rejected_when_target_met(test: &mut Test) {
+    initialized_world(test);
+    contribute(test, TARGET_AMOUNT).succeeds();
 
-    svm.warp_to_timestamp(DEADLINE);
-
-    let result = svm.process_instruction(&refund_instruction(&fixture), &[]);
-    result.assert_error(fundraiser_error(QuasarTokenFundraiserError::TargetMet));
+    test.warp_to_timestamp(DEADLINE);
+    refund(test).fails_with(FundraiserError::TargetMet);
 }
 
-#[test]
-fn test_refund_rejects_another_contributors_account() {
-    let mut svm = setup();
-    let fixture = fixture();
-    initialize_fundraiser(&mut svm, &fixture);
-    contribute(&mut svm, &fixture, PARTIAL_CONTRIBUTION);
+#[quasar_test]
+fn refund_rejects_another_contributors_account(test: &mut Test) {
+    initialized_world(test);
+    contribute(test, PARTIAL_CONTRIBUTION).succeeds();
 
-    svm.warp_to_timestamp(DEADLINE);
+    test.warp_to_timestamp(DEADLINE);
 
     // The attacker signs as themselves but passes the victim's contributor
     // record and their own token account, trying to drain the vault.
-    let attacker = Pubkey::new_unique();
-    let attacker_ta = Pubkey::new_unique();
-    let mut instruction = refund_instruction(&fixture);
-    // Account indices follow RefundInstruction ordering:
-    // 0 contributor (signer), 3 contributor_account, 4 contributor_ta.
-    instruction.accounts[0].pubkey = attacker;
-    instruction.accounts[4].pubkey = attacker_ta;
+    test.add(Wallet::new().at(ATTACKER));
+    test.add(TokenAccount::new(MINT, ATTACKER).at(ATTACKER_TA));
 
-    let result = svm.process_instruction(
-        &instruction,
-        &[
-            signer(attacker),
-            token(attacker_ta, fixture.mint, attacker, 0),
-        ],
-    );
+    let mut instruction: Instruction = RefundInstruction {
+        contributor: CONTRIBUTOR,
+        maker: MAKER,
+        contributor_ta: ATTACKER_TA,
+        vault: VAULT,
+        mint_to_raise: MINT,
+    }
+    .into();
+    // Account indices follow the accounts-struct field order:
+    // 0 contributor (signer), 3 contributor_account, 4 contributor_ta. The
+    // builder derived contributor_account for the VICTIM; swap only the
+    // signer to the attacker.
+    instruction.accounts[0].pubkey = ATTACKER;
+
     // The contributor_account PDA check derives ["contributor", fundraiser,
     // attacker], which does not match the victim's record.
-    result.assert_error(framework_error(QuasarError::InvalidPda));
+    test.send(instruction)
+        .fails(framework_error(QuasarError::InvalidPda));
     // The vault still holds the victim's contribution.
-    assert_eq!(token_balance(&svm, &fixture.vault), PARTIAL_CONTRIBUTION);
+    assert_eq!(test.tokens(VAULT), PARTIAL_CONTRIBUTION);
 }
 
-#[test]
-fn test_check_contributions_pays_maker_when_target_met() {
-    let mut svm = setup();
-    let fixture = fixture();
-    initialize_fundraiser(&mut svm, &fixture);
-    contribute(&mut svm, &fixture, TARGET_AMOUNT);
+#[quasar_test]
+fn check_contributions_pays_maker_when_target_met(test: &mut Test) {
+    let fundraiser = initialized_world(test);
+    contribute(test, TARGET_AMOUNT).succeeds();
 
-    let maker_ta = Pubkey::new_unique();
-    let instruction: Instruction = CheckContributionsInstruction {
-        maker: fixture.maker,
-        fundraiser: fixture.fundraiser,
-        vault: fixture.vault,
-        maker_ta,
-        mint_to_raise: fixture.mint,
-        token_program: quasar_svm::SPL_TOKEN_PROGRAM_ID,
-    }
-    .into();
+    test.add(TokenAccount::new(MINT, MAKER).at(MAKER_TA));
 
-    let result =
-        svm.process_instruction(&instruction, &[token(maker_ta, fixture.mint, fixture.maker, 0)]);
-    result.assert_success();
-
-    assert_eq!(token_balance(&svm, &maker_ta), TARGET_AMOUNT);
-    // The vault and fundraiser accounts were closed.
-    assert_eq!(svm.get_account(&fixture.vault).unwrap().lamports, 0);
-    assert_eq!(svm.get_account(&fixture.fundraiser).unwrap().lamports, 0);
+    check_contributions(test)
+        .succeeds()
+        .has_tokens(MAKER_TA, TARGET_AMOUNT)
+        // The vault and fundraiser accounts were closed.
+        .is_closed(VAULT)
+        .is_closed(fundraiser);
 }
 
-#[test]
-fn test_check_contributions_rejected_below_target() {
-    let mut svm = setup();
-    let fixture = fixture();
-    initialize_fundraiser(&mut svm, &fixture);
-    contribute(&mut svm, &fixture, PARTIAL_CONTRIBUTION);
+#[quasar_test]
+fn check_contributions_rejected_below_target(test: &mut Test) {
+    initialized_world(test);
+    contribute(test, PARTIAL_CONTRIBUTION).succeeds();
 
-    let maker_ta = Pubkey::new_unique();
-    let instruction: Instruction = CheckContributionsInstruction {
-        maker: fixture.maker,
-        fundraiser: fixture.fundraiser,
-        vault: fixture.vault,
-        maker_ta,
-        mint_to_raise: fixture.mint,
-        token_program: quasar_svm::SPL_TOKEN_PROGRAM_ID,
-    }
-    .into();
-
-    let result =
-        svm.process_instruction(&instruction, &[token(maker_ta, fixture.mint, fixture.maker, 0)]);
-    result.assert_error(fundraiser_error(QuasarTokenFundraiserError::TargetNotMet));
+    test.add(TokenAccount::new(MINT, MAKER).at(MAKER_TA));
+    check_contributions(test).fails_with(FundraiserError::TargetNotMet);
 }

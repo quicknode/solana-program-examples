@@ -1,15 +1,17 @@
-extern crate std;
+//! quasar-test integration tests: initialize a market, stock inventory, swap
+//! against the oracle-anchored quote, and exercise every guard rail (operator
+//! gating, slippage, staleness, confidence, pause, inventory limits).
 
 use {
-    alloc::{vec, vec::Vec},
-    quasar_svm::{
-        token::{
-            create_keyed_associated_token_account, create_keyed_mint_account,
-            create_keyed_system_account, Mint,
+    crate::{
+        cpi::{
+            DepositInventoryInstruction, InitializeMarketInstruction, SetQuoteInstruction,
+            SwapInstruction, WithdrawInventoryInstruction,
         },
-        Account, AccountMeta, Instruction, Pubkey, QuasarSvm,
+        state::Market,
+        BaseVaultPda, QuoteVaultPda,
     },
-    std::fs,
+    quasar_test::prelude::*,
 };
 
 // Both tokens have 6 decimals: base is NVDAx (tokenized NVIDIA stock), quote
@@ -25,561 +27,425 @@ const DIRECTION_SELL_BASE: u8 = 1;
 
 // A fixed current slot well above the staleness bound, so tests can write
 // feed accounts that are fresh (slot = SLOT) or stale (slot older than the
-// 150-slot bound) without warping the SVM clock.
+// 150-slot bound). quasar-test has no slot control, so the Clock sysvar
+// ACCOUNT is overridden directly — the SVM fills its sysvar cache from
+// provided accounts before falling back to defaults.
 const SLOT: u64 = 1_000;
 
-fn program_id() -> Pubkey {
-    crate::ID.into()
-}
-fn token_program() -> Pubkey {
-    quasar_svm::SPL_TOKEN_PROGRAM_ID
-}
-fn ata_program() -> Pubkey {
-    quasar_svm::SPL_ASSOCIATED_TOKEN_PROGRAM_ID
-}
-fn system_program() -> Pubkey {
-    quasar_svm::system_program::ID
-}
-fn clock_sysvar() -> Pubkey {
-    "SysvarC1ock11111111111111111111111111111111"
-        .parse()
-        .unwrap()
-}
-fn rent_sysvar() -> Pubkey {
-    "SysvarRent111111111111111111111111111111111"
-        .parse()
-        .unwrap()
-}
+// Deterministic addresses.
+const OPERATOR: Pubkey = Pubkey::new_from_array([1; 32]);
+const BASE_MINT: Pubkey = Pubkey::new_from_array([2; 32]);
+const QUOTE_MINT: Pubkey = Pubkey::new_from_array([3; 32]);
+const FEED: Pubkey = Pubkey::new_from_array([4; 32]);
+const OPERATOR_BASE: Pubkey = Pubkey::new_from_array([5; 32]);
+const OPERATOR_QUOTE: Pubkey = Pubkey::new_from_array([6; 32]);
+const TRADER: Pubkey = Pubkey::new_from_array([7; 32]);
+const TRADER_BASE: Pubkey = Pubkey::new_from_array([8; 32]);
+const TRADER_QUOTE: Pubkey = Pubkey::new_from_array([9; 32]);
+const MALLORY: Pubkey = Pubkey::new_from_array([10; 32]);
+const MALLORY_BASE: Pubkey = Pubkey::new_from_array([11; 32]);
+const MALLORY_QUOTE: Pubkey = Pubkey::new_from_array([12; 32]);
 
 fn dollars(whole: i128) -> i128 {
     whole * 10i128.pow(ORACLE_SCALE)
 }
 
-fn pda(seeds: &[&[u8]]) -> Pubkey {
-    Pubkey::find_program_address(seeds, &program_id()).0
-}
-fn ata(wallet: &Pubkey, mint: &Pubkey) -> Pubkey {
-    Pubkey::find_program_address(
-        &[wallet.as_ref(), token_program().as_ref(), mint.as_ref()],
-        &ata_program(),
-    )
-    .0
-}
-
-fn empty(address: &Pubkey) -> Account {
-    Account {
-        address: *address,
-        lamports: 0,
-        data: vec![],
-        owner: system_program(),
-        executable: false,
-    }
-}
-
-fn mint_account(address: &Pubkey) -> Account {
-    create_keyed_mint_account(
-        address,
-        &Mint {
-            decimals: 6,
-            is_initialized: true,
-            ..Default::default()
-        },
-    )
+/// Pin the Clock sysvar account at `SLOT`. Clock's bincode layout is the raw
+/// little-endian fields: slot, epoch_start_timestamp, epoch,
+/// leader_schedule_epoch, unix_timestamp.
+fn set_clock(test: &mut Test) {
+    let mut data = Vec::with_capacity(40);
+    data.extend_from_slice(&SLOT.to_le_bytes());
+    data.extend_from_slice(&0i64.to_le_bytes());
+    data.extend_from_slice(&0u64.to_le_bytes());
+    data.extend_from_slice(&0u64.to_le_bytes());
+    data.extend_from_slice(&0i64.to_le_bytes());
+    let clock_id: Pubkey = "SysvarC1ock11111111111111111111111111111111"
+        .parse()
+        .unwrap();
+    let sysvar_owner: Pubkey = "Sysvar1111111111111111111111111111111111111"
+        .parse()
+        .unwrap();
+    test.set_account(Account::new(clock_id, sysvar_owner, 1_169_280, data));
 }
 
 /// A feed account in this program's layout: price (i128), scale (u32),
 /// last_update_slot (u64), confidence (u64). The tests own this; production
 /// reads a real feed.
-fn feed_account(address: &Pubkey, price: i128, scale: u32, slot: u64, confidence: u64) -> Account {
+fn set_feed_at_slot(test: &mut Test, price: i128, slot: u64, confidence: u64) {
     let mut data = Vec::with_capacity(36);
     data.extend_from_slice(&price.to_le_bytes());
-    data.extend_from_slice(&scale.to_le_bytes());
+    data.extend_from_slice(&ORACLE_SCALE.to_le_bytes());
     data.extend_from_slice(&slot.to_le_bytes());
     data.extend_from_slice(&confidence.to_le_bytes());
-    Account {
-        address: *address,
-        lamports: 1_000_000,
-        data,
-        owner: system_program(),
-        executable: false,
-    }
+    test.set_account(Account::new(FEED, system_program::ID, 1_000_000, data));
 }
 
-fn token_amount(svm: &QuasarSvm, address: &Pubkey) -> u64 {
-    let account = svm.get_account(address).expect("token account exists");
-    // SPL token account layout: mint (32) + owner (32) + amount (u64) at offset 64.
-    u64::from_le_bytes(account.data[64..72].try_into().unwrap())
+fn set_feed(test: &mut Test, price: i128, confidence: u64) {
+    set_feed_at_slot(test, price, SLOT, confidence);
+}
+
+/// Write the feed with an update slot older than the 150-slot staleness bound
+/// (the Clock sysvar sits at `SLOT`).
+fn make_price_stale(test: &mut Test) {
+    set_feed_at_slot(test, dollars(165), SLOT - 151, 0);
+}
+
+fn init_market(test: &mut Test, spread_bps: u16) -> Outcome {
+    test.send(InitializeMarketInstruction {
+        operator: OPERATOR,
+        base_mint: BASE_MINT,
+        quote_mint: QUOTE_MINT,
+        oracle_feed: FEED,
+        oracle_scale: ORACLE_SCALE,
+        spread_bps,
+        max_confidence_bps: MAX_CONFIDENCE_BPS,
+    })
 }
 
 struct Env {
-    svm: QuasarSvm,
-    base_mint: Pubkey,
-    quote_mint: Pubkey,
-    feed: Pubkey,
-    operator: Pubkey,
     market: Pubkey,
-    market_authority: Pubkey,
     base_vault: Pubkey,
     quote_vault: Pubkey,
 }
 
-/// Build an SVM with the program, both mints, an oracle feed at $165, an
-/// initialized market at a 10 bps spread, and 1,000 NVDAx + 200,000 USDC of
-/// operator inventory deposited.
-fn setup() -> Env {
-    let mut env = try_setup(SPREAD_BPS).expect("market initialization should succeed");
-    assert!(env.deposit_inventory_as_operator(1_000 * ONE_TOKEN, 200_000 * ONE_TOKEN));
-    env
+/// Mints, feed at $165, clock at `SLOT`, funded operator inventory accounts,
+/// and an initialized (but unstocked) market at `spread_bps`.
+fn base_world(test: &mut Test, spread_bps: u16) -> (Env, Outcome) {
+    test.add(Wallet::new().at(OPERATOR));
+    test.add(Mint::new(OPERATOR).at(BASE_MINT).decimals(6));
+    test.add(Mint::new(OPERATOR).at(QUOTE_MINT).decimals(6));
+    set_feed(test, dollars(165), 0);
+    set_clock(test);
+    test.add(
+        TokenAccount::new(BASE_MINT, OPERATOR)
+            .at(OPERATOR_BASE)
+            .amount(10_000 * ONE_TOKEN),
+    );
+    test.add(
+        TokenAccount::new(QUOTE_MINT, OPERATOR)
+            .at(OPERATOR_QUOTE)
+            .amount(10_000_000 * ONE_TOKEN),
+    );
+    let outcome = init_market(test, spread_bps);
+    let market = test.derive_pda(Market::seeds(&BASE_MINT, &QUOTE_MINT));
+    (
+        Env {
+            market,
+            base_vault: test.derive_pda(BaseVaultPda::seeds(&market)),
+            quote_vault: test.derive_pda(QuoteVaultPda::seeds(&market)),
+        },
+        outcome,
+    )
 }
 
-/// Like `setup`, but without the inventory deposit and with the spread exposed
-/// so tests can probe the parameter validation.
-fn try_setup(spread_bps: u16) -> Result<Env, ()> {
-    let elf = fs::read("target/deploy/quasar_prop_amm.so").unwrap();
-    let base_mint = Pubkey::new_unique();
-    let quote_mint = Pubkey::new_unique();
-    let feed = Pubkey::new_unique();
-    let operator = Pubkey::new_unique();
-    let market = pda(&[b"market", base_mint.as_ref(), quote_mint.as_ref()]);
-    let market_authority = pda(&[b"authority", market.as_ref()]);
-    let base_vault = pda(&[b"base_vault", market.as_ref()]);
-    let quote_vault = pda(&[b"quote_vault", market.as_ref()]);
-
-    let mut svm = QuasarSvm::new()
-        .with_program(&crate::ID, &elf)
-        .with_token_program()
-        .with_slot(SLOT)
-        .with_account(mint_account(&base_mint))
-        .with_account(mint_account(&quote_mint))
-        .with_account(feed_account(&feed, dollars(165), ORACLE_SCALE, SLOT, 0))
-        .with_account(create_keyed_system_account(&operator, 100_000_000_000));
-
-    // The operator's own inventory accounts, funded.
-    svm.set_account(create_keyed_associated_token_account(
-        &operator,
-        &base_mint,
-        10_000 * ONE_TOKEN,
-    ));
-    svm.set_account(create_keyed_associated_token_account(
-        &operator,
-        &quote_mint,
-        10_000_000 * ONE_TOKEN,
-    ));
-
-    // initialize_market
-    let mut data = vec![0u8];
-    data.extend_from_slice(&ORACLE_SCALE.to_le_bytes());
-    data.extend_from_slice(&spread_bps.to_le_bytes());
-    data.extend_from_slice(&MAX_CONFIDENCE_BPS.to_le_bytes());
-    let metas = vec![
-        AccountMeta::new(operator, true),
-        AccountMeta::new(market, false),
-        AccountMeta::new_readonly(base_mint, false),
-        AccountMeta::new_readonly(quote_mint, false),
-        AccountMeta::new_readonly(feed, false),
-        AccountMeta::new_readonly(market_authority, false),
-        AccountMeta::new(base_vault, false),
-        AccountMeta::new(quote_vault, false),
-        AccountMeta::new_readonly(token_program(), false),
-        AccountMeta::new_readonly(system_program(), false),
-        AccountMeta::new_readonly(rent_sysvar(), false),
-    ];
-    let provided = vec![
-        svm.get_account(&operator).unwrap(),
-        empty(&market),
-        svm.get_account(&base_mint).unwrap(),
-        svm.get_account(&quote_mint).unwrap(),
-        empty(&base_vault),
-        empty(&quote_vault),
-    ];
-    let result = svm.process_instruction(
-        &Instruction {
-            program_id: program_id(),
-            accounts: metas,
-            data,
-        },
-        &provided,
-    );
-    if !result.is_ok() {
-        return Err(());
-    }
-
-    Ok(Env {
-        svm,
-        base_mint,
-        quote_mint,
-        feed,
-        operator,
-        market,
-        market_authority,
-        base_vault,
-        quote_vault,
+fn deposit_inventory(test: &mut Test, env: &Env, signer: Pubkey, signer_base: Pubkey, signer_quote: Pubkey, base: u64, quote: u64) -> Outcome {
+    test.send(DepositInventoryInstruction {
+        operator: signer,
+        base_mint: BASE_MINT,
+        quote_mint: QUOTE_MINT,
+        base_vault: env.base_vault,
+        quote_vault: env.quote_vault,
+        operator_base: signer_base,
+        operator_quote: signer_quote,
+        base_amount: base,
+        quote_amount: quote,
     })
 }
 
-impl Env {
-    /// Create a wallet with funded base and quote token accounts.
-    fn funded_wallet(&mut self, base: u64, quote: u64) -> Pubkey {
-        let wallet = Pubkey::new_unique();
-        self.svm
-            .set_account(create_keyed_system_account(&wallet, 100_000_000_000));
-        self.svm.set_account(create_keyed_associated_token_account(
-            &wallet,
-            &self.base_mint,
-            base,
-        ));
-        self.svm.set_account(create_keyed_associated_token_account(
-            &wallet,
-            &self.quote_mint,
-            quote,
-        ));
-        wallet
-    }
-
-    fn set_price(&mut self, price: i128) {
-        self.svm
-            .set_account(feed_account(&self.feed, price, ORACLE_SCALE, SLOT, 0));
-    }
-
-    fn set_price_with_confidence(&mut self, price: i128, confidence: u64) {
-        self.svm.set_account(feed_account(
-            &self.feed,
-            price,
-            ORACLE_SCALE,
-            SLOT,
-            confidence,
-        ));
-    }
-
-    /// Write the feed with an update slot older than the 150-slot staleness
-    /// bound (the SVM clock sits at `SLOT`).
-    fn make_price_stale(&mut self) {
-        self.svm.set_account(feed_account(
-            &self.feed,
-            dollars(165),
-            ORACLE_SCALE,
-            SLOT - 151,
-            0,
-        ));
-    }
-
-    fn move_inventory(&mut self, signer: &Pubkey, deposit: bool, base: u64, quote: u64) -> bool {
-        let signer_base = ata(signer, &self.base_mint);
-        let signer_quote = ata(signer, &self.quote_mint);
-        let mut data = vec![if deposit { 1u8 } else { 2u8 }];
-        data.extend_from_slice(&base.to_le_bytes());
-        data.extend_from_slice(&quote.to_le_bytes());
-        let mut metas = vec![AccountMeta::new(*signer, true)];
-        metas.push(AccountMeta::new_readonly(self.market, false));
-        if !deposit {
-            metas.push(AccountMeta::new_readonly(self.market_authority, false));
-        }
-        metas.extend([
-            AccountMeta::new_readonly(self.base_mint, false),
-            AccountMeta::new_readonly(self.quote_mint, false),
-            AccountMeta::new(self.base_vault, false),
-            AccountMeta::new(self.quote_vault, false),
-            AccountMeta::new(signer_base, false),
-            AccountMeta::new(signer_quote, false),
-            AccountMeta::new_readonly(token_program(), false),
-        ]);
-        self.run(metas, data, &[*signer, signer_base, signer_quote])
-    }
-
-    fn deposit_inventory_as_operator(&mut self, base: u64, quote: u64) -> bool {
-        let operator = self.operator;
-        self.move_inventory(&operator, true, base, quote)
-    }
-
-    fn withdraw_inventory_as_operator(&mut self, base: u64, quote: u64) -> bool {
-        let operator = self.operator;
-        self.move_inventory(&operator, false, base, quote)
-    }
-
-    fn set_quote(&mut self, signer: &Pubkey, spread_bps: u16, paused: u8) -> bool {
-        let mut data = vec![3u8];
-        data.extend_from_slice(&spread_bps.to_le_bytes());
-        data.push(paused);
-        let metas = vec![
-            AccountMeta::new_readonly(*signer, true),
-            AccountMeta::new(self.market, false),
-            AccountMeta::new_readonly(self.base_mint, false),
-            AccountMeta::new_readonly(self.quote_mint, false),
-        ];
-        self.run(metas, data, &[*signer])
-    }
-
-    fn swap(
-        &mut self,
-        trader: &Pubkey,
-        direction: u8,
-        amount_in: u64,
-        minimum_amount_out: u64,
-    ) -> bool {
-        let trader_base = ata(trader, &self.base_mint);
-        let trader_quote = ata(trader, &self.quote_mint);
-        let mut data = vec![4u8, direction];
-        data.extend_from_slice(&amount_in.to_le_bytes());
-        data.extend_from_slice(&minimum_amount_out.to_le_bytes());
-        let metas = vec![
-            AccountMeta::new(*trader, true),
-            AccountMeta::new_readonly(self.market, false),
-            AccountMeta::new_readonly(self.market_authority, false),
-            AccountMeta::new_readonly(self.feed, false),
-            AccountMeta::new_readonly(self.base_mint, false),
-            AccountMeta::new_readonly(self.quote_mint, false),
-            AccountMeta::new(self.base_vault, false),
-            AccountMeta::new(self.quote_vault, false),
-            AccountMeta::new(trader_base, false),
-            AccountMeta::new(trader_quote, false),
-            AccountMeta::new_readonly(token_program(), false),
-            AccountMeta::new_readonly(clock_sysvar(), false),
-        ];
-        self.run(metas, data, &[*trader, trader_base, trader_quote])
-    }
-
-    fn run(&mut self, metas: Vec<AccountMeta>, data: Vec<u8>, provide: &[Pubkey]) -> bool {
-        let accounts: Vec<Account> = provide
-            .iter()
-            .map(|pk| self.svm.get_account(pk).unwrap_or_else(|| empty(pk)))
-            .collect();
-        let result = self.svm.process_instruction(
-            &Instruction {
-                program_id: program_id(),
-                accounts: metas,
-                data,
-            },
-            &accounts,
-        );
-        result.is_ok()
-    }
+/// Market with a 10 bps spread and 1,000 NVDAx + 200,000 USDC of operator
+/// inventory deposited.
+fn setup(test: &mut Test) -> Env {
+    let (env, outcome) = base_world(test, SPREAD_BPS);
+    outcome.succeeds();
+    deposit_inventory(test, &env, OPERATOR, OPERATOR_BASE, OPERATOR_QUOTE, 1_000 * ONE_TOKEN, 200_000 * ONE_TOKEN).succeeds();
+    env
 }
 
-#[test]
-fn test_initialize_market() {
-    let env = setup();
+fn fund_trader(test: &mut Test, wallet: Pubkey, base_account: Pubkey, quote_account: Pubkey, base: u64, quote: u64) {
+    test.add(Wallet::new().at(wallet));
+    test.add(TokenAccount::new(BASE_MINT, wallet).at(base_account).amount(base));
+    test.add(TokenAccount::new(QUOTE_MINT, wallet).at(quote_account).amount(quote));
+}
+
+fn set_quote(test: &mut Test, signer: Pubkey, spread_bps: u16, paused: u8) -> Outcome {
+    test.send(SetQuoteInstruction {
+        operator: signer,
+        base_mint: BASE_MINT,
+        quote_mint: QUOTE_MINT,
+        spread_bps,
+        paused,
+    })
+}
+
+fn swap(test: &mut Test, env: &Env, trader: Pubkey, trader_base: Pubkey, trader_quote: Pubkey, direction: u8, amount_in: u64, minimum_amount_out: u64) -> Outcome {
+    test.send(SwapInstruction {
+        trader,
+        oracle_feed: FEED,
+        base_mint: BASE_MINT,
+        quote_mint: QUOTE_MINT,
+        base_vault: env.base_vault,
+        quote_vault: env.quote_vault,
+        trader_base,
+        trader_quote,
+        direction,
+        amount_in,
+        minimum_amount_out,
+    })
+}
+
+fn withdraw_inventory(test: &mut Test, env: &Env, signer: Pubkey, signer_base: Pubkey, signer_quote: Pubkey, base: u64, quote: u64) -> Outcome {
+    test.send(WithdrawInventoryInstruction {
+        operator: signer,
+        base_mint: BASE_MINT,
+        quote_mint: QUOTE_MINT,
+        base_vault: env.base_vault,
+        quote_vault: env.quote_vault,
+        operator_base: signer_base,
+        operator_quote: signer_quote,
+        base_amount: base,
+        quote_amount: quote,
+    })
+}
+
+#[quasar_test]
+fn initialize_market_creates_market_and_stocked_vaults(test: &mut Test) {
+    let env = setup(test);
     // The market and both vaults were created, and the inventory landed.
-    assert!(env.svm.get_account(&env.market).is_some());
-    assert_eq!(token_amount(&env.svm, &env.base_vault), 1_000 * ONE_TOKEN);
-    assert_eq!(
-        token_amount(&env.svm, &env.quote_vault),
-        200_000 * ONE_TOKEN
-    );
+    assert!(test.account(env.market).is_some());
+    assert_eq!(test.tokens(env.base_vault), 1_000 * ONE_TOKEN);
+    assert_eq!(test.tokens(env.quote_vault), 200_000 * ONE_TOKEN);
 }
 
 /// Alice buys 5 NVDAx. At $165 with a 10 bps spread the ask is $165.165, so
 /// 5 NVDAx costs exactly 825.825 USDC.
-#[test]
-fn test_swap_buys_base_at_the_ask() {
-    let mut env = setup();
+#[quasar_test]
+fn swap_buys_base_at_the_ask(test: &mut Test) {
+    let env = setup(test);
     let quote_in = 825_825_000;
-    let alice = env.funded_wallet(0, quote_in);
+    fund_trader(test, TRADER, TRADER_BASE, TRADER_QUOTE, 0, quote_in);
 
-    assert!(env.swap(&alice, DIRECTION_BUY_BASE, quote_in, 5 * ONE_TOKEN));
-
-    assert_eq!(
-        token_amount(&env.svm, &ata(&alice, &env.base_mint)),
-        5 * ONE_TOKEN
-    );
-    assert_eq!(token_amount(&env.svm, &ata(&alice, &env.quote_mint)), 0);
-    // Conservation: the vaults moved by exactly the two legs of the fill.
-    assert_eq!(token_amount(&env.svm, &env.base_vault), 995 * ONE_TOKEN);
-    assert_eq!(
-        token_amount(&env.svm, &env.quote_vault),
-        200_000 * ONE_TOKEN + quote_in
-    );
+    swap(test, &env, TRADER, TRADER_BASE, TRADER_QUOTE, DIRECTION_BUY_BASE, quote_in, 5 * ONE_TOKEN)
+        .succeeds()
+        .has_tokens(TRADER_BASE, 5 * ONE_TOKEN)
+        .has_tokens(TRADER_QUOTE, 0)
+        // Conservation: the vaults moved by exactly the two legs of the fill.
+        .has_tokens(env.base_vault, 995 * ONE_TOKEN)
+        .has_tokens(env.quote_vault, 200_000 * ONE_TOKEN + quote_in);
 }
 
 /// Bob sells 5 NVDAx. At $165 with a 10 bps spread the bid is $164.835, so
 /// he receives exactly 824.175 USDC.
-#[test]
-fn test_swap_sells_base_at_the_bid() {
-    let mut env = setup();
-    let bob = env.funded_wallet(5 * ONE_TOKEN, 0);
+#[quasar_test]
+fn swap_sells_base_at_the_bid(test: &mut Test) {
+    let env = setup(test);
+    fund_trader(test, TRADER, TRADER_BASE, TRADER_QUOTE, 5 * ONE_TOKEN, 0);
 
-    assert!(env.swap(&bob, DIRECTION_SELL_BASE, 5 * ONE_TOKEN, 824_175_000));
-
-    assert_eq!(token_amount(&env.svm, &ata(&bob, &env.base_mint)), 0);
-    assert_eq!(
-        token_amount(&env.svm, &ata(&bob, &env.quote_mint)),
-        824_175_000
-    );
+    swap(test, &env, TRADER, TRADER_BASE, TRADER_QUOTE, DIRECTION_SELL_BASE, 5 * ONE_TOKEN, 824_175_000)
+        .succeeds()
+        .has_tokens(TRADER_BASE, 0)
+        .has_tokens(TRADER_QUOTE, 824_175_000);
 }
 
 /// A buy immediately followed by a sell of the same 5 NVDAx costs exactly
 /// the round-trip spread: 1.65 USDC, all of which stays in the inventory.
-#[test]
-fn test_round_trip_costs_exactly_the_spread() {
-    let mut env = setup();
+#[quasar_test]
+fn round_trip_costs_exactly_the_spread(test: &mut Test) {
+    let env = setup(test);
     let quote_in = 825_825_000;
-    let carol = env.funded_wallet(0, quote_in);
+    fund_trader(test, TRADER, TRADER_BASE, TRADER_QUOTE, 0, quote_in);
 
-    assert!(env.swap(&carol, DIRECTION_BUY_BASE, quote_in, 0));
-    assert!(env.swap(&carol, DIRECTION_SELL_BASE, 5 * ONE_TOKEN, 0));
-
-    assert_eq!(token_amount(&env.svm, &ata(&carol, &env.base_mint)), 0);
-    assert_eq!(
-        token_amount(&env.svm, &ata(&carol, &env.quote_mint)),
-        quote_in - 1_650_000
-    );
-    assert_eq!(
-        token_amount(&env.svm, &env.quote_vault),
-        200_000 * ONE_TOKEN + 1_650_000
-    );
+    swap(test, &env, TRADER, TRADER_BASE, TRADER_QUOTE, DIRECTION_BUY_BASE, quote_in, 0).succeeds();
+    swap(test, &env, TRADER, TRADER_BASE, TRADER_QUOTE, DIRECTION_SELL_BASE, 5 * ONE_TOKEN, 0)
+        .succeeds()
+        .has_tokens(TRADER_BASE, 0)
+        .has_tokens(TRADER_QUOTE, quote_in - 1_650_000)
+        .has_tokens(env.quote_vault, 200_000 * ONE_TOKEN + 1_650_000);
 }
 
 /// When the oracle reprices, the quote follows instantly. At $170 the ask is
 /// $170.17, so 5 NVDAx costs exactly 850.85 USDC.
-#[test]
-fn test_quote_follows_the_oracle() {
-    let mut env = setup();
-    env.set_price(dollars(170));
+#[quasar_test]
+fn quote_follows_the_oracle(test: &mut Test) {
+    let env = setup(test);
+    set_feed(test, dollars(170), 0);
 
     let quote_in = 850_850_000;
-    let alice = env.funded_wallet(0, quote_in);
-    assert!(env.swap(&alice, DIRECTION_BUY_BASE, quote_in, 5 * ONE_TOKEN));
-    assert_eq!(
-        token_amount(&env.svm, &ata(&alice, &env.base_mint)),
-        5 * ONE_TOKEN
-    );
+    fund_trader(test, TRADER, TRADER_BASE, TRADER_QUOTE, 0, quote_in);
+    swap(test, &env, TRADER, TRADER_BASE, TRADER_QUOTE, DIRECTION_BUY_BASE, quote_in, 5 * ONE_TOKEN)
+        .succeeds()
+        .has_tokens(TRADER_BASE, 5 * ONE_TOKEN);
 }
 
 /// The operator re-quotes to a 50 bps spread; the next fill prices at
 /// $165.825, so 5 NVDAx costs exactly 829.125 USDC.
-#[test]
-fn test_set_quote_changes_the_spread() {
-    let mut env = setup();
-    let operator = env.operator;
-    assert!(env.set_quote(&operator, 50, 0));
+#[quasar_test]
+fn set_quote_changes_the_spread(test: &mut Test) {
+    let env = setup(test);
+    set_quote(test, OPERATOR, 50, 0).succeeds();
 
     let quote_in = 829_125_000;
-    let alice = env.funded_wallet(0, quote_in);
-    assert!(env.swap(&alice, DIRECTION_BUY_BASE, quote_in, 5 * ONE_TOKEN));
-    assert_eq!(
-        token_amount(&env.svm, &ata(&alice, &env.base_mint)),
-        5 * ONE_TOKEN
-    );
+    fund_trader(test, TRADER, TRADER_BASE, TRADER_QUOTE, 0, quote_in);
+    swap(test, &env, TRADER, TRADER_BASE, TRADER_QUOTE, DIRECTION_BUY_BASE, quote_in, 5 * ONE_TOKEN)
+        .succeeds()
+        .has_tokens(TRADER_BASE, 5 * ONE_TOKEN);
 }
 
 /// The operator can withdraw every token in both vaults at any time — its
 /// capital, its exit. Afterwards swaps fail rather than misprice.
-#[test]
-fn test_operator_can_withdraw_everything_and_swaps_then_fail() {
-    let mut env = setup();
-    assert!(env.withdraw_inventory_as_operator(1_000 * ONE_TOKEN, 200_000 * ONE_TOKEN));
+#[quasar_test]
+fn operator_can_withdraw_everything_and_swaps_then_fail(test: &mut Test) {
+    let env = setup(test);
+    withdraw_inventory(test, &env, OPERATOR, OPERATOR_BASE, OPERATOR_QUOTE, 1_000 * ONE_TOKEN, 200_000 * ONE_TOKEN)
+        .succeeds()
+        .has_tokens(env.base_vault, 0)
+        .has_tokens(env.quote_vault, 0);
 
-    assert_eq!(token_amount(&env.svm, &env.base_vault), 0);
-    assert_eq!(token_amount(&env.svm, &env.quote_vault), 0);
-
-    let alice = env.funded_wallet(0, 825_825_000);
-    assert!(!env.swap(&alice, DIRECTION_BUY_BASE, 825_825_000, 0));
+    fund_trader(test, TRADER, TRADER_BASE, TRADER_QUOTE, 0, 825_825_000);
+    assert!(
+        swap(test, &env, TRADER, TRADER_BASE, TRADER_QUOTE, DIRECTION_BUY_BASE, 825_825_000, 0).is_err(),
+        "a swap against an empty inventory must fail"
+    );
 }
 
-#[test]
-fn test_withdraw_more_than_inventory_fails() {
-    let mut env = setup();
-    assert!(!env.withdraw_inventory_as_operator(1_001 * ONE_TOKEN, 0));
+#[quasar_test]
+fn withdraw_more_than_inventory_fails(test: &mut Test) {
+    let env = setup(test);
+    assert!(
+        withdraw_inventory(test, &env, OPERATOR, OPERATOR_BASE, OPERATOR_QUOTE, 1_001 * ONE_TOKEN, 0)
+            .is_err(),
+        "withdrawing more than the vault holds must fail"
+    );
 }
 
-#[test]
-fn test_deposit_rejects_non_operator() {
-    let mut env = setup();
-    let mallory = env.funded_wallet(ONE_TOKEN, ONE_TOKEN);
-    assert!(!env.move_inventory(&mallory, true, ONE_TOKEN, 0));
+#[quasar_test]
+fn deposit_rejects_non_operator(test: &mut Test) {
+    let env = setup(test);
+    fund_trader(test, MALLORY, MALLORY_BASE, MALLORY_QUOTE, ONE_TOKEN, ONE_TOKEN);
+    assert!(
+        deposit_inventory(test, &env, MALLORY, MALLORY_BASE, MALLORY_QUOTE, ONE_TOKEN, 0).is_err(),
+        "deposit_inventory must reject a non-operator signer"
+    );
 }
 
-#[test]
-fn test_withdraw_rejects_non_operator() {
-    let mut env = setup();
-    let mallory = env.funded_wallet(0, 0);
-    assert!(!env.move_inventory(&mallory, false, ONE_TOKEN, 0));
+#[quasar_test]
+fn withdraw_rejects_non_operator(test: &mut Test) {
+    let env = setup(test);
+    fund_trader(test, MALLORY, MALLORY_BASE, MALLORY_QUOTE, 0, 0);
+    assert!(
+        withdraw_inventory(test, &env, MALLORY, MALLORY_BASE, MALLORY_QUOTE, ONE_TOKEN, 0).is_err(),
+        "withdraw_inventory must reject a non-operator signer"
+    );
 }
 
-#[test]
-fn test_set_quote_rejects_non_operator() {
-    let mut env = setup();
-    let mallory = env.funded_wallet(0, 0);
-    assert!(!env.set_quote(&mallory, 500, 1));
+#[quasar_test]
+fn set_quote_rejects_non_operator(test: &mut Test) {
+    setup(test);
+    test.add(Wallet::new().at(MALLORY));
+    assert!(
+        set_quote(test, MALLORY, 500, 1).is_err(),
+        "set_quote must reject a non-operator signer"
+    );
 }
 
 /// A fill below the caller's minimum is rejected, not filled worse.
-#[test]
-fn test_swap_rejects_slippage() {
-    let mut env = setup();
+#[quasar_test]
+fn swap_rejects_slippage(test: &mut Test) {
+    let env = setup(test);
     let quote_in = 825_825_000;
-    let alice = env.funded_wallet(0, quote_in);
+    fund_trader(test, TRADER, TRADER_BASE, TRADER_QUOTE, 0, quote_in);
     // The fill would be exactly 5 NVDAx; demand one minor unit more.
-    assert!(!env.swap(&alice, DIRECTION_BUY_BASE, quote_in, 5 * ONE_TOKEN + 1));
+    assert!(
+        swap(test, &env, TRADER, TRADER_BASE, TRADER_QUOTE, DIRECTION_BUY_BASE, quote_in, 5 * ONE_TOKEN + 1)
+            .is_err(),
+        "a fill below minimum_amount_out must be rejected"
+    );
 }
 
 /// An oracle price older than the staleness bound cannot be traded against:
 /// a lagging quote is a free option for arbitrageurs.
-#[test]
-fn test_swap_rejects_stale_price() {
-    let mut env = setup();
-    env.make_price_stale();
-    let alice = env.funded_wallet(0, 825_825_000);
-    assert!(!env.swap(&alice, DIRECTION_BUY_BASE, 825_825_000, 0));
+#[quasar_test]
+fn swap_rejects_stale_price(test: &mut Test) {
+    let env = setup(test);
+    make_price_stale(test);
+    fund_trader(test, TRADER, TRADER_BASE, TRADER_QUOTE, 0, 825_825_000);
+    assert!(
+        swap(test, &env, TRADER, TRADER_BASE, TRADER_QUOTE, DIRECTION_BUY_BASE, 825_825_000, 0).is_err(),
+        "a stale oracle price must be rejected"
+    );
 }
 
 /// A price the oracle itself is unsure about is rejected: the confidence band
 /// (about 1.2% here) exceeds the market's 1% limit.
-#[test]
-fn test_swap_rejects_wide_confidence() {
-    let mut env = setup();
-    env.set_price_with_confidence(dollars(165), 200_000_000);
-    let alice = env.funded_wallet(0, 825_825_000);
-    assert!(!env.swap(&alice, DIRECTION_BUY_BASE, 825_825_000, 0));
+#[quasar_test]
+fn swap_rejects_wide_confidence(test: &mut Test) {
+    let env = setup(test);
+    set_feed(test, dollars(165), 200_000_000);
+    fund_trader(test, TRADER, TRADER_BASE, TRADER_QUOTE, 0, 825_825_000);
+    assert!(
+        swap(test, &env, TRADER, TRADER_BASE, TRADER_QUOTE, DIRECTION_BUY_BASE, 825_825_000, 0).is_err(),
+        "a confidence band wider than max_confidence_bps must be rejected"
+    );
 }
 
 /// While the operator has pulled its quotes, nobody can swap; unpausing
 /// restores the exact same quote.
-#[test]
-fn test_swap_rejects_when_paused() {
-    let mut env = setup();
-    let operator = env.operator;
-    assert!(env.set_quote(&operator, SPREAD_BPS, 1));
+#[quasar_test]
+fn swap_rejects_when_paused(test: &mut Test) {
+    let env = setup(test);
+    set_quote(test, OPERATOR, SPREAD_BPS, 1).succeeds();
 
-    let alice = env.funded_wallet(0, 825_825_000);
-    assert!(!env.swap(&alice, DIRECTION_BUY_BASE, 825_825_000, 0));
+    fund_trader(test, TRADER, TRADER_BASE, TRADER_QUOTE, 0, 825_825_000);
+    assert!(
+        swap(test, &env, TRADER, TRADER_BASE, TRADER_QUOTE, DIRECTION_BUY_BASE, 825_825_000, 0).is_err(),
+        "a paused market must reject swaps"
+    );
 
-    assert!(env.set_quote(&operator, SPREAD_BPS, 0));
-    assert!(env.swap(&alice, DIRECTION_BUY_BASE, 825_825_000, 5 * ONE_TOKEN));
+    set_quote(test, OPERATOR, SPREAD_BPS, 0).succeeds();
+    swap(test, &env, TRADER, TRADER_BASE, TRADER_QUOTE, DIRECTION_BUY_BASE, 825_825_000, 5 * ONE_TOKEN)
+        .succeeds();
 }
 
-#[test]
-fn test_swap_rejects_zero_amount() {
-    let mut env = setup();
-    let alice = env.funded_wallet(0, ONE_TOKEN);
-    assert!(!env.swap(&alice, DIRECTION_BUY_BASE, 0, 0));
+#[quasar_test]
+fn swap_rejects_zero_amount(test: &mut Test) {
+    let env = setup(test);
+    fund_trader(test, TRADER, TRADER_BASE, TRADER_QUOTE, 0, ONE_TOKEN);
+    assert!(
+        swap(test, &env, TRADER, TRADER_BASE, TRADER_QUOTE, DIRECTION_BUY_BASE, 0, 0).is_err(),
+        "a zero-amount swap must be rejected"
+    );
 }
 
 /// A buy bigger than the base inventory is rejected whole — a prop AMM never
 /// partially fills, and never prices what it cannot deliver.
-#[test]
-fn test_swap_rejects_insufficient_inventory() {
-    let mut env = setup();
+#[quasar_test]
+fn swap_rejects_insufficient_inventory(test: &mut Test) {
+    let env = setup(test);
     // 1,100 NVDAx at $165.165 ≈ 181,681.50 USDC — affordable for the trader,
     // but the vault only holds 1,000 NVDAx.
     let quote_in = 181_681_500_000;
-    let whale = env.funded_wallet(0, quote_in);
-    assert!(!env.swap(&whale, DIRECTION_BUY_BASE, quote_in, 0));
+    fund_trader(test, TRADER, TRADER_BASE, TRADER_QUOTE, 0, quote_in);
+    assert!(
+        swap(test, &env, TRADER, TRADER_BASE, TRADER_QUOTE, DIRECTION_BUY_BASE, quote_in, 0).is_err(),
+        "a swap larger than the inventory must be rejected"
+    );
 }
 
-#[test]
-fn test_initialize_market_rejects_zero_spread() {
-    assert!(try_setup(0).is_err());
+#[quasar_test]
+fn initialize_market_rejects_zero_spread(test: &mut Test) {
+    let (_env, outcome) = base_world(test, 0);
+    assert!(outcome.is_err(), "a zero spread must be rejected");
 }
 
-#[test]
-fn test_initialize_market_rejects_full_spread() {
-    assert!(try_setup(10_000).is_err());
+#[quasar_test]
+fn initialize_market_rejects_full_spread(test: &mut Test) {
+    let (_env, outcome) = base_world(test, 10_000);
+    assert!(outcome.is_err(), "a 100% spread must be rejected");
 }
 
-#[test]
-fn test_set_quote_rejects_invalid_spread() {
-    let mut env = setup();
-    let operator = env.operator;
-    assert!(!env.set_quote(&operator, 0, 0));
-    assert!(!env.set_quote(&operator, 10_000, 0));
+#[quasar_test]
+fn set_quote_rejects_invalid_spread(test: &mut Test) {
+    setup(test);
+    assert!(set_quote(test, OPERATOR, 0, 0).is_err());
+    assert!(set_quote(test, OPERATOR, 10_000, 0).is_err());
 }

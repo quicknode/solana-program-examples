@@ -5,7 +5,7 @@ use {
         math::{mul_div_floor, net_total_liquidity},
         state::Reserve,
     },
-    quasar_lang::prelude::*,
+    quasar_lang::{cpi::Seed, prelude::*},
     quasar_spl::prelude::*,
 };
 

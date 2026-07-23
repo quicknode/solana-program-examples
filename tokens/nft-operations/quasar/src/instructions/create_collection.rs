@@ -1,6 +1,6 @@
 use {
     crate::MintAuthorityPda,
-    quasar_lang::prelude::*,
+    quasar_lang::{cpi::Seed, prelude::*},
     quasar_metadata::prelude::*,
     quasar_spl::prelude::*,
 };

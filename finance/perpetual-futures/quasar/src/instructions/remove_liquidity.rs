@@ -1,4 +1,5 @@
 use {
+    quasar_lang::cpi::Seed,
     crate::{
         instructions::shared::{err, error, refresh_price_and_funding, traders_unrealized_pnl},
         state::Pool,

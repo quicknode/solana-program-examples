@@ -5,5 +5,5 @@ use quasar_lang::prelude::*;
 /// the current account size, making explicit realloc unnecessary.
 #[account(discriminator = 1, set_inner)]
 pub struct MessageAccount {
-    pub message: String<1024>,
+    pub message: String<1024, 2>,
 }

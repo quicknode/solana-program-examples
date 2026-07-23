@@ -1,4 +1,5 @@
 use {
+    quasar_lang::cpi::Seed,
     crate::{
         instructions::{
             close_position::remove_open_interest,

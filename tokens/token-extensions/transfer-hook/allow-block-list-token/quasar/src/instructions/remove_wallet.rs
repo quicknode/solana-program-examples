@@ -16,7 +16,7 @@ pub struct RemoveWalletAccountConstraints {
 #[inline(always)]
 pub fn handle_remove_wallet(accounts: &mut RemoveWalletAccountConstraints) -> Result<(), ProgramError> {
     // Verify config PDA
-    let (config_pda, _) = Address::find_program_address(&[CONFIG_SEED], &crate::ID);
+    let (config_pda, _) = quasar_lang::pda::try_find_program_address(&[CONFIG_SEED], &crate::ID)?;
     if accounts.config.to_account_view().address() != &config_pda {
         return Err(ProgramError::InvalidSeeds);
     }

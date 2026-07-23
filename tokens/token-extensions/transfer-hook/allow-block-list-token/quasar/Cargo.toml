@@ -3,31 +3,35 @@ name = "quasar-abl-token"
 version = "0.1.0"
 edition = "2021"
 
+# Standalone workspace - not part of the root program-examples workspace.
+# Quasar uses a different resolver and dependency tree.
 [workspace]
 
 [lints.rust.unexpected_cfgs]
 level = "warn"
-check-cfg = ['cfg(target_os, values("solana"))']
+check-cfg = [
+    'cfg(target_os, values("solana"))',
+]
 
 [lib]
+# "lib" is required alongside "cdylib": the 0.1.0 IDL build compiles the
+# crate as a host library.
 crate-type = ["cdylib", "lib"]
 
 [features]
-# Removed `alloc` feature - the upstream `quasar-lang` master no longer
-# exposes it, and nothing in this crate depends on alloc.
+alloc = []
 client = []
 debug = []
+idl-build = ["quasar-lang/idl-build"]
 
 [dependencies]
-# quasar pin rationale: master HEAD currently fails to compile because zeropod 0.3.x
-# auto-generates accessor methods that conflict with hand-written ones in quasar-spl
-# (E0592 duplicate definitions for delegate / close_authority / mint_authority /
-# freeze_authority). Upstream fix is on the zeropod branch (skip_accessor + bump),
-# not yet merged to master. 623bb70 is the last working rev on master before zeropod
-# 0.3 was bumped. Unpin (back to branch = "master") once upstream merges the fix.
-quasar-lang = { git = "https://github.com/blueshift-gg/quasar", rev = "623bb70" }
-quasar-spl = { git = "https://github.com/blueshift-gg/quasar", rev = "623bb70" }
+# Quasar 0.1.0-release, pinned by rev: crates.io still hosts 0.0.0
+# placeholders for quasar-lang/quasar-cli, so the release line installs from
+# git. Keep this rev in lockstep with the CLI rev installed by
+# .github/workflows/quasar.yml.
+quasar-lang = { git = "https://github.com/blueshift-gg/quasar", rev = "be60fca" }
+quasar-spl = { git = "https://github.com/blueshift-gg/quasar", rev = "be60fca" }
 solana-instruction = { version = "3.2.0" }
 
 [dev-dependencies]
-quasar-svm = { version = "0.1" }
+quasar-test = { git = "https://github.com/blueshift-gg/quasar", rev = "be60fca" }

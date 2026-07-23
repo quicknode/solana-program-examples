@@ -1,13 +1,16 @@
 extern crate std;
 use {
-    crate::ExternalDelegateError,
-    quasar_svm::{Account, Instruction, ProgramError, Pubkey, QuasarSvm},
-    solana_program_pack::Pack,
-    spl_token_interface::state::{Account as TokenAccount, AccountState, Mint},
-    std::{println, vec, vec::Vec},
+    crate::{
+        cpi::{
+            AuthorityTransferInstruction, InitializeInstruction, SetEthereumAddressInstruction,
+            TransferTokensInstruction,
+        },
+        ExternalDelegateError, UserAccount, UserPda,
+    },
+    quasar_test::prelude::*,
+    std::vec::Vec,
 };
 
-const SIGNER_LAMPORTS: u64 = 5_000_000_000;
 const MINT_DECIMALS: u8 = 6;
 const MINT_AMOUNT: u64 = 1_000_000_000;
 const TRANSFER_AMOUNT: u64 = 500_000_000;
@@ -16,84 +19,16 @@ const TRANSFER_AMOUNT: u64 = 500_000_000;
 /// the secp256k1 curve order works.
 const DELEGATE_SECP256K1_PRIVATE_KEY: [u8; 32] = [0x42; 32];
 
-fn setup() -> QuasarSvm {
-    let elf = std::fs::read("target/deploy/quasar_external_delegate_token_master.so").unwrap();
-    QuasarSvm::new()
-        .with_program(&crate::ID, &elf)
-        .with_token_program()
-}
-
-fn signer(address: Pubkey) -> Account {
-    quasar_svm::token::create_keyed_system_account(&address, SIGNER_LAMPORTS)
-}
-
-fn empty(address: Pubkey) -> Account {
-    Account {
-        address,
-        lamports: 0,
-        data: vec![],
-        owner: quasar_svm::system_program::ID,
-        executable: false,
-    }
-}
-
-fn mint(address: Pubkey, authority: Pubkey) -> Account {
-    quasar_svm::token::create_keyed_mint_account(
-        &address,
-        &Mint {
-            mint_authority: Some(authority).into(),
-            supply: MINT_AMOUNT,
-            decimals: MINT_DECIMALS,
-            is_initialized: true,
-            freeze_authority: None.into(),
-        },
-    )
-}
-
-fn token(address: Pubkey, mint: Pubkey, owner: Pubkey, amount: u64) -> Account {
-    quasar_svm::token::create_keyed_token_account(
-        &address,
-        &TokenAccount {
-            mint,
-            owner,
-            amount,
-            state: AccountState::Initialized,
-            ..TokenAccount::default()
-        },
-    )
-}
-
-fn token_balance(svm: &QuasarSvm, address: &Pubkey) -> u64 {
-    let account = svm.get_account(address).unwrap();
-    TokenAccount::unpack(&account.data).unwrap().amount
-}
-
-/// Deserialized UserAccount state, parsed from the zero-copy layout:
-/// [disc:1] [authority:32] [ethereum_address:20] [nonce:8 LE]
-struct UserAccountState {
-    authority: Pubkey,
-    ethereum_address: [u8; 20],
-    nonce: u64,
-}
-
-fn parse_user_account(data: &[u8]) -> UserAccountState {
-    assert_eq!(data[0], 1, "UserAccount discriminator");
-    let mut offset = 1usize;
-    let mut take = |len: usize| {
-        let bytes = &data[offset..offset + len];
-        offset += len;
-        bytes
-    };
-    UserAccountState {
-        authority: Pubkey::new_from_array(take(32).try_into().unwrap()),
-        ethereum_address: take(20).try_into().unwrap(),
-        nonce: u64::from_le_bytes(take(8).try_into().unwrap()),
-    }
-}
-
-fn read_user_account(svm: &QuasarSvm, address: &Pubkey) -> UserAccountState {
-    parse_user_account(&svm.get_account(address).unwrap().data)
-}
+// Deterministic addresses avoid Pubkey::new_unique(), whose global counter
+// produces different values depending on test binary layout / discovery order.
+const AUTHORITY: Pubkey = Pubkey::new_from_array([1; 32]);
+const USER_ACCOUNT: Pubkey = Pubkey::new_from_array([2; 32]);
+const MALLORY: Pubkey = Pubkey::new_from_array([3; 32]);
+const MINT: Pubkey = Pubkey::new_from_array([4; 32]);
+const USER_TOKEN_ACCOUNT: Pubkey = Pubkey::new_from_array([5; 32]);
+const RECIPIENT_TOKEN_ACCOUNT: Pubkey = Pubkey::new_from_array([6; 32]);
+const ATTACKER: Pubkey = Pubkey::new_from_array([7; 32]);
+const ATTACKER_TOKEN_ACCOUNT: Pubkey = Pubkey::new_from_array([8; 32]);
 
 fn delegate_secret_key() -> libsecp256k1::SecretKey {
     libsecp256k1::SecretKey::parse(&DELEGATE_SECP256K1_PRIVATE_KEY).unwrap()
@@ -143,466 +78,282 @@ fn sign_transfer_authorization(
     bytes
 }
 
-/// Build initialize instruction data.
-/// Wire format: [disc=0]
-fn build_initialize_data() -> Vec<u8> {
-    vec![0u8]
-}
-
-/// Build set_ethereum_address instruction data.
-/// Wire format: [disc=1] [ethereum_address: 20 bytes]
-fn build_set_ethereum_address_data(ethereum_address: [u8; 20]) -> Vec<u8> {
-    let mut data = vec![1u8];
-    data.extend_from_slice(&ethereum_address);
-    data
-}
-
-/// Build transfer_tokens instruction data.
-/// Wire format: [disc=2] [amount: u64 LE] [signature: 65 bytes]
-fn build_transfer_tokens_data(amount: u64, signature: [u8; 65]) -> Vec<u8> {
-    let mut data = vec![2u8];
-    data.extend_from_slice(&amount.to_le_bytes());
-    data.extend_from_slice(&signature);
-    data
-}
-
-/// Build authority_transfer instruction data.
-/// Wire format: [disc=3] [amount: u64 LE]
-fn build_authority_transfer_data(amount: u64) -> Vec<u8> {
-    let mut data = vec![3u8];
-    data.extend_from_slice(&amount.to_le_bytes());
-    data
-}
-
-fn initialize_instruction(user_account: Pubkey, authority: Pubkey) -> Instruction {
-    Instruction {
-        program_id: crate::ID,
-        accounts: vec![
-            solana_instruction::AccountMeta::new(user_account.into(), true),
-            solana_instruction::AccountMeta::new(authority.into(), true),
-            solana_instruction::AccountMeta::new_readonly(
-                quasar_svm::system_program::ID.into(),
-                false,
-            ),
-        ],
-        data: build_initialize_data(),
-    }
-}
-
-fn set_ethereum_address_instruction(
-    user_account: Pubkey,
-    authority: Pubkey,
-    ethereum_address: [u8; 20],
-) -> Instruction {
-    Instruction {
-        program_id: crate::ID,
-        accounts: vec![
-            solana_instruction::AccountMeta::new(user_account.into(), false),
-            solana_instruction::AccountMeta::new_readonly(authority.into(), true),
-        ],
-        data: build_set_ethereum_address_data(ethereum_address),
-    }
-}
-
-/// Addresses shared by every transfer test.
-struct Fixture {
-    authority: Pubkey,
-    user_account: Pubkey,
-    user_pda: Pubkey,
-    mint: Pubkey,
-    user_token_account: Pubkey,
-    recipient_token_account: Pubkey,
-}
-
-fn fixture() -> Fixture {
-    let user_account = Pubkey::new_unique();
-    let (user_pda, _bump) =
-        Pubkey::find_program_address(&[user_account.as_ref()], &crate::ID);
-    Fixture {
-        authority: Pubkey::new_unique(),
-        user_account,
-        user_pda,
-        mint: Pubkey::new_unique(),
-        user_token_account: Pubkey::new_unique(),
-        recipient_token_account: Pubkey::new_unique(),
-    }
-}
-
-fn transfer_tokens_instruction(
-    fixture: &Fixture,
-    authority: Pubkey,
-    recipient_token_account: Pubkey,
-    amount: u64,
-    signature: [u8; 65],
-) -> Instruction {
-    Instruction {
-        program_id: crate::ID,
-        accounts: vec![
-            solana_instruction::AccountMeta::new(fixture.user_account.into(), false),
-            solana_instruction::AccountMeta::new_readonly(authority.into(), true),
-            solana_instruction::AccountMeta::new_readonly(fixture.mint.into(), false),
-            solana_instruction::AccountMeta::new(fixture.user_token_account.into(), false),
-            solana_instruction::AccountMeta::new(recipient_token_account.into(), false),
-            solana_instruction::AccountMeta::new_readonly(fixture.user_pda.into(), false),
-            solana_instruction::AccountMeta::new_readonly(
-                quasar_svm::SPL_TOKEN_PROGRAM_ID.into(),
-                false,
-            ),
-        ],
-        data: build_transfer_tokens_data(amount, signature),
-    }
+/// Fund the authority and initialize the user account. The init target enters
+/// the transaction as an empty system account automatically; the generated
+/// builder marks it as a required signer (fresh keypair account).
+fn initialize_user_account(test: &mut Test) {
+    test.add(Wallet::new().at(AUTHORITY));
+    test.send(InitializeInstruction {
+        user_account: USER_ACCOUNT,
+        authority: AUTHORITY,
+    })
+    .succeeds();
 }
 
 /// Initializes the user account, links the fixed delegate Ethereum key, and
 /// loads the PDA-owned token account plus an empty recipient token account.
-fn setup_transfer_fixture() -> (QuasarSvm, Fixture) {
-    let mut svm = setup();
-    let fixture = fixture();
-
-    svm.process_instruction(
-        &initialize_instruction(fixture.user_account, fixture.authority),
-        &[empty(fixture.user_account), signer(fixture.authority)],
-    )
-    .assert_success();
-
-    svm.process_instruction(
-        &set_ethereum_address_instruction(
-            fixture.user_account,
-            fixture.authority,
-            ethereum_address_of(&delegate_secret_key()),
-        ),
-        &[],
-    )
-    .assert_success();
+fn setup_transfer_world(test: &mut Test) -> Pubkey {
+    initialize_user_account(test);
+    test.send(SetEthereumAddressInstruction {
+        user_account: USER_ACCOUNT,
+        authority: AUTHORITY,
+        ethereum_address: ethereum_address_of(&delegate_secret_key()),
+    })
+    .succeeds();
 
     // Load token state directly: a mint, the PDA-owned funded token account,
-    // the empty recipient token account, and the (data-less) PDA itself.
-    svm.set_account(mint(fixture.mint, fixture.authority));
-    svm.set_account(token(
-        fixture.user_token_account,
-        fixture.mint,
-        fixture.user_pda,
-        MINT_AMOUNT,
-    ));
-    svm.set_account(token(
-        fixture.recipient_token_account,
-        fixture.mint,
-        fixture.authority,
-        0,
-    ));
-    svm.set_account(empty(fixture.user_pda));
-
-    (svm, fixture)
-}
-
-fn external_delegate_error(error: ExternalDelegateError) -> ProgramError {
-    ProgramError::Custom(error as u32)
-}
-
-#[test]
-fn test_initialize() {
-    let mut svm = setup();
-
-    let authority = Pubkey::new_unique();
-    let user_account = Pubkey::new_unique();
-
-    let result = svm.process_instruction(
-        &initialize_instruction(user_account, authority),
-        &[empty(user_account), signer(authority)],
+    // and the empty recipient token account.
+    let user_pda = test.derive_pda(UserPda::seeds(&USER_ACCOUNT));
+    test.add(
+        Mint::new(AUTHORITY)
+            .at(MINT)
+            .supply(MINT_AMOUNT)
+            .decimals(MINT_DECIMALS),
     );
-    result.assert_success();
-    println!("  INITIALIZE CU: {}", result.compute_units_consumed);
-
-    let state = read_user_account(&svm, &user_account);
-    assert_eq!(state.authority, authority);
-    assert_eq!(state.ethereum_address, [0u8; 20]);
-    assert_eq!(state.nonce, 0);
+    test.add(
+        TokenAccount::new(MINT, user_pda)
+            .at(USER_TOKEN_ACCOUNT)
+            .amount(MINT_AMOUNT),
+    );
+    test.add(TokenAccount::new(MINT, AUTHORITY).at(RECIPIENT_TOKEN_ACCOUNT));
+    user_pda
 }
 
-#[test]
-fn test_set_ethereum_address() {
-    let mut svm = setup();
+/// Transfer instruction for the Ethereum-signature path. The user PDA and
+/// token program are canonical derivations, so the generated instruction
+/// omits them.
+fn transfer_tokens_instruction(
+    authority: Pubkey,
+    recipient_token_account: Pubkey,
+    amount: u64,
+    signature: [u8; 65],
+) -> TransferTokensInstruction {
+    TransferTokensInstruction {
+        user_account: USER_ACCOUNT,
+        authority,
+        mint: MINT,
+        user_token_account: USER_TOKEN_ACCOUNT,
+        recipient_token_account,
+        amount,
+        signature,
+    }
+}
 
-    let authority = Pubkey::new_unique();
-    let user_account = Pubkey::new_unique();
+#[quasar_test]
+fn initialize_creates_user_account_with_zero_state(test: &mut Test) {
+    initialize_user_account(test);
 
-    svm.process_instruction(
-        &initialize_instruction(user_account, authority),
-        &[empty(user_account), signer(authority)],
-    )
-    .assert_success();
+    let state = test.read::<UserAccount>(USER_ACCOUNT);
+    assert_eq!(state.authority, AUTHORITY);
+    assert_eq!(state.ethereum_address, [0u8; 20]);
+    assert_eq!(u64::from(state.nonce), 0);
+}
+
+#[quasar_test]
+fn set_ethereum_address_stores_the_address(test: &mut Test) {
+    initialize_user_account(test);
 
     let ethereum_address = ethereum_address_of(&delegate_secret_key());
-    let result = svm.process_instruction(
-        &set_ethereum_address_instruction(user_account, authority, ethereum_address),
-        &[],
-    );
-    result.assert_success();
-    println!("  SET_ETHEREUM_ADDRESS CU: {}", result.compute_units_consumed);
+    test.send(SetEthereumAddressInstruction {
+        user_account: USER_ACCOUNT,
+        authority: AUTHORITY,
+        ethereum_address,
+    })
+    .succeeds();
 
     assert_eq!(
-        read_user_account(&svm, &user_account).ethereum_address,
+        test.read::<UserAccount>(USER_ACCOUNT).ethereum_address,
         ethereum_address
     );
 }
 
-#[test]
-fn test_set_ethereum_address_wrong_authority_fails() {
-    let mut svm = setup();
+#[quasar_test]
+fn set_ethereum_address_wrong_authority_fails(test: &mut Test) {
+    initialize_user_account(test);
+    test.add(Wallet::new().at(MALLORY));
 
-    let authority = Pubkey::new_unique();
-    let mallory = Pubkey::new_unique();
-    let user_account = Pubkey::new_unique();
-
-    svm.process_instruction(
-        &initialize_instruction(user_account, authority),
-        &[empty(user_account), signer(authority)],
-    )
-    .assert_success();
-
-    let result = svm.process_instruction(
-        &set_ethereum_address_instruction(
-            user_account,
-            mallory,
-            ethereum_address_of(&delegate_secret_key()),
-        ),
-        &[signer(mallory)],
-    );
+    let result = test.send(SetEthereumAddressInstruction {
+        user_account: USER_ACCOUNT,
+        authority: MALLORY,
+        ethereum_address: ethereum_address_of(&delegate_secret_key()),
+    });
     assert!(
-        !result.is_ok(),
+        result.is_err(),
         "a signer other than user_account.authority must be rejected"
     );
 }
 
-#[test]
-fn test_transfer_tokens_with_valid_signature_moves_tokens_and_increments_nonce() {
-    let (mut svm, fixture) = setup_transfer_fixture();
+#[quasar_test]
+fn transfer_tokens_with_valid_signature_moves_tokens_and_increments_nonce(test: &mut Test) {
+    setup_transfer_world(test);
 
     let message = build_transfer_authorization_message(
-        &fixture.user_account,
+        &USER_ACCOUNT,
         TRANSFER_AMOUNT,
-        &fixture.recipient_token_account,
+        &RECIPIENT_TOKEN_ACCOUNT,
         0,
     );
     let signature = sign_transfer_authorization(&delegate_secret_key(), &message);
 
-    let result = svm.process_instruction(
-        &transfer_tokens_instruction(
-            &fixture,
-            fixture.authority,
-            fixture.recipient_token_account,
-            TRANSFER_AMOUNT,
-            signature,
-        ),
-        &[],
-    );
-    result.assert_success();
-    println!("  TRANSFER_TOKENS CU: {}", result.compute_units_consumed);
-
-    assert_eq!(
-        token_balance(&svm, &fixture.recipient_token_account),
-        TRANSFER_AMOUNT
-    );
-    assert_eq!(
-        token_balance(&svm, &fixture.user_token_account),
-        MINT_AMOUNT - TRANSFER_AMOUNT
-    );
-    assert_eq!(read_user_account(&svm, &fixture.user_account).nonce, 1);
-}
-
-#[test]
-fn test_transfer_tokens_replayed_signature_fails() {
-    let (mut svm, fixture) = setup_transfer_fixture();
-
-    let message = build_transfer_authorization_message(
-        &fixture.user_account,
-        TRANSFER_AMOUNT,
-        &fixture.recipient_token_account,
-        0,
-    );
-    let signature = sign_transfer_authorization(&delegate_secret_key(), &message);
-
-    let instruction = transfer_tokens_instruction(
-        &fixture,
-        fixture.authority,
-        fixture.recipient_token_account,
+    test.send(transfer_tokens_instruction(
+        AUTHORITY,
+        RECIPIENT_TOKEN_ACCOUNT,
         TRANSFER_AMOUNT,
         signature,
+    ))
+    .succeeds()
+    .has_tokens(RECIPIENT_TOKEN_ACCOUNT, TRANSFER_AMOUNT)
+    .has_tokens(USER_TOKEN_ACCOUNT, MINT_AMOUNT - TRANSFER_AMOUNT);
+
+    assert_eq!(u64::from(test.read::<UserAccount>(USER_ACCOUNT).nonce), 1);
+}
+
+#[quasar_test]
+fn transfer_tokens_replayed_signature_fails(test: &mut Test) {
+    setup_transfer_world(test);
+
+    let message = build_transfer_authorization_message(
+        &USER_ACCOUNT,
+        TRANSFER_AMOUNT,
+        &RECIPIENT_TOKEN_ACCOUNT,
+        0,
     );
-    svm.process_instruction(&instruction, &[]).assert_success();
+    let signature = sign_transfer_authorization(&delegate_secret_key(), &message);
+
+    let instruction: Instruction = transfer_tokens_instruction(
+        AUTHORITY,
+        RECIPIENT_TOKEN_ACCOUNT,
+        TRANSFER_AMOUNT,
+        signature,
+    )
+    .into();
+    test.send(instruction.clone()).succeeds();
 
     // Replay the identical instruction. The stored nonce is now 1, so the
     // onchain reconstruction differs from the signed message.
-    let replay_result = svm.process_instruction(&instruction, &[]);
-    replay_result.assert_error(external_delegate_error(
-        ExternalDelegateError::InvalidSignature,
-    ));
+    test.send(instruction)
+        .fails_with(ExternalDelegateError::InvalidSignature);
 
     // Exactly one transfer happened.
-    assert_eq!(
-        token_balance(&svm, &fixture.recipient_token_account),
-        TRANSFER_AMOUNT
-    );
-    assert_eq!(read_user_account(&svm, &fixture.user_account).nonce, 1);
+    assert_eq!(test.tokens(RECIPIENT_TOKEN_ACCOUNT), TRANSFER_AMOUNT);
+    assert_eq!(u64::from(test.read::<UserAccount>(USER_ACCOUNT).nonce), 1);
 }
 
-#[test]
-fn test_transfer_tokens_signature_over_different_amount_fails() {
-    let (mut svm, fixture) = setup_transfer_fixture();
+#[quasar_test]
+fn transfer_tokens_signature_over_different_amount_fails(test: &mut Test) {
+    setup_transfer_world(test);
 
     let authorized_amount = TRANSFER_AMOUNT;
     let attempted_amount = MINT_AMOUNT;
     let message = build_transfer_authorization_message(
-        &fixture.user_account,
+        &USER_ACCOUNT,
         authorized_amount,
-        &fixture.recipient_token_account,
+        &RECIPIENT_TOKEN_ACCOUNT,
         0,
     );
     let signature = sign_transfer_authorization(&delegate_secret_key(), &message);
 
-    let result = svm.process_instruction(
-        &transfer_tokens_instruction(
-            &fixture,
-            fixture.authority,
-            fixture.recipient_token_account,
-            attempted_amount,
-            signature,
-        ),
-        &[],
-    );
-    result.assert_error(external_delegate_error(
-        ExternalDelegateError::InvalidSignature,
-    ));
-    assert_eq!(token_balance(&svm, &fixture.recipient_token_account), 0);
-    assert_eq!(read_user_account(&svm, &fixture.user_account).nonce, 0);
+    test.send(transfer_tokens_instruction(
+        AUTHORITY,
+        RECIPIENT_TOKEN_ACCOUNT,
+        attempted_amount,
+        signature,
+    ))
+    .fails_with(ExternalDelegateError::InvalidSignature);
+
+    assert_eq!(test.tokens(RECIPIENT_TOKEN_ACCOUNT), 0);
+    assert_eq!(u64::from(test.read::<UserAccount>(USER_ACCOUNT).nonce), 0);
 }
 
-#[test]
-fn test_transfer_tokens_signature_over_different_recipient_fails() {
-    let (mut svm, fixture) = setup_transfer_fixture();
+#[quasar_test]
+fn transfer_tokens_signature_over_different_recipient_fails(test: &mut Test) {
+    setup_transfer_world(test);
 
     // Sign for the legitimate recipient, then try to redirect the transfer
     // to an attacker-controlled token account.
-    let attacker = Pubkey::new_unique();
-    let attacker_token_account = Pubkey::new_unique();
-    svm.set_account(token(attacker_token_account, fixture.mint, attacker, 0));
+    test.add(TokenAccount::new(MINT, ATTACKER).at(ATTACKER_TOKEN_ACCOUNT));
 
     let message = build_transfer_authorization_message(
-        &fixture.user_account,
+        &USER_ACCOUNT,
         TRANSFER_AMOUNT,
-        &fixture.recipient_token_account,
+        &RECIPIENT_TOKEN_ACCOUNT,
         0,
     );
     let signature = sign_transfer_authorization(&delegate_secret_key(), &message);
 
-    let result = svm.process_instruction(
-        &transfer_tokens_instruction(
-            &fixture,
-            fixture.authority,
-            attacker_token_account,
-            TRANSFER_AMOUNT,
-            signature,
-        ),
-        &[],
-    );
-    result.assert_error(external_delegate_error(
-        ExternalDelegateError::InvalidSignature,
-    ));
-    assert_eq!(token_balance(&svm, &attacker_token_account), 0);
+    test.send(transfer_tokens_instruction(
+        AUTHORITY,
+        ATTACKER_TOKEN_ACCOUNT,
+        TRANSFER_AMOUNT,
+        signature,
+    ))
+    .fails_with(ExternalDelegateError::InvalidSignature);
+
+    assert_eq!(test.tokens(ATTACKER_TOKEN_ACCOUNT), 0);
 }
 
-#[test]
-fn test_transfer_tokens_wrong_solana_authority_fails() {
-    let (mut svm, fixture) = setup_transfer_fixture();
+#[quasar_test]
+fn transfer_tokens_wrong_solana_authority_fails(test: &mut Test) {
+    setup_transfer_world(test);
+    test.add(Wallet::new().at(MALLORY));
 
     // A correctly signed Ethereum authorization must not bypass the
     // Solana-side authority check.
-    let mallory = Pubkey::new_unique();
     let message = build_transfer_authorization_message(
-        &fixture.user_account,
+        &USER_ACCOUNT,
         TRANSFER_AMOUNT,
-        &fixture.recipient_token_account,
+        &RECIPIENT_TOKEN_ACCOUNT,
         0,
     );
     let signature = sign_transfer_authorization(&delegate_secret_key(), &message);
 
-    let result = svm.process_instruction(
-        &transfer_tokens_instruction(
-            &fixture,
-            mallory,
-            fixture.recipient_token_account,
-            TRANSFER_AMOUNT,
-            signature,
-        ),
-        &[signer(mallory)],
-    );
+    let result = test.send(transfer_tokens_instruction(
+        MALLORY,
+        RECIPIENT_TOKEN_ACCOUNT,
+        TRANSFER_AMOUNT,
+        signature,
+    ));
     assert!(
-        !result.is_ok(),
+        result.is_err(),
         "a signer other than user_account.authority must be rejected"
     );
-    assert_eq!(token_balance(&svm, &fixture.recipient_token_account), 0);
-    assert_eq!(read_user_account(&svm, &fixture.user_account).nonce, 0);
+    assert_eq!(test.tokens(RECIPIENT_TOKEN_ACCOUNT), 0);
+    assert_eq!(u64::from(test.read::<UserAccount>(USER_ACCOUNT).nonce), 0);
 }
 
-#[test]
-fn test_authority_transfer() {
-    let (mut svm, fixture) = setup_transfer_fixture();
+#[quasar_test]
+fn authority_transfer_moves_tokens(test: &mut Test) {
+    setup_transfer_world(test);
 
-    let instruction = Instruction {
-        program_id: crate::ID,
-        accounts: vec![
-            solana_instruction::AccountMeta::new_readonly(fixture.user_account.into(), false),
-            solana_instruction::AccountMeta::new_readonly(fixture.authority.into(), true),
-            solana_instruction::AccountMeta::new_readonly(fixture.mint.into(), false),
-            solana_instruction::AccountMeta::new(fixture.user_token_account.into(), false),
-            solana_instruction::AccountMeta::new(fixture.recipient_token_account.into(), false),
-            solana_instruction::AccountMeta::new_readonly(fixture.user_pda.into(), false),
-            solana_instruction::AccountMeta::new_readonly(
-                quasar_svm::SPL_TOKEN_PROGRAM_ID.into(),
-                false,
-            ),
-        ],
-        data: build_authority_transfer_data(TRANSFER_AMOUNT),
-    };
-    let result = svm.process_instruction(&instruction, &[]);
-    result.assert_success();
-    println!("  AUTHORITY_TRANSFER CU: {}", result.compute_units_consumed);
-
-    assert_eq!(
-        token_balance(&svm, &fixture.recipient_token_account),
-        TRANSFER_AMOUNT
-    );
-    assert_eq!(
-        token_balance(&svm, &fixture.user_token_account),
-        MINT_AMOUNT - TRANSFER_AMOUNT
-    );
+    test.send(AuthorityTransferInstruction {
+        user_account: USER_ACCOUNT,
+        authority: AUTHORITY,
+        mint: MINT,
+        user_token_account: USER_TOKEN_ACCOUNT,
+        recipient_token_account: RECIPIENT_TOKEN_ACCOUNT,
+        amount: TRANSFER_AMOUNT,
+    })
+    .succeeds()
+    .has_tokens(RECIPIENT_TOKEN_ACCOUNT, TRANSFER_AMOUNT)
+    .has_tokens(USER_TOKEN_ACCOUNT, MINT_AMOUNT - TRANSFER_AMOUNT);
 }
 
-#[test]
-fn test_authority_transfer_wrong_authority_fails() {
-    let (mut svm, fixture) = setup_transfer_fixture();
+#[quasar_test]
+fn authority_transfer_wrong_authority_fails(test: &mut Test) {
+    setup_transfer_world(test);
+    test.add(Wallet::new().at(MALLORY));
 
-    let mallory = Pubkey::new_unique();
-    let instruction = Instruction {
-        program_id: crate::ID,
-        accounts: vec![
-            solana_instruction::AccountMeta::new_readonly(fixture.user_account.into(), false),
-            solana_instruction::AccountMeta::new_readonly(mallory.into(), true),
-            solana_instruction::AccountMeta::new_readonly(fixture.mint.into(), false),
-            solana_instruction::AccountMeta::new(fixture.user_token_account.into(), false),
-            solana_instruction::AccountMeta::new(fixture.recipient_token_account.into(), false),
-            solana_instruction::AccountMeta::new_readonly(fixture.user_pda.into(), false),
-            solana_instruction::AccountMeta::new_readonly(
-                quasar_svm::SPL_TOKEN_PROGRAM_ID.into(),
-                false,
-            ),
-        ],
-        data: build_authority_transfer_data(TRANSFER_AMOUNT),
-    };
-    let result = svm.process_instruction(&instruction, &[signer(mallory)]);
+    let result = test.send(AuthorityTransferInstruction {
+        user_account: USER_ACCOUNT,
+        authority: MALLORY,
+        mint: MINT,
+        user_token_account: USER_TOKEN_ACCOUNT,
+        recipient_token_account: RECIPIENT_TOKEN_ACCOUNT,
+        amount: TRANSFER_AMOUNT,
+    });
     assert!(
-        !result.is_ok(),
+        result.is_err(),
         "a signer other than user_account.authority must be rejected"
     );
-    assert_eq!(token_balance(&svm, &fixture.recipient_token_account), 0);
+    assert_eq!(test.tokens(RECIPIENT_TOKEN_ACCOUNT), 0);
 }

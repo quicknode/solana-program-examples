@@ -1,4 +1,5 @@
 use {
+    quasar_lang::cpi::Seed,
     crate::{
         error::AmmError,
         state::{Config, PoolConfig, PoolConfigInner},

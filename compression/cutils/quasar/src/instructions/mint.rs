@@ -53,16 +53,10 @@ pub struct MintAccountConstraints {
     pub system_program: Program<SystemProgram>,
 }
 
-pub fn handle_mint(accounts: &mut MintAccountConstraints, data: &[u8]) -> Result<(), ProgramError> {
-    // Parse URI from instruction data: u32 length prefix + utf8 bytes (borsh String)
-    if data.len() < 4 {
-        return Err(ProgramError::InvalidInstructionData);
-    }
-    let uri_len = u32::from_le_bytes(data[0..4].try_into().unwrap()) as usize;
-    if data.len() < 4 + uri_len || uri_len > MAX_URI_LEN {
-        return Err(ProgramError::InvalidInstructionData);
-    }
-    let uri = &data[4..4 + uri_len];
+pub fn handle_mint(accounts: &mut MintAccountConstraints, uri: &str) -> Result<(), ProgramError> {
+    // The bounded String<256, 2> argument already enforces MAX_URI_LEN and
+    // UTF-8 at the decode boundary; the CPI encoder consumes the raw bytes.
+    let uri = uri.as_bytes();
 
     // Build CPI instruction data
     let mut ix_data = [0u8; MAX_IX_DATA];

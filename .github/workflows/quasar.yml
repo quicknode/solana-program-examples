@@ -201,9 +201,11 @@ jobs:
               return 1
             fi
 
-            # Build every program first.
+            # Build every program first. The 0.1.0 CLI generates the IDL and
+            # clients before compiling and runs `cargo metadata --locked`, so
+            # a lockfile must exist before the first `quasar build`.
             for d in "${prog_dirs[@]}"; do
-              if ! ( cd "$d" && quasar build ); then
+              if ! ( cd "$d" && cargo generate-lockfile && quasar build ); then
                 echo "::error::quasar build failed for $project ($d)"
                 echo "$project: quasar build failed with $solana_version" >> $GITHUB_WORKSPACE/failed_projects.txt
                 cd - > /dev/null
@@ -211,7 +213,7 @@ jobs:
               fi
             done
 
-            # Then run Rust tests (quasar examples use cargo test with quasar-svm).
+            # Then run Rust tests (quasar examples use cargo test with quasar-test).
             for d in "${prog_dirs[@]}"; do
               if ! ( cd "$d" && cargo test ); then
                 echo "::error::cargo test failed for $project ($d)"
@@ -259,16 +261,13 @@ jobs:
           # Pin an exact version rather than a tag like "stable", which setup-solana resolves via the GitHub API (can fail with 429).
           solana-cli-version: 3.1.14
       - name: Install Quasar CLI
-        # Pinned to quasar rev 3d6fb0d8 (the HEAD this migration was written
-        # against, immediately after PRs #195 + #196). The next merged PR
-        # (#198 "idl-redesign-clean", rev 096c8f7c) regressed `quasar build`
-        # for flat-layout projects: the new IDL flow chdirs to
-        # `crate_path.parent()` which evaluates to an empty PathBuf when
-        # the program crate is at the project root (src/lib.rs in `.`),
-        # causing posix_spawn child chdir("") to fail with ENOENT before
-        # any compilation begins. Symptom in CI is a bare "Anyhow error".
-        # Unpin once upstream lands a fix that handles the flat layout.
-        run: cargo install --git https://github.com/blueshift-gg/quasar --rev 3d6fb0d8 quasar-cli --locked
+        # Pinned to the 0.1.0-release branch head. crates.io still hosts
+        # 0.0.0 placeholders for quasar-cli, so the release line installs
+        # from git. Keep this rev in lockstep with the `rev = "be60fca"`
+        # pins in every quasar Cargo.toml. Switch to
+        # `cargo install quasar-cli --version 0.1.0 --locked` once the
+        # 0.1.0 crates are published.
+        run: cargo install --git https://github.com/blueshift-gg/quasar --rev be60fca quasar-cli --locked
       - name: Build and Test with Stable
         run: |
           source build_and_test.sh

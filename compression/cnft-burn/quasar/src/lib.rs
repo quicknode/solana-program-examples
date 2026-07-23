@@ -30,10 +30,29 @@ declare_id!("C6qxH8n6mZxrrbtMtYWYSp8JR8vkQ55X1o4EBg7twnMv");
 mod quasar_cnft_burn {
     use super::*;
 
+    /// The Bubblegum Burn args arrive as typed instruction arguments: 0.1.0
+    /// clears `ctx.data` after decoding declared args (the instruction
+    /// argument zero-copy boundary), so the pre-0.1.0 raw-tail pattern reads
+    /// an empty slice. Only the variable-length proof stays dynamic, as
+    /// remaining accounts.
     #[instruction(discriminator = 0)]
-    pub fn burn_cnft(ctx: CtxWithRemaining<BurnCnftAccountConstraints>) -> Result<(), ProgramError> {
-        let data = ctx.data;
+    pub fn burn_cnft(
+        ctx: CtxWithRemaining<BurnCnftAccountConstraints>,
+        root: [u8; 32],
+        data_hash: [u8; 32],
+        creator_hash: [u8; 32],
+        nonce: u64,
+        index: u32,
+    ) -> Result<(), ProgramError> {
         let remaining = ctx.remaining_accounts();
-        instructions::handle_burn_cnft(&mut ctx.accounts, data, remaining)
+        instructions::handle_burn_cnft(
+            &mut ctx.accounts,
+            root,
+            data_hash,
+            creator_hash,
+            nonce,
+            index,
+            remaining,
+        )
     }
 }

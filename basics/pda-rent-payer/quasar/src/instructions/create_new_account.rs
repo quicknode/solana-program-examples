@@ -1,6 +1,6 @@
 use {
     crate::instructions::init_rent_vault::RentVault,
-    quasar_lang::{prelude::*, sysvars::Sysvar},
+    quasar_lang::{cpi::Seed, prelude::*, sysvars::Sysvar},
 };
 
 /// Accounts for creating a new account funded by the rent vault PDA.

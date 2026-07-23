@@ -158,10 +158,10 @@ fn handle_initialize_extra_account_meta_list(
 
         // Derive PDA
         let mint_address = accounts.mint.to_account_view().address();
-        let (expected_pda, bump) = Address::find_program_address(
+        let (expected_pda, bump) = quasar_lang::pda::try_find_program_address(
             &[b"extra-account-metas", mint_address.as_ref()],
             &crate::ID,
-        );
+        )?;
 
         let meta_list_address = accounts.extra_account_meta_list.to_account_view().address();
         if meta_list_address != &expected_pda {

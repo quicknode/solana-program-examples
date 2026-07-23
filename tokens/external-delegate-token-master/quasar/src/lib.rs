@@ -1,6 +1,6 @@
 #![cfg_attr(not(test), no_std)]
 
-use quasar_lang::prelude::*;
+use quasar_lang::{cpi::Seed, prelude::*};
 use quasar_spl::prelude::*;
 
 #[cfg(test)]

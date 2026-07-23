@@ -1,178 +1,93 @@
-use quasar_svm::{Account, Instruction, Pubkey, QuasarSvm};
-use solana_address::Address;
-
-use crate::instructions::TransferSolError;
-use quasar_transfer_sol_client::{
-    TransferSolWithCpiInstruction, TransferSolWithProgramInstruction,
+use {
+    crate::{
+        cpi::{TransferSolWithCpiInstruction, TransferSolWithProgramInstruction},
+        instructions::TransferSolError,
+    },
+    quasar_test::prelude::*,
 };
 
-fn setup() -> QuasarSvm {
-    let elf = include_bytes!("../target/deploy/quasar_transfer_sol.so");
-    QuasarSvm::new().with_program(&Pubkey::from(crate::ID), elf)
-}
+// Deterministic addresses keep tests independent of discovery order.
+const PAYER: Pubkey = Pubkey::new_from_array([1; 32]);
+const RECIPIENT: Pubkey = Pubkey::new_from_array([2; 32]);
 
-fn signer(address: Pubkey) -> Account {
-    quasar_svm::token::create_keyed_system_account(&address, 10_000_000_000)
-}
-
-fn system_account(address: Pubkey, lamports: u64) -> Account {
-    Account {
+/// Install a zero-data account owned by this program: direct lamport
+/// manipulation is only allowed on program-owned accounts.
+fn add_program_owned_account(test: &mut Test, address: Pubkey, lamports: u64) {
+    test.set_account(Account::new(
         address,
+        Pubkey::from(crate::ID),
         lamports,
-        data: vec![],
-        owner: quasar_svm::system_program::ID,
-        executable: false,
-    }
+        vec![],
+    ));
 }
 
-#[test]
-fn test_transfer_sol_with_cpi() {
-    let mut svm = setup();
-
-    let payer = Pubkey::new_unique();
-    let recipient = Pubkey::new_unique();
-    let system_program = quasar_svm::system_program::ID;
+#[quasar_test]
+fn transfer_with_cpi_moves_lamports(test: &mut Test) {
+    test.add(Wallet::new().at(PAYER));
     let amount = 1_000_000_000; // 1 SOL
 
-    let instruction: Instruction = TransferSolWithCpiInstruction {
-        payer: Address::from(payer.to_bytes()),
-        recipient: Address::from(recipient.to_bytes()),
-        system_program: Address::from(system_program.to_bytes()),
+    // The recipient starts empty: missing writable accounts enter the
+    // transaction as empty system accounts automatically.
+    test.send(TransferSolWithCpiInstruction {
+        payer: PAYER,
+        recipient: RECIPIENT,
         amount,
-    }
-    .into();
-
-    let result = svm.process_instruction(
-        &instruction,
-        &[signer(payer), system_account(recipient, 0)],
-    );
-
-    result.assert_success();
-
-    // Verify balances after transfer.
-    let payer_account = result.account(&payer).unwrap();
-    assert_eq!(payer_account.lamports, 10_000_000_000 - amount);
-
-    let recipient_account = result.account(&recipient).unwrap();
-    assert_eq!(recipient_account.lamports, amount);
+    })
+    .succeeds()
+    .has_lamports(PAYER, DEFAULT_WALLET_LAMPORTS - amount)
+    .has_lamports(RECIPIENT, amount);
 }
 
-#[test]
-fn test_transfer_sol_with_program() {
-    let mut svm = setup();
-
-    let payer = Pubkey::new_unique();
-    let recipient = Pubkey::new_unique();
+#[quasar_test]
+fn transfer_with_program_moves_lamports_directly(test: &mut Test) {
     let amount = 500_000_000; // 0.5 SOL
 
     // The payer must be owned by our program for direct lamport manipulation.
-    let payer_account = Account {
-        address: payer,
-        lamports: 2_000_000_000,
-        data: vec![],
-        owner: Pubkey::from(crate::ID),
-        executable: false,
-    };
+    add_program_owned_account(test, PAYER, 2_000_000_000);
+    add_program_owned_account(test, RECIPIENT, 1_000_000_000);
 
-    let recipient_account = Account {
-        address: recipient,
-        lamports: 1_000_000_000,
-        data: vec![],
-        owner: Pubkey::from(crate::ID),
-        executable: false,
-    };
-
-    let instruction: Instruction = TransferSolWithProgramInstruction {
-        payer: Address::from(payer.to_bytes()),
-        recipient: Address::from(recipient.to_bytes()),
+    test.send(TransferSolWithProgramInstruction {
+        payer: PAYER,
+        recipient: RECIPIENT,
         amount,
-    }
-    .into();
-
-    let result = svm.process_instruction(
-        &instruction,
-        &[payer_account, recipient_account],
-    );
-
-    result.assert_success();
-
-    // Verify balances.
-    let payer_after = result.account(&payer).unwrap();
-    assert_eq!(payer_after.lamports, 2_000_000_000 - amount);
-
-    let recipient_after = result.account(&recipient).unwrap();
-    assert_eq!(recipient_after.lamports, 1_000_000_000 + amount);
+    })
+    .succeeds()
+    .has_lamports(PAYER, 2_000_000_000 - amount)
+    .has_lamports(RECIPIENT, 1_000_000_000 + amount);
 }
 
-#[test]
-fn test_transfer_sol_with_program_rejects_foreign_owned_payer() {
-    let mut svm = setup();
-
-    let payer = Pubkey::new_unique();
-    let recipient = Pubkey::new_unique();
+#[quasar_test]
+fn transfer_with_program_rejects_a_foreign_owned_payer(test: &mut Test) {
     let amount = 500_000_000; // 0.5 SOL
 
     // The payer is owned by the system program, not this program, so the
     // owner constraint must reject the transfer before any lamports move.
-    let payer_account = system_account(payer, 2_000_000_000);
-    let recipient_account = Account {
-        address: recipient,
-        lamports: 1_000_000_000,
-        data: vec![],
-        owner: Pubkey::from(crate::ID),
-        executable: false,
-    };
+    test.add(Wallet::new().at(PAYER).lamports(2_000_000_000));
+    add_program_owned_account(test, RECIPIENT, 1_000_000_000);
 
-    let instruction: Instruction = TransferSolWithProgramInstruction {
-        payer: Address::from(payer.to_bytes()),
-        recipient: Address::from(recipient.to_bytes()),
+    test.send(TransferSolWithProgramInstruction {
+        payer: PAYER,
+        recipient: RECIPIENT,
         amount,
-    }
-    .into();
-
-    let result = svm.process_instruction(&instruction, &[payer_account, recipient_account]);
-    result.assert_error(quasar_svm::ProgramError::Custom(
-        TransferSolError::PayerNotOwnedByProgram as u32,
-    ));
+    })
+    .fails_with(TransferSolError::PayerNotOwnedByProgram);
 }
 
-#[test]
-fn test_transfer_sol_with_program_rejects_insufficient_funds() {
-    let mut svm = setup();
-
-    let payer = Pubkey::new_unique();
-    let recipient = Pubkey::new_unique();
+#[quasar_test]
+fn transfer_with_program_rejects_insufficient_funds(test: &mut Test) {
     let payer_lamports = 100_000_000; // 0.1 SOL
     let amount = 500_000_000; // 0.5 SOL, more than the payer holds
 
-    let payer_account = Account {
-        address: payer,
-        lamports: payer_lamports,
-        data: vec![],
-        owner: Pubkey::from(crate::ID),
-        executable: false,
-    };
-    let recipient_account = Account {
-        address: recipient,
-        lamports: 1_000_000_000,
-        data: vec![],
-        owner: Pubkey::from(crate::ID),
-        executable: false,
-    };
+    add_program_owned_account(test, PAYER, payer_lamports);
+    add_program_owned_account(test, RECIPIENT, 1_000_000_000);
 
-    let instruction: Instruction = TransferSolWithProgramInstruction {
-        payer: Address::from(payer.to_bytes()),
-        recipient: Address::from(recipient.to_bytes()),
+    test.send(TransferSolWithProgramInstruction {
+        payer: PAYER,
+        recipient: RECIPIENT,
         amount,
-    }
-    .into();
-
-    let result = svm.process_instruction(&instruction, &[payer_account, recipient_account]);
-    result.assert_error(quasar_svm::ProgramError::Custom(
-        TransferSolError::InsufficientFunds as u32,
-    ));
+    })
+    .fails_with(TransferSolError::InsufficientFunds);
 
     // No lamports moved.
-    let payer_after = result.account(&payer).unwrap();
-    assert_eq!(payer_after.lamports, payer_lamports);
+    assert_eq!(test.lamports(PAYER), payer_lamports);
 }

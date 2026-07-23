@@ -1,13 +1,13 @@
-//! QuasarSVM integration tests for the cnft-vault Quasar program.
+//! quasar-test integration tests for the cnft-vault Quasar program.
 //!
-//! Ported from the Anchor twin's LiteSVM suite. The SVM loads the program
-//! plus the three mainnet fixtures (mpl-bubblegum, spl-account-compression,
-//! spl-noop) from `../anchor/tests/fixtures/`, then:
+//! Ported from the Anchor twin's LiteSVM suite. The test world loads the
+//! program plus the three mainnet fixtures (mpl-bubblegum,
+//! spl-account-compression, spl-noop) from `../anchor/tests/fixtures/`, then:
 //!   1. Initializes the vault PDA via `initialize_vault`, storing the
 //!      withdraw authority.
 //!   2. Creates a Bubblegum Merkle tree (max_depth=3, max_buffer_size=8,
 //!      canopy=0) via `create_tree_config`. The pre-allocated tree account is
-//!      passed in as a compression-program-owned account, standing in for the
+//!      installed as a compression-program-owned account, standing in for the
 //!      system `create_account` step.
 //!   3. Mints a cNFT whose leaf owner is the vault PDA via `mint_v1`.
 //!   4. Recomputes `data_hash` / `creator_hash` exactly as Bubblegum does and
@@ -25,13 +25,13 @@
 
 extern crate std;
 use {
-    borsh::BorshSerialize,
-    quasar_cnft_vault_client::{
-        InitializeVaultInstruction, QuasarCnftVaultError, WithdrawCnftInstruction,
-        WithdrawTwoCnftsInstruction,
+    crate::{
+        cpi::{InitializeVaultInstruction, WithdrawCnftInstruction, WithdrawTwoCnftsInstruction},
+        error::VaultError,
+        state::Vault,
     },
-    quasar_svm::{Account, Instruction, ProgramError, Pubkey, QuasarSvm},
-    solana_instruction::AccountMeta,
+    borsh::BorshSerialize,
+    quasar_test::prelude::*,
     solana_keccak_hasher::hashv,
     std::{string::ToString, vec, vec::Vec},
 };
@@ -53,9 +53,18 @@ const MINT_V1_DISC: [u8; 8] = [145, 98, 192, 118, 184, 147, 118, 104];
 const MAX_DEPTH: u32 = 3;
 const MAX_BUFFER_SIZE: u32 = 8;
 
-/// Lamports for funded signers and prefabricated accounts; comfortably above
-/// rent exemption for every account size used here.
+/// Lamports for the prefabricated tree accounts; comfortably above rent
+/// exemption for every account size used here.
 const FUNDING_LAMPORTS: u64 = 1_000_000_000;
+
+// Deterministic addresses avoid Pubkey::new_unique(), whose global counter
+// produces different values depending on test binary layout / discovery order.
+const PAYER: Pubkey = Pubkey::new_from_array([1; 32]);
+const AUTHORITY: Pubkey = Pubkey::new_from_array([2; 32]);
+const RECIPIENT: Pubkey = Pubkey::new_from_array([3; 32]);
+const ATTACKER: Pubkey = Pubkey::new_from_array([4; 32]);
+const MERKLE_TREE_1: Pubkey = Pubkey::new_from_array([5; 32]);
+const MERKLE_TREE_2: Pubkey = Pubkey::new_from_array([6; 32]);
 
 // ---- MetadataArgs (mirrors mpl_bubblegum::types::MetadataArgs borsh layout) ----
 
@@ -159,26 +168,6 @@ fn read_current_root(data: &[u8]) -> [u8; 32] {
     root
 }
 
-// ---- Account helpers --------------------------------------------------------
-
-fn signer(address: Pubkey) -> Account {
-    quasar_svm::token::create_keyed_system_account(&address, FUNDING_LAMPORTS)
-}
-
-fn empty(address: Pubkey) -> Account {
-    Account {
-        address,
-        lamports: 0,
-        data: vec![],
-        owner: quasar_svm::system_program::ID,
-        executable: false,
-    }
-}
-
-fn vault_error(error: QuasarCnftVaultError) -> ProgramError {
-    ProgramError::Custom(error as u32)
-}
-
 // ---- Fixture setup ----------------------------------------------------------
 
 /// One Bubblegum tree holding a single cNFT owned by the vault PDA, plus
@@ -192,65 +181,52 @@ struct TreeWithVaultCnft {
     proof: [[u8; 32]; MAX_DEPTH as usize],
 }
 
-struct VaultTestContext {
-    svm: QuasarSvm,
-    payer: Pubkey,
-    /// The address stored as the vault's withdraw authority.
-    authority: Pubkey,
-    vault_pda: Pubkey,
+/// Load the external program fixtures (shared with the Anchor twin's LiteSVM
+/// suite), fund the actors, and initialize the vault PDA with `AUTHORITY` as
+/// its stored withdraw authority. Returns the vault PDA.
+fn setup_vault(test: &mut Test) -> Pubkey {
+    test.add(Program::new(
+        BUBBLEGUM_ID,
+        &std::fs::read("../anchor/tests/fixtures/mpl_bubblegum.so").unwrap(),
+    ));
+    test.add(Program::new(
+        COMPRESSION_ID,
+        &std::fs::read("../anchor/tests/fixtures/spl_account_compression.so").unwrap(),
+    ));
+    test.add(Program::new(
+        NOOP_ID,
+        &std::fs::read("../anchor/tests/fixtures/spl_noop.so").unwrap(),
+    ));
+    test.add(Wallet::new().at(PAYER));
+    test.add(Wallet::new().at(AUTHORITY));
+
+    let vault = test.derive_pda(Vault::seeds());
+
+    // The vault PDA and system program are canonical derivations, so the
+    // generated instruction only asks for the authority (who also pays).
+    test.send(InitializeVaultInstruction {
+        authority: AUTHORITY,
+    })
+    .succeeds();
+
+    vault
 }
 
-fn setup_vault() -> VaultTestContext {
-    // The fixture binaries are shared with the Anchor twin's LiteSVM suite.
-    let program_elf = std::fs::read("target/deploy/quasar_cnft_vault.so").unwrap();
-    let bubblegum_elf = std::fs::read("../anchor/tests/fixtures/mpl_bubblegum.so").unwrap();
-    let compression_elf =
-        std::fs::read("../anchor/tests/fixtures/spl_account_compression.so").unwrap();
-    let noop_elf = std::fs::read("../anchor/tests/fixtures/spl_noop.so").unwrap();
-
-    let mut svm = QuasarSvm::new()
-        .with_program(&crate::ID, &program_elf)
-        .with_program(&BUBBLEGUM_ID, &bubblegum_elf)
-        .with_program(&COMPRESSION_ID, &compression_elf)
-        .with_program(&NOOP_ID, &noop_elf);
-
-    let payer = Pubkey::new_unique();
-    let authority = Pubkey::new_unique();
-    let (vault_pda, _) = Pubkey::find_program_address(&[b"cNFT-vault"], &crate::ID);
-
-    // initialize_vault: store `authority` on the vault PDA.
-    let instruction: Instruction = InitializeVaultInstruction {
-        authority,
-        vault: vault_pda,
-        system_program: quasar_svm::system_program::ID,
-    }
-    .into();
-    let result = svm.process_instruction(&instruction, &[signer(authority), empty(vault_pda)]);
-    result.assert_success();
-
-    VaultTestContext {
-        svm,
-        payer,
-        authority,
-        vault_pda,
-    }
-}
-
-/// Create a Bubblegum tree and mint one cNFT into the vault PDA.
-fn create_tree_with_vault_cnft(context: &mut VaultTestContext) -> TreeWithVaultCnft {
-    let payer = context.payer;
-    let merkle_tree = Pubkey::new_unique();
-
+/// Create a Bubblegum tree at `merkle_tree` and mint one cNFT into the vault.
+fn create_tree_with_vault_cnft(
+    test: &mut Test,
+    vault: Pubkey,
+    merkle_tree: Pubkey,
+) -> TreeWithVaultCnft {
     // The allocated-but-uninitialized tree account the system program would
     // have created in the `create_account` step (a foreign-program account,
     // so prefabricating it is fine).
-    let tree_account = Account {
-        address: merkle_tree,
-        lamports: FUNDING_LAMPORTS,
-        data: vec![0; TREE_ACCOUNT_SIZE],
-        owner: COMPRESSION_ID,
-        executable: false,
-    };
+    test.set_account(Account::new(
+        merkle_tree,
+        COMPRESSION_ID,
+        FUNDING_LAMPORTS,
+        vec![0; TREE_ACCOUNT_SIZE],
+    ));
 
     // tree_authority (a.k.a tree_config) PDA = [merkle_tree] under bubblegum.
     let (tree_config, _) = Pubkey::find_program_address(&[merkle_tree.as_ref()], &BUBBLEGUM_ID);
@@ -261,11 +237,11 @@ fn create_tree_with_vault_cnft(context: &mut VaultTestContext) -> TreeWithVaultC
         accounts: vec![
             AccountMeta::new(tree_config, false),
             AccountMeta::new(merkle_tree, false),
-            AccountMeta::new(payer, true),
-            AccountMeta::new_readonly(payer, true), // tree_creator
+            AccountMeta::new(PAYER, true),
+            AccountMeta::new_readonly(PAYER, true), // tree_creator
             AccountMeta::new_readonly(NOOP_ID, false),
             AccountMeta::new_readonly(COMPRESSION_ID, false),
-            AccountMeta::new_readonly(quasar_svm::system_program::ID, false),
+            AccountMeta::new_readonly(system_program::ID, false),
         ],
         data: {
             let mut d = CREATE_TREE_CONFIG_DISC.to_vec();
@@ -275,18 +251,12 @@ fn create_tree_with_vault_cnft(context: &mut VaultTestContext) -> TreeWithVaultC
             d
         },
     };
-    context
-        .svm
-        .process_instruction(
-            &create_tree_instruction,
-            &[signer(payer), empty(tree_config), tree_account],
-        )
-        .assert_success();
+    test.send(create_tree_instruction).succeeds();
 
     // Build the MetadataArgs for the single cNFT we mint. The leaf owner /
     // delegate are the vault PDA, so the vault holds the cNFT.
     let creator = Creator {
-        address: payer.to_bytes(),
+        address: PAYER.to_bytes(),
         verified: false,
         share: 100,
     };
@@ -310,14 +280,14 @@ fn create_tree_with_vault_cnft(context: &mut VaultTestContext) -> TreeWithVaultC
         program_id: BUBBLEGUM_ID,
         accounts: vec![
             AccountMeta::new(tree_config, false),
-            AccountMeta::new_readonly(context.vault_pda, false),
-            AccountMeta::new_readonly(context.vault_pda, false), // leaf_delegate
+            AccountMeta::new_readonly(vault, false),
+            AccountMeta::new_readonly(vault, false), // leaf_delegate
             AccountMeta::new(merkle_tree, false),
-            AccountMeta::new_readonly(payer, true),
-            AccountMeta::new_readonly(payer, true), // tree_creator_or_delegate
+            AccountMeta::new_readonly(PAYER, true),
+            AccountMeta::new_readonly(PAYER, true), // tree_creator_or_delegate
             AccountMeta::new_readonly(NOOP_ID, false),
             AccountMeta::new_readonly(COMPRESSION_ID, false),
-            AccountMeta::new_readonly(quasar_svm::system_program::ID, false),
+            AccountMeta::new_readonly(system_program::ID, false),
         ],
         data: {
             let mut d = MINT_V1_DISC.to_vec();
@@ -325,10 +295,7 @@ fn create_tree_with_vault_cnft(context: &mut VaultTestContext) -> TreeWithVaultC
             d
         },
     };
-    context
-        .svm
-        .process_instruction(&mint_instruction, &[])
-        .assert_success();
+    test.send(mint_instruction).succeeds();
 
     // Recompute data_hash and creator_hash exactly as Bubblegum does.
     let data_hash = hash_metadata(&metadata);
@@ -338,7 +305,7 @@ fn create_tree_with_vault_cnft(context: &mut VaultTestContext) -> TreeWithVaultC
     let proof = [empty_node(0), empty_node(1), empty_node(2)];
 
     // Read the current root from the onchain tree account.
-    let tree_data = context.svm.get_account(&merkle_tree).unwrap().data;
+    let tree_data = test.account(merkle_tree).unwrap().data;
     let root = read_current_root(&tree_data);
 
     TreeWithVaultCnft {
@@ -353,18 +320,8 @@ fn create_tree_with_vault_cnft(context: &mut VaultTestContext) -> TreeWithVaultC
 
 // ---- Instruction builders for the program under test ------------------------
 
-/// Bubblegum Transfer args: root(32) + data_hash(32) + creator_hash(32) +
-/// nonce(8) + index(4). Leaf 0 in a fresh tree has nonce 0 and index 0.
-fn transfer_args(tree: &TreeWithVaultCnft) -> Vec<u8> {
-    let mut args = Vec::new();
-    args.extend_from_slice(&tree.root);
-    args.extend_from_slice(&tree.data_hash);
-    args.extend_from_slice(&tree.creator_hash);
-    args.extend_from_slice(&0u64.to_le_bytes()); // nonce
-    args.extend_from_slice(&0u32.to_le_bytes()); // index
-    args
-}
-
+/// Proof-node addresses enter the transaction as readonly metas; the runtime
+/// materializes the missing accounts as empty system accounts.
 fn proof_metas(nodes: &[[u8; 32]]) -> Vec<AccountMeta> {
     nodes
         .iter()
@@ -372,46 +329,35 @@ fn proof_metas(nodes: &[[u8; 32]]) -> Vec<AccountMeta> {
         .collect()
 }
 
-fn proof_accounts(nodes: &[[u8; 32]]) -> Vec<Account> {
-    nodes
-        .iter()
-        .map(|node| Pubkey::new_from_array(*node))
-        // empty_node(0) is all zeros, which is the system program's address.
-        // That account is already in the SVM's database; passing an empty
-        // account for it would overwrite the loaded program.
-        .filter(|address| *address != quasar_svm::system_program::ID)
-        .map(empty)
-        .collect()
-}
-
 fn build_withdraw_cnft_instruction(
-    context: &VaultTestContext,
     signer: Pubkey,
     tree: &TreeWithVaultCnft,
     recipient: Pubkey,
 ) -> Instruction {
-    let mut instruction: Instruction = WithdrawCnftInstruction {
+    // The vault PDA and system program are canonical derivations, so the
+    // generated instruction omits them.
+    // Leaf 0 in a fresh tree has nonce 0 and index 0. The Transfer args are
+    // typed instruction arguments in 0.1.0 (`ctx.data` no longer carries a
+    // raw tail); only the proof stays dynamic, as remaining accounts.
+    WithdrawCnftInstruction {
         authority: signer,
-        vault: context.vault_pda,
         tree_authority: tree.tree_config,
         new_leaf_owner: recipient,
         merkle_tree: tree.merkle_tree,
         log_wrapper: NOOP_ID,
         compression_program: COMPRESSION_ID,
         bubblegum_program: BUBBLEGUM_ID,
-        system_program: quasar_svm::system_program::ID,
+        root: tree.root,
+        data_hash: tree.data_hash,
+        creator_hash: tree.creator_hash,
+        nonce: 0,
+        index: 0,
         remaining_accounts: proof_metas(&tree.proof),
     }
-    .into();
-    // The generated builder carries only the discriminator byte; the handler
-    // reads the raw Transfer args from the rest of the instruction data.
-    instruction.data.extend_from_slice(&transfer_args(tree));
-    instruction
+    .into()
 }
 
-#[allow(clippy::too_many_arguments)]
 fn build_withdraw_two_cnfts_instruction(
-    context: &VaultTestContext,
     signer: Pubkey,
     tree1: &TreeWithVaultCnft,
     tree2: &TreeWithVaultCnft,
@@ -421,9 +367,8 @@ fn build_withdraw_two_cnfts_instruction(
 ) -> Instruction {
     let mut remaining_accounts = proof_metas(&tree1.proof);
     remaining_accounts.extend(proof_metas(&tree2.proof));
-    let mut instruction: Instruction = WithdrawTwoCnftsInstruction {
+    WithdrawTwoCnftsInstruction {
         authority: signer,
-        vault: context.vault_pda,
         tree_authority1: tree1.tree_config,
         new_leaf_owner1: recipient,
         merkle_tree1: tree1.merkle_tree,
@@ -433,139 +378,100 @@ fn build_withdraw_two_cnfts_instruction(
         log_wrapper: NOOP_ID,
         compression_program: COMPRESSION_ID,
         bubblegum_program: BUBBLEGUM_ID,
-        system_program: quasar_svm::system_program::ID,
+        root1: tree1.root,
+        data_hash1: tree1.data_hash,
+        creator_hash1: tree1.creator_hash,
+        nonce1: 0,
+        index1: 0,
+        proof_1_length,
+        root2: tree2.root,
+        data_hash2: tree2.data_hash,
+        creator_hash2: tree2.creator_hash,
+        nonce2: 0,
+        index2: 0,
+        proof_2_length,
         remaining_accounts,
     }
-    .into();
-    // args1(108) + proof_1_length(1) + args2(108) + proof_2_length(1)
-    instruction.data.extend_from_slice(&transfer_args(tree1));
-    instruction.data.push(proof_1_length);
-    instruction.data.extend_from_slice(&transfer_args(tree2));
-    instruction.data.push(proof_2_length);
-    instruction
-}
-
-/// Accounts a withdraw brings to process_instruction: the recipient and the
-/// proof-node addresses (everything else is already in the SVM's database).
-fn withdraw_extra_accounts(recipient: Pubkey, trees: &[&TreeWithVaultCnft]) -> Vec<Account> {
-    let mut accounts = vec![empty(recipient)];
-    for tree in trees {
-        accounts.extend(proof_accounts(&tree.proof));
-    }
-    accounts
+    .into()
 }
 
 // ---- Tests ------------------------------------------------------------------
 
-#[test]
-fn test_initialize_vault_stores_authority() {
-    let context = setup_vault();
+#[quasar_test]
+fn initialize_vault_stores_authority(test: &mut Test) {
+    let vault = setup_vault(test);
 
-    // Vault zero-copy layout: [disc:1][authority:32][bump:1]
-    let vault_account = context.svm.get_account(&context.vault_pda).unwrap();
-    assert_eq!(vault_account.data[0], 1, "Vault discriminator");
-    assert_eq!(&vault_account.data[1..33], context.authority.as_ref());
-    let (_, expected_bump) = Pubkey::find_program_address(&[b"cNFT-vault"], &crate::ID);
-    assert_eq!(vault_account.data[33], expected_bump);
+    let (_, expected_bump) = test.derive_pda_with_bump(Vault::seeds());
+    let state = test.read::<Vault>(vault);
+    assert_eq!(state.authority, AUTHORITY);
+    assert_eq!(state.bump, expected_bump);
 }
 
-#[test]
-fn test_withdraw_cnft_by_authority() {
-    let mut context = setup_vault();
-    let tree = create_tree_with_vault_cnft(&mut context);
-    let recipient = Pubkey::new_unique();
+#[quasar_test]
+fn withdraw_cnft_by_authority_succeeds_and_replay_fails(test: &mut Test) {
+    let vault = setup_vault(test);
+    let tree = create_tree_with_vault_cnft(test, vault, MERKLE_TREE_1);
 
-    let instruction =
-        build_withdraw_cnft_instruction(&context, context.authority, &tree, recipient);
+    let instruction = build_withdraw_cnft_instruction(AUTHORITY, &tree, RECIPIENT);
 
     // The stored authority signs, so the withdraw succeeds (the vault PDA
     // signs the Bubblegum CPI via invoke_signed inside the program).
-    let result = context
-        .svm
-        .process_instruction(&instruction, &withdraw_extra_accounts(recipient, &[&tree]));
-    assert!(
-        result.is_ok(),
-        "withdraw_cnft signed by the vault authority should succeed: {:?}\nlogs: {:#?}",
-        result.raw_result,
-        result.logs
-    );
+    test.send(instruction.clone()).succeeds();
 
     // After transfer, leaf 0's owner changed (vault -> recipient), so the root
     // moved. A second withdraw replaying the same (root, hashes) must fail: the
     // cached root is stale and the leaf no longer hashes to it for the vault.
-    let replay = context
-        .svm
-        .process_instruction(&instruction, &withdraw_extra_accounts(recipient, &[&tree]));
     assert!(
-        !replay.is_ok(),
+        test.send(instruction).is_err(),
         "second withdraw must fail: leaf already transferred out of the vault"
     );
 }
 
-#[test]
-fn test_withdraw_cnft_rejected_for_non_authority() {
-    let mut context = setup_vault();
-    let tree = create_tree_with_vault_cnft(&mut context);
-    let recipient = Pubkey::new_unique();
+#[quasar_test]
+fn withdraw_cnft_rejected_for_non_authority(test: &mut Test) {
+    let vault = setup_vault(test);
+    let tree = create_tree_with_vault_cnft(test, vault, MERKLE_TREE_1);
 
     // An attacker signs their own withdraw attempt; the vault's stored
     // authority did not sign.
-    let attacker = Pubkey::new_unique();
-    let instruction = build_withdraw_cnft_instruction(&context, attacker, &tree, recipient);
+    test.add(Wallet::new().at(ATTACKER));
+    let instruction = build_withdraw_cnft_instruction(ATTACKER, &tree, RECIPIENT);
 
-    let mut accounts = withdraw_extra_accounts(recipient, &[&tree]);
-    accounts.push(signer(attacker));
-    let result = context.svm.process_instruction(&instruction, &accounts);
-    result.assert_error(vault_error(QuasarCnftVaultError::InvalidWithdrawAuthority));
+    test.send(instruction)
+        .fails_with(VaultError::InvalidWithdrawAuthority);
 }
 
-#[test]
-fn test_withdraw_two_cnfts_by_authority() {
-    let mut context = setup_vault();
-    let tree1 = create_tree_with_vault_cnft(&mut context);
-    let tree2 = create_tree_with_vault_cnft(&mut context);
-    let recipient = Pubkey::new_unique();
+#[quasar_test]
+fn withdraw_two_cnfts_by_authority_succeeds_and_replay_fails(test: &mut Test) {
+    let vault = setup_vault(test);
+    let tree1 = create_tree_with_vault_cnft(test, vault, MERKLE_TREE_1);
+    let tree2 = create_tree_with_vault_cnft(test, vault, MERKLE_TREE_2);
 
     let instruction = build_withdraw_two_cnfts_instruction(
-        &context,
-        context.authority,
+        AUTHORITY,
         &tree1,
         &tree2,
-        recipient,
+        RECIPIENT,
         MAX_DEPTH as u8,
         MAX_DEPTH as u8,
     );
 
-    let result = context.svm.process_instruction(
-        &instruction,
-        &withdraw_extra_accounts(recipient, &[&tree1, &tree2]),
-    );
-    assert!(
-        result.is_ok(),
-        "withdraw_two_cnfts signed by the vault authority should succeed: {:?}",
-        result.raw_result
-    );
+    test.send(instruction).succeeds();
 
     // Both trees' roots moved, so both cNFTs left the vault: replaying the
     // single-tree withdraw against tree1 with the cached root fails.
-    let replay_instruction =
-        build_withdraw_cnft_instruction(&context, context.authority, &tree1, recipient);
-    let replay = context.svm.process_instruction(
-        &replay_instruction,
-        &withdraw_extra_accounts(recipient, &[&tree1]),
-    );
+    let replay_instruction = build_withdraw_cnft_instruction(AUTHORITY, &tree1, RECIPIENT);
     assert!(
-        !replay.is_ok(),
+        test.send(replay_instruction).is_err(),
         "cNFT#1 already left the vault, replay must fail"
     );
 }
 
-#[test]
-fn test_withdraw_two_cnfts_rejects_out_of_range_proof_length() {
-    let mut context = setup_vault();
-    let tree1 = create_tree_with_vault_cnft(&mut context);
-    let tree2 = create_tree_with_vault_cnft(&mut context);
-    let recipient = Pubkey::new_unique();
+#[quasar_test]
+fn withdraw_two_cnfts_rejects_out_of_range_proof_length(test: &mut Test) {
+    let vault = setup_vault(test);
+    let tree1 = create_tree_with_vault_cnft(test, vault, MERKLE_TREE_1);
+    let tree2 = create_tree_with_vault_cnft(test, vault, MERKLE_TREE_2);
 
     // Claim one more proof node for tree1 than the instruction supplies in
     // total: the bounds check must return ProofLengthMismatch instead of
@@ -574,44 +480,35 @@ fn test_withdraw_two_cnfts_rejects_out_of_range_proof_length() {
     let out_of_range_proof_1_length = supplied_proof_nodes + 1;
 
     let instruction = build_withdraw_two_cnfts_instruction(
-        &context,
-        context.authority,
+        AUTHORITY,
         &tree1,
         &tree2,
-        recipient,
+        RECIPIENT,
         out_of_range_proof_1_length,
         0,
     );
 
-    let result = context.svm.process_instruction(
-        &instruction,
-        &withdraw_extra_accounts(recipient, &[&tree1, &tree2]),
-    );
-    result.assert_error(vault_error(QuasarCnftVaultError::ProofLengthMismatch));
+    test.send(instruction)
+        .fails_with(VaultError::ProofLengthMismatch);
 }
 
-#[test]
-fn test_withdraw_two_cnfts_rejects_inconsistent_proof_lengths() {
-    let mut context = setup_vault();
-    let tree1 = create_tree_with_vault_cnft(&mut context);
-    let tree2 = create_tree_with_vault_cnft(&mut context);
-    let recipient = Pubkey::new_unique();
+#[quasar_test]
+fn withdraw_two_cnfts_rejects_inconsistent_proof_lengths(test: &mut Test) {
+    let vault = setup_vault(test);
+    let tree1 = create_tree_with_vault_cnft(test, vault, MERKLE_TREE_1);
+    let tree2 = create_tree_with_vault_cnft(test, vault, MERKLE_TREE_2);
 
     // proof_1_length is in range but the two lengths do not add up to the
     // supplied proof accounts, so the split would misattribute proof nodes.
     let instruction = build_withdraw_two_cnfts_instruction(
-        &context,
-        context.authority,
+        AUTHORITY,
         &tree1,
         &tree2,
-        recipient,
+        RECIPIENT,
         MAX_DEPTH as u8 - 1,
         MAX_DEPTH as u8,
     );
 
-    let result = context.svm.process_instruction(
-        &instruction,
-        &withdraw_extra_accounts(recipient, &[&tree1, &tree2]),
-    );
-    result.assert_error(vault_error(QuasarCnftVaultError::ProofLengthMismatch));
+    test.send(instruction)
+        .fails_with(VaultError::ProofLengthMismatch);
 }

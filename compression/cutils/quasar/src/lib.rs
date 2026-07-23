@@ -29,17 +29,40 @@ mod quasar_cutils {
     use super::*;
 
     /// Mint a compressed NFT to a collection via MintToCollectionV1.
+    ///
+    /// The URI arrives as a typed instruction argument: 0.1.0 clears
+    /// `ctx.data` after decoding declared args (the instruction argument
+    /// zero-copy boundary), so the pre-0.1.0 raw-tail pattern reads an empty
+    /// slice. `String<256, 2>` bounds it to MAX_URI_LEN with a u16 prefix.
     #[instruction(discriminator = 0)]
-    pub fn mint(ctx: Ctx<MintAccountConstraints>) -> Result<(), ProgramError> {
-        let data = ctx.data;
-        instructions::handle_mint(&mut ctx.accounts, data)
+    pub fn mint(
+        ctx: Ctx<MintAccountConstraints>,
+        uri: String<256, 2>,
+    ) -> Result<(), ProgramError> {
+        instructions::handle_mint(&mut ctx.accounts, uri)
     }
 
-    /// Verify a compressed NFT leaf exists in the merkle tree.
+    /// Verify a compressed NFT leaf exists in the merkle tree. The leaf args
+    /// are typed instruction arguments; the proof stays dynamic, as
+    /// remaining accounts.
     #[instruction(discriminator = 1)]
-    pub fn verify(ctx: CtxWithRemaining<VerifyAccountConstraints>) -> Result<(), ProgramError> {
-        let data = ctx.data;
+    pub fn verify(
+        ctx: CtxWithRemaining<VerifyAccountConstraints>,
+        root: [u8; 32],
+        data_hash: [u8; 32],
+        creator_hash: [u8; 32],
+        nonce: u64,
+        index: u32,
+    ) -> Result<(), ProgramError> {
         let remaining = ctx.remaining_accounts();
-        instructions::handle_verify(&mut ctx.accounts, data, remaining)
+        instructions::handle_verify(
+            &mut ctx.accounts,
+            root,
+            data_hash,
+            creator_hash,
+            nonce,
+            index,
+            remaining,
+        )
     }
 }

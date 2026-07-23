@@ -249,10 +249,10 @@ fn init_extra_metas(ctx: &mut InitMintAccountConstraints) -> Result<(), ProgramE
     let meta_list_size: u64 = 51;
     let lamports = Rent::get()?.try_minimum_balance(meta_list_size as usize)?;
 
-    let (expected_pda, bump) = Address::find_program_address(
+    let (expected_pda, bump) = quasar_lang::pda::try_find_program_address(
         &[META_LIST_ACCOUNT_SEED, mint_key.as_ref()],
         &crate::ID,
-    );
+    )?;
     if ctx.extra_metas_account.to_account_view().address() != &expected_pda {
         return Err(ProgramError::InvalidSeeds);
     }

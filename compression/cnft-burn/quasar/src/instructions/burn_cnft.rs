@@ -30,18 +30,26 @@ pub struct BurnCnftAccountConstraints {
     pub system_program: Program<SystemProgram>,
 }
 
-pub fn handle_burn_cnft(accounts: &mut BurnCnftAccountConstraints, data: &[u8], remaining: RemainingAccounts<'_>) -> Result<(), ProgramError> {
-    // Parse instruction args from raw data:
-    // root(32) + data_hash(32) + creator_hash(32) + nonce(8) + index(4) = 108 bytes
-    if data.len() < 108 {
-        return Err(ProgramError::InvalidInstructionData);
-    }
-
-    // Build instruction data: discriminator + args
+#[allow(clippy::too_many_arguments)]
+pub fn handle_burn_cnft(
+    accounts: &mut BurnCnftAccountConstraints,
+    root: [u8; 32],
+    data_hash: [u8; 32],
+    creator_hash: [u8; 32],
+    nonce: u64,
+    index: u32,
+    remaining: RemainingAccounts<'_>,
+) -> Result<(), ProgramError> {
+    // Build instruction data: discriminator + Bubblegum Burn wire layout
+    // root(32) + data_hash(32) + creator_hash(32) + nonce(8) + index(4).
     // 8 + 32 + 32 + 32 + 8 + 4 = 116 bytes
     let mut ix_data = [0u8; 116];
     ix_data[0..8].copy_from_slice(&BURN_DISCRIMINATOR);
-    ix_data[8..116].copy_from_slice(&data[0..108]);
+    ix_data[8..40].copy_from_slice(&root);
+    ix_data[40..72].copy_from_slice(&data_hash);
+    ix_data[72..104].copy_from_slice(&creator_hash);
+    ix_data[104..112].copy_from_slice(&nonce.to_le_bytes());
+    ix_data[112..116].copy_from_slice(&index.to_le_bytes());
 
     // Collect remaining accounts (proof nodes) into a stack buffer.
     //
