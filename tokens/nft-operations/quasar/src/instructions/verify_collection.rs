@@ -1,7 +1,7 @@
 use {
     crate::MintAuthorityPda,
     quasar_lang::{
-        cpi::{CpiCall, InstructionAccount},
+        cpi::{CpiCall, InstructionAccount, Seed},
         prelude::*,
     },
     quasar_metadata::prelude::*,

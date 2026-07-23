@@ -1,16 +1,26 @@
 # Changelog
 
 
-## [2026-07-22]
+## [2026-07-23]
 
 ### Changed
 
-- Deliberately NOT migrated to Quasar 0.1.0: this example depends on
-  `quasar-metadata`, which was removed upstream before the 0.1.0 release with
-  no replacement. It stays on the pre-0.1.0 pins (quasar `623bb70` /
-  quasar-svm `cb7565d`) and builds in the `legacy-metadata-examples` CI job
-  with the older quasar CLI. Migrate once upstream ships a metadata story for
-  0.1.x.
+- Migrated to Quasar 0.1.0 (`0.1.0-release` branch, rev `be60fca`): Quasar.toml
+  rewritten to the 0.1.0 schema, `idl-build` feature and `lib` crate-type added,
+  and tests rewritten from the direct QuasarSVM harness to `quasar-test`
+  (`#[quasar_test]` fixtures, `crate::cpi` instruction builders, `Outcome`
+  assertions). The `quasar-svm` git dev-dependency is gone; compute-unit
+  assertions were dropped pending recalibration under 0.1.0.
+- `quasar-metadata` now resolves to the vendored copy at
+  `tokens/quasar-metadata` (path dependency): upstream removed the crate
+  before the 0.1.0 release with no replacement. See
+  `tokens/quasar-metadata/README.md`.
+- Instruction handlers import `Seed` from `quasar_lang::cpi` — 0.1.0 removed
+  it from the prelude.
+- Tests keep loading the Metaplex Token Metadata fixture shared with the
+  Anchor twin (`../anchor/tests/fixtures/mpl_token_metadata.so`) and still
+  cover the full collection lifecycle: create_collection, mint_nft,
+  verify_collection.
 
 ## 2026-07-07
 
