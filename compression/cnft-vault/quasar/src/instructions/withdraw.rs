@@ -13,7 +13,29 @@ const MAX_PROOF_NODES: usize = 24;
 const MAX_CPI_ACCOUNTS: usize = 8 + MAX_PROOF_NODES;
 
 /// Transfer args byte length: root(32) + data_hash(32) + creator_hash(32) + nonce(8) + index(4).
-const TRANSFER_ARGS_LEN: usize = 108;
+pub(crate) const TRANSFER_ARGS_LEN: usize = 108;
+
+/// Bubblegum Transfer arguments, received as typed instruction args.
+pub struct TransferArgs {
+    pub root: [u8; 32],
+    pub data_hash: [u8; 32],
+    pub creator_hash: [u8; 32],
+    pub nonce: u64,
+    pub index: u32,
+}
+
+impl TransferArgs {
+    /// Serialize into the Bubblegum Transfer wire layout.
+    pub(crate) fn to_bytes(&self) -> [u8; TRANSFER_ARGS_LEN] {
+        let mut bytes = [0u8; TRANSFER_ARGS_LEN];
+        bytes[0..32].copy_from_slice(&self.root);
+        bytes[32..64].copy_from_slice(&self.data_hash);
+        bytes[64..96].copy_from_slice(&self.creator_hash);
+        bytes[96..104].copy_from_slice(&self.nonce.to_le_bytes());
+        bytes[104..108].copy_from_slice(&self.index.to_le_bytes());
+        bytes
+    }
+}
 
 /// Accounts for withdrawing a single compressed NFT from the vault.
 #[derive(Accounts)]
@@ -56,17 +78,25 @@ fn build_transfer_data(args: &[u8]) -> [u8; 8 + TRANSFER_ARGS_LEN] {
     ix_data
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn handle_withdraw_cnft(
     accounts: &mut WithdrawCnftAccountConstraints,
-    data: &[u8],
+    root: [u8; 32],
+    data_hash: [u8; 32],
+    creator_hash: [u8; 32],
+    nonce: u64,
+    index: u32,
     remaining: RemainingAccounts<'_>,
     vault_bump: u8,
 ) -> Result<(), ProgramError> {
-    if data.len() < TRANSFER_ARGS_LEN {
-        return Err(ProgramError::InvalidInstructionData);
-    }
-
-    let ix_data = build_transfer_data(&data[0..TRANSFER_ARGS_LEN]);
+    let args = TransferArgs {
+        root,
+        data_hash,
+        creator_hash,
+        nonce,
+        index,
+    };
+    let ix_data = build_transfer_data(&args.to_bytes());
 
     // Collect proof nodes.
     //

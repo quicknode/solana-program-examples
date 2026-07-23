@@ -320,18 +320,6 @@ fn create_tree_with_vault_cnft(
 
 // ---- Instruction builders for the program under test ------------------------
 
-/// Bubblegum Transfer args: root(32) + data_hash(32) + creator_hash(32) +
-/// nonce(8) + index(4). Leaf 0 in a fresh tree has nonce 0 and index 0.
-fn transfer_args(tree: &TreeWithVaultCnft) -> Vec<u8> {
-    let mut args = Vec::new();
-    args.extend_from_slice(&tree.root);
-    args.extend_from_slice(&tree.data_hash);
-    args.extend_from_slice(&tree.creator_hash);
-    args.extend_from_slice(&0u64.to_le_bytes()); // nonce
-    args.extend_from_slice(&0u32.to_le_bytes()); // index
-    args
-}
-
 /// Proof-node addresses enter the transaction as readonly metas; the runtime
 /// materializes the missing accounts as empty system accounts.
 fn proof_metas(nodes: &[[u8; 32]]) -> Vec<AccountMeta> {
@@ -348,7 +336,10 @@ fn build_withdraw_cnft_instruction(
 ) -> Instruction {
     // The vault PDA and system program are canonical derivations, so the
     // generated instruction omits them.
-    let mut instruction: Instruction = WithdrawCnftInstruction {
+    // Leaf 0 in a fresh tree has nonce 0 and index 0. The Transfer args are
+    // typed instruction arguments in 0.1.0 (`ctx.data` no longer carries a
+    // raw tail); only the proof stays dynamic, as remaining accounts.
+    WithdrawCnftInstruction {
         authority: signer,
         tree_authority: tree.tree_config,
         new_leaf_owner: recipient,
@@ -356,13 +347,14 @@ fn build_withdraw_cnft_instruction(
         log_wrapper: NOOP_ID,
         compression_program: COMPRESSION_ID,
         bubblegum_program: BUBBLEGUM_ID,
+        root: tree.root,
+        data_hash: tree.data_hash,
+        creator_hash: tree.creator_hash,
+        nonce: 0,
+        index: 0,
         remaining_accounts: proof_metas(&tree.proof),
     }
-    .into();
-    // The generated builder carries only the discriminator byte; the handler
-    // reads the raw Transfer args from the rest of the instruction data.
-    instruction.data.extend_from_slice(&transfer_args(tree));
-    instruction
+    .into()
 }
 
 fn build_withdraw_two_cnfts_instruction(
@@ -375,7 +367,7 @@ fn build_withdraw_two_cnfts_instruction(
 ) -> Instruction {
     let mut remaining_accounts = proof_metas(&tree1.proof);
     remaining_accounts.extend(proof_metas(&tree2.proof));
-    let mut instruction: Instruction = WithdrawTwoCnftsInstruction {
+    WithdrawTwoCnftsInstruction {
         authority: signer,
         tree_authority1: tree1.tree_config,
         new_leaf_owner1: recipient,
@@ -386,15 +378,21 @@ fn build_withdraw_two_cnfts_instruction(
         log_wrapper: NOOP_ID,
         compression_program: COMPRESSION_ID,
         bubblegum_program: BUBBLEGUM_ID,
+        root1: tree1.root,
+        data_hash1: tree1.data_hash,
+        creator_hash1: tree1.creator_hash,
+        nonce1: 0,
+        index1: 0,
+        proof_1_length,
+        root2: tree2.root,
+        data_hash2: tree2.data_hash,
+        creator_hash2: tree2.creator_hash,
+        nonce2: 0,
+        index2: 0,
+        proof_2_length,
         remaining_accounts,
     }
-    .into();
-    // args1(108) + proof_1_length(1) + args2(108) + proof_2_length(1)
-    instruction.data.extend_from_slice(&transfer_args(tree1));
-    instruction.data.push(proof_1_length);
-    instruction.data.extend_from_slice(&transfer_args(tree2));
-    instruction.data.push(proof_2_length);
-    instruction
+    .into()
 }
 
 // ---- Tests ------------------------------------------------------------------

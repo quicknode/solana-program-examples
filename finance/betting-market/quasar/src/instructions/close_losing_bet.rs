@@ -20,7 +20,6 @@ pub struct CloseLosingBetAccountConstraints {
         close(dest = bettor),
         has_one(bettor),
         has_one(event),
-        address = Bet::find_address(bet.outcome, *bettor.address(), &crate::ID),
     )]
     pub bet: Account<Bet>,
 
@@ -32,6 +31,21 @@ pub struct CloseLosingBetAccountConstraints {
 pub fn handle_close_losing_bet(
     accounts: &mut CloseLosingBetAccountConstraints,
 ) -> Result<(), ProgramError> {
+    // Canonical-PDA check for the bet account. The pre-0.1.0 constraint
+    // `address = Bet::seeds(&bet.outcome, ...)` is inexpressible in 0.1.0
+    // (an Address-typed stored-data seed cannot both feed client codegen and
+    // typecheck on-chain), and the generated `Bet::find_address` helper is a
+    // const-context/client function whose software SHA-256 exhausts the CU
+    // budget on-chain. Verifying against the stored bump costs one sha256
+    // syscall and rejects non-canonical bet accounts just the same.
+    quasar_lang::pda::verify_program_address(
+        &Bet::seeds(&accounts.bet.outcome, accounts.bettor.address())
+            .with_bump(accounts.bet.bump)
+            .as_slices(),
+        &crate::ID,
+        accounts.bet.address(),
+    )?;
+
     require!(
         accounts.event.status == EventStatus::Settled as u8,
         BettingError::EventNotSettled

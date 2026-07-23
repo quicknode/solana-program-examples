@@ -34,27 +34,78 @@ mod quasar_cnft_vault {
 
     /// Withdraw a single compressed NFT from the vault PDA. Only the
     /// authority stored by initialize_vault may sign this.
+    ///
+    /// The Bubblegum Transfer args arrive as typed instruction arguments:
+    /// 0.1.0 clears `ctx.data` after decoding declared args (the instruction
+    /// argument zero-copy boundary), so the pre-0.1.0 raw-tail pattern reads
+    /// an empty slice. Only the variable-length proof stays dynamic, as
+    /// remaining accounts.
     #[instruction(discriminator = 0)]
     pub fn withdraw_cnft(
         ctx: CtxWithRemaining<WithdrawCnftAccountConstraints>,
+        root: [u8; 32],
+        data_hash: [u8; 32],
+        creator_hash: [u8; 32],
+        nonce: u64,
+        index: u32,
     ) -> Result<(), ProgramError> {
-        let data = ctx.data;
         let remaining = ctx.remaining_accounts();
         let vault_bump = ctx.bumps.vault;
-        instructions::handle_withdraw_cnft(&mut ctx.accounts, data, remaining, vault_bump)
+        instructions::handle_withdraw_cnft(
+            &mut ctx.accounts,
+            root,
+            data_hash,
+            creator_hash,
+            nonce,
+            index,
+            remaining,
+            vault_bump,
+        )
     }
 
     /// Withdraw two compressed NFTs from the vault PDA in a single
     /// transaction. Only the authority stored by initialize_vault may sign
-    /// this.
+    /// this. The two proofs share the remaining-accounts region; the proof
+    /// lengths say where to split it.
     #[instruction(discriminator = 1)]
     pub fn withdraw_two_cnfts(
         ctx: CtxWithRemaining<WithdrawTwoCnftsAccountConstraints>,
+        root1: [u8; 32],
+        data_hash1: [u8; 32],
+        creator_hash1: [u8; 32],
+        nonce1: u64,
+        index1: u32,
+        proof_1_length: u8,
+        root2: [u8; 32],
+        data_hash2: [u8; 32],
+        creator_hash2: [u8; 32],
+        nonce2: u64,
+        index2: u32,
+        proof_2_length: u8,
     ) -> Result<(), ProgramError> {
-        let data = ctx.data;
         let remaining = ctx.remaining_accounts();
         let vault_bump = ctx.bumps.vault;
-        instructions::handle_withdraw_two_cnfts(&mut ctx.accounts, data, remaining, vault_bump)
+        instructions::handle_withdraw_two_cnfts(
+            &mut ctx.accounts,
+            instructions::TransferArgs {
+                root: root1,
+                data_hash: data_hash1,
+                creator_hash: creator_hash1,
+                nonce: nonce1,
+                index: index1,
+            },
+            proof_1_length,
+            instructions::TransferArgs {
+                root: root2,
+                data_hash: data_hash2,
+                creator_hash: creator_hash2,
+                nonce: nonce2,
+                index: index2,
+            },
+            proof_2_length,
+            remaining,
+            vault_bump,
+        )
     }
 
     /// Create the vault PDA and store the signer as its withdraw authority.
