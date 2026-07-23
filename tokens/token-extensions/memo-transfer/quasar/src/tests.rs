@@ -24,11 +24,14 @@ fn initialize_creates_a_memo_transfer_token_account(test: &mut Test) {
         token_account: TOKEN_ACCOUNT,
         mint_account: MINT,
     })
-    .succeeds()
-    .has_tokens(TOKEN_ACCOUNT, 0);
+    .succeeds();
 
     let token_account = test.account(TOKEN_ACCOUNT).expect("token account exists");
     assert_eq!(token_account.owner, SPL_TOKEN_2022_PROGRAM_ID);
     // Token account allocated with room for the MemoTransfer extension.
     assert_eq!(token_account.data.len(), 300);
+    // Balance is zero. has_tokens can't be used here: it unpacks the strict
+    // 165-byte base layout, which rejects extended Token-2022 accounts. The
+    // amount field lives at bytes 64..72 in both layouts.
+    assert_eq!(&token_account.data[64..72], &0u64.to_le_bytes());
 }
