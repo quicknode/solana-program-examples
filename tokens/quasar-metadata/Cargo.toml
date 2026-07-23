@@ -1,0 +1,29 @@
+[package]
+name = "quasar-metadata"
+description = "Metaplex Token Metadata integration for the Quasar Solana framework (vendored)"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/quicknode/solana-program-examples"
+authors = ["Leonardo Donatacci <leo@blueshift.gg>", "Dean Little <dean@blueshift.gg>"]
+
+# Standalone workspace - not part of the root program-examples workspace,
+# same as every Quasar example project.
+[workspace]
+
+[lints.rust.unexpected_cfgs]
+level = "warn"
+check-cfg = [
+    'cfg(target_os, values("solana"))',
+    'cfg(kani)',
+    'cfg(kani_ra)',
+]
+
+[features]
+debug = []
+
+[dependencies]
+# Pinned to the same 0.1.0-release rev as every Quasar example in this
+# repository. See README.md for why this crate is vendored here.
+quasar-lang = { git = "https://github.com/blueshift-gg/quasar", rev = "be60fca" }
+solana-address = { version = ">=2.2, <2.6", features = ["copy"] }

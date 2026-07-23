@@ -4,6 +4,17 @@ All notable changes to this repository are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-07-23] - Metadata examples on Quasar 0.1.0 (vendored quasar-metadata)
+
+### Added
+
+- `tokens/quasar-metadata`: a vendored copy of the `quasar-metadata` crate from blueshift-gg/quasar rev `623bb70f` (the last revision that shipped it), adapted to compile against the 0.1.0 `quasar-lang` API (`RentAccess` type parameter on `AccountInit::init`, `try_find_program_address` rename, `Seed` import from `quasar_lang::cpi`, `unsafe` `set_data_len`). Upstream removed the crate before 0.1.0 with no replacement; vendoring it lets the Metaplex-metadata examples ride the same release pin as everything else. Provenance and local changes are documented in the crate's README and CHANGELOG.
+
+### Changed
+
+- `tokens/token-minter`, `tokens/nft-minter`, and `tokens/nft-operations` now migrate to the 0.1.0-release pin (`be60fca`) like every other example, depending on the vendored crate via `quasar-metadata = { path = "../quasar-metadata" }`. This supersedes the previous day's "not migrated" limitation: all 53 Quasar examples are now on 0.1.0.
+- `quasar.yml` drops the `legacy-metadata-examples` job and `.github/.ghaignore` is empty again — the whole matrix builds with the one 0.1.0 CLI.
+
 ## [2026-07-22] - Quasar 0.1.0
 
 ### Changed
