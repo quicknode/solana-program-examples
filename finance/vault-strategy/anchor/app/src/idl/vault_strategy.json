@@ -1,0 +1,265 @@
+{
+  "address": "VLT5W7bqhRN4nCdRpXm8UfHRxZd9EuZGqiSAkGHQfGh",
+  "metadata": {
+    "name": "vault_strategy",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Manager-run investment vault on Solana. Hand-authored from program source (anchor build unavailable in this environment); discriminators are sha256(\"global:<ix>\") / sha256(\"account:<Name>\") and are asserted by scripts/verify-client.mjs."
+  },
+  "instructions": [
+    {
+      "name": "initialize_registry",
+      "discriminator": [189, 181, 20, 17, 174, 57, 249, 59],
+      "accounts": [
+        { "name": "authority", "writable": true, "signer": true },
+        { "name": "registry", "writable": true },
+        { "name": "system_program" }
+      ],
+      "args": []
+    },
+    {
+      "name": "approve_asset",
+      "discriminator": [127, 15, 21, 247, 23, 22, 189, 238],
+      "accounts": [
+        { "name": "authority", "writable": true, "signer": true },
+        { "name": "registry" },
+        { "name": "asset_mint" },
+        { "name": "approved_asset", "writable": true },
+        { "name": "system_program" }
+      ],
+      "args": [{ "name": "price_feed", "type": "pubkey" }]
+    },
+    {
+      "name": "initialize_strategy",
+      "discriminator": [208, 119, 144, 145, 178, 57, 105, 252],
+      "accounts": [
+        { "name": "manager", "writable": true, "signer": true },
+        { "name": "usdc_mint" },
+        { "name": "registry" },
+        { "name": "strategy", "writable": true },
+        { "name": "share_mint", "writable": true },
+        { "name": "vault_usdc", "writable": true },
+        { "name": "associated_token_program" },
+        { "name": "token_program" },
+        { "name": "system_program" }
+      ],
+      "args": [
+        { "name": "index", "type": "u64" },
+        { "name": "fee_bps", "type": "u16" },
+        { "name": "max_slippage_bps", "type": "u16" },
+        { "name": "swap_router", "type": "pubkey" }
+      ]
+    },
+    {
+      "name": "add_asset",
+      "discriminator": [81, 53, 134, 142, 243, 73, 42, 179],
+      "accounts": [
+        { "name": "manager", "writable": true, "signer": true },
+        { "name": "strategy", "writable": true },
+        { "name": "registry" },
+        { "name": "asset_mint" },
+        { "name": "approved_asset" },
+        { "name": "asset_config", "writable": true },
+        { "name": "vault_asset", "writable": true },
+        { "name": "associated_token_program" },
+        { "name": "token_program" },
+        { "name": "system_program" }
+      ],
+      "args": [{ "name": "weight_bps", "type": "u16" }]
+    },
+    {
+      "name": "set_weight",
+      "discriminator": [41, 228, 200, 244, 87, 125, 173, 36],
+      "accounts": [
+        { "name": "manager", "signer": true },
+        { "name": "strategy", "writable": true },
+        { "name": "asset_config", "writable": true }
+      ],
+      "args": [{ "name": "weight_bps", "type": "u16" }]
+    },
+    {
+      "name": "deposit",
+      "discriminator": [242, 35, 198, 137, 82, 225, 242, 182],
+      "accounts": [
+        { "name": "depositor", "writable": true, "signer": true },
+        { "name": "strategy", "writable": true },
+        { "name": "share_mint", "writable": true },
+        { "name": "usdc_mint" },
+        { "name": "depositor_usdc_account", "writable": true },
+        { "name": "depositor_share_account", "writable": true },
+        { "name": "vault_usdc", "writable": true },
+        { "name": "router_config", "writable": true },
+        { "name": "router_usdc_treasury", "writable": true },
+        { "name": "router_authority", "writable": true },
+        { "name": "swap_router_program" },
+        { "name": "associated_token_program" },
+        { "name": "token_program" },
+        { "name": "system_program" }
+      ],
+      "args": [
+        { "name": "usdc_amount", "type": "u64" },
+        { "name": "minimum_shares", "type": "u64" }
+      ]
+    },
+    {
+      "name": "collect_fees",
+      "discriminator": [164, 152, 207, 99, 30, 186, 19, 182],
+      "accounts": [
+        { "name": "manager" },
+        { "name": "strategy", "writable": true },
+        { "name": "share_mint", "writable": true },
+        { "name": "manager_share_account", "writable": true },
+        { "name": "payer", "writable": true, "signer": true },
+        { "name": "associated_token_program" },
+        { "name": "token_program" },
+        { "name": "system_program" }
+      ],
+      "args": []
+    },
+    {
+      "name": "withdraw",
+      "discriminator": [183, 18, 70, 156, 148, 109, 161, 34],
+      "accounts": [
+        { "name": "user", "writable": true, "signer": true },
+        { "name": "strategy", "writable": true },
+        { "name": "share_mint", "writable": true },
+        { "name": "usdc_mint" },
+        { "name": "user_share_account", "writable": true },
+        { "name": "user_usdc_account", "writable": true },
+        { "name": "vault_usdc", "writable": true },
+        { "name": "associated_token_program" },
+        { "name": "token_program" },
+        { "name": "system_program" }
+      ],
+      "args": [
+        { "name": "shares_to_burn", "type": "u64" },
+        { "name": "min_usdc_out", "type": "u64" }
+      ]
+    },
+    {
+      "name": "rebalance",
+      "discriminator": [108, 158, 77, 9, 210, 52, 88, 62],
+      "accounts": [
+        { "name": "manager", "signer": true },
+        { "name": "strategy", "writable": true },
+        { "name": "usdc_mint" },
+        { "name": "sell_mint", "writable": true },
+        { "name": "buy_mint", "writable": true },
+        { "name": "sell_config" },
+        { "name": "buy_config" },
+        { "name": "sell_price_feed" },
+        { "name": "buy_price_feed" },
+        { "name": "vault_sell", "writable": true },
+        { "name": "vault_buy", "writable": true },
+        { "name": "vault_usdc", "writable": true },
+        { "name": "sell_rate" },
+        { "name": "buy_rate" },
+        { "name": "router_config", "writable": true },
+        { "name": "router_usdc_treasury", "writable": true },
+        { "name": "router_authority", "writable": true },
+        { "name": "swap_router_program" },
+        { "name": "associated_token_program" },
+        { "name": "token_program" },
+        { "name": "system_program" }
+      ],
+      "args": [
+        { "name": "sell_amount", "type": "u64" },
+        { "name": "usdc_to_invest", "type": "u64" }
+      ]
+    }
+  ],
+  "accounts": [
+    { "name": "Strategy", "discriminator": [174, 110, 39, 119, 82, 106, 169, 102] },
+    { "name": "AssetConfig", "discriminator": [57, 112, 247, 166, 247, 64, 140, 23] },
+    { "name": "Registry", "discriminator": [47, 174, 110, 246, 184, 182, 252, 218] },
+    { "name": "ApprovedAsset", "discriminator": [187, 133, 252, 71, 239, 199, 204, 13] }
+  ],
+  "errors": [
+    { "code": 6000, "name": "SlippageTooHigh", "msg": "Shares minted are below the minimum - slippage exceeded" },
+    { "code": 6001, "name": "UsdcSlippage", "msg": "USDC out is below minimum - slippage exceeded" },
+    { "code": 6002, "name": "SwapSlippageExceeded", "msg": "Swap output deviates from the oracle price by more than the allowed slippage" },
+    { "code": 6003, "name": "SlippageConfigTooHigh", "msg": "Max slippage exceeds the maximum allowed configuration" },
+    { "code": 6004, "name": "AssetNotFound", "msg": "Asset mint is not part of this strategy" },
+    { "code": 6005, "name": "TooManyAssets", "msg": "Strategy already holds the maximum number of assets" },
+    { "code": 6006, "name": "DuplicateAsset", "msg": "Asset is already part of this strategy" },
+    { "code": 6007, "name": "WeightOverflow", "msg": "Total target weight would exceed 10000 basis points" },
+    { "code": 6008, "name": "StrategyNotFullyAllocated", "msg": "Strategy weights must sum to 100% before it can accept deposits" },
+    { "code": 6009, "name": "IncompleteAssetAccounts", "msg": "Wrong number of asset accounts supplied for the strategy's assets" },
+    { "code": 6010, "name": "InvalidAssetAccount", "msg": "An asset account does not match the strategy's registered asset" },
+    { "code": 6011, "name": "InvalidVaultAccount", "msg": "Token account could not be read" },
+    { "code": 6012, "name": "InvalidRecipient", "msg": "Recipient token account is not owned by the withdrawing user" },
+    { "code": 6013, "name": "InvalidRegistry", "msg": "Registry does not match the strategy's registered registry" },
+    { "code": 6014, "name": "NoTimeElapsed", "msg": "No time has elapsed since last fee accrual" },
+    { "code": 6015, "name": "MathOverflow", "msg": "Arithmetic overflow" },
+    { "code": 6016, "name": "ZeroShares", "msg": "Cannot withdraw zero shares" },
+    { "code": 6017, "name": "ZeroDeposit", "msg": "Cannot deposit zero USDC" },
+    { "code": 6018, "name": "ZeroTotalShares", "msg": "Total shares are zero - cannot compute proportional withdraw" },
+    { "code": 6019, "name": "InvalidPriceFeed", "msg": "Price feed account does not match the registered feed" },
+    { "code": 6020, "name": "NegativePrice", "msg": "Pyth price is zero or negative" },
+    { "code": 6021, "name": "StalePriceFeed", "msg": "Pyth price feed is stale" },
+    { "code": 6022, "name": "SameMint", "msg": "Sell and buy mints must be different" },
+    { "code": 6023, "name": "InvalidUsdcMint", "msg": "USDC mint does not match the strategy's registered USDC mint" },
+    { "code": 6024, "name": "InvalidSwapRouter", "msg": "Swap router program does not match the strategy's registered swap router" },
+    { "code": 6025, "name": "FeeTooHigh", "msg": "Management fee exceeds the maximum allowed" }
+  ],
+  "types": [
+    {
+      "name": "Strategy",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "index", "type": "u64" },
+          { "name": "manager", "type": "pubkey" },
+          { "name": "registry", "type": "pubkey" },
+          { "name": "share_mint", "type": "pubkey" },
+          { "name": "usdc_mint", "type": "pubkey" },
+          { "name": "swap_router", "type": "pubkey" },
+          { "name": "fee_bps", "type": "u16" },
+          { "name": "max_slippage_bps", "type": "u16" },
+          { "name": "total_shares", "type": "u64" },
+          { "name": "last_fee_accrual_timestamp", "type": "i64" },
+          { "name": "asset_count", "type": "u8" },
+          { "name": "total_weight_bps", "type": "u16" },
+          { "name": "bump", "type": "u8" }
+        ]
+      }
+    },
+    {
+      "name": "AssetConfig",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "strategy", "type": "pubkey" },
+          { "name": "index", "type": "u8" },
+          { "name": "mint", "type": "pubkey" },
+          { "name": "price_feed", "type": "pubkey" },
+          { "name": "vault", "type": "pubkey" },
+          { "name": "weight_bps", "type": "u16" },
+          { "name": "bump", "type": "u8" }
+        ]
+      }
+    },
+    {
+      "name": "Registry",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "authority", "type": "pubkey" },
+          { "name": "bump", "type": "u8" }
+        ]
+      }
+    },
+    {
+      "name": "ApprovedAsset",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "registry", "type": "pubkey" },
+          { "name": "mint", "type": "pubkey" },
+          { "name": "price_feed", "type": "pubkey" },
+          { "name": "bump", "type": "u8" }
+        ]
+      }
+    }
+  ]
+}
