@@ -31,7 +31,7 @@
 
 /* Retune the wallet-adapter UI to the terminal (default ships a purple button). */
 .wallet-adapter-button {
-  font-family: 'Space Grotesk', ui-sans-serif, sans-serif !important;
+  font-family: 'Archivo', ui-sans-serif, sans-serif !important;
   height: 34px !important;
   padding: 0 14px !important;
   border-radius: 3px !important;
@@ -53,7 +53,7 @@
   border-radius: 6px !important;
 }
 .wallet-adapter-modal-title {
-  font-family: 'Space Grotesk', ui-sans-serif, sans-serif !important;
+  font-family: 'Archivo', ui-sans-serif, sans-serif !important;
   color: #e8e6e1 !important;
 }
 .wallet-adapter-modal-list .wallet-adapter-button {
