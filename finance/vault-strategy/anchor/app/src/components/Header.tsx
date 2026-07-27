@@ -17,7 +17,7 @@ export function Header({ onRefresh }: { onRefresh: () => void }) {
         </Chip>
         <button
           onClick={onRefresh}
-          className="h-[34px] border border-line px-3 text-[11px] uppercase tracking-widest text-muted transition-colors hover:border-line2 hover:text-ink"
+          className="h-[34px] border border-line px-3 text-[11px] uppercase tracking-widest text-muted transition-colors hover:border-line2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
         >
           Refresh
         </button>

@@ -119,6 +119,11 @@ export function ActionTicket({
         }}
       />
 
+      <div className="flex items-baseline justify-between border-b border-line px-5 py-2.5 font-mono text-[11px]">
+        <span className="text-faint">Share price</span>
+        <span className="tabular-nums text-muted">{formatUnits(view.navPerShareMinor, 6, 4)} USDC</span>
+      </div>
+
       <div className="space-y-4 px-5 py-5">
         {mode === 'deposit' ? (
           <>

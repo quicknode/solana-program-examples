@@ -11,7 +11,7 @@ function TabBar({ tab, onTab }: { tab: Tab; onTab: (t: Tab) => void }) {
   const item = (key: Tab, label: string) => (
     <button
       onClick={() => onTab(key)}
-      className={`-mb-px border-b-2 px-4 py-3 font-sans text-[12px] font-semibold uppercase tracking-widest transition-colors ${
+      className={`-mb-px border-b-2 px-4 py-3 font-sans text-[12px] font-semibold uppercase tracking-widest transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 ${
         tab === key ? 'border-accent text-ink' : 'border-transparent text-faint hover:text-muted'
       }`}
     >
@@ -36,21 +36,22 @@ export default function App() {
       <main className="flex-1">
         {vault.loading && <Loading />}
         {!vault.loading && vault.error && <ErrorPanel message={vault.error} />}
-        {!vault.loading &&
-          !vault.error &&
-          vault.view &&
-          (vault.view.exists ? (
-            activeTab === 'manager' ? <ManagerView vault={vault} /> : <InvestorView vault={vault} />
-          ) : (
-            <>
-              <NotFound view={vault.view} />
-              {vault.connected && (
-                <div className="px-6 pb-12">
-                  <CreateStrategyForm vault={vault} />
-                </div>
-              )}
-            </>
-          ))}
+        {!vault.loading && !vault.error && vault.view && (
+          <div key={activeTab} className="animate-rise">
+            {vault.view.exists ? (
+              activeTab === 'manager' ? <ManagerView vault={vault} /> : <InvestorView vault={vault} />
+            ) : (
+              <>
+                <NotFound view={vault.view} />
+                {vault.connected && (
+                  <div className="px-6 pb-12">
+                    <CreateStrategyForm vault={vault} />
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
       </main>
 
       <footer className="border-t border-line px-6 py-4 text-[11px] leading-relaxed text-faint">

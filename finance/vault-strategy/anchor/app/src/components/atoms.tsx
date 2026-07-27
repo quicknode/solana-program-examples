@@ -116,7 +116,7 @@ export function Segmented<T extends string>({
           <button
             key={o.key}
             onClick={() => onChange(o.key)}
-            className={`-mb-px border-b-2 px-4 py-2.5 font-sans text-[13px] font-semibold uppercase tracking-widest transition-colors ${
+            className={`-mb-px border-b-2 px-4 py-2.5 font-sans text-[13px] font-semibold uppercase tracking-widest transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 ${
               active
                 ? 'border-accent text-ink'
                 : 'border-transparent text-faint hover:text-muted'
@@ -147,7 +147,7 @@ export function Select<T extends string>({
       <select
         value={value}
         onChange={(e) => onChange(e.target.value as T)}
-        className="h-11 w-full appearance-none border border-line bg-panel2 px-3 font-mono text-[14px] text-ink focus:border-accent focus:outline-none"
+        className="h-11 w-full appearance-none border border-line bg-panel2 px-3 font-mono text-[14px] text-ink focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
       >
         {options.map((o) => (
           <option key={o.value} value={o.value} className="bg-panel2 text-ink">
