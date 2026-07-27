@@ -3,6 +3,7 @@ import { BN } from '@coral-xyz/anchor'
 import { PublicKey } from '@solana/web3.js'
 import './index.css'
 import { InvestorView } from './views/InvestorView'
+import { ManagerView } from './components/ManagerView'
 import type { VaultState } from './hooks/useVault'
 import type { AssetView, StrategyView } from './solana/strategy'
 import type { StrategyAccount } from './idl/vaultStrategy'
@@ -75,6 +76,11 @@ const view: StrategyView = {
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 const mockSig = 'Prev1ewS1gnatureX9mB4kZ2qWvR7tNjHcYfDpL3sAe8uK1oI5rT6yUw'
 
+const act = async () => {
+  await sleep(500)
+  return mockSig
+}
+
 const vault: VaultState = {
   loading: false,
   error: null,
@@ -88,15 +94,15 @@ const vault: VaultState = {
   },
   walletUsdc: 5_000_000_000n,
   connected: true,
+  isManager: true,
   refresh: () => {},
-  deposit: async () => {
-    await sleep(500)
-    return mockSig
-  },
-  redeem: async () => {
-    await sleep(500)
-    return mockSig
-  },
+  deposit: act,
+  redeem: act,
+  rebalance: act,
+  setWeight: act,
+  addAsset: act,
+  collectFees: act,
+  createStrategy: act,
 }
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
@@ -117,7 +123,14 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       </div>
     </header>
     <main className="flex-1">
+      <div className="border-b border-line px-6 py-2 font-mono text-[11px] uppercase tracking-widest text-faint">
+        Investor tab
+      </div>
       <InvestorView vault={vault} />
+      <div className="border-y-4 border-line/60 bg-panel px-6 py-2 font-mono text-[11px] uppercase tracking-widest text-faint">
+        Manager tab
+      </div>
+      <ManagerView vault={vault} />
     </main>
     <footer className="border-t border-line px-6 py-4 text-[11px] leading-relaxed text-faint">
       Design preview · fabricated data. The shipped app renders only live on-chain reads.

@@ -130,6 +130,55 @@ export function Segmented<T extends string>({
   )
 }
 
+export function Select<T extends string>({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string
+  value: T
+  onChange: (value: T) => void
+  options: { value: T; label: string }[]
+}) {
+  return (
+    <label className="block">
+      <span className="mb-2 block text-[10px] uppercase tracking-widest text-faint">{label}</span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value as T)}
+        className="h-11 w-full appearance-none border border-line bg-panel2 px-3 font-mono text-[14px] text-ink focus:border-accent focus:outline-none"
+      >
+        {options.map((o) => (
+          <option key={o.value} value={o.value} className="bg-panel2 text-ink">
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
+}
+
+export function Panel({
+  title,
+  hint,
+  children,
+}: {
+  title: string
+  hint?: ReactNode
+  children: ReactNode
+}) {
+  return (
+    <div className="border border-line bg-panel">
+      <div className="flex items-baseline justify-between gap-3 border-b border-line px-5 py-3">
+        <h3 className="font-sans text-[12px] font-semibold uppercase tracking-widest text-ink">{title}</h3>
+        {hint && <span className="text-right font-mono text-[11px] text-faint">{hint}</span>}
+      </div>
+      <div className="space-y-4 px-5 py-5">{children}</div>
+    </div>
+  )
+}
+
 export type TxStatus =
   | { kind: 'idle' }
   | { kind: 'pending'; message: string }

@@ -1,10 +1,20 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAnchorWallet, useConnection, useWallet } from '@solana/wallet-adapter-react'
+import type { PublicKey } from '@solana/web3.js'
 import { getProgram } from '../solana/program'
 import { loadPosition, loadStrategyView, type Position, type StrategyView } from '../solana/strategy'
 import { readTokenAmount } from '../solana/pyth'
 import { userAta } from '../solana/pdas'
-import { buildDepositIx, buildWithdrawIxs } from '../solana/instructions'
+import {
+  buildAddAssetIx,
+  buildCollectFeesIx,
+  buildDepositIx,
+  buildInitializeStrategyIx,
+  buildRebalanceIx,
+  buildSetWeightIx,
+  buildWithdrawIxs,
+  type InitializeStrategyParams,
+} from '../solana/instructions'
 import { sendIxs } from '../lib/tx'
 
 interface Data {
@@ -17,13 +27,21 @@ interface Data {
 
 export interface VaultState extends Data {
   connected: boolean
+  isManager: boolean
   refresh: () => void
+  // depositor
   deposit: (usdcMinor: bigint, minShares: bigint) => Promise<string>
   redeem: (sharesMinor: bigint, minUsdcOut: bigint) => Promise<string>
+  // manager
+  rebalance: (sellIndex: number, buyIndex: number, sellAmount: bigint, usdcToInvest: bigint) => Promise<string>
+  setWeight: (assetIndex: number, weightBps: number) => Promise<string>
+  addAsset: (mint: PublicKey, weightBps: number) => Promise<string>
+  collectFees: () => Promise<string>
+  createStrategy: (params: Omit<InitializeStrategyParams, 'manager'>) => Promise<string>
 }
 
-/** Loads the strategy, the connected wallet's position + USDC balance, and exposes the
- *  deposit/redeem actions. Every field is a live account read; actions rebuild against a
+/** Loads the strategy, the connected wallet's position + USDC balance, and exposes both
+ *  depositor and manager actions. Every field is a live read; actions rebuild against a
  *  fresh view before sending, then refresh. */
 export function useVault(): VaultState {
   const { connection } = useConnection()
@@ -75,31 +93,99 @@ export function useVault(): VaultState {
 
   const refresh = useCallback(() => setTick((t) => t + 1), [])
 
-  const deposit = useCallback(
-    async (usdcMinor: bigint, minShares: bigint) => {
-      if (!anchorWallet) throw new Error('Connect a wallet to deposit.')
-      const view = await loadStrategyView(connection, program) // build against fresh state
+  // All senders rebuild against a freshly-loaded view so account derivations (asset
+  // count, mints, router) reflect the latest chain state, then refresh the UI.
+  const withFreshView = useCallback(
+    async (send: (view: StrategyView, manager: PublicKey) => Promise<string>) => {
+      if (!anchorWallet) throw new Error('Connect a wallet first.')
+      const view = await loadStrategyView(connection, program)
       if (!view.exists) throw new Error('Strategy not found on this cluster.')
-      const ix = await buildDepositIx(program, view, anchorWallet.publicKey, usdcMinor, minShares)
-      const sig = await sendIxs(program, [ix])
+      const sig = await send(view, anchorWallet.publicKey)
       refresh()
       return sig
     },
     [anchorWallet, connection, program, refresh],
+  )
+
+  const deposit = useCallback(
+    (usdcMinor: bigint, minShares: bigint) =>
+      withFreshView(async (view, wallet) =>
+        sendIxs(program, [await buildDepositIx(program, view, wallet, usdcMinor, minShares)]),
+      ),
+    [program, withFreshView],
   )
 
   const redeem = useCallback(
-    async (sharesMinor: bigint, minUsdcOut: bigint) => {
-      if (!anchorWallet) throw new Error('Connect a wallet to redeem.')
-      const view = await loadStrategyView(connection, program)
-      if (!view.exists) throw new Error('Strategy not found on this cluster.')
-      const ixs = await buildWithdrawIxs(program, view, anchorWallet.publicKey, sharesMinor, minUsdcOut)
-      const sig = await sendIxs(program, ixs)
+    (sharesMinor: bigint, minUsdcOut: bigint) =>
+      withFreshView(async (view, wallet) =>
+        sendIxs(program, await buildWithdrawIxs(program, view, wallet, sharesMinor, minUsdcOut)),
+      ),
+    [program, withFreshView],
+  )
+
+  const rebalance = useCallback(
+    (sellIndex: number, buyIndex: number, sellAmount: bigint, usdcToInvest: bigint) =>
+      withFreshView(async (view, wallet) =>
+        sendIxs(program, [
+          await buildRebalanceIx(program, view, wallet, sellIndex, buyIndex, sellAmount, usdcToInvest),
+        ]),
+      ),
+    [program, withFreshView],
+  )
+
+  const setWeight = useCallback(
+    (assetIndex: number, weightBps: number) =>
+      withFreshView(async (view, wallet) =>
+        sendIxs(program, [await buildSetWeightIx(program, view, wallet, assetIndex, weightBps)], 0),
+      ),
+    [program, withFreshView],
+  )
+
+  const addAsset = useCallback(
+    (mint: PublicKey, weightBps: number) =>
+      withFreshView(async (view, wallet) =>
+        sendIxs(program, [await buildAddAssetIx(program, view, wallet, mint, weightBps)], 0),
+      ),
+    [program, withFreshView],
+  )
+
+  const collectFees = useCallback(
+    () =>
+      withFreshView(async (view, wallet) =>
+        sendIxs(program, [await buildCollectFeesIx(program, view, wallet)], 0),
+      ),
+    [program, withFreshView],
+  )
+
+  const createStrategy = useCallback(
+    async (params: Omit<InitializeStrategyParams, 'manager'>) => {
+      if (!anchorWallet) throw new Error('Connect a wallet first.')
+      const ix = await buildInitializeStrategyIx(program, { ...params, manager: anchorWallet.publicKey })
+      const sig = await sendIxs(program, [ix], 0)
       refresh()
       return sig
     },
-    [anchorWallet, connection, program, refresh],
+    [anchorWallet, program, refresh],
   )
 
-  return { ...data, connected: !!publicKey, refresh, deposit, redeem }
+  const isManager = !!(
+    publicKey &&
+    data.view?.exists &&
+    data.view.account &&
+    data.view.account.manager.equals(publicKey)
+  )
+
+  return {
+    ...data,
+    connected: !!publicKey,
+    isManager,
+    refresh,
+    deposit,
+    redeem,
+    rebalance,
+    setWeight,
+    addAsset,
+    collectFees,
+    createStrategy,
+  }
 }

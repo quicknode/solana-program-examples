@@ -52,3 +52,20 @@ export function estimateRedeem(sharesMinor: bigint, view: StrategyView): RedeemE
 export function applyToleranceFloor(amount: bigint, toleranceBps: number): bigint {
   return (amount * BigInt(10_000 - toleranceBps)) / 10_000n
 }
+
+/** Ungrouped decimal string for filling an input (no thousands separators). */
+export function toAmountInput(minor: bigint, decimals = 6): string {
+  const base = 10n ** BigInt(decimals)
+  const whole = (minor / base).toString()
+  const frac = (minor % base).toString().padStart(decimals, '0').replace(/0+$/, '')
+  return frac ? `${whole}.${frac}` : whole
+}
+
+/** Parse a percent string (e.g. "40" or "12.5") into basis points, or null if invalid. */
+export function parsePercentToBps(input: string): number | null {
+  const t = input.trim()
+  if (t === '' || !/^\d*\.?\d*$/.test(t)) return null
+  const pct = Number(t)
+  if (!Number.isFinite(pct)) return null
+  return Math.round(pct * 100)
+}
