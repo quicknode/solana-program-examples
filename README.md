@@ -35,7 +35,7 @@ The programs are examples of common financial primitives on Solana. As well as t
 
 [⚓ Anchor](./finance/escrow/anchor) [💫 Quasar](./finance/escrow/quasar) [🦀 Native](./finance/escrow/native)
 
-🎬 Video: [![Escrow video: you don't need a bootcamp - build a Solana program (smart contract) in 30 minutes](https://img.youtube.com/vi/B5eBWWQfQuM/0.jpg?v=1)](https://www.youtube.com/watch?v=B5eBWWQfQuM)
+🎬 Video: [Build a Solana program (smart contract) in 30 minutes](https://www.youtube.com/watch?v=B5eBWWQfQuM)
 
 ### Lending
 
@@ -49,7 +49,7 @@ A typical NYSE/NASDAQ-style order book-based exchange. Buyers post **bids** (the
 
 [⚓ Anchor](./finance/order-book/anchor) [💫 Quasar](./finance/order-book/quasar)
 
-🎬 Video: [![How to make a crypto exchange on Solana](https://img.youtube.com/vi/ioFkpaKHXgg/0.jpg)](https://www.youtube.com/watch?v=ioFkpaKHXgg)
+🎬 Video: [How to make a crypto exchange on Solana](https://www.youtube.com/watch?v=ioFkpaKHXgg)
 
 ### AMM based Exchange
 
