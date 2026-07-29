@@ -1,4 +1,4 @@
-// Offline verification of the hand-authored client. No cluster needed: it re-derives
+// Offline verification of the client wiring. No cluster needed: it re-derives
 // the Anchor discriminators, builds the Program from the IDL, round-trips instruction
 // encoding and account decoding through Anchor's own coder, and derives the PDAs.
 //

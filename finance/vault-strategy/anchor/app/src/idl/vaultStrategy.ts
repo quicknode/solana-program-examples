@@ -1,7 +1,8 @@
 import type { Idl } from "@coral-xyz/anchor";
 import idlJson from "./vault_strategy.json";
 
-// The hand-authored IDL, transcribed from the program source. `address` is overridden
+// The IDL, generated from the program source by `anchor idl build` (see the app
+// README for the regeneration command). `address` is overridden
 // at runtime by the configured program id (see src/solana/program.ts), so a fresh
 // devnet deploy under a new id works without editing this file.
 export const VAULT_STRATEGY_IDL = idlJson as Idl;

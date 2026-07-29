@@ -41,8 +41,8 @@ asset list, fee, weights, NAV, and manager are all read from chain.
 
 ## Status: build layers
 
-1. **Client + IDL + scaffold** ✅ — config-driven Anchor client, hand-authored IDL/types,
-   every instruction wired to match the Rust tests, offline-verified.
+1. **Client + IDL + scaffold** ✅ — config-driven Anchor client, `anchor idl build`-generated
+   IDL, every instruction wired to match the Rust tests, offline-verified.
 2. Investor view — _next_.
 3. Manager view.
 4. Polish.
@@ -62,10 +62,16 @@ A one-command deploy + seed script is a planned deliverable; until then, see the
 (`programs/vault-strategy/tests/vault_strategy.rs`) for the exact sequence — the TypeScript
 client mirrors it call-for-call.
 
-## Why the IDL is hand-authored
+## Where the IDL comes from
 
-`anchor build` emits `target/idl` + `target/types`, but no Solana/Anchor toolchain is
-available here. The IDL was transcribed from the program source; its instruction/account
-discriminators are `sha256("global:<ix>")` / `sha256("account:<Name>")` and are asserted by
-`pnpm verify`. Once you can run `anchor build`, you may replace `src/idl/vault_strategy.json`
-with the generated artifact.
+`src/idl/vault_strategy.json` is generated from the program source with
+`anchor idl build` (Anchor 1.1.2, the version CI installs) and committed. If you change
+the program, regenerate it:
+
+```sh
+cd ../   # finance/vault-strategy/anchor
+anchor idl build --program-name vault_strategy --out app/src/idl/vault_strategy.json
+```
+
+`pnpm verify` still asserts the client wiring offline (discriminators, encode/decode
+round-trips, PDA derivations) as a cheap guard against a stale copy.
