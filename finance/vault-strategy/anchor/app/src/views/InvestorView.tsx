@@ -1,11 +1,11 @@
-import type { ReactNode } from 'react'
-import type { VaultState } from '../hooks/useVault'
-import type { StrategyView } from '../solana/strategy'
-import { VAULT_PROGRAM_ID } from '../solana/config'
-import { formatRatioPct, formatShares, formatUnits, formatUsdc } from '../solana/format'
-import { AllocationPanel } from '../components/Allocation'
-import { ActionTicket } from '../components/ActionTicket'
-import { Addr, Field } from '../components/atoms'
+import type { ReactNode } from "react";
+import { ActionTicket } from "../components/ActionTicket";
+import { AllocationPanel } from "../components/Allocation";
+import { Addr, Field } from "../components/atoms";
+import type { VaultState } from "../hooks/useVault";
+import { VAULT_PROGRAM_ID } from "../solana/config";
+import { formatRatioPct, formatShares, formatUnits, formatUsdc } from "../solana/format";
+import type { StrategyView } from "../solana/strategy";
 
 function HeroCell({
   label,
@@ -13,10 +13,10 @@ function HeroCell({
   sub,
   delta,
 }: {
-  label: string
-  value: string
-  sub?: ReactNode
-  delta?: { ratio: number }
+  label: string;
+  value: string;
+  sub?: ReactNode;
+  delta?: { ratio: number };
 }) {
   return (
     <div className="flex flex-col gap-2 px-6 py-7">
@@ -25,30 +25,26 @@ function HeroCell({
       <span className="flex items-center gap-3 font-mono text-[12px] text-muted">
         {sub}
         {delta && (
-          <span className={delta.ratio >= 0 ? 'text-gain' : 'text-loss'}>
-            {delta.ratio >= 0 ? '▲' : '▼'} {formatRatioPct(Math.abs(delta.ratio), 2)}
+          <span className={delta.ratio >= 0 ? "text-gain" : "text-loss"}>
+            {delta.ratio >= 0 ? "▲" : "▼"} {formatRatioPct(Math.abs(delta.ratio), 2)}
           </span>
         )}
       </span>
     </div>
-  )
+  );
 }
 
 function HeroBand({ view, vault }: { view: StrategyView; vault: VaultState }) {
-  const perShareRatio = Number(view.navPerShareMinor) / 1e6 - 1
+  const perShareRatio = Number(view.navPerShareMinor) / 1e6 - 1;
 
-  const positionValue = !vault.connected
-    ? '—'
-    : vault.position
-      ? `$${formatUsdc(vault.position.valueMinor)}`
-      : '$0.00'
+  const positionValue = !vault.connected ? "—" : vault.position ? `$${formatUsdc(vault.position.valueMinor)}` : "$0.00";
   const positionSub = !vault.connected ? (
     <span className="text-faint">connect wallet</span>
   ) : vault.position && vault.position.shares > 0n ? (
     `${formatShares(vault.position.shares)} shares · ${formatRatioPct(vault.position.ownership)}`
   ) : (
-    'no shares yet'
-  )
+    "no shares yet"
+  );
 
   return (
     <div className="grid grid-cols-1 divide-y divide-line border-b border-line sm:grid-cols-3 sm:divide-x sm:divide-y-0">
@@ -57,7 +53,7 @@ function HeroBand({ view, vault }: { view: StrategyView; vault: VaultState }) {
         value={`$${formatUsdc(view.navMinor)}`}
         sub={
           view.navComplete ? (
-            `${view.assets.length} asset${view.assets.length === 1 ? '' : 's'} + USDC`
+            `${view.assets.length} asset${view.assets.length === 1 ? "" : "s"} + USDC`
           ) : (
             <span className="text-accent">partial · unpriced holdings</span>
           )
@@ -71,11 +67,11 @@ function HeroBand({ view, vault }: { view: StrategyView; vault: VaultState }) {
       />
       <HeroCell label="My position" value={positionValue} sub={positionSub} />
     </div>
-  )
+  );
 }
 
 function DetailsStrip({ view }: { view: StrategyView }) {
-  const s = view.account!
+  const s = view.account!;
   return (
     <div className="grid grid-cols-2 gap-x-8 gap-y-4 border-t border-line px-6 py-5 sm:grid-cols-3 lg:grid-cols-6">
       <Field label="Manager">
@@ -97,11 +93,11 @@ function DetailsStrip({ view }: { view: StrategyView }) {
         <Addr value={VAULT_PROGRAM_ID} />
       </Field>
     </div>
-  )
+  );
 }
 
 export function InvestorView({ vault }: { vault: VaultState }) {
-  const view = vault.view!
+  const view = vault.view!;
   return (
     <div>
       <HeroBand view={view} vault={vault} />
@@ -122,5 +118,5 @@ export function InvestorView({ vault }: { vault: VaultState }) {
         </div>
       </div>
     </div>
-  )
+  );
 }

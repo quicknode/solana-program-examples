@@ -1,15 +1,8 @@
-import { BN } from '@coral-xyz/anchor'
-import type { VaultProgram } from './program'
-import {
-  PublicKey,
-  SystemProgram,
-  type AccountMeta,
-  type TransactionInstruction,
-} from '@solana/web3.js'
-import { createAssociatedTokenAccountIdempotentInstruction } from '@solana/spl-token'
+import { BN } from "@coral-xyz/anchor";
+import { createAssociatedTokenAccountIdempotentInstruction } from "@solana/spl-token";
+import { type AccountMeta, type PublicKey, SystemProgram, type TransactionInstruction } from "@solana/web3.js";
 import {
   ASSOCIATED_TOKEN_PROGRAM_ID,
-  TOKEN_PROGRAM_ID,
   approvedAssetPda,
   assetConfigPda,
   assetRatePda,
@@ -19,25 +12,27 @@ import {
   routerUsdcTreasury,
   shareMintPda,
   strategyPda,
+  TOKEN_PROGRAM_ID,
   userAta,
   vaultAta,
-} from './pdas'
-import type { StrategyView } from './strategy'
+} from "./pdas";
+import type { VaultProgram } from "./program";
+import type { StrategyView } from "./strategy";
 
-const bn = (v: bigint): BN => new BN(v.toString())
-const ro = (pubkey: PublicKey): AccountMeta => ({ pubkey, isSigner: false, isWritable: false })
-const rw = (pubkey: PublicKey): AccountMeta => ({ pubkey, isSigner: false, isWritable: true })
+const bn = (v: bigint): BN => new BN(v.toString());
+const ro = (pubkey: PublicKey): AccountMeta => ({ pubkey, isSigner: false, isWritable: false });
+const rw = (pubkey: PublicKey): AccountMeta => ({ pubkey, isSigner: false, isWritable: true });
 
 // The three account keys every token-touching instruction shares.
 const TOKEN_PROGRAMS = {
   associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
   tokenProgram: TOKEN_PROGRAM_ID,
   systemProgram: SystemProgram.programId,
-}
+};
 
 function requireAccount(view: StrategyView) {
-  if (!view.account) throw new Error('strategy does not exist on this cluster')
-  return view.account
+  if (!view.account) throw new Error("strategy does not exist on this cluster");
+  return view.account;
 }
 
 // ---- depositor -------------------------------------------------------------
@@ -53,11 +48,11 @@ export function buildDepositIx(
   usdcAmount: bigint,
   minimumShares: bigint,
 ): Promise<TransactionInstruction> {
-  const s = requireAccount(view)
-  const router = s.swapRouter
-  const remaining: AccountMeta[] = []
+  const s = requireAccount(view);
+  const router = s.swapRouter;
+  const remaining: AccountMeta[] = [];
   for (const a of view.assets) {
-    remaining.push(ro(a.config), rw(a.vault), rw(a.mint), ro(assetRatePda(a.mint, router)), ro(a.priceFeed))
+    remaining.push(ro(a.config), rw(a.vault), rw(a.mint), ro(assetRatePda(a.mint, router)), ro(a.priceFeed));
   }
   return program.methods
     .deposit(bn(usdcAmount), bn(minimumShares))
@@ -76,7 +71,7 @@ export function buildDepositIx(
       ...TOKEN_PROGRAMS,
     })
     .remainingAccounts(remaining)
-    .instruction()
+    .instruction();
 }
 
 /**
@@ -92,16 +87,16 @@ export async function buildWithdrawIxs(
   sharesToBurn: bigint,
   minUsdcOut: bigint,
 ): Promise<TransactionInstruction[]> {
-  const s = requireAccount(view)
-  const pre: TransactionInstruction[] = []
-  const usdcAta = userAta(s.usdcMint, user)
-  pre.push(createAssociatedTokenAccountIdempotentInstruction(user, usdcAta, user, s.usdcMint))
+  const s = requireAccount(view);
+  const pre: TransactionInstruction[] = [];
+  const usdcAta = userAta(s.usdcMint, user);
+  pre.push(createAssociatedTokenAccountIdempotentInstruction(user, usdcAta, user, s.usdcMint));
 
-  const remaining: AccountMeta[] = []
+  const remaining: AccountMeta[] = [];
   for (const a of view.assets) {
-    const ata = userAta(a.mint, user)
-    pre.push(createAssociatedTokenAccountIdempotentInstruction(user, ata, user, a.mint))
-    remaining.push(ro(a.config), rw(a.vault), ro(a.mint), rw(ata))
+    const ata = userAta(a.mint, user);
+    pre.push(createAssociatedTokenAccountIdempotentInstruction(user, ata, user, a.mint));
+    remaining.push(ro(a.config), rw(a.vault), ro(a.mint), rw(ata));
   }
 
   const ix = await program.methods
@@ -117,9 +112,9 @@ export async function buildWithdrawIxs(
       ...TOKEN_PROGRAMS,
     })
     .remainingAccounts(remaining)
-    .instruction()
+    .instruction();
 
-  return [...pre, ix]
+  return [...pre, ix];
 }
 
 // ---- manager ---------------------------------------------------------------
@@ -134,11 +129,11 @@ export function buildRebalanceIx(
   sellAmount: bigint,
   usdcToInvest: bigint,
 ): Promise<TransactionInstruction> {
-  const s = requireAccount(view)
-  const router = s.swapRouter
-  const sell = view.assets[sellIndex]
-  const buy = view.assets[buyIndex]
-  if (!sell || !buy) throw new Error('sell/buy asset index out of range')
+  const s = requireAccount(view);
+  const router = s.swapRouter;
+  const sell = view.assets[sellIndex];
+  const buy = view.assets[buyIndex];
+  if (!sell || !buy) throw new Error("sell/buy asset index out of range");
   return program.methods
     .rebalance(bn(sellAmount), bn(usdcToInvest))
     .accountsStrict({
@@ -162,7 +157,7 @@ export function buildRebalanceIx(
       swapRouterProgram: router,
       ...TOKEN_PROGRAMS,
     })
-    .instruction()
+    .instruction();
 }
 
 /** set_weight(weight_bps): reweight an asset, or set 0 to retire it. */
@@ -180,7 +175,7 @@ export function buildSetWeightIx(
       strategy: view.strategy,
       assetConfig: assetConfigPda(view.strategy, assetIndex),
     })
-    .instruction()
+    .instruction();
 }
 
 /** add_asset(weight_bps): register a curator-approved mint at the next index. */
@@ -191,8 +186,8 @@ export function buildAddAssetIx(
   assetMint: PublicKey,
   weightBps: number,
 ): Promise<TransactionInstruction> {
-  const s = requireAccount(view)
-  const registry = s.registry
+  const s = requireAccount(view);
+  const registry = s.registry;
   return program.methods
     .addAsset(weightBps)
     .accountsStrict({
@@ -205,7 +200,7 @@ export function buildAddAssetIx(
       vaultAsset: vaultAta(assetMint, view.strategy),
       ...TOKEN_PROGRAMS,
     })
-    .instruction()
+    .instruction();
 }
 
 /** collect_fees(): permissionless — anyone pays to mint the accrued fee to the manager. */
@@ -214,7 +209,7 @@ export function buildCollectFeesIx(
   view: StrategyView,
   payer: PublicKey,
 ): Promise<TransactionInstruction> {
-  const s = requireAccount(view)
+  const s = requireAccount(view);
   return program.methods
     .collectFees()
     .accountsStrict({
@@ -225,17 +220,17 @@ export function buildCollectFeesIx(
       payer,
       ...TOKEN_PROGRAMS,
     })
-    .instruction()
+    .instruction();
 }
 
 export interface InitializeStrategyParams {
-  manager: PublicKey
-  usdcMint: PublicKey
-  registry: PublicKey
-  index: bigint
-  feeBps: number
-  maxSlippageBps: number
-  swapRouter: PublicKey
+  manager: PublicKey;
+  usdcMint: PublicKey;
+  registry: PublicKey;
+  index: bigint;
+  feeBps: number;
+  maxSlippageBps: number;
+  swapRouter: PublicKey;
 }
 
 /** initialize_strategy(index, fee_bps, max_slippage_bps, swap_router). */
@@ -243,7 +238,7 @@ export function buildInitializeStrategyIx(
   program: VaultProgram,
   p: InitializeStrategyParams,
 ): Promise<TransactionInstruction> {
-  const strategy = strategyPda(p.index)
+  const strategy = strategyPda(p.index);
   return program.methods
     .initializeStrategy(bn(p.index), p.feeBps, p.maxSlippageBps, p.swapRouter)
     .accountsStrict({
@@ -255,7 +250,7 @@ export function buildInitializeStrategyIx(
       vaultUsdc: vaultAta(p.usdcMint, strategy),
       ...TOKEN_PROGRAMS,
     })
-    .instruction()
+    .instruction();
 }
 
 // ---- curator (registry) — used by seeding / a future curator surface --------
@@ -272,7 +267,7 @@ export function buildInitializeRegistryIx(
       registry: registryPda(authority),
       systemProgram: SystemProgram.programId,
     })
-    .instruction()
+    .instruction();
 }
 
 /** approve_asset(price_feed): bind a mint to its official Pyth feed. */
@@ -282,7 +277,7 @@ export function buildApproveAssetIx(
   assetMint: PublicKey,
   priceFeed: PublicKey,
 ): Promise<TransactionInstruction> {
-  const registry = registryPda(authority)
+  const registry = registryPda(authority);
   return program.methods
     .approveAsset(priceFeed)
     .accountsStrict({
@@ -292,5 +287,5 @@ export function buildApproveAssetIx(
       approvedAsset: approvedAssetPda(registry, assetMint),
       systemProgram: SystemProgram.programId,
     })
-    .instruction()
+    .instruction();
 }

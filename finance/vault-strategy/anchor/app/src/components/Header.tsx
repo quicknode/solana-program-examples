@@ -1,6 +1,6 @@
-import { WalletMultiButton } from '@solana/wallet-adapter-react-ui'
-import { CLUSTER, STRATEGY_INDEX } from '../solana/config'
-import { Chip } from './atoms'
+import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
+import { CLUSTER, STRATEGY_INDEX } from "../solana/config";
+import { Chip } from "./atoms";
 
 export function Header({ onRefresh }: { onRefresh: () => void }) {
   return (
@@ -16,6 +16,7 @@ export function Header({ onRefresh }: { onRefresh: () => void }) {
           {CLUSTER}
         </Chip>
         <button
+          type="button"
           onClick={onRefresh}
           className="h-[34px] border border-line px-3 text-[11px] uppercase tracking-widest text-muted transition-colors hover:border-line2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
         >
@@ -24,5 +25,5 @@ export function Header({ onRefresh }: { onRefresh: () => void }) {
         <WalletMultiButton />
       </div>
     </header>
-  )
+  );
 }

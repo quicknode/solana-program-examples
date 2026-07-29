@@ -1,12 +1,12 @@
-import ReactDOM from 'react-dom/client'
-import { BN } from '@coral-xyz/anchor'
-import { PublicKey } from '@solana/web3.js'
-import './index.css'
-import { InvestorView } from './views/InvestorView'
-import { ManagerView } from './components/ManagerView'
-import type { VaultState } from './hooks/useVault'
-import type { AssetView, StrategyView } from './solana/strategy'
-import type { StrategyAccount } from './idl/vaultStrategy'
+import { BN } from "@coral-xyz/anchor";
+import { PublicKey } from "@solana/web3.js";
+import ReactDOM from "react-dom/client";
+import "./index.css";
+import { ManagerView } from "./components/ManagerView";
+import type { VaultState } from "./hooks/useVault";
+import type { StrategyAccount } from "./idl/vaultStrategy";
+import type { AssetView, StrategyView } from "./solana/strategy";
+import { InvestorView } from "./views/InvestorView";
 
 // ────────────────────────────────────────────────────────────────────────────
 // DEV-ONLY design preview. Renders InvestorView with fabricated data so the flagship
@@ -14,7 +14,7 @@ import type { StrategyAccount } from './idl/vaultStrategy'
 // (main.tsx / index.html): the shipped app only ever renders live account reads.
 // ────────────────────────────────────────────────────────────────────────────
 
-const k = () => PublicKey.unique()
+const k = () => PublicKey.unique();
 
 const asset = (
   index: number,
@@ -36,7 +36,7 @@ const asset = (
   stale: false,
   valueUsdc,
   actualWeight,
-})
+});
 
 const account: StrategyAccount = {
   index: new BN(0),
@@ -47,12 +47,12 @@ const account: StrategyAccount = {
   swapRouter: k(),
   feeBps: 100,
   maxSlippageBps: 100,
-  totalShares: new BN('12600000000'),
-  lastFeeAccrualTimestamp: new BN('1900000000'),
+  totalShares: new BN("12600000000"),
+  lastFeeAccrualTimestamp: new BN("1900000000"),
   assetCount: 2,
   totalWeightBps: 10_000,
   bump: 255,
-}
+};
 
 const view: StrategyView = {
   exists: true,
@@ -71,15 +71,15 @@ const view: StrategyView = {
   totalShares: 12_600_000_000n,
   navPerShareMinor: 1_019_107n,
   fullyAllocated: true,
-}
+};
 
-const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
-const mockSig = 'Prev1ewS1gnatureX9mB4kZ2qWvR7tNjHcYfDpL3sAe8uK1oI5rT6yUw'
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+const mockSig = "Prev1ewS1gnatureX9mB4kZ2qWvR7tNjHcYfDpL3sAe8uK1oI5rT6yUw";
 
 const act = async () => {
-  await sleep(500)
-  return mockSig
-}
+  await sleep(500);
+  return mockSig;
+};
 
 const vault: VaultState = {
   loading: false,
@@ -103,9 +103,9 @@ const vault: VaultState = {
   addAsset: act,
   collectFees: act,
   createStrategy: act,
-}
+};
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
+ReactDOM.createRoot(document.getElementById("root")!).render(
   <div className="flex min-h-full flex-col">
     <header className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-6 py-4">
       <div className="flex items-baseline gap-3">
@@ -136,4 +136,4 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       Design preview · fabricated data. The shipped app renders only live on-chain reads.
     </footer>
   </div>,
-)
+);

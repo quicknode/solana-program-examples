@@ -1,5 +1,8 @@
+/* biome-ignore lint/suspicious/noUnknownAtRules: Tailwind v3 directive, expanded by PostCSS at build time */
 @tailwind base;
+/* biome-ignore lint/suspicious/noUnknownAtRules: Tailwind v3 directive, expanded by PostCSS at build time */
 @tailwind components;
+/* biome-ignore lint/suspicious/noUnknownAtRules: Tailwind v3 directive, expanded by PostCSS at build time */
 @tailwind utilities;
 
 @layer base {
@@ -19,7 +22,9 @@
   /* Numbers read as instrument data: tabular by default in the mono face. */
   .font-mono {
     font-variant-numeric: tabular-nums;
-    font-feature-settings: 'tnum' 1, 'zero' 1;
+    font-feature-settings:
+      "tnum" 1,
+      "zero" 1;
   }
 }
 
@@ -31,7 +36,7 @@
 
 /* Retune the wallet-adapter UI to the terminal (default ships a purple button). */
 .wallet-adapter-button {
-  font-family: 'Archivo', ui-sans-serif, sans-serif !important;
+  font-family: "Archivo", ui-sans-serif, sans-serif !important;
   height: 34px !important;
   padding: 0 14px !important;
   border-radius: 3px !important;
@@ -53,7 +58,7 @@
   border-radius: 6px !important;
 }
 .wallet-adapter-modal-title {
-  font-family: 'Archivo', ui-sans-serif, sans-serif !important;
+  font-family: "Archivo", ui-sans-serif, sans-serif !important;
   color: #e8e6e1 !important;
 }
 .wallet-adapter-modal-list .wallet-adapter-button {

@@ -1,10 +1,6 @@
-import { AnchorError, AnchorProvider } from '@coral-xyz/anchor'
-import {
-  ComputeBudgetProgram,
-  Transaction,
-  type TransactionInstruction,
-} from '@solana/web3.js'
-import type { VaultProgram } from '../solana/program'
+import { AnchorError, type AnchorProvider } from "@coral-xyz/anchor";
+import { ComputeBudgetProgram, Transaction, type TransactionInstruction } from "@solana/web3.js";
+import type { VaultProgram } from "../solana/program";
 
 /**
  * Build a legacy transaction from instructions (with a compute-unit bump — deposit and
@@ -19,32 +15,32 @@ export async function sendIxs(
   ixs: TransactionInstruction[],
   computeUnits = 400_000,
 ): Promise<string> {
-  const provider = program.provider as AnchorProvider
-  const tx = new Transaction()
+  const provider = program.provider as AnchorProvider;
+  const tx = new Transaction();
   if (computeUnits > 0) {
-    tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: computeUnits }))
+    tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: computeUnits }));
   }
-  for (const ix of ixs) tx.add(ix)
-  return provider.sendAndConfirm(tx)
+  for (const ix of ixs) tx.add(ix);
+  return provider.sendAndConfirm(tx);
 }
 
 /** Turn a thrown transaction error into a human message: problem, and where possible recovery. */
 export function describeError(err: unknown): string {
   const e = err as {
-    error?: { errorMessage?: string }
-    logs?: string[]
-    message?: string
-  }
-  if (e?.error?.errorMessage) return e.error.errorMessage
+    error?: { errorMessage?: string };
+    logs?: string[];
+    message?: string;
+  };
+  if (e?.error?.errorMessage) return e.error.errorMessage;
   if (Array.isArray(e?.logs)) {
-    const parsed = AnchorError.parse(e.logs)
-    if (parsed) return parsed.error.errorMessage
-    const line = e.logs.find((l) => l.includes('Error Message:'))
-    if (line) return line.split('Error Message:')[1].trim()
+    const parsed = AnchorError.parse(e.logs);
+    if (parsed) return parsed.error.errorMessage;
+    const line = e.logs.find((l) => l.includes("Error Message:"));
+    if (line) return line.split("Error Message:")[1].trim();
   }
-  if (typeof e?.message === 'string') {
-    if (/user rejected|rejected the request/i.test(e.message)) return 'Transaction rejected in wallet.'
-    return e.message.replace(/^failed to send transaction:\s*/i, '')
+  if (typeof e?.message === "string") {
+    if (/user rejected|rejected the request/i.test(e.message)) return "Transaction rejected in wallet.";
+    return e.message.replace(/^failed to send transaction:\s*/i, "");
   }
-  return String(err)
+  return String(err);
 }

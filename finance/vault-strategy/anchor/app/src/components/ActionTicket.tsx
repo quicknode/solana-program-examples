@@ -1,107 +1,91 @@
-import { useState } from 'react'
-import type { Position, StrategyView } from '../solana/strategy'
-import { formatShares, formatUnits, formatUsdc, shortAddress } from '../solana/format'
-import {
-  applyToleranceFloor,
-  estimateRedeem,
-  estimateSharesOut,
-  parseAmount,
-} from '../lib/amounts'
-import { describeError } from '../lib/tx'
-import { Button, Segmented, StatusLine, TextField, type TxStatus } from './atoms'
+import { useState } from "react";
+import { applyToleranceFloor, estimateRedeem, estimateSharesOut, parseAmount } from "../lib/amounts";
+import { describeError } from "../lib/tx";
+import { formatShares, formatUnits, formatUsdc, shortAddress } from "../solana/format";
+import type { Position, StrategyView } from "../solana/strategy";
+import { Button, Segmented, StatusLine, TextField, type TxStatus } from "./atoms";
 
-const DEPOSIT_TOLERANCE_BPS = 100 // 1% — floor on shares out to protect the depositor
+const DEPOSIT_TOLERANCE_BPS = 100; // 1% — floor on shares out to protect the depositor
 
-type Mode = 'deposit' | 'redeem'
+type Mode = "deposit" | "redeem";
 
 /** Ungrouped decimal string for filling the input (no thousands commas). */
 function rawAmount(minor: bigint, decimals = 6): string {
-  const base = 10n ** BigInt(decimals)
-  const whole = (minor / base).toString()
-  const frac = (minor % base).toString().padStart(decimals, '0').replace(/0+$/, '')
-  return frac ? `${whole}.${frac}` : whole
+  const base = 10n ** BigInt(decimals);
+  const whole = (minor / base).toString();
+  const frac = (minor % base).toString().padStart(decimals, "0").replace(/0+$/, "");
+  return frac ? `${whole}.${frac}` : whole;
 }
 
 export interface ActionTicketProps {
-  view: StrategyView
-  connected: boolean
-  walletUsdc: bigint | null
-  position: Position | null
-  onDeposit: (usdcMinor: bigint, minShares: bigint) => Promise<string>
-  onRedeem: (sharesMinor: bigint, minUsdcOut: bigint) => Promise<string>
+  view: StrategyView;
+  connected: boolean;
+  walletUsdc: bigint | null;
+  position: Position | null;
+  onDeposit: (usdcMinor: bigint, minShares: bigint) => Promise<string>;
+  onRedeem: (sharesMinor: bigint, minUsdcOut: bigint) => Promise<string>;
 }
 
-export function ActionTicket({
-  view,
-  connected,
-  walletUsdc,
-  position,
-  onDeposit,
-  onRedeem,
-}: ActionTicketProps) {
-  const [mode, setMode] = useState<Mode>('deposit')
-  const [depositInput, setDepositInput] = useState('')
-  const [redeemInput, setRedeemInput] = useState('')
-  const [status, setStatus] = useState<TxStatus>({ kind: 'idle' })
-  const [busy, setBusy] = useState(false)
+export function ActionTicket({ view, connected, walletUsdc, position, onDeposit, onRedeem }: ActionTicketProps) {
+  const [mode, setMode] = useState<Mode>("deposit");
+  const [depositInput, setDepositInput] = useState("");
+  const [redeemInput, setRedeemInput] = useState("");
+  const [status, setStatus] = useState<TxStatus>({ kind: "idle" });
+  const [busy, setBusy] = useState(false);
 
-  const shares = position?.shares ?? 0n
-  const activeUnpriced = view.assets.some((a) => a.weightBps > 0 && (a.price === null || a.stale))
+  const shares = position?.shares ?? 0n;
+  const activeUnpriced = view.assets.some((a) => a.weightBps > 0 && (a.price === null || a.stale));
 
   // deposit derivations
-  const usdcMinor = parseAmount(depositInput, 6)
-  const depositInvalid = depositInput.trim() !== '' && usdcMinor === null
+  const usdcMinor = parseAmount(depositInput, 6);
+  const depositInvalid = depositInput.trim() !== "" && usdcMinor === null;
   const expectedShares =
-    usdcMinor !== null && usdcMinor > 0n
-      ? estimateSharesOut(usdcMinor, view.navMinor, view.totalShares)
-      : null
-  const minShares = expectedShares !== null ? applyToleranceFloor(expectedShares, DEPOSIT_TOLERANCE_BPS) : 0n
+    usdcMinor !== null && usdcMinor > 0n ? estimateSharesOut(usdcMinor, view.navMinor, view.totalShares) : null;
+  const minShares = expectedShares !== null ? applyToleranceFloor(expectedShares, DEPOSIT_TOLERANCE_BPS) : 0n;
 
   const depositBlock: string | null = !connected
-    ? 'Connect a wallet to deposit.'
+    ? "Connect a wallet to deposit."
     : !view.fullyAllocated
-      ? 'Strategy isn’t fully allocated — deposits are closed until target weights total 100%.'
+      ? "Strategy isn’t fully allocated — deposits are closed until target weights total 100%."
       : activeUnpriced
-        ? 'Oracle prices are stale or missing — a deposit would revert on-chain.'
+        ? "Oracle prices are stale or missing — a deposit would revert on-chain."
         : usdcMinor !== null && usdcMinor > 0n && walletUsdc !== null && usdcMinor > walletUsdc
-          ? 'Amount exceeds your USDC balance.'
-          : null
+          ? "Amount exceeds your USDC balance."
+          : null;
   const depositReady =
     connected &&
     view.fullyAllocated &&
     !activeUnpriced &&
     usdcMinor !== null &&
     usdcMinor > 0n &&
-    (walletUsdc === null || usdcMinor <= walletUsdc)
+    (walletUsdc === null || usdcMinor <= walletUsdc);
 
   // redeem derivations
-  const sharesMinor = parseAmount(redeemInput, 6)
-  const redeemInvalid = redeemInput.trim() !== '' && sharesMinor === null
-  const redeemEst =
-    sharesMinor !== null && sharesMinor > 0n ? estimateRedeem(sharesMinor, view) : null
+  const sharesMinor = parseAmount(redeemInput, 6);
+  const redeemInvalid = redeemInput.trim() !== "" && sharesMinor === null;
+  const redeemEst = sharesMinor !== null && sharesMinor > 0n ? estimateRedeem(sharesMinor, view) : null;
 
   const redeemBlock: string | null = !connected
-    ? 'Connect a wallet to redeem.'
+    ? "Connect a wallet to redeem."
     : shares === 0n
-      ? 'You hold no shares in this strategy.'
+      ? "You hold no shares in this strategy."
       : sharesMinor !== null && sharesMinor > 0n && sharesMinor > shares
-        ? 'Amount exceeds your shares.'
-        : null
-  const redeemReady =
-    connected && shares > 0n && sharesMinor !== null && sharesMinor > 0n && sharesMinor <= shares
+        ? "Amount exceeds your shares."
+        : null;
+  const redeemReady = connected && shares > 0n && sharesMinor !== null && sharesMinor > 0n && sharesMinor <= shares;
 
   async function run(action: () => Promise<string>, verb: string) {
-    setBusy(true)
-    setStatus({ kind: 'pending', message: 'Confirm in your wallet…' })
+    setBusy(true);
+    setStatus({ kind: "pending", message: "Confirm in your wallet…" });
     try {
-      const signature = await action()
-      setStatus({ kind: 'success', message: `${verb} confirmed.`, signature })
-      setDepositInput('')
-      setRedeemInput('')
+      const signature = await action();
+      setStatus({ kind: "success", message: `${verb} confirmed.`, signature });
+      setDepositInput("");
+      setRedeemInput("");
     } catch (err) {
-      setStatus({ kind: 'error', message: describeError(err) })
+      setStatus({ kind: "error", message: describeError(err) });
     } finally {
-      setBusy(false)
+      setBusy(false);
     }
   }
 
@@ -109,13 +93,13 @@ export function ActionTicket({
     <div className="border border-line bg-panel">
       <Segmented<Mode>
         options={[
-          { key: 'deposit', label: 'Deposit' },
-          { key: 'redeem', label: 'Redeem' },
+          { key: "deposit", label: "Deposit" },
+          { key: "redeem", label: "Redeem" },
         ]}
         value={mode}
         onChange={(k) => {
-          setMode(k)
-          setStatus({ kind: 'idle' })
+          setMode(k);
+          setStatus({ kind: "idle" });
         }}
       />
 
@@ -125,7 +109,7 @@ export function ActionTicket({
       </div>
 
       <div className="space-y-4 px-5 py-5">
-        {mode === 'deposit' ? (
+        {mode === "deposit" ? (
           <>
             <TextField
               label="Deposit"
@@ -144,7 +128,7 @@ export function ActionTicket({
                     Balance {formatUsdc(walletUsdc)} · Max
                   </button>
                 ) : (
-                  'Balance —'
+                  "Balance —"
                 )
               }
             />
@@ -164,8 +148,11 @@ export function ActionTicket({
 
             {depositBlock && <p className="text-[12px] leading-relaxed text-muted">{depositBlock}</p>}
 
-            <Button onClick={() => run(() => onDeposit(usdcMinor!, minShares), 'Deposit')} disabled={!depositReady || busy}>
-              {busy ? 'Working…' : 'Deposit USDC'}
+            <Button
+              onClick={() => run(() => onDeposit(usdcMinor!, minShares), "Deposit")}
+              disabled={!depositReady || busy}
+            >
+              {busy ? "Working…" : "Deposit USDC"}
             </Button>
           </>
         ) : (
@@ -208,8 +195,8 @@ export function ActionTicket({
 
             {redeemBlock && <p className="text-[12px] leading-relaxed text-muted">{redeemBlock}</p>}
 
-            <Button onClick={() => run(() => onRedeem(sharesMinor!, 0n), 'Redemption')} disabled={!redeemReady || busy}>
-              {busy ? 'Working…' : 'Redeem shares'}
+            <Button onClick={() => run(() => onRedeem(sharesMinor!, 0n), "Redemption")} disabled={!redeemReady || busy}>
+              {busy ? "Working…" : "Redeem shares"}
             </Button>
           </>
         )}
@@ -217,5 +204,5 @@ export function ActionTicket({
         <StatusLine status={status} />
       </div>
     </div>
-  )
+  );
 }

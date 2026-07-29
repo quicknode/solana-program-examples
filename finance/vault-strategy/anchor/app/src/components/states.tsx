@@ -1,6 +1,6 @@
-import type { StrategyView } from '../solana/strategy'
-import { VAULT_PROGRAM_ID } from '../solana/config'
-import { Addr, Field } from './atoms'
+import { VAULT_PROGRAM_ID } from "../solana/config";
+import type { StrategyView } from "../solana/strategy";
+import { Addr, Field } from "./atoms";
 
 export function Loading() {
   return (
@@ -8,7 +8,7 @@ export function Loading() {
       <span className="mr-2 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-accent align-middle" />
       reading chain…
     </div>
-  )
+  );
 }
 
 export function ErrorPanel({ message }: { message: string }) {
@@ -18,12 +18,12 @@ export function ErrorPanel({ message }: { message: string }) {
         <div className="mb-2 text-[11px] uppercase tracking-widest text-loss">RPC error</div>
         <p className="break-words font-mono text-[13px] text-muted">{message}</p>
         <p className="mt-4 text-[12px] leading-relaxed text-faint">
-          Point <code className="text-muted">VITE_RPC_URL</code> at your Quicknode devnet endpoint
-          in <code className="text-muted">.env.local</code>, then refresh.
+          Point <code className="text-muted">VITE_RPC_URL</code> at your Quicknode devnet endpoint in{" "}
+          <code className="text-muted">.env.local</code>, then refresh.
         </p>
       </div>
     </div>
-  )
+  );
 }
 
 export function NotFound({ view }: { view: StrategyView }) {
@@ -35,9 +35,9 @@ export function NotFound({ view }: { view: StrategyView }) {
           Nothing at strategy #{view.index.toString()} on this cluster
         </h2>
         <p className="mb-6 max-w-prose text-[14px] leading-relaxed text-muted">
-          The program isn't deployed here, or no strategy exists at this index yet. Deploy the
-          vault-strategy program to devnet and seed it, then set the <code className="text-ink">VITE_*</code>{' '}
-          variables to the new ids. See <code className="text-ink">app/README.md</code>.
+          The program isn't deployed here, or no strategy exists at this index yet. Deploy the vault-strategy program to
+          devnet and seed it, then set the <code className="text-ink">VITE_*</code> variables to the new ids. See{" "}
+          <code className="text-ink">app/README.md</code>.
         </p>
         <div className="grid grid-cols-1 gap-4 border-t border-line pt-5 sm:grid-cols-2">
           <Field label="Expected strategy PDA">
@@ -49,5 +49,5 @@ export function NotFound({ view }: { view: StrategyView }) {
         </div>
       </div>
     </div>
-  )
+  );
 }
