@@ -1,6 +1,11 @@
 {
   "compilerOptions": {
     "composite": true,
+    // Emit (required by composite) goes under node_modules so a compiled
+    // vite.config.js never lands next to vite.config.ts — Vite would load
+    // the stale .js in preference to the .ts.
+    "outDir": "./node_modules/.tmp/tsconfig-node",
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig-node/tsconfig.node.tsbuildinfo",
     "skipLibCheck": true,
     "module": "ESNext",
     "moduleResolution": "Bundler",

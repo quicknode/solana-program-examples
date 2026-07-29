@@ -6,3 +6,8 @@ dist-ssr
 .env.local
 .env.*.local
 .DS_Store
+
+# build artifacts (tsc -b / vite)
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts

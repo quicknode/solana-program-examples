@@ -11,7 +11,9 @@ import { readFileSync } from "node:fs";
 import * as anchor from "@coral-xyz/anchor";
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
 
-const { Program, AnchorProvider, BN } = anchor;
+// @coral-xyz/anchor is CJS; under Node ESM interop some builds expose everything
+// only on the default export (notably BN), so fall back to it.
+const { Program, AnchorProvider, BN } = { ...anchor.default, ...anchor, BN: anchor.BN ?? anchor.default?.BN };
 
 const idl = JSON.parse(readFileSync(new URL("../src/idl/vault_strategy.json", import.meta.url)));
 const PROGRAM_ID = new PublicKey(idl.address);

@@ -1,1 +1,0 @@
-{"root":["./src/app.tsx","./src/main.tsx","./src/vite-env.d.ts","./src/idl/vaultstrategy.ts","./src/solana/config.ts","./src/solana/format.ts","./src/solana/instructions.ts","./src/solana/pdas.ts","./src/solana/program.ts","./src/solana/pyth.ts","./src/solana/strategy.ts"],"version":"5.9.3"}
