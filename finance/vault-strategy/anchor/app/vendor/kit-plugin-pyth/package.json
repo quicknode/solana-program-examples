@@ -1,0 +1,60 @@
+{
+  "name": "kit-plugin-pyth",
+  "version": "0.1.0",
+  "description": "Pyth Network oracle plugin for Solana Kit - price feeds via Hermes API and onchain price accounts",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "tsx --test src/**/*.test.ts",
+    "prepublishOnly": "npm run build",
+    "test:ci": "tsx --test src/**/*.unit.test.ts",
+    "test:litesvm": "tsx --test src/**/*.litesvm.test.ts"
+  },
+  "keywords": [
+    "solana",
+    "kit",
+    "kite",
+    "pyth",
+    "oracle",
+    "price-feed",
+    "hermes",
+    "defi"
+  ],
+  "author": "Mike MacCana <mike.maccana@gmail.com>",
+  "license": "MIT",
+  "peerDependencies": {
+    "solana-kite": "^3.2.0",
+    "@solana/kit": "^6.0.0 || ^7.0.0"
+  },
+  "devDependencies": {
+    "@solana/kit": "^6.9.0",
+    "@types/node": "^22.10.5",
+    "solana-kite": "^3.2.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "kit-plugin-litesvm": "file:../kit-plugin-litesvm"
+  },
+  "dependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mikemaccana/solana-kit-plugins.git",
+    "directory": "kit-plugin-pyth"
+  },
+  "homepage": "https://github.com/mikemaccana/solana-kit-plugins/tree/main/kit-plugin-pyth",
+  "bugs": {
+    "url": "https://github.com/mikemaccana/solana-kit-plugins/issues"
+  }
+}
