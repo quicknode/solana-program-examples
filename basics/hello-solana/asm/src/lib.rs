@@ -1,4 +1,4 @@
-#[cfg(test)]
+#[cfg(all(test, has_asm_binary))]
 mod tests {
     use litesvm::LiteSVM;
     use solana_instruction::{AccountMeta, Instruction};
