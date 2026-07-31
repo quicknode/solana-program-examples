@@ -21,7 +21,7 @@ fn setup() -> (Env, ReserveHandle, ReserveHandle, Keypair, anchor_lang::prelude:
     env.fund(&borrower, collateral.mint, 1_000_000_000);
     env.fund(&borrower, borrow.mint, 0); // create the borrowed-token account
     env.supply(&borrower, &collateral, 1_000_000_000);
-    let obligation = env.init_obligation(&borrower);
+    let obligation = env.initialize_obligation(&borrower);
     env.post_collateral(&borrower, obligation, &collateral, 1_000_000_000);
 
     (env, collateral, borrow, borrower, obligation)

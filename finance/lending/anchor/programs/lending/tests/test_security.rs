@@ -24,7 +24,7 @@ fn cross_market_reserve_is_rejected() {
     let borrower = env.create_user();
     env.fund(&borrower, collateral.mint, 1_000_000_000);
     env.supply(&borrower, &collateral, 1_000_000_000);
-    let obligation = env.init_obligation(&borrower);
+    let obligation = env.initialize_obligation(&borrower);
 
     // Posting collateral via the second market's reserve must fail before any
     // token movement.

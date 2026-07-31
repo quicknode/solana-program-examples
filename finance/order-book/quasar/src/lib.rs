@@ -48,10 +48,10 @@ mod quasar_order_book {
     /// Create a per-user, per-market account tracking a user's open orders and
     /// unsettled balances.
     #[instruction(discriminator = 1)]
-    pub fn create_market_user(
-        ctx: Ctx<CreateMarketUserAccountConstraints>,
+    pub fn initialize_market_user(
+        ctx: Ctx<InitializeMarketUserAccountConstraints>,
     ) -> Result<(), ProgramError> {
-        instructions::create_market_user::handle_create_market_user(&mut ctx.accounts, &ctx.bumps)
+        instructions::initialize_market_user::handle_initialize_market_user(&mut ctx.accounts, &ctx.bumps)
     }
 
     /// Place a bid or ask (`side`: 0 = Bid, 1 = Ask). Locks the required funds,

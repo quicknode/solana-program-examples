@@ -25,7 +25,7 @@ pub struct Config {
     /// reserves and grows the LP-claimable balance).
     ///
     /// Modelled on Uniswap V2 / Raydium: the AMM operator takes a slice of
-    /// every fee, LPs keep the rest. Set in `create_config`; fixed for the
+    /// every fee, LPs keep the rest. Set in `initialize_config`; fixed for the
     /// lifetime of the program. Must be `< 10_000`.
     pub admin_share_bps: u16,
 

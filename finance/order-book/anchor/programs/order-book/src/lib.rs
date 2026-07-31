@@ -35,8 +35,8 @@ pub mod order_book {
 
     /// Create a per-user, per-market account that tracks a user's open orders
     /// and unsettled balances.
-    pub fn create_market_user(context: Context<CreateMarketUserAccountConstraints>) -> Result<()> {
-        instructions::create_market_user::handle_create_market_user(context)
+    pub fn initialize_market_user(context: Context<InitializeMarketUserAccountConstraints>) -> Result<()> {
+        instructions::initialize_market_user::handle_initialize_market_user(context)
     }
 
     /// Place a bid or ask. Locks the required funds (quote for bids, base

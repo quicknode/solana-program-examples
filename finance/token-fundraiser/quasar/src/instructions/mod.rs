@@ -1,5 +1,5 @@
-pub mod initialize;
-pub use initialize::*;
+pub mod initialize_fundraiser;
+pub use initialize_fundraiser::*;
 
 pub mod contribute;
 pub use contribute::*;

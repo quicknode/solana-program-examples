@@ -5,7 +5,7 @@ pub enum AmmError {
     #[msg("Invalid fee value")]
     InvalidFee,
 
-    // Returned when `create_config` is called with `admin_share_bps >= 10_000`.
+    // Returned when `initialize_config` is called with `admin_share_bps >= 10_000`.
     // The admin share is a basis-points fraction of the trading fee, so values
     // at or above 10_000 are nonsensical (the admin can't take more than the
     // whole fee).
@@ -72,7 +72,7 @@ pub enum AmmError {
     #[msg("Math overflow")]
     MathOverflow,
 
-    // Returned by `create_pool` when `mint_a >= mint_b`. Requiring a strict
+    // Returned by `initialize_pool` when `mint_a >= mint_b`. Requiring a strict
     // ascending order ensures each (mint_a, mint_b) pair has exactly one
     // canonical pool PDA - without it, a (X, Y) pool and a (Y, X) pool would
     // both be valid, fragmenting liquidity.

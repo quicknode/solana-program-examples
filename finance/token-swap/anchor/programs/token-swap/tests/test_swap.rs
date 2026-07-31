@@ -125,10 +125,10 @@ fn full_setup() -> TestSetup {
     mint_tokens_to_token_account(&mut svm, &mint_b, &holder_account_b, minted_amount, &admin).unwrap();
 
     // Create AMM
-    let create_config_ix = Instruction::new_with_bytes(
+    let initialize_config_ix = Instruction::new_with_bytes(
         program_id,
-        &swap_example::instruction::CreateConfig { fee, admin_share_bps }.data(),
-        swap_example::accounts::CreateConfigAccountConstraints {
+        &swap_example::instruction::InitializeConfig { fee, admin_share_bps }.data(),
+        swap_example::accounts::InitializeConfigAccountConstraints {
             config: config_key,
             admin: admin.pubkey(),
             payer: payer.pubkey(),
@@ -138,17 +138,17 @@ fn full_setup() -> TestSetup {
     );
     send_transaction_from_instructions(
         &mut svm,
-        vec![create_config_ix],
+        vec![initialize_config_ix],
         &[&payer],
         &payer.pubkey(),
     )
     .unwrap();
 
     // Create Pool
-    let create_pool_ix = Instruction::new_with_bytes(
+    let initialize_pool_ix = Instruction::new_with_bytes(
         program_id,
-        &swap_example::instruction::CreatePool {}.data(),
-        swap_example::accounts::CreatePoolAccountConstraints {
+        &swap_example::instruction::InitializePool {}.data(),
+        swap_example::accounts::InitializePoolAccountConstraints {
             config: config_key,
             pool_config: pool_config_key,
             pool_authority,
@@ -166,7 +166,7 @@ fn full_setup() -> TestSetup {
     );
     send_transaction_from_instructions(
         &mut svm,
-        vec![create_pool_ix],
+        vec![initialize_pool_ix],
         &[&payer],
         &payer.pubkey(),
     )
@@ -192,7 +192,7 @@ fn full_setup() -> TestSetup {
 }
 
 #[test]
-fn test_create_config() {
+fn test_initialize_config() {
     let (mut svm, program_id, payer) = setup();
     let fee: u16 = 500;
     let admin_share_bps: u16 = 1667;
@@ -200,10 +200,10 @@ fn test_create_config() {
 
     let (config_key, _) = Pubkey::find_program_address(&[b"config"], &program_id);
 
-    let create_config_ix = Instruction::new_with_bytes(
+    let initialize_config_ix = Instruction::new_with_bytes(
         program_id,
-        &swap_example::instruction::CreateConfig { fee, admin_share_bps }.data(),
-        swap_example::accounts::CreateConfigAccountConstraints {
+        &swap_example::instruction::InitializeConfig { fee, admin_share_bps }.data(),
+        swap_example::accounts::InitializeConfigAccountConstraints {
             config: config_key,
             admin: admin.pubkey(),
             payer: payer.pubkey(),
@@ -214,7 +214,7 @@ fn test_create_config() {
 
     send_transaction_from_instructions(
         &mut svm,
-        vec![create_config_ix],
+        vec![initialize_config_ix],
         &[&payer],
         &payer.pubkey(),
     )

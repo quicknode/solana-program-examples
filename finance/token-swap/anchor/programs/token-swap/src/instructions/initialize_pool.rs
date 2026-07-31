@@ -10,7 +10,7 @@ use crate::{
     state::{Config, PoolConfig},
 };
 
-pub fn handle_create_pool(context: Context<CreatePoolAccountConstraints>) -> Result<()> {
+pub fn handle_initialize_pool(context: Context<InitializePoolAccountConstraints>) -> Result<()> {
     let bump = context.bumps.pool_config;
     let pool_config = &mut context.accounts.pool_config;
     pool_config.config = context.accounts.config.key();
@@ -22,7 +22,7 @@ pub fn handle_create_pool(context: Context<CreatePoolAccountConstraints>) -> Res
 }
 
 #[derive(Accounts)]
-pub struct CreatePoolAccountConstraints<'info> {
+pub struct InitializePoolAccountConstraints<'info> {
     #[account(
         seeds = [CONFIG_SEED],
         bump,

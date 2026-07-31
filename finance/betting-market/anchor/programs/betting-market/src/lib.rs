@@ -24,12 +24,12 @@ pub mod betting_market {
     }
 
     // Admin opens a new market and creates its pool vault.
-    pub fn create_event(
-        context: Context<CreateEventAccountConstraints>,
+    pub fn initialize_event(
+        context: Context<InitializeEventAccountConstraints>,
         event_id: u64,
         description: String,
     ) -> Result<()> {
-        instructions::create_event::handle_create_event(context, event_id, description)
+        instructions::initialize_event::handle_initialize_event(context, event_id, description)
     }
 
     // Admin adds a possible result. Only allowed before betting starts.

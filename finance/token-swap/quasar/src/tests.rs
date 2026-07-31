@@ -5,7 +5,7 @@
 use {
     crate::{
         cpi::{
-            ClaimAdminFeesInstruction, CreateConfigInstruction, CreatePoolInstruction,
+            ClaimAdminFeesInstruction, InitializeConfigInstruction, InitializePoolInstruction,
             DepositLiquidityInstruction, SwapTokensInstruction, WithdrawLiquidityInstruction,
         },
         error::AmmError,
@@ -38,7 +38,7 @@ fn expected_swap_output(input: u64, fee_bps: u64, pool_in: u64, pool_out: u64) -
     mul_div(taxed_input, pool_out, divisor)
 }
 
-/// Trading fee passed to `create_config`, in basis points.
+/// Trading fee passed to `initialize_config`, in basis points.
 const POOL_FEE_BPS: u64 = 30;
 /// Admin's share of the trading fee, in basis points.
 const ADMIN_SHARE_BPS: u16 = 1_667;
@@ -78,9 +78,9 @@ struct PoolEnv {
     lp_mint: Pubkey,
 }
 
-fn create_config(test: &mut Test, fee: u16, admin_share_bps: u16) -> Outcome {
+fn initialize_config(test: &mut Test, fee: u16, admin_share_bps: u16) -> Outcome {
     test.add(Wallet::new().at(PAYER));
-    test.send(CreateConfigInstruction {
+    test.send(InitializeConfigInstruction {
         admin: ADMIN,
         payer: PAYER,
         fee,
@@ -90,16 +90,16 @@ fn create_config(test: &mut Test, fee: u16, admin_share_bps: u16) -> Outcome {
 
 /// Creates config + two mints + pool.
 fn setup_pool(test: &mut Test) -> PoolEnv {
-    create_config(test, POOL_FEE_BPS as u16, ADMIN_SHARE_BPS).succeeds();
+    initialize_config(test, POOL_FEE_BPS as u16, ADMIN_SHARE_BPS).succeeds();
 
     // Pre-populate mint accounts (no onchain minting needed for tests).
     test.add(Mint::new(PAYER).at(MINT_A).decimals(6));
     test.add(Mint::new(PAYER).at(MINT_B).decimals(6));
 
-    // create_pool: the pool_config, pool authority, and LP-mint PDAs are
+    // initialize_pool: the pool_config, pool authority, and LP-mint PDAs are
     // derived by the builder; pool_a/pool_b are non-PDA token accounts the
     // program creates at the given addresses.
-    test.send(CreatePoolInstruction {
+    test.send(InitializePoolInstruction {
         mint_a: MINT_A,
         mint_b: MINT_B,
         pool_a: POOL_A,
@@ -195,11 +195,11 @@ fn claim_fees(test: &mut Test, admin: Pubkey, admin_token_a: Pubkey, admin_token
     })
 }
 
-// ─── create_config ───────────────────────────────────────────────────────────
+// ─── initialize_config ───────────────────────────────────────────────────────────
 
 #[quasar_test]
-fn create_config_records_admin_and_fees(test: &mut Test) {
-    create_config(test, 30, 1_667).succeeds();
+fn initialize_config_records_admin_and_fees(test: &mut Test) {
+    initialize_config(test, 30, 1_667).succeeds();
 
     let config = test.derive_pda(ConfigPda::seeds());
     let state = test.read::<Config>(config);
@@ -209,32 +209,32 @@ fn create_config_records_admin_and_fees(test: &mut Test) {
 }
 
 #[quasar_test]
-fn create_config_rejects_invalid_fee(test: &mut Test) {
+fn initialize_config_rejects_invalid_fee(test: &mut Test) {
     // fee >= 10_000 → invalid.
-    let outcome = create_config(test, 10_000, 1_667);
+    let outcome = initialize_config(test, 10_000, 1_667);
     assert!(
         outcome.is_err(),
-        "create_config should have failed with invalid fee"
+        "initialize_config should have failed with invalid fee"
     );
 }
 
 #[quasar_test]
-fn create_config_rejects_invalid_admin_share(test: &mut Test) {
+fn initialize_config_rejects_invalid_admin_share(test: &mut Test) {
     // admin_share_bps >= 10_000 → invalid.
-    let outcome = create_config(test, 30, 10_000);
+    let outcome = initialize_config(test, 30, 10_000);
     assert!(
         outcome.is_err(),
-        "create_config should have failed with admin_share_bps >= 10000"
+        "initialize_config should have failed with admin_share_bps >= 10000"
     );
 }
 
-// ─── create_pool ─────────────────────────────────────────────────────────────
+// ─── initialize_pool ─────────────────────────────────────────────────────────────
 
 #[quasar_test]
-fn create_pool_creates_pool_config_and_lp_mint(test: &mut Test) {
+fn initialize_pool_creates_pool_config_and_lp_mint(test: &mut Test) {
     let env = setup_pool(test);
     // The pool_config PDA must now exist and be owned by our program.
-    let pc = test.account(env.pool_config).expect("pool_config missing after create_pool");
+    let pc = test.account(env.pool_config).expect("pool_config missing after initialize_pool");
     assert_eq!(pc.owner, test.program_id());
     // LP mint PDA must be a valid SPL mint (82 bytes, owned by token program).
     let lp = test.account(env.lp_mint).expect("lp_mint missing");

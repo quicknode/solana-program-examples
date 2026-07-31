@@ -6,7 +6,7 @@ use {
     crate::{
         cpi::{
             AddOutcomeInstruction, CancelEventInstruction, ClaimRefundInstruction,
-            ClaimWinningsInstruction, CloseLosingBetInstruction, CreateEventInstruction,
+            ClaimWinningsInstruction, CloseLosingBetInstruction, InitializeEventInstruction,
             InitializeConfigInstruction, PlaceBetInstruction, SettleEventInstruction,
         },
         state::{Bet, Config, Event, EventStatus, EventVaultPda, Outcome, User},
@@ -94,7 +94,7 @@ fn full_lifecycle_settles_and_pays_the_winner(test: &mut Test) {
     const FEE: u64 = 1; // floor(100 * 100 / 10000) = 1
     const PAYOUT_B: u64 = STAKE_B + 99; // stake + winnings(99)
 
-    test.send(CreateEventInstruction {
+    test.send(InitializeEventInstruction {
         admin: ADMIN,
         token_mint: TOKEN_MINT,
         event_id: EVENT_ID,
@@ -198,7 +198,7 @@ fn cancelled_event_refunds_the_exact_stake(test: &mut Test) {
 
     const STAKE: u64 = 250;
 
-    test.send(CreateEventInstruction {
+    test.send(InitializeEventInstruction {
         admin: ADMIN,
         token_mint: TOKEN_MINT,
         event_id: EVENT_ID,
@@ -247,11 +247,11 @@ fn cancelled_event_refunds_the_exact_stake(test: &mut Test) {
 
 /// Only the config admin may open an event.
 #[quasar_test]
-fn create_event_rejects_a_non_admin_signer(test: &mut Test) {
+fn initialize_event_rejects_a_non_admin_signer(test: &mut Test) {
     base_world(test);
     test.add(Wallet::new().at(ATTACKER));
 
-    test.send(CreateEventInstruction {
+    test.send(InitializeEventInstruction {
         admin: ATTACKER,
         token_mint: TOKEN_MINT,
         event_id: EVENT_ID,

@@ -38,7 +38,7 @@ Read the program `programs/` source and `Anchor.toml` for deployed program IDs. 
 
 ### How does an AMM work on Solana?
 
-An automated market maker replaces the order book with a liquidity pool: anyone can create a pool with `create_pool`, fund it with `deposit_liquidity`, and trade against it with `swap_tokens`. Prices come from the constant-product invariant on the pool's balances, and liquidity providers earn a share of trading fees. Solana exchanges like Raydium and Orca use this design.
+An automated market maker replaces the order book with a liquidity pool: anyone can create a pool with `initialize_pool`, fund it with `deposit_liquidity`, and trade against it with `swap_tokens`. Prices come from the constant-product invariant on the pool's balances, and liquidity providers earn a share of trading fees. Solana exchanges like Raydium and Orca use this design.
 
 ### How is slippage handled?
 

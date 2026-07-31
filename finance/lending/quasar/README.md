@@ -65,9 +65,9 @@ Everything else mirrors the Anchor version.
 
 ### Instruction handlers (numeric discriminators)
 
-`init_lending_market` (0), `init_reserve` (1), `set_price` (2),
+`initialize_lending_market` (0), `initialize_reserve` (1), `set_price` (2),
 `deposit_reserve_liquidity` (3), `redeem_reserve_collateral` (4),
-`init_obligation` (5), `deposit_obligation_collateral` (6),
+`initialize_obligation` (5), `deposit_obligation_collateral` (6),
 `withdraw_obligation_collateral` (7), `borrow_obligation_liquidity` (8),
 `repay_obligation_liquidity` (9), `liquidate_obligation` (10),
 `collect_protocol_fees` (11).

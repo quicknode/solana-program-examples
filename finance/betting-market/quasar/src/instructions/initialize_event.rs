@@ -8,7 +8,7 @@ use crate::state::{
 
 #[derive(Accounts)]
 #[instruction(event_id: u64)]
-pub struct CreateEventAccountConstraints {
+pub struct InitializeEventAccountConstraints {
     #[account(mut)]
     pub admin: Signer,
 
@@ -41,11 +41,11 @@ pub struct CreateEventAccountConstraints {
 }
 
 #[inline(always)]
-pub fn handle_create_event(
-    accounts: &mut CreateEventAccountConstraints,
+pub fn handle_initialize_event(
+    accounts: &mut InitializeEventAccountConstraints,
     event_id: u64,
     description: &str,
-    bumps: &CreateEventAccountConstraintsBumps,
+    bumps: &InitializeEventAccountConstraintsBumps,
 ) -> Result<(), ProgramError> {
     let description_bytes = description.as_bytes();
     require!(

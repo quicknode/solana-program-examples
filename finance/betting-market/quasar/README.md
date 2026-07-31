@@ -19,7 +19,7 @@ the other side of your bet. Everyone's stake goes into one pool, and when the
 result is known the winners divide the pool.
 
 - The **admin** (whoever ran `initialize_config`) opens an event with
-  `create_event`, then lists each possible result with `add_outcome`. Outcomes
+  `initialize_event`, then lists each possible result with `add_outcome`. Outcomes
   can only be added before the first bet, so the field of choices can't change
   under bettors who have already staked.
 - A **bettor** stakes the market's token on one outcome with `place_bet`. The

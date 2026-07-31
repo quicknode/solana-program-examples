@@ -5,7 +5,7 @@
 use {
     crate::{
         cpi::{
-            CheckContributionsInstruction, ContributeInstruction, InitializeInstruction,
+            CheckContributionsInstruction, ContributeInstruction, InitializeFundraiserInstruction,
             RefundInstruction,
         },
         error::FundraiserError,
@@ -56,8 +56,8 @@ fn base_world(test: &mut Test) {
     test.warp_to_timestamp(START_TIME);
 }
 
-fn initialize(test: &mut Test, amount_to_raise: u64, duration: u16) -> Outcome {
-    test.send(InitializeInstruction {
+fn initialize_fundraiser(test: &mut Test, amount_to_raise: u64, duration: u16) -> Outcome {
+    test.send(InitializeFundraiserInstruction {
         maker: MAKER,
         mint_to_raise: MINT,
         vault: VAULT,
@@ -69,7 +69,7 @@ fn initialize(test: &mut Test, amount_to_raise: u64, duration: u16) -> Outcome {
 /// A world with an initialized fundraiser and a funded contributor.
 fn initialized_world(test: &mut Test) -> Pubkey {
     base_world(test);
-    initialize(test, TARGET_AMOUNT, DURATION_DAYS).succeeds();
+    initialize_fundraiser(test, TARGET_AMOUNT, DURATION_DAYS).succeeds();
     test.add(Wallet::new().at(CONTRIBUTOR));
     test.add(
         TokenAccount::new(MINT, CONTRIBUTOR)
@@ -112,7 +112,7 @@ fn check_contributions(test: &mut Test) -> Outcome {
 #[quasar_test]
 fn initialize_records_state_and_clock_time(test: &mut Test) {
     base_world(test);
-    initialize(test, TARGET_AMOUNT, DURATION_DAYS)
+    initialize_fundraiser(test, TARGET_AMOUNT, DURATION_DAYS)
         .succeeds()
         .has_tokens(VAULT, 0);
 
@@ -131,13 +131,13 @@ fn initialize_records_state_and_clock_time(test: &mut Test) {
 #[quasar_test]
 fn initialize_rejects_zero_amount(test: &mut Test) {
     base_world(test);
-    initialize(test, 0, DURATION_DAYS).fails_with(FundraiserError::InvalidAmount);
+    initialize_fundraiser(test, 0, DURATION_DAYS).fails_with(FundraiserError::InvalidAmount);
 }
 
 #[quasar_test]
 fn initialize_rejects_zero_duration(test: &mut Test) {
     base_world(test);
-    initialize(test, TARGET_AMOUNT, 0).fails_with(FundraiserError::InvalidDuration);
+    initialize_fundraiser(test, TARGET_AMOUNT, 0).fails_with(FundraiserError::InvalidDuration);
 }
 
 #[quasar_test]

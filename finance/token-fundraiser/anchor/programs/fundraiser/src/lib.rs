@@ -15,12 +15,12 @@ use instructions::*;
 pub mod fundraiser {
     use super::*;
 
-    pub fn initialize(
-        mut context: Context<InitializeAccountConstraints>,
+    pub fn initialize_fundraiser(
+        mut context: Context<InitializeFundraiserAccountConstraints>,
         amount: u64,
         duration: u16,
     ) -> Result<()> {
-        handle_initialize(&mut context.accounts, amount, duration, &context.bumps)?;
+        handle_initialize_fundraiser(&mut context.accounts, amount, duration, &context.bumps)?;
 
         Ok(())
     }
