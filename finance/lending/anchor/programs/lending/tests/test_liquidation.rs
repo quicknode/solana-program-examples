@@ -26,7 +26,7 @@ fn setup() -> (
     env.fund(&borrower, collateral.mint, 1_000_000_000);
     env.fund(&borrower, borrow.mint, 0);
     env.supply(&borrower, &collateral, 1_000_000_000);
-    let obligation = env.init_obligation(&borrower);
+    let obligation = env.initialize_obligation(&borrower);
     env.post_collateral(&borrower, obligation, &collateral, 1_000_000_000);
     env.try_borrow(&borrower, obligation, &[&collateral], &[], &borrow, 700_000_000)
         .unwrap();

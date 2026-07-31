@@ -6,7 +6,7 @@ use crate::constants::{
 };
 use crate::state::{LendingMarket, PriceFeed, Reserve, ReserveConfig};
 
-pub fn handle_init_reserve(context: Context<InitReserve>, config: ReserveConfig) -> Result<()> {
+pub fn handle_initialize_reserve(context: Context<InitializeReserve>, config: ReserveConfig) -> Result<()> {
     config.validate()?;
 
     let reserve = &mut context.accounts.reserve;
@@ -28,7 +28,7 @@ pub fn handle_init_reserve(context: Context<InitReserve>, config: ReserveConfig)
 }
 
 #[derive(Accounts)]
-pub struct InitReserve<'info> {
+pub struct InitializeReserve<'info> {
     // The reserve PDA below is seeded by this market's address, so the market is
     // pinned by that seed; we only need to prove the signer owns it.
     #[account(has_one = owner)]

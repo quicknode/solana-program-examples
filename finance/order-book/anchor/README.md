@@ -217,7 +217,7 @@ Maria's wallet signs. Five accounts are created:
 
 ### Step 2 - Alice, Bob, and Carol register as traders
 
-**Instruction: `create_market_user`** (called once by each trader)
+**Instruction: `initialize_market_user`** (called once by each trader)
 
 Each call creates one `MarketUser` PDA - a per-(trader, market) account that tracks their open orders and any tokens owed to them:
 
@@ -494,7 +494,7 @@ The program has six instruction handlers. The order a user encounters
 them is:
 
 1. `initialize_market` (market operator - once)
-2. `create_market_user` (every user, once per market)
+2. `initialize_market_user` (every user, once per market)
 3. `place_order` (a user - as many times as they want)
 4. `cancel_order` (a user - to remove a resting order)
 5. `settle_funds` (a user - to collect winnings)
@@ -558,7 +558,7 @@ addresses are chosen by the caller (typically fresh keypairs) and
 captured on the market's state so later instruction handlers can
 validate them.
 
-### 3.2 `create_market_user`
+### 3.2 `initialize_market_user`
 
 **Who calls it:** every user, exactly once per market they want to
 trade on.
@@ -1119,7 +1119,7 @@ Cast: **Maria** (market authority + Alice/Bob's broker), **Alice**
 
 1. `initialize_market` - Maria runs it. Rent for five accounts comes
    out of her wallet. Market is now `is_active`.
-2. `create_market_user` - Alice and Bob each run it once.
+2. `initialize_market_user` - Alice and Bob each run it once.
 3. Alice posts an ask: `place_order(Ask, 1000, 5)`, no
    remaining_accounts (empty book).
    - Lock: `alice_base_account --[5 base]--> base_vault`.
@@ -1183,7 +1183,7 @@ Cast: Alice (ask maker), Bob (bid maker, then remainder rests), Carol
 (new taker).
 
 1. `initialize_market` by Maria (same config).
-2. `create_market_user` × 3.
+2. `initialize_market_user` × 3.
 3. Alice posts `Ask, 1000, 3`. Locks 3 base.
 4. Bob posts `Bid, 1100, 10` with Alice's pair as a maker.
    - Lock: `10 * 1100 = 11_000 quote` from Bob to quote_vault.
@@ -1245,7 +1245,7 @@ Cast: Alice (ask maker), Bob (bid maker, then remainder rests), Carol
 
 Cast: Alice (bid maker), nobody else.
 
-1. `initialize_market`, `create_market_user(Alice)`.
+1. `initialize_market`, `initialize_market_user(Alice)`.
 2. Alice posts `Bid, 900, 10` - rests on an empty book.
    - Lock: 9000 quote from Alice to quote_vault.
    - No fills. `alice.open_orders = [1]`. `bids = [(1, 900)]`.
@@ -1420,7 +1420,7 @@ test authority_can_withdraw_fees_after_match ... ok
 test cancel_and_settle_bid_refunds_full_quote ... ok
 test cancel_ask_credits_unsettled_base ... ok
 test cancel_order_rejects_non_owner ... ok
-test create_market_user_tracks_market_and_owner ... ok
+test initialize_market_user_tracks_market_and_owner ... ok
 test fee_vault_receives_exactly_bps_of_taker_gross ... ok
 test initialize_market_rejects_oversized_fee ... ok
 test initialize_market_rejects_zero_tick_size ... ok
@@ -1446,7 +1446,7 @@ test taker_partially_fills_resting_order_rest_stays_on_book ... ok
 **Setup / happy path (pre-matching):**
 
 - `initialize_market_sets_market_and_order_book`: PDA creation, vault setup, initial field values
-- `create_market_user_tracks_market_and_owner`: Per-user PDA derivation and zero-initialised counters
+- `initialize_market_user_tracks_market_and_owner`: Per-user PDA derivation and zero-initialised counters
 - `place_bid_locks_quote_in_vault`: Fund lock on bid
 - `place_ask_locks_base_in_vault`: Fund lock on ask
 - `settle_funds_moves_unsettled_base_to_user`: Vault → user ATA transfer via market PDA signer
@@ -1589,7 +1589,7 @@ finance/order-book/anchor/
     │   ├── instructions/
     │   │   ├── mod.rs
     │   │   ├── initialize_market.rs
-    │   │   ├── create_market_user.rs
+    │   │   ├── initialize_market_user.rs
     │   │   ├── place_order.rs        (matching engine lives here)
     │   │   ├── cancel_order.rs
     │   │   ├── settle_funds.rs

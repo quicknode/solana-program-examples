@@ -3,7 +3,7 @@ use anchor_lang::prelude::*;
 use crate::constants::OBLIGATION_SEED;
 use crate::state::{LendingMarket, Obligation};
 
-pub fn handle_init_obligation(context: Context<InitObligation>) -> Result<()> {
+pub fn handle_initialize_obligation(context: Context<InitializeObligation>) -> Result<()> {
     let obligation = &mut context.accounts.obligation;
     obligation.lending_market = context.accounts.lending_market.key();
     obligation.owner = context.accounts.owner.key();
@@ -21,7 +21,7 @@ pub fn handle_init_obligation(context: Context<InitObligation>) -> Result<()> {
 }
 
 #[derive(Accounts)]
-pub struct InitObligation<'info> {
+pub struct InitializeObligation<'info> {
     pub lending_market: Account<'info, LendingMarket>,
 
     #[account(

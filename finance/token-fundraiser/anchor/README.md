@@ -77,7 +77,7 @@ All balance arithmetic uses `checked_*` operations and returns `FundraiserError:
 
 ### `initialize`
 
-[`programs/fundraiser/src/instructions/initialize.rs`](programs/fundraiser/src/instructions/initialize.rs), account constraints `InitializeAccountConstraints`.
+[`programs/fundraiser/src/instructions/initialize.rs`](programs/fundraiser/src/instructions/initialize.rs), account constraints `InitializeFundraiserAccountConstraints`.
 
 The maker signs and pays for two new accounts:
 

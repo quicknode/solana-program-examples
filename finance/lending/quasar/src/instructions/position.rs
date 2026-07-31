@@ -27,11 +27,11 @@ macro_rules! obligation_seeds {
 }
 
 // ---------------------------------------------------------------------------
-// init_obligation
+// initialize_obligation
 // ---------------------------------------------------------------------------
 
 #[derive(Accounts)]
-pub struct InitObligation {
+pub struct InitializeObligation {
     #[account(mut)]
     pub owner: Signer,
     pub lending_market: Account<LendingMarket>,
@@ -40,9 +40,9 @@ pub struct InitObligation {
     pub system_program: Program<SystemProgram>,
 }
 
-impl InitObligation {
+impl InitializeObligation {
     #[inline(always)]
-    pub fn run(&mut self, bumps: &InitObligationBumps) -> Result<(), ProgramError> {
+    pub fn run(&mut self, bumps: &InitializeObligationBumps) -> Result<(), ProgramError> {
         self.obligation.set_inner(ObligationInner {
             lending_market: *self.lending_market.address(),
             owner: *self.owner.address(),

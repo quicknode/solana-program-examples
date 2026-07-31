@@ -126,8 +126,8 @@ fn full_setup() -> FundraiserSetup {
 fn initialize_fundraiser(setup: &mut FundraiserSetup, amount: u64, duration: u16) {
     let initialize_instruction = Instruction::new_with_bytes(
         setup.program_id,
-        &fundraiser::instruction::Initialize { amount, duration }.data(),
-        fundraiser::accounts::InitializeAccountConstraints {
+        &fundraiser::instruction::InitializeFundraiser { amount, duration }.data(),
+        fundraiser::accounts::InitializeFundraiserAccountConstraints {
             maker: setup.maker.pubkey(),
             mint_to_raise: setup.mint,
             fundraiser: setup.fundraiser_pda,
@@ -290,12 +290,12 @@ fn test_initialize_below_minimum_target_fails() {
     let below_minimum_target = 3 * ONE_TOKEN - 1;
     let initialize_instruction = Instruction::new_with_bytes(
         setup.program_id,
-        &fundraiser::instruction::Initialize {
+        &fundraiser::instruction::InitializeFundraiser {
             amount: below_minimum_target,
             duration: DURATION_DAYS,
         }
         .data(),
-        fundraiser::accounts::InitializeAccountConstraints {
+        fundraiser::accounts::InitializeFundraiserAccountConstraints {
             maker: setup.maker.pubkey(),
             mint_to_raise: setup.mint,
             fundraiser: setup.fundraiser_pda,

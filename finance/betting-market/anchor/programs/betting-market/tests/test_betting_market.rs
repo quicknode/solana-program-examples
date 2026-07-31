@@ -122,16 +122,16 @@ fn initialize_config_ix(admin: Pubkey, mint: Pubkey, fee_recipient: Pubkey) -> I
     )
 }
 
-fn create_event_ix(admin: Pubkey, mint: Pubkey, event_id: u64, description: &str) -> Instruction {
+fn initialize_event_ix(admin: Pubkey, mint: Pubkey, event_id: u64, description: &str) -> Instruction {
     let event = event_pda(event_id);
     Instruction::new_with_bytes(
         betting_market::id(),
-        &betting_market::instruction::CreateEvent {
+        &betting_market::instruction::InitializeEvent {
             event_id,
             description: description.to_string(),
         }
         .data(),
-        betting_market::accounts::CreateEventAccountConstraints {
+        betting_market::accounts::InitializeEventAccountConstraints {
             admin,
             config: config_pda(),
             token_mint: mint,
@@ -348,7 +348,7 @@ fn test_full_lifecycle() {
     send_transaction_from_instructions(
         &mut market.svm,
         vec![
-            create_event_ix(admin, mint, event_id, "Will it rain tomorrow?"),
+            initialize_event_ix(admin, mint, event_id, "Will it rain tomorrow?"),
             add_outcome_ix(admin, event_id, 0, "Yes"),
             add_outcome_ix(admin, event_id, 1, "No"),
         ],
@@ -456,7 +456,7 @@ fn test_full_lifecycle() {
 }
 
 #[test]
-fn test_only_admin_can_create_event() {
+fn test_only_admin_can_initialize_event() {
     let mut market = setup();
     init_config(&mut market);
 
@@ -464,7 +464,7 @@ fn test_only_admin_can_create_event() {
     let mallory = create_wallet(&mut market.svm, 10_000_000_000).unwrap();
     let result = send_transaction_from_instructions(
         &mut market.svm,
-        vec![create_event_ix(mallory.pubkey(), mint, 7, "Unauthorized event")],
+        vec![initialize_event_ix(mallory.pubkey(), mint, 7, "Unauthorized event")],
         &[&mallory],
         &mallory.pubkey(),
     );
@@ -486,7 +486,7 @@ fn test_cannot_bet_after_settle() {
     send_transaction_from_instructions(
         &mut market.svm,
         vec![
-            create_event_ix(admin, mint, event_id, "Coin flip"),
+            initialize_event_ix(admin, mint, event_id, "Coin flip"),
             add_outcome_ix(admin, event_id, 0, "Heads"),
             add_outcome_ix(admin, event_id, 1, "Tails"),
         ],
@@ -533,7 +533,7 @@ fn test_double_claim_fails() {
     send_transaction_from_instructions(
         &mut market.svm,
         vec![
-            create_event_ix(admin, mint, event_id, "Match winner"),
+            initialize_event_ix(admin, mint, event_id, "Match winner"),
             add_outcome_ix(admin, event_id, 0, "Home"),
             add_outcome_ix(admin, event_id, 1, "Away"),
         ],
@@ -595,7 +595,7 @@ fn test_settle_outcome_without_bets_fails() {
     send_transaction_from_instructions(
         &mut market.svm,
         vec![
-            create_event_ix(admin, mint, event_id, "Two horse race"),
+            initialize_event_ix(admin, mint, event_id, "Two horse race"),
             add_outcome_ix(admin, event_id, 0, "Horse A"),
             add_outcome_ix(admin, event_id, 1, "Horse B"),
         ],
@@ -634,7 +634,7 @@ fn test_cancel_and_refund() {
     send_transaction_from_instructions(
         &mut market.svm,
         vec![
-            create_event_ix(admin, mint, event_id, "Voided event"),
+            initialize_event_ix(admin, mint, event_id, "Voided event"),
             add_outcome_ix(admin, event_id, 0, "A"),
             add_outcome_ix(admin, event_id, 1, "B"),
         ],
@@ -709,7 +709,7 @@ fn test_close_losing_bet_only_after_settle_and_only_for_losers() {
     send_transaction_from_instructions(
         &mut market.svm,
         vec![
-            create_event_ix(admin, mint, event_id, "Derby winner"),
+            initialize_event_ix(admin, mint, event_id, "Derby winner"),
             add_outcome_ix(admin, event_id, 0, "Red"),
             add_outcome_ix(admin, event_id, 1, "Blue"),
         ],
@@ -793,7 +793,7 @@ fn test_closing_a_bet_frees_a_slot_for_a_new_bet() {
 
     send_transaction_from_instructions(
         &mut market.svm,
-        vec![create_event_ix(admin, mint, full_event_id, "Wide field")],
+        vec![initialize_event_ix(admin, mint, full_event_id, "Wide field")],
         &[&market.admin],
         &admin,
     )
@@ -810,7 +810,7 @@ fn test_closing_a_bet_frees_a_slot_for_a_new_bet() {
     send_transaction_from_instructions(
         &mut market.svm,
         vec![
-            create_event_ix(admin, mint, second_event_id, "Second market"),
+            initialize_event_ix(admin, mint, second_event_id, "Second market"),
             add_outcome_ix(admin, second_event_id, 0, "Yes"),
             add_outcome_ix(admin, second_event_id, 1, "No"),
         ],

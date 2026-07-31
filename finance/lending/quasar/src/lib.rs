@@ -34,8 +34,8 @@ mod quasar_lending {
     use super::*;
 
     #[instruction(discriminator = 0)]
-    pub fn init_lending_market(
-        ctx: Ctx<InitLendingMarket>,
+    pub fn initialize_lending_market(
+        ctx: Ctx<InitializeLendingMarket>,
         market_id: u64,
     ) -> Result<(), ProgramError> {
         ctx.accounts.run(market_id, &ctx.bumps)
@@ -43,8 +43,8 @@ mod quasar_lending {
 
     #[instruction(discriminator = 1)]
     #[allow(clippy::too_many_arguments)]
-    pub fn init_reserve(
-        ctx: Ctx<InitReserve>,
+    pub fn initialize_reserve(
+        ctx: Ctx<InitializeReserve>,
         loan_to_value_bps: u16,
         liquidation_threshold_bps: u16,
         liquidation_bonus_bps: u16,
@@ -95,7 +95,7 @@ mod quasar_lending {
     }
 
     #[instruction(discriminator = 5)]
-    pub fn init_obligation(ctx: Ctx<InitObligation>) -> Result<(), ProgramError> {
+    pub fn initialize_obligation(ctx: Ctx<InitializeObligation>) -> Result<(), ProgramError> {
         ctx.accounts.run(&ctx.bumps)
     }
 

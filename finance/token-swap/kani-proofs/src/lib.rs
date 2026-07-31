@@ -29,7 +29,7 @@ pub const MINIMUM_LIQUIDITY: u128 = 100;
 /// `handle_swap_tokens`. Returns `None` on the same overflow paths the program
 /// maps to `AmmError::MathOverflow`.
 ///
-/// `fee_bps` and `admin_share_bps` are validated `< 10_000` in `create_config`.
+/// `fee_bps` and `admin_share_bps` are validated `< 10_000` in `initialize_config`.
 pub fn fee_split(input_amount: u64, fee_bps: u16, admin_share_bps: u16) -> Option<(u64, u64, u64)> {
     let fee_amount = (input_amount as u128)
         .checked_mul(fee_bps as u128)?
@@ -60,7 +60,7 @@ fn proof_fee_split_bounds() {
     // fee fractions `fee_bps` / `admin_share_bps` remain fully symbolic over
     // their entire valid range, so the rounding behaviour is covered exactly.
     kani::assume(input <= 4095);
-    // create_config enforces both `< 10_000`.
+    // initialize_config enforces both `< 10_000`.
     kani::assume((fee_bps as u128) < BASIS_POINTS_DIVISOR);
     kani::assume((admin_share_bps as u128) < BASIS_POINTS_DIVISOR);
 

@@ -20,12 +20,12 @@ mod quasar_token_fundraiser {
 
     /// Create a new fundraiser with a target amount and duration.
     #[instruction(discriminator = 0)]
-    pub fn initialize(
-        ctx: Ctx<InitializeAccountConstraints>,
+    pub fn initialize_fundraiser(
+        ctx: Ctx<InitializeFundraiserAccountConstraints>,
         amount_to_raise: u64,
         duration: u16,
     ) -> Result<(), ProgramError> {
-        instructions::handle_initialize(&mut ctx.accounts, amount_to_raise, duration, ctx.bumps.fundraiser)
+        instructions::handle_initialize_fundraiser(&mut ctx.accounts, amount_to_raise, duration, ctx.bumps.fundraiser)
     }
 
     /// Contribute tokens to the fundraiser while its window is open. Creates

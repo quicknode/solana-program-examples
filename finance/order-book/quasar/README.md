@@ -62,7 +62,7 @@ NVDAx (9 decimals) / USDC (6 decimals): `base_lot_size = 1000`, `quote_lot_size 
 ## Instruction lifecycle
 
 - `initialize_market`: Create the `Market` PDA, the two vaults, and the fee vault; initialize the pre-created order-book account.
-- `create_market_user`: Create a caller's `MarketUser` for a market.
+- `initialize_market_user`: Create a caller's `MarketUser` for a market.
 - `place_order`: Lock funds, cross the opposing side in price-time priority, credit fills to maker/taker `unsettled_*`, route the taker fee, and rest any remainder.
 - `cancel_order`: Credit an open order's locked remainder back to the owner's `unsettled_*` and remove it from the book.
 - `settle_funds`: Move a user's `unsettled_*` balances out of the vaults into their token accounts.

@@ -7,7 +7,7 @@ use anchor_spl::{
 use crate::{state::Fundraiser, FundraiserError, MIN_AMOUNT_TO_RAISE};
 
 #[derive(Accounts)]
-pub struct InitializeAccountConstraints<'info> {
+pub struct InitializeFundraiserAccountConstraints<'info> {
     #[account(mut)]
     pub maker: Signer<'info>,
 
@@ -38,11 +38,11 @@ pub struct InitializeAccountConstraints<'info> {
     pub associated_token_program: Program<'info, AssociatedToken>,
 }
 
-pub fn handle_initialize(
-    accounts: &mut InitializeAccountConstraints,
+pub fn handle_initialize_fundraiser(
+    accounts: &mut InitializeFundraiserAccountConstraints,
     amount: u64,
     duration: u16,
-    bumps: &InitializeAccountConstraintsBumps,
+    bumps: &InitializeFundraiserAccountConstraintsBumps,
 ) -> Result<()> {
     // The target must be at least MIN_AMOUNT_TO_RAISE major units, expressed
     // in minor units: MIN_AMOUNT_TO_RAISE * 10^decimals.

@@ -58,9 +58,9 @@ pub struct LiquidityMintPda;
 /// Simple constant-product AMM (token swap).
 ///
 /// Six instructions:
-/// 1. `create_config` - initialise the singleton AMM config (admin, fee,
+/// 1. `initialize_config` - initialise the singleton AMM config (admin, fee,
 ///    admin share)
-/// 2. `create_pool` - create a liquidity pool for a token pair
+/// 2. `initialize_pool` - create a liquidity pool for a token pair
 /// 3. `deposit_liquidity` - add liquidity and receive LP tokens
 /// 4. `withdraw_liquidity` - burn LP tokens and receive pool tokens
 /// 5. `swap_tokens` - swap one token for another
@@ -70,17 +70,17 @@ mod quasar_token_swap {
     use super::*;
 
     #[instruction(discriminator = 0)]
-    pub fn create_config(
-        ctx: Ctx<CreateConfigAccountConstraints>,
+    pub fn initialize_config(
+        ctx: Ctx<InitializeConfigAccountConstraints>,
         fee: u16,
         admin_share_bps: u16,
     ) -> Result<(), ProgramError> {
-        instructions::handle_create_config(&mut ctx.accounts, fee, admin_share_bps)
+        instructions::handle_initialize_config(&mut ctx.accounts, fee, admin_share_bps)
     }
 
     #[instruction(discriminator = 1)]
-    pub fn create_pool(ctx: Ctx<CreatePoolAccountConstraints>) -> Result<(), ProgramError> {
-        instructions::handle_create_pool(&mut ctx.accounts)
+    pub fn initialize_pool(ctx: Ctx<InitializePoolAccountConstraints>) -> Result<(), ProgramError> {
+        instructions::handle_initialize_pool(&mut ctx.accounts)
     }
 
     #[instruction(discriminator = 2)]

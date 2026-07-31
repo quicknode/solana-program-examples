@@ -15,15 +15,15 @@ declare_id!("4bvT6A8S7ZVL6bSvK2KoL2nQ4F5H6AF9133kCYbMJj1t");
 pub mod lending {
     use super::*;
 
-    pub fn init_lending_market(
-        context: Context<InitLendingMarket>,
+    pub fn initialize_lending_market(
+        context: Context<InitializeLendingMarket>,
         market_id: u64,
     ) -> Result<()> {
-        instructions::handle_init_lending_market(context, market_id)
+        instructions::handle_initialize_lending_market(context, market_id)
     }
 
-    pub fn init_reserve(context: Context<InitReserve>, config: ReserveConfig) -> Result<()> {
-        instructions::handle_init_reserve(context, config)
+    pub fn initialize_reserve(context: Context<InitializeReserve>, config: ReserveConfig) -> Result<()> {
+        instructions::handle_initialize_reserve(context, config)
     }
 
     pub fn update_reserve_config(
@@ -63,8 +63,8 @@ pub mod lending {
         instructions::handle_redeem_reserve_collateral(context, share_amount)
     }
 
-    pub fn init_obligation(context: Context<InitObligation>) -> Result<()> {
-        instructions::handle_init_obligation(context)
+    pub fn initialize_obligation(context: Context<InitializeObligation>) -> Result<()> {
+        instructions::handle_initialize_obligation(context)
     }
 
     pub fn refresh_obligation(context: Context<RefreshObligation>) -> Result<()> {

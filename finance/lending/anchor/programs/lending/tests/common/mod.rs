@@ -103,14 +103,14 @@ impl Env {
 
         let instruction = Instruction {
             program_id: lending::id(),
-            accounts: lending::accounts::InitLendingMarket {
+            accounts: lending::accounts::InitializeLendingMarket {
                 lending_market: market,
                 owner: owner.pubkey(),
                 quote_currency_mint: quote_mint,
                 system_program: system_program::id(),
             }
             .to_account_metas(None),
-            data: lending::instruction::InitLendingMarket { market_id }.data(),
+            data: lending::instruction::InitializeLendingMarket { market_id }.data(),
         };
         send(&mut svm, vec![instruction], &[&owner], &owner.pubkey()).unwrap();
 
@@ -132,14 +132,14 @@ impl Env {
         let market = pda(&[LENDING_MARKET_SEED, &market_id.to_le_bytes()]);
         let instruction = Instruction {
             program_id: lending::id(),
-            accounts: lending::accounts::InitLendingMarket {
+            accounts: lending::accounts::InitializeLendingMarket {
                 lending_market: market,
                 owner: market_owner.pubkey(),
                 quote_currency_mint: quote_mint,
                 system_program: system_program::id(),
             }
             .to_account_metas(None),
-            data: lending::instruction::InitLendingMarket { market_id }.data(),
+            data: lending::instruction::InitializeLendingMarket { market_id }.data(),
         };
         send(&mut self.svm, vec![instruction], &[market_owner], &market_owner.pubkey()).unwrap();
         market
@@ -167,7 +167,7 @@ impl Env {
 
         let instruction = Instruction {
             program_id: lending::id(),
-            accounts: lending::accounts::InitReserve {
+            accounts: lending::accounts::InitializeReserve {
                 lending_market: market,
                 owner: market_owner.pubkey(),
                 reserve,
@@ -179,7 +179,7 @@ impl Env {
                 system_program: system_program::id(),
             }
             .to_account_metas(None),
-            data: lending::instruction::InitReserve { config }.data(),
+            data: lending::instruction::InitializeReserve { config }.data(),
         };
         send(&mut self.svm, vec![instruction], &[market_owner], &market_owner.pubkey()).unwrap();
 
@@ -369,18 +369,18 @@ impl Env {
         send(&mut self.svm, vec![refresh, redeem], &[user], &user.pubkey())
     }
 
-    pub fn init_obligation(&mut self, user: &Keypair) -> Pubkey {
+    pub fn initialize_obligation(&mut self, user: &Keypair) -> Pubkey {
         let obligation = pda(&[OBLIGATION_SEED, self.market.as_ref(), user.pubkey().as_ref()]);
         let instruction = Instruction {
             program_id: lending::id(),
-            accounts: lending::accounts::InitObligation {
+            accounts: lending::accounts::InitializeObligation {
                 lending_market: self.market,
                 obligation,
                 owner: user.pubkey(),
                 system_program: system_program::id(),
             }
             .to_account_metas(None),
-            data: lending::instruction::InitObligation {}.data(),
+            data: lending::instruction::InitializeObligation {}.data(),
         };
         send(&mut self.svm, vec![instruction], &[user], &user.pubkey()).unwrap();
         obligation

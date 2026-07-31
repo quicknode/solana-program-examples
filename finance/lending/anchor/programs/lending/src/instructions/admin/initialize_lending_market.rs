@@ -4,8 +4,8 @@ use anchor_spl::token_interface::Mint;
 use crate::constants::LENDING_MARKET_SEED;
 use crate::state::LendingMarket;
 
-pub fn handle_init_lending_market(
-    context: Context<InitLendingMarket>,
+pub fn handle_initialize_lending_market(
+    context: Context<InitializeLendingMarket>,
     market_id: u64,
 ) -> Result<()> {
     let market = &mut context.accounts.lending_market;
@@ -18,7 +18,7 @@ pub fn handle_init_lending_market(
 
 #[derive(Accounts)]
 #[instruction(market_id: u64)]
-pub struct InitLendingMarket<'info> {
+pub struct InitializeLendingMarket<'info> {
     // Seeded by `market_id` alone — the market is not identified by any
     // individual's address. `owner` is stored as a field and used only for
     // authorization (`has_one = owner`) on admin instructions.

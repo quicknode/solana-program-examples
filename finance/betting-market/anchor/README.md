@@ -75,7 +75,7 @@ division floors each share, leaving at most a few minor units of dust in the vau
 
 - `initialize_config` - anyone (the signer becomes admin). One-time setup: sets admin, stake
   token, fee, fee recipient.
-- `create_event` - admin. Opens a market and creates its vault.
+- `initialize_event` - admin. Opens a market and creates its vault.
 - `add_outcome` - admin. Adds a possible result. Only before any bet is placed.
 - `place_bet` - bettor. Stakes tokens on one outcome; updates the pools and adds the Bet to the
   user's index (rejected with `TooManyBets` if all `MAX_BETS_PER_USER` slots hold open positions).
@@ -121,7 +121,7 @@ anchor test
 
 ### How does a prediction market work on Solana?
 
-This example uses the parimutuel (pooled) model: an admin opens an event with `create_event` and `add_outcome`, and bettors stake tokens on an outcome with `place_bet`. Every stake goes into one pool; after `settle_event` names the winning outcome, winners call `claim_winnings` to split the losing stakes, minus a protocol fee, in proportion to their own stake.
+This example uses the parimutuel (pooled) model: an admin opens an event with `initialize_event` and `add_outcome`, and bettors stake tokens on an outcome with `place_bet`. Every stake goes into one pool; after `settle_event` names the winning outcome, winners call `claim_winnings` to split the losing stakes, minus a protocol fee, in proportion to their own stake.
 
 ### How are the odds set?
 

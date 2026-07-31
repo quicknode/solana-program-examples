@@ -3,7 +3,7 @@ use quasar_lang::prelude::*;
 use crate::state::{Market, MarketUser, MarketUserInner, OPEN_ORDERS_BYTES};
 
 #[derive(Accounts)]
-pub struct CreateMarketUserAccountConstraints {
+pub struct InitializeMarketUserAccountConstraints {
     #[account(mut)]
     pub owner: Signer,
 
@@ -21,9 +21,9 @@ pub struct CreateMarketUserAccountConstraints {
 }
 
 #[inline(always)]
-pub fn handle_create_market_user(
-    accounts: &mut CreateMarketUserAccountConstraints,
-    bumps: &CreateMarketUserAccountConstraintsBumps,
+pub fn handle_initialize_market_user(
+    accounts: &mut InitializeMarketUserAccountConstraints,
+    bumps: &InitializeMarketUserAccountConstraintsBumps,
 ) -> Result<(), ProgramError> {
     accounts.market_user.set_inner(MarketUserInner {
         market: *accounts.market.address(),

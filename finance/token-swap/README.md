@@ -57,8 +57,8 @@ programs/token-swap/src/
 ├── errors.rs
 ├── instructions
 │   ├── claim_admin_fees.rs
-│   ├── create_config.rs
-│   ├── create_pool.rs
+│   ├── initialize_config.rs
+│   ├── initialize_pool.rs
 │   ├── deposit_liquidity.rs
 │   ├── mod.rs
 │   ├── swap_tokens.rs
@@ -96,11 +96,11 @@ The admin's fees are tracked as *virtual* claims on the existing `pool_a` / `poo
 
 ## Instruction handlers
 
-### `create_config`
+### `initialize_config`
 
 Initializes the singleton `Config` account with the supplied `admin`, `fee`, and `admin_share_bps`. The `Config` PDA is derived from the fixed seed `[b"config"]`, so this can only succeed once per deployed program. Enforces `fee < 10000` and `admin_share_bps < 10000`.
 
-### `create_pool`
+### `initialize_pool`
 
 Initializes a `PoolConfig` account, an LP mint (`liquidity_provider_mint`), and the two pool reserve token accounts (`pool_a`, `pool_b`) owned by `pool_authority`. Enforces `mint_a < mint_b` for canonical pool addressing.
 
@@ -156,7 +156,7 @@ A worked example, end to end, using this program. The example uses three tokens:
 
 **Cast:**
 
-- **Alice** - AMM operator. Deploys and runs the exchange. Earns a slice of every trading fee via the admin protocol-fee mechanism; also earns LP [yield](https://www.investopedia.com/terms/y/yield.asp) on her own initial deposits. Wants real usage so fee income compounds. She calls `create_config` to fix the trading fee at 0.3% and sets `admin_share_bps = 1667` so she earns ~1/6 of every trading fee (LPs keep the other ~5/6). She seeds both the NVDAx/USDC pool and the TSLAx/USDC pool herself (eating the locked `MINIMUM_LIQUIDITY` cost) so users have something to trade from day one.
+- **Alice** - AMM operator. Deploys and runs the exchange. Earns a slice of every trading fee via the admin protocol-fee mechanism; also earns LP [yield](https://www.investopedia.com/terms/y/yield.asp) on her own initial deposits. Wants real usage so fee income compounds. She calls `initialize_config` to fix the trading fee at 0.3% and sets `admin_share_bps = 1667` so she earns ~1/6 of every trading fee (LPs keep the other ~5/6). She seeds both the NVDAx/USDC pool and the TSLAx/USDC pool herself (eating the locked `MINIMUM_LIQUIDITY` cost) so users have something to trade from day one.
 - **Bob** - yield farmer / [liquidity provider](https://www.investopedia.com/terms/l/liquidity-provider.asp). Has idle capital (NVDAx and USDC) earning nothing. Wants to earn [passive income](https://www.investopedia.com/terms/p/passiveincome.asp) from the swap fees the pool collects, without actively trading.
 - **Carol** - retail trader. Holds USDC and has a bullish [thesis](https://www.investopedia.com/terms/i/investmentthesis.asp) on NVIDIA: she believes NVDAx will appreciate. She wants to swap USDC for NVDAx quickly, without a centralised exchange account. She also later buys TSLAx on the TSLAx/USDC pool.
 - **Dave** - [arbitrageur](https://www.investopedia.com/terms/a/arbitrage.asp). Profits by trading the gap between the pool's mid-price and the offchain market price. Side effect: his trades drag the pool price back toward fair value.
@@ -165,8 +165,8 @@ A worked example, end to end, using this program. The example uses three tokens:
 
 The singleton `Config` account is set once per deployed program. Every pool inherits its `fee` and `admin_share_bps`.
 
-- **Handler:** `create_config`
-- **Accounts (`CreateConfigAccounts`):**
+- **Handler:** `initialize_config`
+- **Accounts (`InitializeConfigAccounts`):**
   - `config` (PDA, created) - seeds `[b"config"]`; stores `admin`, `fee`, `admin_share_bps`, `bump`
   - `admin` = Alice
   - `payer` = Alice
@@ -177,8 +177,8 @@ The singleton `Config` account is set once per deployed program. Every pool inhe
 
 ### Step 2 - Alice creates the NVDAx/USDC pool
 
-- **Handler:** `create_pool`
-- **Accounts (`CreatePoolAccounts`):**
+- **Handler:** `initialize_pool`
+- **Accounts (`InitializePoolAccounts`):**
   - `config` - Alice's `Config`
   - `pool_config` (PDA, created) - seeds `[config, mint_a, mint_b]`; stores `config`, `mint_a`, `mint_b`, `bump`
   - `pool_authority` (PDA) - signs for the pool reserves
@@ -195,8 +195,8 @@ NVDAx/USDC pool exists; reserves are empty. No one can swap yet.
 
 Alice immediately creates a second pool for TSLAx (Tesla xStock, ~180 USDC each). The handler and account shape are identical to Step 2; only the mints differ.
 
-- **Handler:** `create_pool`
-- **Accounts (`CreatePoolAccounts`):**
+- **Handler:** `initialize_pool`
+- **Accounts (`InitializePoolAccounts`):**
   - `config` - Alice's `Config` (same singleton)
   - `pool_config` (PDA, created) - seeds `[config, mint_a, mint_b]`; stores `config`, `mint_a` = TSLAx mint, `mint_b` = USDC mint, `bump`
   - `pool_authority` (PDA) - signs for this pool's reserves
@@ -368,14 +368,14 @@ He receives his proportional share of the **effective reserves** (`pool_X.amount
 
 ### Recap
 
-- **Alice** calls `create_config` → `create_pool` (NVDAx/USDC) → `create_pool` (TSLAx/USDC) → `deposit_liquidity` on NVDAx/USDC → `deposit_liquidity` on TSLAx/USDC (admin, pool creator, initial LP on both pools)
+- **Alice** calls `initialize_config` → `initialize_pool` (NVDAx/USDC) → `initialize_pool` (TSLAx/USDC) → `deposit_liquidity` on NVDAx/USDC → `deposit_liquidity` on TSLAx/USDC (admin, pool creator, initial LP on both pools)
 - **Bob** calls `deposit_liquidity` on NVDAx/USDC (LP / yield farmer)
 - **Carol** calls `swap_tokens` with `input_is_token_a = false` on NVDAx/USDC (buys NVDAx with USDC), then calls `swap_tokens` with `input_is_token_a = false` on TSLAx/USDC (buys TSLAx with USDC)
 - **Dave** calls `swap_tokens` with `input_is_token_a = true` on NVDAx/USDC (arbitrageur, restores the mid-price to ~5.00)
 - **Alice** calls `claim_admin_fees` on NVDAx/USDC, then `claim_admin_fees` on TSLAx/USDC (sweeps her accumulated fee slices from both pools)
 - **Bob** later calls `withdraw_liquidity` on NVDAx/USDC (exits with his fee income)
 
-What makes this work: `x × y = K` on the effective reserves keeps the pool solvent on every swap without anyone quoting prices. LPs are paid in growing effective reserves (their share of the fee, parameterised by `Config.fee` and `Config.admin_share_bps`); the admin earns the other share, accumulated lazily and swept on demand; profit-chasing arbitrageurs incidentally keep the mid-price honest; traders get instant fills against a passive counterparty (the pool). The same `create_pool` handler and the same `swap_tokens` handler work identically for both the NVDAx/USDC and TSLAx/USDC pools - only the mint accounts differ.
+What makes this work: `x × y = K` on the effective reserves keeps the pool solvent on every swap without anyone quoting prices. LPs are paid in growing effective reserves (their share of the fee, parameterised by `Config.fee` and `Config.admin_share_bps`); the admin earns the other share, accumulated lazily and swept on demand; profit-chasing arbitrageurs incidentally keep the mid-price honest; traders get instant fills against a passive counterparty (the pool). The same `initialize_pool` handler and the same `swap_tokens` handler work identically for both the NVDAx/USDC and TSLAx/USDC pools - only the mint accounts differ.
 
 ## Tests
 

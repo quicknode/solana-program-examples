@@ -145,10 +145,10 @@ deposits or a borrower's collateral: there is no admin escape hatch over user fu
 
 ### Instruction handlers
 
-Admin: `init_lending_market`, `init_reserve`, `update_reserve_config`, `set_price`,
+Admin: `initialize_lending_market`, `initialize_reserve`, `update_reserve_config`, `set_price`,
 `collect_protocol_fees`.
 Supply side: `refresh_reserve`, `deposit_reserve_liquidity`,
-`redeem_reserve_collateral`. Borrow side: `init_obligation`, `refresh_obligation`,
+`redeem_reserve_collateral`. Borrow side: `initialize_obligation`, `refresh_obligation`,
 `deposit_obligation_collateral`, `withdraw_obligation_collateral`,
 `borrow_obligation_liquidity`, `repay_obligation_liquidity`, `liquidate_obligation`.
 

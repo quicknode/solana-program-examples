@@ -6,8 +6,8 @@ use crate::{
     state::Config,
 };
 
-pub fn handle_create_config(
-    context: Context<CreateConfigAccountConstraints>,
+pub fn handle_initialize_config(
+    context: Context<InitializeConfigAccountConstraints>,
     fee: u16,
     admin_share_bps: u16,
 ) -> Result<()> {
@@ -23,7 +23,7 @@ pub fn handle_create_config(
 
 #[derive(Accounts)]
 #[instruction(fee: u16, admin_share_bps: u16)]
-pub struct CreateConfigAccountConstraints<'info> {
+pub struct InitializeConfigAccountConstraints<'info> {
     #[account(
         init,
         payer = payer,

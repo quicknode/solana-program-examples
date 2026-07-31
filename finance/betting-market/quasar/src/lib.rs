@@ -40,12 +40,12 @@ mod quasar_betting_market {
 
     /// Admin opens a new market and creates its pool vault.
     #[instruction(discriminator = 1)]
-    pub fn create_event(
-        ctx: Ctx<CreateEventAccountConstraints>,
+    pub fn initialize_event(
+        ctx: Ctx<InitializeEventAccountConstraints>,
         event_id: u64,
         description: String<200>,
     ) -> Result<(), ProgramError> {
-        instructions::create_event::handle_create_event(
+        instructions::initialize_event::handle_initialize_event(
             &mut ctx.accounts,
             event_id,
             description,

@@ -2,13 +2,13 @@ use quasar_lang::prelude::*;
 
 #[error_code]
 pub enum AmmError {
-    /// `create_config` was called with `fee >= 10_000` basis points (a fee of
+    /// `initialize_config` was called with `fee >= 10_000` basis points (a fee of
     /// 100% or more would consume the whole input).
     // 6000 is the conventional Anchor-compatible starting offset for
     // program-specific error codes (Quasar's #[error_code] starts at 0
     // unless told otherwise; framework errors occupy 3000+).
     InvalidFee = 6000,
-    /// `create_config` was called with `admin_share_bps >= 10_000`. The admin
+    /// `initialize_config` was called with `admin_share_bps >= 10_000`. The admin
     /// share is a basis-points fraction of the trading fee, so the admin
     /// cannot take more than the whole fee.
     AdminShareTooHigh,

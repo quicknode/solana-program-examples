@@ -20,10 +20,10 @@ pub const SLOTS_PER_YEAR: u128 = 78_840_000;
 /// Reject a price feed older than this many slots (~10s at 2.5 slots/s).
 pub const MAX_PRICE_STALENESS_SLOTS: u64 = 25;
 
-/// SPL token account size, for the rent-exempt vault created in `init_reserve`.
+/// SPL token account size, for the rent-exempt vault created in `initialize_reserve`.
 pub const TOKEN_ACCOUNT_SPACE: u64 = 165;
 
-/// SPL mint size, for the rent-exempt share mint created in `init_reserve`.
+/// SPL mint size, for the rent-exempt share mint created in `initialize_reserve`.
 pub const MINT_SPACE: u64 = 82;
 
 // PDA seeds for the `Seed::from(...)` signer arrays in the CPI-signing handlers.

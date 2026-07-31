@@ -7,8 +7,8 @@ use {
     crate::{
         cpi::{
             BorrowObligationLiquidityInstruction, DepositObligationCollateralInstruction,
-            DepositReserveLiquidityInstruction, InitLendingMarketInstruction,
-            InitObligationInstruction, InitReserveInstruction, LiquidateObligationInstruction,
+            DepositReserveLiquidityInstruction, InitializeLendingMarketInstruction,
+            InitializeObligationInstruction, InitializeReserveInstruction, LiquidateObligationInstruction,
             RedeemReserveCollateralInstruction, RepayObligationLiquidityInstruction,
             SetPriceInstruction,
         },
@@ -133,10 +133,10 @@ fn set_price(test: &mut Test, w: &Pdas, the_mint: Pubkey, mantissa: i128) {
     .succeeds();
 }
 
-fn init_reserve(test: &mut Test, w: &Pdas, the_mint: Pubkey) {
+fn initialize_reserve(test: &mut Test, w: &Pdas, the_mint: Pubkey) {
     // 75% LTV, 80% liquidation threshold, 5% bonus, 50% close factor, 10%
     // reserve factor, kink 80%, 2% / 20% / 150% APR curve.
-    test.send(InitReserveInstruction {
+    test.send(InitializeReserveInstruction {
         owner: OWNER,
         lending_market: w.market,
         liquidity_mint: the_mint,
@@ -154,7 +154,7 @@ fn init_reserve(test: &mut Test, w: &Pdas, the_mint: Pubkey) {
 }
 
 fn setup_markets(test: &mut Test, w: &Pdas) {
-    test.send(InitLendingMarketInstruction {
+    test.send(InitializeLendingMarketInstruction {
         owner: OWNER,
         quote_mint: QUOTE_MINT,
         market_id: MARKET_ID,
@@ -162,8 +162,8 @@ fn setup_markets(test: &mut Test, w: &Pdas) {
     .succeeds();
     set_price(test, w, COLLATERAL_MINT, dollars(1));
     set_price(test, w, BORROW_MINT, dollars(1));
-    init_reserve(test, w, COLLATERAL_MINT);
-    init_reserve(test, w, BORROW_MINT);
+    initialize_reserve(test, w, COLLATERAL_MINT);
+    initialize_reserve(test, w, BORROW_MINT);
 }
 
 fn deposit_borrow_side(test: &mut Test, w: &Pdas, amount: u64) -> Outcome {
@@ -255,7 +255,7 @@ fn bootstrap_position(test: &mut Test, w: &Pdas) {
     setup_markets(test, w);
     deposit_borrow_side(test, w, 1_000 * UNIT).succeeds();
     deposit_collateral_side(test, w, 1_000 * UNIT).succeeds();
-    test.send(InitObligationInstruction {
+    test.send(InitializeObligationInstruction {
         owner: BORROWER,
         lending_market: w.market,
     })
@@ -542,7 +542,7 @@ mod slot_warp {
             self.run(data, metas).assert_success();
         }
 
-        fn init_reserve(
+        fn initialize_reserve(
             &mut self,
             the_mint: Pubkey,
             reserve: Pubkey,
@@ -575,14 +575,14 @@ mod slot_warp {
             self.init_market();
             self.set_price(COLLATERAL_MINT, self.collateral_price, dollars(1));
             self.set_price(BORROW_MINT, self.borrow_price, dollars(1));
-            self.init_reserve(
+            self.initialize_reserve(
                 COLLATERAL_MINT,
                 self.collateral_reserve,
                 self.collateral_vault,
                 self.collateral_share_mint,
                 self.collateral_price,
             );
-            self.init_reserve(
+            self.initialize_reserve(
                 BORROW_MINT,
                 self.borrow_reserve,
                 self.borrow_vault,
@@ -639,7 +639,7 @@ mod slot_warp {
             self.run(data, metas)
         }
 
-        fn init_obligation(&mut self) {
+        fn initialize_obligation(&mut self) {
             let metas = vec![
                 meta(BORROWER, true, true),
                 meta(self.market, false, false),
@@ -711,7 +711,7 @@ mod slot_warp {
                 1_000 * UNIT,
             )
             .assert_success();
-            self.init_obligation();
+            self.initialize_obligation();
             self.post_collateral(1_000 * UNIT).assert_success();
         }
 

@@ -289,12 +289,12 @@ fn build_initialize_market_ix(
     )
 }
 
-fn build_create_market_user_ix(sc: &Scenario, owner: &Pubkey) -> Instruction {
+fn build_initialize_market_user_ix(sc: &Scenario, owner: &Pubkey) -> Instruction {
     let market_user = market_user_pda(&sc.program_id, &sc.market, owner);
     Instruction::new_with_bytes(
         sc.program_id,
-        &order_book::instruction::CreateMarketUser {}.data(),
-        order_book::accounts::CreateMarketUserAccountConstraints {
+        &order_book::instruction::InitializeMarketUser {}.data(),
+        order_book::accounts::InitializeMarketUserAccountConstraints {
             market_user,
             market: sc.market,
             owner: *owner,
@@ -477,7 +477,7 @@ fn initialize_market_and_users(sc: &mut Scenario) {
     )
     .unwrap();
 
-    let buyer_ix = build_create_market_user_ix(sc, &sc.buyer.pubkey());
+    let buyer_ix = build_initialize_market_user_ix(sc, &sc.buyer.pubkey());
     send_transaction_from_instructions(
         &mut sc.svm,
         vec![buyer_ix],
@@ -486,7 +486,7 @@ fn initialize_market_and_users(sc: &mut Scenario) {
     )
     .unwrap();
 
-    let seller_ix = build_create_market_user_ix(sc, &sc.seller.pubkey());
+    let seller_ix = build_initialize_market_user_ix(sc, &sc.seller.pubkey());
     send_transaction_from_instructions(
         &mut sc.svm,
         vec![seller_ix],
@@ -549,7 +549,7 @@ fn initialize_market_sets_market_and_order_book() {
 }
 
 #[test]
-fn create_market_user_tracks_market_and_owner() {
+fn initialize_market_user_tracks_market_and_owner() {
     let mut sc = full_setup();
 
     let create_ix = build_create_order_book_account_ix(&sc, &sc.authority.pubkey());
@@ -568,7 +568,7 @@ fn create_market_user_tracks_market_and_owner() {
     )
     .unwrap();
 
-    let create_ix = build_create_market_user_ix(&sc, &sc.buyer.pubkey());
+    let create_ix = build_initialize_market_user_ix(&sc, &sc.buyer.pubkey());
     send_transaction_from_instructions(
         &mut sc.svm,
         vec![create_ix],
@@ -716,7 +716,7 @@ fn place_order_rejects_unaligned_tick() {
     )
     .unwrap();
 
-    let create_ix = build_create_market_user_ix(&sc, &sc.buyer.pubkey());
+    let create_ix = build_initialize_market_user_ix(&sc, &sc.buyer.pubkey());
     send_transaction_from_instructions(
         &mut sc.svm,
         vec![create_ix],
@@ -773,7 +773,7 @@ fn place_order_rejects_below_min_order_size() {
     )
     .unwrap();
 
-    let create_ix = build_create_market_user_ix(&sc, &sc.seller.pubkey());
+    let create_ix = build_initialize_market_user_ix(&sc, &sc.seller.pubkey());
     send_transaction_from_instructions(
         &mut sc.svm,
         vec![create_ix],
@@ -1695,7 +1695,7 @@ fn resting_orders_at_same_price_fill_by_time_priority() {
     )
     .unwrap();
     let second_seller_market_user = market_user_pda(&sc.program_id, &sc.market, &second_seller.pubkey());
-    let __ix1 = build_create_market_user_ix(&sc, &second_seller.pubkey());
+    let __ix1 = build_initialize_market_user_ix(&sc, &second_seller.pubkey());
     send_transaction_from_instructions(&mut sc.svm, vec![__ix1], &[&second_seller],
         &second_seller.pubkey()).unwrap();
 

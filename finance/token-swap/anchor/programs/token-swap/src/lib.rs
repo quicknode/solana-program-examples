@@ -12,16 +12,16 @@ pub mod swap_example {
     pub use super::instructions::*;
     use super::*;
 
-    pub fn create_config(
-        context: Context<CreateConfigAccountConstraints>,
+    pub fn initialize_config(
+        context: Context<InitializeConfigAccountConstraints>,
         fee: u16,
         admin_share_bps: u16,
     ) -> Result<()> {
-        instructions::handle_create_config(context, fee, admin_share_bps)
+        instructions::handle_initialize_config(context, fee, admin_share_bps)
     }
 
-    pub fn create_pool(context: Context<CreatePoolAccountConstraints>) -> Result<()> {
-        instructions::handle_create_pool(context)
+    pub fn initialize_pool(context: Context<InitializePoolAccountConstraints>) -> Result<()> {
+        instructions::handle_initialize_pool(context)
     }
 
     pub fn deposit_liquidity(

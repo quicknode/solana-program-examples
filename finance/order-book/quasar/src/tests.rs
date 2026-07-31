@@ -6,7 +6,7 @@
 use {
     crate::{
         cpi::{
-            CancelOrderInstruction, CreateMarketUserInstruction, InitializeMarketInstruction,
+            CancelOrderInstruction, InitializeMarketUserInstruction, InitializeMarketInstruction,
             PlaceOrderInstruction, SettleFundsInstruction, WithdrawFeesInstruction,
         },
         errors::OrderBookError,
@@ -90,9 +90,9 @@ fn init_market(test: &mut Test) -> Pubkey {
     test.derive_pda(Market::seeds(&BASE_MINT, &QUOTE_MINT))
 }
 
-fn create_market_user(test: &mut Test, market: Pubkey, owner: Pubkey) -> Pubkey {
+fn initialize_market_user(test: &mut Test, market: Pubkey, owner: Pubkey) -> Pubkey {
     test.add(Wallet::new().at(owner));
-    test.send(CreateMarketUserInstruction { owner, market }).succeeds();
+    test.send(InitializeMarketUserInstruction { owner, market }).succeeds();
     test.derive_pda(MarketUser::seeds(&market, &owner))
 }
 
@@ -181,9 +181,9 @@ fn initialize_market_stamps_market_and_order_book(test: &mut Test) {
 }
 
 #[quasar_test]
-fn create_market_user_starts_with_empty_balances(test: &mut Test) {
+fn initialize_market_user_starts_with_empty_balances(test: &mut Test) {
     let market = init_market(test);
-    let market_user = create_market_user(test, market, MAKER);
+    let market_user = initialize_market_user(test, market, MAKER);
 
     let state = test.read::<MarketUser>(market_user);
     assert_eq!(state.market, market, "market");
@@ -200,8 +200,8 @@ fn create_market_user_starts_with_empty_balances(test: &mut Test) {
 #[quasar_test]
 fn place_match_settle_withdraw_moves_tokens_and_fees(test: &mut Test) {
     let market = init_market(test);
-    let maker_market_user = create_market_user(test, market, MAKER);
-    let taker_market_user = create_market_user(test, market, TAKER);
+    let maker_market_user = initialize_market_user(test, market, MAKER);
+    let taker_market_user = initialize_market_user(test, market, TAKER);
 
     // Maker sells 5 base lots (locks 5 * 1000 = 5000 raw base); taker buys 5
     // lots at 100 (locks 100 * 5 * 1 = 500 raw quote).
@@ -291,7 +291,7 @@ fn place_match_settle_withdraw_moves_tokens_and_fees(test: &mut Test) {
 #[quasar_test]
 fn cancel_order_credits_the_locked_base_back(test: &mut Test) {
     let market = init_market(test);
-    let maker_market_user = create_market_user(test, market, MAKER);
+    let maker_market_user = initialize_market_user(test, market, MAKER);
 
     const PRICE: u64 = 100;
     const QUANTITY: u64 = 5;

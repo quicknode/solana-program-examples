@@ -15,12 +15,12 @@ use {
 };
 
 // ---------------------------------------------------------------------------
-// init_lending_market
+// initialize_lending_market
 // ---------------------------------------------------------------------------
 
 #[derive(Accounts)]
 #[instruction(market_id: u64)]
-pub struct InitLendingMarket {
+pub struct InitializeLendingMarket {
     #[account(mut)]
     pub owner: Signer,
     // Seeded by `market_id` alone — owner is stored for auth, not in the address.
@@ -30,9 +30,9 @@ pub struct InitLendingMarket {
     pub system_program: Program<SystemProgram>,
 }
 
-impl InitLendingMarket {
+impl InitializeLendingMarket {
     #[inline(always)]
-    pub fn run(&mut self, market_id: u64, bumps: &InitLendingMarketBumps) -> Result<(), ProgramError> {
+    pub fn run(&mut self, market_id: u64, bumps: &InitializeLendingMarketBumps) -> Result<(), ProgramError> {
         self.lending_market.set_inner(LendingMarketInner {
             owner: *self.owner.address(),
             market_id,
@@ -44,11 +44,11 @@ impl InitLendingMarket {
 }
 
 // ---------------------------------------------------------------------------
-// init_reserve
+// initialize_reserve
 // ---------------------------------------------------------------------------
 
 #[derive(Accounts)]
-pub struct InitReserve {
+pub struct InitializeReserve {
     #[account(mut)]
     pub owner: Signer,
     #[account(has_one(owner))]
@@ -69,7 +69,7 @@ pub struct InitReserve {
     pub system_program: Program<SystemProgram>,
 }
 
-impl InitReserve {
+impl InitializeReserve {
     #[inline(always)]
     #[allow(clippy::too_many_arguments)]
     pub fn run(
@@ -83,7 +83,7 @@ impl InitReserve {
         min_borrow_rate_bps: u16,
         optimal_borrow_rate_bps: u16,
         max_borrow_rate_bps: u16,
-        bumps: &InitReserveBumps,
+        bumps: &InitializeReserveBumps,
     ) -> Result<(), ProgramError> {
         validate_config(
             loan_to_value_bps,
