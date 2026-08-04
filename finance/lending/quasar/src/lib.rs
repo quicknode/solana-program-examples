@@ -18,6 +18,7 @@ use quasar_lang::prelude::*;
 mod constants;
 mod error;
 mod instructions;
+mod last_restart;
 mod logic;
 mod math;
 mod state;

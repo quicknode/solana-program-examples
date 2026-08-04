@@ -48,7 +48,7 @@ A position's *equity* is its net collateral plus profit/loss minus funding. Once
 
 ### Oracle
 
-The mark price comes from an oracle feed. This example validates the price for staleness (by slot), positivity, scale, and a [confidence band](https://docs.pyth.network/price-feeds/best-practices#confidence-intervals) that must stay within `max_confidence_bps` of the price: rejecting an uncertain price is one of the most common oracle-safety checks.
+The mark price comes from an oracle feed. This example validates the price for staleness (by slot), publication after the most recent cluster restart (the `LastRestartSlot` sysvar, because a halt passes hours of wall-clock time in zero slots), positivity, scale, and a [confidence band](https://docs.pyth.network/price-feeds/best-practices#confidence-intervals) that must stay within `max_confidence_bps` of the price: rejecting an uncertain price is one of the most common oracle-safety checks.
 
 ### Fees and slippage
 
@@ -205,7 +205,7 @@ This is a teaching example, not an audited exchange. Notably:
 
 ## Testing
 
-The tests run in-process with [LiteSVM](https://www.anchor-lang.com/docs/testing/litesvm) and [solana-kite](https://solanakite.org); no local validator is needed. They deploy both programs, drive the mock oracle, and cover liquidity round-trips, opening and closing longs and shorts in profit and loss, leverage and slippage rejection, stale-price and wide-confidence rejection, funding accrual, liquidation (and the refusal to liquidate a healthy position), reserved-liquidity behaviour (profit capped at the reserve, opens rejected when the pool can't back them, withdrawals blocked by reserved liquidity), and fee collection.
+The tests run in-process with [LiteSVM](https://www.anchor-lang.com/docs/testing/litesvm) and [solana-kite](https://solanakite.org); no local validator is needed. They deploy both programs, drive the mock oracle, and cover liquidity round-trips, opening and closing longs and shorts in profit and loss, leverage and slippage rejection, stale-price, pre-restart-price, and wide-confidence rejection, funding accrual, liquidation (and the refusal to liquidate a healthy position), reserved-liquidity behaviour (profit capped at the reserve, opens rejected when the pool can't back them, withdrawals blocked by reserved liquidity), and fee collection.
 
 ```bash
 anchor build

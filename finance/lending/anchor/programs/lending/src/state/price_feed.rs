@@ -1,4 +1,5 @@
 use anchor_lang::prelude::*;
+use solana_sysvar::last_restart_slot::LastRestartSlot;
 
 use crate::constants::MAX_PRICE_STALENESS_SLOTS;
 use crate::errors::LendingError;
@@ -44,6 +45,19 @@ impl PriceFeed {
             .checked_sub(self.last_updated_slot)
             .ok_or(LendingError::MathOverflow)?;
         require!(age <= MAX_PRICE_STALENESS_SLOTS, LendingError::StalePriceFeed);
+
+        // Restart handling. A cluster halt stops the slot count but not the
+        // wall clock, so after a restart a feed can look fresh in slots while
+        // its price is hours old. Reject any price stamped at or before the
+        // restart slot; the market then pauses valuation until the publisher
+        // posts again, rather than lending against a pre-halt price. Zero
+        // means the cluster has never restarted.
+        let last_restart_slot = LastRestartSlot::get()?.last_restart_slot;
+        require!(
+            last_restart_slot == 0 || self.last_updated_slot > last_restart_slot,
+            LendingError::PricePredatesRestart
+        );
+
         require!(self.price_mantissa > 0, LendingError::InvalidOraclePrice);
 
         price_mantissa_to_scaled(self.price_mantissa as u128, self.exponent)

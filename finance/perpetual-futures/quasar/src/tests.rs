@@ -42,12 +42,53 @@ fn dollars(whole: i128) -> i128 {
 /// last_update_slot (u64), confidence (u64). The tests own this; production
 /// reads a real feed.
 fn set_feed(test: &mut Test, price: i128, confidence: u64) {
+    set_feed_at_slot(test, price, SLOT, confidence);
+}
+
+fn set_feed_at_slot(test: &mut Test, price: i128, slot: u64, confidence: u64) {
     let mut data = Vec::with_capacity(36);
     data.extend_from_slice(&price.to_le_bytes());
     data.extend_from_slice(&ORACLE_SCALE.to_le_bytes());
-    data.extend_from_slice(&SLOT.to_le_bytes());
+    data.extend_from_slice(&slot.to_le_bytes());
     data.extend_from_slice(&confidence.to_le_bytes());
     test.set_account(Account::new(FEED, system_program::ID, 1_000_000, data));
+}
+
+/// Pin the Clock sysvar account at `slot`. Clock's bincode layout is the raw
+/// little-endian fields: slot, epoch_start_timestamp, epoch,
+/// leader_schedule_epoch, unix_timestamp.
+fn set_clock_at(test: &mut Test, slot: u64) {
+    let mut data = Vec::with_capacity(40);
+    data.extend_from_slice(&slot.to_le_bytes());
+    data.extend_from_slice(&0i64.to_le_bytes());
+    data.extend_from_slice(&0u64.to_le_bytes());
+    data.extend_from_slice(&0u64.to_le_bytes());
+    data.extend_from_slice(&0i64.to_le_bytes());
+    let clock_id: Pubkey = "SysvarC1ock11111111111111111111111111111111"
+        .parse()
+        .unwrap();
+    let sysvar_owner: Pubkey = "Sysvar1111111111111111111111111111111111111"
+        .parse()
+        .unwrap();
+    test.set_account(Account::new(clock_id, sysvar_owner, 1_169_280, data));
+}
+
+/// Pin the LastRestartSlot sysvar account, simulating a cluster restart at
+/// `slot`: prices stamped at or before it must be rejected until the
+/// publisher posts again. The sysvar's whole data is one little-endian u64.
+fn set_last_restart_slot(test: &mut Test, slot: u64) {
+    let sysvar_id: Pubkey = "SysvarLastRestartS1ot1111111111111111111111"
+        .parse()
+        .unwrap();
+    let sysvar_owner: Pubkey = "Sysvar1111111111111111111111111111111111111"
+        .parse()
+        .unwrap();
+    test.set_account(Account::new(
+        sysvar_id,
+        sysvar_owner,
+        1_169_280,
+        slot.to_le_bytes().to_vec(),
+    ));
 }
 
 fn init_pool(test: &mut Test, maintenance_margin_bps: u16, close_fee_bps: u16) -> Outcome {
@@ -197,6 +238,33 @@ fn open_long_position_creates_the_position(test: &mut Test) {
 
     let position = test.derive_pda(Position::seeds(&env.pool, &TRADER));
     assert!(test.account(position).is_some());
+}
+
+/// A cluster restart passes hours of wall-clock time in zero slots, so a
+/// price published before the halt can still look fresh by slot count. With
+/// leverage a stale price is amplified into a market-wide equity error, so
+/// the pool must refuse it until the publisher posts again.
+#[quasar_test]
+fn open_rejects_price_from_before_a_restart(test: &mut Test) {
+    let env = setup(test);
+    fund(test, PROVIDER, PROVIDER_COLLATERAL, 100_000 * ONE_USDC);
+    add_liquidity(test, &env, 100_000 * ONE_USDC).succeeds();
+    fund(test, TRADER, TRADER_COLLATERAL, 1_000 * ONE_USDC);
+
+    // The feed sits at slot 5, fresh by the 150-slot staleness bound, but the
+    // cluster restarted at slot 7: only the restart check can catch the
+    // pre-halt price.
+    set_clock_at(test, 10);
+    set_feed_at_slot(test, dollars(100), 5, 0);
+    set_last_restart_slot(test, 7);
+    assert!(
+        open_position(test, &env, 0, 1_000 * ONE_USDC, 5_000 * ONE_USDC).is_err(),
+        "a pre-restart price must be rejected even inside the staleness bound"
+    );
+
+    // Publishing after the restart (slot 10) reopens the pool.
+    set_feed_at_slot(test, dollars(100), 10, 0);
+    open_position(test, &env, 0, 1_000 * ONE_USDC, 5_000 * ONE_USDC).succeeds();
 }
 
 #[quasar_test]

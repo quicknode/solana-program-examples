@@ -108,7 +108,10 @@ round-trips.
 `PriceFeed` mirrors a Switchboard On-Demand pull feed: a signed mantissa, an
 exponent (`price = mantissa * 10^exponent`), and the slot the price was written.
 Freshness is checked in **slots** (`MAX_PRICE_STALENESS_SLOTS`), not wall-clock
-time. The feed PDA is seeded by `[b"price_feed", market, mint]` (scoped to a
+time, plus one check slots alone cannot make: a cluster restart passes hours of
+wall-clock time in zero slots, so `price_scaled` also rejects any price stamped
+at or before the `LastRestartSlot` sysvar's slot, pausing valuation until the
+publisher posts again. The feed PDA is seeded by `[b"price_feed", market, mint]` (scoped to a
 market, not to any individual) and only that market's `owner` may write it
 (`set_price` checks `has_one = owner`). So prices can't be squatted, a reserve
 trusts exactly its own market's feed for the mint, and isolated markets can

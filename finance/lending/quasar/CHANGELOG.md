@@ -1,5 +1,19 @@
 # Changelog
 
+## [2026-08-04]
+
+### Changed
+
+- Reject oracle prices from before a cluster restart: `price_scaled` requires
+  the feed's slot to be after the `LastRestartSlot` sysvar's slot
+  (`PricePredatesRestart`). quasar-lang has no LastRestartSlot sysvar, so
+  `src/last_restart.rs` declares the layout and reads it via
+  `sol_get_sysvar`. Tested by
+  `borrow_with_price_from_before_a_restart_is_rejected`.
+- Pinned `zeropod = "=0.3.3"`: zeropod 0.3.4 moved to wincode 0.5 while
+  quasar-lang's pinned rev stays on wincode 0.4, so a fresh resolve failed
+  every Pod* trait bound.
+
 ## [2026-07-22]
 
 ### Changed

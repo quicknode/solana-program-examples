@@ -14,6 +14,12 @@ math. This page only covers what differs in the Quasar version.
   inputs, not instruction arguments, so the side cannot be a seed; the position
   PDA is `[b"position", pool, owner]` and the side is stored in the account. A
   trader therefore holds a single open position per pool here.
+- **A hand-declared `LastRestartSlot` sysvar.** quasar-lang ships only the
+  Clock and Rent sysvars, so `src/last_restart.rs` declares the 8-byte layout
+  itself and reads it with the same `sol_get_sysvar` syscall.
+  `read_oracle_price` uses it to reject prices published before a cluster
+  restart, which slot-based staleness alone cannot catch (a halt passes hours
+  of wall-clock time in zero slots).
 - **Oracle feed in tests.** Rather than a separate mock-oracle program, the
   tests write the feed account's bytes directly (price, scale, last-update slot)
   and the program reads them the same way it would read a real Switchboard feed.

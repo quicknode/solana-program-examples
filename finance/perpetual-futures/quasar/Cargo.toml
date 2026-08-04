@@ -32,6 +32,17 @@ idl-build = ["quasar-lang/idl-build"]
 quasar-lang = { git = "https://github.com/blueshift-gg/quasar", rev = "be60fca" }
 quasar-spl = { git = "https://github.com/blueshift-gg/quasar", rev = "be60fca" }
 solana-instruction = { version = "3.2.0" }
+# The LastRestartSlot sysvar declaration (src/last_restart.rs) names these
+# three crates directly. Versions match quasar-lang's own constraints so each
+# is compiled once.
+solana-address = { version = ">=2.2, <2.6" }
+solana-program-error = "3.0.0"
+solana-define-syscall = "5.0.0"
+# Pinned: quasar-lang asks for zeropod "0.3.3" and wincode 0.4, but zeropod
+# 0.3.4 moved to wincode 0.5, so a fresh resolve (no lockfile is committed)
+# splits the graph across two wincode versions and every Pod* trait bound
+# fails. Unpin when quasar-lang's pinned rev accepts zeropod 0.3.4+.
+zeropod = "=0.3.3"
 
 [dev-dependencies]
 quasar-test = { git = "https://github.com/blueshift-gg/quasar", rev = "be60fca" }

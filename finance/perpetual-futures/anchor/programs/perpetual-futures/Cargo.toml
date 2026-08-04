@@ -31,6 +31,10 @@ anchor-spl = "1.1.2"
 # spl-token's) and fails.
 spl-token = { version = "9.0.0", features = ["no-entrypoint"] }
 spl-associated-token-account = { version = "8.0.0", features = ["no-entrypoint"] }
+# For the LastRestartSlot sysvar (not re-exported by anchor-lang): the oracle
+# reader rejects prices from before a cluster restart. Same major as the
+# solana-sysvar anchor-lang itself uses, so only one copy is compiled in.
+solana-sysvar = "3"
 
 [dev-dependencies]
 litesvm = "0.13.1"

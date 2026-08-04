@@ -8,6 +8,7 @@ use quasar_lang::{prelude::*, sysvars::Sysvar};
 use crate::{
     constants::{FIXED_POINT_SCALE, MAX_PRICE_STALENESS_SLOTS},
     error::LendingError,
+    last_restart::LastRestartSlot,
     math::{accrue_index, current_debt, mul_div_floor, price_mantissa_to_scaled},
     state::{Obligation, ObligationInner, PriceFeed, Reserve, ReserveInner},
 };
@@ -105,6 +106,19 @@ pub fn price_scaled(feed: &Account<PriceFeed>, slot: u64) -> Result<u128, Progra
         .checked_sub(last_updated)
         .ok_or(LendingError::MathOverflow)?;
     require!(age <= MAX_PRICE_STALENESS_SLOTS, LendingError::StalePrice);
+
+    // Restart handling. A cluster halt stops the slot count but not the wall
+    // clock, so after a restart a feed can look fresh in slots while its
+    // price is hours old. Reject any price stamped at or before the restart
+    // slot; the market then pauses valuation until the publisher posts again,
+    // rather than lending against a pre-halt price. Zero means the cluster
+    // has never restarted.
+    let last_restart = u64::from(LastRestartSlot::get()?.last_restart_slot);
+    require!(
+        last_restart == 0 || last_updated > last_restart,
+        LendingError::PricePredatesRestart
+    );
+
     let mantissa = i128::from(feed.price_mantissa);
     require!(mantissa > 0, LendingError::InvalidOraclePrice);
     price_mantissa_to_scaled(mantissa as u128, i32::from(feed.exponent))

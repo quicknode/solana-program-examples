@@ -18,6 +18,8 @@ pub enum LendingError {
     ObligationStale,
     #[msg("Price feed has not been updated recently enough")]
     StalePriceFeed,
+    #[msg("Price feed was last updated before the most recent cluster restart")]
+    PricePredatesRestart,
     #[msg("Price feed reported a non-positive price")]
     InvalidOraclePrice,
     #[msg("Borrow would exceed the obligation's allowed borrow value")]

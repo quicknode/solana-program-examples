@@ -754,6 +754,31 @@ mod slot_warp {
         );
     }
 
+    /// A cluster restart passes hours of wall-clock time in zero slots, so a
+    /// price published before the halt can still look fresh by slot count.
+    /// `price_scaled` must reject it until the publisher posts again.
+    #[test]
+    fn borrow_with_price_from_before_a_restart_is_rejected() {
+        let mut world = World::new();
+        world.bootstrap_position();
+
+        // Prices were published at the current slot. Simulate a halt: the
+        // cluster restarts a few slots later, well inside the staleness
+        // window, so only the restart check can catch the pre-halt price.
+        let restart_slot = world.svm.sysvars.clock.slot + 3;
+        world.svm.sysvars.warp_to_slot(restart_slot + 2);
+        world.svm.sysvars.last_restart_slot.last_restart_slot = restart_slot;
+
+        world.borrow(100 * UNIT).assert_error(quasar_svm::ProgramError::Custom(
+            crate::error::LendingError::PricePredatesRestart as u32,
+        ));
+
+        // Publishing after the restart reopens the market.
+        world.set_price(COLLATERAL_MINT, world.collateral_price, dollars(1));
+        world.set_price(BORROW_MINT, world.borrow_price, dollars(1));
+        world.borrow(100 * UNIT).assert_success();
+    }
+
     #[test]
     fn protocol_fees_accrue_and_owner_can_collect() {
         let mut world = World::new();

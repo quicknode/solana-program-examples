@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-08-04
+
+Reject oracle prices from before a cluster restart. A halt stops the slot
+count but not the wall clock, so after a restart a feed can look fresh in
+slots while its price is hours old. `price_scaled` now also requires the
+feed's slot to be after the `LastRestartSlot` sysvar's slot
+(`PricePredatesRestart`), pausing valuation until the publisher posts again.
+Tested by `borrow_with_price_from_before_a_restart_is_rejected`.
+
 ## 0.1.0
 
 Initial lending program: a Kamino/Solend-style borrow/lend market.
