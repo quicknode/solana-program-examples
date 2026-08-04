@@ -668,7 +668,10 @@ fn test_swap_rejects_price_from_before_a_restart() {
         .swap(&alice, Direction::BuyBase, 825_825_000, 0)
         .is_err());
 
-    // Publishing after the restart reopens the market.
+    // Publishing after the restart reopens the market. Warp first: the retry is
+    // otherwise byte-identical to the rejected swap, so it would carry the same
+    // signature and be dropped as already processed.
+    market.warp(published_at + 6);
     market.set_price(dollars(165));
     market
         .swap(&alice, Direction::BuyBase, 825_825_000, 0)

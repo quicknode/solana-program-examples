@@ -812,7 +812,10 @@ fn test_open_rejects_price_from_before_a_restart() {
         )
         .is_err());
 
-    // Publishing after the restart reopens the pool.
+    // Publishing after the restart reopens the pool. Warp first: the retry is
+    // otherwise byte-identical to the rejected open, so it would carry the same
+    // signature and be dropped as already processed.
+    market.warp(published_at + 6);
     market.set_price(dollars(100));
     market
         .open_position(
