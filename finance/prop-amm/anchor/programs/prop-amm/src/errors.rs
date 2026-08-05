@@ -41,6 +41,6 @@ pub enum PropAmmError {
     #[msg("Oracle price confidence band is too wide to trust")]
     OracleConfidenceTooWide,
 
-    #[msg("Oracle price was last updated before the most recent cluster restart")]
+    #[msg("Oracle price is stale: it predates the last cluster restart")]
     PricePredatesRestart,
 }

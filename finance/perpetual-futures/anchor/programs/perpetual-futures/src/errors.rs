@@ -56,6 +56,6 @@ pub enum PerpError {
     #[msg("No protocol fees are available to collect")]
     NothingToClaim,
 
-    #[msg("Oracle price was last updated before the most recent cluster restart")]
+    #[msg("Oracle price is stale: it predates the last cluster restart")]
     PricePredatesRestart,
 }
