@@ -200,6 +200,14 @@ impl Env {
         self.svm.expire_blockhash();
     }
 
+    /// Simulate a cluster restart at `slot`: prices stamped at or before it
+    /// must be rejected until the publisher posts again.
+    pub fn set_last_restart_slot(&mut self, slot: u64) {
+        self.svm.set_sysvar(&solana_sysvar::last_restart_slot::LastRestartSlot {
+            last_restart_slot: slot,
+        });
+    }
+
     /// The feed PDA the market owner writes for `mint`: seeded by the owner's
     /// key, so it is the feed `add_reserve` registers reserves against.
     /// The feed PDA for a given market and mint (seeds `["price_feed", market, mint]`).

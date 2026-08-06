@@ -91,6 +91,24 @@ fn make_price_stale(test: &mut Test) {
     set_feed_at_slot(test, dollars(165), SLOT - 151, 0);
 }
 
+/// Pin the LastRestartSlot sysvar account, simulating a cluster restart at
+/// `slot`: prices stamped at or before it must be rejected until the
+/// publisher posts again. The sysvar's whole data is one little-endian u64.
+fn set_last_restart_slot(test: &mut Test, slot: u64) {
+    let sysvar_id: Pubkey = "SysvarLastRestartS1ot1111111111111111111111"
+        .parse()
+        .unwrap();
+    let sysvar_owner: Pubkey = "Sysvar1111111111111111111111111111111111111"
+        .parse()
+        .unwrap();
+    test.set_account(Account::new(
+        sysvar_id,
+        sysvar_owner,
+        1_169_280,
+        slot.to_le_bytes().to_vec(),
+    ));
+}
+
 fn init_market(test: &mut Test, spread_bps: u16) -> Outcome {
     test.send(InitializeMarketInstruction {
         operator: OPERATOR,
@@ -373,6 +391,30 @@ fn swap_rejects_stale_price(test: &mut Test) {
         swap(test, &env, TRADER, TRADER_BASE, TRADER_QUOTE, DIRECTION_BUY_BASE, 825_825_000, 0).is_err(),
         "a stale oracle price must be rejected"
     );
+}
+
+/// A cluster restart passes hours of wall-clock time in zero slots, so a
+/// price published before the halt can still look fresh by slot count. The
+/// market must refuse to quote against it until the publisher posts again.
+#[quasar_test]
+fn swap_rejects_price_from_before_a_restart(test: &mut Test) {
+    let env = setup(test);
+    fund_trader(test, TRADER, TRADER_BASE, TRADER_QUOTE, 0, 825_825_000 * 2);
+
+    // The feed is stamped at `SLOT - 5`: fresh by the 150-slot staleness
+    // bound, but published before a restart at `SLOT - 3`, so only the
+    // restart check can catch it.
+    set_feed_at_slot(test, dollars(165), SLOT - 5, 0);
+    set_last_restart_slot(test, SLOT - 3);
+    assert!(
+        swap(test, &env, TRADER, TRADER_BASE, TRADER_QUOTE, DIRECTION_BUY_BASE, 825_825_000, 0).is_err(),
+        "a pre-restart price must be rejected even inside the staleness bound"
+    );
+
+    // Publishing after the restart (at `SLOT`) reopens the market.
+    set_feed(test, dollars(165), 0);
+    swap(test, &env, TRADER, TRADER_BASE, TRADER_QUOTE, DIRECTION_BUY_BASE, 825_825_000, 0)
+        .succeeds();
 }
 
 /// A price the oracle itself is unsure about is rejected: the confidence band

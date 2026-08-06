@@ -9,6 +9,7 @@ use quasar_lang::prelude::*;
 
 mod constants;
 mod instructions;
+mod last_restart;
 pub mod state;
 #[cfg(test)]
 mod tests;

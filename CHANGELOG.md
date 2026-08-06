@@ -4,6 +4,16 @@ All notable changes to this repository are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-08-04] - Oracle readers reject prices from before a cluster restart
+
+### Added
+
+- The three oracle-priced finance examples (`finance/lending`, `finance/prop-amm`, `finance/perpetual-futures`, Anchor and Quasar variants) now reject an oracle price stamped at or before the `LastRestartSlot` sysvar's slot, with a dedicated error (`PricePredatesRestart` / `PRICE_PREDATES_RESTART`) and a test per variant. A cluster halt stops the slot count but not the wall clock, so after a restart a feed can pass a slot-measured staleness bound while its price is hours old; the market pauses valuation until the publisher posts again. quasar-lang ships no LastRestartSlot sysvar, so each Quasar variant declares the 8-byte layout in `src/last_restart.rs` and reads it via `sol_get_sysvar`.
+
+### Fixed
+
+- The three Quasar variants pin `zeropod = "=0.3.3"`: zeropod 0.3.4 moved to wincode 0.5 while quasar-lang's pinned rev stays on wincode 0.4, so any fresh resolve (these projects commit no lockfile) split the graph across two wincode versions and failed every `Pod*` trait bound.
+
 ## [2026-07-23] - Metadata examples on Quasar 0.1.0 (vendored quasar-metadata)
 
 ### Added

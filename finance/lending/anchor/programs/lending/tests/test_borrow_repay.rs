@@ -69,6 +69,37 @@ fn borrow_with_stale_price_feed_is_rejected() {
     assert!(result.unwrap_err().contains("StalePriceFeed"));
 }
 
+/// A cluster restart passes hours of wall-clock time in zero slots, so a price
+/// published before the halt can still look fresh by slot count. The feed must
+/// reject it until the publisher posts again.
+#[test]
+fn borrow_with_price_from_before_a_restart_is_rejected() {
+    let (mut env, collateral, borrow, borrower, obligation) = setup();
+
+    // The prices were published at the current slot. Simulate a halt: the
+    // cluster restarts a few slots later, well inside the staleness window,
+    // so only the restart check can catch the pre-halt price.
+    let restart_slot = env.current_slot() + 3;
+    env.warp_slots(5);
+    env.set_last_restart_slot(restart_slot);
+
+    let result = env.try_borrow(&borrower, obligation, &[&collateral], &[], &borrow, 100_000_000);
+    assert!(
+        result.unwrap_err().contains("PricePredatesRestart"),
+        "a pre-restart price must be rejected even inside the staleness window"
+    );
+
+    // Publishing after the restart reopens the market. Warp first: the retry is
+    // otherwise byte-identical to the rejected borrow, so it would carry the
+    // same signature and be dropped as already processed. The failed borrow
+    // recorded nothing, so the obligation still has no borrows to refresh.
+    env.warp_slots(1);
+    env.set_price(collateral.mint, dollars(1));
+    env.set_price(borrow.mint, dollars(1));
+    env.try_borrow(&borrower, obligation, &[&collateral], &[], &borrow, 100_000_000)
+        .expect("a freshly published price must be accepted after a restart");
+}
+
 #[test]
 fn repay_reduces_debt_and_over_repay_clamps() {
     let (mut env, collateral, borrow, borrower, obligation) = setup();

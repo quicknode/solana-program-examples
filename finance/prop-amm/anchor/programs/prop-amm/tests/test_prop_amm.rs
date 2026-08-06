@@ -264,6 +264,18 @@ impl Market {
         self.svm.expire_blockhash();
     }
 
+    fn current_slot(&self) -> u64 {
+        self.svm.get_sysvar::<anchor_lang::prelude::Clock>().slot
+    }
+
+    /// Simulate a cluster restart at `slot`: prices stamped at or before it
+    /// must be rejected until the publisher posts again.
+    fn set_last_restart_slot(&mut self, slot: u64) {
+        self.svm.set_sysvar(&solana_sysvar::last_restart_slot::LastRestartSlot {
+            last_restart_slot: slot,
+        });
+    }
+
     /// Create a wallet holding `base` and `quote` minor units in associated
     /// token accounts.
     fn funded_trader(&mut self, base: u64, quote: u64) -> (Keypair, Pubkey, Pubkey) {
@@ -634,6 +646,36 @@ fn test_swap_rejects_stale_price() {
     assert!(market
         .swap(&alice, Direction::BuyBase, 825_825_000, 0)
         .is_err());
+}
+
+/// A cluster restart passes hours of wall-clock time in zero slots, so a price
+/// published before the halt can still look fresh by slot count. The market
+/// must refuse to quote against it until the publisher posts again.
+#[test]
+fn test_swap_rejects_price_from_before_a_restart() {
+    let mut market = Market::default_market();
+    market.set_price(dollars(165));
+    let (alice, _, _) = market.funded_trader(0, 825_825_000);
+
+    // Simulate a halt: the cluster restarts a few slots after the price was
+    // published, well inside the 150-slot staleness bound, so only the
+    // restart check can catch the pre-halt price.
+    let published_at = market.current_slot();
+    market.warp(published_at + 5);
+    market.set_last_restart_slot(published_at + 3);
+
+    assert!(market
+        .swap(&alice, Direction::BuyBase, 825_825_000, 0)
+        .is_err());
+
+    // Publishing after the restart reopens the market. Warp first: the retry is
+    // otherwise byte-identical to the rejected swap, so it would carry the same
+    // signature and be dropped as already processed.
+    market.warp(published_at + 6);
+    market.set_price(dollars(165));
+    market
+        .swap(&alice, Direction::BuyBase, 825_825_000, 0)
+        .expect("a freshly published price must be accepted after a restart");
 }
 
 /// A price the oracle itself is unsure about is rejected: the confidence band

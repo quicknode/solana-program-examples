@@ -62,8 +62,10 @@ during fast markets their quotes vanish and return minutes later.
 ### Oracle staleness and confidence
 
 Every swap re-validates the feed: the price must be positive, at the pinned
-scale, no older than 150 slots (~1 minute), and its confidence band must be
-inside `max_confidence_bps`. For this design the staleness bound is not
+scale, no older than 150 slots (~1 minute), stamped after the most recent
+cluster restart (the `LastRestartSlot` sysvar; a halt passes hours of
+wall-clock time in zero slots), and its confidence band must be inside
+`max_confidence_bps`. For this design the staleness bound is not
 hygiene, it is the business: a quote priced off an old number is a free
 option for whoever notices first.
 
@@ -171,4 +173,4 @@ The spread is the fee: buyers pay the oracle price plus `spread_bps`, sellers re
 
 ### What stops the venue from quoting a stale price?
 
-Every `swap` re-validates the feed: the price must be fresh (no older than 150 slots), at the pinned scale, and inside the configured confidence band. A stale quote is a free option for whoever notices first, so the staleness checks are the business model, not hygiene.
+Every `swap` re-validates the feed: the price must be fresh (no older than 150 slots), stamped after the most recent cluster restart, at the pinned scale, and inside the configured confidence band. A stale quote is a free option for whoever notices first, so the staleness checks are the business model, not hygiene.

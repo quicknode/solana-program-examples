@@ -2,7 +2,9 @@
 //! All integer, all `checked_*`, multiply-before-divide, rounding toward the
 //! protocol. Errors are `ProgramError::Custom(code)`; the codes are listed here.
 
-use quasar_lang::prelude::*;
+use quasar_lang::{prelude::*, sysvars::Sysvar};
+
+use crate::last_restart::LastRestartSlot;
 
 use crate::constants::{
     BASIS_POINTS_DENOMINATOR, FUNDING_PRECISION, MAX_PRICE_STALENESS_SLOTS, SIDE_LONG,
@@ -28,6 +30,7 @@ pub mod error {
     pub const AMOUNT_ROUNDS_TO_ZERO: u32 = 15;
     pub const ORACLE_CONFIDENCE_TOO_WIDE: u32 = 16;
     pub const INSUFFICIENT_COLLATERAL: u32 = 17;
+    pub const PRICE_PREDATES_RESTART: u32 = 18;
 }
 
 #[inline(always)]
@@ -99,6 +102,17 @@ pub fn read_oracle_price(
     }
     if current_slot.saturating_sub(last_update_slot) > MAX_PRICE_STALENESS_SLOTS {
         return Err(err(error::STALE_PRICE));
+    }
+
+    // Restart handling. A cluster halt stops the slot count but not the wall
+    // clock, so after a restart a feed can look fresh in slots while its
+    // price is hours old. With leverage a stale price is amplified into a
+    // market-wide equity error, so reject any price stamped at or before the
+    // restart slot; the pool pauses valuation until the publisher posts
+    // again. Zero means the cluster has never restarted.
+    let last_restart = u64::from(LastRestartSlot::get()?.last_restart_slot);
+    if last_restart != 0 && last_update_slot <= last_restart {
+        return Err(err(error::PRICE_PREDATES_RESTART));
     }
 
     // Confidence band as a fraction of price, in basis points, must stay within

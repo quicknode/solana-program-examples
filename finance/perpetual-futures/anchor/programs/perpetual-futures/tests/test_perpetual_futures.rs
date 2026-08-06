@@ -219,6 +219,18 @@ impl Market {
         self.svm.expire_blockhash();
     }
 
+    fn current_slot(&self) -> u64 {
+        self.svm.get_sysvar::<anchor_lang::prelude::Clock>().slot
+    }
+
+    /// Simulate a cluster restart at `slot`: prices stamped at or before it
+    /// must be rejected until the publisher posts again.
+    fn set_last_restart_slot(&mut self, slot: u64) {
+        self.svm.set_sysvar(&solana_sysvar::last_restart_slot::LastRestartSlot {
+            last_restart_slot: slot,
+        });
+    }
+
     /// Create a wallet holding `amount` collateral tokens in its associated
     /// token account.
     fn funded_trader(&mut self, amount: u64) -> (Keypair, Pubkey) {
@@ -768,6 +780,53 @@ fn test_stale_price_rejected() {
             0
         )
         .is_err());
+}
+
+/// A cluster restart passes hours of wall-clock time in zero slots, so a
+/// price published before the halt can still look fresh by slot count. With
+/// leverage a stale price is amplified into a market-wide equity error, so
+/// the pool must refuse it until the publisher posts again.
+#[test]
+fn test_open_rejects_price_from_before_a_restart() {
+    let mut market = Market::default_market();
+    market.seed_liquidity(100_000 * ONE_USDC);
+    let collateral = 1_000 * ONE_USDC;
+    let (trader, trader_collateral) = market.funded_trader(collateral);
+
+    // Simulate a halt: the cluster restarts a few slots after the price was
+    // published, well inside the staleness window, so only the restart check
+    // can catch the pre-halt price.
+    market.set_price(dollars(100));
+    let published_at = market.current_slot();
+    market.warp(published_at + 5);
+    market.set_last_restart_slot(published_at + 3);
+
+    assert!(market
+        .open_position(
+            &trader,
+            trader_collateral,
+            Side::Long,
+            collateral,
+            5_000 * ONE_USDC,
+            u64::MAX
+        )
+        .is_err());
+
+    // Publishing after the restart reopens the pool. Warp first: the retry is
+    // otherwise byte-identical to the rejected open, so it would carry the same
+    // signature and be dropped as already processed.
+    market.warp(published_at + 6);
+    market.set_price(dollars(100));
+    market
+        .open_position(
+            &trader,
+            trader_collateral,
+            Side::Long,
+            collateral,
+            5_000 * ONE_USDC,
+            u64::MAX
+        )
+        .expect("a freshly published price must be accepted after a restart");
 }
 
 #[test]

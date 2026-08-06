@@ -24,6 +24,13 @@ fixed-size accounts, so this port follows that idiom:
   touches at the top of the instruction. Health is then computed inline from the
   freshly accrued reserves and the oracle prices passed in.
 
+- **A hand-declared `LastRestartSlot` sysvar.** quasar-lang ships only the
+  Clock and Rent sysvars, so `src/last_restart.rs` declares the 8-byte layout
+  itself and reads it with the same `sol_get_sysvar` syscall. `price_scaled`
+  uses it to reject prices published before a cluster restart, which slot-based
+  staleness alone cannot catch (a halt passes hours of wall-clock time in zero
+  slots).
+
 Everything else mirrors the Anchor version.
 
 ## Major concepts

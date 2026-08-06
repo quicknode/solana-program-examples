@@ -24,6 +24,10 @@ custom-panic = []
 # doesn't exist yet, so a first-time buyer needs no separate setup transaction.
 anchor-lang = { version = "1.1.2", features = ["init-if-needed"] }
 anchor-spl = "1.1.2"
+# For the LastRestartSlot sysvar (not re-exported by anchor-lang): the oracle
+# reader rejects prices from before a cluster restart. Same major as the
+# solana-sysvar anchor-lang itself uses, so only one copy is compiled in.
+solana-sysvar = "3"
 # Declared only so Cargo feature-unification turns on `no-entrypoint`; without
 # these the test binary links two `entrypoint` symbols and fails to build.
 spl-token = { version = "9.0.0", features = ["no-entrypoint"] }

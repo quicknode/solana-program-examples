@@ -1,4 +1,5 @@
 use anchor_lang::prelude::*;
+use solana_sysvar::last_restart_slot::LastRestartSlot;
 
 use crate::constants::{BASIS_POINTS_DENOMINATOR, MAX_PRICE_STALENESS_SLOTS};
 use crate::errors::PropAmmError;
@@ -81,6 +82,18 @@ pub fn read_oracle_price(
     require!(
         current_slot.saturating_sub(last_update_slot) <= MAX_PRICE_STALENESS_SLOTS,
         PropAmmError::StalePrice
+    );
+
+    // Restart handling. A cluster halt stops the slot count but not the wall
+    // clock, so after a restart a feed can look fresh in slots while its
+    // price is hours old. For a market maker that is a free option for
+    // whoever trades first, so reject any price stamped at or before the
+    // restart slot; the market refuses to quote until the publisher posts
+    // again. Zero means the cluster has never restarted.
+    let last_restart_slot = LastRestartSlot::get()?.last_restart_slot;
+    require!(
+        last_restart_slot == 0 || last_update_slot > last_restart_slot,
+        PropAmmError::PricePredatesRestart
     );
 
     // Reject an untrustworthy price: confidence band as a fraction of price,

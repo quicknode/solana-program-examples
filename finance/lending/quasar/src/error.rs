@@ -17,4 +17,5 @@ pub enum LendingError {
     WrongReserve,
     LiquidationTooLarge,
     NothingToCollect,
+    PricePredatesRestart,
 }
