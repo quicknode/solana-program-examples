@@ -5,7 +5,7 @@
 //!
 //! The lending program is the richest of the finance examples: a Solend-style
 //! pool with `mul_div` floor/ceil rounding (`math.rs`), a kinked interest-rate
-//! curve and a compounding interest index (`state::reserve`), a share-token
+//! curve and a compounding accumulation factor (`state::reserve`), a share-token
 //! exchange rate (`deposit`/`redeem`), and liquidation sizing with a close
 //! factor and bonus (`liquidate_obligation`). All of that is pure integer
 //! arithmetic; the token movement is delegated to SPL CPIs that Kani cannot
@@ -103,36 +103,37 @@ fn proof_rounding_is_protocol_favourable() {
 }
 
 // ===========================================================================
-// 2. Compounding interest index  (reserve::accrue_interest)
+// 2. Compounding accumulation factor  (reserve::accrue_interest)
 // ===========================================================================
 
-/// Index update `new = floor(old * growth / scale)` where the growth factor is
-/// `scale + accrued` (so always `>= scale`). Generic in `scale` because the
-/// property is scale-invariant (the real code uses `FIXED_POINT_SCALE = 10^18`).
-pub fn grow_index(old_index: u128, accrued: u128, scale: u128) -> Option<u128> {
-    let growth_factor = scale.checked_add(accrued)?;
-    mul_div_floor(old_index, growth_factor, scale)
+/// Factor update `new = floor(old * growth / scale)` where the growth per
+/// accrual is `scale + accrued` (so always `>= scale`). Generic in `scale`
+/// because the property is scale-invariant (the real code uses
+/// `FIXED_POINT_SCALE = 10^18`).
+pub fn grow_factor(old_factor: u128, accrued: u128, scale: u128) -> Option<u128> {
+    let growth = scale.checked_add(accrued)?;
+    mul_div_floor(old_factor, growth, scale)
 }
 
-/// The cumulative borrow-rate index is monotonically non-decreasing: each
-/// accrual multiplies by a factor `>= 1`, so `new_index >= old_index`. A debt
-/// indexed to this value can therefore never shrink from interest accrual — the
+/// The borrow accumulation factor is monotonically non-decreasing: each
+/// accrual multiplies by a factor `>= 1`, so `new_factor >= old_factor`. A debt
+/// scaled by this value can therefore never shrink from interest accrual, the
 /// core guarantee that borrowers always owe at least their principal.
 #[cfg(kani)]
 #[kani::proof]
 #[kani::solver(cadical)]
-fn proof_interest_index_monotonic() {
-    let old_index: u128 = kani::any();
+fn proof_accumulation_factor_monotonic() {
+    let old_factor: u128 = kani::any();
     let accrued: u128 = kani::any();
     let scale: u128 = kani::any();
     // Bounded model checking with a small symbolic scale (the 10^18 real scale
     // is scale-invariant for this property and would be intractable).
     kani::assume(scale >= 1 && scale <= 127);
-    kani::assume(old_index <= 255);
+    kani::assume(old_factor <= 255);
     kani::assume(accrued <= 255);
 
-    let new_index = grow_index(old_index, accrued, scale).unwrap();
-    assert!(new_index >= old_index); // index never decreases
+    let new_factor = grow_factor(old_factor, accrued, scale).unwrap();
+    assert!(new_factor >= old_factor); // the factor never decreases
 }
 
 // ===========================================================================
@@ -330,11 +331,11 @@ mod tests {
     }
 
     #[test]
-    fn index_grows() {
+    fn factor_grows() {
         // scale 100, old 150 (=1.5), accrued 10 (=0.1) -> 150*110/100 = 165.
-        assert_eq!(grow_index(150, 10, 100).unwrap(), 165);
+        assert_eq!(grow_factor(150, 10, 100).unwrap(), 165);
         // zero accrual leaves the index unchanged.
-        assert_eq!(grow_index(150, 0, 100).unwrap(), 150);
+        assert_eq!(grow_factor(150, 0, 100).unwrap(), 150);
     }
 
     #[test]

@@ -49,12 +49,12 @@ pub fn handle_liquidate_obligation(
 
     let borrow_index = obligation.find_borrow(repay_reserve.key())?;
     let collateral_index = obligation.find_collateral(collateral_reserve.key())?;
-    let borrowed_scaled = obligation.borrows[borrow_index].borrowed_scaled;
+    let borrowed_principal = obligation.borrows[borrow_index].borrowed_principal;
     let deposited_shares = obligation.deposits[collateral_index].deposited_shares;
 
     // How much debt this liquidation repays, capped by the close factor.
-    let interest_index = repay_reserve.cumulative_borrow_rate_index;
-    let debt_now = mul_div_ceil(borrowed_scaled, interest_index, FIXED_POINT_SCALE)?;
+    let accumulation_factor = repay_reserve.borrow_accumulation_factor;
+    let debt_now = mul_div_ceil(borrowed_principal, accumulation_factor, FIXED_POINT_SCALE)?;
     let debt_now = u64::try_from(debt_now).map_err(|_| LendingError::MathOverflow)?;
     let max_repay = mul_div_floor(
         debt_now as u128,
@@ -100,13 +100,13 @@ pub fn handle_liquidate_obligation(
     );
 
     let scaled_removed =
-        mul_div_floor(repay as u128, FIXED_POINT_SCALE, interest_index)?.min(borrowed_scaled);
+        mul_div_floor(repay as u128, FIXED_POINT_SCALE, accumulation_factor)?.min(borrowed_principal);
 
     // Effects: repay side.
     {
         let repay_reserve = &mut context.accounts.repay_reserve;
-        repay_reserve.borrowed_amount_scaled = repay_reserve
-            .borrowed_amount_scaled
+        repay_reserve.borrowed_principal = repay_reserve
+            .borrowed_principal
             .checked_sub(scaled_removed)
             .ok_or(LendingError::MathOverflow)?;
         repay_reserve.available_liquidity = repay_reserve
@@ -118,10 +118,10 @@ pub fn handle_liquidate_obligation(
     // Effects: obligation debt and collateral.
     let (lending_market, owner, obligation_bump) = {
         let obligation = &mut context.accounts.obligation;
-        obligation.borrows[borrow_index].borrowed_scaled = borrowed_scaled
+        obligation.borrows[borrow_index].borrowed_principal = borrowed_principal
             .checked_sub(scaled_removed)
             .ok_or(LendingError::MathOverflow)?;
-        if obligation.borrows[borrow_index].borrowed_scaled == 0 {
+        if obligation.borrows[borrow_index].borrowed_principal == 0 {
             obligation.borrows.remove(borrow_index);
         }
         obligation.deposits[collateral_index].deposited_shares = deposited_shares

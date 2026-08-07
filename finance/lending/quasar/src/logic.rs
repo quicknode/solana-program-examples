@@ -9,7 +9,7 @@ use crate::{
     constants::{FIXED_POINT_SCALE, MAX_PRICE_STALENESS_SLOTS},
     error::LendingError,
     last_restart::LastRestartSlot,
-    math::{accrue_index, current_debt, mul_div_floor, price_mantissa_to_scaled},
+    math::{accrue_factor, current_debt, mul_div_floor, price_mantissa_to_scaled},
     state::{Obligation, ObligationInner, PriceFeed, Reserve, ReserveInner},
 };
 
@@ -31,8 +31,8 @@ pub fn snapshot_reserve(reserve: &Account<Reserve>) -> ReserveInner {
         available_liquidity: u64::from(reserve.available_liquidity),
         share_mint_supply: u64::from(reserve.share_mint_supply),
         accumulated_protocol_fees: u64::from(reserve.accumulated_protocol_fees),
-        borrowed_amount_scaled: u128::from(reserve.borrowed_amount_scaled),
-        cumulative_borrow_rate_index: u128::from(reserve.cumulative_borrow_rate_index),
+        borrowed_principal: u128::from(reserve.borrowed_principal),
+        borrow_accumulation_factor: u128::from(reserve.borrow_accumulation_factor),
         last_update_slot: u64::from(reserve.last_update_slot),
         liquidity_decimals: reserve.liquidity_decimals,
         loan_to_value_bps: u16::from(reserve.loan_to_value_bps),
@@ -56,21 +56,21 @@ pub fn snapshot_obligation(obligation: &Account<Obligation>) -> ObligationInner 
         collateral_reserve: obligation.collateral_reserve,
         deposited_shares: u64::from(obligation.deposited_shares),
         borrow_reserve: obligation.borrow_reserve,
-        borrowed_scaled: u128::from(obligation.borrowed_scaled),
+        borrowed_principal: u128::from(obligation.borrowed_principal),
         bump: obligation.bump,
     }
 }
 
-/// Advance a reserve snapshot's interest index to `slot` (Solend-style: a single
-/// `index *= 1 + rate_per_slot * elapsed` per call, compounding across calls).
+/// Advance a reserve snapshot's accumulation factor to `slot` (a single
+/// `factor *= 1 + rate_per_slot * elapsed` per call, compounding across calls).
 pub fn accrue(reserve: &mut ReserveInner, slot: u64) -> Result<(), ProgramError> {
     let borrowed_before = current_debt(
-        reserve.borrowed_amount_scaled,
-        reserve.cumulative_borrow_rate_index,
+        reserve.borrowed_principal,
+        reserve.borrow_accumulation_factor,
     )?;
-    reserve.cumulative_borrow_rate_index = accrue_index(
-        reserve.cumulative_borrow_rate_index,
-        reserve.borrowed_amount_scaled,
+    reserve.borrow_accumulation_factor = accrue_factor(
+        reserve.borrow_accumulation_factor,
+        reserve.borrowed_principal,
         reserve.available_liquidity,
         reserve.last_update_slot,
         slot,
@@ -82,8 +82,8 @@ pub fn accrue(reserve: &mut ReserveInner, slot: u64) -> Result<(), ProgramError>
     // The protocol keeps `reserve_factor_bps` of the newly accrued interest; the
     // rest lifts the supplier exchange rate. Flooring rounds the owner's cut down.
     let borrowed_after = current_debt(
-        reserve.borrowed_amount_scaled,
-        reserve.cumulative_borrow_rate_index,
+        reserve.borrowed_principal,
+        reserve.borrow_accumulation_factor,
     )?;
     let interest = borrowed_after.saturating_sub(borrowed_before);
     let fee = mul_div_floor(

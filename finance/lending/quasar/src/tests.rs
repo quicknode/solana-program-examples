@@ -345,7 +345,7 @@ fn unhealthy_position_is_liquidated_and_healthy_is_rejected(test: &mut Test) {
 }
 
 /// The two scenarios below warp the SLOT so that interest accrues
-/// (`Clock::get()?.slot` drives the interest index). quasar-test has no slot
+/// (`Clock::get()?.slot` drives the accumulation factor). quasar-test has no slot
 /// warp — `warp_to_timestamp` only moves `unix_timestamp` — so these keep the
 /// low-level quasar-svm harness (`QuasarSvm` + `sysvars.warp_to_slot` + raw
 /// instructions), loading the compiled program at runtime.

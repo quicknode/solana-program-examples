@@ -3,7 +3,7 @@
 A Kamino/Solend-style borrow/lend program written with [Quasar](https://quasar-lang.com),
 a zero-copy, `no_std` Solana framework. It is the Quasar counterpart to the Anchor
 version in [`../anchor`](../anchor) and keeps the same core techniques: share-token
-deposits, a kinked-curve interest index, oracle-priced obligation health, and
+deposits, a kinked-curve accumulation factor, oracle-priced obligation health, and
 close-factor liquidation with a bonus.
 
 ## What's different from the Anchor version

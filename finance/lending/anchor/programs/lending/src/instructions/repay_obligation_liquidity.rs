@@ -20,23 +20,23 @@ pub fn handle_repay_obligation_liquidity(
     let reserve_key = context.accounts.reserve.key();
     context.accounts.reserve.require_refreshed()?;
 
-    let index = context.accounts.reserve.cumulative_borrow_rate_index;
+    let index = context.accounts.reserve.borrow_accumulation_factor;
     let decimals = context.accounts.reserve.liquidity_decimals;
 
     let borrow_index = context.accounts.obligation.find_borrow(reserve_key)?;
-    let borrowed_scaled = context.accounts.obligation.borrows[borrow_index].borrowed_scaled;
+    let borrowed_principal = context.accounts.obligation.borrows[borrow_index].borrowed_principal;
 
-    let debt_now = mul_div_ceil(borrowed_scaled, index, FIXED_POINT_SCALE)?;
+    let debt_now = mul_div_ceil(borrowed_principal, index, FIXED_POINT_SCALE)?;
     let debt_now = u64::try_from(debt_now).map_err(|_| LendingError::MathOverflow)?;
     let repay = liquidity_amount.min(debt_now);
     require!(repay > 0, LendingError::ZeroAmount);
 
-    let scaled_removed = mul_div_floor(repay as u128, FIXED_POINT_SCALE, index)?.min(borrowed_scaled);
+    let scaled_removed = mul_div_floor(repay as u128, FIXED_POINT_SCALE, index)?.min(borrowed_principal);
 
     {
         let reserve = &mut context.accounts.reserve;
-        reserve.borrowed_amount_scaled = reserve
-            .borrowed_amount_scaled
+        reserve.borrowed_principal = reserve
+            .borrowed_principal
             .checked_sub(scaled_removed)
             .ok_or(LendingError::MathOverflow)?;
         reserve.available_liquidity = reserve
@@ -47,10 +47,10 @@ pub fn handle_repay_obligation_liquidity(
 
     {
         let obligation = &mut context.accounts.obligation;
-        obligation.borrows[borrow_index].borrowed_scaled = borrowed_scaled
+        obligation.borrows[borrow_index].borrowed_principal = borrowed_principal
             .checked_sub(scaled_removed)
             .ok_or(LendingError::MathOverflow)?;
-        if obligation.borrows[borrow_index].borrowed_scaled == 0 {
+        if obligation.borrows[borrow_index].borrowed_principal == 0 {
             obligation.borrows.remove(borrow_index);
         }
         obligation.stale = true;

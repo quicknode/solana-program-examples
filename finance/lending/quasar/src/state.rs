@@ -34,8 +34,8 @@ pub struct Reserve {
     /// interest, carved out of total liquidity and withdrawn via
     /// `collect_protocol_fees`.
     pub accumulated_protocol_fees: u64,
-    pub borrowed_amount_scaled: u128,
-    pub cumulative_borrow_rate_index: u128,
+    pub borrowed_principal: u128,
+    pub borrow_accumulation_factor: u128,
     pub last_update_slot: u64,
     pub liquidity_decimals: u8,
     pub loan_to_value_bps: u16,
@@ -61,7 +61,7 @@ pub struct Obligation {
     pub collateral_reserve: Address,
     pub deposited_shares: u64,
     pub borrow_reserve: Address,
-    pub borrowed_scaled: u128,
+    pub borrowed_principal: u128,
     pub bump: u8,
 }
 

@@ -18,8 +18,8 @@ pub fn handle_initialize_reserve(context: Context<InitializeReserve>, config: Re
     reserve.liquidity_decimals = context.accounts.liquidity_mint.decimals;
     reserve.available_liquidity = 0;
     reserve.share_mint_supply = 0;
-    reserve.borrowed_amount_scaled = 0;
-    reserve.cumulative_borrow_rate_index = FIXED_POINT_SCALE;
+    reserve.borrowed_principal = 0;
+    reserve.borrow_accumulation_factor = FIXED_POINT_SCALE;
     reserve.last_update_slot = Clock::get()?.slot;
     reserve.accumulated_protocol_fees = 0;
     reserve.config = config;

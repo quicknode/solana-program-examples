@@ -35,7 +35,7 @@ crossing boundary is still exercised.
 Two harnesses go further and make a normally-constant denominator a **parameter**
 so the proof can use a small one:
 
-- the interest index uses a small symbolic `scale` instead of the real
+- the accumulation factor uses a small symbolic `scale` instead of the real
   `FIXED_POINT_SCALE = 10^18` (the monotonicity property is scale-invariant);
 - the rate curve takes `full_utilization` instead of the constant `10_000`
   (dividing by a symbolic value near 10_000 is intractable; the in-bounds

@@ -86,8 +86,8 @@ pub fn value_to_amount(
 // --- reserve interest / share helpers (free functions over reserve fields) ---
 
 /// Live total debt owed to the pool, rounded up (protocol-favourable).
-pub fn current_debt(borrowed_scaled: u128, index: u128) -> Result<u64, ProgramError> {
-    let debt = mul_div_ceil(borrowed_scaled, index, FIXED_POINT_SCALE)?;
+pub fn current_debt(borrowed_principal: u128, factor: u128) -> Result<u64, ProgramError> {
+    let debt = mul_div_ceil(borrowed_principal, factor, FIXED_POINT_SCALE)?;
     u64::try_from(debt).map_err(|_| LendingError::MathOverflow.into())
 }
 
@@ -95,11 +95,11 @@ pub fn current_debt(borrowed_scaled: u128, index: u128) -> Result<u64, ProgramEr
 /// for the utilization ratio (about how much of the pool is lent out).
 pub fn total_liquidity(
     available: u64,
-    borrowed_scaled: u128,
-    index: u128,
+    borrowed_principal: u128,
+    factor: u128,
 ) -> Result<u128, ProgramError> {
     (available as u128)
-        .checked_add(current_debt(borrowed_scaled, index)? as u128)
+        .checked_add(current_debt(borrowed_principal, factor)? as u128)
         .ok_or(LendingError::MathOverflow.into())
 }
 
@@ -107,11 +107,11 @@ pub fn total_liquidity(
 /// owed to the owner, which belong to no supplier.
 pub fn net_total_liquidity(
     available: u64,
-    borrowed_scaled: u128,
-    index: u128,
+    borrowed_principal: u128,
+    factor: u128,
     protocol_fees: u64,
 ) -> Result<u128, ProgramError> {
-    total_liquidity(available, borrowed_scaled, index)?
+    total_liquidity(available, borrowed_principal, factor)?
         .checked_sub(protocol_fees as u128)
         .ok_or(LendingError::MathOverflow.into())
 }
@@ -119,14 +119,14 @@ pub fn net_total_liquidity(
 /// Borrowed fraction of the pool in basis points (0..=10_000).
 pub fn utilization_bps(
     available: u64,
-    borrowed_scaled: u128,
-    index: u128,
+    borrowed_principal: u128,
+    factor: u128,
 ) -> Result<u128, ProgramError> {
-    let total = total_liquidity(available, borrowed_scaled, index)?;
+    let total = total_liquidity(available, borrowed_principal, factor)?;
     if total == 0 {
         return Ok(0);
     }
-    mul_div_floor(current_debt(borrowed_scaled, index)? as u128, BPS_DENOMINATOR, total)
+    mul_div_floor(current_debt(borrowed_principal, factor)? as u128, BPS_DENOMINATOR, total)
 }
 
 /// Per-slot borrow rate (FIXED_POINT_SCALE-scaled) from the kinked curve.
@@ -166,12 +166,12 @@ pub fn borrow_rate_per_slot(
     mul_div_floor(apr_bps, FIXED_POINT_SCALE, denominator)
 }
 
-/// Advance the interest index for elapsed slots:
-/// `new_index = index * (1 + rate_per_slot * elapsed)`.
+/// Advance the accumulation factor for elapsed slots:
+/// `new_factor = factor * (1 + rate_per_slot * elapsed)`.
 #[allow(clippy::too_many_arguments)]
-pub fn accrue_index(
-    index: u128,
-    borrowed_scaled: u128,
+pub fn accrue_factor(
+    factor: u128,
+    borrowed_principal: u128,
     available: u64,
     last_update_slot: u64,
     now: u64,
@@ -183,10 +183,10 @@ pub fn accrue_index(
     let elapsed = now
         .checked_sub(last_update_slot)
         .ok_or(LendingError::MathOverflow)?;
-    if elapsed == 0 || borrowed_scaled == 0 {
-        return Ok(index);
+    if elapsed == 0 || borrowed_principal == 0 {
+        return Ok(factor);
     }
-    let utilization = utilization_bps(available, borrowed_scaled, index)?;
+    let utilization = utilization_bps(available, borrowed_principal, factor)?;
     let rate = borrow_rate_per_slot(
         utilization,
         optimal_utilization_bps,
@@ -197,7 +197,7 @@ pub fn accrue_index(
     let growth = FIXED_POINT_SCALE
         .checked_add(rate.checked_mul(elapsed as u128).ok_or(LendingError::MathOverflow)?)
         .ok_or(LendingError::MathOverflow)?;
-    mul_div_floor(index, growth, FIXED_POINT_SCALE)
+    mul_div_floor(factor, growth, FIXED_POINT_SCALE)
 }
 
 #[allow(clippy::too_many_arguments)]

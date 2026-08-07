@@ -56,7 +56,7 @@ closing the classic empty-pool inflation attack. The first deposit mints 1:1.
 
 ### Interest: a kinked curve and a cumulative index
 
-Each `refresh_reserve` advances `cumulative_borrow_rate_index` by
+Each `refresh_reserve` advances `borrow_accumulation_factor` by
 `(1 + rate_per_slot * elapsed_slots)`. `rate_per_slot` comes from a kinked
 utilization curve: linear from `min_borrow_rate_bps` to `optimal_borrow_rate_bps`
 up to `optimal_utilization_bps`, then steeper to `max_borrow_rate_bps` at full
@@ -185,7 +185,7 @@ Suppliers deposit a token with `deposit_reserve_liquidity` and receive share tok
 
 ### How does interest accrue without looping over every account?
 
-Through a cumulative interest index: `refresh_reserve` advances a per-reserve index along a utilization-based rate curve, and each obligation stores the index value from its last interaction. The gap between the two is the interest owed, so no per-account accrual loop is needed. This is the same technique the most-used Solana lending protocols share.
+Through a cumulative accumulation factor: `refresh_reserve` advances a per-reserve factor along a utilization-based rate curve, and each obligation stores the index value from its last interaction. The gap between the two is the interest owed, so no per-account accrual loop is needed. This is the same technique the most-used Solana lending protocols share.
 
 ### How are prices fed into the protocol?
 

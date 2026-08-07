@@ -64,8 +64,8 @@ pub fn handle_refresh_obligation(context: Context<RefreshObligation>) -> Result<
             read_pair(accounts, &mut cursor, borrow.reserve, lending_market, slot)?;
 
         let debt = mul_div_ceil(
-            borrow.borrowed_scaled,
-            reserve.cumulative_borrow_rate_index,
+            borrow.borrowed_principal,
+            reserve.borrow_accumulation_factor,
             crate::constants::FIXED_POINT_SCALE,
         )?;
         let debt = u64::try_from(debt).map_err(|_| LendingError::MathOverflow)?;
