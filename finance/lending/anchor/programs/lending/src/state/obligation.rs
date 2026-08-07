@@ -54,8 +54,8 @@ pub struct ObligationLiquidity {
     pub reserve: Pubkey,
     /// Borrowed principal, scaled by the reserve's index at borrow time so the
     /// live debt grows automatically as that index advances:
-    /// `debt = borrowed_scaled * reserve.cumulative_borrow_rate_index / FIXED_POINT_SCALE`.
-    pub borrowed_scaled: u128,
+    /// `debt = borrowed_principal * reserve.borrow_accumulation_factor / FIXED_POINT_SCALE`.
+    pub borrowed_principal: u128,
     pub market_value: u128,
 }
 
@@ -102,7 +102,7 @@ impl Obligation {
         );
         self.borrows.push(ObligationLiquidity {
             reserve,
-            borrowed_scaled: 0,
+            borrowed_principal: 0,
             market_value: 0,
         });
         Ok(self.borrows.len() - 1)

@@ -55,13 +55,13 @@ pub struct Reserve {
     /// out more than it holds.
     pub share_mint_supply: u64,
 
-    /// Total borrowed principal, scaled so that the live debt is
-    /// `borrowed_amount_scaled * cumulative_borrow_rate_index / FIXED_POINT_SCALE`.
-    pub borrowed_amount_scaled: u128,
+    /// Total borrowed principal. The live debt is
+    /// `borrowed_principal * borrow_accumulation_factor / FIXED_POINT_SCALE`.
+    pub borrowed_principal: u128,
 
-    /// Monotonically increasing interest index, FIXED_POINT_SCALE-scaled.
+    /// Monotonically increasing accumulation factor, FIXED_POINT_SCALE-scaled.
     /// Starts at FIXED_POINT_SCALE (1.0) and only ever multiplies by factors >= 1.
-    pub cumulative_borrow_rate_index: u128,
+    pub borrow_accumulation_factor: u128,
 
     pub last_update_slot: u64,
 
@@ -138,8 +138,8 @@ impl Reserve {
     /// Live total debt owed to the pool, rounded up (protocol-favourable).
     pub fn current_borrowed_amount(&self) -> Result<u64> {
         let amount = mul_div_ceil(
-            self.borrowed_amount_scaled,
-            self.cumulative_borrow_rate_index,
+            self.borrowed_principal,
+            self.borrow_accumulation_factor,
             FIXED_POINT_SCALE,
         )?;
         u64::try_from(amount).map_err(|_| LendingError::MathOverflow.into())
@@ -209,15 +209,15 @@ impl Reserve {
         mul_div_floor(apr_bps, FIXED_POINT_SCALE, per_year_denominator)
     }
 
-    /// Advance the interest index for the slots elapsed since the last refresh.
-    /// `new_index = old_index * (1 + rate_per_slot * elapsed_slots)`, a single
+    /// Advance the accumulation factor for the slots elapsed since the last refresh.
+    /// `new_factor = old_factor * (1 + rate_per_slot * elapsed_slots)`, a single
     /// multiply per refresh that compounds across refreshes (Solend's approach).
     pub fn accrue_interest(&mut self, current_slot: u64) -> Result<()> {
         let elapsed = current_slot
             .checked_sub(self.last_update_slot)
             .ok_or(LendingError::MathOverflow)?;
 
-        if elapsed > 0 && self.borrowed_amount_scaled > 0 {
+        if elapsed > 0 && self.borrowed_principal > 0 {
             let borrowed_before = self.current_borrowed_amount()?;
             let rate_per_slot = self.current_borrow_rate_per_slot()?;
             let accrued = rate_per_slot
@@ -226,13 +226,13 @@ impl Reserve {
             let growth_factor = FIXED_POINT_SCALE
                 .checked_add(accrued)
                 .ok_or(LendingError::MathOverflow)?;
-            self.cumulative_borrow_rate_index = mul_div_floor(
-                self.cumulative_borrow_rate_index,
+            self.borrow_accumulation_factor = mul_div_floor(
+                self.borrow_accumulation_factor,
                 growth_factor,
                 FIXED_POINT_SCALE,
             )?;
 
-            // Borrowers owe the full interest (the index grew for all of it); the
+            // Borrowers owe the full interest (the factor grew for all of it); the
             // protocol keeps `reserve_factor_bps` of the newly accrued interest,
             // and the remainder lifts the supplier exchange rate. Flooring the fee
             // rounds the owner's cut down, in the suppliers' favour.

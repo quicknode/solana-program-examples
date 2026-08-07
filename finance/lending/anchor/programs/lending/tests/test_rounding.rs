@@ -28,7 +28,7 @@ fn deposit_that_would_mint_zero_shares_is_rejected() {
     // Accrue enough interest that total liquidity exceeds the share supply.
     env.warp_slots(7_884_000);
     env.refresh_reserve_only(&borrower, &borrow);
-    assert!(env.reserve(&borrow).cumulative_borrow_rate_index > lending::constants::FIXED_POINT_SCALE);
+    assert!(env.reserve(&borrow).borrow_accumulation_factor > lending::constants::FIXED_POINT_SCALE);
 
     let dust_depositor = env.create_user();
     env.fund(&dust_depositor, borrow.mint, 1);

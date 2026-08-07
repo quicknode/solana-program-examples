@@ -45,13 +45,13 @@ pub fn handle_borrow_obligation_liquidity(
     let scaled_added = mul_div_ceil(
         liquidity_amount as u128,
         FIXED_POINT_SCALE,
-        context.accounts.reserve.cumulative_borrow_rate_index,
+        context.accounts.reserve.borrow_accumulation_factor,
     )?;
 
     {
         let reserve = &mut context.accounts.reserve;
-        reserve.borrowed_amount_scaled = reserve
-            .borrowed_amount_scaled
+        reserve.borrowed_principal = reserve
+            .borrowed_principal
             .checked_add(scaled_added)
             .ok_or(LendingError::MathOverflow)?;
         reserve.available_liquidity = reserve
@@ -63,8 +63,8 @@ pub fn handle_borrow_obligation_liquidity(
     {
         let obligation = &mut context.accounts.obligation;
         let index = obligation.upsert_borrow(reserve_key)?;
-        obligation.borrows[index].borrowed_scaled = obligation.borrows[index]
-            .borrowed_scaled
+        obligation.borrows[index].borrowed_principal = obligation.borrows[index]
+            .borrowed_principal
             .checked_add(scaled_added)
             .ok_or(LendingError::MathOverflow)?;
         obligation.stale = true;

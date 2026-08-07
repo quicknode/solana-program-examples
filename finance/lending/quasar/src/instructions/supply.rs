@@ -55,8 +55,8 @@ impl DepositReserveLiquidity {
 
         let total = net_total_liquidity(
             reserve.available_liquidity,
-            reserve.borrowed_amount_scaled,
-            reserve.cumulative_borrow_rate_index,
+            reserve.borrowed_principal,
+            reserve.borrow_accumulation_factor,
             reserve.accumulated_protocol_fees,
         )?;
         let shares = if reserve.share_mint_supply == 0 {
@@ -134,8 +134,8 @@ impl RedeemReserveCollateral {
 
         let total = net_total_liquidity(
             reserve.available_liquidity,
-            reserve.borrowed_amount_scaled,
-            reserve.cumulative_borrow_rate_index,
+            reserve.borrowed_principal,
+            reserve.borrow_accumulation_factor,
             reserve.accumulated_protocol_fees,
         )?;
         let liquidity = mul_div_floor(shares as u128, total, reserve.share_mint_supply as u128)?;

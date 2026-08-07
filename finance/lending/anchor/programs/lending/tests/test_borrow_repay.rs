@@ -105,7 +105,7 @@ fn repay_reduces_debt_and_over_repay_clamps() {
     let (mut env, collateral, borrow, borrower, obligation) = setup();
     env.try_borrow(&borrower, obligation, &[&collateral], &[], &borrow, 500_000_000)
         .unwrap();
-    assert_eq!(env.reserve(&borrow).borrowed_amount_scaled > 0, true);
+    assert_eq!(env.reserve(&borrow).borrowed_principal > 0, true);
 
     env.repay(&borrower, obligation, &borrow, 200_000_000);
     let obligation_state = env.obligation(obligation);
@@ -113,7 +113,7 @@ fn repay_reduces_debt_and_over_repay_clamps() {
 
     // Over-repay: ask to repay far more than owed; it clamps to the remaining debt.
     env.repay(&borrower, obligation, &borrow, 1_000_000_000);
-    assert_eq!(env.reserve(&borrow).borrowed_amount_scaled, 0);
+    assert_eq!(env.reserve(&borrow).borrowed_principal, 0);
     assert!(env.obligation(obligation).borrows.is_empty());
 }
 

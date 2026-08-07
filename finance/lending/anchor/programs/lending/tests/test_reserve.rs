@@ -14,9 +14,9 @@ fn init_market_and_reserve() {
     assert_eq!(reserve.liquidity_decimals, 6);
     assert_eq!(reserve.available_liquidity, 0);
     assert_eq!(reserve.share_mint_supply, 0);
-    assert_eq!(reserve.borrowed_amount_scaled, 0);
-    // The interest index starts at 1.0.
-    assert_eq!(reserve.cumulative_borrow_rate_index, FIXED_POINT_SCALE);
+    assert_eq!(reserve.borrowed_principal, 0);
+    // The accumulation factor starts at 1.0.
+    assert_eq!(reserve.borrow_accumulation_factor, FIXED_POINT_SCALE);
 }
 
 #[test]
