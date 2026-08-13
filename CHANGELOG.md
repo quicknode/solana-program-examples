@@ -4,6 +4,41 @@ All notable changes to this repository are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-08-13] - Anchor examples in `basics/` move to Anchor v2.0.0-rc.1
+
+### Changed
+
+- Every Anchor example under `basics/` now builds against `anchor-lang`
+  2.0.0-rc.1. v2 is a ground-up rewrite rather than a version bump: the crate is
+  `no_std` and built on pinocchio, so handlers take `&mut Context<T>`, the
+  `<'info>` lifetime disappears from `#[derive(Accounts)]` structs and account
+  wrappers, `Pubkey` becomes `Address`, `.to_account_info()` becomes
+  `.cpi_handle_mut()` / `.cpi_handle()`, and `.key()` becomes `.address()`.
+- `#[account]` is now zero-copy and requires a `Pod` layout. State holding
+  `String` or `Vec` moves to `#[account(borsh)]` plus `BorshAccount<T>`
+  (`account-data`, `close-account`, `favorites`, `realloc`, `pyth`); state that
+  is already fixed-layout keeps the zero-copy default but must carry explicit
+  padding (`program-derived-addresses`) and cannot use `bool`
+  (`cross-program-invocation` uses `PodBool`).
+- Instruction data is wincode-encoded rather than borsh. The `#[program]` macro
+  expands to `wincode` paths, so every program crate takes a direct `wincode`
+  dependency. `BorshConfig` keeps the wire format byte-identical to borsh, so
+  the checked-in account layouts and the tests that decode them with borsh are
+  unaffected.
+- The only edit most LiteSVM tests needed: v2's `solana_program` compat shim has
+  no `system_program` submodule (the real module is at the crate root and
+  exposes `ID`, not `id()`) and no `pubkey::Pubkey` unless the `compat` feature
+  is on (`anchor_lang::Address` is the same 32-byte type).
+
+### Fixed
+
+- Anchor programs that put an `Address` in serialized state pin
+  `solana-address = ">=2.6, <2.7"`. anchor-lang 2.0.0-rc.1 is built against
+  wincode 0.5, but solana-address 2.7 moved to wincode 0.6; with both in the
+  graph, `Address`'s wincode impls belong to the version the `#[account(borsh)]`
+  derive is not using, and every `SchemaRead` / `SchemaWrite` bound fails. This
+  is the same class of split that the zeropod/quasar-lang pin below addresses.
+
 ## [2026-08-04] - Oracle readers reject prices from before a cluster restart
 
 ### Added

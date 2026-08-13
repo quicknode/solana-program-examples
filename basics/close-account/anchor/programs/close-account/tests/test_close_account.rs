@@ -1,7 +1,7 @@
 use {
     anchor_lang::{
-        solana_program::{instruction::Instruction, pubkey::Pubkey, system_program},
-        InstructionData, ToAccountMetas,
+        solana_program::instruction::Instruction, system_program, Address, InstructionData,
+        ToAccountMetas,
     },
     litesvm::LiteSVM,
     solana_keypair::Keypair,
@@ -25,7 +25,7 @@ fn test_create_and_close_user() {
 
     // Derive the PDA for the user's account
     let (user_account_pda, _bump) =
-        Pubkey::find_program_address(&[b"USER", payer.pubkey().as_ref()], &program_id);
+        Address::find_program_address(&[b"USER", payer.pubkey().as_ref()], &program_id);
 
     // Create user
     let create_ix = Instruction::new_with_bytes(
@@ -37,7 +37,7 @@ fn test_create_and_close_user() {
         close_account_program::accounts::CreateUserAccountConstraints {
             user: payer.pubkey(),
             user_account: user_account_pda,
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
