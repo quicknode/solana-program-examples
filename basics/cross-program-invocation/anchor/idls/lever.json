@@ -80,18 +80,7 @@
   ],
   "types": [
     {
-      "name": "PodBool",
-      "type": {
-        "kind": "type",
-        "alias": "bool"
-      }
-    },
-    {
       "name": "PowerStatus",
-      "serialization": "bytemuck",
-      "repr": {
-        "kind": "c"
-      },
       "type": {
         "kind": "struct",
         "fields": [

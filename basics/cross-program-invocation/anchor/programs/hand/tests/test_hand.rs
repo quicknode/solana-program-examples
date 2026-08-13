@@ -1,10 +1,7 @@
 use {
     anchor_lang::{
-        solana_program::{
-            instruction::{AccountMeta, Instruction},
-            system_program,
-        },
-        InstructionData, ToAccountMetas,
+        solana_program::instruction::{AccountMeta, Instruction},
+        system_program, InstructionData, ToAccountMetas,
     },
     litesvm::LiteSVM,
     solana_keypair::Keypair,
@@ -15,7 +12,7 @@ use {
 /// PowerStatus account layout: 8-byte discriminator + 1-byte bool + 7 bytes padding.
 /// Account space is 8 + 8 = 16 bytes, so read the raw bytes instead of using BorshDeserialize
 /// to avoid "Not all bytes read" errors from the padding.
-fn read_power_is_on(svm: &LiteSVM, pubkey: &anchor_lang::prelude::Pubkey) -> bool {
+fn read_power_is_on(svm: &LiteSVM, pubkey: &anchor_lang::Address) -> bool {
     let account = svm.get_account(pubkey).unwrap();
     // Skip 8-byte discriminator, read 1 byte for bool
     account.data[8] != 0
@@ -24,9 +21,9 @@ fn read_power_is_on(svm: &LiteSVM, pubkey: &anchor_lang::prelude::Pubkey) -> boo
 /// Build the lever program's `initialize` instruction manually.
 /// Discriminator from IDL: [175, 175, 109, 31, 13, 152, 155, 237]
 fn build_lever_initialize_ix(
-    lever_program_id: anchor_lang::prelude::Pubkey,
-    power: anchor_lang::prelude::Pubkey,
-    user: anchor_lang::prelude::Pubkey,
+    lever_program_id: anchor_lang::Address,
+    power: anchor_lang::Address,
+    user: anchor_lang::Address,
 ) -> Instruction {
     let discriminator: [u8; 8] = [175, 175, 109, 31, 13, 152, 155, 237];
     Instruction {
@@ -34,7 +31,7 @@ fn build_lever_initialize_ix(
         accounts: vec![
             AccountMeta::new(power, true),
             AccountMeta::new(user, true),
-            AccountMeta::new_readonly(system_program::id(), false),
+            AccountMeta::new_readonly(system_program::ID, false),
         ],
         data: discriminator.to_vec(),
     }
