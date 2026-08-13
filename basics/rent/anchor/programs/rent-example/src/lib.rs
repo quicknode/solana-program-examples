@@ -8,35 +8,37 @@ pub mod rent_example {
     use super::*;
 
     pub fn create_system_account(
-        context: Context<CreateSystemAccountAccountConstraints>,
+        context: &mut Context<CreateSystemAccountAccountConstraints>,
         address_data: AddressData,
     ) -> Result<()> {
         msg!("Program invoked. Creating a system account...");
         msg!(
             "  New public key will be: {}",
-            &context.accounts.new_account.key().to_string()
+            context.accounts.new_account.address()
         );
 
         // Determine the necessary minimum rent by calculating the account's size
         //
-        // borsh 1.x: try_to_vec() removed, use borsh::to_vec() instead
-        let account_span = anchor_lang::prelude::borsh::to_vec(&address_data)?.len();
-        let lamports_required = (Rent::get()?).minimum_balance(account_span);
+        // v2 encodes instruction data with wincode rather than borsh. `BorshConfig`
+        // is wincode's borsh-compatible wire format (fixed u32 little-endian length
+        // prefixes), so the span matches the bytes borsh would have produced.
+        let account_span = address_data.serialized_span()?;
+        let lamports_required = Rent::get()?.try_minimum_balance(account_span)?;
 
-        msg!("Account span: {}", &account_span);
-        msg!("Lamports required: {}", &lamports_required);
+        msg!("Account span: {}", account_span);
+        msg!("Lamports required: {}", lamports_required);
 
         system_program::create_account(
             CpiContext::new(
-                context.accounts.system_program.key(),
+                context.accounts.system_program.address(),
                 system_program::CreateAccount {
-                    from: context.accounts.payer.to_account_info(),
-                    to: context.accounts.new_account.to_account_info(),
+                    from: context.accounts.payer.cpi_handle_mut(),
+                    to: context.accounts.new_account.cpi_handle_mut(),
                 },
             ),
             lamports_required,
             account_span as u64,
-            &context.accounts.system_program.key(),
+            context.accounts.system_program.address(),
         )?;
 
         msg!("Account created successfully.");
@@ -45,16 +47,25 @@ pub mod rent_example {
 }
 
 #[derive(Accounts)]
-pub struct CreateSystemAccountAccountConstraints<'info> {
+pub struct CreateSystemAccountAccountConstraints {
     #[account(mut)]
-    pub payer: Signer<'info>,
+    pub payer: Signer,
     #[account(mut)]
-    pub new_account: Signer<'info>,
-    pub system_program: Program<'info, System>,
+    pub new_account: Signer,
+    pub system_program: Program<System>,
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize, Debug)]
+#[derive(Clone, Debug, IdlType, wincode::SchemaRead, wincode::SchemaWrite)]
 pub struct AddressData {
-    name: String,
-    address: String,
+    pub name: String,
+    pub address: String,
+}
+
+impl AddressData {
+    /// Bytes this struct occupies on the wire, which is what the new account
+    /// has to be sized — and therefore rent-funded — for.
+    fn serialized_span(&self) -> Result<usize> {
+        <Self as wincode::SchemaWrite<anchor_lang::BorshConfig>>::size_of(self)
+            .map_err(|_| ProgramError::InvalidInstructionData.into())
+    }
 }

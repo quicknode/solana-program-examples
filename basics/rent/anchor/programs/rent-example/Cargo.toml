@@ -20,13 +20,15 @@ custom-heap = []
 custom-panic = []
 
 [dependencies]
-anchor-lang = "1.1.2"
+anchor-lang = "2.0.0-rc.1"
+# The `#[program]` macro expands to `wincode` paths for instruction-data
+# (de)serialization, so the crate has to be a direct dependency.
+wincode = { version = "0.5", features = ["derive"] }
 
 [dev-dependencies]
 litesvm = "0.13.1"
 solana-signer = "3.0.0"
 solana-keypair = "3.0.1"
-borsh = "1.6.1"
 solana-kite = "0.4.0"
 
 [lints.rust]

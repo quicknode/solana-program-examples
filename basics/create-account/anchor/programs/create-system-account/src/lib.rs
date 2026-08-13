@@ -8,28 +8,28 @@ pub mod create_system_account {
     use super::*;
 
     pub fn create_system_account(
-        context: Context<CreateSystemAccountAccountConstraints>,
+        context: &mut Context<CreateSystemAccountAccountConstraints>,
     ) -> Result<()> {
         msg!("Program invoked. Creating a system account...");
         msg!(
             "  New public key will be: {}",
-            &context.accounts.new_account.key().to_string()
+            context.accounts.new_account.address()
         );
 
         // The minimum lamports for rent exemption
-        let lamports = (Rent::get()?).minimum_balance(0);
+        let lamports = Rent::get()?.try_minimum_balance(0)?;
 
         create_account(
             CpiContext::new(
-                context.accounts.system_program.key(),
+                context.accounts.system_program.address(),
                 CreateAccount {
-                    from: context.accounts.payer.to_account_info(), // From pubkey
-                    to: context.accounts.new_account.to_account_info(), // To pubkey
+                    from: context.accounts.payer.cpi_handle_mut(), // From pubkey
+                    to: context.accounts.new_account.cpi_handle_mut(), // To pubkey
                 },
             ),
-            lamports,                               // Lamports
-            0,                                      // Space
-            &context.accounts.system_program.key(), // Owner Program
+            lamports,                                  // Lamports
+            0,                                         // Space
+            context.accounts.system_program.address(), // Owner Program
         )?;
 
         msg!("Account created successfully.");
@@ -38,10 +38,10 @@ pub mod create_system_account {
 }
 
 #[derive(Accounts)]
-pub struct CreateSystemAccountAccountConstraints<'info> {
+pub struct CreateSystemAccountAccountConstraints {
     #[account(mut)]
-    pub payer: Signer<'info>,
+    pub payer: Signer,
     #[account(mut)]
-    pub new_account: Signer<'info>,
-    pub system_program: Program<'info, System>,
+    pub new_account: Signer,
+    pub system_program: Program<System>,
 }
