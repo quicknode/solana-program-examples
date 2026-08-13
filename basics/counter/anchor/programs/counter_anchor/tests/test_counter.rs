@@ -1,7 +1,6 @@
 use {
     anchor_lang::{
-        solana_program::{instruction::Instruction, system_program},
-        InstructionData, ToAccountMetas,
+        solana_program::instruction::Instruction, system_program, InstructionData, ToAccountMetas,
     },
     borsh::BorshDeserialize,
     litesvm::LiteSVM,
@@ -17,7 +16,7 @@ struct CounterAccount {
     count: u64,
 }
 
-fn setup() -> (LiteSVM, anchor_lang::prelude::Pubkey, Keypair) {
+fn setup() -> (LiteSVM, anchor_lang::prelude::Address, Keypair) {
     let program_id = counter_anchor::id();
     let mut svm = LiteSVM::new();
     let bytes = include_bytes!("../../../target/deploy/counter_anchor.so");
@@ -26,7 +25,7 @@ fn setup() -> (LiteSVM, anchor_lang::prelude::Pubkey, Keypair) {
     (svm, program_id, payer)
 }
 
-fn fetch_counter(svm: &LiteSVM, counter_pubkey: &anchor_lang::prelude::Pubkey) -> u64 {
+fn fetch_counter(svm: &LiteSVM, counter_pubkey: &anchor_lang::prelude::Address) -> u64 {
     let account = svm.get_account(counter_pubkey).unwrap();
     let counter = CounterAccount::try_from_slice(&account.data).unwrap();
     counter.count
@@ -43,7 +42,7 @@ fn test_initialize_counter() {
         counter_anchor::accounts::InitializeCounterAccountConstraints {
             payer: payer.pubkey(),
             counter: counter_keypair.pubkey(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
@@ -72,7 +71,7 @@ fn test_increment_counter() {
         counter_anchor::accounts::InitializeCounterAccountConstraints {
             payer: payer.pubkey(),
             counter: counter_keypair.pubkey(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
@@ -111,7 +110,7 @@ fn test_increment_counter_again() {
         counter_anchor::accounts::InitializeCounterAccountConstraints {
             payer: payer.pubkey(),
             counter: counter_keypair.pubkey(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );

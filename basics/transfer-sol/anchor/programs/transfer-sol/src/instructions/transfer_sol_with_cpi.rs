@@ -2,21 +2,24 @@ use anchor_lang::prelude::*;
 use anchor_lang::system_program;
 
 #[derive(Accounts)]
-pub struct TransferSolWithCpiAccountConstraints<'info> {
+pub struct TransferSolWithCpiAccountConstraints {
     #[account(mut)]
-    payer: Signer<'info>,
+    pub payer: Signer,
     #[account(mut)]
-    recipient: SystemAccount<'info>,
-    system_program: Program<'info, System>,
+    pub recipient: SystemAccount,
+    pub system_program: Program<System>,
 }
 
-pub fn handler(context: Context<TransferSolWithCpiAccountConstraints>, amount: u64) -> Result<()> {
+pub fn handler(
+    context: &mut Context<TransferSolWithCpiAccountConstraints>,
+    amount: u64,
+) -> Result<()> {
     system_program::transfer(
         CpiContext::new(
-            context.accounts.system_program.key(),
+            context.accounts.system_program.address(),
             system_program::Transfer {
-                from: context.accounts.payer.to_account_info(),
-                to: context.accounts.recipient.to_account_info(),
+                from: context.accounts.payer.cpi_handle_mut(),
+                to: context.accounts.recipient.cpi_handle_mut(),
             },
         ),
         amount,

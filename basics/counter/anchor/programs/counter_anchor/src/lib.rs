@@ -9,11 +9,13 @@ declare_id!("BmDHboaj1kBUoinJKKSRqKfMeRKJqQqEbUj1VgzeQe4A");
 pub mod counter_anchor {
     use super::*;
 
-    pub fn initialize_counter(context: Context<InitializeCounterAccountConstraints>) -> Result<()> {
+    pub fn initialize_counter(
+        context: &mut Context<InitializeCounterAccountConstraints>,
+    ) -> Result<()> {
         instructions::initialize_counter::handler(context)
     }
 
-    pub fn increment(context: Context<IncrementAccountConstraints>) -> Result<()> {
+    pub fn increment(context: &mut Context<IncrementAccountConstraints>) -> Result<()> {
         instructions::increment::handler(context)
     }
 }
