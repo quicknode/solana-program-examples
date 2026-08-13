@@ -5,10 +5,10 @@ use anchor_lang::prelude::*;
 pub const VAULT_SEED: &[u8] = b"cNFT-vault";
 
 #[derive(InitSpace)]
-#[account]
+#[account(borsh)]
 pub struct Vault {
     /// The only signer allowed to withdraw cNFTs from the vault.
-    pub authority: Pubkey,
+    pub authority: Address,
 
     pub bump: u8,
 }

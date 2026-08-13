@@ -9,11 +9,11 @@ use crate::{
 };
 
 #[derive(Accounts)]
-pub struct ContributeAccountConstraints<'info> {
+pub struct ContributeAccountConstraints {
     #[account(mut)]
-    pub contributor: Signer<'info>,
+    pub contributor: Signer,
 
-    pub mint_to_raise: InterfaceAccount<'info, Mint>,
+    pub mint_to_raise: InterfaceAccount<Mint>,
 
     #[account(
         mut,
@@ -21,16 +21,16 @@ pub struct ContributeAccountConstraints<'info> {
         seeds = [b"fundraiser".as_ref(), fundraiser.maker.as_ref()],
         bump = fundraiser.bump,
     )]
-    pub fundraiser: Account<'info, Fundraiser>,
+    pub fundraiser: BorshAccount<Fundraiser>,
 
     #[account(
         init_if_needed,
         payer = contributor,
-        seeds = [b"contributor", fundraiser.key().as_ref(), contributor.key().as_ref()],
+        seeds = [b"contributor", fundraiser.address().as_ref(), contributor.address().as_ref()],
         bump,
         space = Contributor::DISCRIMINATOR.len() + Contributor::INIT_SPACE,
     )]
-    pub contributor_account: Account<'info, Contributor>,
+    pub contributor_account: BorshAccount<Contributor>,
 
     #[account(
         mut,
@@ -38,7 +38,7 @@ pub struct ContributeAccountConstraints<'info> {
         associated_token::authority = contributor,
         associated_token::token_program = token_program,
     )]
-    pub contributor_ata: InterfaceAccount<'info, TokenAccount>,
+    pub contributor_ata: InterfaceAccount<TokenAccount>,
 
     #[account(
         mut,
@@ -46,11 +46,11 @@ pub struct ContributeAccountConstraints<'info> {
         associated_token::authority = fundraiser,
         associated_token::token_program = token_program,
     )]
-    pub vault: InterfaceAccount<'info, TokenAccount>,
+    pub vault: InterfaceAccount<TokenAccount>,
 
-    pub token_program: Interface<'info, TokenInterface>,
+    pub token_program: Interface<'static, TokenInterface>,
 
-    pub system_program: Program<'info, System>,
+    pub system_program: Program<System>,
 }
 
 /// Caps a single contributor at MAX_CONTRIBUTION_PERCENTAGE percent of the
@@ -72,7 +72,7 @@ pub fn handle_contribute(
 ) -> Result<()> {
     // The minimum contribution is one major unit, which is 10^decimals minor units.
     let one_major_unit = 10_u64
-        .checked_pow(accounts.mint_to_raise.decimals as u32)
+        .checked_pow(accounts.mint_to_raise.decimals() as u32)
         .ok_or(FundraiserError::MathOverflow)?;
     require!(
         amount >= one_major_unit,
@@ -124,13 +124,13 @@ pub fn handle_contribute(
 
     // Transfer the funds from the contributor to the vault.
     let cpi_accounts = TransferChecked {
-        from: accounts.contributor_ata.to_account_info(),
-        mint: accounts.mint_to_raise.to_account_info(),
-        to: accounts.vault.to_account_info(),
-        authority: accounts.contributor.to_account_info(),
+        from: accounts.contributor_ata.cpi_handle_mut(),
+        mint: accounts.mint_to_raise.cpi_handle(),
+        to: accounts.vault.cpi_handle_mut(),
+        authority: accounts.contributor.cpi_handle(),
     };
-    let cpi_context = CpiContext::new(accounts.token_program.key(), cpi_accounts);
-    transfer_checked(cpi_context, amount, accounts.mint_to_raise.decimals)?;
+    let cpi_context = CpiContext::new(accounts.token_program.address(), cpi_accounts);
+    transfer_checked(cpi_context, amount, accounts.mint_to_raise.decimals())?;
 
     Ok(())
 }

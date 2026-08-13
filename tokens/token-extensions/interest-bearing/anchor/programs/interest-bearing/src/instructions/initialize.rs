@@ -12,69 +12,68 @@ use anchor_spl::{
 use crate::check_mint_data;
 
 #[derive(Accounts)]
-pub struct InitializeAccountConstraints<'info> {
+pub struct InitializeAccountConstraints {
     #[account(mut)]
-    pub payer: Signer<'info>,
+    pub payer: Signer,
     #[account(mut)]
-    pub mint_account: Signer<'info>,
+    pub mint_account: Signer,
 
-    pub token_program: Program<'info, Token2022>,
-    pub system_program: Program<'info, System>,
+    pub token_program: Program<Token2022>,
+    pub system_program: Program<System>,
 }
 
-pub fn handler(context: Context<InitializeAccountConstraints>, rate: i16) -> Result<()> {
+pub fn handler(context: &mut Context<InitializeAccountConstraints>, rate: i16) -> Result<()> {
     // Calculate space required for mint and extension data
     let mint_size = ExtensionType::try_calculate_account_len::<PodMint>(&[
         ExtensionType::InterestBearingConfig,
     ])?;
 
     // Calculate minimum lamports required for size of mint account with extensions
-    let lamports = (Rent::get()?).minimum_balance(mint_size);
+    let lamports = Rent::get()?.try_minimum_balance(mint_size)?;
 
     // Invoke System Program to create new account with space for mint and extension data
     create_account(
         CpiContext::new(
-            context.accounts.system_program.key(),
+            context.accounts.system_program.address(),
             CreateAccount {
-                from: context.accounts.payer.to_account_info(),
-                to: context.accounts.mint_account.to_account_info(),
+                from: context.accounts.payer.cpi_handle_mut(),
+                to: context.accounts.mint_account.cpi_handle_mut(),
             },
         ),
         lamports,                          // Lamports
         mint_size as u64,                  // Space
-        &context.accounts.token_program.key(), // Owner Program
+        &context.accounts.token_program.address(), // Owner Program
     )?;
 
     // Initialize the InterestBearingConfig extension
     // This instruction must come before the instruction to initialize the mint data
     interest_bearing_mint_initialize(
         CpiContext::new(
-            context.accounts.token_program.key(),
+            context.accounts.token_program.address(),
             InterestBearingMintInitialize {
-                token_program_id: context.accounts.token_program.to_account_info(),
-                mint: context.accounts.mint_account.to_account_info(),
+                mint: context.accounts.mint_account.cpi_handle_mut(),
             },
         ),
-        Some(context.accounts.payer.key()),
+        Some(context.accounts.payer.address()),
         rate,
     )?;
 
     // Initialize the standard mint account data
     initialize_mint2(
         CpiContext::new(
-            context.accounts.token_program.key(),
+            context.accounts.token_program.address(),
             InitializeMint2 {
-                mint: context.accounts.mint_account.to_account_info(),
+                mint: context.accounts.mint_account.cpi_handle_mut(),
             },
         ),
         2,                               // decimals
-        &context.accounts.payer.key(),       // mint authority
-        Some(&context.accounts.payer.key()), // freeze authority
+        &context.accounts.payer.address(),       // mint authority
+        Some(&context.accounts.payer.address()), // freeze authority
     )?;
 
     check_mint_data(
-        &context.accounts.mint_account.to_account_info(),
-        &context.accounts.payer.key(),
+        &context.accounts.mint_account.cpi_handle_mut(),
+        &context.accounts.payer.address(),
     )?;
     Ok(())
 }

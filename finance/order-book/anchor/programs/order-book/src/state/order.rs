@@ -17,11 +17,11 @@ pub enum OrderStatus {
 }
 
 #[derive(InitSpace)]
-#[account]
+#[account(borsh)]
 pub struct Order {
-    pub market: Pubkey,
+    pub market: Address,
 
-    pub owner: Pubkey,
+    pub owner: Address,
 
     pub order_id: u64,
 

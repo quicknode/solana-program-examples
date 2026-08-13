@@ -6,32 +6,31 @@ use anchor_spl::token_interface::{
 use crate::check_mint_data;
 
 #[derive(Accounts)]
-pub struct UpdateRateAccountConstraints<'info> {
+pub struct UpdateRateAccountConstraints {
     #[account(mut)]
-    pub authority: Signer<'info>,
+    pub authority: Signer,
     #[account(mut)]
-    pub mint_account: InterfaceAccount<'info, Mint>,
+    pub mint_account: InterfaceAccount<Mint>,
 
-    pub token_program: Program<'info, Token2022>,
-    pub system_program: Program<'info, System>,
+    pub token_program: Program<Token2022>,
+    pub system_program: Program<System>,
 }
 
-pub fn handler(context: Context<UpdateRateAccountConstraints>, rate: i16) -> Result<()> {
+pub fn handler(context: &mut Context<UpdateRateAccountConstraints>, rate: i16) -> Result<()> {
     interest_bearing_mint_update_rate(
         CpiContext::new(
-            context.accounts.token_program.key(),
+            context.accounts.token_program.address(),
             InterestBearingMintUpdateRate {
-                token_program_id: context.accounts.token_program.to_account_info(),
-                mint: context.accounts.mint_account.to_account_info(),
-                rate_authority: context.accounts.authority.to_account_info(),
+                mint: context.accounts.mint_account.cpi_handle_mut(),
+                rate_authority: context.accounts.authority.cpi_handle(),
             },
         ),
         rate,
     )?;
 
     check_mint_data(
-        &context.accounts.mint_account.to_account_info(),
-        &context.accounts.authority.key(),
+        &context.accounts.mint_account.cpi_handle_mut(),
+        &context.accounts.authority.address(),
     )?;
     Ok(())
 }

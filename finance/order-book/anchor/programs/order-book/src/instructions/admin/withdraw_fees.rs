@@ -11,15 +11,15 @@ use crate::state::{Market, MARKET_SEED};
 /// the fee vault. Transfers the current balance of the fee vault in full;
 /// a partial-withdraw flavour could take an amount parameter, left out here
 /// to keep the example focused.
-pub fn handle_withdraw_fees(context: Context<WithdrawFeesAccountConstraints>) -> Result<()> {
+pub fn handle_withdraw_fees(context: &mut Context<WithdrawFeesAccountConstraints>) -> Result<()> {
     let market = &context.accounts.market;
 
     require!(
-        context.accounts.authority.key() == market.authority,
+        context.accounts.authority.address() == market.authority,
         ErrorCode::NotMarketAuthority
     );
 
-    let fee_balance = context.accounts.fee_vault.amount;
+    let fee_balance = context.accounts.fee_vault.amount();
     if fee_balance == 0 {
         // Nothing to do - exit quietly rather than failing, so this
         // instruction is safe to call on a cron/heartbeat even when there
@@ -38,40 +38,40 @@ pub fn handle_withdraw_fees(context: Context<WithdrawFeesAccountConstraints>) ->
 
     transfer_checked(
         CpiContext::new_with_signer(
-            context.accounts.token_program.key(),
+            context.accounts.token_program.address(),
             TransferChecked {
-                from: context.accounts.fee_vault.to_account_info(),
-                mint: context.accounts.quote_mint.to_account_info(),
-                to: context.accounts.authority_quote_account.to_account_info(),
-                authority: market.to_account_info(),
+                from: context.accounts.fee_vault.cpi_handle_mut(),
+                mint: context.accounts.quote_mint.cpi_handle(),
+                to: context.accounts.authority_quote_account.cpi_handle_mut(),
+                authority: market.cpi_handle(),
             },
             signer_seeds,
         ),
         fee_balance,
-        context.accounts.quote_mint.decimals,
+        context.accounts.quote_mint.decimals(),
     )?;
 
     Ok(())
 }
 
 #[derive(Accounts)]
-pub struct WithdrawFeesAccountConstraints<'info> {
+pub struct WithdrawFeesAccountConstraints {
     #[account(
         mut,
         has_one = fee_vault @ ErrorCode::InvalidFeeVault,
     )]
-    pub market: Account<'info, Market>,
+    pub market: BorshAccount<Market>,
 
     // Boxed to keep the struct under the BPF stack limit (see PlaceOrderAccountConstraints).
     #[account(mut)]
-    pub fee_vault: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub fee_vault: Box<InterfaceAccount<TokenAccount>>,
 
     #[account(mut)]
-    pub authority_quote_account: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub authority_quote_account: Box<InterfaceAccount<TokenAccount>>,
 
-    pub quote_mint: Box<InterfaceAccount<'info, Mint>>,
+    pub quote_mint: Box<InterfaceAccount<Mint>>,
 
-    pub authority: Signer<'info>,
+    pub authority: Signer,
 
-    pub token_program: Interface<'info, TokenInterface>,
+    pub token_program: Interface<'static, TokenInterface>,
 }

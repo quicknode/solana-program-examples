@@ -26,7 +26,7 @@ const BASIS_POINTS_DENOMINATOR: u128 = 10_000;
 const ACCOUNTS_PER_MAKER: usize = 2;
 
 pub fn handle_place_order<'info>(
-    context: Context<'info, PlaceOrderAccountConstraints<'info>>,
+    context: &mut Context<'info, PlaceOrderAccountConstraints<'info>>,
     side: OrderSide,
     price: u64,
     quantity: u64,
@@ -61,9 +61,9 @@ pub fn handle_place_order<'info>(
     let (source_account, mint_account_info, decimals, transfer_amount, destination_vault) =
         match side {
             OrderSide::Bid => (
-                context.accounts.user_quote_account.to_account_info(),
-                context.accounts.quote_mint.to_account_info(),
-                context.accounts.quote_mint.decimals,
+                context.accounts.user_quote_account.cpi_handle_mut(),
+                context.accounts.quote_mint.cpi_handle_mut(),
+                context.accounts.quote_mint.decimals(),
                 (price as u128)
                     .checked_mul(quantity as u128)
                     .ok_or(ErrorCode::NumericalOverflow)?
@@ -71,29 +71,29 @@ pub fn handle_place_order<'info>(
                     .ok_or(ErrorCode::NumericalOverflow)?
                     .try_into()
                     .map_err(|_| error!(ErrorCode::NumericalOverflow))?,
-                context.accounts.quote_vault.to_account_info(),
+                context.accounts.quote_vault.cpi_handle_mut(),
             ),
             OrderSide::Ask => (
-                context.accounts.user_base_account.to_account_info(),
-                context.accounts.base_mint.to_account_info(),
-                context.accounts.base_mint.decimals,
+                context.accounts.user_base_account.cpi_handle_mut(),
+                context.accounts.base_mint.cpi_handle_mut(),
+                context.accounts.base_mint.decimals(),
                 (quantity as u128)
                     .checked_mul(market.base_lot_size as u128)
                     .ok_or(ErrorCode::NumericalOverflow)?
                     .try_into()
                     .map_err(|_| error!(ErrorCode::NumericalOverflow))?,
-                context.accounts.base_vault.to_account_info(),
+                context.accounts.base_vault.cpi_handle_mut(),
             ),
         };
 
     transfer_checked(
         CpiContext::new(
-            context.accounts.token_program.key(),
+            context.accounts.token_program.address(),
             TransferChecked {
                 from: source_account,
                 mint: mint_account_info,
                 to: destination_vault,
-                authority: context.accounts.owner.to_account_info(),
+                authority: context.accounts.owner.cpi_handle(),
             },
         ),
         transfer_amount,
@@ -108,7 +108,7 @@ pub fn handle_place_order<'info>(
     // transaction's remaining_accounts, in the same price-time-priority
     // order the book would walk. We plan fills against the resting tree,
     // then verify the caller's account list matches the plan, then apply.
-    let maker_accounts = &context.remaining_accounts;
+    let maker_accounts = &context.remaining_accounts();
     require!(
         maker_accounts.len() % ACCOUNTS_PER_MAKER == 0,
         ErrorCode::MissingMakerAccounts
@@ -142,7 +142,7 @@ pub fn handle_place_order<'info>(
             ErrorCode::MakerAccountMismatch
         );
         require!(
-            maker_order.market == market.key(),
+            maker_order.market == *market.address(),
             ErrorCode::MakerAccountMismatch
         );
     }
@@ -171,7 +171,7 @@ pub fn handle_place_order<'info>(
             ErrorCode::MakerOwnerMismatch
         );
         require!(
-            maker_market_user.market == market.key(),
+            maker_market_user.market == *market.address(),
             ErrorCode::MakerAccountMismatch
         );
 
@@ -340,17 +340,17 @@ pub fn handle_place_order<'info>(
 
         transfer_checked(
             CpiContext::new_with_signer(
-                context.accounts.token_program.key(),
+                context.accounts.token_program.address(),
                 TransferChecked {
-                    from: context.accounts.quote_vault.to_account_info(),
-                    mint: context.accounts.quote_mint.to_account_info(),
-                    to: context.accounts.fee_vault.to_account_info(),
-                    authority: market.to_account_info(),
+                    from: context.accounts.quote_vault.cpi_handle_mut(),
+                    mint: context.accounts.quote_mint.cpi_handle(),
+                    to: context.accounts.fee_vault.cpi_handle_mut(),
+                    authority: market.cpi_handle(),
                 },
                 signer_seeds,
             ),
             total_fee_quote,
-            context.accounts.quote_mint.decimals,
+            context.accounts.quote_mint.decimals(),
         )?;
     }
 
@@ -388,7 +388,7 @@ pub fn handle_place_order<'info>(
                 side,
                 price,
                 taker_remaining,
-                context.accounts.owner.key(),
+                context.accounts.owner.address(),
                 id,
                 timestamp,
             )?;
@@ -397,8 +397,8 @@ pub fn handle_place_order<'info>(
     };
 
     let order = &mut context.accounts.order;
-    order.market = market.key();
-    order.owner = context.accounts.owner.key();
+    order.market = *market.address();
+    order.owner = *context.accounts.owner.address();
     order.order_id = order_id;
     order.side = side;
     order.price = price;
@@ -429,7 +429,7 @@ pub fn handle_place_order<'info>(
 
 #[derive(Accounts)]
 #[instruction(side: OrderSide, price: u64, quantity: u64)]
-pub struct PlaceOrderAccountConstraints<'info> {
+pub struct PlaceOrderAccountConstraints {
     // `has_one` ties every market-owned account on this struct to the
     // addresses recorded on the Market PDA. Crucially, without
     // has_one on base_vault / quote_vault / base_mint / quote_mint a caller
@@ -445,7 +445,7 @@ pub struct PlaceOrderAccountConstraints<'info> {
         has_one = quote_mint @ ErrorCode::InvalidQuoteMint,
         has_one = order_book @ ErrorCode::InvalidOrderBook,
     )]
-    pub market: Account<'info, Market>,
+    pub market: BorshAccount<Market>,
 
     // Zero-copy: AccountLoader streams the slab in/out without paying
     // borsh (de)serialization on every instruction. See order_book.rs for
@@ -454,7 +454,7 @@ pub struct PlaceOrderAccountConstraints<'info> {
     // `has_one = order_book` on `market` is what ties this specific account
     // to this specific market.
     #[account(mut)]
-    pub order_book: AccountLoader<'info, OrderBook>,
+    pub order_book: AccountLoader<OrderBook>,
 
     // The order PDA seed uses the book's `next_order_id` *before* this
     // instruction increments it - i.e. the id this new order will receive.
@@ -465,47 +465,47 @@ pub struct PlaceOrderAccountConstraints<'info> {
         space = Order::DISCRIMINATOR.len() + Order::INIT_SPACE,
         seeds = [
             ORDER_SEED,
-            market.key().as_ref(),
+            market.address().as_ref(),
             order_book.load()?.next_order_id.to_le_bytes().as_ref()
         ],
         bump
     )]
-    pub order: Account<'info, Order>,
+    pub order: BorshAccount<Order>,
 
     #[account(
         mut,
-        seeds = [MARKET_USER_SEED, market.key().as_ref(), owner.key().as_ref()],
+        seeds = [MARKET_USER_SEED, market.address().as_ref(), owner.address().as_ref()],
         bump = market_user.bump
     )]
-    pub market_user: Account<'info, MarketUser>,
+    pub market_user: BorshAccount<MarketUser>,
 
     // InterfaceAccount on the stack is ~1 KB each; with 7 of them this struct
     // blows the 4 KB stack-offset limit on BPF. Boxing moves each to the heap.
     #[account(mut)]
-    pub base_vault: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub base_vault: Box<InterfaceAccount<TokenAccount>>,
 
     #[account(mut)]
-    pub quote_vault: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub quote_vault: Box<InterfaceAccount<TokenAccount>>,
 
     // Taker fees are routed here. Constrained via `has_one = fee_vault` on
     // `market` above so the program can trust it without re-checking.
     #[account(mut)]
-    pub fee_vault: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub fee_vault: Box<InterfaceAccount<TokenAccount>>,
 
     #[account(mut)]
-    pub user_base_account: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub user_base_account: Box<InterfaceAccount<TokenAccount>>,
 
     #[account(mut)]
-    pub user_quote_account: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub user_quote_account: Box<InterfaceAccount<TokenAccount>>,
 
-    pub base_mint: Box<InterfaceAccount<'info, Mint>>,
+    pub base_mint: Box<InterfaceAccount<Mint>>,
 
-    pub quote_mint: Box<InterfaceAccount<'info, Mint>>,
+    pub quote_mint: Box<InterfaceAccount<Mint>>,
 
     #[account(mut)]
-    pub owner: Signer<'info>,
+    pub owner: Signer,
 
-    pub token_program: Interface<'info, TokenInterface>,
+    pub token_program: Interface<'static, TokenInterface>,
 
-    pub system_program: Program<'info, System>,
+    pub system_program: Program<System>,
 }

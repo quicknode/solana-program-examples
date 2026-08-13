@@ -4,8 +4,8 @@ use crate::error::VaultError;
 use crate::state::{AssetConfig, Strategy};
 
 #[derive(Accounts)]
-pub struct SetWeightAccountConstraints<'info> {
-    pub manager: Signer<'info>,
+pub struct SetWeightAccountConstraints {
+    pub manager: Signer,
 
     #[account(
         mut,
@@ -13,13 +13,13 @@ pub struct SetWeightAccountConstraints<'info> {
         seeds = [b"strategy", strategy.index.to_le_bytes().as_ref()],
         bump = strategy.bump
     )]
-    pub strategy: Box<Account<'info, Strategy>>,
+    pub strategy: Box<BorshAccount<Strategy>>,
 
     #[account(
         mut,
-        constraint = asset_config.strategy == strategy.key() @ VaultError::InvalidAssetAccount,
+        constraint = asset_config.strategy == strategy.address() @ VaultError::InvalidAssetAccount,
     )]
-    pub asset_config: Box<Account<'info, AssetConfig>>,
+    pub asset_config: Box<BorshAccount<AssetConfig>>,
 }
 
 /// Change an asset's target weight. Setting it to zero retires the asset: deposits
@@ -28,7 +28,7 @@ pub struct SetWeightAccountConstraints<'info> {
 /// contiguous 0..asset_count range the valuation handlers depend on stays intact.
 /// Funds do not move here; this only edits the target the manager trades toward.
 pub fn handle_set_weight(
-    context: Context<SetWeightAccountConstraints>,
+    context: &mut Context<SetWeightAccountConstraints>,
     weight_bps: u16,
 ) -> Result<()> {
     let strategy = &mut context.accounts.strategy;

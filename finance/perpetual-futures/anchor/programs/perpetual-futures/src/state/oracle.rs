@@ -6,7 +6,7 @@ use crate::errors::PerpError;
 
 // Byte layout of the feed account this program reads. It matches the
 // `mock_switchboard::MockFeed` account: an 8-byte Anchor discriminator followed
-// by `authority: Pubkey (32)`, `price: i128 (16)`, `scale: u32 (4)`,
+// by `authority: Address (32)`, `price: i128 (16)`, `scale: u32 (4)`,
 // `last_update_slot: u64 (8)`, `confidence: u64 (8)`.
 //
 // We read the raw bytes rather than deserializing the mock account type so this
@@ -40,7 +40,7 @@ const FEED_MINIMUM_LENGTH: usize = CONFIDENCE_OFFSET + 8;
 /// non-positive price, a feed whose scale differs from the pool's pinned scale,
 /// and a price whose confidence band exceeds `max_confidence_bps` of the price.
 pub fn read_oracle_price(
-    feed: &AccountInfo,
+    feed: &AccountView,
     expected_scale: u32,
     max_confidence_bps: u16,
 ) -> Result<u64> {

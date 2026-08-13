@@ -1,4 +1,4 @@
-use anchor_lang::{prelude::*, solana_program::pubkey::Pubkey};
+use anchor_lang::{prelude::*, solana_program::pubkey::Address};
 use anchor_spl::{
     associated_token::AssociatedToken,
     token::Token,
@@ -42,19 +42,19 @@ pub mod transfer_hook {
 
     #[instruction(discriminator = InitializeExtraAccountMetaListInstruction::SPL_DISCRIMINATOR_SLICE)]
     pub fn initialize_extra_account_meta_list(
-        context: Context<InitializeExtraAccountMetaListAccountConstraints>,
+        context: &mut Context<InitializeExtraAccountMetaListAccountConstraints>,
     ) -> Result<()> {
         instructions::initialize_extra_account_meta_list::handler(context)
     }
 
     #[instruction(discriminator = ExecuteInstruction::SPL_DISCRIMINATOR_SLICE)]
-    pub fn transfer_hook(context: Context<TransferHookAccountConstraints>, amount: u64) -> Result<()> {
+    pub fn transfer_hook(context: &mut Context<TransferHookAccountConstraints>, amount: u64) -> Result<()> {
         instructions::transfer_hook::handler(context, amount)
     }
 }
 
 pub fn check_is_transferring(context: &Context<TransferHookAccountConstraints>) -> Result<()> {
-    let source_token_info = context.accounts.source_token.to_account_info();
+    let source_token_info = context.accounts.source_token.cpi_handle_mut();
     let mut account_data_ref: RefMut<&mut [u8]> = source_token_info.try_borrow_mut_data()?;
     let mut account = PodStateWithExtensionsMut::<PodAccount>::unpack(*account_data_ref)
         .map_err(|_| ProgramError::InvalidAccountData)?;
@@ -77,7 +77,7 @@ pub fn handle_extra_account_metas() -> Result<Vec<ExtraAccountMeta>> {
     // index 0-3 are the accounts required for token transfer (source, mint, destination, owner)
     // index 4 is address of ExtraAccountMetaList account
 
-    let wsol_mint = Pubkey::from_str("So11111111111111111111111111111111111111112").unwrap();
+    let wsol_mint = Address::from_str("So11111111111111111111111111111111111111112").unwrap();
     let token_program_id = Token::id();
     let ata_program_id = AssociatedToken::id();
 
@@ -140,7 +140,7 @@ pub fn handle_extra_account_metas_count() -> usize {
     7 // wsol_mint, token_program, ata_program, delegate, delegate_wsol, sender_wsol, counter
 }
 
-#[account]
+#[account(borsh)]
 #[derive(InitSpace)]
 pub struct CounterAccount {
     pub counter: u8,

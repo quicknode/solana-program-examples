@@ -6,12 +6,12 @@ use crate::errors::LendingError;
 /// A borrower's position in one lending market: the share-token collateral they
 /// have posted and the liquidity they have borrowed, plus the cached quote-
 /// currency valuations that `refresh_obligation` recomputes.
-#[account]
+#[account(borsh)]
 #[derive(InitSpace)]
 pub struct Obligation {
-    pub lending_market: Pubkey,
+    pub lending_market: Address,
 
-    pub owner: Pubkey,
+    pub owner: Address,
 
     pub last_update_slot: u64,
 
@@ -44,14 +44,14 @@ pub struct Obligation {
 
 #[derive(InitSpace, Clone, Copy, AnchorSerialize, AnchorDeserialize, Debug, Default)]
 pub struct ObligationCollateral {
-    pub reserve: Pubkey,
+    pub reserve: Address,
     pub deposited_shares: u64,
     pub market_value: u128,
 }
 
 #[derive(InitSpace, Clone, Copy, AnchorSerialize, AnchorDeserialize, Debug, Default)]
 pub struct ObligationLiquidity {
-    pub reserve: Pubkey,
+    pub reserve: Address,
     /// Borrowed principal, scaled by the reserve's index at borrow time so the
     /// live debt grows automatically as that index advances:
     /// `debt = borrowed_principal * reserve.borrow_accumulation_factor / FIXED_POINT_SCALE`.
@@ -74,7 +74,7 @@ impl Obligation {
 
     /// Index of the collateral entry for `reserve`, creating an empty one if the
     /// obligation has room. Used when posting collateral.
-    pub fn upsert_collateral(&mut self, reserve: Pubkey) -> Result<usize> {
+    pub fn upsert_collateral(&mut self, reserve: Address) -> Result<usize> {
         if let Some(index) = self.deposits.iter().position(|entry| entry.reserve == reserve) {
             return Ok(index);
         }
@@ -92,7 +92,7 @@ impl Obligation {
 
     /// Index of the borrow entry for `reserve`, creating an empty one if the
     /// obligation has room. Used when borrowing.
-    pub fn upsert_borrow(&mut self, reserve: Pubkey) -> Result<usize> {
+    pub fn upsert_borrow(&mut self, reserve: Address) -> Result<usize> {
         if let Some(index) = self.borrows.iter().position(|entry| entry.reserve == reserve) {
             return Ok(index);
         }
@@ -108,14 +108,14 @@ impl Obligation {
         Ok(self.borrows.len() - 1)
     }
 
-    pub fn find_collateral(&self, reserve: Pubkey) -> Result<usize> {
+    pub fn find_collateral(&self, reserve: Address) -> Result<usize> {
         self.deposits
             .iter()
             .position(|entry| entry.reserve == reserve)
             .ok_or(LendingError::ReserveNotFound.into())
     }
 
-    pub fn find_borrow(&self, reserve: Pubkey) -> Result<usize> {
+    pub fn find_borrow(&self, reserve: Address) -> Result<usize> {
         self.borrows
             .iter()
             .position(|entry| entry.reserve == reserve)

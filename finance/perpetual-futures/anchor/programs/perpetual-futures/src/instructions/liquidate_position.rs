@@ -10,7 +10,7 @@ use crate::instructions::shared::{basis_points_of, refresh_price_and_funding, se
 use crate::state::{Pool, Position};
 
 pub fn handle_liquidate_position(
-    context: Context<LiquidatePositionAccountConstraints>,
+    context: &mut Context<LiquidatePositionAccountConstraints>,
 ) -> Result<()> {
     let pool = &mut context.accounts.pool;
     let price = refresh_price_and_funding(pool, &context.accounts.oracle_feed)?;
@@ -60,40 +60,40 @@ pub fn handle_liquidate_position(
         .try_into()
         .map_err(|_| PerpError::MathOverflow)?;
 
-    let pool_key = pool.key();
+    let pool_key = pool.address();
     let authority_seeds: &[&[u8]] = &[AUTHORITY_SEED, pool_key.as_ref(), &[pool.authority_bump]];
 
     if liquidator_payout > 0 {
         transfer_checked(
             CpiContext::new_with_signer(
-                context.accounts.token_program.key(),
+                context.accounts.token_program.address(),
                 TransferChecked {
-                    from: context.accounts.custody_vault.to_account_info(),
-                    mint: context.accounts.collateral_mint.to_account_info(),
-                    to: context.accounts.liquidator_collateral.to_account_info(),
-                    authority: context.accounts.pool_authority.to_account_info(),
+                    from: context.accounts.custody_vault.cpi_handle_mut(),
+                    mint: context.accounts.collateral_mint.cpi_handle(),
+                    to: context.accounts.liquidator_collateral.cpi_handle_mut(),
+                    authority: context.accounts.pool_authority.cpi_handle(),
                 },
                 &[authority_seeds],
             ),
             liquidator_payout,
-            context.accounts.collateral_mint.decimals,
+            context.accounts.collateral_mint.decimals(),
         )?;
     }
 
     if trader_refund > 0 {
         transfer_checked(
             CpiContext::new_with_signer(
-                context.accounts.token_program.key(),
+                context.accounts.token_program.address(),
                 TransferChecked {
-                    from: context.accounts.custody_vault.to_account_info(),
-                    mint: context.accounts.collateral_mint.to_account_info(),
-                    to: context.accounts.trader_collateral.to_account_info(),
-                    authority: context.accounts.pool_authority.to_account_info(),
+                    from: context.accounts.custody_vault.cpi_handle_mut(),
+                    mint: context.accounts.collateral_mint.cpi_handle(),
+                    to: context.accounts.trader_collateral.cpi_handle_mut(),
+                    authority: context.accounts.pool_authority.cpi_handle(),
                 },
                 &[authority_seeds],
             ),
             trader_refund,
-            context.accounts.collateral_mint.decimals,
+            context.accounts.collateral_mint.decimals(),
         )?;
     }
 
@@ -101,14 +101,14 @@ pub fn handle_liquidate_position(
 }
 
 #[derive(Accounts)]
-pub struct LiquidatePositionAccountConstraints<'info> {
+pub struct LiquidatePositionAccountConstraints {
     #[account(mut)]
-    pub liquidator: Signer<'info>,
+    pub liquidator: Signer,
 
     /// CHECK: the position owner, validated by the position's `has_one = owner`.
     /// Receives the position account's rent and any equity refund.
     #[account(mut)]
-    pub owner: UncheckedAccount<'info>,
+    pub owner: UncheckedAccount,
 
     #[account(
         mut,
@@ -118,36 +118,36 @@ pub struct LiquidatePositionAccountConstraints<'info> {
         has_one = custody_vault,
         has_one = oracle_feed,
     )]
-    pub pool: Box<Account<'info, Pool>>,
+    pub pool: Box<BorshAccount<Pool>>,
 
     #[account(
         mut,
         close = owner,
-        seeds = [POSITION_SEED, pool.key().as_ref(), owner.key().as_ref(), position.side.as_seed()],
+        seeds = [POSITION_SEED, pool.address().as_ref(), owner.address().as_ref(), position.side.as_seed()],
         bump = position.bump,
         has_one = owner,
         has_one = pool,
     )]
-    pub position: Box<Account<'info, Position>>,
+    pub position: Box<BorshAccount<Position>>,
 
     /// CHECK: PDA authority over the vault.
     #[account(
-        seeds = [AUTHORITY_SEED, pool.key().as_ref()],
+        seeds = [AUTHORITY_SEED, pool.address().as_ref()],
         bump = pool.authority_bump,
     )]
-    pub pool_authority: UncheckedAccount<'info>,
+    pub pool_authority: UncheckedAccount,
 
     /// CHECK: validated by the `has_one = oracle_feed` constraint on the pool.
-    pub oracle_feed: UncheckedAccount<'info>,
+    pub oracle_feed: UncheckedAccount,
 
-    pub collateral_mint: Box<InterfaceAccount<'info, Mint>>,
+    pub collateral_mint: Box<InterfaceAccount<Mint>>,
 
     #[account(
         mut,
-        seeds = [VAULT_SEED, pool.key().as_ref()],
+        seeds = [VAULT_SEED, pool.address().as_ref()],
         bump,
     )]
-    pub custody_vault: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub custody_vault: Box<InterfaceAccount<TokenAccount>>,
 
     #[account(
         mut,
@@ -155,7 +155,7 @@ pub struct LiquidatePositionAccountConstraints<'info> {
         associated_token::authority = owner,
         associated_token::token_program = token_program,
     )]
-    pub trader_collateral: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub trader_collateral: Box<InterfaceAccount<TokenAccount>>,
 
     #[account(
         init_if_needed,
@@ -164,9 +164,9 @@ pub struct LiquidatePositionAccountConstraints<'info> {
         associated_token::authority = liquidator,
         associated_token::token_program = token_program,
     )]
-    pub liquidator_collateral: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub liquidator_collateral: Box<InterfaceAccount<TokenAccount>>,
 
-    pub token_program: Interface<'info, TokenInterface>,
-    pub associated_token_program: Program<'info, AssociatedToken>,
-    pub system_program: Program<'info, System>,
+    pub token_program: Interface<'static, TokenInterface>,
+    pub associated_token_program: Program<AssociatedToken>,
+    pub system_program: Program<System>,
 }

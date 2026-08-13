@@ -11,9 +11,9 @@ use crate::oracle::{read_mint_decimals, read_token_amount, read_token_mint_and_o
 use crate::state::{AssetConfig, Strategy};
 
 #[derive(Accounts)]
-pub struct WithdrawAccountConstraints<'info> {
+pub struct WithdrawAccountConstraints {
     #[account(mut)]
-    pub user: Signer<'info>,
+    pub user: Signer,
 
     #[account(
         mut,
@@ -21,16 +21,16 @@ pub struct WithdrawAccountConstraints<'info> {
         seeds = [b"strategy", strategy.index.to_le_bytes().as_ref()],
         bump = strategy.bump
     )]
-    pub strategy: Box<Account<'info, Strategy>>,
+    pub strategy: Box<BorshAccount<Strategy>>,
 
     #[account(
         mut,
-        seeds = [b"share_mint", strategy.key().as_ref()],
+        seeds = [b"share_mint", strategy.address().as_ref()],
         bump
     )]
-    pub share_mint: Box<InterfaceAccount<'info, Mint>>,
+    pub share_mint: Box<InterfaceAccount<Mint>>,
 
-    pub usdc_mint: Box<InterfaceAccount<'info, Mint>>,
+    pub usdc_mint: Box<InterfaceAccount<Mint>>,
 
     #[account(
         mut,
@@ -38,7 +38,7 @@ pub struct WithdrawAccountConstraints<'info> {
         associated_token::authority = user,
         associated_token::token_program = token_program
     )]
-    pub user_share_account: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub user_share_account: Box<InterfaceAccount<TokenAccount>>,
 
     #[account(
         init_if_needed,
@@ -47,7 +47,7 @@ pub struct WithdrawAccountConstraints<'info> {
         associated_token::authority = user,
         associated_token::token_program = token_program
     )]
-    pub user_usdc_account: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub user_usdc_account: Box<InterfaceAccount<TokenAccount>>,
 
     #[account(
         mut,
@@ -55,18 +55,18 @@ pub struct WithdrawAccountConstraints<'info> {
         associated_token::authority = strategy,
         associated_token::token_program = token_program
     )]
-    pub vault_usdc: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub vault_usdc: Box<InterfaceAccount<TokenAccount>>,
 
-    pub associated_token_program: Program<'info, AssociatedToken>,
-    pub token_program: Interface<'info, TokenInterface>,
-    pub system_program: Program<'info, System>,
+    pub associated_token_program: Program<AssociatedToken>,
+    pub token_program: Interface<'static, TokenInterface>,
+    pub system_program: Program<System>,
     // remaining_accounts: for each asset index 0..asset_count, in order:
     //   [asset_config, vault, mint, user_token_account]
     // The user's asset token accounts must already exist.
 }
 
 pub fn handle_withdraw<'info>(
-    context: Context<'info, WithdrawAccountConstraints<'info>>,
+    context: &mut Context<'info, WithdrawAccountConstraints<'info>>,
     shares_to_burn: u64,
     min_usdc_out: u64,
 ) -> Result<()> {
@@ -75,16 +75,16 @@ pub fn handle_withdraw<'info>(
     let total_shares = context.accounts.strategy.total_shares;
     require!(total_shares > 0, VaultError::ZeroTotalShares);
 
-    let vault_usdc_amount = context.accounts.vault_usdc.amount;
-    let usdc_decimals = context.accounts.usdc_mint.decimals;
+    let vault_usdc_amount = context.accounts.vault_usdc.amount();
+    let usdc_decimals = context.accounts.usdc_mint.decimals();
     let strategy_index = context.accounts.strategy.index;
     let strategy_bump = context.accounts.strategy.bump;
-    let strategy_key = context.accounts.strategy.key();
-    let user_key = context.accounts.user.key();
+    let strategy_key = context.accounts.strategy.address();
+    let user_key = context.accounts.user.address();
     let asset_count = context.accounts.strategy.asset_count as usize;
 
     require!(
-        context.remaining_accounts.len() == asset_count * 4,
+        context.remaining_accounts().len() == asset_count * 4,
         VaultError::IncompleteAssetAccounts
     );
 
@@ -110,14 +110,14 @@ pub fn handle_withdraw<'info>(
     // Hoist owned account-info handles for every CPI up front, so the asset loop
     // can borrow remaining_accounts without also re-borrowing `context.accounts`
     // (Account is invariant over its lifetime, which otherwise fails to unify).
-    let strategy_info = context.accounts.strategy.to_account_info();
-    let share_mint_info = context.accounts.share_mint.to_account_info();
-    let usdc_mint_info = context.accounts.usdc_mint.to_account_info();
-    let vault_usdc_info = context.accounts.vault_usdc.to_account_info();
-    let user_info = context.accounts.user.to_account_info();
-    let user_share_info = context.accounts.user_share_account.to_account_info();
-    let user_usdc_info = context.accounts.user_usdc_account.to_account_info();
-    let token_program_key = context.accounts.token_program.key();
+    let strategy_info = context.accounts.strategy.cpi_handle_mut();
+    let share_mint_info = context.accounts.share_mint.cpi_handle_mut();
+    let usdc_mint_info = context.accounts.usdc_mint.cpi_handle_mut();
+    let vault_usdc_info = context.accounts.vault_usdc.cpi_handle_mut();
+    let user_info = context.accounts.user.cpi_handle_mut();
+    let user_share_info = context.accounts.user_share_account.cpi_handle_mut();
+    let user_usdc_info = context.accounts.user_usdc_account.cpi_handle_mut();
+    let token_program_key = context.accounts.token_program.address();
 
     // Burn the user's shares.
     let burn_accounts = Burn {
@@ -146,7 +146,7 @@ pub fn handle_withdraw<'info>(
     }
 
     // Each basket asset, paid in kind, proportional to shares burned.
-    let remaining = context.remaining_accounts;
+    let remaining = context.remaining_accounts();
     for i in 0..asset_count {
         let config_ai = &remaining[i * 4];
         let vault_ai = &remaining[i * 4 + 1];
@@ -161,11 +161,11 @@ pub fn handle_withdraw<'info>(
         );
         require!(config.index as usize == i, VaultError::InvalidAssetAccount);
         require_keys_eq!(
-            vault_ai.key(),
+            vault_ai.address(),
             config.vault,
             VaultError::InvalidAssetAccount
         );
-        require_keys_eq!(mint_ai.key(), config.mint, VaultError::InvalidAssetAccount);
+        require_keys_eq!(mint_ai.address(), config.mint, VaultError::InvalidAssetAccount);
 
         let (recipient_mint, recipient_owner) = read_token_mint_and_owner(user_ata_ai)?;
         require_keys_eq!(recipient_owner, user_key, VaultError::InvalidRecipient);
@@ -181,9 +181,9 @@ pub fn handle_withdraw<'info>(
         if amount > 0 {
             let decimals = read_mint_decimals(mint_ai)?;
             let transfer_accounts = TransferChecked {
-                from: vault_ai.to_account_info(),
-                mint: mint_ai.to_account_info(),
-                to: user_ata_ai.to_account_info(),
+                from: vault_ai.cpi_handle_mut(),
+                mint: mint_ai.cpi_handle_mut(),
+                to: user_ata_ai.cpi_handle_mut(),
                 authority: strategy_info.clone(),
             };
             transfer_checked(

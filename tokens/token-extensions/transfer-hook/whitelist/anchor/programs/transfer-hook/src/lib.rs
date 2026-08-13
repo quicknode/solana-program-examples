@@ -31,23 +31,23 @@ pub mod transfer_hook {
 
     #[instruction(discriminator = InitializeExtraAccountMetaListInstruction::SPL_DISCRIMINATOR_SLICE)]
     pub fn initialize_extra_account_meta_list(
-        context: Context<InitializeExtraAccountMetaListAccountConstraints>,
+        context: &mut Context<InitializeExtraAccountMetaListAccountConstraints>,
     ) -> Result<()> {
         instructions::initialize_extra_account_meta_list::handler(context)
     }
 
     #[instruction(discriminator = ExecuteInstruction::SPL_DISCRIMINATOR_SLICE)]
-    pub fn transfer_hook(context: Context<TransferHookAccountConstraints>, amount: u64) -> Result<()> {
+    pub fn transfer_hook(context: &mut Context<TransferHookAccountConstraints>, amount: u64) -> Result<()> {
         instructions::transfer_hook::handler(context, amount)
     }
 
-    pub fn add_to_whitelist(context: Context<AddToWhiteListAccountConstraints>) -> Result<()> {
+    pub fn add_to_whitelist(context: &mut Context<AddToWhiteListAccountConstraints>) -> Result<()> {
         instructions::add_to_whitelist::handler(context)
     }
 }
 
 pub fn check_is_transferring(context: &Context<TransferHookAccountConstraints>) -> Result<()> {
-    let source_token_info = context.accounts.source_token.to_account_info();
+    let source_token_info = context.accounts.source_token.cpi_handle_mut();
     let mut account_data_ref: RefMut<&mut [u8]> = source_token_info.try_borrow_mut_data()?;
     // .map_err() needed because spl-token-2022 uses solana-program-error 2.x
     // while anchor-lang 1.0 uses 3.x - structurally identical but different semver types
@@ -81,12 +81,12 @@ pub fn handle_extra_account_metas_count() -> usize {
     1 // one extra account: the whitelist PDA
 }
 
-#[account]
+#[account(borsh)]
 #[derive(InitSpace)]
 pub struct WhiteList {
-    pub authority: Pubkey,
+    pub authority: Address,
     #[max_len(11)]
-    pub white_list: Vec<Pubkey>,
+    pub white_list: Vec<Address>,
     /// Canonical bump for this PDA.
     pub bump: u8,
 }

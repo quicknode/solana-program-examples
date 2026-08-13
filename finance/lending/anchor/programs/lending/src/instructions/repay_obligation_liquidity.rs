@@ -13,17 +13,17 @@ use crate::state::{Obligation, Reserve};
 /// borrower rather than being forgiven by rounding. Anyone may repay on behalf
 /// of an obligation, so there is no owner check.
 pub fn handle_repay_obligation_liquidity(
-    context: Context<RepayObligationLiquidity>,
+    context: &mut Context<RepayObligationLiquidity>,
     liquidity_amount: u64,
 ) -> Result<()> {
     require!(liquidity_amount > 0, LendingError::ZeroAmount);
-    let reserve_key = context.accounts.reserve.key();
+    let reserve_key = context.accounts.reserve.address();
     context.accounts.reserve.require_refreshed()?;
 
     let index = context.accounts.reserve.borrow_accumulation_factor;
     let decimals = context.accounts.reserve.liquidity_decimals;
 
-    let borrow_index = context.accounts.obligation.find_borrow(reserve_key)?;
+    let borrow_index = context.accounts.obligation.find_borrow(*reserve_key)?;
     let borrowed_principal = context.accounts.obligation.borrows[borrow_index].borrowed_principal;
 
     let debt_now = mul_div_ceil(borrowed_principal, index, FIXED_POINT_SCALE)?;
@@ -58,12 +58,12 @@ pub fn handle_repay_obligation_liquidity(
 
     transfer_checked(
         CpiContext::new(
-            context.accounts.token_program.key(),
+            context.accounts.token_program.address(),
             TransferChecked {
-                from: context.accounts.user_liquidity.to_account_info(),
-                mint: context.accounts.liquidity_mint.to_account_info(),
-                to: context.accounts.liquidity_vault.to_account_info(),
-                authority: context.accounts.repayer.to_account_info(),
+                from: context.accounts.user_liquidity.cpi_handle_mut(),
+                mint: context.accounts.liquidity_mint.cpi_handle(),
+                to: context.accounts.liquidity_vault.cpi_handle_mut(),
+                authority: context.accounts.repayer.cpi_handle(),
             },
         ),
         repay,
@@ -74,9 +74,9 @@ pub fn handle_repay_obligation_liquidity(
 }
 
 #[derive(Accounts)]
-pub struct RepayObligationLiquidity<'info> {
+pub struct RepayObligationLiquidity {
     #[account(mut)]
-    pub obligation: Account<'info, Obligation>,
+    pub obligation: BorshAccount<Obligation>,
 
     #[account(
         mut,
@@ -84,17 +84,17 @@ pub struct RepayObligationLiquidity<'info> {
         has_one = liquidity_vault,
         constraint = reserve.lending_market == obligation.lending_market @ LendingError::MarketMismatch,
     )]
-    pub reserve: Account<'info, Reserve>,
+    pub reserve: BorshAccount<Reserve>,
 
-    pub liquidity_mint: InterfaceAccount<'info, Mint>,
-
-    #[account(mut)]
-    pub liquidity_vault: InterfaceAccount<'info, TokenAccount>,
+    pub liquidity_mint: InterfaceAccount<Mint>,
 
     #[account(mut)]
-    pub user_liquidity: InterfaceAccount<'info, TokenAccount>,
+    pub liquidity_vault: InterfaceAccount<TokenAccount>,
 
-    pub repayer: Signer<'info>,
+    #[account(mut)]
+    pub user_liquidity: InterfaceAccount<TokenAccount>,
 
-    pub token_program: Interface<'info, TokenInterface>,
+    pub repayer: Signer,
+
+    pub token_program: Interface<'static, TokenInterface>,
 }

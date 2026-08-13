@@ -12,7 +12,7 @@ use crate::state::{reserve_signer_seeds, Reserve};
 /// `liquidity_amount * share_supply / total_liquidity`, floored so the protocol
 /// keeps any rounding dust.
 pub fn handle_deposit_reserve_liquidity(
-    context: Context<DepositReserveLiquidity>,
+    context: &mut Context<DepositReserveLiquidity>,
     liquidity_amount: u64,
 ) -> Result<()> {
     require!(liquidity_amount > 0, LendingError::ZeroAmount);
@@ -40,12 +40,12 @@ pub fn handle_deposit_reserve_liquidity(
 
     transfer_checked(
         CpiContext::new(
-            context.accounts.token_program.key(),
+            context.accounts.token_program.address(),
             TransferChecked {
-                from: context.accounts.user_liquidity.to_account_info(),
-                mint: context.accounts.liquidity_mint.to_account_info(),
-                to: context.accounts.liquidity_vault.to_account_info(),
-                authority: context.accounts.owner.to_account_info(),
+                from: context.accounts.user_liquidity.cpi_handle_mut(),
+                mint: context.accounts.liquidity_mint.cpi_handle(),
+                to: context.accounts.liquidity_vault.cpi_handle_mut(),
+                authority: context.accounts.owner.cpi_handle(),
             },
         ),
         liquidity_amount,
@@ -56,11 +56,11 @@ pub fn handle_deposit_reserve_liquidity(
     let seeds = reserve_signer_seeds(&reserve.lending_market, &reserve.liquidity_mint, &bump);
     mint_to(
         CpiContext::new_with_signer(
-            context.accounts.token_program.key(),
+            context.accounts.token_program.address(),
             MintTo {
-                mint: context.accounts.share_mint.to_account_info(),
-                to: context.accounts.user_share.to_account_info(),
-                authority: reserve.to_account_info(),
+                mint: context.accounts.share_mint.cpi_handle_mut(),
+                to: context.accounts.user_share.cpi_handle_mut(),
+                authority: reserve.cpi_handle(),
             },
             &[&seeds],
         ),
@@ -71,30 +71,30 @@ pub fn handle_deposit_reserve_liquidity(
 }
 
 #[derive(Accounts)]
-pub struct DepositReserveLiquidity<'info> {
+pub struct DepositReserveLiquidity {
     #[account(
         mut,
         has_one = liquidity_mint,
         has_one = liquidity_vault,
         has_one = share_mint,
     )]
-    pub reserve: Account<'info, Reserve>,
+    pub reserve: BorshAccount<Reserve>,
 
-    pub liquidity_mint: InterfaceAccount<'info, Mint>,
-
-    #[account(mut)]
-    pub liquidity_vault: InterfaceAccount<'info, TokenAccount>,
+    pub liquidity_mint: InterfaceAccount<Mint>,
 
     #[account(mut)]
-    pub share_mint: InterfaceAccount<'info, Mint>,
+    pub liquidity_vault: InterfaceAccount<TokenAccount>,
 
     #[account(mut)]
-    pub user_liquidity: InterfaceAccount<'info, TokenAccount>,
+    pub share_mint: InterfaceAccount<Mint>,
 
     #[account(mut)]
-    pub user_share: InterfaceAccount<'info, TokenAccount>,
+    pub user_liquidity: InterfaceAccount<TokenAccount>,
 
-    pub owner: Signer<'info>,
+    #[account(mut)]
+    pub user_share: InterfaceAccount<TokenAccount>,
 
-    pub token_program: Interface<'info, TokenInterface>,
+    pub owner: Signer,
+
+    pub token_program: Interface<'static, TokenInterface>,
 }

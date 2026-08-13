@@ -13,43 +13,43 @@ use anchor_spl::{
     metadata::Metadata, 
 };
 // In Anchor 1.0, sysvar::instructions::ID moved - use the well-known address directly
-const INSTRUCTIONS_SYSVAR_ID: Pubkey = anchor_lang::solana_program::pubkey::pubkey!("Sysvar1nstructions1111111111111111111111111");
+const INSTRUCTIONS_SYSVAR_ID: Address = anchor_lang::solana_program::pubkey::pubkey!("Sysvar1nstructions1111111111111111111111111");
 
 #[derive(Accounts)]
-pub struct VerifyCollectionMintAccountConstraints<'info> {
-    pub authority: Signer<'info>,
+pub struct VerifyCollectionMintAccountConstraints {
+    pub authority: Signer,
     #[account(mut)]
-    pub metadata: Account<'info, MetadataAccount>,
-    pub mint: Account<'info, Mint>,
+    pub metadata: Account<MetadataAccount>,
+    pub mint: Account<Mint>,
     #[account(
         seeds = [b"authority"],
         bump,
     )]
     /// CHECK: This account is not initialized and is being used for signing purposes only
-    pub mint_authority: UncheckedAccount<'info>,
-    pub collection_mint: Account<'info, Mint>,
+    pub mint_authority: UncheckedAccount,
+    pub collection_mint: Account<Mint>,
     #[account(mut)]
-    pub collection_metadata: Account<'info, MetadataAccount>,
-    pub collection_master_edition: Account<'info, MasterEditionAccount>,
-    pub system_program: Program<'info, System>,
+    pub collection_metadata: Account<MetadataAccount>,
+    pub collection_master_edition: Account<MasterEditionAccount>,
+    pub system_program: Program<System>,
     #[account(address = INSTRUCTIONS_SYSVAR_ID)]
     /// CHECK: Sysvar instruction account that is being checked with an address constraint
-    pub sysvar_instruction: UncheckedAccount<'info>,
-    pub token_metadata_program: Program<'info, Metadata>,
+    pub sysvar_instruction: UncheckedAccount,
+    pub token_metadata_program: Program<Metadata>,
 }
 
 pub fn handle_verify_collection(
     accounts: &mut VerifyCollectionMintAccountConstraints,
     bumps: &VerifyCollectionMintAccountConstraintsBumps,
 ) -> Result<()> {
-        let metadata = &accounts.metadata.to_account_info();
-        let authority = &accounts.mint_authority.to_account_info();
-        let collection_mint = &accounts.collection_mint.to_account_info();
-        let collection_metadata = &accounts.collection_metadata.to_account_info();
-        let collection_master_edition = &accounts.collection_master_edition.to_account_info();
-        let system_program = &accounts.system_program.to_account_info();
-        let sysvar_instructions = &accounts.sysvar_instruction.to_account_info();
-        let spl_metadata_program = &accounts.token_metadata_program.to_account_info();
+        let metadata = &accounts.metadata.cpi_handle_mut();
+        let authority = &accounts.mint_authority.cpi_handle_mut();
+        let collection_mint = &accounts.collection_mint.cpi_handle_mut();
+        let collection_metadata = &accounts.collection_metadata.cpi_handle_mut();
+        let collection_master_edition = &accounts.collection_master_edition.cpi_handle_mut();
+        let system_program = &accounts.system_program.cpi_handle_mut();
+        let sysvar_instructions = &accounts.sysvar_instruction.cpi_handle_mut();
+        let spl_metadata_program = &accounts.token_metadata_program.cpi_handle_mut();
 
         let seeds = &[
             &b"authority"[..], 

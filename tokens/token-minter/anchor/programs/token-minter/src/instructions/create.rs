@@ -5,41 +5,42 @@ use {
             create_metadata_accounts_v3, mpl_token_metadata::types::DataV2,
             CreateMetadataAccountsV3, Metadata,
         },
-        token::{Mint, Token},
+        mint::{self, Mint},
+        token::{self, Token},
     },
 };
 
 #[derive(Accounts)]
-pub struct CreateTokenAccountConstraints<'info> {
+pub struct CreateTokenAccountConstraints {
     #[account(mut)]
-    pub payer: Signer<'info>,
+    pub payer: Signer,
 
     #[account(
         init,
         payer = payer,
         mint::decimals = 9,
-        mint::authority = payer.key(),
-        mint::freeze_authority = payer.key(),
+        mint::authority = payer,
+        mint::freeze_authority = payer,
 
     )]
-    pub mint_account: Account<'info, Mint>,
+    pub mint_account: Account<Mint>,
     /// CHECK: Validate address by deriving pda
     #[account(
         mut,
-        seeds = [b"metadata", token_metadata_program.key().as_ref(), mint_account.key().as_ref()],
+        seeds = [b"metadata", token_metadata_program.address().as_ref(), mint_account.address().as_ref()],
         bump,
-        seeds::program = token_metadata_program.key(),
+        seeds::program = token_metadata_program.address(),
     )]
-    pub metadata_account: UncheckedAccount<'info>,
+    pub metadata_account: UncheckedAccount,
 
-    pub token_program: Program<'info, Token>,
-    pub token_metadata_program: Program<'info, Metadata>,
-    pub system_program: Program<'info, System>,
-    pub rent: Sysvar<'info, Rent>,
+    pub token_program: Program<Token>,
+    pub token_metadata_program: Program<Metadata>,
+    pub system_program: Program<System>,
+    pub rent: Sysvar<Rent>,
 }
 
 pub fn handle_create_token(
-    context: Context<CreateTokenAccountConstraints>,
+    context: &mut Context<CreateTokenAccountConstraints>,
     token_name: String,
     token_symbol: String,
     token_uri: String,
@@ -50,15 +51,15 @@ pub fn handle_create_token(
     // Invoking the create_metadata_account_v3 instruction on the token metadata program
     create_metadata_accounts_v3(
         CpiContext::new(
-            context.accounts.token_metadata_program.key(),
+            context.accounts.token_metadata_program.address(),
             CreateMetadataAccountsV3 {
-                metadata: context.accounts.metadata_account.to_account_info(),
-                mint: context.accounts.mint_account.to_account_info(),
-                mint_authority: context.accounts.payer.to_account_info(),
-                update_authority: context.accounts.payer.to_account_info(),
-                payer: context.accounts.payer.to_account_info(),
-                system_program: context.accounts.system_program.to_account_info(),
-                rent: context.accounts.rent.to_account_info(),
+                metadata: context.accounts.metadata_account.cpi_handle_mut(),
+                mint: context.accounts.mint_account.cpi_handle(),
+                mint_authority: context.accounts.payer.cpi_handle(),
+                update_authority: context.accounts.payer.cpi_handle(),
+                payer: context.accounts.payer.cpi_handle_mut(),
+                system_program: context.accounts.system_program.cpi_handle(),
+                    update_authority_is_signer: true,
             },
         ),
         DataV2 {

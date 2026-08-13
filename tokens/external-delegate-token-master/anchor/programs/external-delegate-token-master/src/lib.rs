@@ -11,19 +11,19 @@ declare_id!("FYPkt5VWMvtyWZDMGCwoKFkE3wXTzphicTpnNGuHWVbD");
 pub mod external_delegate_token_master {
     use super::*;
 
-    pub fn initialize(context: Context<InitializeAccountConstraints>) -> Result<()> {
+    pub fn initialize(context: &mut Context<InitializeAccountConstraints>) -> Result<()> {
         instructions::initialize::handler(context)
     }
 
     pub fn set_ethereum_address(
-        context: Context<SetEthereumAddressAccountConstraints>,
+        context: &mut Context<SetEthereumAddressAccountConstraints>,
         ethereum_address: [u8; 20],
     ) -> Result<()> {
         instructions::set_ethereum_address::handler(context, ethereum_address)
     }
 
     pub fn transfer_tokens(
-        context: Context<TransferTokensAccountConstraints>,
+        context: &mut Context<TransferTokensAccountConstraints>,
         amount: u64,
         signature: [u8; 65],
     ) -> Result<()> {
@@ -31,17 +31,17 @@ pub mod external_delegate_token_master {
     }
 
     pub fn authority_transfer(
-        context: Context<AuthorityTransferAccountConstraints>,
+        context: &mut Context<AuthorityTransferAccountConstraints>,
         amount: u64,
     ) -> Result<()> {
         instructions::authority_transfer::handler(context, amount)
     }
 }
 
-#[account]
+#[account(borsh)]
 #[derive(InitSpace)]
 pub struct UserAccount {
-    pub authority: Pubkey,
+    pub authority: Address,
     pub ethereum_address: [u8; 20],
     /// Strictly increasing counter committed into every signed transfer
     /// authorization, so each Ethereum signature executes exactly once.
@@ -63,9 +63,9 @@ pub enum ErrorCode {
 /// account's stored nonce, a signature is valid for exactly one
 /// (amount, recipient, nonce) execution and cannot be replayed.
 pub fn build_transfer_authorization_message(
-    user_account: &Pubkey,
+    user_account: &Address,
     amount: u64,
-    recipient_token_account: &Pubkey,
+    recipient_token_account: &Address,
     nonce: u64,
 ) -> [u8; 32] {
     let mut hasher = Keccak256::new();

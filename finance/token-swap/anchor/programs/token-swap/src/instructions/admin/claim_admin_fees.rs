@@ -1,4 +1,5 @@
 use anchor_lang::prelude::*;
+use anchor_spl::token;
 use anchor_spl::token_interface::{self, Mint, TokenAccount, TokenInterface, TransferChecked};
 
 use crate::{
@@ -19,7 +20,7 @@ use crate::{
 /// `Signer` constraint on `admin` together mean only the address stored in
 /// `Config.admin` can call this. Any other signer will be rejected by
 /// Anchor's built-in `has_one` check.
-pub fn handle_claim_admin_fees(context: Context<ClaimAdminFeesAccountConstraints>) -> Result<()> {
+pub fn handle_claim_admin_fees(context: &mut Context<ClaimAdminFeesAccountConstraints>) -> Result<()> {
     let owed_a = context.accounts.pool_config.admin_fees_owed_a;
     let owed_b = context.accounts.pool_config.admin_fees_owed_b;
 
@@ -37,8 +38,8 @@ pub fn handle_claim_admin_fees(context: Context<ClaimAdminFeesAccountConstraints
     // Pre-copy seed bytes before the mutable borrow of pool_config.
     let authority_bump = context.bumps.pool_authority;
     let config_bytes = context.accounts.pool_config.config.to_bytes();
-    let mint_a_bytes = context.accounts.mint_a.key().to_bytes();
-    let mint_b_bytes = context.accounts.mint_b.key().to_bytes();
+    let mint_a_bytes = context.accounts.mint_a.address().to_bytes();
+    let mint_b_bytes = context.accounts.mint_b.address().to_bytes();
 
     // Effects: zero the accumulators before the CPIs (Checks-Effects-Interactions).
     // If a CPI fails the whole transaction reverts, so the state reset is safe.
@@ -61,34 +62,34 @@ pub fn handle_claim_admin_fees(context: Context<ClaimAdminFeesAccountConstraints
     if owed_a > 0 {
         token_interface::transfer_checked(
             CpiContext::new_with_signer(
-                context.accounts.token_program.key(),
+                context.accounts.token_program.address(),
                 TransferChecked {
-                    from: context.accounts.pool_a.to_account_info(),
-                    mint: context.accounts.mint_a.to_account_info(),
-                    to: context.accounts.admin_token_a.to_account_info(),
-                    authority: context.accounts.pool_authority.to_account_info(),
+                    from: context.accounts.pool_a.cpi_handle_mut(),
+                    mint: context.accounts.mint_a.cpi_handle(),
+                    to: context.accounts.admin_token_a.cpi_handle_mut(),
+                    authority: context.accounts.pool_authority.cpi_handle(),
                 },
                 signer_seeds,
             ),
             owed_a,
-            context.accounts.mint_a.decimals,
+            context.accounts.mint_a.decimals(),
         )?;
     }
 
     if owed_b > 0 {
         token_interface::transfer_checked(
             CpiContext::new_with_signer(
-                context.accounts.token_program.key(),
+                context.accounts.token_program.address(),
                 TransferChecked {
-                    from: context.accounts.pool_b.to_account_info(),
-                    mint: context.accounts.mint_b.to_account_info(),
-                    to: context.accounts.admin_token_b.to_account_info(),
-                    authority: context.accounts.pool_authority.to_account_info(),
+                    from: context.accounts.pool_b.cpi_handle_mut(),
+                    mint: context.accounts.mint_b.cpi_handle(),
+                    to: context.accounts.admin_token_b.cpi_handle_mut(),
+                    authority: context.accounts.pool_authority.cpi_handle(),
                 },
                 signer_seeds,
             ),
             owed_b,
-            context.accounts.mint_b.decimals,
+            context.accounts.mint_b.decimals(),
         )?;
     }
 
@@ -98,43 +99,43 @@ pub fn handle_claim_admin_fees(context: Context<ClaimAdminFeesAccountConstraints
 }
 
 #[derive(Accounts)]
-pub struct ClaimAdminFeesAccountConstraints<'info> {
+pub struct ClaimAdminFeesAccountConstraints {
     #[account(
         seeds = [CONFIG_SEED],
         bump,
         has_one = admin,
     )]
-    pub config: Account<'info, Config>,
+    pub config: BorshAccount<Config>,
 
     #[account(
         mut,
         seeds = [
             pool_config.config.as_ref(),
-            pool_config.mint_a.key().as_ref(),
-            pool_config.mint_b.key().as_ref(),
+            pool_config.mint_a.address().as_ref(),
+            pool_config.mint_b.address().as_ref(),
         ],
         bump,
         has_one = config,
         has_one = mint_a,
         has_one = mint_b,
     )]
-    pub pool_config: Account<'info, PoolConfig>,
+    pub pool_config: BorshAccount<PoolConfig>,
 
     /// CHECK: PDA that owns the pool reserves; signs the outbound transfers.
     #[account(
         seeds = [
             pool_config.config.as_ref(),
-            mint_a.key().as_ref(),
-            mint_b.key().as_ref(),
+            mint_a.address().as_ref(),
+            mint_b.address().as_ref(),
             AUTHORITY_SEED,
         ],
         bump,
     )]
-    pub pool_authority: UncheckedAccount<'info>,
+    pub pool_authority: UncheckedAccount,
 
-    pub mint_a: Box<InterfaceAccount<'info, Mint>>,
+    pub mint_a: Box<InterfaceAccount<Mint>>,
 
-    pub mint_b: Box<InterfaceAccount<'info, Mint>>,
+    pub mint_b: Box<InterfaceAccount<Mint>>,
 
     /// The pool's token-A reserve. The admin's owed token-A fees are paid out
     /// of this account.
@@ -144,7 +145,7 @@ pub struct ClaimAdminFeesAccountConstraints<'info> {
         associated_token::authority = pool_authority,
         associated_token::token_program = token_program,
     )]
-    pub pool_a: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub pool_a: Box<InterfaceAccount<TokenAccount>>,
 
     /// The pool's token-B reserve. The admin's owed token-B fees are paid out
     /// of this account.
@@ -154,11 +155,11 @@ pub struct ClaimAdminFeesAccountConstraints<'info> {
         associated_token::authority = pool_authority,
         associated_token::token_program = token_program,
     )]
-    pub pool_b: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub pool_b: Box<InterfaceAccount<TokenAccount>>,
 
     /// Must match the address stored in `Config.admin` (enforced by
     /// `has_one = admin` above).
-    pub admin: Signer<'info>,
+    pub admin: Signer,
 
     /// Admin's token-A receiving account. Must already exist; the admin is
     /// expected to create it themselves before calling. Keeps this handler
@@ -169,7 +170,7 @@ pub struct ClaimAdminFeesAccountConstraints<'info> {
         token::authority = admin,
         token::token_program = token_program,
     )]
-    pub admin_token_a: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub admin_token_a: Box<InterfaceAccount<TokenAccount>>,
 
     /// Admin's token-B receiving account. Same constraints as `admin_token_a`.
     #[account(
@@ -178,7 +179,7 @@ pub struct ClaimAdminFeesAccountConstraints<'info> {
         token::authority = admin,
         token::token_program = token_program,
     )]
-    pub admin_token_b: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub admin_token_b: Box<InterfaceAccount<TokenAccount>>,
 
-    pub token_program: Interface<'info, TokenInterface>,
+    pub token_program: Interface<'static, TokenInterface>,
 }

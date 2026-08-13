@@ -1,13 +1,13 @@
 use {crate::state::AdminConfig, anchor_lang::prelude::*};
 
 #[derive(Accounts)]
-pub struct ConfigureAdminAccountConstraints<'info> {
+pub struct ConfigureAdminAccountConstraints {
     #[account(mut)]
-    pub admin: Signer<'info>,
+    pub admin: Signer,
 
     /// CHECK: the new admin
     #[account(mut)]
-    pub new_admin: UncheckedAccount<'info>,
+    pub new_admin: UncheckedAccount,
 
     /// To hold the address of the admin that controls switches
     #[account(
@@ -17,9 +17,9 @@ pub struct ConfigureAdminAccountConstraints<'info> {
         seeds = [b"admin-config"],
         bump
     )]
-    pub admin_config: Account<'info, AdminConfig>,
+    pub admin_config: BorshAccount<AdminConfig>,
 
-    pub system_program: Program<'info, System>,
+    pub system_program: Program<System>,
 }
 
 pub fn handle_is_admin(accounts: &mut ConfigureAdminAccountConstraints) -> Result<()> {
@@ -29,18 +29,18 @@ pub fn handle_is_admin(accounts: &mut ConfigureAdminAccountConstraints) -> Resul
         if accounts.admin_config.is_initialised {
             // make sure it's the admin
             //
-            require_keys_eq!(accounts.admin.key(), accounts.admin_config.admin,);
+            require_keys_eq!(accounts.admin.address(), accounts.admin_config.admin,);
 
             // make sure the admin is not reentering their key
             //
-            require_keys_neq!(accounts.admin.key(), accounts.new_admin.key());
+            require_keys_neq!(accounts.admin.address(), accounts.new_admin.address());
         }
         Ok(())
     }
 
 pub fn handle_configure_admin(accounts: &mut ConfigureAdminAccountConstraints, bump: u8) -> Result<()> {
-        accounts.admin_config.set_inner(AdminConfig {
-            admin: accounts.new_admin.key(), // set the admin pubkey that can switch transfers on/off
+        *accounts.admin_config = (AdminConfig {
+            admin: *accounts.new_admin.address(), // set the admin pubkey that can switch transfers on/off
             is_initialised: true,        // let us know an admin has been set
             bump,                        // canonical bump for the admin-config PDA
         });

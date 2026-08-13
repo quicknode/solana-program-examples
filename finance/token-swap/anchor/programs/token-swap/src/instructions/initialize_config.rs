@@ -7,13 +7,13 @@ use crate::{
 };
 
 pub fn handle_initialize_config(
-    context: Context<InitializeConfigAccountConstraints>,
+    context: &mut Context<InitializeConfigAccountConstraints>,
     fee: u16,
     admin_share_bps: u16,
 ) -> Result<()> {
     let bump = context.bumps.config;
     let config = &mut context.accounts.config;
-    config.admin = context.accounts.admin.key();
+    config.admin = *context.accounts.admin.address();
     config.fee = fee;
     config.admin_share_bps = admin_share_bps;
     config.bump = bump;
@@ -23,7 +23,7 @@ pub fn handle_initialize_config(
 
 #[derive(Accounts)]
 #[instruction(fee: u16, admin_share_bps: u16)]
-pub struct InitializeConfigAccountConstraints<'info> {
+pub struct InitializeConfigAccountConstraints {
     #[account(
         init,
         payer = payer,
@@ -33,16 +33,16 @@ pub struct InitializeConfigAccountConstraints<'info> {
         constraint = (fee as u64) < BASIS_POINTS_DIVISOR @ AmmError::InvalidFee,
         constraint = (admin_share_bps as u64) < BASIS_POINTS_DIVISOR @ AmmError::AdminShareTooHigh,
     )]
-    pub config: Account<'info, Config>,
+    pub config: BorshAccount<Config>,
 
     /// The admin of the AMM
     /// CHECK: Read only, delegatable creation
-    pub admin: UncheckedAccount<'info>,
+    pub admin: UncheckedAccount,
 
     /// The account paying for all rents
     #[account(mut)]
-    pub payer: Signer<'info>,
+    pub payer: Signer,
 
     /// Solana ecosystem accounts
-    pub system_program: Program<'info, System>,
+    pub system_program: Program<System>,
 }

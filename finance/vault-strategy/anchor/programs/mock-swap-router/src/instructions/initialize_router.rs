@@ -4,11 +4,11 @@ use anchor_spl::token_interface::{Mint, TokenInterface};
 use crate::state::RouterConfig;
 
 #[derive(Accounts)]
-pub struct InitializeRouterAccountConstraints<'info> {
+pub struct InitializeRouterAccountConstraints {
     #[account(mut)]
-    pub authority: Signer<'info>,
+    pub authority: Signer,
 
-    pub usdc_mint: InterfaceAccount<'info, Mint>,
+    pub usdc_mint: InterfaceAccount<Mint>,
 
     #[account(
         init,
@@ -17,26 +17,26 @@ pub struct InitializeRouterAccountConstraints<'info> {
         seeds = [b"router_config"],
         bump
     )]
-    pub router_config: Account<'info, RouterConfig>,
+    pub router_config: BorshAccount<RouterConfig>,
 
     /// CHECK: PDA used as mint authority only - no data stored
     #[account(
         seeds = [b"router_authority"],
         bump
     )]
-    pub router_authority: UncheckedAccount<'info>,
+    pub router_authority: UncheckedAccount,
 
-    pub token_program: Interface<'info, TokenInterface>,
-    pub system_program: Program<'info, System>,
+    pub token_program: Interface<'static, TokenInterface>,
+    pub system_program: Program<System>,
 }
 
 pub fn handle_initialize_router(
-    context: Context<InitializeRouterAccountConstraints>,
-    _usdc_mint: Pubkey,
+    context: &mut Context<InitializeRouterAccountConstraints>,
+    _usdc_mint: Address,
 ) -> Result<()> {
-    context.accounts.router_config.set_inner(RouterConfig {
-        authority: context.accounts.authority.key(),
-        usdc_mint: context.accounts.usdc_mint.key(),
+    *context.accounts.router_config = (RouterConfig {
+        authority: *context.accounts.authority.address(),
+        usdc_mint: *context.accounts.usdc_mint.address(),
         bump: context.bumps.router_config,
     });
     Ok(())

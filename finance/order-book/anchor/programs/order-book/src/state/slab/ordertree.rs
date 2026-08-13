@@ -278,7 +278,7 @@ impl OrderTreeNodes {
             let parent_contents = *self
                 .node(parent_handle)
                 .ok_or_else(|| error!(ErrorCode::OrderBookFull))?;
-            let parent_key = parent_contents.key().unwrap();
+            let parent_key = parent_contents.address().unwrap();
 
             // Exact-key collision: only possible if the existing slot is a
             // leaf (inner nodes' `key` is just a shared prefix). Overwrite

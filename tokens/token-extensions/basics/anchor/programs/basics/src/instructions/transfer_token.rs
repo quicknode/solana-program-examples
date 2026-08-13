@@ -3,36 +3,36 @@ use anchor_spl::associated_token::AssociatedToken;
 use anchor_spl::token_interface::{self, Mint, TokenAccount, TokenInterface, TransferChecked};
 
 #[derive(Accounts)]
-pub struct TransferTokenAccountConstraints<'info> {
+pub struct TransferTokenAccountConstraints {
     #[account(mut)]
-    pub signer: Signer<'info>,
+    pub signer: Signer,
     #[account(mut)]
-    pub from: InterfaceAccount<'info, TokenAccount>,
-    pub to: SystemAccount<'info>,
+    pub from: InterfaceAccount<TokenAccount>,
+    pub to: SystemAccount,
     #[account(
         init,
         associated_token::mint = mint,
         payer = signer,
         associated_token::authority = to
     )]
-    pub to_ata: InterfaceAccount<'info, TokenAccount>,
+    pub to_ata: InterfaceAccount<TokenAccount>,
     #[account(mut)]
-    pub mint: InterfaceAccount<'info, Mint>,
-    pub token_program: Interface<'info, TokenInterface>,
-    pub system_program: Program<'info, System>,
-    pub associated_token_program: Program<'info, AssociatedToken>,
+    pub mint: InterfaceAccount<Mint>,
+    pub token_program: Interface<'static, TokenInterface>,
+    pub system_program: Program<System>,
+    pub associated_token_program: Program<AssociatedToken>,
 }
 
-pub fn handler(context: Context<TransferTokenAccountConstraints>, amount: u64) -> Result<()> {
+pub fn handler(context: &mut Context<TransferTokenAccountConstraints>, amount: u64) -> Result<()> {
     let cpi_accounts = TransferChecked {
-        from: context.accounts.from.to_account_info().clone(),
-        mint: context.accounts.mint.to_account_info().clone(),
-        to: context.accounts.to_ata.to_account_info().clone(),
-        authority: context.accounts.signer.to_account_info(),
+        from: context.accounts.from.cpi_handle_mut().clone(),
+        mint: context.accounts.mint.cpi_handle().clone(),
+        to: context.accounts.to_ata.cpi_handle_mut().clone(),
+        authority: context.accounts.signer.cpi_handle(),
     };
-    let cpi_program = context.accounts.token_program.key();
+    let cpi_program = context.accounts.token_program.address();
     let cpi_context = CpiContext::new(cpi_program, cpi_accounts);
-    token_interface::transfer_checked(cpi_context, amount, context.accounts.mint.decimals)?;
+    token_interface::transfer_checked(cpi_context, amount, context.accounts.mint.decimals())?;
     msg!("Transfer Token");
     Ok(())
 }

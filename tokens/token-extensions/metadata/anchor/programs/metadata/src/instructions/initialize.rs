@@ -1,4 +1,5 @@
 use anchor_lang::prelude::*;
+use anchor_spl::mint;
 use anchor_lang::system_program::{transfer, Transfer};
 use anchor_spl::token_interface::{
     token_metadata_initialize, Mint, Token2022, TokenMetadataInitialize,
@@ -7,9 +8,9 @@ use spl_token_metadata_interface::state::TokenMetadata;
 use spl_type_length_value::variable_len_pack::VariableLenPack;
 
 #[derive(Accounts)]
-pub struct InitializeAccountConstraints<'info> {
+pub struct InitializeAccountConstraints {
     #[account(mut)]
-    pub payer: Signer<'info>,
+    pub payer: Signer,
 
     #[account(
         init,
@@ -19,12 +20,12 @@ pub struct InitializeAccountConstraints<'info> {
         extensions::metadata_pointer::authority = payer,
         extensions::metadata_pointer::metadata_address = mint_account,
     )]
-    pub mint_account: InterfaceAccount<'info, Mint>,
-    pub token_program: Program<'info, Token2022>,
-    pub system_program: Program<'info, System>,
+    pub mint_account: InterfaceAccount<Mint>,
+    pub token_program: Program<Token2022>,
+    pub system_program: Program<System>,
 }
 
-pub fn process_initialize(context: Context<InitializeAccountConstraints>, args: TokenMetadataArgs) -> Result<()> {
+pub fn process_initialize(context: &mut Context<InitializeAccountConstraints>, args: TokenMetadataArgs) -> Result<()> {
     let TokenMetadataArgs { name, symbol, uri } = args;
 
     // Define token metadata
@@ -39,15 +40,15 @@ pub fn process_initialize(context: Context<InitializeAccountConstraints>, args: 
     let data_len = 4 + token_metadata.get_packed_len()?;
 
     // Calculate lamports required for the additional metadata
-    let lamports = Rent::get()?.minimum_balance(data_len);
+    let lamports = Rent::get()?.try_minimum_balance(data_len)?;
 
     // Transfer additional lamports to mint account
     transfer(
         CpiContext::new(
-            context.accounts.system_program.key(),
+            context.accounts.system_program.address(),
             Transfer {
-                from: context.accounts.payer.to_account_info(),
-                to: context.accounts.mint_account.to_account_info(),
+                from: context.accounts.payer.cpi_handle_mut(),
+                to: context.accounts.mint_account.cpi_handle_mut(),
             },
         ),
         lamports,
@@ -56,13 +57,13 @@ pub fn process_initialize(context: Context<InitializeAccountConstraints>, args: 
     // Initialize token metadata
     token_metadata_initialize(
         CpiContext::new(
-            context.accounts.token_program.key(),
+            context.accounts.token_program.address(),
             TokenMetadataInitialize {
-                program_id: context.accounts.token_program.to_account_info(),
-                mint: context.accounts.mint_account.to_account_info(),
-                metadata: context.accounts.mint_account.to_account_info(),
-                mint_authority: context.accounts.payer.to_account_info(),
-                update_authority: context.accounts.payer.to_account_info(),
+                program_id: context.accounts.token_program.cpi_handle_mut(),
+                mint: context.accounts.mint_account.cpi_handle(),
+                metadata: context.accounts.mint_account.cpi_handle_mut(),
+                mint_authority: context.accounts.payer.cpi_handle(),
+                update_authority: context.accounts.payer.cpi_handle(),
             },
         ),
         name,

@@ -28,7 +28,7 @@ pub const MAX_ORDERS_PER_SIDE: usize = MAX_TREE_NODES;
 pub struct OrderBook {
     /// Market PDA this book belongs to. Constrained onchain via the
     /// `market` `has_one = order_book` (and vice-versa) bindings.
-    pub market: Pubkey,
+    pub market: Address,
 
     /// Tree roots for the two sides. Kept on this struct (rather than inside
     /// the OrderTreeNodes blobs) so each side's `leaf_count` is cheap to read
@@ -68,14 +68,14 @@ pub struct RestingOrderView {
     pub order_id: u64,
     pub price: u64,
     pub quantity: u64,
-    pub owner: Pubkey,
+    pub owner: Address,
 }
 
 impl OrderBook {
     /// First-time initialization. Sets the market binding, the order-id
     /// counter, and stamps each slab with its side tag so the iterator knows
     /// which way to walk.
-    pub fn initialize(&mut self, market: Pubkey, bump: u8) {
+    pub fn initialize(&mut self, market: Address, bump: u8) {
         self.market = market;
         self.bids_root = OrderTreeRoot::default();
         self.asks_root = OrderTreeRoot::default();
@@ -112,7 +112,7 @@ impl OrderBook {
         side: OrderSide,
         price: u64,
         quantity: u64,
-        owner: Pubkey,
+        owner: Address,
         order_id: u64,
         timestamp: i64,
     ) -> Result<()> {

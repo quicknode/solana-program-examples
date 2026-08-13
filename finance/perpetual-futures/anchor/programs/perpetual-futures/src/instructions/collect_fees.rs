@@ -8,7 +8,7 @@ use crate::constants::{AUTHORITY_SEED, POOL_SEED, VAULT_SEED};
 use crate::errors::PerpError;
 use crate::state::Pool;
 
-pub fn handle_collect_fees(context: Context<CollectFeesAccountConstraints>) -> Result<()> {
+pub fn handle_collect_fees(context: &mut Context<CollectFeesAccountConstraints>) -> Result<()> {
     let pool = &mut context.accounts.pool;
     let amount = pool.protocol_fees;
     require!(amount > 0, PerpError::NothingToClaim);
@@ -16,30 +16,30 @@ pub fn handle_collect_fees(context: Context<CollectFeesAccountConstraints>) -> R
     // Effects before interaction: zero the balance, then transfer.
     pool.protocol_fees = 0;
 
-    let pool_key = pool.key();
+    let pool_key = pool.address();
     let authority_seeds: &[&[u8]] = &[AUTHORITY_SEED, pool_key.as_ref(), &[pool.authority_bump]];
     transfer_checked(
         CpiContext::new_with_signer(
-            context.accounts.token_program.key(),
+            context.accounts.token_program.address(),
             TransferChecked {
-                from: context.accounts.custody_vault.to_account_info(),
-                mint: context.accounts.collateral_mint.to_account_info(),
-                to: context.accounts.authority_collateral.to_account_info(),
-                authority: context.accounts.pool_authority.to_account_info(),
+                from: context.accounts.custody_vault.cpi_handle_mut(),
+                mint: context.accounts.collateral_mint.cpi_handle(),
+                to: context.accounts.authority_collateral.cpi_handle_mut(),
+                authority: context.accounts.pool_authority.cpi_handle(),
             },
             &[authority_seeds],
         ),
         amount,
-        context.accounts.collateral_mint.decimals,
+        context.accounts.collateral_mint.decimals(),
     )?;
 
     Ok(())
 }
 
 #[derive(Accounts)]
-pub struct CollectFeesAccountConstraints<'info> {
+pub struct CollectFeesAccountConstraints {
     #[account(mut)]
-    pub authority: Signer<'info>,
+    pub authority: Signer,
 
     #[account(
         mut,
@@ -49,23 +49,23 @@ pub struct CollectFeesAccountConstraints<'info> {
         has_one = collateral_mint,
         has_one = custody_vault,
     )]
-    pub pool: Box<Account<'info, Pool>>,
+    pub pool: Box<BorshAccount<Pool>>,
 
     /// CHECK: PDA authority over the vault.
     #[account(
-        seeds = [AUTHORITY_SEED, pool.key().as_ref()],
+        seeds = [AUTHORITY_SEED, pool.address().as_ref()],
         bump = pool.authority_bump,
     )]
-    pub pool_authority: UncheckedAccount<'info>,
+    pub pool_authority: UncheckedAccount,
 
-    pub collateral_mint: Box<InterfaceAccount<'info, Mint>>,
+    pub collateral_mint: Box<InterfaceAccount<Mint>>,
 
     #[account(
         mut,
-        seeds = [VAULT_SEED, pool.key().as_ref()],
+        seeds = [VAULT_SEED, pool.address().as_ref()],
         bump,
     )]
-    pub custody_vault: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub custody_vault: Box<InterfaceAccount<TokenAccount>>,
 
     #[account(
         init_if_needed,
@@ -74,9 +74,9 @@ pub struct CollectFeesAccountConstraints<'info> {
         associated_token::authority = authority,
         associated_token::token_program = token_program,
     )]
-    pub authority_collateral: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub authority_collateral: Box<InterfaceAccount<TokenAccount>>,
 
-    pub token_program: Interface<'info, TokenInterface>,
-    pub associated_token_program: Program<'info, AssociatedToken>,
-    pub system_program: Program<'info, System>,
+    pub token_program: Interface<'static, TokenInterface>,
+    pub associated_token_program: Program<AssociatedToken>,
+    pub system_program: Program<System>,
 }

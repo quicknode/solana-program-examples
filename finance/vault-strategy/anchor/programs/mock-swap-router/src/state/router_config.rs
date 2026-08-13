@@ -1,9 +1,9 @@
 use anchor_lang::prelude::*;
 
-#[account]
+#[account(borsh)]
 #[derive(InitSpace)]
 pub struct RouterConfig {
-    pub authority: Pubkey,
-    pub usdc_mint: Pubkey,
+    pub authority: Address,
+    pub usdc_mint: Address,
     pub bump: u8,
 }

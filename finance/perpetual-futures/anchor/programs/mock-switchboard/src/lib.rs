@@ -24,13 +24,13 @@ pub mod mock_switchboard {
     /// Initialize the mock feed with an initial price. The signer becomes the
     /// authority allowed to push later price updates.
     pub fn initialize_feed(
-        context: Context<InitializeFeedAccountConstraints>,
+        context: &mut Context<InitializeFeedAccountConstraints>,
         price: i128,
         scale: u32,
         confidence: u64,
     ) -> Result<()> {
         let feed = &mut context.accounts.feed;
-        feed.authority = context.accounts.authority.key();
+        feed.authority = *context.accounts.authority.address();
         feed.price = price;
         feed.scale = scale;
         feed.last_update_slot = Clock::get()?.slot;
@@ -43,7 +43,7 @@ pub mod mock_switchboard {
     /// is an authority-gated write, because the goal is to drive deterministic
     /// test scenarios.
     pub fn set_price(
-        context: Context<SetPriceAccountConstraints>,
+        context: &mut Context<SetPriceAccountConstraints>,
         price: i128,
         confidence: u64,
     ) -> Result<()> {
@@ -56,38 +56,38 @@ pub mod mock_switchboard {
 }
 
 #[derive(Accounts)]
-pub struct InitializeFeedAccountConstraints<'info> {
+pub struct InitializeFeedAccountConstraints {
     #[account(
         init,
         payer = authority,
         space = MockFeed::DISCRIMINATOR.len() + MockFeed::INIT_SPACE,
     )]
-    pub feed: Account<'info, MockFeed>,
+    pub feed: BorshAccount<MockFeed>,
 
     #[account(mut)]
-    pub authority: Signer<'info>,
+    pub authority: Signer,
 
-    pub system_program: Program<'info, System>,
+    pub system_program: Program<System>,
 }
 
 #[derive(Accounts)]
-pub struct SetPriceAccountConstraints<'info> {
+pub struct SetPriceAccountConstraints {
     #[account(
         mut,
         has_one = authority,
     )]
-    pub feed: Account<'info, MockFeed>,
+    pub feed: BorshAccount<MockFeed>,
 
-    pub authority: Signer<'info>,
+    pub authority: Signer,
 }
 
 /// Mock of a Switchboard On-Demand feed. Real feeds carry many more fields
 /// (median, range, sample window, signatures) — this is the bare minimum the
 /// perpetual-futures program needs to do a price comparison.
 #[derive(InitSpace)]
-#[account]
+#[account(borsh)]
 pub struct MockFeed {
-    pub authority: Pubkey,
+    pub authority: Address,
 
     /// Signed 128-bit fixed-point price. Real Switchboard prices are also i128.
     pub price: i128,

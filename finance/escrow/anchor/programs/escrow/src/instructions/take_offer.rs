@@ -10,16 +10,16 @@ use crate::Offer;
 use super::{close_token_account, transfer_tokens};
 
 #[derive(Accounts)]
-pub struct TakeOfferAccountConstraints<'info> {
+pub struct TakeOfferAccountConstraints {
     #[account(mut)]
-    pub taker: Signer<'info>,
+    pub taker: Signer,
 
     #[account(mut)]
-    pub maker: SystemAccount<'info>,
+    pub maker: SystemAccount,
 
-    pub token_mint_a: InterfaceAccount<'info, Mint>,
+    pub token_mint_a: InterfaceAccount<Mint>,
 
-    pub token_mint_b: InterfaceAccount<'info, Mint>,
+    pub token_mint_b: InterfaceAccount<Mint>,
 
     #[account(
         init_if_needed,
@@ -28,7 +28,7 @@ pub struct TakeOfferAccountConstraints<'info> {
         associated_token::authority = taker,
         associated_token::token_program = token_program,
     )]
-    pub taker_token_account_a: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub taker_token_account_a: Box<InterfaceAccount<TokenAccount>>,
 
     #[account(
         mut,
@@ -36,7 +36,7 @@ pub struct TakeOfferAccountConstraints<'info> {
         associated_token::authority = taker,
         associated_token::token_program = token_program,
     )]
-    pub taker_token_account_b: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub taker_token_account_b: Box<InterfaceAccount<TokenAccount>>,
 
     // The maker's token-B ATA is initialized in make_offer, paid by the maker.
     #[account(
@@ -45,7 +45,7 @@ pub struct TakeOfferAccountConstraints<'info> {
         associated_token::authority = maker,
         associated_token::token_program = token_program,
     )]
-    pub maker_token_account_b: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub maker_token_account_b: Box<InterfaceAccount<TokenAccount>>,
 
     #[account(
         mut,
@@ -53,10 +53,10 @@ pub struct TakeOfferAccountConstraints<'info> {
         has_one = maker,
         has_one = token_mint_a,
         has_one = token_mint_b,
-        seeds = [b"offer", maker.key().as_ref(), offer.id.to_le_bytes().as_ref()],
+        seeds = [b"offer", maker.address().as_ref(), offer.id.to_le_bytes().as_ref()],
         bump = offer.bump
     )]
-    offer: Account<'info, Offer>,
+    offer: BorshAccount<Offer>,
 
     #[account(
         mut,
@@ -64,11 +64,11 @@ pub struct TakeOfferAccountConstraints<'info> {
         associated_token::authority = offer,
         associated_token::token_program = token_program,
     )]
-    pub vault: InterfaceAccount<'info, TokenAccount>,
+    pub vault: InterfaceAccount<TokenAccount>,
 
-    pub associated_token_program: Program<'info, AssociatedToken>,
-    pub token_program: Interface<'info, TokenInterface>,
-    pub system_program: Program<'info, System>,
+    pub associated_token_program: Program<AssociatedToken>,
+    pub token_program: Interface<'static, TokenInterface>,
+    pub system_program: Program<System>,
 }
 
 pub fn handle_send_wanted_tokens_to_maker(
@@ -79,14 +79,14 @@ pub fn handle_send_wanted_tokens_to_maker(
         &context.accounts.maker_token_account_b,
         &context.accounts.offer.token_b_wanted_amount,
         &context.accounts.token_mint_b,
-        &context.accounts.taker.to_account_info(),
+        &context.accounts.taker.cpi_handle_mut(),
         &context.accounts.token_program,
         None,
     )
 }
 
-pub fn handle_withdraw_and_close_vault(context: Context<TakeOfferAccountConstraints>) -> Result<()> {
-    let maker_key = context.accounts.maker.key();
+pub fn handle_withdraw_and_close_vault(context: &mut Context<TakeOfferAccountConstraints>) -> Result<()> {
+    let maker_key = context.accounts.maker.address();
     let id_bytes = context.accounts.offer.id.to_le_bytes();
     let bump = [context.accounts.offer.bump];
     let offer_seeds: &[&[u8]] = &[b"offer", maker_key.as_ref(), id_bytes.as_ref(), &bump];
@@ -94,9 +94,9 @@ pub fn handle_withdraw_and_close_vault(context: Context<TakeOfferAccountConstrai
     transfer_tokens(
         &context.accounts.vault,
         &context.accounts.taker_token_account_a,
-        &context.accounts.vault.amount,
+        &context.accounts.vault.amount(),
         &context.accounts.token_mint_a,
-        &context.accounts.offer.to_account_info(),
+        &context.accounts.offer.cpi_handle_mut(),
         &context.accounts.token_program,
         Some(offer_seeds),
     )?;
@@ -105,8 +105,8 @@ pub fn handle_withdraw_and_close_vault(context: Context<TakeOfferAccountConstrai
     // to the maker (the offer account does the same via `close = maker`).
     close_token_account(
         &context.accounts.vault,
-        &context.accounts.maker.to_account_info(),
-        &context.accounts.offer.to_account_info(),
+        &context.accounts.maker.cpi_handle_mut(),
+        &context.accounts.offer.cpi_handle_mut(),
         &context.accounts.token_program,
         Some(offer_seeds),
     )

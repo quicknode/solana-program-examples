@@ -1,4 +1,5 @@
 use anchor_lang::prelude::*;
+use anchor_spl::mint;
 use anchor_spl::{
     associated_token::AssociatedToken,
     metadata::Metadata,
@@ -17,9 +18,9 @@ use anchor_spl::metadata::mpl_token_metadata::{
 use super::validate_metadata_strings;
 
 #[derive(Accounts)]
-pub struct MintNftAccountConstraints<'info> {
+pub struct MintNftAccountConstraints {
     #[account(mut)]
-    pub owner: Signer<'info>,
+    pub owner: Signer,
 
     #[account(
         init,
@@ -28,7 +29,7 @@ pub struct MintNftAccountConstraints<'info> {
         mint::authority = mint_authority,
         mint::freeze_authority = mint_authority,
     )]
-    pub mint: Account<'info, Mint>,
+    pub mint: Account<Mint>,
 
     #[account(
         init,
@@ -36,30 +37,30 @@ pub struct MintNftAccountConstraints<'info> {
         associated_token::mint = mint,
         associated_token::authority = owner
     )]
-    pub destination: Account<'info, TokenAccount>,
+    pub destination: Account<TokenAccount>,
 
     #[account(mut)]
     /// CHECK: This account will be initialized by the metaplex program
-    pub metadata: UncheckedAccount<'info>,
+    pub metadata: UncheckedAccount,
 
     #[account(mut)]
     /// CHECK: This account will be initialized by the metaplex program
-    pub master_edition: UncheckedAccount<'info>,
+    pub master_edition: UncheckedAccount,
 
     #[account(
         seeds = [b"authority"],
         bump,
     )]
     /// CHECK: This is account is not initialized and is being used for signing purposes only
-    pub mint_authority: UncheckedAccount<'info>,
+    pub mint_authority: UncheckedAccount,
 
     #[account(mut)]
-    pub collection_mint: Account<'info, Mint>,
+    pub collection_mint: Account<Mint>,
 
-    pub system_program: Program<'info, System>,
-    pub token_program: Program<'info, Token>,
-    pub associated_token_program: Program<'info, AssociatedToken>,
-    pub token_metadata_program: Program<'info, Metadata>,
+    pub system_program: Program<System>,
+    pub token_program: Program<Token>,
+    pub associated_token_program: Program<AssociatedToken>,
+    pub token_metadata_program: Program<Metadata>,
 }
 
 /// Mints an NFT into the collection with caller-supplied metadata.
@@ -76,30 +77,30 @@ pub fn handle_mint_nft(
 ) -> Result<()> {
     validate_metadata_strings(&name, &symbol, &uri)?;
 
-    let metadata = &accounts.metadata.to_account_info();
-    let master_edition = &accounts.master_edition.to_account_info();
-    let mint = &accounts.mint.to_account_info();
-    let authority = &accounts.mint_authority.to_account_info();
-    let payer = &accounts.owner.to_account_info();
-    let system_program = &accounts.system_program.to_account_info();
-    let spl_token_program = &accounts.token_program.to_account_info();
-    let spl_metadata_program = &accounts.token_metadata_program.to_account_info();
+    let metadata = &accounts.metadata.cpi_handle_mut();
+    let master_edition = &accounts.master_edition.cpi_handle_mut();
+    let mint = &accounts.mint.cpi_handle_mut();
+    let authority = &accounts.mint_authority.cpi_handle_mut();
+    let payer = &accounts.owner.cpi_handle_mut();
+    let system_program = &accounts.system_program.cpi_handle_mut();
+    let spl_token_program = &accounts.token_program.cpi_handle_mut();
+    let spl_metadata_program = &accounts.token_metadata_program.cpi_handle_mut();
 
     let seeds = &[&b"authority"[..], &[bumps.mint_authority]];
     let signer_seeds = &[&seeds[..]];
 
     let cpi_accounts = MintTo {
-        mint: accounts.mint.to_account_info(),
-        to: accounts.destination.to_account_info(),
-        authority: accounts.mint_authority.to_account_info(),
+        mint: accounts.mint.cpi_handle_mut(),
+        to: accounts.destination.cpi_handle_mut(),
+        authority: accounts.mint_authority.cpi_handle(),
     };
     let cpi_ctx =
-        CpiContext::new_with_signer(accounts.token_program.key(), cpi_accounts, signer_seeds);
+        CpiContext::new_with_signer(accounts.token_program.address(), cpi_accounts, signer_seeds);
     mint_to(cpi_ctx, 1)?;
     msg!("NFT minted!");
 
     let creator = vec![Creator {
-        address: accounts.mint_authority.key(),
+        address: *accounts.mint_authority.address(),
         verified: true,
         share: 100,
     }];
@@ -124,7 +125,7 @@ pub fn handle_mint_nft(
                 creators: Some(creator),
                 collection: Some(Collection {
                     verified: false,
-                    key: accounts.collection_mint.key(),
+                    key: *accounts.collection_mint.address(),
                 }),
                 uses: None,
             },

@@ -24,7 +24,7 @@ declare_id!("9aZZ7TJ2fQZxY8hMtWXywp5y6BgqC4N2BPcr9FDT47sW");
 pub mod extension_nft {
     use super::*;
 
-    pub fn init_player(context: Context<InitPlayerAccountConstraints>, _level_seed: String) -> Result<()> {
+    pub fn init_player(context: &mut Context<InitPlayerAccountConstraints>, _level_seed: String) -> Result<()> {
         init_player::handle_init_player(context)
     }
 
@@ -36,14 +36,14 @@ pub mod extension_nft {
     // context binding by the literal name `ctx`, so this handler's context
     // parameter must be named `ctx` (not `context`) for the macro to expand.
     #[session_auth_or(
-        ctx.accounts.player.authority.key() == ctx.accounts.signer.key(),
+        ctx.accounts.player.authority.address() == ctx.accounts.signer.address(),
         GameErrorCode::WrongAuthority
     )]
-    pub fn chop_tree(ctx: Context<ChopTreeAccountConstraints>, _level_seed: String, counter: u16) -> Result<()> {
+    pub fn chop_tree(ctx: &mut Context<ChopTreeAccountConstraints>, _level_seed: String, counter: u16) -> Result<()> {
         chop_tree::chop_tree(ctx, counter, 1)
     }
 
-    pub fn mint_nft(context: Context<MintNftAccountConstraints>) -> Result<()> {
+    pub fn mint_nft(context: &mut Context<MintNftAccountConstraints>) -> Result<()> {
         mint_nft::handle_mint_nft(context)
     }
 }

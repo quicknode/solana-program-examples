@@ -1,4 +1,6 @@
 use anchor_lang::prelude::*;
+use anchor_spl::token;
+use anchor_spl::mint;
 use anchor_spl::{
     associated_token::AssociatedToken,
     token_interface::{Mint, TokenAccount, TokenInterface},
@@ -33,7 +35,7 @@ pub struct PoolParameters {
 }
 
 pub fn handle_initialize_pool(
-    context: Context<InitializePoolAccountConstraints>,
+    context: &mut Context<InitializePoolAccountConstraints>,
     parameters: PoolParameters,
 ) -> Result<()> {
     let denominator = BASIS_POINTS_DENOMINATOR as u16;
@@ -76,12 +78,12 @@ pub fn handle_initialize_pool(
     );
 
     let pool = &mut context.accounts.pool;
-    pool.authority = context.accounts.authority.key();
-    pool.collateral_mint = context.accounts.collateral_mint.key();
-    pool.oracle_feed = context.accounts.oracle_feed.key();
+    pool.authority = *context.accounts.authority.address();
+    pool.collateral_mint = *context.accounts.collateral_mint.address();
+    pool.oracle_feed = *context.accounts.oracle_feed.address();
     pool.oracle_scale = parameters.oracle_scale;
-    pool.custody_vault = context.accounts.custody_vault.key();
-    pool.lp_mint = context.accounts.lp_mint.key();
+    pool.custody_vault = *context.accounts.custody_vault.address();
+    pool.lp_mint = *context.accounts.lp_mint.address();
     pool.liquidity = 0;
     pool.reserved_liquidity = 0;
     pool.total_collateral = 0;
@@ -106,57 +108,57 @@ pub fn handle_initialize_pool(
 }
 
 #[derive(Accounts)]
-pub struct InitializePoolAccountConstraints<'info> {
+pub struct InitializePoolAccountConstraints {
     #[account(mut)]
-    pub authority: Signer<'info>,
+    pub authority: Signer,
 
     #[account(
         init,
         payer = authority,
         space = Pool::DISCRIMINATOR.len() + Pool::INIT_SPACE,
-        seeds = [POOL_SEED, collateral_mint.key().as_ref(), oracle_feed.key().as_ref()],
+        seeds = [POOL_SEED, collateral_mint.address().as_ref(), oracle_feed.address().as_ref()],
         bump,
     )]
-    pub pool: Box<Account<'info, Pool>>,
+    pub pool: Box<BorshAccount<Pool>>,
 
-    pub collateral_mint: Box<InterfaceAccount<'info, Mint>>,
+    pub collateral_mint: Box<InterfaceAccount<Mint>>,
 
     /// CHECK: The oracle feed account. Its key is stored on the pool and every
     /// read validates the layout, scale, and freshness; it is never trusted by
     /// type. Swap for a real Switchboard feed in production.
-    pub oracle_feed: UncheckedAccount<'info>,
+    pub oracle_feed: UncheckedAccount,
 
     /// CHECK: PDA that owns the vault and the liquidity-provider mint. Holds no
     /// data; used only to sign vault and mint CPIs.
     #[account(
-        seeds = [AUTHORITY_SEED, pool.key().as_ref()],
+        seeds = [AUTHORITY_SEED, pool.address().as_ref()],
         bump,
     )]
-    pub pool_authority: UncheckedAccount<'info>,
+    pub pool_authority: UncheckedAccount,
 
     #[account(
         init,
         payer = authority,
-        seeds = [LP_MINT_SEED, pool.key().as_ref()],
+        seeds = [LP_MINT_SEED, pool.address().as_ref()],
         bump,
-        mint::decimals = collateral_mint.decimals,
+        mint::decimals = collateral_mint.decimals(),
         mint::authority = pool_authority,
         mint::token_program = token_program,
     )]
-    pub lp_mint: Box<InterfaceAccount<'info, Mint>>,
+    pub lp_mint: Box<InterfaceAccount<Mint>>,
 
     #[account(
         init,
         payer = authority,
-        seeds = [VAULT_SEED, pool.key().as_ref()],
+        seeds = [VAULT_SEED, pool.address().as_ref()],
         bump,
         token::mint = collateral_mint,
         token::authority = pool_authority,
         token::token_program = token_program,
     )]
-    pub custody_vault: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub custody_vault: Box<InterfaceAccount<TokenAccount>>,
 
-    pub token_program: Interface<'info, TokenInterface>,
-    pub associated_token_program: Program<'info, AssociatedToken>,
-    pub system_program: Program<'info, System>,
+    pub token_program: Interface<'static, TokenInterface>,
+    pub associated_token_program: Program<AssociatedToken>,
+    pub system_program: Program<System>,
 }

@@ -7,9 +7,9 @@ use {
 };
 
 #[derive(Accounts)]
-pub struct MintTokenAccountConstraints<'info> {
+pub struct MintTokenAccountConstraints {
     #[account(mut)]
-    pub payer: Signer<'info>,
+    pub payer: Signer,
 
     // Mint account address is a PDA
     #[account(
@@ -17,7 +17,7 @@ pub struct MintTokenAccountConstraints<'info> {
         seeds = [b"mint"],
         bump
     )]
-    pub mint_account: Account<'info, Mint>,
+    pub mint_account: Account<Mint>,
 
     // Create Associated Token Account, if needed
     // This is the account that will hold the minted tokens
@@ -27,11 +27,11 @@ pub struct MintTokenAccountConstraints<'info> {
         associated_token::mint = mint_account,
         associated_token::authority = payer,
     )]
-    pub associated_token_account: Account<'info, TokenAccount>,
+    pub associated_token_account: Account<TokenAccount>,
 
-    pub token_program: Program<'info, Token>,
-    pub associated_token_program: Program<'info, AssociatedToken>,
-    pub system_program: Program<'info, System>,
+    pub token_program: Program<Token>,
+    pub associated_token_program: Program<AssociatedToken>,
+    pub system_program: Program<System>,
 }
 
 /// Mints `amount` tokens to the payer's associated token account, signed by
@@ -41,14 +41,14 @@ pub struct MintTokenAccountConstraints<'info> {
 /// on). Clients convert from major units, e.g. 1 token with 9 decimals is
 /// `1 * 10u64.pow(9)` minor units.
 pub fn handle_mint_token(
-    context: Context<MintTokenAccountConstraints>,
+    context: &mut Context<MintTokenAccountConstraints>,
     amount: u64,
 ) -> Result<()> {
     msg!("Minting token to associated token account...");
-    msg!("Mint: {}", &context.accounts.mint_account.key());
+    msg!("Mint: {}", &context.accounts.mint_account.address());
     msg!(
         "Token Address: {}",
-        &context.accounts.associated_token_account.key()
+        &context.accounts.associated_token_account.address()
     );
 
     // PDA signer seeds
@@ -57,11 +57,11 @@ pub fn handle_mint_token(
     // Invoke the mint_to instruction on the token program
     mint_to(
         CpiContext::new(
-            context.accounts.token_program.key(),
+            context.accounts.token_program.address(),
             MintTo {
-                mint: context.accounts.mint_account.to_account_info(),
-                to: context.accounts.associated_token_account.to_account_info(),
-                authority: context.accounts.mint_account.to_account_info(), // PDA mint authority, required as signer
+                mint: context.accounts.mint_account.cpi_handle_mut(),
+                to: context.accounts.associated_token_account.cpi_handle_mut(),
+                authority: context.accounts.mint_account.cpi_handle(), // PDA mint authority, required as signer
             },
         )
         .with_signer(signer_seeds), // using PDA to sign

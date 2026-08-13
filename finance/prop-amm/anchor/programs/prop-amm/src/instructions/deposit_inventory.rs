@@ -8,7 +8,7 @@ use crate::errors::PropAmmError;
 use crate::state::Market;
 
 pub fn handle_deposit_inventory(
-    context: Context<DepositInventoryAccountConstraints>,
+    context: &mut Context<DepositInventoryAccountConstraints>,
     base_amount: u64,
     quote_amount: u64,
 ) -> Result<()> {
@@ -20,32 +20,32 @@ pub fn handle_deposit_inventory(
     if base_amount > 0 {
         transfer_checked(
             CpiContext::new(
-                context.accounts.token_program.key(),
+                context.accounts.token_program.address(),
                 TransferChecked {
-                    from: context.accounts.operator_base.to_account_info(),
-                    mint: context.accounts.base_mint.to_account_info(),
-                    to: context.accounts.base_vault.to_account_info(),
-                    authority: context.accounts.operator.to_account_info(),
+                    from: context.accounts.operator_base.cpi_handle_mut(),
+                    mint: context.accounts.base_mint.cpi_handle(),
+                    to: context.accounts.base_vault.cpi_handle_mut(),
+                    authority: context.accounts.operator.cpi_handle(),
                 },
             ),
             base_amount,
-            context.accounts.base_mint.decimals,
+            context.accounts.base_mint.decimals(),
         )?;
     }
 
     if quote_amount > 0 {
         transfer_checked(
             CpiContext::new(
-                context.accounts.token_program.key(),
+                context.accounts.token_program.address(),
                 TransferChecked {
-                    from: context.accounts.operator_quote.to_account_info(),
-                    mint: context.accounts.quote_mint.to_account_info(),
-                    to: context.accounts.quote_vault.to_account_info(),
-                    authority: context.accounts.operator.to_account_info(),
+                    from: context.accounts.operator_quote.cpi_handle_mut(),
+                    mint: context.accounts.quote_mint.cpi_handle(),
+                    to: context.accounts.quote_vault.cpi_handle_mut(),
+                    authority: context.accounts.operator.cpi_handle(),
                 },
             ),
             quote_amount,
-            context.accounts.quote_mint.decimals,
+            context.accounts.quote_mint.decimals(),
         )?;
     }
 
@@ -53,11 +53,11 @@ pub fn handle_deposit_inventory(
 }
 
 #[derive(Accounts)]
-pub struct DepositInventoryAccountConstraints<'info> {
+pub struct DepositInventoryAccountConstraints {
     // `has_one = operator` on the market is the whole access control: only the
     // firm's key can stock the market.
     #[account(mut)]
-    pub operator: Signer<'info>,
+    pub operator: Signer,
 
     #[account(
         seeds = [MARKET_SEED, market.base_mint.as_ref(), market.quote_mint.as_ref()],
@@ -68,25 +68,25 @@ pub struct DepositInventoryAccountConstraints<'info> {
         has_one = base_vault,
         has_one = quote_vault,
     )]
-    pub market: Box<Account<'info, Market>>,
+    pub market: Box<BorshAccount<Market>>,
 
-    pub base_mint: Box<InterfaceAccount<'info, Mint>>,
+    pub base_mint: Box<InterfaceAccount<Mint>>,
 
-    pub quote_mint: Box<InterfaceAccount<'info, Mint>>,
-
-    #[account(
-        mut,
-        seeds = [BASE_VAULT_SEED, market.key().as_ref()],
-        bump,
-    )]
-    pub base_vault: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub quote_mint: Box<InterfaceAccount<Mint>>,
 
     #[account(
         mut,
-        seeds = [QUOTE_VAULT_SEED, market.key().as_ref()],
+        seeds = [BASE_VAULT_SEED, market.address().as_ref()],
         bump,
     )]
-    pub quote_vault: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub base_vault: Box<InterfaceAccount<TokenAccount>>,
+
+    #[account(
+        mut,
+        seeds = [QUOTE_VAULT_SEED, market.address().as_ref()],
+        bump,
+    )]
+    pub quote_vault: Box<InterfaceAccount<TokenAccount>>,
 
     #[account(
         mut,
@@ -94,7 +94,7 @@ pub struct DepositInventoryAccountConstraints<'info> {
         associated_token::authority = operator,
         associated_token::token_program = token_program,
     )]
-    pub operator_base: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub operator_base: Box<InterfaceAccount<TokenAccount>>,
 
     #[account(
         mut,
@@ -102,7 +102,7 @@ pub struct DepositInventoryAccountConstraints<'info> {
         associated_token::authority = operator,
         associated_token::token_program = token_program,
     )]
-    pub operator_quote: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub operator_quote: Box<InterfaceAccount<TokenAccount>>,
 
-    pub token_program: Interface<'info, TokenInterface>,
+    pub token_program: Interface<'static, TokenInterface>,
 }

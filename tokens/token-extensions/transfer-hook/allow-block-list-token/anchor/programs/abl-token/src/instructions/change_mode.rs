@@ -16,19 +16,19 @@ use anchor_spl::{
 use crate::Mode;
 
 #[derive(Accounts)]
-pub struct ChangeModeAccountConstraints<'info> {
+pub struct ChangeModeAccountConstraints {
     #[account(mut)]
-    pub authority: Signer<'info>,
+    pub authority: Signer,
 
     #[account(
         mut,
         mint::token_program = token_program,
     )]
-    pub mint: InterfaceAccount<'info, MintAccount>,
+    pub mint: InterfaceAccount<MintAccount>,
 
-    pub token_program: Program<'info, Token2022>,
+    pub token_program: Program<Token2022>,
 
-    pub system_program: Program<'info, System>,
+    pub system_program: Program<System>,
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize)]
@@ -40,11 +40,11 @@ pub struct ChangeModeArgs {
 impl ChangeModeAccountConstraints<'_> {
     pub fn change_mode(&mut self, args: ChangeModeArgs) -> Result<()> {
         let cpi_accounts = TokenMetadataUpdateField {
-            metadata: self.mint.to_account_info(),
-            update_authority: self.authority.to_account_info(),
-            program_id: self.token_program.to_account_info(),
+            metadata: self.mint.cpi_handle_mut(),
+            update_authority: self.authority.cpi_handle_mut(),
+            program_id: self.token_program.cpi_handle_mut(),
         };
-        let cpi_program = self.token_program.key();
+        let cpi_program = self.token_program.address();
         let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
 
         token_metadata_update_field(cpi_ctx, Field::Key("AB".to_string()), args.mode.to_string())?;
@@ -57,11 +57,11 @@ impl ChangeModeAccountConstraints<'_> {
             };
 
             let cpi_accounts = TokenMetadataUpdateField {
-                metadata: self.mint.to_account_info(),
-                update_authority: self.authority.to_account_info(),
-                program_id: self.token_program.to_account_info(),
+                metadata: self.mint.cpi_handle_mut(),
+                update_authority: self.authority.cpi_handle_mut(),
+                program_id: self.token_program.cpi_handle_mut(),
             };
-            let cpi_program = self.token_program.key();
+            let cpi_program = self.token_program.address();
             let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
 
             token_metadata_update_field(
@@ -71,19 +71,19 @@ impl ChangeModeAccountConstraints<'_> {
             )?;
         }
 
-        let data = self.mint.to_account_info().data_len();
-        let min_balance = Rent::get()?.minimum_balance(data);
-        if min_balance > self.mint.to_account_info().get_lamports() {
+        let data = self.mint.cpi_handle_mut().data_len();
+        let min_balance = Rent::get()?.try_minimum_balance(data)?;
+        if min_balance > self.mint.cpi_handle_mut().get_lamports() {
             invoke(
                 &transfer(
-                    &self.authority.key(),
-                    &self.mint.to_account_info().key(),
-                    min_balance - self.mint.to_account_info().get_lamports(),
+                    &self.authority.address(),
+                    &self.mint.cpi_handle_mut().address(),
+                    min_balance - self.mint.cpi_handle_mut().get_lamports(),
                 ),
                 &[
-                    self.authority.to_account_info(),
-                    self.mint.to_account_info(),
-                    self.system_program.to_account_info(),
+                    self.authority.cpi_handle_mut(),
+                    self.mint.cpi_handle_mut(),
+                    self.system_program.cpi_handle_mut(),
                 ],
             )?;
         }
@@ -92,7 +92,7 @@ impl ChangeModeAccountConstraints<'_> {
     }
 
     fn has_threshold(&self) -> Result<bool> {
-        let mint_info = self.mint.to_account_info();
+        let mint_info = self.mint.cpi_handle_mut();
         let mint_data = mint_info.data.borrow();
         let mint = StateWithExtensions::<Mint>::unpack(&mint_data)?;
         let metadata = mint.get_variable_len_extension::<TokenMetadata>();

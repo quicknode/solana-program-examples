@@ -10,7 +10,7 @@ pub mod group {
 
     use super::*;
 
-    pub fn test_initialize_group(context: Context<InitializeGroupAccountConstraints>) -> Result<()> {
+    pub fn test_initialize_group(context: &mut Context<InitializeGroupAccountConstraints>) -> Result<()> {
         instructions::test_initialize_group::handler(context)
     }
 }

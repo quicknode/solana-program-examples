@@ -1,4 +1,5 @@
 use anchor_lang::prelude::*;
+use anchor_spl::mint;
 
 use anchor_spl::{
     associated_token::AssociatedToken,
@@ -12,15 +13,15 @@ use super::transfer_tokens;
 // See https://www.anchor-lang.com/docs/references/account-constraints#instruction-attribute
 #[derive(Accounts)]
 #[instruction(id: u64)]
-pub struct MakeOfferAccountConstraints<'info> {
+pub struct MakeOfferAccountConstraints {
     #[account(mut)]
-    pub maker: Signer<'info>,
+    pub maker: Signer,
 
     #[account(mint::token_program = token_program)]
-    pub token_mint_a: InterfaceAccount<'info, Mint>,
+    pub token_mint_a: InterfaceAccount<Mint>,
 
     #[account(mint::token_program = token_program)]
-    pub token_mint_b: InterfaceAccount<'info, Mint>,
+    pub token_mint_b: InterfaceAccount<Mint>,
 
     #[account(
         mut,
@@ -28,7 +29,7 @@ pub struct MakeOfferAccountConstraints<'info> {
         associated_token::authority = maker,
         associated_token::token_program = token_program
     )]
-    pub maker_token_account_a: InterfaceAccount<'info, TokenAccount>,
+    pub maker_token_account_a: InterfaceAccount<TokenAccount>,
 
     // The maker's token-B ATA is initialized here, paid by the maker, so the
     // rent burden lives with the party who chose to open the offer (take_offer
@@ -40,16 +41,16 @@ pub struct MakeOfferAccountConstraints<'info> {
         associated_token::authority = maker,
         associated_token::token_program = token_program
     )]
-    pub maker_token_account_b: InterfaceAccount<'info, TokenAccount>,
+    pub maker_token_account_b: InterfaceAccount<TokenAccount>,
 
     #[account(
         init,
         payer = maker,
         space = Offer::DISCRIMINATOR.len() + Offer::INIT_SPACE,
-        seeds = [b"offer", maker.key().as_ref(), id.to_le_bytes().as_ref()],
+        seeds = [b"offer", maker.address().as_ref(), id.to_le_bytes().as_ref()],
         bump
     )]
-    pub offer: Account<'info, Offer>,
+    pub offer: BorshAccount<Offer>,
 
     #[account(
         init,
@@ -58,11 +59,11 @@ pub struct MakeOfferAccountConstraints<'info> {
         associated_token::authority = offer,
         associated_token::token_program = token_program
     )]
-    pub vault: InterfaceAccount<'info, TokenAccount>,
+    pub vault: InterfaceAccount<TokenAccount>,
 
-    pub associated_token_program: Program<'info, AssociatedToken>,
-    pub token_program: Interface<'info, TokenInterface>,
-    pub system_program: Program<'info, System>,
+    pub associated_token_program: Program<AssociatedToken>,
+    pub token_program: Interface<'static, TokenInterface>,
+    pub system_program: Program<System>,
 }
 
 // Move the tokens from the maker's ATA to the vault
@@ -75,7 +76,7 @@ pub fn handle_send_offered_tokens_to_vault(
         &context.accounts.vault,
         &token_a_offered_amount,
         &context.accounts.token_mint_a,
-        &context.accounts.maker.to_account_info(),
+        &context.accounts.maker.cpi_handle_mut(),
         &context.accounts.token_program,
         None,
     )
@@ -83,15 +84,15 @@ pub fn handle_send_offered_tokens_to_vault(
 
 // Save the details of the offer to the offer account
 pub fn handle_save_offer(
-    context: Context<MakeOfferAccountConstraints>,
+    context: &mut Context<MakeOfferAccountConstraints>,
     id: u64,
     token_b_wanted_amount: u64,
 ) -> Result<()> {
-    context.accounts.offer.set_inner(Offer {
+    *context.accounts.offer = (Offer {
         id,
-        maker: context.accounts.maker.key(),
-        token_mint_a: context.accounts.token_mint_a.key(),
-        token_mint_b: context.accounts.token_mint_b.key(),
+        maker: *context.accounts.maker.address(),
+        token_mint_a: *context.accounts.token_mint_a.address(),
+        token_mint_b: *context.accounts.token_mint_b.address(),
         token_b_wanted_amount,
         bump: context.bumps.offer,
     });

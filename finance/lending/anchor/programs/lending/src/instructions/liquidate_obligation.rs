@@ -1,4 +1,5 @@
 use anchor_lang::prelude::*;
+use anchor_spl::token;
 use anchor_spl::token_interface::{
     transfer_checked, Mint, TokenAccount, TokenInterface, TransferChecked,
 };
@@ -25,7 +26,7 @@ use crate::state::{Obligation, PriceFeed, Reserve};
 /// it is only possible while unhealthy and is economically pointless, matching
 /// how Solend and Kamino behave.
 pub fn handle_liquidate_obligation(
-    context: Context<LiquidateObligation>,
+    context: &mut Context<LiquidateObligation>,
     liquidity_amount: u64,
 ) -> Result<()> {
     require!(liquidity_amount > 0, LendingError::ZeroAmount);
@@ -47,8 +48,8 @@ pub fn handle_liquidate_obligation(
     let repay_price = context.accounts.repay_price_feed.price_scaled(slot)?;
     let collateral_price = context.accounts.collateral_price_feed.price_scaled(slot)?;
 
-    let borrow_index = obligation.find_borrow(repay_reserve.key())?;
-    let collateral_index = obligation.find_collateral(collateral_reserve.key())?;
+    let borrow_index = obligation.find_borrow(*repay_reserve.address())?;
+    let collateral_index = obligation.find_collateral(*collateral_reserve.address())?;
     let borrowed_principal = obligation.borrows[borrow_index].borrowed_principal;
     let deposited_shares = obligation.deposits[collateral_index].deposited_shares;
 
@@ -137,12 +138,12 @@ pub fn handle_liquidate_obligation(
     // Interactions: liquidator repays, then receives the seized share tokens.
     transfer_checked(
         CpiContext::new(
-            context.accounts.token_program.key(),
+            context.accounts.token_program.address(),
             TransferChecked {
-                from: context.accounts.liquidator_repay_source.to_account_info(),
-                mint: context.accounts.repay_liquidity_mint.to_account_info(),
-                to: context.accounts.repay_liquidity_vault.to_account_info(),
-                authority: context.accounts.liquidator.to_account_info(),
+                from: context.accounts.liquidator_repay_source.cpi_handle_mut(),
+                mint: context.accounts.repay_liquidity_mint.cpi_handle(),
+                to: context.accounts.repay_liquidity_vault.cpi_handle_mut(),
+                authority: context.accounts.liquidator.cpi_handle(),
             },
         ),
         repay,
@@ -153,17 +154,17 @@ pub fn handle_liquidate_obligation(
     let seeds: [&[u8]; 4] = [OBLIGATION_SEED, lending_market.as_ref(), owner.as_ref(), &bump];
     transfer_checked(
         CpiContext::new_with_signer(
-            context.accounts.token_program.key(),
+            context.accounts.token_program.address(),
             TransferChecked {
-                from: context.accounts.obligation_collateral_vault.to_account_info(),
-                mint: context.accounts.collateral_share_mint.to_account_info(),
-                to: context.accounts.liquidator_collateral_dest.to_account_info(),
-                authority: context.accounts.obligation.to_account_info(),
+                from: context.accounts.obligation_collateral_vault.cpi_handle_mut(),
+                mint: context.accounts.collateral_share_mint.cpi_handle(),
+                to: context.accounts.liquidator_collateral_dest.cpi_handle_mut(),
+                authority: context.accounts.obligation.cpi_handle(),
             },
             &[&seeds],
         ),
         seize_shares,
-        context.accounts.collateral_share_mint.decimals,
+        context.accounts.collateral_share_mint.decimals(),
     )?;
 
     Ok(())
@@ -172,52 +173,52 @@ pub fn handle_liquidate_obligation(
 // Liquidation touches 13 accounts; every Account/InterfaceAccount is boxed so
 // account deserialization happens on the heap and stays within the BPF stack frame.
 #[derive(Accounts)]
-pub struct LiquidateObligation<'info> {
+pub struct LiquidateObligation {
     #[account(mut)]
-    pub obligation: Box<Account<'info, Obligation>>,
+    pub obligation: Box<BorshAccount<Obligation>>,
 
-    pub liquidator: Signer<'info>,
+    pub liquidator: Signer,
 
     #[account(
         mut,
         constraint = repay_reserve.lending_market == obligation.lending_market @ LendingError::MarketMismatch,
     )]
-    pub repay_reserve: Box<Account<'info, Reserve>>,
+    pub repay_reserve: Box<BorshAccount<Reserve>>,
 
     #[account(
         constraint = collateral_reserve.lending_market == obligation.lending_market @ LendingError::MarketMismatch,
     )]
-    pub collateral_reserve: Box<Account<'info, Reserve>>,
+    pub collateral_reserve: Box<BorshAccount<Reserve>>,
 
     #[account(address = repay_reserve.price_feed)]
-    pub repay_price_feed: Box<Account<'info, PriceFeed>>,
+    pub repay_price_feed: Box<BorshAccount<PriceFeed>>,
 
     #[account(address = collateral_reserve.price_feed)]
-    pub collateral_price_feed: Box<Account<'info, PriceFeed>>,
+    pub collateral_price_feed: Box<BorshAccount<PriceFeed>>,
 
     #[account(address = repay_reserve.liquidity_mint)]
-    pub repay_liquidity_mint: Box<InterfaceAccount<'info, Mint>>,
+    pub repay_liquidity_mint: Box<InterfaceAccount<Mint>>,
 
     #[account(address = collateral_reserve.share_mint)]
-    pub collateral_share_mint: Box<InterfaceAccount<'info, Mint>>,
+    pub collateral_share_mint: Box<InterfaceAccount<Mint>>,
 
     #[account(mut, address = repay_reserve.liquidity_vault)]
-    pub repay_liquidity_vault: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub repay_liquidity_vault: Box<InterfaceAccount<TokenAccount>>,
 
     #[account(
         mut,
-        seeds = [OBLIGATION_SHARE_VAULT_SEED, collateral_reserve.key().as_ref(), obligation.key().as_ref()],
+        seeds = [OBLIGATION_SHARE_VAULT_SEED, collateral_reserve.address().as_ref(), obligation.address().as_ref()],
         bump,
         token::mint = collateral_share_mint,
         token::authority = obligation,
     )]
-    pub obligation_collateral_vault: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub obligation_collateral_vault: Box<InterfaceAccount<TokenAccount>>,
 
     #[account(mut)]
-    pub liquidator_repay_source: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub liquidator_repay_source: Box<InterfaceAccount<TokenAccount>>,
 
     #[account(mut)]
-    pub liquidator_collateral_dest: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub liquidator_collateral_dest: Box<InterfaceAccount<TokenAccount>>,
 
-    pub token_program: Interface<'info, TokenInterface>,
+    pub token_program: Interface<'static, TokenInterface>,
 }

@@ -29,25 +29,25 @@ pub enum TransferError {
 pub mod transfer_hook {
     use super::*;
 
-    pub fn initialize(context: Context<InitializeAccountConstraints>, decimals: u8) -> Result<()> {
+    pub fn initialize(context: &mut Context<InitializeAccountConstraints>, decimals: u8) -> Result<()> {
         instructions::initialize::handler(context, decimals)
     }
 
     #[instruction(discriminator = InitializeExtraAccountMetaListInstruction::SPL_DISCRIMINATOR_SLICE)]
     pub fn initialize_extra_account_meta_list(
-        context: Context<InitializeExtraAccountMetaListAccountConstraints>,
+        context: &mut Context<InitializeExtraAccountMetaListAccountConstraints>,
     ) -> Result<()> {
         instructions::initialize_extra_account_meta_list::handler(context)
     }
 
     #[instruction(discriminator = ExecuteInstruction::SPL_DISCRIMINATOR_SLICE)]
-    pub fn transfer_hook(context: Context<TransferHookAccountConstraints>, amount: u64) -> Result<()> {
+    pub fn transfer_hook(context: &mut Context<TransferHookAccountConstraints>, amount: u64) -> Result<()> {
         instructions::transfer_hook::handler(context, amount)
     }
 }
 
 pub fn check_is_transferring(context: &Context<TransferHookAccountConstraints>) -> Result<()> {
-    let source_token_info = context.accounts.source_token.to_account_info();
+    let source_token_info = context.accounts.source_token.cpi_handle_mut();
     let mut account_data_ref: RefMut<&mut [u8]> = source_token_info.try_borrow_mut_data()?;
     // .map_err() needed because spl-token-2022 uses solana-program-error 2.x
     // while anchor-lang 1.0 uses 3.x - structurally identical but different semver types

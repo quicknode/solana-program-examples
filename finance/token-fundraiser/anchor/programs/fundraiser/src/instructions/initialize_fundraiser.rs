@@ -7,20 +7,20 @@ use anchor_spl::{
 use crate::{state::Fundraiser, FundraiserError, MIN_AMOUNT_TO_RAISE};
 
 #[derive(Accounts)]
-pub struct InitializeFundraiserAccountConstraints<'info> {
+pub struct InitializeFundraiserAccountConstraints {
     #[account(mut)]
-    pub maker: Signer<'info>,
+    pub maker: Signer,
 
-    pub mint_to_raise: InterfaceAccount<'info, Mint>,
+    pub mint_to_raise: InterfaceAccount<Mint>,
 
     #[account(
         init,
         payer = maker,
-        seeds = [b"fundraiser", maker.key().as_ref()],
+        seeds = [b"fundraiser", maker.address().as_ref()],
         bump,
         space = Fundraiser::DISCRIMINATOR.len() + Fundraiser::INIT_SPACE,
     )]
-    pub fundraiser: Account<'info, Fundraiser>,
+    pub fundraiser: BorshAccount<Fundraiser>,
 
     #[account(
         init,
@@ -29,13 +29,13 @@ pub struct InitializeFundraiserAccountConstraints<'info> {
         associated_token::authority = fundraiser,
         associated_token::token_program = token_program,
     )]
-    pub vault: InterfaceAccount<'info, TokenAccount>,
+    pub vault: InterfaceAccount<TokenAccount>,
 
-    pub system_program: Program<'info, System>,
+    pub system_program: Program<System>,
 
-    pub token_program: Interface<'info, TokenInterface>,
+    pub token_program: Interface<'static, TokenInterface>,
 
-    pub associated_token_program: Program<'info, AssociatedToken>,
+    pub associated_token_program: Program<AssociatedToken>,
 }
 
 pub fn handle_initialize_fundraiser(
@@ -47,7 +47,7 @@ pub fn handle_initialize_fundraiser(
     // The target must be at least MIN_AMOUNT_TO_RAISE major units, expressed
     // in minor units: MIN_AMOUNT_TO_RAISE * 10^decimals.
     let one_major_unit = 10_u64
-        .checked_pow(accounts.mint_to_raise.decimals as u32)
+        .checked_pow(accounts.mint_to_raise.decimals() as u32)
         .ok_or(FundraiserError::MathOverflow)?;
     let minimum_amount_to_raise = MIN_AMOUNT_TO_RAISE
         .checked_mul(one_major_unit)
@@ -57,9 +57,9 @@ pub fn handle_initialize_fundraiser(
         FundraiserError::InvalidAmount
     );
 
-    accounts.fundraiser.set_inner(Fundraiser {
-        maker: accounts.maker.key(),
-        mint_to_raise: accounts.mint_to_raise.key(),
+    *accounts.fundraiser = (Fundraiser {
+        maker: *accounts.maker.address(),
+        mint_to_raise: *accounts.mint_to_raise.address(),
         amount_to_raise: amount,
         current_amount: 0,
         time_started: Clock::get()?.unix_timestamp,

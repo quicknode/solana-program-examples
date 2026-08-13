@@ -1,4 +1,5 @@
 use anchor_lang::prelude::*;
+use anchor_spl::token;
 use anchor_spl::{
     associated_token::AssociatedToken,
     token_interface::{Mint, TokenAccount, TokenInterface},
@@ -25,14 +26,14 @@ pub struct MarketParameters {
 }
 
 pub fn handle_initialize_market(
-    context: Context<InitializeMarketAccountConstraints>,
+    context: &mut Context<InitializeMarketAccountConstraints>,
     parameters: MarketParameters,
 ) -> Result<()> {
     let denominator = BASIS_POINTS_DENOMINATOR as u16;
     // A market quoting the same token against itself prices nothing.
     require_keys_neq!(
-        context.accounts.base_mint.key(),
-        context.accounts.quote_mint.key(),
+        context.accounts.base_mint.address(),
+        context.accounts.quote_mint.address(),
         PropAmmError::InvalidParameter
     );
     // Zero spread means quoting the oracle price for free while paying adverse
@@ -51,15 +52,15 @@ pub fn handle_initialize_market(
     );
 
     let market = &mut context.accounts.market;
-    market.operator = context.accounts.operator.key();
-    market.base_mint = context.accounts.base_mint.key();
-    market.quote_mint = context.accounts.quote_mint.key();
-    market.oracle_feed = context.accounts.oracle_feed.key();
-    market.base_vault = context.accounts.base_vault.key();
-    market.quote_vault = context.accounts.quote_vault.key();
+    market.operator = *context.accounts.operator.address();
+    market.base_mint = *context.accounts.base_mint.address();
+    market.quote_mint = *context.accounts.quote_mint.address();
+    market.oracle_feed = *context.accounts.oracle_feed.address();
+    market.base_vault = *context.accounts.base_vault.address();
+    market.quote_vault = *context.accounts.quote_vault.address();
     market.oracle_scale = parameters.oracle_scale;
-    market.base_decimals = context.accounts.base_mint.decimals;
-    market.quote_decimals = context.accounts.quote_mint.decimals;
+    market.base_decimals = context.accounts.base_mint.decimals();
+    market.quote_decimals = context.accounts.quote_mint.decimals();
     market.spread_bps = parameters.spread_bps;
     market.max_confidence_bps = parameters.max_confidence_bps;
     market.paused = false;
@@ -70,9 +71,9 @@ pub fn handle_initialize_market(
 }
 
 #[derive(Accounts)]
-pub struct InitializeMarketAccountConstraints<'info> {
+pub struct InitializeMarketAccountConstraints {
     #[account(mut)]
-    pub operator: Signer<'info>,
+    pub operator: Signer,
 
     // One market per pair: the deployment IS the firm. A real prop AMM is a
     // closed program deployed by the market-making firm itself, so there is no
@@ -81,51 +82,51 @@ pub struct InitializeMarketAccountConstraints<'info> {
         init,
         payer = operator,
         space = Market::DISCRIMINATOR.len() + Market::INIT_SPACE,
-        seeds = [MARKET_SEED, base_mint.key().as_ref(), quote_mint.key().as_ref()],
+        seeds = [MARKET_SEED, base_mint.address().as_ref(), quote_mint.address().as_ref()],
         bump,
     )]
-    pub market: Box<Account<'info, Market>>,
+    pub market: Box<BorshAccount<Market>>,
 
-    pub base_mint: Box<InterfaceAccount<'info, Mint>>,
+    pub base_mint: Box<InterfaceAccount<Mint>>,
 
-    pub quote_mint: Box<InterfaceAccount<'info, Mint>>,
+    pub quote_mint: Box<InterfaceAccount<Mint>>,
 
     /// CHECK: The oracle feed account. Its key is stored on the market and
     /// every read validates the layout, scale, and freshness; it is never
     /// trusted by type. Swap for a real Switchboard feed in production.
-    pub oracle_feed: UncheckedAccount<'info>,
+    pub oracle_feed: UncheckedAccount,
 
     /// CHECK: PDA that owns both vaults. Holds no data; used only to sign
     /// vault CPIs.
     #[account(
-        seeds = [AUTHORITY_SEED, market.key().as_ref()],
+        seeds = [AUTHORITY_SEED, market.address().as_ref()],
         bump,
     )]
-    pub market_authority: UncheckedAccount<'info>,
+    pub market_authority: UncheckedAccount,
 
     #[account(
         init,
         payer = operator,
-        seeds = [BASE_VAULT_SEED, market.key().as_ref()],
+        seeds = [BASE_VAULT_SEED, market.address().as_ref()],
         bump,
         token::mint = base_mint,
         token::authority = market_authority,
         token::token_program = token_program,
     )]
-    pub base_vault: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub base_vault: Box<InterfaceAccount<TokenAccount>>,
 
     #[account(
         init,
         payer = operator,
-        seeds = [QUOTE_VAULT_SEED, market.key().as_ref()],
+        seeds = [QUOTE_VAULT_SEED, market.address().as_ref()],
         bump,
         token::mint = quote_mint,
         token::authority = market_authority,
         token::token_program = token_program,
     )]
-    pub quote_vault: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub quote_vault: Box<InterfaceAccount<TokenAccount>>,
 
-    pub token_program: Interface<'info, TokenInterface>,
-    pub associated_token_program: Program<'info, AssociatedToken>,
-    pub system_program: Program<'info, System>,
+    pub token_program: Interface<'static, TokenInterface>,
+    pub associated_token_program: Program<AssociatedToken>,
+    pub system_program: Program<System>,
 }

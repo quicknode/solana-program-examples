@@ -1,4 +1,5 @@
 use anchor_lang::prelude::*;
+use anchor_spl::mint;
 use anchor_spl::token_interface::{
     spl_pod::optional_keys::OptionalNonZeroPubkey,
     spl_token_2022::{
@@ -13,9 +14,9 @@ use anchor_spl::token_interface::{
 
 #[derive(Accounts)]
 #[instruction(_decimals: u8)]
-pub struct InitializeAccountConstraints<'info> {
+pub struct InitializeAccountConstraints {
     #[account(mut)]
-    pub payer: Signer<'info>,
+    pub payer: Signer,
 
     #[account(
         init,
@@ -25,20 +26,20 @@ pub struct InitializeAccountConstraints<'info> {
         extensions::transfer_hook::authority = payer,
         extensions::transfer_hook::program_id = crate::ID
     )]
-    pub mint_account: InterfaceAccount<'info, Mint>,
-    pub token_program: Program<'info, Token2022>,
-    pub system_program: Program<'info, System>,
+    pub mint_account: InterfaceAccount<Mint>,
+    pub token_program: Program<Token2022>,
+    pub system_program: Program<System>,
 }
 
 // create a mint account that specifies this program as the transfer hook program
-pub fn handler(mut context: Context<InitializeAccountConstraints>, _decimals: u8) -> Result<()> {
+pub fn handler(mut context: &mut Context<InitializeAccountConstraints>, _decimals: u8) -> Result<()> {
     handle_check_mint_data(&mut context.accounts)?;
     Ok(())
 }
 
 // helper to check mint data, and demonstrate how to read mint extension data within a program
 fn handle_check_mint_data(accounts: &mut InitializeAccountConstraints) -> Result<()> {
-    let mint = &accounts.mint_account.to_account_info();
+    let mint = &accounts.mint_account.cpi_handle_mut();
     let mint_data = mint.data.borrow();
     // .map_err() needed because spl-token-2022 uses solana-program-error 2.x
     // while anchor-lang 1.0 uses 3.x - structurally identical but different semver types
@@ -49,7 +50,7 @@ fn handle_check_mint_data(accounts: &mut InitializeAccountConstraints) -> Result
 
     assert_eq!(
         extension_data.authority,
-        OptionalNonZeroPubkey::try_from(Some(accounts.payer.key()))
+        OptionalNonZeroPubkey::try_from(Some(accounts.payer.address()))
             .map_err(|_| ProgramError::InvalidArgument)?
     );
 

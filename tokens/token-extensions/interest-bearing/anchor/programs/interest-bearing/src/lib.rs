@@ -18,16 +18,16 @@ pub mod interest_bearing {
 
     use super::*;
 
-    pub fn initialize(context: Context<InitializeAccountConstraints>, rate: i16) -> Result<()> {
+    pub fn initialize(context: &mut Context<InitializeAccountConstraints>, rate: i16) -> Result<()> {
         instructions::initialize::handler(context, rate)
     }
 
-    pub fn update_rate(context: Context<UpdateRateAccountConstraints>, rate: i16) -> Result<()> {
+    pub fn update_rate(context: &mut Context<UpdateRateAccountConstraints>, rate: i16) -> Result<()> {
         instructions::update_rate::handler(context, rate)
     }
 }
 
-pub fn check_mint_data(mint_account_info: &AccountInfo, authority_key: &Pubkey) -> Result<()> {
+pub fn check_mint_data(mint_account_info: &AccountView, authority_key: &Address) -> Result<()> {
     let mint_data = mint_account_info.data.borrow();
     let mint_with_extension = StateWithExtensions::<MintState>::unpack(&mint_data)?;
     let extension_data = mint_with_extension.get_extension::<InterestBearingConfig>()?;

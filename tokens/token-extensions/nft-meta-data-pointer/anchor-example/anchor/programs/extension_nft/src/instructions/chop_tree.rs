@@ -7,7 +7,7 @@ use anchor_spl::token_2022_extensions::spl_token_metadata_interface;
 use anchor_spl::token_interface::{spl_token_2022, Token2022};
 use session_keys::{Session, SessionToken};
 
-pub fn chop_tree(context: Context<ChopTreeAccountConstraints>, counter: u16, amount: u64) -> Result<()> {
+pub fn chop_tree(context: &mut Context<ChopTreeAccountConstraints>, counter: u16, amount: u64) -> Result<()> {
     // Save game_data bump on first creation (init_if_needed). See init_player.rs
     // for the same pattern.
     let game_data_bump = context.bumps.game_data;
@@ -42,14 +42,14 @@ pub fn chop_tree(context: Context<ChopTreeAccountConstraints>, counter: u16, amo
     invoke_signed(
         &spl_token_metadata_interface::instruction::update_field(
             &spl_token_2022::id(),
-            context.accounts.mint.to_account_info().key,
-            context.accounts.nft_authority.to_account_info().key,
+            context.accounts.mint.cpi_handle_mut().key,
+            context.accounts.nft_authority.cpi_handle_mut().key,
             spl_token_metadata_interface::state::Field::Key("wood".to_string()),
             context.accounts.player.wood.to_string(),
         ),
         &[
-            context.accounts.mint.to_account_info().clone(),
-            context.accounts.nft_authority.to_account_info().clone(),
+            context.accounts.mint.cpi_handle().clone(),
+            context.accounts.nft_authority.cpi_handle().clone(),
         ],
         signer,
     )?;
@@ -59,23 +59,23 @@ pub fn chop_tree(context: Context<ChopTreeAccountConstraints>, counter: u16, amo
 
 #[derive(Accounts, Session)]
 #[instruction(level_seed: String)]
-pub struct ChopTreeAccountConstraints<'info> {
+pub struct ChopTreeAccountConstraints {
     #[session(
         // The ephemeral key pair signing the transaction
         signer = signer,
         // The authority of the user account which must have created the session
-        authority = player.authority.key()
+        authority = player.authority.address()
     )]
     // Session Tokens are passed as optional accounts
-    pub session_token: Option<Account<'info, SessionToken>>,
+    pub session_token: Option<Account<SessionToken>>,
 
     // There is one PlayerData account
     #[account(
         mut,
-        seeds = [b"player".as_ref(), player.authority.key().as_ref()],
+        seeds = [b"player".as_ref(), player.authority.address().as_ref()],
         bump,
     )]
-    pub player: Account<'info, PlayerData>,
+    pub player: BorshAccount<PlayerData>,
 
     // There can be multiple levels the seed for the level is passed in the instruction
     // First player starting a new level will pay for the account in the current setup
@@ -86,14 +86,14 @@ pub struct ChopTreeAccountConstraints<'info> {
         seeds = [level_seed.as_ref()],
         bump,
     )]
-    pub game_data: Account<'info, GameData>,
+    pub game_data: BorshAccount<GameData>,
 
     #[account(mut)]
-    pub signer: Signer<'info>,
-    pub system_program: Program<'info, System>,
+    pub signer: Signer,
+    pub system_program: Program<System>,
     /// CHECK: Make sure the ata to the mint is actually owned by the signer
     #[account(mut)]
-    pub mint: UncheckedAccount<'info>,
+    pub mint: UncheckedAccount,
     #[account(
         init_if_needed,
         seeds = [b"nft_authority".as_ref()],
@@ -101,6 +101,6 @@ pub struct ChopTreeAccountConstraints<'info> {
         space = NftAuthority::DISCRIMINATOR.len() + NftAuthority::INIT_SPACE,
         payer = signer,
     )]
-    pub nft_authority: Account<'info, NftAuthority>,
-    pub token_program: Program<'info, Token2022>,
+    pub nft_authority: BorshAccount<NftAuthority>,
+    pub token_program: Program<Token2022>,
 }

@@ -10,19 +10,19 @@ use anchor_spl::{
 use crate::{state::Fundraiser, FundraiserError};
 
 #[derive(Accounts)]
-pub struct CheckContributionsAccountConstraints<'info> {
+pub struct CheckContributionsAccountConstraints {
     #[account(mut)]
-    pub maker: Signer<'info>,
+    pub maker: Signer,
 
-    pub mint_to_raise: InterfaceAccount<'info, Mint>,
+    pub mint_to_raise: InterfaceAccount<Mint>,
 
     #[account(
         mut,
-        seeds = [b"fundraiser".as_ref(), maker.key().as_ref()],
+        seeds = [b"fundraiser".as_ref(), maker.address().as_ref()],
         bump = fundraiser.bump,
         close = maker,
     )]
-    pub fundraiser: Account<'info, Fundraiser>,
+    pub fundraiser: BorshAccount<Fundraiser>,
 
     #[account(
         mut,
@@ -30,7 +30,7 @@ pub struct CheckContributionsAccountConstraints<'info> {
         associated_token::authority = fundraiser,
         associated_token::token_program = token_program,
     )]
-    pub vault: InterfaceAccount<'info, TokenAccount>,
+    pub vault: InterfaceAccount<TokenAccount>,
 
     #[account(
         init_if_needed,
@@ -39,13 +39,13 @@ pub struct CheckContributionsAccountConstraints<'info> {
         associated_token::authority = maker,
         associated_token::token_program = token_program,
     )]
-    pub maker_ata: InterfaceAccount<'info, TokenAccount>,
+    pub maker_ata: InterfaceAccount<TokenAccount>,
 
-    pub token_program: Interface<'info, TokenInterface>,
+    pub token_program: Interface<'static, TokenInterface>,
 
-    pub system_program: Program<'info, System>,
+    pub system_program: Program<System>,
 
-    pub associated_token_program: Program<'info, AssociatedToken>,
+    pub associated_token_program: Program<AssociatedToken>,
 }
 
 pub fn handle_check_contributions(
@@ -62,36 +62,36 @@ pub fn handle_check_contributions(
     // its seeds.
     let signer_seeds: [&[&[u8]]; 1] = [&[
         b"fundraiser".as_ref(),
-        accounts.maker.to_account_info().key.as_ref(),
+        accounts.maker.cpi_handle_mut().address().as_ref(),
         &[accounts.fundraiser.bump],
     ]];
 
     // Drain the whole vault (including any direct donations) to the maker.
     let transfer_accounts = TransferChecked {
-        from: accounts.vault.to_account_info(),
-        mint: accounts.mint_to_raise.to_account_info(),
-        to: accounts.maker_ata.to_account_info(),
-        authority: accounts.fundraiser.to_account_info(),
+        from: accounts.vault.cpi_handle_mut(),
+        mint: accounts.mint_to_raise.cpi_handle(),
+        to: accounts.maker_ata.cpi_handle_mut(),
+        authority: accounts.fundraiser.cpi_handle(),
     };
     let transfer_context = CpiContext::new_with_signer(
-        accounts.token_program.key(),
+        accounts.token_program.address(),
         transfer_accounts,
         &signer_seeds,
     );
     transfer_checked(
         transfer_context,
-        accounts.vault.amount,
-        accounts.mint_to_raise.decimals,
+        accounts.vault.amount(),
+        accounts.mint_to_raise.decimals(),
     )?;
 
     // Close the empty vault so its rent goes back to the maker.
     let close_accounts = CloseAccount {
-        account: accounts.vault.to_account_info(),
-        destination: accounts.maker.to_account_info(),
-        authority: accounts.fundraiser.to_account_info(),
+        account: accounts.vault.cpi_handle_mut(),
+        destination: accounts.maker.cpi_handle_mut(),
+        authority: accounts.fundraiser.cpi_handle(),
     };
     let close_context = CpiContext::new_with_signer(
-        accounts.token_program.key(),
+        accounts.token_program.address(),
         close_accounts,
         &signer_seeds,
     );

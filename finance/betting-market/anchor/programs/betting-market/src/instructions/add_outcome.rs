@@ -5,37 +5,37 @@ use crate::{error::BettingError, Config, Event, EventStatus, Outcome};
 pub const MAX_LABEL_LEN: usize = 64;
 
 #[derive(Accounts)]
-pub struct AddOutcomeAccountConstraints<'info> {
+pub struct AddOutcomeAccountConstraints {
     #[account(mut)]
-    pub admin: Signer<'info>,
+    pub admin: Signer,
 
     #[account(
         seeds = [b"config"],
         bump = config.bump,
         has_one = admin @ BettingError::Unauthorized,
     )]
-    pub config: Account<'info, Config>,
+    pub config: BorshAccount<Config>,
 
     #[account(
         mut,
         seeds = [b"event", event.event_id.to_le_bytes().as_ref()],
         bump = event.bump,
     )]
-    pub event: Account<'info, Event>,
+    pub event: BorshAccount<Event>,
 
     #[account(
         init,
         payer = admin,
         space = Outcome::DISCRIMINATOR.len() + Outcome::INIT_SPACE,
-        seeds = [b"outcome", event.key().as_ref(), &[event.outcome_count]],
+        seeds = [b"outcome", event.address().as_ref(), &[event.outcome_count]],
         bump
     )]
-    pub outcome: Account<'info, Outcome>,
+    pub outcome: BorshAccount<Outcome>,
 
-    pub system_program: Program<'info, System>,
+    pub system_program: Program<System>,
 }
 
-pub fn handle_add_outcome(context: Context<AddOutcomeAccountConstraints>, label: String) -> Result<()> {
+pub fn handle_add_outcome(context: &mut Context<AddOutcomeAccountConstraints>, label: String) -> Result<()> {
     require!(label.len() <= MAX_LABEL_LEN, BettingError::LabelTooLong);
     require!(
         context.accounts.event.status == EventStatus::Open,
@@ -49,8 +49,8 @@ pub fn handle_add_outcome(context: Context<AddOutcomeAccountConstraints>, label:
     );
 
     let index = context.accounts.event.outcome_count;
-    context.accounts.outcome.set_inner(Outcome {
-        event: context.accounts.event.key(),
+    *context.accounts.outcome = (Outcome {
+        event: context.accounts.event.address(),
         index,
         label,
         total_amount: 0,

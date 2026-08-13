@@ -6,11 +6,11 @@ pub const MARKET_USER_SEED: &[u8] = b"market_user";
 // to the user (unsettled_*). Settlement moves those amounts from the vaults
 // to the user's token accounts in settle_funds.
 #[derive(InitSpace)]
-#[account]
+#[account(borsh)]
 pub struct MarketUser {
-    pub market: Pubkey,
+    pub market: Address,
 
-    pub owner: Pubkey,
+    pub owner: Address,
 
     pub unsettled_base: u64,
 

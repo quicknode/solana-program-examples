@@ -4,14 +4,14 @@ use {
 };
 
 #[derive(Accounts)]
-pub struct SwitchAccountConstraints<'info> {
+pub struct SwitchAccountConstraints {
     /// admin that controls the switch
     #[account(mut)]
-    pub admin: Signer<'info>,
+    pub admin: Signer,
 
     /// CHECK: wallet - transfer sender
     #[account(mut)]
-    pub wallet: UncheckedAccount<'info>,
+    pub wallet: UncheckedAccount,
 
     /// admin config
     #[account(
@@ -19,26 +19,26 @@ pub struct SwitchAccountConstraints<'info> {
         seeds=[b"admin-config"],
         bump,
     )]
-    pub admin_config: Account<'info, AdminConfig>,
+    pub admin_config: BorshAccount<AdminConfig>,
 
     /// the wallet (sender) transfer switch
     #[account(
         init_if_needed,
         payer=admin,
         space = TransferSwitch::DISCRIMINATOR.len() + TransferSwitch::INIT_SPACE,
-        seeds = [wallet.key().as_ref()],
+        seeds = [wallet.address().as_ref()],
         bump,
     )]
-    pub wallet_switch: Account<'info, TransferSwitch>,
+    pub wallet_switch: BorshAccount<TransferSwitch>,
 
-    pub system_program: Program<'info, System>,
+    pub system_program: Program<System>,
 }
 
 pub fn handle_switch(accounts: &mut SwitchAccountConstraints, on: bool, bump: u8) -> Result<()> {
         // toggle switch on/off for the given wallet
         //
-        accounts.wallet_switch.set_inner(TransferSwitch {
-            wallet: accounts.wallet.key(),
+        *accounts.wallet_switch = (TransferSwitch {
+            wallet: *accounts.wallet.address(),
             on,
             bump,  // canonical bump for this wallet's PDA
         });

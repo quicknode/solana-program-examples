@@ -5,37 +5,37 @@ use anchor_spl::token_interface::{
 };
 
 #[derive(Accounts)]
-pub struct UpdateAuthorityAccountConstraints<'info> {
-    pub current_authority: Signer<'info>,
-    pub new_authority: Option<UncheckedAccount<'info>>,
+pub struct UpdateAuthorityAccountConstraints {
+    pub current_authority: Signer,
+    pub new_authority: Option<UncheckedAccount>,
 
     #[account(
         mut,
         extensions::metadata_pointer::metadata_address = mint_account,
     )]
-    pub mint_account: InterfaceAccount<'info, Mint>,
-    pub token_program: Program<'info, Token2022>,
-    pub system_program: Program<'info, System>,
+    pub mint_account: InterfaceAccount<Mint>,
+    pub token_program: Program<Token2022>,
+    pub system_program: Program<System>,
 }
 
-pub fn process_update_authority(context: Context<UpdateAuthorityAccountConstraints>) -> Result<()> {
+pub fn process_update_authority(context: &mut Context<UpdateAuthorityAccountConstraints>) -> Result<()> {
     let new_authority_key = match &context.accounts.new_authority {
-        Some(account) => OptionalNonZeroPubkey::try_from(Some(account.key()))?,
+        Some(account) => OptionalNonZeroPubkey::try_from(Some(account.address()))?,
         None => OptionalNonZeroPubkey::try_from(None)?,
     };
 
     // Change update authority
     token_metadata_update_authority(
         CpiContext::new(
-            context.accounts.token_program.key(),
+            context.accounts.token_program.address(),
             TokenMetadataUpdateAuthority {
-                program_id: context.accounts.token_program.to_account_info(),
-                metadata: context.accounts.mint_account.to_account_info(),
-                current_authority: context.accounts.current_authority.to_account_info(),
+                program_id: context.accounts.token_program.cpi_handle_mut(),
+                metadata: context.accounts.mint_account.cpi_handle_mut(),
+                current_authority: context.accounts.current_authority.cpi_handle(),
 
                 // new authority isn't actually needed as account in the CPI
                 // using current_authority as a placeholder to satisfy the struct
-                new_authority: context.accounts.current_authority.to_account_info(),
+                new_authority: context.accounts.current_authority.cpi_handle_mut(),
             },
         ),
         new_authority_key,

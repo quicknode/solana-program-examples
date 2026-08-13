@@ -16,7 +16,7 @@ pub mod fundraiser {
     use super::*;
 
     pub fn initialize_fundraiser(
-        mut context: Context<InitializeFundraiserAccountConstraints>,
+        mut context: &mut Context<InitializeFundraiserAccountConstraints>,
         amount: u64,
         duration: u16,
     ) -> Result<()> {
@@ -26,7 +26,7 @@ pub mod fundraiser {
     }
 
     pub fn contribute(
-        mut context: Context<ContributeAccountConstraints>,
+        mut context: &mut Context<ContributeAccountConstraints>,
         amount: u64,
     ) -> Result<()> {
         handle_contribute(&mut context.accounts, amount, &context.bumps)?;
@@ -35,20 +35,20 @@ pub mod fundraiser {
     }
 
     pub fn check_contributions(
-        mut context: Context<CheckContributionsAccountConstraints>,
+        mut context: &mut Context<CheckContributionsAccountConstraints>,
     ) -> Result<()> {
         handle_check_contributions(&mut context.accounts)?;
 
         Ok(())
     }
 
-    pub fn refund(mut context: Context<RefundAccountConstraints>) -> Result<()> {
+    pub fn refund(mut context: &mut Context<RefundAccountConstraints>) -> Result<()> {
         handle_refund(&mut context.accounts)?;
 
         Ok(())
     }
 
-    pub fn close_fundraiser(mut context: Context<CloseFundraiserAccountConstraints>) -> Result<()> {
+    pub fn close_fundraiser(mut context: &mut Context<CloseFundraiserAccountConstraints>) -> Result<()> {
         handle_close_fundraiser(&mut context.accounts)?;
 
         Ok(())

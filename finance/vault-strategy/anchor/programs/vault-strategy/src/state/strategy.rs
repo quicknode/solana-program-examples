@@ -15,18 +15,18 @@ pub const MAX_ASSETS: u8 = 16;
 /// e.g. seeds `"strategy" + 0`, so strategies are addressed by a simple counter
 /// rather than by the manager's key. The index is stored here so every handler
 /// can re-derive the PDA to sign for the vaults and share mint.
-#[account]
+#[account(borsh)]
 #[derive(InitSpace)]
 pub struct Strategy {
     /// Index used as the PDA seed, e.g. 0 for the first strategy.
     pub index: u64,
-    pub manager: Pubkey,
+    pub manager: Address,
     /// Registry whose curator approves assets. add_asset only accepts mints
     /// approved in this registry.
-    pub registry: Pubkey,
-    pub share_mint: Pubkey,
-    pub usdc_mint: Pubkey,
-    pub swap_router: Pubkey,
+    pub registry: Address,
+    pub share_mint: Address,
+    pub usdc_mint: Address,
+    pub swap_router: Address,
     /// Annual management fee in basis points (e.g. 100 = 1%).
     pub fee_bps: u16,
     /// Maximum tolerated deviation, in basis points, between a swap's output and
@@ -46,17 +46,17 @@ pub struct Strategy {
 /// index, so the full set is the contiguous range 0..asset_count: any handler
 /// computing net asset value re-derives every index and refuses to proceed if an
 /// asset account is missing.
-#[account]
+#[account(borsh)]
 #[derive(InitSpace)]
 pub struct AssetConfig {
-    pub strategy: Pubkey,
+    pub strategy: Address,
     pub index: u8,
-    pub mint: Pubkey,
+    pub mint: Address,
     /// Pyth PriceUpdateV2 account, copied from the registry's ApprovedAsset at
     /// add time so the manager cannot substitute a feed they control.
-    pub price_feed: Pubkey,
+    pub price_feed: Address,
     /// Strategy-owned associated token account holding this asset.
-    pub vault: Pubkey,
+    pub vault: Address,
     /// Target share of the strategy's value in basis points. deposit deploys at these
     /// weights (the sum across assets must reach 10000 before deposits open), and the
     /// manager maintains them against price drift with rebalance.
@@ -68,7 +68,7 @@ impl AssetConfig {
     /// Deserialize an AssetConfig passed via remaining_accounts to an owned value,
     /// verifying it is owned by this program and has the right discriminator.
     /// Avoids the lifetime invariance of `Account::try_from` on borrowed infos.
-    pub fn load_checked(account: &AccountInfo) -> Result<AssetConfig> {
+    pub fn load_checked(account: &AccountView) -> Result<AssetConfig> {
         require_keys_eq!(
             *account.owner,
             crate::ID,

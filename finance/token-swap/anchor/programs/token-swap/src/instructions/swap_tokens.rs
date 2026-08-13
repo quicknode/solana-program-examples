@@ -11,7 +11,7 @@ use crate::{
 };
 
 pub fn handle_swap_tokens(
-    context: Context<SwapTokensAccountConstraints>,
+    context: &mut Context<SwapTokensAccountConstraints>,
     input_is_token_a: bool,
     input_amount: u64,
     min_output_amount: u64,
@@ -21,10 +21,10 @@ pub fn handle_swap_tokens(
     // for callers - their min_output_amount is computed against the requested
     // input, not the clamped one, so the trade could succeed with worse terms
     // than expected.
-    if input_is_token_a && input_amount > context.accounts.token_a.amount {
+    if input_is_token_a && input_amount > context.accounts.token_a.amount() {
         return err!(AmmError::InsufficientBalance);
     }
-    if !input_is_token_a && input_amount > context.accounts.token_b.amount {
+    if !input_is_token_a && input_amount > context.accounts.token_b.amount() {
         return err!(AmmError::InsufficientBalance);
     }
     // Split the trading fee between LPs and the admin. The full fee is taken
@@ -72,11 +72,11 @@ pub fn handle_swap_tokens(
     // but a raw `-` would wrap silently on a BPF release build if that invariant
     // were ever violated, handing the curve a giant effective reserve.
     let effective_pool_a = pool_a
-        .amount
+        .amount()
         .checked_sub(pool_config.admin_fees_owed_a)
         .ok_or(AmmError::MathOverflow)?;
     let effective_pool_b = pool_b
-        .amount
+        .amount()
         .checked_sub(pool_config.admin_fees_owed_b)
         .ok_or(AmmError::MathOverflow)?;
 
@@ -144,8 +144,8 @@ pub fn handle_swap_tokens(
     // to_bytes() returns an owned [u8; 32] copy so there are no borrow conflicts.
     let authority_bump = context.bumps.pool_authority;
     let config_bytes = context.accounts.pool_config.config.to_bytes();
-    let mint_a_bytes = context.accounts.mint_a.key().to_bytes();
-    let mint_b_bytes = context.accounts.mint_b.key().to_bytes();
+    let mint_a_bytes = context.accounts.mint_a.address().to_bytes();
+    let mint_b_bytes = context.accounts.mint_b.address().to_bytes();
 
     // Effects: update admin_fees before CPIs (Checks-Effects-Interactions).
     // The fee always comes off the input side, so the admin's claim accumulates
@@ -177,58 +177,58 @@ pub fn handle_swap_tokens(
     if input_is_token_a {
         token_interface::transfer_checked(
             CpiContext::new(
-                context.accounts.token_program.key(),
+                context.accounts.token_program.address(),
                 TransferChecked {
-                    from: context.accounts.token_a.to_account_info(),
-                    mint: context.accounts.mint_a.to_account_info(),
-                    to: context.accounts.pool_a.to_account_info(),
-                    authority: context.accounts.trader.to_account_info(),
+                    from: context.accounts.token_a.cpi_handle_mut(),
+                    mint: context.accounts.mint_a.cpi_handle(),
+                    to: context.accounts.pool_a.cpi_handle_mut(),
+                    authority: context.accounts.trader.cpi_handle(),
                 },
             ),
             input_amount,
-            context.accounts.mint_a.decimals,
+            context.accounts.mint_a.decimals(),
         )?;
         token_interface::transfer_checked(
             CpiContext::new_with_signer(
-                context.accounts.token_program.key(),
+                context.accounts.token_program.address(),
                 TransferChecked {
-                    from: context.accounts.pool_b.to_account_info(),
-                    mint: context.accounts.mint_b.to_account_info(),
-                    to: context.accounts.token_b.to_account_info(),
-                    authority: context.accounts.pool_authority.to_account_info(),
+                    from: context.accounts.pool_b.cpi_handle_mut(),
+                    mint: context.accounts.mint_b.cpi_handle(),
+                    to: context.accounts.token_b.cpi_handle_mut(),
+                    authority: context.accounts.pool_authority.cpi_handle(),
                 },
                 signer_seeds,
             ),
             output,
-            context.accounts.mint_b.decimals,
+            context.accounts.mint_b.decimals(),
         )?;
     } else {
         token_interface::transfer_checked(
             CpiContext::new_with_signer(
-                context.accounts.token_program.key(),
+                context.accounts.token_program.address(),
                 TransferChecked {
-                    from: context.accounts.pool_a.to_account_info(),
-                    mint: context.accounts.mint_a.to_account_info(),
-                    to: context.accounts.token_a.to_account_info(),
-                    authority: context.accounts.pool_authority.to_account_info(),
+                    from: context.accounts.pool_a.cpi_handle_mut(),
+                    mint: context.accounts.mint_a.cpi_handle(),
+                    to: context.accounts.token_a.cpi_handle_mut(),
+                    authority: context.accounts.pool_authority.cpi_handle(),
                 },
                 signer_seeds,
             ),
             output,
-            context.accounts.mint_a.decimals,
+            context.accounts.mint_a.decimals(),
         )?;
         token_interface::transfer_checked(
             CpiContext::new(
-                context.accounts.token_program.key(),
+                context.accounts.token_program.address(),
                 TransferChecked {
-                    from: context.accounts.token_b.to_account_info(),
-                    mint: context.accounts.mint_b.to_account_info(),
-                    to: context.accounts.pool_b.to_account_info(),
-                    authority: context.accounts.trader.to_account_info(),
+                    from: context.accounts.token_b.cpi_handle_mut(),
+                    mint: context.accounts.mint_b.cpi_handle(),
+                    to: context.accounts.pool_b.cpi_handle_mut(),
+                    authority: context.accounts.trader.cpi_handle(),
                 },
             ),
             input_amount,
-            context.accounts.mint_b.decimals,
+            context.accounts.mint_b.decimals(),
         )?;
     }
 
@@ -257,13 +257,13 @@ pub fn handle_swap_tokens(
     let effective_pool_a_after = context
         .accounts
         .pool_a
-        .amount
+        .amount()
         .checked_sub(pool_config.admin_fees_owed_a)
         .ok_or(AmmError::MathOverflow)?;
     let effective_pool_b_after = context
         .accounts
         .pool_b
-        .amount
+        .amount()
         .checked_sub(pool_config.admin_fees_owed_b)
         .ok_or(AmmError::MathOverflow)?;
     let new_invariant = (effective_pool_a_after as u128)
@@ -275,45 +275,45 @@ pub fn handle_swap_tokens(
 }
 
 #[derive(Accounts)]
-pub struct SwapTokensAccountConstraints<'info> {
+pub struct SwapTokensAccountConstraints {
     #[account(
         seeds = [CONFIG_SEED],
         bump,
     )]
-    pub config: Account<'info, Config>,
+    pub config: BorshAccount<Config>,
 
     #[account(
         mut,
         seeds = [
             pool_config.config.as_ref(),
-            pool_config.mint_a.key().as_ref(),
-            pool_config.mint_b.key().as_ref(),
+            pool_config.mint_a.address().as_ref(),
+            pool_config.mint_b.address().as_ref(),
         ],
         bump,
         has_one = config,
         has_one = mint_a,
         has_one = mint_b,
     )]
-    pub pool_config: Account<'info, PoolConfig>,
+    pub pool_config: BorshAccount<PoolConfig>,
 
     /// CHECK: Read only authority
     #[account(
         seeds = [
             pool_config.config.as_ref(),
-            mint_a.key().as_ref(),
-            mint_b.key().as_ref(),
+            mint_a.address().as_ref(),
+            mint_b.address().as_ref(),
             AUTHORITY_SEED,
         ],
         bump,
     )]
-    pub pool_authority: UncheckedAccount<'info>,
+    pub pool_authority: UncheckedAccount,
 
     /// The account doing the swap
-    pub trader: Signer<'info>,
+    pub trader: Signer,
 
-    pub mint_a: Box<InterfaceAccount<'info, Mint>>,
+    pub mint_a: Box<InterfaceAccount<Mint>>,
 
-    pub mint_b: Box<InterfaceAccount<'info, Mint>>,
+    pub mint_b: Box<InterfaceAccount<Mint>>,
 
     #[account(
         mut,
@@ -321,7 +321,7 @@ pub struct SwapTokensAccountConstraints<'info> {
         associated_token::authority = pool_authority,
         associated_token::token_program = token_program,
     )]
-    pub pool_a: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub pool_a: Box<InterfaceAccount<TokenAccount>>,
 
     #[account(
         mut,
@@ -329,7 +329,7 @@ pub struct SwapTokensAccountConstraints<'info> {
         associated_token::authority = pool_authority,
         associated_token::token_program = token_program,
     )]
-    pub pool_b: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub pool_b: Box<InterfaceAccount<TokenAccount>>,
 
     #[account(
         init_if_needed,
@@ -338,7 +338,7 @@ pub struct SwapTokensAccountConstraints<'info> {
         associated_token::authority = trader,
         associated_token::token_program = token_program,
     )]
-    pub token_a: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub token_a: Box<InterfaceAccount<TokenAccount>>,
 
     #[account(
         init_if_needed,
@@ -347,14 +347,14 @@ pub struct SwapTokensAccountConstraints<'info> {
         associated_token::authority = trader,
         associated_token::token_program = token_program,
     )]
-    pub token_b: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub token_b: Box<InterfaceAccount<TokenAccount>>,
 
     /// The account paying for all rents
     #[account(mut)]
-    pub payer: Signer<'info>,
+    pub payer: Signer,
 
     /// Solana ecosystem accounts
-    pub token_program: Interface<'info, TokenInterface>,
-    pub associated_token_program: Program<'info, AssociatedToken>,
-    pub system_program: Program<'info, System>,
+    pub token_program: Interface<'static, TokenInterface>,
+    pub associated_token_program: Program<AssociatedToken>,
+    pub system_program: Program<System>,
 }

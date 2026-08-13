@@ -7,14 +7,14 @@ use {
 };
 
 #[derive(Accounts)]
-pub struct TransferTokensAccountConstraints<'info> {
+pub struct TransferTokensAccountConstraints {
     #[account(mut)]
-    pub sender: Signer<'info>,
+    pub sender: Signer,
 
-    pub recipient: SystemAccount<'info>,
+    pub recipient: SystemAccount,
 
     #[account(mut)]
-    pub mint_account: InterfaceAccount<'info, Mint>,
+    pub mint_account: InterfaceAccount<Mint>,
 
     #[account(
         mut,
@@ -22,7 +22,7 @@ pub struct TransferTokensAccountConstraints<'info> {
         associated_token::authority = sender,
         associated_token::token_program = token_program,
     )]
-    pub sender_token_account: InterfaceAccount<'info, TokenAccount>,
+    pub sender_token_account: InterfaceAccount<TokenAccount>,
 
     #[account(
         init_if_needed,
@@ -31,11 +31,11 @@ pub struct TransferTokensAccountConstraints<'info> {
         associated_token::authority = recipient,
         associated_token::token_program = token_program,
     )]
-    pub recipient_token_account: InterfaceAccount<'info, TokenAccount>,
+    pub recipient_token_account: InterfaceAccount<TokenAccount>,
 
-    pub token_program: Interface<'info, TokenInterface>,
-    pub associated_token_program: Program<'info, AssociatedToken>,
-    pub system_program: Program<'info, System>,
+    pub token_program: Interface<'static, TokenInterface>,
+    pub associated_token_program: Program<AssociatedToken>,
+    pub system_program: Program<System>,
 }
 
 /// Transfers `amount` tokens from the sender's to the recipient's associated
@@ -47,36 +47,36 @@ pub struct TransferTokensAccountConstraints<'info> {
 /// decimals through the CPI so a wrong-mint or wrong-decimals account fails
 /// the CPI instead of silently moving the wrong quantity.
 pub fn handle_transfer_tokens(
-    context: Context<TransferTokensAccountConstraints>,
+    context: &mut Context<TransferTokensAccountConstraints>,
     amount: u64,
 ) -> Result<()> {
     msg!("Transferring tokens...");
     msg!(
         "Mint: {}",
-        &context.accounts.mint_account.to_account_info().key()
+        &context.accounts.mint_account.cpi_handle_mut().address()
     );
     msg!(
         "From Token Address: {}",
-        &context.accounts.sender_token_account.key()
+        &context.accounts.sender_token_account.address()
     );
     msg!(
         "To Token Address: {}",
-        &context.accounts.recipient_token_account.key()
+        &context.accounts.recipient_token_account.address()
     );
 
     // Invoke the transfer_checked instruction on the token program
     transfer_checked(
         CpiContext::new(
-            context.accounts.token_program.key(),
+            context.accounts.token_program.address(),
             TransferChecked {
-                from: context.accounts.sender_token_account.to_account_info(),
-                mint: context.accounts.mint_account.to_account_info(),
-                to: context.accounts.recipient_token_account.to_account_info(),
-                authority: context.accounts.sender.to_account_info(),
+                from: context.accounts.sender_token_account.cpi_handle_mut(),
+                mint: context.accounts.mint_account.cpi_handle(),
+                to: context.accounts.recipient_token_account.cpi_handle_mut(),
+                authority: context.accounts.sender.cpi_handle(),
             },
         ),
         amount,
-        context.accounts.mint_account.decimals,
+        context.accounts.mint_account.decimals(),
     )?;
 
     msg!("Tokens transferred successfully.");

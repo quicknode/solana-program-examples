@@ -1,4 +1,5 @@
 use anchor_lang::prelude::*;
+use anchor_spl::mint;
 use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
 
 use crate::{error::BettingError, Bet, Event, EventStatus, User};
@@ -6,18 +7,18 @@ use crate::{error::BettingError, Bet, Event, EventStatus, User};
 use super::transfer_tokens_from_vault;
 
 #[derive(Accounts)]
-pub struct ClaimWinningsAccountConstraints<'info> {
+pub struct ClaimWinningsAccountConstraints {
     #[account(mut)]
-    pub bettor: Signer<'info>,
+    pub bettor: Signer,
 
     #[account(mint::token_program = token_program)]
-    pub token_mint: InterfaceAccount<'info, Mint>,
+    pub token_mint: InterfaceAccount<Mint>,
 
     #[account(
         seeds = [b"event", event.event_id.to_le_bytes().as_ref()],
         bump = event.bump,
     )]
-    pub event: Account<'info, Event>,
+    pub event: BorshAccount<Event>,
 
     // Closing the Bet ends the position: the rent goes back to the bettor and
     // a second claim fails because the account no longer exists.
@@ -26,17 +27,17 @@ pub struct ClaimWinningsAccountConstraints<'info> {
         close = bettor,
         has_one = bettor,
         has_one = event,
-        seeds = [b"bet", bet.outcome.as_ref(), bettor.key().as_ref()],
+        seeds = [b"bet", bet.outcome.as_ref(), bettor.address().as_ref()],
         bump = bet.bump,
     )]
-    pub bet: Account<'info, Bet>,
+    pub bet: BorshAccount<Bet>,
 
     #[account(
         mut,
-        seeds = [b"user", bettor.key().as_ref()],
+        seeds = [b"user", bettor.address().as_ref()],
         bump = user.bump,
     )]
-    pub user: Account<'info, User>,
+    pub user: BorshAccount<User>,
 
     #[account(
         mut,
@@ -44,7 +45,7 @@ pub struct ClaimWinningsAccountConstraints<'info> {
         associated_token::authority = bettor,
         associated_token::token_program = token_program,
     )]
-    pub bettor_token_account: InterfaceAccount<'info, TokenAccount>,
+    pub bettor_token_account: InterfaceAccount<TokenAccount>,
 
     #[account(
         mut,
@@ -52,12 +53,12 @@ pub struct ClaimWinningsAccountConstraints<'info> {
         associated_token::authority = event,
         associated_token::token_program = token_program,
     )]
-    pub vault: InterfaceAccount<'info, TokenAccount>,
+    pub vault: InterfaceAccount<TokenAccount>,
 
-    pub token_program: Interface<'info, TokenInterface>,
+    pub token_program: Interface<'static, TokenInterface>,
 }
 
-pub fn handle_claim_winnings(context: Context<ClaimWinningsAccountConstraints>) -> Result<()> {
+pub fn handle_claim_winnings(context: &mut Context<ClaimWinningsAccountConstraints>) -> Result<()> {
     require!(
         context.accounts.event.status == EventStatus::Settled,
         BettingError::EventNotSettled
@@ -93,7 +94,7 @@ pub fn handle_claim_winnings(context: Context<ClaimWinningsAccountConstraints>) 
     // The position is over, so drop the Bet from the bettor's index before the
     // transfer (effects before interactions); the Bet account itself closes
     // when the instruction finishes.
-    let bet_key = context.accounts.bet.key();
+    let bet_key = context.accounts.bet.address();
     context.accounts.user.remove_bet(&bet_key)?;
 
     let event_id = context.accounts.event.event_id;
@@ -103,7 +104,7 @@ pub fn handle_claim_winnings(context: Context<ClaimWinningsAccountConstraints>) 
         &context.accounts.bettor_token_account,
         payout,
         &context.accounts.token_mint,
-        &context.accounts.event.to_account_info(),
+        &context.accounts.event.cpi_handle_mut(),
         &context.accounts.token_program,
         event_id,
         event_bump,

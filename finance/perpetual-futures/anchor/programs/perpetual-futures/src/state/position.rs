@@ -19,12 +19,12 @@ impl Side {
 }
 
 /// A single trader's leveraged position. One PDA per (pool, owner, side).
-#[account]
+#[account(borsh)]
 #[derive(InitSpace)]
 pub struct Position {
-    pub owner: Pubkey,
+    pub owner: Address,
 
-    pub pool: Pubkey,
+    pub pool: Address,
 
     pub side: Side,
 

@@ -1,4 +1,5 @@
 use anchor_lang::prelude::*;
+use anchor_spl::mint;
 use anchor_spl::token_interface::{Mint, TokenInterface};
 
 use crate::{error::BettingError, Config};
@@ -6,12 +7,12 @@ use crate::{error::BettingError, Config};
 pub const MAX_FEE_BPS: u16 = 10_000;
 
 #[derive(Accounts)]
-pub struct InitializeConfigAccountConstraints<'info> {
+pub struct InitializeConfigAccountConstraints {
     #[account(mut)]
-    pub admin: Signer<'info>,
+    pub admin: Signer,
 
     #[account(mint::token_program = token_program)]
-    pub token_mint: InterfaceAccount<'info, Mint>,
+    pub token_mint: InterfaceAccount<Mint>,
 
     #[account(
         init,
@@ -20,22 +21,22 @@ pub struct InitializeConfigAccountConstraints<'info> {
         seeds = [b"config"],
         bump
     )]
-    pub config: Account<'info, Config>,
+    pub config: BorshAccount<Config>,
 
-    pub token_program: Interface<'info, TokenInterface>,
-    pub system_program: Program<'info, System>,
+    pub token_program: Interface<'static, TokenInterface>,
+    pub system_program: Program<System>,
 }
 
 pub fn handle_initialize_config(
-    context: Context<InitializeConfigAccountConstraints>,
+    context: &mut Context<InitializeConfigAccountConstraints>,
     fee_bps: u16,
-    fee_recipient: Pubkey,
+    fee_recipient: Address,
 ) -> Result<()> {
     require!(fee_bps <= MAX_FEE_BPS, BettingError::FeeTooHigh);
 
-    context.accounts.config.set_inner(Config {
-        admin: context.accounts.admin.key(),
-        token_mint: context.accounts.token_mint.key(),
+    *context.accounts.config = (Config {
+        admin: *context.accounts.admin.address(),
+        token_mint: *context.accounts.token_mint.address(),
         fee_recipient,
         fee_bps,
         event_count: 0,

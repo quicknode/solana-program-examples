@@ -3,23 +3,23 @@ use anchor_spl::associated_token::AssociatedToken;
 use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
 
 #[derive(Accounts)]
-pub struct CreateAssociatedTokenAccountAccountConstraints<'info> {
+pub struct CreateAssociatedTokenAccountAccountConstraints {
     #[account(mut)]
-    pub signer: Signer<'info>,
-    pub mint: InterfaceAccount<'info, Mint>,
+    pub signer: Signer,
+    pub mint: InterfaceAccount<Mint>,
     #[account(
         init,
         associated_token::mint = mint,
         payer = signer,
         associated_token::authority = signer,
     )]
-    pub token_account: InterfaceAccount<'info, TokenAccount>,
-    pub system_program: Program<'info, System>,
-    pub token_program: Interface<'info, TokenInterface>,
-    pub associated_token_program: Program<'info, AssociatedToken>,
+    pub token_account: InterfaceAccount<TokenAccount>,
+    pub system_program: Program<System>,
+    pub token_program: Interface<'static, TokenInterface>,
+    pub associated_token_program: Program<AssociatedToken>,
 }
 
-pub fn handler(_context: Context<CreateAssociatedTokenAccountAccountConstraints>) -> Result<()> {
+pub fn handler(_context: &mut Context<CreateAssociatedTokenAccountAccountConstraints>) -> Result<()> {
     msg!("Create Associated Token Account");
     Ok(())
 }

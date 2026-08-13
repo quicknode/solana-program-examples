@@ -10,20 +10,20 @@ use anchor_spl::{
 use spl_token_metadata_interface::state::{Field, TokenMetadata};
 
 #[derive(Accounts)]
-pub struct UpdateFieldAccountConstraints<'info> {
+pub struct UpdateFieldAccountConstraints {
     #[account(mut)]
-    pub authority: Signer<'info>,
+    pub authority: Signer,
 
     #[account(
         mut,
         extensions::metadata_pointer::metadata_address = mint_account,
     )]
-    pub mint_account: InterfaceAccount<'info, Mint>,
-    pub token_program: Program<'info, Token2022>,
-    pub system_program: Program<'info, System>,
+    pub mint_account: InterfaceAccount<Mint>,
+    pub token_program: Program<Token2022>,
+    pub system_program: Program<System>,
 }
 
-pub fn process_update_field(context: Context<UpdateFieldAccountConstraints>, args: UpdateFieldArgs) -> Result<()> {
+pub fn process_update_field(context: &mut Context<UpdateFieldAccountConstraints>, args: UpdateFieldArgs) -> Result<()> {
     let UpdateFieldArgs { field, value } = args;
 
     // Convert to Field type from spl_token_metadata_interface
@@ -32,7 +32,7 @@ pub fn process_update_field(context: Context<UpdateFieldAccountConstraints>, arg
 
     let (current_lamports, required_lamports) = {
         // Get the current state of the mint account
-        let mint = &context.accounts.mint_account.to_account_info();
+        let mint = &context.accounts.mint_account.cpi_handle_mut();
         let buffer = mint.try_borrow_data()?;
         let state = PodStateWithExtensions::<PodMint>::unpack(&buffer)?;
 
@@ -46,7 +46,7 @@ pub fn process_update_field(context: Context<UpdateFieldAccountConstraints>, arg
             state.try_get_new_account_len_for_variable_len_extension(&token_metadata)?;
 
         // Calculate the required lamports for the new account length
-        let required_lamports = Rent::get()?.minimum_balance(new_account_len);
+        let required_lamports = Rent::get()?.try_minimum_balance(new_account_len)?;
         // Get the current lamports of the mint account
         let current_lamports = mint.lamports();
 
@@ -61,10 +61,10 @@ pub fn process_update_field(context: Context<UpdateFieldAccountConstraints>, arg
         let lamport_difference = required_lamports - current_lamports;
         transfer(
             CpiContext::new(
-                context.accounts.system_program.key(),
+                context.accounts.system_program.address(),
                 Transfer {
-                    from: context.accounts.authority.to_account_info(),
-                    to: context.accounts.mint_account.to_account_info(),
+                    from: context.accounts.authority.cpi_handle_mut(),
+                    to: context.accounts.mint_account.cpi_handle_mut(),
                 },
             ),
             lamport_difference,
@@ -78,11 +78,11 @@ pub fn process_update_field(context: Context<UpdateFieldAccountConstraints>, arg
     // Update token metadata
     token_metadata_update_field(
         CpiContext::new(
-            context.accounts.token_program.key(),
+            context.accounts.token_program.address(),
             TokenMetadataUpdateField {
-                program_id: context.accounts.token_program.to_account_info(),
-                metadata: context.accounts.mint_account.to_account_info(),
-                update_authority: context.accounts.authority.to_account_info(),
+                program_id: context.accounts.token_program.cpi_handle_mut(),
+                metadata: context.accounts.mint_account.cpi_handle_mut(),
+                update_authority: context.accounts.authority.cpi_handle(),
             },
         ),
         field,

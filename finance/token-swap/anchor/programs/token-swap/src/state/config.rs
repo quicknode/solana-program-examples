@@ -8,11 +8,11 @@ use anchor_lang::prelude::*;
 /// program-level config is global by construction). Parameterising the config
 /// by an `id` was leftover complexity from the original example; removing it
 /// makes the onchain layout simpler and matches realistic deployment.
-#[account]
+#[account(borsh)]
 #[derive(Default, InitSpace)]
 pub struct Config {
     /// Account that has admin authority over the AMM.
-    pub admin: Pubkey,
+    pub admin: Address,
 
     /// The trading fee taken on each swap, in basis points (out of 10_000).
     ///

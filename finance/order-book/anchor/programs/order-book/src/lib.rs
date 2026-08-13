@@ -16,7 +16,7 @@ pub mod order_book {
     /// the order book PDA, and the two PDA-authority vaults that hold locked
     /// funds while orders are open.
     pub fn initialize_market(
-        context: Context<InitializeMarketAccountConstraints>,
+        context: &mut Context<InitializeMarketAccountConstraints>,
         fee_basis_points: u16,
         tick_size: u64,
         base_lot_size: u64,
@@ -35,7 +35,7 @@ pub mod order_book {
 
     /// Create a per-user, per-market account that tracks a user's open orders
     /// and unsettled balances.
-    pub fn initialize_market_user(context: Context<InitializeMarketUserAccountConstraints>) -> Result<()> {
+    pub fn initialize_market_user(context: &mut Context<InitializeMarketUserAccountConstraints>) -> Result<()> {
         instructions::initialize_market_user::handle_initialize_market_user(context)
     }
 
@@ -51,7 +51,7 @@ pub mod order_book {
     /// `(maker_order_pda, maker_user_account_pda)`, ordered by the
     /// book's price-time priority (i.e. best ask first for a taker bid).
     pub fn place_order<'info>(
-        context: Context<'info, PlaceOrderAccountConstraints<'info>>,
+        context: &mut Context<'info, PlaceOrderAccountConstraints<'info>>,
         side: state::OrderSide,
         price: u64,
         quantity: u64,
@@ -62,19 +62,19 @@ pub mod order_book {
     /// Cancel an open (or partially filled) order. Credits the remaining
     /// locked amount back to the owner's unsettled balance; the actual token
     /// transfer happens on settle_funds.
-    pub fn cancel_order(context: Context<CancelOrderAccountConstraints>) -> Result<()> {
+    pub fn cancel_order(context: &mut Context<CancelOrderAccountConstraints>) -> Result<()> {
         instructions::cancel_order::handle_cancel_order(context)
     }
 
     /// Move accumulated unsettled balances out of the market vault and into
     /// the user's token accounts. No-op if both balances are zero.
-    pub fn settle_funds(context: Context<SettleFundsAccountConstraints>) -> Result<()> {
+    pub fn settle_funds(context: &mut Context<SettleFundsAccountConstraints>) -> Result<()> {
         instructions::settle_funds::handle_settle_funds(context)
     }
 
     /// Drain the fee vault into the market authority's token account.
     /// Authority-gated - only the market's stored `authority` may call this.
-    pub fn withdraw_fees(context: Context<WithdrawFeesAccountConstraints>) -> Result<()> {
+    pub fn withdraw_fees(context: &mut Context<WithdrawFeesAccountConstraints>) -> Result<()> {
         instructions::withdraw_fees::handle_withdraw_fees(context)
     }
 }

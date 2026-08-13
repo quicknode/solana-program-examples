@@ -9,11 +9,11 @@ declare_id!("5BQyC7y2Pc283woThq11uZRqsgcRbBRLKz4yQ8BJadi2");
 pub mod memo_transfer {
     use super::*;
 
-    pub fn initialize(context: Context<InitializeAccountConstraints>) -> Result<()> {
+    pub fn initialize(context: &mut Context<InitializeAccountConstraints>) -> Result<()> {
         instructions::initialize::handler(context)
     }
 
-    pub fn disable(context: Context<DisableAccountConstraints>) -> Result<()> {
+    pub fn disable(context: &mut Context<DisableAccountConstraints>) -> Result<()> {
         instructions::disable::handler(context)
     }
 }

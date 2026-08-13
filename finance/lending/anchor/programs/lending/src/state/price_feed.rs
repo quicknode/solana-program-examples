@@ -19,13 +19,13 @@ use crate::math::price_mantissa_to_scaled;
 /// `set_price` handler writes it directly so LiteSVM tests are deterministic.
 /// A production read should also reject results whose confidence interval is
 /// too wide; this stand-in has no confidence field to check.
-#[account]
+#[account(borsh)]
 #[derive(InitSpace)]
 pub struct PriceFeed {
     /// The lending market this feed serves; part of the PDA seeds.
-    pub market: Pubkey,
+    pub market: Address,
 
-    pub mint: Pubkey,
+    pub mint: Address,
 
     pub price_mantissa: i128,
 

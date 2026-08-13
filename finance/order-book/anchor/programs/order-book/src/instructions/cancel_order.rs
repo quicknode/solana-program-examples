@@ -6,11 +6,11 @@ use crate::state::{
     MarketUser, ORDER_SEED, MARKET_USER_SEED,
 };
 
-pub fn handle_cancel_order(context: Context<CancelOrderAccountConstraints>) -> Result<()> {
+pub fn handle_cancel_order(context: &mut Context<CancelOrderAccountConstraints>) -> Result<()> {
     let order = &mut context.accounts.order;
 
     require!(
-        order.owner == context.accounts.owner.key(),
+        order.owner == *context.accounts.owner.address(),
         ErrorCode::Unauthorized
     );
 
@@ -72,27 +72,27 @@ pub fn handle_cancel_order(context: Context<CancelOrderAccountConstraints>) -> R
 }
 
 #[derive(Accounts)]
-pub struct CancelOrderAccountConstraints<'info> {
+pub struct CancelOrderAccountConstraints {
     #[account(has_one = order_book @ ErrorCode::InvalidOrderBook)]
-    pub market: Account<'info, Market>,
+    pub market: BorshAccount<Market>,
 
     // Not a PDA (see initialize_market.rs); bound to `market` via has_one.
     #[account(mut)]
-    pub order_book: AccountLoader<'info, OrderBook>,
+    pub order_book: AccountLoader<OrderBook>,
 
     #[account(
         mut,
-        seeds = [ORDER_SEED, market.key().as_ref(), order.order_id.to_le_bytes().as_ref()],
+        seeds = [ORDER_SEED, market.address().as_ref(), order.order_id.to_le_bytes().as_ref()],
         bump = order.bump
     )]
-    pub order: Account<'info, Order>,
+    pub order: BorshAccount<Order>,
 
     #[account(
         mut,
-        seeds = [MARKET_USER_SEED, market.key().as_ref(), owner.key().as_ref()],
+        seeds = [MARKET_USER_SEED, market.address().as_ref(), owner.address().as_ref()],
         bump = market_user.bump
     )]
-    pub market_user: Account<'info, MarketUser>,
+    pub market_user: BorshAccount<MarketUser>,
 
-    pub owner: Signer<'info>,
+    pub owner: Signer,
 }

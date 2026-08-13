@@ -12,9 +12,9 @@ use crate::oracle::{asset_value_in_usdc, load_price, read_token_amount, PYTH_PRI
 use crate::state::{AssetConfig, Strategy};
 
 #[derive(Accounts)]
-pub struct DepositAccountConstraints<'info> {
+pub struct DepositAccountConstraints {
     #[account(mut)]
-    pub depositor: Signer<'info>,
+    pub depositor: Signer,
 
     #[account(
         mut,
@@ -22,16 +22,16 @@ pub struct DepositAccountConstraints<'info> {
         seeds = [b"strategy", strategy.index.to_le_bytes().as_ref()],
         bump = strategy.bump
     )]
-    pub strategy: Box<Account<'info, Strategy>>,
+    pub strategy: Box<BorshAccount<Strategy>>,
 
     #[account(
         mut,
-        seeds = [b"share_mint", strategy.key().as_ref()],
+        seeds = [b"share_mint", strategy.address().as_ref()],
         bump
     )]
-    pub share_mint: Box<InterfaceAccount<'info, Mint>>,
+    pub share_mint: Box<InterfaceAccount<Mint>>,
 
-    pub usdc_mint: Box<InterfaceAccount<'info, Mint>>,
+    pub usdc_mint: Box<InterfaceAccount<Mint>>,
 
     #[account(
         mut,
@@ -39,7 +39,7 @@ pub struct DepositAccountConstraints<'info> {
         associated_token::authority = depositor,
         associated_token::token_program = token_program
     )]
-    pub depositor_usdc_account: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub depositor_usdc_account: Box<InterfaceAccount<TokenAccount>>,
 
     #[account(
         init_if_needed,
@@ -48,7 +48,7 @@ pub struct DepositAccountConstraints<'info> {
         associated_token::authority = depositor,
         associated_token::token_program = token_program
     )]
-    pub depositor_share_account: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub depositor_share_account: Box<InterfaceAccount<TokenAccount>>,
 
     #[account(
         mut,
@@ -56,28 +56,28 @@ pub struct DepositAccountConstraints<'info> {
         associated_token::authority = strategy,
         associated_token::token_program = token_program
     )]
-    pub vault_usdc: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub vault_usdc: Box<InterfaceAccount<TokenAccount>>,
 
     /// CHECK: Router config PDA from the mock-swap-router program
     #[account(mut)]
-    pub router_config: UncheckedAccount<'info>,
+    pub router_config: UncheckedAccount,
 
     /// CHECK: Router USDC treasury ATA
     #[account(mut)]
-    pub router_usdc_treasury: UncheckedAccount<'info>,
+    pub router_usdc_treasury: UncheckedAccount,
 
     /// CHECK: Router authority PDA from the mock-swap-router program
     #[account(mut)]
-    pub router_authority: UncheckedAccount<'info>,
+    pub router_authority: UncheckedAccount,
 
     #[account(
-        constraint = swap_router_program.key() == strategy.swap_router @ VaultError::InvalidSwapRouter
+        constraint = swap_router_program.address() == strategy.swap_router @ VaultError::InvalidSwapRouter
     )]
-    pub swap_router_program: Program<'info, mock_swap_router::program::MockSwapRouter>,
+    pub swap_router_program: Program<mock_swap_router::program::MockSwapRouter>,
 
-    pub associated_token_program: Program<'info, AssociatedToken>,
-    pub token_program: Interface<'info, TokenInterface>,
-    pub system_program: Program<'info, System>,
+    pub associated_token_program: Program<AssociatedToken>,
+    pub token_program: Interface<'static, TokenInterface>,
+    pub system_program: Program<System>,
     // remaining_accounts: for each asset index 0..asset_count, in order:
     //   [asset_config, vault, asset_mint, asset_rate, price_feed]
 }
@@ -89,7 +89,7 @@ pub struct DepositAccountConstraints<'info> {
 /// through the registered router, so a depositor's money is invested in the same
 /// transaction they put it in (only sub-cent rounding dust can remain as USDC).
 pub fn handle_deposit<'info>(
-    context: Context<'info, DepositAccountConstraints<'info>>,
+    context: &mut Context<'info, DepositAccountConstraints<'info>>,
     usdc_amount: u64,
     minimum_shares: u64,
 ) -> Result<()> {
@@ -101,12 +101,12 @@ pub fn handle_deposit<'info>(
         VaultError::StrategyNotFullyAllocated
     );
 
-    let vault_usdc_amount = context.accounts.vault_usdc.amount;
+    let vault_usdc_amount = context.accounts.vault_usdc.amount();
     let total_shares = context.accounts.strategy.total_shares;
-    let usdc_decimals = context.accounts.usdc_mint.decimals;
+    let usdc_decimals = context.accounts.usdc_mint.decimals();
     let strategy_index = context.accounts.strategy.index;
     let strategy_bump = context.accounts.strategy.bump;
-    let strategy_key = context.accounts.strategy.key();
+    let strategy_key = context.accounts.strategy.address();
     let max_slippage_bps = context.accounts.strategy.max_slippage_bps;
     let asset_count = context.accounts.strategy.asset_count as usize;
 
@@ -115,7 +115,7 @@ pub fn handle_deposit<'info>(
     // Net asset value over the complete asset set. The assets are exactly indices
     // 0..asset_count, so requiring five accounts per index, in order, each with a
     // matching index, makes it impossible to omit an asset and understate NAV.
-    let remaining = context.remaining_accounts;
+    let remaining = context.remaining_accounts();
     require!(
         remaining.len() == asset_count * 5,
         VaultError::IncompleteAssetAccounts
@@ -139,7 +139,7 @@ pub fn handle_deposit<'info>(
             VaultError::InvalidAssetAccount
         );
         require_keys_eq!(
-            vault_account.key(),
+            vault_account.address(),
             config.vault,
             VaultError::InvalidAssetAccount
         );
@@ -173,12 +173,12 @@ pub fn handle_deposit<'info>(
 
     // Pull the depositor's USDC into the strategy's USDC vault.
     let transfer_accounts = TransferChecked {
-        from: context.accounts.depositor_usdc_account.to_account_info(),
-        mint: context.accounts.usdc_mint.to_account_info(),
-        to: context.accounts.vault_usdc.to_account_info(),
-        authority: context.accounts.depositor.to_account_info(),
+        from: context.accounts.depositor_usdc_account.cpi_handle_mut(),
+        mint: context.accounts.usdc_mint.cpi_handle_mut(),
+        to: context.accounts.vault_usdc.cpi_handle_mut(),
+        authority: context.accounts.depositor.cpi_handle_mut(),
     };
-    let cpi_ctx = CpiContext::new(context.accounts.token_program.key(), transfer_accounts);
+    let cpi_ctx = CpiContext::new(context.accounts.token_program.address(), transfer_accounts);
     transfer_checked(cpi_ctx, usdc_amount, usdc_decimals)?;
 
     let index_bytes = strategy_index.to_le_bytes();
@@ -197,7 +197,7 @@ pub fn handle_deposit<'info>(
 
         let config = AssetConfig::load_checked(config_account)?;
         require_keys_eq!(
-            mint_account.key(),
+            mint_account.address(),
             config.mint,
             VaultError::InvalidAssetAccount
         );
@@ -233,21 +233,21 @@ pub fn handle_deposit<'info>(
             .map_err(|_| VaultError::MathOverflow)?;
 
         let cpi_accounts = RouterSwapAccounts {
-            caller: context.accounts.strategy.to_account_info(),
-            router_config: context.accounts.router_config.to_account_info(),
+            caller: context.accounts.strategy.cpi_handle_mut(),
+            router_config: context.accounts.router_config.cpi_handle_mut(),
             asset_rate: rate_account.clone(),
-            usdc_mint: context.accounts.usdc_mint.to_account_info(),
+            usdc_mint: context.accounts.usdc_mint.cpi_handle_mut(),
             asset_mint: mint_account.clone(),
-            caller_usdc_account: context.accounts.vault_usdc.to_account_info(),
+            caller_usdc_account: context.accounts.vault_usdc.cpi_handle_mut(),
             caller_asset_account: vault_account.clone(),
-            router_usdc_treasury: context.accounts.router_usdc_treasury.to_account_info(),
-            router_authority: context.accounts.router_authority.to_account_info(),
-            associated_token_program: context.accounts.associated_token_program.to_account_info(),
-            token_program: context.accounts.token_program.to_account_info(),
-            system_program: context.accounts.system_program.to_account_info(),
+            router_usdc_treasury: context.accounts.router_usdc_treasury.cpi_handle_mut(),
+            router_authority: context.accounts.router_authority.cpi_handle_mut(),
+            associated_token_program: context.accounts.associated_token_program.cpi_handle_mut(),
+            token_program: context.accounts.token_program.cpi_handle_mut(),
+            system_program: context.accounts.system_program.cpi_handle_mut(),
         };
         let cpi_ctx = CpiContext::new_with_signer(
-            context.accounts.swap_router_program.key(),
+            context.accounts.swap_router_program.address(),
             cpi_accounts,
             signer_seeds,
         );
@@ -256,12 +256,12 @@ pub fn handle_deposit<'info>(
 
     // Mint the shares last, with the strategy PDA signing as the share mint authority.
     let mint_accounts = MintTo {
-        mint: context.accounts.share_mint.to_account_info(),
-        to: context.accounts.depositor_share_account.to_account_info(),
-        authority: context.accounts.strategy.to_account_info(),
+        mint: context.accounts.share_mint.cpi_handle_mut(),
+        to: context.accounts.depositor_share_account.cpi_handle_mut(),
+        authority: context.accounts.strategy.cpi_handle_mut(),
     };
     let cpi_ctx = CpiContext::new_with_signer(
-        context.accounts.token_program.key(),
+        context.accounts.token_program.address(),
         mint_accounts,
         signer_seeds,
     );

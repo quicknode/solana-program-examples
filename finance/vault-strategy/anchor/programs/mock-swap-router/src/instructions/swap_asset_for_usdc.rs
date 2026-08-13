@@ -10,25 +10,25 @@ use crate::error::RouterError;
 use crate::state::{AssetRate, RouterConfig};
 
 #[derive(Accounts)]
-pub struct SwapAssetForUsdcAccountConstraints<'info> {
-    pub caller: Signer<'info>,
+pub struct SwapAssetForUsdcAccountConstraints {
+    pub caller: Signer,
 
     #[account(
         seeds = [b"router_config"],
         bump = router_config.bump
     )]
-    pub router_config: Account<'info, RouterConfig>,
+    pub router_config: BorshAccount<RouterConfig>,
 
     #[account(
-        constraint = asset_rate.mint == asset_mint.key() @ RouterError::InvalidAssetMint
+        constraint = asset_rate.mint == *asset_mint.address() @ RouterError::InvalidAssetMint
     )]
-    pub asset_rate: Account<'info, AssetRate>,
+    pub asset_rate: BorshAccount<AssetRate>,
 
-    #[account(constraint = usdc_mint.key() == router_config.usdc_mint @ RouterError::WrongUsdcMint)]
-    pub usdc_mint: Box<InterfaceAccount<'info, Mint>>,
+    #[account(constraint = usdc_mint.address() == router_config.usdc_mint @ RouterError::WrongUsdcMint)]
+    pub usdc_mint: Box<InterfaceAccount<Mint>>,
 
     #[account(mut)]
-    pub asset_mint: Box<InterfaceAccount<'info, Mint>>,
+    pub asset_mint: Box<InterfaceAccount<Mint>>,
 
     /// Caller's asset token account - asset tokens are burned from here
     #[account(
@@ -37,7 +37,7 @@ pub struct SwapAssetForUsdcAccountConstraints<'info> {
         associated_token::authority = caller,
         associated_token::token_program = token_program
     )]
-    pub caller_asset_account: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub caller_asset_account: Box<InterfaceAccount<TokenAccount>>,
 
     /// Caller's USDC account - receives the USDC
     #[account(
@@ -46,7 +46,7 @@ pub struct SwapAssetForUsdcAccountConstraints<'info> {
         associated_token::authority = caller,
         associated_token::token_program = token_program
     )]
-    pub caller_usdc_account: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub caller_usdc_account: Box<InterfaceAccount<TokenAccount>>,
 
     /// Router's USDC treasury - sends the USDC
     #[account(
@@ -55,22 +55,22 @@ pub struct SwapAssetForUsdcAccountConstraints<'info> {
         associated_token::authority = router_authority,
         associated_token::token_program = token_program
     )]
-    pub router_usdc_treasury: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub router_usdc_treasury: Box<InterfaceAccount<TokenAccount>>,
 
     /// CHECK: PDA used as treasury authority - validated by seeds constraint
     #[account(
         seeds = [b"router_authority"],
         bump
     )]
-    pub router_authority: UncheckedAccount<'info>,
+    pub router_authority: UncheckedAccount,
 
-    pub associated_token_program: Program<'info, AssociatedToken>,
-    pub token_program: Interface<'info, TokenInterface>,
-    pub system_program: Program<'info, System>,
+    pub associated_token_program: Program<AssociatedToken>,
+    pub token_program: Interface<'static, TokenInterface>,
+    pub system_program: Program<System>,
 }
 
 pub fn handle_swap_asset_for_usdc(
-    context: Context<SwapAssetForUsdcAccountConstraints>,
+    context: &mut Context<SwapAssetForUsdcAccountConstraints>,
     asset_amount_in: u64,
     minimum_usdc_out: u64,
 ) -> Result<()> {
@@ -87,12 +87,12 @@ pub fn handle_swap_asset_for_usdc(
 
     // Burn asset tokens from caller
     let burn_accounts = Burn {
-        mint: context.accounts.asset_mint.to_account_info(),
-        from: context.accounts.caller_asset_account.to_account_info(),
-        authority: context.accounts.caller.to_account_info(),
+        mint: context.accounts.asset_mint.cpi_handle_mut(),
+        from: context.accounts.caller_asset_account.cpi_handle_mut(),
+        authority: context.accounts.caller.cpi_handle(),
     };
     burn(
-        CpiContext::new(context.accounts.token_program.key(), burn_accounts),
+        CpiContext::new(context.accounts.token_program.address(), burn_accounts),
         asset_amount_in,
     )?;
 
@@ -101,19 +101,19 @@ pub fn handle_swap_asset_for_usdc(
     let signer_seeds: &[&[&[u8]]] = &[&[b"router_authority", &[router_authority_bump]]];
 
     let transfer_accounts = TransferChecked {
-        from: context.accounts.router_usdc_treasury.to_account_info(),
-        mint: context.accounts.usdc_mint.to_account_info(),
-        to: context.accounts.caller_usdc_account.to_account_info(),
-        authority: context.accounts.router_authority.to_account_info(),
+        from: context.accounts.router_usdc_treasury.cpi_handle_mut(),
+        mint: context.accounts.usdc_mint.cpi_handle(),
+        to: context.accounts.caller_usdc_account.cpi_handle_mut(),
+        authority: context.accounts.router_authority.cpi_handle(),
     };
     transfer_checked(
         CpiContext::new_with_signer(
-            context.accounts.token_program.key(),
+            context.accounts.token_program.address(),
             transfer_accounts,
             signer_seeds,
         ),
         usdc_out,
-        context.accounts.usdc_mint.decimals,
+        context.accounts.usdc_mint.decimals(),
     )?;
 
     Ok(())

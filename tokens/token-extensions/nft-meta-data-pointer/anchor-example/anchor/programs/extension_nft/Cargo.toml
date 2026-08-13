@@ -14,15 +14,23 @@ cpi = ["no-entrypoint"]
 no-entrypoint = []
 no-idl = []
 no-log-ix-name = []
-idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
+idl-build = ["anchor-lang/idl-build"]
 
 anchor-debug = []
 custom-heap = []
 custom-panic = []
 
 [dependencies]
-anchor-lang = { version = "1.1.2", features = ["init-if-needed"] }
-anchor-spl = { version = "1.1.2" }
+anchor-lang = { version = "2.0.0-rc.1", features = ["compat"] }
+# The `#[program]` macro expands to `wincode` paths for instruction-data
+# (de)serialization, so the crate has to be a direct dependency.
+wincode = { version = "0.5", features = ["derive"] }
+# anchor-lang 2.0.0-rc.1 is built against wincode 0.5, but solana-address 2.7
+# moved to wincode 0.6. With both in the graph, `Address`'s wincode impls
+# belong to the version the account derives are not using and every
+# `SchemaRead`/`SchemaWrite` bound fails. 2.6.1 is the last 0.5-line release.
+solana-address = ">=2.6, <2.7"
+anchor-spl = { version = "2.0.0-rc.1" }
 # session-keys 3.1.1 is the first release that supports Anchor >=0.28,<2.0
 # (so it builds against Anchor 1.0). Earlier 2.x releases pin Anchor <=0.30
 # and fail to compile against the Anchor 1.0 / Solana 3.x API. Provides the

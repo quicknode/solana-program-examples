@@ -163,7 +163,7 @@ pub struct LeafNode {
     /// Owner of this resting order. Same as the corresponding `Order`
     /// account's `owner`; cached here so the matching loop doesn't have to
     /// deserialize the maker account just to read the owner.
-    pub owner: Pubkey,
+    pub owner: Address,
 
     /// Quantity remaining (in base tokens). Decremented as fills consume the
     /// order; the leaf is removed when it hits 0.
@@ -188,7 +188,7 @@ const_assert_eq!(size_of::<LeafNode>() % 8, 0);
 impl LeafNode {
     pub fn new(
         key: u128,
-        owner: Pubkey,
+        owner: Address,
         quantity: u64,
         order_id: u64,
         timestamp: i64,

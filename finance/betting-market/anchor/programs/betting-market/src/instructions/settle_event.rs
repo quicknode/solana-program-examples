@@ -1,4 +1,5 @@
 use anchor_lang::prelude::*;
+use anchor_spl::mint;
 use anchor_spl::{
     associated_token::AssociatedToken,
     token_interface::{Mint, TokenAccount, TokenInterface},
@@ -12,9 +13,9 @@ const BPS_DENOMINATOR: u128 = 10_000;
 
 #[derive(Accounts)]
 #[instruction(winning_outcome_index: u8)]
-pub struct SettleEventAccountConstraints<'info> {
+pub struct SettleEventAccountConstraints {
     #[account(mut)]
-    pub admin: Signer<'info>,
+    pub admin: Signer,
 
     #[account(
         seeds = [b"config"],
@@ -23,24 +24,24 @@ pub struct SettleEventAccountConstraints<'info> {
         has_one = token_mint,
         has_one = fee_recipient,
     )]
-    pub config: Account<'info, Config>,
+    pub config: BorshAccount<Config>,
 
     #[account(mint::token_program = token_program)]
-    pub token_mint: InterfaceAccount<'info, Mint>,
+    pub token_mint: InterfaceAccount<Mint>,
 
     #[account(
         mut,
         seeds = [b"event", event.event_id.to_le_bytes().as_ref()],
         bump = event.bump,
     )]
-    pub event: Account<'info, Event>,
+    pub event: BorshAccount<Event>,
 
     #[account(
         has_one = event,
-        seeds = [b"outcome", event.key().as_ref(), &[winning_outcome_index]],
+        seeds = [b"outcome", event.address().as_ref(), &[winning_outcome_index]],
         bump = winning_outcome.bump,
     )]
-    pub winning_outcome: Account<'info, Outcome>,
+    pub winning_outcome: BorshAccount<Outcome>,
 
     #[account(
         mut,
@@ -48,10 +49,10 @@ pub struct SettleEventAccountConstraints<'info> {
         associated_token::authority = event,
         associated_token::token_program = token_program,
     )]
-    pub vault: InterfaceAccount<'info, TokenAccount>,
+    pub vault: InterfaceAccount<TokenAccount>,
 
     /// CHECK: validated against config.fee_recipient by the `has_one` above.
-    pub fee_recipient: UncheckedAccount<'info>,
+    pub fee_recipient: UncheckedAccount,
 
     #[account(
         init_if_needed,
@@ -60,15 +61,15 @@ pub struct SettleEventAccountConstraints<'info> {
         associated_token::authority = fee_recipient,
         associated_token::token_program = token_program,
     )]
-    pub fee_recipient_token_account: InterfaceAccount<'info, TokenAccount>,
+    pub fee_recipient_token_account: InterfaceAccount<TokenAccount>,
 
-    pub associated_token_program: Program<'info, AssociatedToken>,
-    pub token_program: Interface<'info, TokenInterface>,
-    pub system_program: Program<'info, System>,
+    pub associated_token_program: Program<AssociatedToken>,
+    pub token_program: Interface<'static, TokenInterface>,
+    pub system_program: Program<System>,
 }
 
 pub fn handle_settle_event(
-    context: Context<SettleEventAccountConstraints>,
+    context: &mut Context<SettleEventAccountConstraints>,
     winning_outcome_index: u8,
 ) -> Result<()> {
     require!(
@@ -97,7 +98,7 @@ pub fn handle_settle_event(
             &context.accounts.fee_recipient_token_account,
             fee,
             &context.accounts.token_mint,
-            &context.accounts.event.to_account_info(),
+            &context.accounts.event.cpi_handle_mut(),
             &context.accounts.token_program,
             event_id,
             event_bump,

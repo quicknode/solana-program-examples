@@ -17,43 +17,43 @@ use crate::{check_is_transferring, CounterAccount, TransferError};
 // the 4096-byte BPF stack frame limit in try_accounts deserialization.
 // This struct has 12 accounts - without Box, the generated code uses ~4160 bytes of stack.
 #[derive(Accounts)]
-pub struct TransferHookAccountConstraints<'info> {
+pub struct TransferHookAccountConstraints {
     #[account(token::mint = mint, token::authority = owner)]
-    pub source_token: Box<InterfaceAccount<'info, TokenAccount>>,
-    pub mint: Box<InterfaceAccount<'info, Mint>>,
+    pub source_token: Box<InterfaceAccount<TokenAccount>>,
+    pub mint: Box<InterfaceAccount<Mint>>,
     #[account(token::mint = mint)]
-    pub destination_token: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub destination_token: Box<InterfaceAccount<TokenAccount>>,
     /// CHECK: source token account owner, can be SystemAccount or PDA owned by another program
-    pub owner: UncheckedAccount<'info>,
+    pub owner: UncheckedAccount,
     /// CHECK: ExtraAccountMetaList Account,
-    #[account(seeds = [b"extra-account-metas", mint.key().as_ref()], bump)]
-    pub extra_account_meta_list: UncheckedAccount<'info>,
-    pub wsol_mint: Box<InterfaceAccount<'info, Mint>>,
-    pub token_program: Program<'info, Token>,
-    pub associated_token_program: Program<'info, AssociatedToken>,
+    #[account(seeds = [b"extra-account-metas", mint.address().as_ref()], bump)]
+    pub extra_account_meta_list: UncheckedAccount,
+    pub wsol_mint: Box<InterfaceAccount<Mint>>,
+    pub token_program: Program<Token>,
+    pub associated_token_program: Program<AssociatedToken>,
     #[account(
         mut,
         seeds = [b"delegate"],
         bump
     )]
-    pub delegate: SystemAccount<'info>,
+    pub delegate: SystemAccount,
     #[account(
         mut,
         token::mint = wsol_mint,
         token::authority = delegate,
     )]
-    pub delegate_wsol_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub delegate_wsol_token_account: Box<InterfaceAccount<TokenAccount>>,
     #[account(
         mut,
         token::mint = wsol_mint,
         token::authority = owner,
     )]
-    pub sender_wsol_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub sender_wsol_token_account: Box<InterfaceAccount<TokenAccount>>,
     #[account(seeds = [b"counter"], bump)]
-    pub counter_account: Account<'info, CounterAccount>,
+    pub counter_account: BorshAccount<CounterAccount>,
 }
 
-pub fn handler(context: Context<TransferHookAccountConstraints>, amount: u64) -> Result<()> {
+pub fn handler(context: &mut Context<TransferHookAccountConstraints>, amount: u64) -> Result<()> {
     // Fail this instruction if it is not called from within a transfer hook
     check_is_transferring(&context)?;
 
@@ -70,15 +70,15 @@ pub fn handler(context: Context<TransferHookAccountConstraints>, amount: u64) ->
 
     msg!(
         "Is writable mint {0}",
-        context.accounts.mint.to_account_info().is_writable
+        context.accounts.mint.cpi_handle_mut().is_writable
     );
     msg!(
         "Is destination mint {0}",
-        context.accounts.destination_token.to_account_info().is_writable
+        context.accounts.destination_token.cpi_handle_mut().is_writable
     );
     msg!(
         "Is source mint {0}",
-        context.accounts.source_token.to_account_info().is_writable
+        context.accounts.source_token.cpi_handle_mut().is_writable
     );
 
     let signer_seeds: &[&[&[u8]]] = &[&[b"delegate", &[context.bumps.delegate]]];
@@ -87,17 +87,17 @@ pub fn handler(context: Context<TransferHookAccountConstraints>, amount: u64) ->
     // transfer lamports amount equal to token transfer amount
     transfer_checked(
         CpiContext::new(
-            context.accounts.token_program.key(),
+            context.accounts.token_program.address(),
             TransferChecked {
-                from: context.accounts.sender_wsol_token_account.to_account_info(),
-                mint: context.accounts.wsol_mint.to_account_info(),
-                to: context.accounts.delegate_wsol_token_account.to_account_info(),
-                authority: context.accounts.delegate.to_account_info(),
+                from: context.accounts.sender_wsol_token_account.cpi_handle_mut(),
+                mint: context.accounts.wsol_mint.cpi_handle(),
+                to: context.accounts.delegate_wsol_token_account.cpi_handle_mut(),
+                authority: context.accounts.delegate.cpi_handle(),
             },
         )
         .with_signer(signer_seeds),
         amount,
-        context.accounts.wsol_mint.decimals,
+        context.accounts.wsol_mint.decimals(),
     )?;
     Ok(())
 }

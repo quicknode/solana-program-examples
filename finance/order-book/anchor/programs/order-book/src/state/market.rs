@@ -6,26 +6,26 @@ pub const MARKET_SEED: &[u8] = b"market";
 // The market PDA itself is the authority of the token vaults, so funds can only
 // move out via program-signed CPIs (place/cancel/settle).
 #[derive(InitSpace)]
-#[account]
+#[account(borsh)]
 pub struct Market {
-    pub authority: Pubkey,
+    pub authority: Address,
 
-    pub base_mint: Pubkey,
+    pub base_mint: Address,
 
-    pub quote_mint: Pubkey,
+    pub quote_mint: Address,
 
-    pub base_vault: Pubkey,
+    pub base_vault: Address,
 
-    pub quote_vault: Pubkey,
+    pub quote_vault: Address,
 
     // Dedicated token account (quote mint) that accumulates taker fees.
     // Kept separate from `quote_vault` so user-owed balances and
     // market-earned fees cannot be confused. The market PDA signs transfers
     // out of it, so only program instruction handlers (notably `withdraw_fees`)
     // can drain it.
-    pub fee_vault: Pubkey,
+    pub fee_vault: Address,
 
-    pub order_book: Pubkey,
+    pub order_book: Address,
 
     pub fee_basis_points: u16,
 

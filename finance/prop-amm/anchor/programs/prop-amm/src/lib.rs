@@ -31,7 +31,7 @@ pub mod prop_amm {
     /// The signer becomes the market's operator: the only party allowed to
     /// move inventory or change the quote.
     pub fn initialize_market(
-        context: Context<InitializeMarketAccountConstraints>,
+        context: &mut Context<InitializeMarketAccountConstraints>,
         parameters: MarketParameters,
     ) -> Result<()> {
         instructions::handle_initialize_market(context, parameters)
@@ -40,7 +40,7 @@ pub mod prop_amm {
     /// Operator moves inventory into the market's vaults. Either amount may be
     /// zero, but not both.
     pub fn deposit_inventory(
-        context: Context<DepositInventoryAccountConstraints>,
+        context: &mut Context<DepositInventoryAccountConstraints>,
         base_amount: u64,
         quote_amount: u64,
     ) -> Result<()> {
@@ -51,7 +51,7 @@ pub mod prop_amm {
     /// it, at any time. The capital is the operator's own; nobody else has a
     /// claim on it.
     pub fn withdraw_inventory(
-        context: Context<WithdrawInventoryAccountConstraints>,
+        context: &mut Context<WithdrawInventoryAccountConstraints>,
         base_amount: u64,
         quote_amount: u64,
     ) -> Result<()> {
@@ -62,7 +62,7 @@ pub mod prop_amm {
     /// during volatility is not an emergency measure for a market maker; it is
     /// Tuesday.
     pub fn set_quote(
-        context: Context<SetQuoteAccountConstraints>,
+        context: &mut Context<SetQuoteAccountConstraints>,
         spread_bps: u16,
         paused: bool,
     ) -> Result<()> {
@@ -73,7 +73,7 @@ pub mod prop_amm {
     /// spread, or sell it at oracle minus spread. Permissionless.
     /// `minimum_amount_out` is slippage protection; pass `0` to opt out.
     pub fn swap(
-        context: Context<SwapAccountConstraints>,
+        context: &mut Context<SwapAccountConstraints>,
         direction: Direction,
         amount_in: u64,
         minimum_amount_out: u64,

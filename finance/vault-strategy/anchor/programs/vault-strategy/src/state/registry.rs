@@ -9,10 +9,10 @@ use anchor_lang::prelude::*;
 /// real assets (and which official price feed) are safe, and a manager only
 /// chooses among them. This is what stops a manager from listing a token they
 /// mint themselves, or pairing a real mint with a feed they control.
-#[account]
+#[account(borsh)]
 #[derive(InitSpace)]
 pub struct Registry {
-    pub authority: Pubkey,
+    pub authority: Address,
     pub bump: u8,
 }
 
@@ -22,11 +22,11 @@ pub struct Registry {
 /// address and fails if no account is there. Created only by the registry
 /// authority; add_asset copies `price_feed` from here so the manager never
 /// supplies the feed.
-#[account]
+#[account(borsh)]
 #[derive(InitSpace)]
 pub struct ApprovedAsset {
-    pub registry: Pubkey,
-    pub mint: Pubkey,
-    pub price_feed: Pubkey,
+    pub registry: Address,
+    pub mint: Address,
+    pub price_feed: Address,
     pub bump: u8,
 }

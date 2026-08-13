@@ -13,19 +13,19 @@ use anchor_lang::prelude::*;
 /// `admin_fees_owed_b`). Those fees physically sit in the existing `pool_a` /
 /// `pool_b` reserves; the accumulators are a *virtual* obligation against
 /// those balances. LP-facing math (deposit, withdraw, swap curve) uses
-/// `pool_X.amount - admin_fees_owed_X` so the admin's owed slice is not
+/// `pool_X.amount() - admin_fees_owed_X` so the admin's owed slice is not
 /// counted toward LP yield.
-#[account]
+#[account(borsh)]
 #[derive(Default, InitSpace)]
 pub struct PoolConfig {
     /// Address of the parent `Config` account this pool belongs to.
-    pub config: Pubkey,
+    pub config: Address,
 
     /// Mint of token A.
-    pub mint_a: Pubkey,
+    pub mint_a: Address,
 
     /// Mint of token B.
-    pub mint_b: Pubkey,
+    pub mint_b: Address,
 
     /// Admin's accumulated fee claim on token A, in base units. Sits
     /// physically in `pool_a` but is excluded from the LP curve and from

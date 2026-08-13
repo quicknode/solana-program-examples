@@ -6,14 +6,14 @@ use spl_transfer_hook_interface::instruction::ExecuteInstruction;
 use crate::{handle_extra_account_metas, handle_extra_account_metas_count, WhiteList};
 
 #[derive(Accounts)]
-pub struct InitializeExtraAccountMetaListAccountConstraints<'info> {
+pub struct InitializeExtraAccountMetaListAccountConstraints {
     #[account(mut)]
-    payer: Signer<'info>,
+    payer: Signer,
 
     /// CHECK: ExtraAccountMetaList Account, must use these seeds
     #[account(
         init,
-        seeds = [b"extra-account-metas", mint.key().as_ref()],
+        seeds = [b"extra-account-metas", mint.address().as_ref()],
         bump,
         // size_of returns Result with spl's ProgramError - unwrap is safe for known-good input
         space = ExtraAccountMetaList::size_of(
@@ -21,16 +21,16 @@ pub struct InitializeExtraAccountMetaListAccountConstraints<'info> {
         ).unwrap(),
         payer = payer
     )]
-    pub extra_account_meta_list: UncheckedAccount<'info>,
-    pub mint: InterfaceAccount<'info, Mint>,
-    pub system_program: Program<'info, System>,
+    pub extra_account_meta_list: UncheckedAccount,
+    pub mint: InterfaceAccount<Mint>,
+    pub system_program: Program<System>,
     #[account(init_if_needed, seeds = [b"white_list"], bump, payer = payer, space = WhiteList::DISCRIMINATOR.len() + WhiteList::INIT_SPACE)]
-    pub white_list: Account<'info, WhiteList>,
+    pub white_list: BorshAccount<WhiteList>,
 }
 
-pub fn handler(mut context: Context<InitializeExtraAccountMetaListAccountConstraints>) -> Result<()> {
+pub fn handler(mut context: &mut Context<InitializeExtraAccountMetaListAccountConstraints>) -> Result<()> {
     // set authority field on white_list account as payer address
-    context.accounts.white_list.authority = context.accounts.payer.key();
+    context.accounts.white_list.authority = *context.accounts.payer.address();
     context.accounts.white_list.bump = context.bumps.white_list;
 
     let extra_account_metas = handle_extra_account_metas()?;

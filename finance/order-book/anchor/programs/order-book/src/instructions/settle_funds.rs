@@ -6,7 +6,7 @@ use anchor_spl::token_interface::{
 use crate::errors::ErrorCode;
 use crate::state::{Market, MarketUser, MARKET_SEED, MARKET_USER_SEED};
 
-pub fn handle_settle_funds(context: Context<SettleFundsAccountConstraints>) -> Result<()> {
+pub fn handle_settle_funds(context: &mut Context<SettleFundsAccountConstraints>) -> Result<()> {
     let market_user = &mut context.accounts.market_user;
     let market = &context.accounts.market;
 
@@ -36,34 +36,34 @@ pub fn handle_settle_funds(context: Context<SettleFundsAccountConstraints>) -> R
     if base_amount > 0 {
         transfer_checked(
             CpiContext::new_with_signer(
-                context.accounts.token_program.key(),
+                context.accounts.token_program.address(),
                 TransferChecked {
-                    from: context.accounts.base_vault.to_account_info(),
-                    mint: context.accounts.base_mint.to_account_info(),
-                    to: context.accounts.user_base_account.to_account_info(),
-                    authority: market.to_account_info(),
+                    from: context.accounts.base_vault.cpi_handle_mut(),
+                    mint: context.accounts.base_mint.cpi_handle(),
+                    to: context.accounts.user_base_account.cpi_handle_mut(),
+                    authority: market.cpi_handle(),
                 },
                 signer_seeds,
             ),
             base_amount,
-            context.accounts.base_mint.decimals,
+            context.accounts.base_mint.decimals(),
         )?;
     }
 
     if quote_amount > 0 {
         transfer_checked(
             CpiContext::new_with_signer(
-                context.accounts.token_program.key(),
+                context.accounts.token_program.address(),
                 TransferChecked {
-                    from: context.accounts.quote_vault.to_account_info(),
-                    mint: context.accounts.quote_mint.to_account_info(),
-                    to: context.accounts.user_quote_account.to_account_info(),
-                    authority: market.to_account_info(),
+                    from: context.accounts.quote_vault.cpi_handle_mut(),
+                    mint: context.accounts.quote_mint.cpi_handle(),
+                    to: context.accounts.user_quote_account.cpi_handle_mut(),
+                    authority: market.cpi_handle(),
                 },
                 signer_seeds,
             ),
             quote_amount,
-            context.accounts.quote_mint.decimals,
+            context.accounts.quote_mint.decimals(),
         )?;
     }
 
@@ -71,7 +71,7 @@ pub fn handle_settle_funds(context: Context<SettleFundsAccountConstraints>) -> R
 }
 
 #[derive(Accounts)]
-pub struct SettleFundsAccountConstraints<'info> {
+pub struct SettleFundsAccountConstraints {
     // `has_one` constraints bind these vaults/mints to the addresses stored
     // on the Market PDA at initialise_market time. Without them a caller
     // could substitute the fee_vault (same mint + same authority as
@@ -85,34 +85,34 @@ pub struct SettleFundsAccountConstraints<'info> {
         has_one = base_mint @ ErrorCode::InvalidBaseMint,
         has_one = quote_mint @ ErrorCode::InvalidQuoteMint,
     )]
-    pub market: Account<'info, Market>,
+    pub market: BorshAccount<Market>,
 
     #[account(
         mut,
-        seeds = [MARKET_USER_SEED, market.key().as_ref(), owner.key().as_ref()],
+        seeds = [MARKET_USER_SEED, market.address().as_ref(), owner.address().as_ref()],
         bump = market_user.bump
     )]
-    pub market_user: Account<'info, MarketUser>,
+    pub market_user: BorshAccount<MarketUser>,
 
     // Boxed for the same reason as in PlaceOrderAccountConstraints -
     // InterfaceAccount is too large to keep on the BPF stack in bulk.
     #[account(mut)]
-    pub base_vault: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub base_vault: Box<InterfaceAccount<TokenAccount>>,
 
     #[account(mut)]
-    pub quote_vault: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub quote_vault: Box<InterfaceAccount<TokenAccount>>,
 
     #[account(mut)]
-    pub user_base_account: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub user_base_account: Box<InterfaceAccount<TokenAccount>>,
 
     #[account(mut)]
-    pub user_quote_account: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub user_quote_account: Box<InterfaceAccount<TokenAccount>>,
 
-    pub base_mint: Box<InterfaceAccount<'info, Mint>>,
+    pub base_mint: Box<InterfaceAccount<Mint>>,
 
-    pub quote_mint: Box<InterfaceAccount<'info, Mint>>,
+    pub quote_mint: Box<InterfaceAccount<Mint>>,
 
-    pub owner: Signer<'info>,
+    pub owner: Signer,
 
-    pub token_program: Interface<'info, TokenInterface>,
+    pub token_program: Interface<'static, TokenInterface>,
 }

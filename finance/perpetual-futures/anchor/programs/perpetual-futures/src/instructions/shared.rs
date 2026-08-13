@@ -213,7 +213,7 @@ pub fn basis_points_of(amount: u64, basis_points: u16) -> Result<u64> {
 /// price, then bring the pool's funding index up to the current slot, so the
 /// settlement that follows uses fresh numbers for both. Centralized so no
 /// handler can settle a position against a stale funding index.
-pub fn refresh_price_and_funding(pool: &mut Pool, oracle_feed: &AccountInfo) -> Result<u64> {
+pub fn refresh_price_and_funding(pool: &mut Pool, oracle_feed: &AccountView) -> Result<u64> {
     let price = crate::state::oracle::read_oracle_price(
         oracle_feed,
         pool.oracle_scale,

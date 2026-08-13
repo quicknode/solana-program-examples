@@ -4,15 +4,15 @@ use anchor_spl::token_interface::{
 };
 
 #[derive(Accounts)]
-pub struct HarvestAccountConstraints<'info> {
+pub struct HarvestAccountConstraints {
     #[account(mut)]
-    pub mint_account: InterfaceAccount<'info, Mint>,
-    pub token_program: Program<'info, Token2022>,
+    pub mint_account: InterfaceAccount<Mint>,
+    pub token_program: Program<Token2022>,
 }
 
 // transfer fees are stored directly on the recipient token account and must be "harvested"
 // "harvesting" transfers fees accumulated on token accounts to the mint account
-pub fn process_harvest<'info>(context: Context<'info, HarvestAccountConstraints<'info>>) -> Result<()> {
+pub fn process_harvest<'info>(context: &mut Context<'info, HarvestAccountConstraints<'info>>) -> Result<()> {
     // Using remaining accounts to allow for passing in an unknown number of token accounts to harvest from
     // Check that remaining accounts are token accounts for the mint to harvest to
     let sources = context
@@ -21,17 +21,16 @@ pub fn process_harvest<'info>(context: Context<'info, HarvestAccountConstraints<
         .filter_map(|account| {
             InterfaceAccount::<TokenAccount>::try_from(account)
                 .ok()
-                .filter(|token_account| token_account.mint == context.accounts.mint_account.key())
-                .map(|_| account.to_account_info())
+                .filter(|token_account| token_account.mint == context.accounts.mint_account.address())
+                .map(|_| account.cpi_handle_mut())
         })
         .collect::<Vec<_>>();
 
     harvest_withheld_tokens_to_mint(
         CpiContext::new(
-            context.accounts.token_program.key(),
+            context.accounts.token_program.address(),
             HarvestWithheldTokensToMint {
-                token_program_id: context.accounts.token_program.to_account_info(),
-                mint: context.accounts.mint_account.to_account_info(),
+                mint: context.accounts.mint_account.cpi_handle_mut(),
             },
         ),
         sources, // token accounts to harvest from

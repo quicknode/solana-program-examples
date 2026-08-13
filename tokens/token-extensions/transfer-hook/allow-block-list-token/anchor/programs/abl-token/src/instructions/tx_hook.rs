@@ -12,24 +12,24 @@ use anchor_spl::{
 use crate::{ABListError, ABWallet, Mode};
 
 #[derive(Accounts)]
-pub struct TxHookAccountConstraints<'info> {
+pub struct TxHookAccountConstraints {
     /// CHECK:
-    pub source_token_account: UncheckedAccount<'info>,
+    pub source_token_account: UncheckedAccount,
     /// CHECK:
-    pub mint: UncheckedAccount<'info>,
+    pub mint: UncheckedAccount,
     /// CHECK:
-    pub destination_token_account: UncheckedAccount<'info>,
+    pub destination_token_account: UncheckedAccount,
     /// CHECK:
-    pub owner_delegate: UncheckedAccount<'info>,
+    pub owner_delegate: UncheckedAccount,
     /// CHECK:
-    pub meta_list: UncheckedAccount<'info>,
+    pub meta_list: UncheckedAccount,
     /// CHECK:
-    pub ab_wallet: UncheckedAccount<'info>,
+    pub ab_wallet: UncheckedAccount,
 }
 
 impl TxHookAccountConstraints<'_> {
     pub fn tx_hook(&self, amount: u64) -> Result<()> {
-        let mint_info = self.mint.to_account_info();
+        let mint_info = self.mint.cpi_handle_mut();
         let mint_data = mint_info.data.borrow();
         let mint = StateWithExtensions::<Mint>::unpack(&mint_data)?;
 

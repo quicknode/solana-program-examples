@@ -1,4 +1,5 @@
 use anchor_lang::prelude::*;
+use anchor_spl::mint;
 use anchor_spl::token_interface::{
     default_account_state_update, DefaultAccountStateUpdate, Mint, Token2022,
 };
@@ -6,21 +7,21 @@ use anchor_spl::token_interface::{
 use crate::AnchorAccountState;
 
 #[derive(Accounts)]
-pub struct UpdateDefaultStateAccountConstraints<'info> {
+pub struct UpdateDefaultStateAccountConstraints {
     #[account(mut)]
-    pub freeze_authority: Signer<'info>,
+    pub freeze_authority: Signer,
     #[account(
         mut,
         mint::freeze_authority = freeze_authority,
     )]
-    pub mint_account: InterfaceAccount<'info, Mint>,
+    pub mint_account: InterfaceAccount<Mint>,
 
-    pub token_program: Program<'info, Token2022>,
-    pub system_program: Program<'info, System>,
+    pub token_program: Program<Token2022>,
+    pub system_program: Program<System>,
 }
 
 pub fn handler(
-    context: Context<UpdateDefaultStateAccountConstraints>,
+    context: &mut Context<UpdateDefaultStateAccountConstraints>,
     account_state: AnchorAccountState,
 ) -> Result<()> {
     // Convert AnchorAccountState to spl_token_2022::state::AccountState
@@ -28,11 +29,10 @@ pub fn handler(
 
     default_account_state_update(
         CpiContext::new(
-            context.accounts.token_program.key(),
+            context.accounts.token_program.address(),
             DefaultAccountStateUpdate {
-                token_program_id: context.accounts.token_program.to_account_info(),
-                mint: context.accounts.mint_account.to_account_info(),
-                freeze_authority: context.accounts.freeze_authority.to_account_info(),
+                mint: context.accounts.mint_account.cpi_handle_mut(),
+                freeze_authority: context.accounts.freeze_authority.cpi_handle(),
             },
         ),
         &account_state,

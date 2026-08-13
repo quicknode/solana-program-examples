@@ -2,10 +2,10 @@ use anchor_lang::prelude::*;
 
 use crate::state::{Market, MarketUser, MARKET_USER_SEED};
 
-pub fn handle_initialize_market_user(context: Context<InitializeMarketUserAccountConstraints>) -> Result<()> {
+pub fn handle_initialize_market_user(context: &mut Context<InitializeMarketUserAccountConstraints>) -> Result<()> {
     let market_user = &mut context.accounts.market_user;
-    market_user.market = context.accounts.market.key();
-    market_user.owner = context.accounts.owner.key();
+    market_user.market = *context.accounts.market.address();
+    market_user.owner = *context.accounts.owner.address();
     market_user.unsettled_base = 0;
     market_user.unsettled_quote = 0;
     market_user.open_orders = Vec::new();
@@ -15,20 +15,20 @@ pub fn handle_initialize_market_user(context: Context<InitializeMarketUserAccoun
 }
 
 #[derive(Accounts)]
-pub struct InitializeMarketUserAccountConstraints<'info> {
+pub struct InitializeMarketUserAccountConstraints {
     #[account(
         init,
         payer = owner,
         space = MarketUser::DISCRIMINATOR.len() + MarketUser::INIT_SPACE,
-        seeds = [MARKET_USER_SEED, market.key().as_ref(), owner.key().as_ref()],
+        seeds = [MARKET_USER_SEED, market.address().as_ref(), owner.address().as_ref()],
         bump
     )]
-    pub market_user: Account<'info, MarketUser>,
+    pub market_user: BorshAccount<MarketUser>,
 
-    pub market: Account<'info, Market>,
+    pub market: BorshAccount<Market>,
 
     #[account(mut)]
-    pub owner: Signer<'info>,
+    pub owner: Signer,
 
-    pub system_program: Program<'info, System>,
+    pub system_program: Program<System>,
 }

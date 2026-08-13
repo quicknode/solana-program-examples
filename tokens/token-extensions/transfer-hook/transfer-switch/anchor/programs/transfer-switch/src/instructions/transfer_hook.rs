@@ -14,36 +14,36 @@ use {
 };
 
 #[derive(Accounts)]
-pub struct TransferHookAccountConstraints<'info> {
+pub struct TransferHookAccountConstraints {
     /// CHECK: Sender token account
     #[account()]
-    pub source_token_account: UncheckedAccount<'info>,
+    pub source_token_account: UncheckedAccount,
 
     /// The mint of the token transferring
     #[account()]
-    pub token_mint: InterfaceAccount<'info, Mint>,
+    pub token_mint: InterfaceAccount<Mint>,
 
     /// CHECK: Recipient token account
     #[account()]
-    pub receiver_token_account: UncheckedAccount<'info>,
+    pub receiver_token_account: UncheckedAccount,
 
     /// CHECK: the transfer sender
     #[account()]
-    pub wallet: UncheckedAccount<'info>,
+    pub wallet: UncheckedAccount,
 
     /// CHECK: extra account metas
     #[account(
-        seeds = [b"extra-account-metas", token_mint.key().as_ref()],
+        seeds = [b"extra-account-metas", token_mint.address().as_ref()],
         bump,
     )]
-    pub extra_account_metas_list: UncheckedAccount<'info>,
+    pub extra_account_metas_list: UncheckedAccount,
 
     /// sender transfer switch
     #[account(
-        seeds=[wallet.key().as_ref()],
+        seeds=[wallet.address().as_ref()],
         bump,
     )]
-    pub wallet_switch: Account<'info, TransferSwitch>,
+    pub wallet_switch: BorshAccount<TransferSwitch>,
 }
 
 pub fn handle_assert_switch_is_on(accounts: &mut TransferHookAccountConstraints) -> Result<()> {
@@ -54,7 +54,7 @@ pub fn handle_assert_switch_is_on(accounts: &mut TransferHookAccountConstraints)
     }
 
 pub fn handle_assert_is_transferring(accounts: &mut TransferHookAccountConstraints) -> Result<()> {
-        let source_token_info = accounts.source_token_account.to_account_info();
+        let source_token_info = accounts.source_token_account.cpi_handle_mut();
         let mut account_data_ref = source_token_info.try_borrow_mut_data()?;
         // .map_err() needed because spl-token-2022 uses solana-program-error 2.x
         // while anchor-lang 1.0 uses 3.x - structurally identical but different semver types

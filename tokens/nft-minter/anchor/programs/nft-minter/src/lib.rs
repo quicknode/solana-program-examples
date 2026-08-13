@@ -18,7 +18,7 @@ pub mod nft_minter {
     use super::*;
 
     pub fn mint_nft(
-        context: Context<MintNftAccountConstraints>,
+        context: &mut Context<MintNftAccountConstraints>,
         nft_name: String,
         nft_symbol: String,
         nft_uri: String,
@@ -28,11 +28,11 @@ pub mod nft_minter {
         // Invoking the mint_to instruction on the token program
         mint_to(
             CpiContext::new(
-                context.accounts.token_program.key(),
+                context.accounts.token_program.address(),
                 MintTo {
-                    mint: context.accounts.mint_account.to_account_info(),
-                    to: context.accounts.associated_token_account.to_account_info(),
-                    authority: context.accounts.payer.to_account_info(),
+                    mint: context.accounts.mint_account.cpi_handle_mut(),
+                    to: context.accounts.associated_token_account.cpi_handle_mut(),
+                    authority: context.accounts.payer.cpi_handle(),
                 },
             ),
             1,
@@ -43,15 +43,15 @@ pub mod nft_minter {
         // Invoking the create_metadata_account_v3 instruction on the token metadata program
         create_metadata_accounts_v3(
             CpiContext::new(
-                context.accounts.token_metadata_program.key(),
+                context.accounts.token_metadata_program.address(),
                 CreateMetadataAccountsV3 {
-                    metadata: context.accounts.metadata_account.to_account_info(),
-                    mint: context.accounts.mint_account.to_account_info(),
-                    mint_authority: context.accounts.payer.to_account_info(),
-                    update_authority: context.accounts.payer.to_account_info(),
-                    payer: context.accounts.payer.to_account_info(),
-                    system_program: context.accounts.system_program.to_account_info(),
-                    rent: context.accounts.rent.to_account_info(),
+                    metadata: context.accounts.metadata_account.cpi_handle_mut(),
+                    mint: context.accounts.mint_account.cpi_handle(),
+                    mint_authority: context.accounts.payer.cpi_handle(),
+                    update_authority: context.accounts.payer.cpi_handle(),
+                    payer: context.accounts.payer.cpi_handle_mut(),
+                    system_program: context.accounts.system_program.cpi_handle(),
+                    update_authority_is_signer: true,
                 },
             ),
             DataV2 {
@@ -73,17 +73,17 @@ pub mod nft_minter {
         // Invoking the create_master_edition_v3 instruction on the token metadata program
         create_master_edition_v3(
             CpiContext::new(
-                context.accounts.token_metadata_program.key(),
+                context.accounts.token_metadata_program.address(),
                 CreateMasterEditionV3 {
-                    edition: context.accounts.edition_account.to_account_info(),
-                    mint: context.accounts.mint_account.to_account_info(),
-                    update_authority: context.accounts.payer.to_account_info(),
-                    mint_authority: context.accounts.payer.to_account_info(),
-                    payer: context.accounts.payer.to_account_info(),
-                    metadata: context.accounts.metadata_account.to_account_info(),
-                    token_program: context.accounts.token_program.to_account_info(),
-                    system_program: context.accounts.system_program.to_account_info(),
-                    rent: context.accounts.rent.to_account_info(),
+                    edition: context.accounts.edition_account.cpi_handle_mut(),
+                    mint: context.accounts.mint_account.cpi_handle_mut(),
+                    update_authority: context.accounts.payer.cpi_handle(),
+                    mint_authority: context.accounts.payer.cpi_handle(),
+                    payer: context.accounts.payer.cpi_handle_mut(),
+                    metadata: context.accounts.metadata_account.cpi_handle_mut(),
+                    token_program: context.accounts.token_program.cpi_handle(),
+                    system_program: context.accounts.system_program.cpi_handle(),
+                    update_authority_is_signer: true,
                 },
             ),
             None, // Max Supply
@@ -96,37 +96,37 @@ pub mod nft_minter {
 }
 
 #[derive(Accounts)]
-pub struct MintNftAccountConstraints<'info> {
+pub struct MintNftAccountConstraints {
     #[account(mut)]
-    pub payer: Signer<'info>,
+    pub payer: Signer,
 
     /// CHECK: Validate address by deriving pda
     #[account(
         mut,
-        seeds = [b"metadata", token_metadata_program.key().as_ref(), mint_account.key().as_ref()],
+        seeds = [b"metadata", token_metadata_program.address().as_ref(), mint_account.address().as_ref()],
         bump,
-        seeds::program = token_metadata_program.key(),
+        seeds::program = token_metadata_program.address(),
     )]
-    pub metadata_account: UncheckedAccount<'info>,
+    pub metadata_account: UncheckedAccount,
 
     /// CHECK: Validate address by deriving pda
     #[account(
         mut,
-        seeds = [b"metadata", token_metadata_program.key().as_ref(), mint_account.key().as_ref(), b"edition"],
+        seeds = [b"metadata", token_metadata_program.address().as_ref(), mint_account.address().as_ref(), b"edition"],
         bump,
-        seeds::program = token_metadata_program.key(),
+        seeds::program = token_metadata_program.address(),
     )]
-    pub edition_account: UncheckedAccount<'info>,
+    pub edition_account: UncheckedAccount,
 
     // Create new mint account, NFTs have 0 decimals
     #[account(
         init,
         payer = payer,
         mint::decimals = 0,
-        mint::authority = payer.key(),
-        mint::freeze_authority = payer.key(),
+        mint::authority = payer,
+        mint::freeze_authority = payer,
     )]
-    pub mint_account: Account<'info, Mint>,
+    pub mint_account: Account<Mint>,
 
     // Create associated token account, if needed
     // This is the account that will hold the NFT
@@ -136,11 +136,11 @@ pub struct MintNftAccountConstraints<'info> {
         associated_token::mint = mint_account,
         associated_token::authority = payer,
     )]
-    pub associated_token_account: Account<'info, TokenAccount>,
+    pub associated_token_account: Account<TokenAccount>,
 
-    pub token_program: Program<'info, Token>,
-    pub token_metadata_program: Program<'info, Metadata>,
-    pub associated_token_program: Program<'info, AssociatedToken>,
-    pub system_program: Program<'info, System>,
-    pub rent: Sysvar<'info, Rent>,
+    pub token_program: Program<Token>,
+    pub token_metadata_program: Program<Metadata>,
+    pub associated_token_program: Program<AssociatedToken>,
+    pub system_program: Program<System>,
+    pub rent: Sysvar<Rent>,
 }

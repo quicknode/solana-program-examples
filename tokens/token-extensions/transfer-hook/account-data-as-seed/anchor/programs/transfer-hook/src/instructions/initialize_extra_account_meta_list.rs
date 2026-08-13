@@ -10,14 +10,14 @@ use spl_transfer_hook_interface::instruction::ExecuteInstruction;
 use crate::{handle_extra_account_metas, handle_extra_account_metas_count, CounterAccount};
 
 #[derive(Accounts)]
-pub struct InitializeExtraAccountMetaListAccountConstraints<'info> {
+pub struct InitializeExtraAccountMetaListAccountConstraints {
     #[account(mut)]
-    payer: Signer<'info>,
+    payer: Signer,
 
     /// CHECK: ExtraAccountMetaList Account, must use these seeds
     #[account(
         init,
-        seeds = [b"extra-account-metas", mint.key().as_ref()],
+        seeds = [b"extra-account-metas", mint.address().as_ref()],
         bump,
         // size_of returns Result with spl's ProgramError - unwrap is safe for known-good input
         space = ExtraAccountMetaList::size_of(
@@ -25,16 +25,16 @@ pub struct InitializeExtraAccountMetaListAccountConstraints<'info> {
         ).unwrap(),
         payer = payer
     )]
-    pub extra_account_meta_list: UncheckedAccount<'info>,
-    pub mint: InterfaceAccount<'info, Mint>,
-    #[account(init, seeds = [b"counter", payer.key().as_ref()], bump, payer = payer, space = CounterAccount::DISCRIMINATOR.len() + CounterAccount::INIT_SPACE)]
-    pub counter_account: Account<'info, CounterAccount>,
-    pub token_program: Program<'info, Token2022>,
-    pub associated_token_program: Program<'info, AssociatedToken>,
-    pub system_program: Program<'info, System>,
+    pub extra_account_meta_list: UncheckedAccount,
+    pub mint: InterfaceAccount<Mint>,
+    #[account(init, seeds = [b"counter", payer.address().as_ref()], bump, payer = payer, space = CounterAccount::DISCRIMINATOR.len() + CounterAccount::INIT_SPACE)]
+    pub counter_account: BorshAccount<CounterAccount>,
+    pub token_program: Program<Token2022>,
+    pub associated_token_program: Program<AssociatedToken>,
+    pub system_program: Program<System>,
 }
 
-pub fn handler(mut context: Context<InitializeExtraAccountMetaListAccountConstraints>) -> Result<()> {
+pub fn handler(mut context: &mut Context<InitializeExtraAccountMetaListAccountConstraints>) -> Result<()> {
     let extra_account_metas = handle_extra_account_metas()?;
 
     // initialize ExtraAccountMetaList account with extra accounts

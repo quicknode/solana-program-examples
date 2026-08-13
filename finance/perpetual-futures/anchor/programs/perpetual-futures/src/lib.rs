@@ -20,7 +20,7 @@ pub mod perpetual_futures {
     /// oracle feed. Sets the trading parameters and creates the custody vault
     /// and liquidity-provider mint.
     pub fn initialize_pool(
-        context: Context<InitializePoolAccountConstraints>,
+        context: &mut Context<InitializePoolAccountConstraints>,
         parameters: PoolParameters,
     ) -> Result<()> {
         instructions::handle_initialize_pool(context, parameters)
@@ -29,7 +29,7 @@ pub mod perpetual_futures {
     /// Deposit collateral into the pool and receive liquidity-provider shares.
     /// `minimum_shares_out` is slippage protection; pass `0` to opt out.
     pub fn add_liquidity(
-        context: Context<AddLiquidityAccountConstraints>,
+        context: &mut Context<AddLiquidityAccountConstraints>,
         amount: u64,
         minimum_shares_out: u64,
     ) -> Result<()> {
@@ -39,7 +39,7 @@ pub mod perpetual_futures {
     /// Burn liquidity-provider shares and withdraw the matching collateral.
     /// `minimum_amount_out` is slippage protection; pass `0` to opt out.
     pub fn remove_liquidity(
-        context: Context<RemoveLiquidityAccountConstraints>,
+        context: &mut Context<RemoveLiquidityAccountConstraints>,
         shares: u64,
         minimum_amount_out: u64,
     ) -> Result<()> {
@@ -50,7 +50,7 @@ pub mod perpetual_futures {
     /// oracle price. `acceptable_price` bounds the fill (longs reject above it,
     /// shorts reject below it); pass `0` to opt out.
     pub fn open_position(
-        context: Context<OpenPositionAccountConstraints>,
+        context: &mut Context<OpenPositionAccountConstraints>,
         side: Side,
         collateral_amount: u64,
         size: u64,
@@ -63,7 +63,7 @@ pub mod perpetual_futures {
     /// and the close fee. `minimum_payout` is slippage protection; pass `0` to
     /// opt out.
     pub fn close_position(
-        context: Context<ClosePositionAccountConstraints>,
+        context: &mut Context<ClosePositionAccountConstraints>,
         minimum_payout: u64,
     ) -> Result<()> {
         instructions::handle_close_position(context, minimum_payout)
@@ -71,12 +71,12 @@ pub mod perpetual_futures {
 
     /// Permissionlessly close a position whose equity has fallen to or below
     /// the maintenance margin. The caller earns the liquidation fee.
-    pub fn liquidate_position(context: Context<LiquidatePositionAccountConstraints>) -> Result<()> {
+    pub fn liquidate_position(context: &mut Context<LiquidatePositionAccountConstraints>) -> Result<()> {
         instructions::handle_liquidate_position(context)
     }
 
     /// Pool authority sweeps the accumulated protocol fees from the vault.
-    pub fn collect_fees(context: Context<CollectFeesAccountConstraints>) -> Result<()> {
+    pub fn collect_fees(context: &mut Context<CollectFeesAccountConstraints>) -> Result<()> {
         instructions::handle_collect_fees(context)
     }
 }

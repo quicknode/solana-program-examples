@@ -13,7 +13,7 @@ pub enum EventStatus {
 // One betting market. All stakes across every outcome live in a single vault
 // token account whose authority is this Event PDA, so the program signs payouts
 // with the event's seeds.
-#[account]
+#[account(borsh)]
 #[derive(InitSpace)]
 pub struct Event {
     pub event_id: u64,

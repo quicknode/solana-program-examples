@@ -14,11 +14,11 @@ use super::{close_token_account, transfer_tokens};
 // account's rent unclaimed). The maker signs, the vault tokens flow back to
 // the maker, and both the vault and the offer accounts are closed.
 #[derive(Accounts)]
-pub struct CancelOfferAccountConstraints<'info> {
+pub struct CancelOfferAccountConstraints {
     #[account(mut)]
-    pub maker: Signer<'info>,
+    pub maker: Signer,
 
-    pub token_mint_a: InterfaceAccount<'info, Mint>,
+    pub token_mint_a: InterfaceAccount<Mint>,
 
     #[account(
         mut,
@@ -26,17 +26,17 @@ pub struct CancelOfferAccountConstraints<'info> {
         associated_token::authority = maker,
         associated_token::token_program = token_program,
     )]
-    pub maker_token_account_a: InterfaceAccount<'info, TokenAccount>,
+    pub maker_token_account_a: InterfaceAccount<TokenAccount>,
 
     #[account(
         mut,
         close = maker,
         has_one = maker,
         has_one = token_mint_a,
-        seeds = [b"offer", maker.key().as_ref(), offer.id.to_le_bytes().as_ref()],
+        seeds = [b"offer", maker.address().as_ref(), offer.id.to_le_bytes().as_ref()],
         bump = offer.bump,
     )]
-    pub offer: Account<'info, Offer>,
+    pub offer: BorshAccount<Offer>,
 
     #[account(
         mut,
@@ -44,15 +44,15 @@ pub struct CancelOfferAccountConstraints<'info> {
         associated_token::authority = offer,
         associated_token::token_program = token_program,
     )]
-    pub vault: InterfaceAccount<'info, TokenAccount>,
+    pub vault: InterfaceAccount<TokenAccount>,
 
-    pub associated_token_program: Program<'info, AssociatedToken>,
-    pub token_program: Interface<'info, TokenInterface>,
-    pub system_program: Program<'info, System>,
+    pub associated_token_program: Program<AssociatedToken>,
+    pub token_program: Interface<'static, TokenInterface>,
+    pub system_program: Program<System>,
 }
 
-pub fn handle_cancel_offer(context: Context<CancelOfferAccountConstraints>) -> Result<()> {
-    let maker_key = context.accounts.maker.key();
+pub fn handle_cancel_offer(context: &mut Context<CancelOfferAccountConstraints>) -> Result<()> {
+    let maker_key = context.accounts.maker.address();
     let id_bytes = context.accounts.offer.id.to_le_bytes();
     let bump = [context.accounts.offer.bump];
     let offer_seeds: &[&[u8]] = &[b"offer", maker_key.as_ref(), id_bytes.as_ref(), &bump];
@@ -61,9 +61,9 @@ pub fn handle_cancel_offer(context: Context<CancelOfferAccountConstraints>) -> R
     transfer_tokens(
         &context.accounts.vault,
         &context.accounts.maker_token_account_a,
-        &context.accounts.vault.amount,
+        &context.accounts.vault.amount(),
         &context.accounts.token_mint_a,
-        &context.accounts.offer.to_account_info(),
+        &context.accounts.offer.cpi_handle_mut(),
         &context.accounts.token_program,
         Some(offer_seeds),
     )?;
@@ -71,8 +71,8 @@ pub fn handle_cancel_offer(context: Context<CancelOfferAccountConstraints>) -> R
     // Close the vault, sending its rent lamports back to the maker.
     close_token_account(
         &context.accounts.vault,
-        &context.accounts.maker.to_account_info(),
-        &context.accounts.offer.to_account_info(),
+        &context.accounts.maker.cpi_handle_mut(),
+        &context.accounts.offer.cpi_handle_mut(),
         &context.accounts.token_program,
         Some(offer_seeds),
     )?;

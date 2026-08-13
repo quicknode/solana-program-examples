@@ -21,36 +21,36 @@ struct BurnArgs {
 }
 
 #[derive(Accounts)]
-pub struct BurnCnftAccountConstraints<'info> {
+pub struct BurnCnftAccountConstraints {
     #[account(mut)]
-    pub leaf_owner: Signer<'info>,
+    pub leaf_owner: Signer,
     #[account(mut)]
     #[account(
-        seeds = [merkle_tree.key().as_ref()],
+        seeds = [merkle_tree.address().as_ref()],
         bump,
-        seeds::program = bubblegum_program.key()
+        seeds::program = bubblegum_program.address()
     )]
     /// CHECK: This account is modified in the downstream program
-    pub tree_authority: UncheckedAccount<'info>,
+    pub tree_authority: UncheckedAccount,
     #[account(mut)]
     /// CHECK: Written by the Bubblegum/Account Compression CPI (the burn
     /// replaces the leaf and updates the tree root); validated downstream
     /// by those programs.
-    pub merkle_tree: UncheckedAccount<'info>,
+    pub merkle_tree: UncheckedAccount,
     /// CHECK: This account is neither written to nor read from.
-    pub log_wrapper: UncheckedAccount<'info>,
-    pub compression_program: Program<'info, SPLCompression>,
+    pub log_wrapper: UncheckedAccount,
+    pub compression_program: Program<SPLCompression>,
     // Pin the bubblegum program account to the known mpl-bubblegum id. Without
     // this constraint the caller could pass any account and a malicious one
     // could short-circuit the CPI in unexpected ways.
     /// CHECK: address constrained to the mpl-bubblegum program id.
     #[account(address = MPL_BUBBLEGUM_ID)]
-    pub bubblegum_program: UncheckedAccount<'info>,
-    pub system_program: Program<'info, System>,
+    pub bubblegum_program: UncheckedAccount,
+    pub system_program: Program<System>,
 }
 
 pub fn handle_burn_cnft<'info>(
-    context: Context<'info, BurnCnftAccountConstraints<'info>>,
+    context: &mut Context<'info, BurnCnftAccountConstraints<'info>>,
     root: [u8; 32],
     data_hash: [u8; 32],
     creator_hash: [u8; 32],
@@ -69,36 +69,36 @@ pub fn handle_burn_cnft<'info>(
     args.serialize(&mut data)?;
 
     // Build account metas matching mpl-bubblegum Burn instruction layout
-    let mut accounts = Vec::with_capacity(7 + context.remaining_accounts.len());
+    let mut accounts = Vec::with_capacity(7 + context.remaining_accounts().len());
     accounts.push(AccountMeta::new_readonly(
-        context.accounts.tree_authority.key(),
+        *context.accounts.tree_authority.address(),
         false,
     ));
     accounts.push(AccountMeta::new_readonly(
-        context.accounts.leaf_owner.key(),
+        *context.accounts.leaf_owner.address(),
         true,
     ));
     // leaf_delegate = leaf_owner, not a signer in this call
     accounts.push(AccountMeta::new_readonly(
-        context.accounts.leaf_owner.key(),
+        *context.accounts.leaf_owner.address(),
         false,
     ));
-    accounts.push(AccountMeta::new(context.accounts.merkle_tree.key(), false));
+    accounts.push(AccountMeta::new(*context.accounts.merkle_tree.address(), false));
     accounts.push(AccountMeta::new_readonly(
-        context.accounts.log_wrapper.key(),
-        false,
-    ));
-    accounts.push(AccountMeta::new_readonly(
-        context.accounts.compression_program.key(),
+        *context.accounts.log_wrapper.address(),
         false,
     ));
     accounts.push(AccountMeta::new_readonly(
-        context.accounts.system_program.key(),
+        *context.accounts.compression_program.address(),
+        false,
+    ));
+    accounts.push(AccountMeta::new_readonly(
+        *context.accounts.system_program.address(),
         false,
     ));
     // Append remaining accounts (proof nodes)
-    for acc in context.remaining_accounts.iter() {
-        accounts.push(AccountMeta::new_readonly(acc.key(), false));
+    for acc in context.remaining_accounts().iter() {
+        accounts.push(AccountMeta::new_readonly(acc.address(), false));
     }
 
     let instruction = Instruction {
@@ -109,16 +109,16 @@ pub fn handle_burn_cnft<'info>(
 
     // Gather all account infos for the CPI
     let mut account_infos = vec![
-        context.accounts.bubblegum_program.to_account_info(),
-        context.accounts.tree_authority.to_account_info(),
-        context.accounts.leaf_owner.to_account_info(),
-        context.accounts.merkle_tree.to_account_info(),
-        context.accounts.log_wrapper.to_account_info(),
-        context.accounts.compression_program.to_account_info(),
-        context.accounts.system_program.to_account_info(),
+        context.accounts.bubblegum_program.cpi_handle_mut(),
+        context.accounts.tree_authority.cpi_handle_mut(),
+        context.accounts.leaf_owner.cpi_handle_mut(),
+        context.accounts.merkle_tree.cpi_handle_mut(),
+        context.accounts.log_wrapper.cpi_handle_mut(),
+        context.accounts.compression_program.cpi_handle_mut(),
+        context.accounts.system_program.cpi_handle_mut(),
     ];
-    for acc in context.remaining_accounts.iter() {
-        account_infos.push(acc.to_account_info());
+    for acc in context.remaining_accounts().iter() {
+        account_infos.push(acc.cpi_handle_mut());
     }
 
     invoke(&instruction, &account_infos)?;

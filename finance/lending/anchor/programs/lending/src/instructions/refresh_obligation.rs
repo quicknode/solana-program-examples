@@ -15,11 +15,11 @@ use crate::state::{Obligation, PriceFeed, Reserve};
 ///
 /// Collateral value is floored and debt value is ceiled, so health is always
 /// evaluated conservatively against the borrower.
-pub fn handle_refresh_obligation(context: Context<RefreshObligation>) -> Result<()> {
+pub fn handle_refresh_obligation(context: &mut Context<RefreshObligation>) -> Result<()> {
     let slot = Clock::get()?.slot;
     let obligation = &mut context.accounts.obligation;
     let lending_market = obligation.lending_market;
-    let accounts = context.remaining_accounts;
+    let accounts = context.remaining_accounts();
     let mut cursor = 0usize;
 
     let mut deposited_value: u128 = 0;
@@ -96,10 +96,10 @@ pub fn handle_refresh_obligation(context: Context<RefreshObligation>) -> Result<
 /// obligation's lending market, and that both the reserve (refreshed this
 /// slot) and the price (fresh) are usable.
 fn read_pair<'a, 'info>(
-    accounts: &'a [AccountInfo<'info>],
+    accounts: &'a [AccountView],
     cursor: &mut usize,
-    expected_reserve: Pubkey,
-    lending_market: Pubkey,
+    expected_reserve: Address,
+    lending_market: Address,
     slot: u64,
 ) -> Result<(Reserve, u128)>
 where
@@ -114,7 +114,7 @@ where
     *cursor += 2;
 
     require_keys_eq!(
-        reserve_info.key(),
+        reserve_info.address(),
         expected_reserve,
         LendingError::InvalidObligationAccount
     );
@@ -127,7 +127,7 @@ where
     reserve.require_refreshed()?;
 
     require_keys_eq!(
-        price_info.key(),
+        price_info.address(),
         reserve.price_feed,
         LendingError::InvalidObligationAccount
     );
@@ -138,7 +138,7 @@ where
 }
 
 #[derive(Accounts)]
-pub struct RefreshObligation<'info> {
+pub struct RefreshObligation {
     #[account(mut)]
-    pub obligation: Account<'info, Obligation>,
+    pub obligation: BorshAccount<Obligation>,
 }

@@ -10,7 +10,7 @@ use crate::state::{reserve_signer_seeds, LendingMarket, Reserve};
 /// how the owner earns: `reserve_factor_bps` of every interest accrual is set
 /// aside in `accumulated_protocol_fees` (never credited to suppliers), and this
 /// handler pays it out, capped by the liquidity actually sitting in the vault.
-pub fn handle_collect_protocol_fees(context: Context<CollectProtocolFees>) -> Result<()> {
+pub fn handle_collect_protocol_fees(context: &mut Context<CollectProtocolFees>) -> Result<()> {
     context.accounts.reserve.require_refreshed()?;
 
     let reserve = &mut context.accounts.reserve;
@@ -32,12 +32,12 @@ pub fn handle_collect_protocol_fees(context: Context<CollectProtocolFees>) -> Re
     let seeds = reserve_signer_seeds(&reserve.lending_market, &reserve.liquidity_mint, &bump);
     transfer_checked(
         CpiContext::new_with_signer(
-            context.accounts.token_program.key(),
+            context.accounts.token_program.address(),
             TransferChecked {
-                from: context.accounts.liquidity_vault.to_account_info(),
-                mint: context.accounts.liquidity_mint.to_account_info(),
-                to: context.accounts.owner_liquidity.to_account_info(),
-                authority: reserve.to_account_info(),
+                from: context.accounts.liquidity_vault.cpi_handle_mut(),
+                mint: context.accounts.liquidity_mint.cpi_handle(),
+                to: context.accounts.owner_liquidity.cpi_handle_mut(),
+                authority: reserve.cpi_handle(),
             },
             &[&seeds],
         ),
@@ -49,14 +49,14 @@ pub fn handle_collect_protocol_fees(context: Context<CollectProtocolFees>) -> Re
 }
 
 #[derive(Accounts)]
-pub struct CollectProtocolFees<'info> {
+pub struct CollectProtocolFees {
     // Identified by the reserve's `has_one = lending_market`; we only prove the
     // signer owns it.
     #[account(has_one = owner)]
-    pub lending_market: Account<'info, LendingMarket>,
+    pub lending_market: BorshAccount<LendingMarket>,
 
     #[account(mut)]
-    pub owner: Signer<'info>,
+    pub owner: Signer,
 
     #[account(
         mut,
@@ -64,15 +64,15 @@ pub struct CollectProtocolFees<'info> {
         has_one = liquidity_mint,
         has_one = liquidity_vault,
     )]
-    pub reserve: Account<'info, Reserve>,
+    pub reserve: BorshAccount<Reserve>,
 
-    pub liquidity_mint: InterfaceAccount<'info, Mint>,
-
-    #[account(mut)]
-    pub liquidity_vault: InterfaceAccount<'info, TokenAccount>,
+    pub liquidity_mint: InterfaceAccount<Mint>,
 
     #[account(mut)]
-    pub owner_liquidity: InterfaceAccount<'info, TokenAccount>,
+    pub liquidity_vault: InterfaceAccount<TokenAccount>,
 
-    pub token_program: Interface<'info, TokenInterface>,
+    #[account(mut)]
+    pub owner_liquidity: InterfaceAccount<TokenAccount>,
+
+    pub token_program: Interface<'static, TokenInterface>,
 }

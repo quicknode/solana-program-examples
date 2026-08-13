@@ -11,22 +11,22 @@ use {
 };
 
 #[derive(Accounts)]
-pub struct InitializeExtraAccountMetasAccountConstraints<'info> {
+pub struct InitializeExtraAccountMetasAccountConstraints {
     #[account(mut)]
-    pub payer: Signer<'info>,
+    pub payer: Signer,
 
     #[account()]
-    pub token_mint: InterfaceAccount<'info, Mint>,
+    pub token_mint: InterfaceAccount<Mint>,
 
     /// CHECK: extra accoumt metas list
     #[account(
         mut,
-        seeds = [b"extra-account-metas", token_mint.key().as_ref()],
+        seeds = [b"extra-account-metas", token_mint.address().as_ref()],
         bump,
     )]
-    pub extra_account_metas_list: UncheckedAccount<'info>,
+    pub extra_account_metas_list: UncheckedAccount,
 
-    pub system_program: Program<'info, System>,
+    pub system_program: Program<System>,
 }
 
 pub fn handle_initialize_extra_account_metas_list(accounts: &mut InitializeExtraAccountMetasAccountConstraints, bumps: InitializeExtraAccountMetasAccountConstraintsBumps) -> Result<()> {
@@ -48,9 +48,9 @@ pub fn handle_initialize_extra_account_metas_list(accounts: &mut InitializeExtra
         let account_size = ExtraAccountMetaList::size_of(account_metas.len()).unwrap() as u64;
 
         // calculate minimum required lamports
-        let lamports = Rent::get()?.minimum_balance(account_size as usize);
+        let lamports = Rent::get()?.try_minimum_balance(account_size as usize)?;
 
-        let mint = accounts.token_mint.key();
+        let mint = accounts.token_mint.address();
         let signer_seeds: &[&[&[u8]]] = &[&[
             b"extra-account-metas",
             mint.as_ref(),
@@ -59,10 +59,10 @@ pub fn handle_initialize_extra_account_metas_list(accounts: &mut InitializeExtra
 
         create_account(
             CpiContext::new(
-                accounts.system_program.key(),
+                accounts.system_program.address(),
                 CreateAccount {
-                    from: accounts.payer.to_account_info(),
-                    to: accounts.extra_account_metas_list.to_account_info(),
+                    from: accounts.payer.cpi_handle_mut(),
+                    to: accounts.extra_account_metas_list.cpi_handle_mut(),
                 },
             )
             .with_signer(signer_seeds),

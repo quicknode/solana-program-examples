@@ -7,32 +7,32 @@ use anchor_spl::token_interface::{
 // Move tokens from a wallet-owned account into the vault. The authority is a
 // plain Signer (the bettor), so no PDA seeds are needed.
 pub fn transfer_tokens_to_vault<'info>(
-    from: &InterfaceAccount<'info, TokenAccount>,
-    to: &InterfaceAccount<'info, TokenAccount>,
+    from: &InterfaceAccount<TokenAccount>,
+    to: &InterfaceAccount<TokenAccount>,
     amount: u64,
-    mint: &InterfaceAccount<'info, Mint>,
-    authority: &Signer<'info>,
-    token_program: &Interface<'info, TokenInterface>,
+    mint: &InterfaceAccount<Mint>,
+    authority: &Signer,
+    token_program: &Interface<'static, TokenInterface>,
 ) -> Result<()> {
     let transfer_accounts = TransferChecked {
-        from: from.to_account_info(),
-        mint: mint.to_account_info(),
-        to: to.to_account_info(),
-        authority: authority.to_account_info(),
+        from: from.cpi_handle_mut(),
+        mint: mint.cpi_handle(),
+        to: to.cpi_handle_mut(),
+        authority: authority.cpi_handle(),
     };
-    let cpi_context = CpiContext::new(token_program.key(), transfer_accounts);
-    transfer_checked(cpi_context, amount, mint.decimals)
+    let cpi_context = CpiContext::new(token_program.address(), transfer_accounts);
+    transfer_checked(cpi_context, amount, mint.decimals())
 }
 
 // Move tokens out of the vault, signed by the Event PDA. The event vault's
 // authority is the Event account, so the program signs with the event's seeds.
 pub fn transfer_tokens_from_vault<'info>(
-    vault: &InterfaceAccount<'info, TokenAccount>,
-    to: &InterfaceAccount<'info, TokenAccount>,
+    vault: &InterfaceAccount<TokenAccount>,
+    to: &InterfaceAccount<TokenAccount>,
     amount: u64,
-    mint: &InterfaceAccount<'info, Mint>,
-    event: &AccountInfo<'info>,
-    token_program: &Interface<'info, TokenInterface>,
+    mint: &InterfaceAccount<Mint>,
+    event: &AccountView,
+    token_program: &Interface<'static, TokenInterface>,
     event_id: u64,
     event_bump: u8,
 ) -> Result<()> {
@@ -41,15 +41,15 @@ pub fn transfer_tokens_from_vault<'info>(
     let signer_seeds = [&seeds[..]];
 
     let transfer_accounts = TransferChecked {
-        from: vault.to_account_info(),
-        mint: mint.to_account_info(),
-        to: to.to_account_info(),
+        from: vault.cpi_handle_mut(),
+        mint: mint.cpi_handle(),
+        to: to.cpi_handle_mut(),
         authority: event.clone(),
     };
     let cpi_context = CpiContext::new_with_signer(
-        token_program.key(),
+        token_program.address(),
         transfer_accounts,
         &signer_seeds,
     );
-    transfer_checked(cpi_context, amount, mint.decimals)
+    transfer_checked(cpi_context, amount, mint.decimals())
 }

@@ -12,13 +12,13 @@ use crate::state::{LendingMarket, PriceFeed};
 /// requires the market's `owner` to sign, so a market's prices can only be set
 /// by that market and never squatted by an outsider.
 pub fn handle_set_price(
-    context: Context<SetPrice>,
+    context: &mut Context<SetPrice>,
     price_mantissa: i128,
     exponent: i32,
 ) -> Result<()> {
     let feed = &mut context.accounts.price_feed;
-    feed.market = context.accounts.lending_market.key();
-    feed.mint = context.accounts.mint.key();
+    feed.market = *context.accounts.lending_market.address();
+    feed.mint = *context.accounts.mint.address();
     feed.bump = context.bumps.price_feed;
     feed.price_mantissa = price_mantissa;
     feed.exponent = exponent;
@@ -27,24 +27,24 @@ pub fn handle_set_price(
 }
 
 #[derive(Accounts)]
-pub struct SetPrice<'info> {
+pub struct SetPrice {
     // Only the market's owner may publish its prices.
     #[account(has_one = owner)]
-    pub lending_market: Account<'info, LendingMarket>,
+    pub lending_market: BorshAccount<LendingMarket>,
 
     #[account(mut)]
-    pub owner: Signer<'info>,
+    pub owner: Signer,
 
     #[account(
         init_if_needed,
         payer = owner,
         space = PriceFeed::DISCRIMINATOR.len() + PriceFeed::INIT_SPACE,
-        seeds = [PRICE_FEED_SEED, lending_market.key().as_ref(), mint.key().as_ref()],
+        seeds = [PRICE_FEED_SEED, lending_market.address().as_ref(), mint.address().as_ref()],
         bump,
     )]
-    pub price_feed: Account<'info, PriceFeed>,
+    pub price_feed: BorshAccount<PriceFeed>,
 
-    pub mint: InterfaceAccount<'info, Mint>,
+    pub mint: InterfaceAccount<Mint>,
 
-    pub system_program: Program<'info, System>,
+    pub system_program: Program<System>,
 }

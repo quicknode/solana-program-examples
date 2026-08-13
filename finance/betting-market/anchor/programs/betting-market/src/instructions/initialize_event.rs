@@ -1,4 +1,5 @@
 use anchor_lang::prelude::*;
+use anchor_spl::mint;
 use anchor_spl::{
     associated_token::AssociatedToken,
     token_interface::{Mint, TokenAccount, TokenInterface},
@@ -10,9 +11,9 @@ pub const MAX_DESCRIPTION_LEN: usize = 200;
 
 #[derive(Accounts)]
 #[instruction(event_id: u64)]
-pub struct InitializeEventAccountConstraints<'info> {
+pub struct InitializeEventAccountConstraints {
     #[account(mut)]
-    pub admin: Signer<'info>,
+    pub admin: Signer,
 
     #[account(
         mut,
@@ -21,10 +22,10 @@ pub struct InitializeEventAccountConstraints<'info> {
         has_one = admin @ BettingError::Unauthorized,
         has_one = token_mint,
     )]
-    pub config: Account<'info, Config>,
+    pub config: BorshAccount<Config>,
 
     #[account(mint::token_program = token_program)]
-    pub token_mint: InterfaceAccount<'info, Mint>,
+    pub token_mint: InterfaceAccount<Mint>,
 
     #[account(
         init,
@@ -33,7 +34,7 @@ pub struct InitializeEventAccountConstraints<'info> {
         seeds = [b"event", event_id.to_le_bytes().as_ref()],
         bump
     )]
-    pub event: Account<'info, Event>,
+    pub event: BorshAccount<Event>,
 
     // The single pool for the whole market: an ATA owned by the Event PDA.
     #[account(
@@ -43,15 +44,15 @@ pub struct InitializeEventAccountConstraints<'info> {
         associated_token::authority = event,
         associated_token::token_program = token_program
     )]
-    pub vault: InterfaceAccount<'info, TokenAccount>,
+    pub vault: InterfaceAccount<TokenAccount>,
 
-    pub associated_token_program: Program<'info, AssociatedToken>,
-    pub token_program: Interface<'info, TokenInterface>,
-    pub system_program: Program<'info, System>,
+    pub associated_token_program: Program<AssociatedToken>,
+    pub token_program: Interface<'static, TokenInterface>,
+    pub system_program: Program<System>,
 }
 
 pub fn handle_initialize_event(
-    context: Context<InitializeEventAccountConstraints>,
+    context: &mut Context<InitializeEventAccountConstraints>,
     event_id: u64,
     description: String,
 ) -> Result<()> {
@@ -60,7 +61,7 @@ pub fn handle_initialize_event(
         BettingError::DescriptionTooLong
     );
 
-    context.accounts.event.set_inner(Event {
+    *context.accounts.event = (Event {
         event_id,
         description,
         outcome_count: 0,
