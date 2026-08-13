@@ -13,11 +13,14 @@ use lever::program::Lever;
 pub mod hand {
     use super::*;
 
-    pub fn pull_lever(context: Context<PullLeverAccountConstraints>, name: String) -> Result<()> {
+    pub fn pull_lever(
+        context: &mut Context<PullLeverAccountConstraints>,
+        name: String,
+    ) -> Result<()> {
         let cpi_ctx = CpiContext::new(
-            context.accounts.lever_program.key(),
+            context.accounts.lever_program.address(),
             SwitchPower {
-                power: context.accounts.power.to_account_info(),
+                power: context.accounts.power.cpi_handle_mut(),
             },
         );
         switch_power(cpi_ctx, name)?;
@@ -26,8 +29,8 @@ pub mod hand {
 }
 
 #[derive(Accounts)]
-pub struct PullLeverAccountConstraints<'info> {
+pub struct PullLeverAccountConstraints {
     #[account(mut)]
-    pub power: Account<'info, PowerStatus>,
-    pub lever_program: Program<'info, Lever>,
+    pub power: BorshAccount<PowerStatus>,
+    pub lever_program: Program<Lever>,
 }

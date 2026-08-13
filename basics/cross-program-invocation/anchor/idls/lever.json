@@ -9,7 +9,16 @@
   "instructions": [
     {
       "name": "initialize",
-      "discriminator": [175, 175, 109, 31, 13, 152, 155, 237],
+      "discriminator": [
+        175,
+        175,
+        109,
+        31,
+        13,
+        152,
+        155,
+        237
+      ],
       "accounts": [
         {
           "name": "power",
@@ -30,7 +39,16 @@
     },
     {
       "name": "switch_power",
-      "discriminator": [226, 238, 56, 172, 191, 45, 122, 87],
+      "discriminator": [
+        226,
+        238,
+        56,
+        172,
+        191,
+        45,
+        122,
+        87
+      ],
       "accounts": [
         {
           "name": "power",
@@ -48,12 +66,32 @@
   "accounts": [
     {
       "name": "PowerStatus",
-      "discriminator": [145, 147, 198, 35, 253, 101, 231, 26]
+      "discriminator": [
+        145,
+        147,
+        198,
+        35,
+        253,
+        101,
+        231,
+        26
+      ]
     }
   ],
   "types": [
     {
+      "name": "PodBool",
+      "type": {
+        "kind": "type",
+        "alias": "bool"
+      }
+    },
+    {
       "name": "PowerStatus",
+      "serialization": "bytemuck",
+      "repr": {
+        "kind": "c"
+      },
       "type": {
         "kind": "struct",
         "fields": [

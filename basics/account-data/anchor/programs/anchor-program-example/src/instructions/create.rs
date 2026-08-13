@@ -2,21 +2,21 @@ use crate::state::AddressInfo;
 use anchor_lang::prelude::*;
 
 #[derive(Accounts)]
-pub struct CreateAddressInfoAccountConstraints<'info> {
+pub struct CreateAddressInfoAccountConstraints {
     #[account(mut)]
-    payer: Signer<'info>,
+    pub payer: Signer,
 
     #[account(
         init,
         payer = payer,
         space = AddressInfo::DISCRIMINATOR.len() + AddressInfo::INIT_SPACE,
     )]
-    address_info: Account<'info, AddressInfo>,
-    system_program: Program<'info, System>,
+    pub address_info: BorshAccount<AddressInfo>,
+    pub system_program: Program<System>,
 }
 
 pub fn handle_create_address_info(
-    context: Context<CreateAddressInfoAccountConstraints>,
+    context: &mut Context<CreateAddressInfoAccountConstraints>,
     name: String,
     house_number: u8,
     street: String,

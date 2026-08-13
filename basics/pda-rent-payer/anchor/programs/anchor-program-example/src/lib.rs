@@ -9,13 +9,15 @@ pub mod pda_rent_payer {
     use super::*;
 
     pub fn init_rent_vault(
-        context: Context<InitRentVaultAccountConstraints>,
+        context: &mut Context<InitRentVaultAccountConstraints>,
         fund_lamports: u64,
     ) -> Result<()> {
         init_rent_vault::handle_init_rent_vault(context, fund_lamports)
     }
 
-    pub fn create_new_account(context: Context<CreateNewAccountAccountConstraints>) -> Result<()> {
+    pub fn create_new_account(
+        context: &mut Context<CreateNewAccountAccountConstraints>,
+    ) -> Result<()> {
         create_new_account::handle_create_new_account(context)
     }
 }

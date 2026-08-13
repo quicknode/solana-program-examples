@@ -20,7 +20,10 @@ custom-heap = []
 custom-panic = []
 
 [dependencies]
-anchor-lang = {version = "1.1.2", features = ["init-if-needed"]}
+anchor-lang = "2.0.0-rc.1"
+# The `#[program]` macro expands to `wincode` paths for instruction-data
+# (de)serialization, so the crate has to be a direct dependency.
+wincode = { version = "0.5", features = ["derive"] }
 
 [dev-dependencies]
 litesvm = "0.13.1"

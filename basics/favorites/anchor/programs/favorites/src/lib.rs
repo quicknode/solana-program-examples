@@ -10,23 +10,23 @@ pub mod favorites {
 
     // Our instruction handler! It sets the user's favorite number and color
     pub fn set_favorites(
-        context: Context<SetFavoritesAccountConstraints>,
+        context: &mut Context<SetFavoritesAccountConstraints>,
         number: u64,
         color: String,
         hobbies: Vec<String>,
     ) -> Result<()> {
         msg!("Greetings from {}", context.program_id);
-        let user_public_key = context.accounts.user.key();
+        let user_public_key = context.accounts.user.address();
         msg!(
             "User {user_public_key}'s favorite number is {number}, favorite color is: {color}, and their hobbies are {hobbies:?}",
         );
 
-        context.accounts.favorites.set_inner(Favorites {
+        *context.accounts.favorites = Favorites {
             number,
             color,
             hobbies,
             bump: context.bumps.favorites,
-        });
+        };
         Ok(())
     }
 
@@ -34,7 +34,9 @@ pub mod favorites {
 }
 
 // What we will put inside the Favorites PDA
-#[account]
+// `borsh` because the struct holds a `String` and a `Vec`: v2's default
+// `#[account]` backing is zero-copy and needs a `Pod` (fixed-layout) type.
+#[account(borsh)]
 #[derive(InitSpace)]
 pub struct Favorites {
     pub number: u64,
@@ -51,18 +53,18 @@ pub struct Favorites {
 }
 // When people call the set_favorites instruction, they will need to provide the accounts that will be modifed. This keeps Solana fast!
 #[derive(Accounts)]
-pub struct SetFavoritesAccountConstraints<'info> {
+pub struct SetFavoritesAccountConstraints {
     #[account(mut)]
-    pub user: Signer<'info>,
+    pub user: Signer,
 
     #[account(
         init_if_needed,
         payer = user,
         space = Favorites::DISCRIMINATOR.len() + Favorites::INIT_SPACE,
-        seeds=[b"favorites", user.key().as_ref()],
+        seeds=[b"favorites", user.address().as_ref()],
         bump
     )]
-    pub favorites: Account<'info, Favorites>,
+    pub favorites: BorshAccount<Favorites>,
 
-    pub system_program: Program<'info, System>,
+    pub system_program: Program<System>,
 }

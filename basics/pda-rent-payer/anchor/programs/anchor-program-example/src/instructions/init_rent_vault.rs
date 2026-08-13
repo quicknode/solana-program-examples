@@ -2,9 +2,9 @@ use anchor_lang::prelude::*;
 use anchor_lang::system_program::{transfer, Transfer};
 
 #[derive(Accounts)]
-pub struct InitRentVaultAccountConstraints<'info> {
+pub struct InitRentVaultAccountConstraints {
     #[account(mut)]
-    payer: Signer<'info>,
+    payer: Signer,
 
     #[account(
         mut,
@@ -13,22 +13,22 @@ pub struct InitRentVaultAccountConstraints<'info> {
         ],
         bump,
     )]
-    rent_vault: SystemAccount<'info>,
-    system_program: Program<'info, System>,
+    rent_vault: SystemAccount,
+    system_program: Program<System>,
 }
 
 // When lamports are transferred to a new address (without and existing account),
 // An account owned by the system program is created by default
 pub fn handle_init_rent_vault(
-    context: Context<InitRentVaultAccountConstraints>,
+    context: &mut Context<InitRentVaultAccountConstraints>,
     fund_lamports: u64,
 ) -> Result<()> {
     transfer(
         CpiContext::new(
-            context.accounts.system_program.key(),
+            context.accounts.system_program.address(),
             Transfer {
-                from: context.accounts.payer.to_account_info(),
-                to: context.accounts.rent_vault.to_account_info(),
+                from: context.accounts.payer.cpi_handle_mut(),
+                to: context.accounts.rent_vault.cpi_handle_mut(),
             },
         ),
         fund_lamports,

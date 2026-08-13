@@ -1,7 +1,7 @@
 use {
     anchor_lang::{
-        solana_program::{instruction::Instruction, pubkey::Pubkey, system_program},
-        InstructionData, ToAccountMetas,
+        solana_program::instruction::Instruction, system_program, Address, InstructionData,
+        ToAccountMetas,
     },
     borsh::BorshDeserialize,
     litesvm::LiteSVM,
@@ -18,10 +18,14 @@ fn setup() -> (LiteSVM, solana_keypair::Keypair) {
     (svm, payer)
 }
 
+/// Mirrors the on-chain layout. v2's `#[account]` is zero-copy, so the struct
+/// carries explicit padding out to its alignment — `try_from_slice` rejects
+/// trailing bytes, so the test type has to spell the padding out too.
 #[derive(BorshDeserialize)]
 struct PageVisits {
     page_visits: u32,
     bump: u8,
+    _padding: [u8; 3],
 }
 
 #[test]
@@ -31,7 +35,7 @@ fn test_create_and_increment_page_visits() {
 
     // Derive PDA
     let (page_visits_pda, _bump) =
-        Pubkey::find_program_address(&[b"page_visits", payer.pubkey().as_ref()], &program_id);
+        Address::find_program_address(&[b"page_visits", payer.pubkey().as_ref()], &program_id);
 
     // Create page visits account
     let create_ix = Instruction::new_with_bytes(
@@ -40,7 +44,7 @@ fn test_create_and_increment_page_visits() {
         program_derived_addresses_program::accounts::CreatePageVisitsAccountConstraints {
             payer: payer.pubkey(),
             page_visits: page_visits_pda,
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );

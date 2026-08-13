@@ -3,12 +3,15 @@ use anchor_lang::prelude::*;
 use crate::PowerStatus;
 
 #[derive(Accounts)]
-pub struct SetPowerStatusAccountConstraints<'info> {
+pub struct SetPowerStatusAccountConstraints {
     #[account(mut)]
-    pub power: Account<'info, PowerStatus>,
+    pub power: BorshAccount<PowerStatus>,
 }
 
-pub fn handler(context: Context<SetPowerStatusAccountConstraints>, name: String) -> Result<()> {
+pub fn handler(
+    context: &mut Context<SetPowerStatusAccountConstraints>,
+    name: String,
+) -> Result<()> {
     let power = &mut context.accounts.power;
     power.is_on = !power.is_on;
 

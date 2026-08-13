@@ -3,7 +3,8 @@ use anchor_lang::prelude::*;
 declare_id!("GUkjQmrLPFXXNK1bFLKt8XQi6g3TjxcHVspbjDoHvMG2");
 
 /// The Pyth Receiver program that owns `PriceUpdateV2` accounts on devnet/mainnet.
-pub const PYTH_RECEIVER_PROGRAM_ID: Pubkey = pubkey!("rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ");
+pub const PYTH_RECEIVER_PROGRAM_ID: Address =
+    anchor_lang::address!("rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ");
 
 /// Maximum allowed age of a price update before it is rejected as stale.
 /// Pyth's `publish_time` is a unix timestamp in seconds, so the age check
@@ -24,7 +25,7 @@ pub enum PythExampleError {
 pub mod anchor_test {
     use super::*;
 
-    pub fn read_price(context: Context<ReadPriceAccountConstraints>) -> Result<()> {
+    pub fn read_price(context: &mut Context<ReadPriceAccountConstraints>) -> Result<()> {
         let price_update = &context.accounts.price_update;
 
         // Reject stale prices: a price that stopped updating is wrong.
@@ -50,8 +51,8 @@ pub mod anchor_test {
 }
 
 #[derive(Accounts)]
-pub struct ReadPriceAccountConstraints<'info> {
-    pub price_update: Account<'info, PriceUpdateV2>,
+pub struct ReadPriceAccountConstraints {
+    pub price_update: BorshAccount<PriceUpdateV2>,
 }
 
 // ---------------------------------------------------------------------------
@@ -82,7 +83,7 @@ pub struct ReadPriceAccountConstraints<'info> {
 // borsh 1.x compatible `pyth-solana-receiver-sdk` release ships.
 // ---------------------------------------------------------------------------
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, wincode::SchemaRead, wincode::SchemaWrite)]
 pub enum VerificationLevel {
     /// Partially verified: only `num_signatures` of the Wormhole guardians
     /// were checked against the price update.
@@ -91,7 +92,7 @@ pub enum VerificationLevel {
     Full,
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, wincode::SchemaRead, wincode::SchemaWrite)]
 pub struct PriceFeedMessage {
     pub feed_id: [u8; 32],
     pub price: i64,
@@ -103,9 +104,9 @@ pub struct PriceFeedMessage {
     pub ema_conf: u64,
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, wincode::SchemaRead, wincode::SchemaWrite)]
 pub struct PriceUpdateV2 {
-    pub write_authority: Pubkey,
+    pub write_authority: Address,
     pub verification_level: VerificationLevel,
     pub price_message: PriceFeedMessage,
     pub posted_slot: u64,
@@ -118,38 +119,6 @@ impl anchor_lang::Discriminator for PriceUpdateV2 {
 
 // The account is created and owned by the Pyth Receiver program.
 impl anchor_lang::Owner for PriceUpdateV2 {
-    fn owner() -> Pubkey {
-        PYTH_RECEIVER_PROGRAM_ID
-    }
+    const OWNER: Address = PYTH_RECEIVER_PROGRAM_ID;
 }
 
-impl anchor_lang::AccountSerialize for PriceUpdateV2 {
-    fn try_serialize<W: std::io::Write>(&self, writer: &mut W) -> Result<()> {
-        writer
-            .write_all(<Self as anchor_lang::Discriminator>::DISCRIMINATOR)
-            .map_err(|_| anchor_lang::error::ErrorCode::AccountDidNotSerialize)?;
-        AnchorSerialize::serialize(self, writer)
-            .map_err(|_| anchor_lang::error::ErrorCode::AccountDidNotSerialize)?;
-        Ok(())
-    }
-}
-
-impl anchor_lang::AccountDeserialize for PriceUpdateV2 {
-    fn try_deserialize(buf: &mut &[u8]) -> Result<Self> {
-        let disc = <Self as anchor_lang::Discriminator>::DISCRIMINATOR;
-        if buf.len() < disc.len() {
-            return Err(anchor_lang::error::ErrorCode::AccountDiscriminatorNotFound.into());
-        }
-        if &buf[..disc.len()] != disc {
-            return Err(anchor_lang::error::ErrorCode::AccountDiscriminatorMismatch.into());
-        }
-        Self::try_deserialize_unchecked(buf)
-    }
-
-    fn try_deserialize_unchecked(buf: &mut &[u8]) -> Result<Self> {
-        let disc = <Self as anchor_lang::Discriminator>::DISCRIMINATOR;
-        let mut data: &[u8] = &buf[disc.len()..];
-        AnchorDeserialize::deserialize(&mut data)
-            .map_err(|_| anchor_lang::error::ErrorCode::AccountDidNotDeserialize.into())
-    }
-}

@@ -6,12 +6,13 @@ version = 4
 name = "account-data-anchor-program"
 version = "0.1.0"
 dependencies = [
- "anchor-lang 1.1.2",
+ "anchor-lang 2.0.0-rc.1",
  "borsh 1.7.0",
  "litesvm",
  "solana-keypair",
  "solana-kite",
  "solana-signer",
+ "wincode 0.5.5",
 ]
 
 [[package]]
@@ -445,12 +446,13 @@ dependencies = [
 name = "anchor-realloc"
 version = "0.1.0"
 dependencies = [
- "anchor-lang 1.1.2",
+ "anchor-lang 2.0.0-rc.1",
  "borsh 1.7.0",
  "litesvm",
  "solana-keypair",
  "solana-kite",
  "solana-signer",
+ "wincode 0.5.5",
 ]
 
 [[package]]
@@ -1088,11 +1090,12 @@ dependencies = [
 name = "carnival"
 version = "0.1.0"
 dependencies = [
- "anchor-lang 1.1.2",
+ "anchor-lang 2.0.0-rc.1",
  "litesvm",
  "solana-keypair",
  "solana-kite",
  "solana-signer",
+ "wincode 0.5.5",
 ]
 
 [[package]]
@@ -1146,12 +1149,13 @@ dependencies = [
 name = "checking-accounts-anchor-program-example"
 version = "0.1.0"
 dependencies = [
- "anchor-lang 1.1.2",
+ "anchor-lang 2.0.0-rc.1",
  "borsh 1.7.0",
  "litesvm",
  "solana-keypair",
  "solana-kite",
  "solana-signer",
+ "wincode 0.5.5",
 ]
 
 [[package]]
@@ -1233,11 +1237,13 @@ dependencies = [
 name = "close-account-program"
 version = "0.1.0"
 dependencies = [
- "anchor-lang 1.1.2",
+ "anchor-lang 2.0.0-rc.1",
  "litesvm",
+ "solana-address 2.6.1",
  "solana-keypair",
  "solana-kite",
  "solana-signer",
+ "wincode 0.5.5",
 ]
 
 [[package]]
@@ -1345,12 +1351,13 @@ dependencies = [
 name = "counter_anchor"
 version = "0.1.0"
 dependencies = [
- "anchor-lang 1.1.2",
+ "anchor-lang 2.0.0-rc.1",
  "borsh 1.7.0",
  "litesvm",
  "solana-keypair",
  "solana-kite",
  "solana-signer",
+ "wincode 0.5.5",
 ]
 
 [[package]]
@@ -1419,11 +1426,12 @@ dependencies = [
 name = "create-system-account"
 version = "0.1.0"
 dependencies = [
- "anchor-lang 1.1.2",
+ "anchor-lang 2.0.0-rc.1",
  "litesvm",
  "solana-keypair",
  "solana-kite",
  "solana-signer",
+ "wincode 0.5.5",
 ]
 
 [[package]]
@@ -1991,11 +1999,12 @@ dependencies = [
 name = "hand"
 version = "0.1.0"
 dependencies = [
- "anchor-lang 1.1.2",
+ "anchor-lang 2.0.0-rc.1",
  "litesvm",
  "solana-keypair",
  "solana-kite",
  "solana-signer",
+ "wincode 0.5.5",
 ]
 
 [[package]]
@@ -2233,11 +2242,12 @@ checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 name = "lever"
 version = "0.1.0"
 dependencies = [
- "anchor-lang 1.1.2",
+ "anchor-lang 2.0.0-rc.1",
  "litesvm",
  "solana-keypair",
  "solana-kite",
  "solana-signer",
+ "wincode 0.5.5",
 ]
 
 [[package]]
@@ -2699,11 +2709,12 @@ dependencies = [
 name = "pda-rent-payer"
 version = "0.1.0"
 dependencies = [
- "anchor-lang 1.1.2",
+ "anchor-lang 2.0.0-rc.1",
  "litesvm",
  "solana-keypair",
  "solana-kite",
  "solana-signer",
+ "wincode 0.5.5",
 ]
 
 [[package]]
@@ -2905,11 +2916,12 @@ dependencies = [
 name = "processing-instructions"
 version = "0.1.0"
 dependencies = [
- "anchor-lang 1.1.2",
+ "anchor-lang 2.0.0-rc.1",
  "litesvm",
  "solana-keypair",
  "solana-kite",
  "solana-signer",
+ "wincode 0.5.5",
 ]
 
 [[package]]
@@ -2995,12 +3007,13 @@ dependencies = [
 name = "program-derived-addresses-program"
 version = "0.1.0"
 dependencies = [
- "anchor-lang 1.1.2",
+ "anchor-lang 2.0.0-rc.1",
  "borsh 1.7.0",
  "litesvm",
  "solana-keypair",
  "solana-kite",
  "solana-signer",
+ "wincode 0.5.5",
 ]
 
 [[package]]
@@ -3227,12 +3240,12 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 name = "rent-example"
 version = "0.1.0"
 dependencies = [
- "anchor-lang 1.1.2",
- "borsh 1.7.0",
+ "anchor-lang 2.0.0-rc.1",
  "litesvm",
  "solana-keypair",
  "solana-kite",
  "solana-signer",
+ "wincode 0.5.5",
 ]
 
 [[package]]
@@ -6555,11 +6568,12 @@ checksum = "756daf9b1013ebe47a8776667b466417e2d4c5679d441c26230efd9ef78692db"
 name = "transfer-sol"
 version = "0.1.0"
 dependencies = [
- "anchor-lang 1.1.2",
+ "anchor-lang 2.0.0-rc.1",
  "litesvm",
  "solana-keypair",
  "solana-kite",
  "solana-signer",
+ "wincode 0.5.5",
 ]
 
 [[package]]
