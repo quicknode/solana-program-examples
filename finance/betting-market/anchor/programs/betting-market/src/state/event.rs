@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq, Eq, InitSpace)]
+#[derive(Clone, PartialEq, Eq, InitSpace, IdlType, wincode::SchemaRead, wincode::SchemaWrite)]
 pub enum EventStatus {
     // Accepting bets.
     Open,

@@ -2,13 +2,13 @@ use anchor_lang::prelude::*;
 
 pub const ORDER_SEED: &[u8] = b"order";
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, InitSpace)]
+#[derive(Clone, Copy, PartialEq, Eq, InitSpace, IdlType, wincode::SchemaRead, wincode::SchemaWrite)]
 pub enum OrderSide {
     Bid,
     Ask,
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, InitSpace)]
+#[derive(Clone, Copy, PartialEq, Eq, InitSpace, IdlType, wincode::SchemaRead, wincode::SchemaWrite)]
 pub enum OrderStatus {
     Open,
     PartiallyFilled,

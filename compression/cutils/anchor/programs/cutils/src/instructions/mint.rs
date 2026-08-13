@@ -66,7 +66,7 @@ pub struct MintAccountConstraints {
     pub system_program: Program<System>,
 }
 
-#[derive(Clone, AnchorSerialize, AnchorDeserialize)]
+#[derive(Clone, IdlType, wincode::SchemaRead, wincode::SchemaWrite)]
 pub struct MintParams {
     uri: String,
 }

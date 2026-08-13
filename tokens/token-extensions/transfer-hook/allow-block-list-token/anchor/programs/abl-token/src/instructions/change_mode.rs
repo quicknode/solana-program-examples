@@ -31,7 +31,7 @@ pub struct ChangeModeAccountConstraints {
     pub system_program: Program<System>,
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize)]
+#[derive(IdlType, wincode::SchemaRead, wincode::SchemaWrite)]
 pub struct ChangeModeArgs {
     pub mode: Mode,
     pub threshold: u64,

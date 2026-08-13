@@ -17,7 +17,7 @@ pub struct VerifyAccountConstraints {
     pub compression_program: Program<SPLCompression>,
 }
 
-#[derive(Clone, AnchorSerialize, AnchorDeserialize)]
+#[derive(Clone, IdlType, wincode::SchemaRead, wincode::SchemaWrite)]
 pub struct VerifyParams {
     root: [u8; 32],
     data_hash: [u8; 32],

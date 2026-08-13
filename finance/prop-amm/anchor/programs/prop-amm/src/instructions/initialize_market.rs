@@ -13,7 +13,7 @@ use crate::state::Market;
 
 /// Quote parameters set at market creation. Bundled into one struct so the
 /// instruction signature stays readable.
-#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+#[derive(Clone, IdlType, wincode::SchemaRead, wincode::SchemaWrite)]
 pub struct MarketParameters {
     /// Decimal places the oracle quotes its price in (e.g. 8).
     pub oracle_scale: u32,

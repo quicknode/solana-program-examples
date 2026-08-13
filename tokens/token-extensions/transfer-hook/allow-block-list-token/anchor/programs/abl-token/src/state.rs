@@ -21,7 +21,7 @@ pub struct Config {
     pub bump: u8,
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize, PartialEq)]
+#[derive(PartialEq, IdlType, wincode::SchemaRead, wincode::SchemaWrite)]
 pub enum Mode {
     Allow,
     Block,

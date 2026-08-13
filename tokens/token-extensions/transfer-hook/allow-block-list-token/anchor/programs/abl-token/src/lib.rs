@@ -15,7 +15,7 @@ pub use utils::*;
 
 declare_id!("3ku1ZEGvBEEfhaYsAzBZuecTPEa58ZRhoVqHVGpGxVGi");
 
-#[program]
+#[program(interface, program_id = ID)]
 pub mod abl_token {
 
     use super::*;
@@ -32,7 +32,8 @@ pub mod abl_token {
         context.accounts.attach_to_mint()
     }
 
-    #[instruction(discriminator = ExecuteInstruction::SPL_DISCRIMINATOR_SLICE)]
+    // sha256("spl-transfer-hook-interface:execute")[..8]
+    #[discrim = [105, 37, 101, 197, 75, 251, 102, 26]]
     pub fn tx_hook(context: &mut Context<TxHookAccountConstraints>, amount: u64) -> Result<()> {
         context.accounts.tx_hook(amount)
     }

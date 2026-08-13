@@ -42,14 +42,14 @@ pub struct Obligation {
     pub bump: u8,
 }
 
-#[derive(InitSpace, Clone, Copy, AnchorSerialize, AnchorDeserialize, Debug, Default)]
+#[derive(InitSpace, Clone, Copy, Debug, Default, IdlType, wincode::SchemaRead, wincode::SchemaWrite)]
 pub struct ObligationCollateral {
     pub reserve: Address,
     pub deposited_shares: u64,
     pub market_value: u128,
 }
 
-#[derive(InitSpace, Clone, Copy, AnchorSerialize, AnchorDeserialize, Debug, Default)]
+#[derive(InitSpace, Clone, Copy, Debug, Default, IdlType, wincode::SchemaRead, wincode::SchemaWrite)]
 pub struct ObligationLiquidity {
     pub reserve: Address,
     /// Borrowed principal, scaled by the reserve's index at borrow time so the

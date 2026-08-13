@@ -25,7 +25,7 @@ pub struct InitializeExtraAccountMetaListAccountConstraints {
         ).unwrap(),
         payer = payer
     )]
-    pub extra_account_meta_list: AccountView,
+    pub extra_account_meta_list: UncheckedAccount,
     pub mint: InterfaceAccount<Mint>,
     #[account(init, seeds = [b"counter"], bump, payer = payer, space = CounterAccount::DISCRIMINATOR.len() + CounterAccount::INIT_SPACE)]
     pub counter_account: BorshAccount<CounterAccount>,

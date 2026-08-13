@@ -38,7 +38,7 @@ impl InitWalletAccountConstraints<'_> {
     }
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize)]
+#[derive(IdlType, wincode::SchemaRead, wincode::SchemaWrite)]
 pub struct InitWalletArgs {
     pub allowed: bool,
 }

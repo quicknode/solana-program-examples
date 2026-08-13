@@ -93,7 +93,7 @@ pub fn process_update_field(context: &mut Context<UpdateFieldAccountConstraints>
 
 // Custom struct to implement AnchorSerialize and AnchorDeserialize
 // This is required to pass the struct as an argument to the instruction
-#[derive(AnchorSerialize, AnchorDeserialize)]
+#[derive(IdlType, wincode::SchemaRead, wincode::SchemaWrite)]
 pub struct UpdateFieldArgs {
     /// Field to update in the metadata
     pub field: AnchorField,
@@ -102,7 +102,7 @@ pub struct UpdateFieldArgs {
 }
 
 // Need to do this so the enum shows up in the IDL
-#[derive(AnchorSerialize, AnchorDeserialize, Debug)]
+#[derive(Debug, IdlType, wincode::SchemaRead, wincode::SchemaWrite)]
 pub enum AnchorField {
     /// The name field, corresponding to `TokenMetadata.name`
     Name,

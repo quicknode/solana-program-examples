@@ -27,18 +27,20 @@ pub enum TransferError {
     IsNotCurrentlyTransferring,
 }
 
-#[program]
+#[program(interface, program_id = ID)]
 pub mod transfer_hook {
     use super::*;
 
-    #[instruction(discriminator = InitializeExtraAccountMetaListInstruction::SPL_DISCRIMINATOR_SLICE)]
+    // sha256("spl-transfer-hook-interface:initialize-extra-account-metas")[..8]
+    #[discrim = [43, 34, 13, 49, 167, 88, 235, 235]]
     pub fn initialize_extra_account_meta_list(
         context: &mut Context<InitializeExtraAccountMetaListAccountConstraints>,
     ) -> Result<()> {
         instructions::initialize_extra_account_meta_list::handler(context)
     }
 
-    #[instruction(discriminator = ExecuteInstruction::SPL_DISCRIMINATOR_SLICE)]
+    // sha256("spl-transfer-hook-interface:execute")[..8]
+    #[discrim = [105, 37, 101, 197, 75, 251, 102, 26]]
     pub fn transfer_hook(context: &mut Context<TransferHookAccountConstraints>, amount: u64) -> Result<()> {
         instructions::transfer_hook::handler(context, amount)
     }

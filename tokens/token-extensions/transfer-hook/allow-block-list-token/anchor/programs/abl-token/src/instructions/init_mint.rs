@@ -115,7 +115,7 @@ impl InitMintAccountConstraints<'_> {
     }
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize)]
+#[derive(IdlType, wincode::SchemaRead, wincode::SchemaWrite)]
 pub struct InitMintArgs {
     pub decimals: u8,
     pub mint_authority: Address,

@@ -77,7 +77,7 @@ pub struct Reserve {
 }
 
 /// Risk and interest-rate parameters. All ratios are basis points (10_000 = 100%).
-#[derive(InitSpace, Clone, Copy, AnchorSerialize, AnchorDeserialize, Debug, Default)]
+#[derive(InitSpace, Clone, Copy, Debug, Default, IdlType, wincode::SchemaRead, wincode::SchemaWrite)]
 pub struct ReserveConfig {
     /// Fraction of deposited collateral value a borrower may borrow against.
     pub loan_to_value_bps: u16,

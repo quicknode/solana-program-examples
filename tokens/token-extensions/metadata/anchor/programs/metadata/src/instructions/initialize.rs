@@ -73,7 +73,7 @@ pub fn process_initialize(context: &mut Context<InitializeAccountConstraints>, a
     Ok(())
 }
 
-#[derive(AnchorDeserialize, AnchorSerialize)]
+#[derive(IdlType, wincode::SchemaRead, wincode::SchemaWrite)]
 pub struct TokenMetadataArgs {
     pub name: String,
     pub symbol: String,

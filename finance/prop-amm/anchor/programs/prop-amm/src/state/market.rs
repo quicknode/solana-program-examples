@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 
 /// Which side of the quote a swap takes.
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, IdlType, wincode::SchemaRead, wincode::SchemaWrite)]
 pub enum Direction {
     /// Spend the quote token, receive the base token, priced at the ask
     /// (oracle plus spread).

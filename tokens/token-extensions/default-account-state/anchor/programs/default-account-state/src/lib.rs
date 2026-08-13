@@ -24,7 +24,7 @@ pub mod default_account_state {
 
 // Custom enum to implement AnchorSerialize and AnchorDeserialize
 // This is required to pass the enum as an argument to the instruction
-#[derive(AnchorSerialize, AnchorDeserialize)]
+#[derive(IdlType, wincode::SchemaRead, wincode::SchemaWrite)]
 pub enum AnchorAccountState {
     Uninitialized,
     Initialized,
