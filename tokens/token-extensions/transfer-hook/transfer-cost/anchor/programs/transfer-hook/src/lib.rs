@@ -50,15 +50,18 @@ pub mod transfer_hook {
 
     // sha256("spl-transfer-hook-interface:execute")[..8]
     #[discrim = [105, 37, 101, 197, 75, 251, 102, 26]]
-    pub fn transfer_hook(context: &mut Context<TransferHookAccountConstraints>, amount: u64) -> Result<()> {
+    pub fn transfer_hook(
+        context: &mut Context<TransferHookAccountConstraints>,
+        amount: u64,
+    ) -> Result<()> {
         instructions::transfer_hook::handler(context, amount)
     }
 }
 
 pub fn check_is_transferring(context: &Context<TransferHookAccountConstraints>) -> Result<()> {
-    let source_token_info = context.accounts.source_token.cpi_handle_mut();
-    let mut account_data_ref: RefMut<&mut [u8]> = source_token_info.try_borrow_mut_data()?;
-    let mut account = PodStateWithExtensionsMut::<PodAccount>::unpack(*account_data_ref)
+    let mut source_token_info = *context.accounts.source_token.account();
+    let mut account_data_ref = source_token_info.try_borrow_mut()?;
+    let mut account = PodStateWithExtensionsMut::<PodAccount>::unpack(&mut account_data_ref)
         .map_err(|_| ProgramError::InvalidAccountData)?;
     let account_extension = account
         .get_extension_mut::<TransferHookAccount>()

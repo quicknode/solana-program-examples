@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
-use anchor_spl::token;
 use anchor_spl::mint;
+use anchor_spl::token;
 use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
 
 use crate::constants::{
@@ -8,7 +8,10 @@ use crate::constants::{
 };
 use crate::state::{LendingMarket, PriceFeed, Reserve, ReserveConfig};
 
-pub fn handle_initialize_reserve(context: &mut Context<InitializeReserve>, config: ReserveConfig) -> Result<()> {
+pub fn handle_initialize_reserve(
+    context: &mut Context<InitializeReserve>,
+    config: ReserveConfig,
+) -> Result<()> {
     config.validate()?;
 
     let reserve = &mut context.accounts.reserve;

@@ -18,7 +18,9 @@ pub struct UpdateAuthorityAccountConstraints {
     pub system_program: Program<System>,
 }
 
-pub fn process_update_authority(context: &mut Context<UpdateAuthorityAccountConstraints>) -> Result<()> {
+pub fn process_update_authority(
+    context: &mut Context<UpdateAuthorityAccountConstraints>,
+) -> Result<()> {
     let new_authority_key = match &context.accounts.new_authority {
         Some(account) => OptionalNonZeroPubkey::try_from(Some(account.address()))?,
         None => OptionalNonZeroPubkey::try_from(None)?,

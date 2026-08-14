@@ -87,7 +87,8 @@ pub fn handle_settle_event(
 
     // Winners always get their own stake back; the fee is only ever charged on
     // the losing side, so a winner can never receive less than they staked.
-    let fee = (losing_pool as u128 * context.accounts.event.fee_bps as u128 / BPS_DENOMINATOR) as u64;
+    let fee =
+        (losing_pool as u128 * context.accounts.event.fee_bps as u128 / BPS_DENOMINATOR) as u64;
     let distributable_losing_pool = losing_pool - fee;
 
     if fee > 0 {

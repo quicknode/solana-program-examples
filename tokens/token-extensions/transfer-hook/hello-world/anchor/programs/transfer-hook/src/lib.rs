@@ -3,13 +3,12 @@ use std::cell::RefMut;
 use anchor_lang::prelude::*;
 use anchor_spl::token_2022::spl_token_2022::{
     extension::{
-        transfer_hook::TransferHookAccount, BaseStateWithExtensionsMut,
-        PodStateWithExtensionsMut,
+        transfer_hook::TransferHookAccount, BaseStateWithExtensionsMut, PodStateWithExtensionsMut,
     },
     pod::PodAccount,
 };
-use spl_tlv_account_resolution::account::ExtraAccountMeta;
 use spl_discriminator::SplDiscriminate;
+use spl_tlv_account_resolution::account::ExtraAccountMeta;
 use spl_transfer_hook_interface::instruction::{
     ExecuteInstruction, InitializeExtraAccountMetaListInstruction,
 };
@@ -29,7 +28,10 @@ pub enum TransferError {
 pub mod transfer_hook {
     use super::*;
 
-    pub fn initialize(context: &mut Context<InitializeAccountConstraints>, decimals: u8) -> Result<()> {
+    pub fn initialize(
+        context: &mut Context<InitializeAccountConstraints>,
+        decimals: u8,
+    ) -> Result<()> {
         instructions::initialize::handler(context, decimals)
     }
 
@@ -43,19 +45,23 @@ pub mod transfer_hook {
 
     // sha256("spl-transfer-hook-interface:execute")[..8]
     #[discrim = [105, 37, 101, 197, 75, 251, 102, 26]]
-    pub fn transfer_hook(context: &mut Context<TransferHookAccountConstraints>, amount: u64) -> Result<()> {
+    pub fn transfer_hook(
+        context: &mut Context<TransferHookAccountConstraints>,
+        amount: u64,
+    ) -> Result<()> {
         instructions::transfer_hook::handler(context, amount)
     }
 }
 
 pub fn check_is_transferring(context: &Context<TransferHookAccountConstraints>) -> Result<()> {
-    let source_token_info = context.accounts.source_token.cpi_handle_mut();
-    let mut account_data_ref: RefMut<&mut [u8]> = source_token_info.try_borrow_mut_data()?;
+    let mut source_token_info = *context.accounts.source_token.account();
+    let mut account_data_ref = source_token_info.try_borrow_mut()?;
     // .map_err() needed because spl-token-2022 uses solana-program-error 2.x
     // while anchor-lang 1.0 uses 3.x - structurally identical but different semver types
-    let mut account = PodStateWithExtensionsMut::<PodAccount>::unpack(*account_data_ref)
+    let mut account = PodStateWithExtensionsMut::<PodAccount>::unpack(&mut account_data_ref)
         .map_err(|_| ProgramError::InvalidAccountData)?;
-    let account_extension = account.get_extension_mut::<TransferHookAccount>()
+    let account_extension = account
+        .get_extension_mut::<TransferHookAccount>()
         .map_err(|_| ProgramError::InvalidAccountData)?;
 
     if !bool::from(account_extension.transferring) {

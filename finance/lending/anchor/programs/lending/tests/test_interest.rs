@@ -1,6 +1,6 @@
 mod common;
 
-use common::{default_config, dollars, ata, Env};
+use common::{ata, default_config, dollars, Env};
 use lending::constants::FIXED_POINT_SCALE;
 use solana_signer::Signer;
 
@@ -26,10 +26,20 @@ fn interest_accrues_on_borrows_over_time() {
     env.supply(&borrower, &collateral, 1_000_000_000);
     let obligation = env.initialize_obligation(&borrower);
     env.post_collateral(&borrower, obligation, &collateral, 1_000_000_000);
-    env.try_borrow(&borrower, obligation, &[&collateral], &[], &borrow, 500_000_000)
-        .unwrap();
+    env.try_borrow(
+        &borrower,
+        obligation,
+        &[&collateral],
+        &[],
+        &borrow,
+        500_000_000,
+    )
+    .unwrap();
 
-    assert_eq!(env.reserve(&borrow).borrow_accumulation_factor, FIXED_POINT_SCALE);
+    assert_eq!(
+        env.reserve(&borrow).borrow_accumulation_factor,
+        FIXED_POINT_SCALE
+    );
 
     // Let ~0.1 year pass (2.5 slots/s => ~7.884M slots), re-publish prices, refresh.
     env.warp_slots(7_884_000);
@@ -80,8 +90,15 @@ fn protocol_fees_accrue_and_owner_can_collect() {
     env.supply(&borrower, &collateral, 1_000_000_000);
     let obligation = env.initialize_obligation(&borrower);
     env.post_collateral(&borrower, obligation, &collateral, 1_000_000_000);
-    env.try_borrow(&borrower, obligation, &[&collateral], &[], &borrow, 500_000_000)
-        .unwrap();
+    env.try_borrow(
+        &borrower,
+        obligation,
+        &[&collateral],
+        &[],
+        &borrow,
+        500_000_000,
+    )
+    .unwrap();
 
     // No interest has accrued yet, so no fees.
     assert_eq!(env.reserve(&borrow).accumulated_protocol_fees, 0);
@@ -95,7 +112,7 @@ fn protocol_fees_accrue_and_owner_can_collect() {
     assert!(fees > 0, "protocol fees should accrue once interest does");
     let total_interest = reserve.current_borrowed_amount().unwrap() - 500_000_000;
     let expected_fee = total_interest / 10; // 1000 bps = 10%
-    // Allow a 1-unit rounding tolerance from flooring.
+                                            // Allow a 1-unit rounding tolerance from flooring.
     assert!(
         fees.abs_diff(expected_fee) <= 1,
         "fees {fees} should be ~10% of interest {total_interest}"

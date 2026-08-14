@@ -19,7 +19,9 @@ pub struct CreateAssociatedTokenAccountAccountConstraints {
     pub associated_token_program: Program<AssociatedToken>,
 }
 
-pub fn handler(_context: &mut Context<CreateAssociatedTokenAccountAccountConstraints>) -> Result<()> {
+pub fn handler(
+    _context: &mut Context<CreateAssociatedTokenAccountAccountConstraints>,
+) -> Result<()> {
     msg!("Create Associated Token Account");
     Ok(())
 }

@@ -1,7 +1,7 @@
 use {
     anchor_lang::{
-        solana_program::{instruction::Instruction, pubkey::Pubkey, system_program},
-        InstructionData, ToAccountMetas,
+        solana_program::instruction::Instruction, system_program, Address, InstructionData,
+        ToAccountMetas,
     },
     litesvm::LiteSVM,
     solana_kite::{
@@ -22,7 +22,7 @@ fn test_initialize_group() {
     let payer = create_wallet(&mut svm, 10_000_000_000).unwrap();
 
     // Derive the mint PDA
-    let (mint_account, _bump) = Pubkey::find_program_address(&[b"group"], &program_id);
+    let (mint_account, _bump) = Address::find_program_address(&[b"group"], &program_id);
 
     let instruction = Instruction::new_with_bytes(
         program_id,
@@ -31,12 +31,13 @@ fn test_initialize_group() {
             payer: payer.pubkey(),
             mint_account,
             token_program: TOKEN_EXTENSIONS_PROGRAM_ID,
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
 
-    send_transaction_from_instructions(&mut svm, vec![instruction], &[&payer], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(&mut svm, vec![instruction], &[&payer], &payer.pubkey())
+        .unwrap();
 
     // Verify mint was created with group pointer extension
     let mint_data = svm

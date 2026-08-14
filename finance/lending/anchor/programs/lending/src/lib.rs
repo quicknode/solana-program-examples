@@ -2,8 +2,8 @@ use anchor_lang::prelude::*;
 
 pub mod constants;
 pub mod errors;
-pub mod math;
 pub mod instructions;
+pub mod math;
 pub mod state;
 
 use instructions::*;
@@ -22,7 +22,10 @@ pub mod lending {
         instructions::handle_initialize_lending_market(context, market_id)
     }
 
-    pub fn initialize_reserve(context: &mut Context<InitializeReserve>, config: ReserveConfig) -> Result<()> {
+    pub fn initialize_reserve(
+        context: &mut Context<InitializeReserve>,
+        config: ReserveConfig,
+    ) -> Result<()> {
         instructions::handle_initialize_reserve(context, config)
     }
 

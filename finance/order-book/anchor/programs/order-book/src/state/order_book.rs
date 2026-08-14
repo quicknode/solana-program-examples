@@ -59,7 +59,10 @@ pub const ORDER_BOOK_ACCOUNT_SIZE: usize = 8 + std::mem::size_of::<OrderBook>();
 // + 8 (next_order_id) + 1 (bump) + 7 (pad) + 2 * (12 + 88*1024)
 // = 64 + 2 * 90124 = 180312 bytes for the struct itself.
 const _: () = {
-    assert!(std::mem::size_of::<OrderBook>() == 32 + 8 + 8 + 8 + 1 + 7 + 2 * (1 + 3 + 4 + 4 + 4 + NODE_SIZE * MAX_TREE_NODES));
+    assert!(
+        std::mem::size_of::<OrderBook>()
+            == 32 + 8 + 8 + 8 + 1 + 7 + 2 * (1 + 3 + 4 + 4 + 4 + NODE_SIZE * MAX_TREE_NODES)
+    );
 };
 
 /// A compact view of one resting order for the matching engine. Returned

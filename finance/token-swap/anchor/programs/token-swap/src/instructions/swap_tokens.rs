@@ -54,12 +54,13 @@ pub fn handle_swap_tokens(
     // is u64), so the cast is safe - but use try_into anyway to make the
     // invariant explicit in the type system.
     let fee_amount: u64 = u64::try_from(fee_amount).map_err(|_| AmmError::MathOverflow)?;
-    let admin_portion: u64 =
-        u64::try_from(admin_portion).map_err(|_| AmmError::MathOverflow)?;
+    let admin_portion: u64 = u64::try_from(admin_portion).map_err(|_| AmmError::MathOverflow)?;
     // The LP portion stays in the pool reserves (as today - it's "less output
     // for the same input"), boosting the LP curve. The admin portion is
     // accounted for separately so it does *not* grow LP yield.
-    let taxed_input = input_amount.checked_sub(fee_amount).ok_or(AmmError::MathOverflow)?;
+    let taxed_input = input_amount
+        .checked_sub(fee_amount)
+        .ok_or(AmmError::MathOverflow)?;
 
     // Effective reserves = raw vault balance - admin's accumulated claim.
     // The constant-product curve runs on the LP-claimable portion only, so
@@ -124,10 +125,7 @@ pub fn handle_swap_tokens(
     // they're willing to accept (computed offchain at quote time). If the
     // pool shifted between quoting and landing, we revert rather than fill
     // at the worse rate.
-    require!(
-        output >= min_output_amount,
-        AmmError::SlippageExceeded
-    );
+    require!(output >= min_output_amount, AmmError::SlippageExceeded);
 
     // Compute the invariant on the *effective* reserves before the trade.
     // Using raw balances here would let the admin's accumulated fees count

@@ -27,8 +27,13 @@ pub fn handle_refresh_obligation(context: &mut Context<RefreshObligation>) -> Re
     let mut unhealthy_borrow_value: u128 = 0;
 
     for collateral in obligation.deposits.iter_mut() {
-        let (reserve, price_scaled) =
-            read_pair(accounts, &mut cursor, collateral.reserve, lending_market, slot)?;
+        let (reserve, price_scaled) = read_pair(
+            accounts,
+            &mut cursor,
+            collateral.reserve,
+            lending_market,
+            slot,
+        )?;
 
         let liquidity = mul_div_floor(
             collateral.deposited_shares as u128,
@@ -36,7 +41,12 @@ pub fn handle_refresh_obligation(context: &mut Context<RefreshObligation>) -> Re
             (reserve.share_mint_supply as u128).max(1),
         )?;
         let liquidity = u64::try_from(liquidity).map_err(|_| LendingError::MathOverflow)?;
-        let value = market_value(liquidity, reserve.liquidity_decimals, price_scaled, Rounding::Down)?;
+        let value = market_value(
+            liquidity,
+            reserve.liquidity_decimals,
+            price_scaled,
+            Rounding::Down,
+        )?;
 
         collateral.market_value = value;
         deposited_value = deposited_value

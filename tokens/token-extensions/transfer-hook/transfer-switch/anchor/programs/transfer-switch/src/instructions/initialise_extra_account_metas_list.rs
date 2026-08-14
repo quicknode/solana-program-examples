@@ -29,54 +29,58 @@ pub struct InitializeExtraAccountMetasAccountConstraints {
     pub system_program: Program<System>,
 }
 
-pub fn handle_initialize_extra_account_metas_list(accounts: &mut InitializeExtraAccountMetasAccountConstraints, bumps: InitializeExtraAccountMetasAccountConstraintsBumps) -> Result<()> {
-        // .map_err() needed because spl-tlv-account-resolution uses solana-program-error 2.x
-        // while anchor-lang 1.0 uses 3.x - structurally identical but different semver types
-        let account_metas = vec![
-            // 5 - wallet (sender) config account
-            ExtraAccountMeta::new_with_seeds(
-                &[
-                    Seed::AccountKey { index: 3 }, // sender index
-                ],
-                false, // is_signer
-                false, // is_writable
-            ).map_err(|_| ProgramError::InvalidArgument)?,
-        ];
+pub fn handle_initialize_extra_account_metas_list(
+    accounts: &mut InitializeExtraAccountMetasAccountConstraints,
+    bumps: InitializeExtraAccountMetasAccountConstraintsBumps,
+) -> Result<()> {
+    // .map_err() needed because spl-tlv-account-resolution uses solana-program-error 2.x
+    // while anchor-lang 1.0 uses 3.x - structurally identical but different semver types
+    let account_metas = vec![
+        // 5 - wallet (sender) config account
+        ExtraAccountMeta::new_with_seeds(
+            &[
+                Seed::AccountKey { index: 3 }, // sender index
+            ],
+            false, // is_signer
+            false, // is_writable
+        )
+        .map_err(|_| ProgramError::InvalidArgument)?,
+    ];
 
-        // calculate account size
-        // unwrap is safe for known-good input (count of metas we just created)
-        let account_size = ExtraAccountMetaList::size_of(account_metas.len()).unwrap() as u64;
+    // calculate account size
+    // unwrap is safe for known-good input (count of metas we just created)
+    let account_size = ExtraAccountMetaList::size_of(account_metas.len()).unwrap() as u64;
 
-        // calculate minimum required lamports
-        let lamports = Rent::get()?.try_minimum_balance(account_size as usize)?;
+    // calculate minimum required lamports
+    let lamports = Rent::get()?.try_minimum_balance(account_size as usize)?;
 
-        let mint = accounts.token_mint.address();
-        let signer_seeds: &[&[&[u8]]] = &[&[
-            b"extra-account-metas",
-            mint.as_ref(),
-            &[bumps.extra_account_metas_list],
-        ]];
+    let mint = accounts.token_mint.address();
+    let signer_seeds: &[&[&[u8]]] = &[&[
+        b"extra-account-metas",
+        mint.as_ref(),
+        &[bumps.extra_account_metas_list],
+    ]];
 
-        create_account(
-            CpiContext::new(
-                accounts.system_program.address(),
-                CreateAccount {
-                    from: accounts.payer.cpi_handle_mut(),
-                    to: accounts.extra_account_metas_list.cpi_handle_mut(),
-                },
-            )
-            .with_signer(signer_seeds),
-            lamports,
-            account_size,
-            &crate::ID,
-        )?;
+    create_account(
+        CpiContext::new(
+            accounts.system_program.address(),
+            CreateAccount {
+                from: accounts.payer.cpi_handle_mut(),
+                to: accounts.extra_account_metas_list.cpi_handle_mut(),
+            },
+        )
+        .with_signer(signer_seeds),
+        lamports,
+        account_size,
+        &crate::ID,
+    )?;
 
-        // Initialize the account data to store the list of ExtraAccountMetas
-        ExtraAccountMetaList::init::<ExecuteInstruction>(
-            &mut accounts.extra_account_metas_list.try_borrow_mut_data()?,
-            &account_metas,
-        ).map_err(|_| ProgramError::InvalidAccountData)?;
+    // Initialize the account data to store the list of ExtraAccountMetas
+    ExtraAccountMetaList::init::<ExecuteInstruction>(
+        &mut accounts.extra_account_metas_list.try_borrow_mut_data()?,
+        &account_metas,
+    )
+    .map_err(|_| ProgramError::InvalidAccountData)?;
 
-        Ok(())
-    }
-
+    Ok(())
+}

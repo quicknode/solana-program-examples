@@ -3,7 +3,9 @@ use anchor_spl::token_interface::{
     transfer_checked, Mint, TokenAccount, TokenInterface, TransferChecked,
 };
 
-use crate::{build_transfer_authorization_message, verify_ethereum_signature, ErrorCode, UserAccount};
+use crate::{
+    build_transfer_authorization_message, verify_ethereum_signature, ErrorCode, UserAccount,
+};
 
 #[derive(Accounts)]
 pub struct TransferTokensAccountConstraints {

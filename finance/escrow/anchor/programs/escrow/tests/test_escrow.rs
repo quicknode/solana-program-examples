@@ -1,42 +1,43 @@
 use {
     anchor_lang::{
-        solana_program::{instruction::Instruction, pubkey::Pubkey, system_program},
-        InstructionData, ToAccountMetas,
+        solana_program::instruction::Instruction, system_program, Address, InstructionData,
+        ToAccountMetas,
     },
     litesvm::LiteSVM,
     solana_keypair::Keypair,
     solana_kite::{
         create_associated_token_account, create_token_mint, create_wallet,
-        get_token_account_balance, mint_tokens_to_token_account, send_transaction_from_instructions,
+        get_token_account_balance, mint_tokens_to_token_account,
+        send_transaction_from_instructions,
     },
     solana_signer::Signer,
 };
 
-fn token_program_id() -> Pubkey {
+fn token_program_id() -> Address {
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         .parse()
         .unwrap()
 }
 
-fn ata_program_id() -> Pubkey {
+fn ata_program_id() -> Address {
     "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
         .parse()
         .unwrap()
 }
 
-fn lamports(svm: &LiteSVM, address: &Pubkey) -> u64 {
+fn lamports(svm: &LiteSVM, address: &Address) -> u64 {
     svm.get_account(address).map(|a| a.lamports).unwrap_or(0)
 }
 
-fn derive_ata(wallet: &Pubkey, mint: &Pubkey) -> Pubkey {
-    let (ata, _bump) = Pubkey::find_program_address(
+fn derive_ata(wallet: &Address, mint: &Address) -> Address {
+    let (ata, _bump) = Address::find_program_address(
         &[wallet.as_ref(), token_program_id().as_ref(), mint.as_ref()],
         &ata_program_id(),
     );
     ata
 }
 
-fn setup() -> (LiteSVM, Pubkey, Keypair) {
+fn setup() -> (LiteSVM, Address, Keypair) {
     let program_id = escrow::id();
     let mut svm = LiteSVM::new();
 
@@ -49,16 +50,16 @@ fn setup() -> (LiteSVM, Pubkey, Keypair) {
 
 struct EscrowSetup {
     svm: LiteSVM,
-    program_id: Pubkey,
+    program_id: Address,
     payer: Keypair,
     alice: Keypair,
     bob: Keypair,
-    mint_a: Pubkey,
-    mint_b: Pubkey,
-    alice_ata_a: Pubkey,
-    alice_ata_b: Pubkey,
-    bob_ata_a: Pubkey,
-    bob_ata_b: Pubkey,
+    mint_a: Address,
+    mint_b: Address,
+    alice_ata_a: Address,
+    alice_ata_b: Address,
+    bob_ata_a: Address,
+    bob_ata_b: Address,
 }
 
 fn full_setup() -> EscrowSetup {
@@ -114,7 +115,7 @@ fn test_make_offer() {
     let token_b_wanted_amount: u64 = 1_000_000;
 
     // Derive offer PDA
-    let (offer_pda, _bump) = Pubkey::find_program_address(
+    let (offer_pda, _bump) = Address::find_program_address(
         &[
             b"offer",
             es.alice.pubkey().as_ref(),
@@ -144,7 +145,7 @@ fn test_make_offer() {
             vault,
             associated_token_program: ata_program_id(),
             token_program: token_program_id(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
@@ -168,7 +169,7 @@ fn test_make_offer() {
     let data = &offer_data.data[8..]; // Skip 8-byte discriminator
     let stored_id = u64::from_le_bytes(data[0..8].try_into().unwrap());
     assert_eq!(stored_id, offer_id);
-    let stored_maker = Pubkey::try_from(&data[8..40]).unwrap();
+    let stored_maker = Address::try_from(&data[8..40]).unwrap();
     assert_eq!(stored_maker, es.alice.pubkey());
 }
 
@@ -181,7 +182,7 @@ fn test_take_offer() {
     let token_b_wanted_amount: u64 = 1_000_000;
 
     // Derive offer PDA
-    let (offer_pda, _bump) = Pubkey::find_program_address(
+    let (offer_pda, _bump) = Address::find_program_address(
         &[
             b"offer",
             es.alice.pubkey().as_ref(),
@@ -218,7 +219,7 @@ fn test_take_offer() {
             vault,
             associated_token_program: ata_program_id(),
             token_program: token_program_id(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
@@ -253,7 +254,7 @@ fn test_take_offer() {
             vault,
             associated_token_program: ata_program_id(),
             token_program: token_program_id(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
@@ -313,7 +314,7 @@ fn test_cancel_offer() {
     let token_a_offered_amount: u64 = 500_000;
     let token_b_wanted_amount: u64 = 1_000_000;
 
-    let (offer_pda, _bump) = Pubkey::find_program_address(
+    let (offer_pda, _bump) = Address::find_program_address(
         &[
             b"offer",
             es.alice.pubkey().as_ref(),
@@ -346,7 +347,7 @@ fn test_cancel_offer() {
             vault,
             associated_token_program: ata_program_id(),
             token_program: token_program_id(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
@@ -375,7 +376,7 @@ fn test_cancel_offer() {
             vault,
             associated_token_program: ata_program_id(),
             token_program: token_program_id(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
@@ -417,7 +418,7 @@ fn test_cancel_offer_rejects_non_maker() {
     let token_a_offered_amount: u64 = 500_000;
     let token_b_wanted_amount: u64 = 1_000_000;
 
-    let (offer_pda, _bump) = Pubkey::find_program_address(
+    let (offer_pda, _bump) = Address::find_program_address(
         &[
             b"offer",
             es.alice.pubkey().as_ref(),
@@ -446,7 +447,7 @@ fn test_cancel_offer_rejects_non_maker() {
             vault,
             associated_token_program: ata_program_id(),
             token_program: token_program_id(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
@@ -474,7 +475,7 @@ fn test_cancel_offer_rejects_non_maker() {
             vault,
             associated_token_program: ata_program_id(),
             token_program: token_program_id(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );

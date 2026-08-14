@@ -97,7 +97,11 @@ pub fn handle_swap_usdc_for_asset(
         authority: context.accounts.caller.cpi_handle(),
     };
     let cpi_ctx = CpiContext::new(context.accounts.token_program.address(), transfer_accounts);
-    transfer_checked(cpi_ctx, usdc_amount_in, context.accounts.usdc_mint.decimals())?;
+    transfer_checked(
+        cpi_ctx,
+        usdc_amount_in,
+        context.accounts.usdc_mint.decimals(),
+    )?;
 
     // Mint asset tokens to caller - router_authority PDA signs
     let router_authority_bump = context.bumps.router_authority;

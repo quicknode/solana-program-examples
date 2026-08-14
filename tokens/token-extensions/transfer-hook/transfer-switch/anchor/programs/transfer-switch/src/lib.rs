@@ -15,7 +15,9 @@ declare_id!("FjcHckEgXcBhFmSGai3FRpDLiT6hbpV893n8iTxVd81g");
 pub mod transfer_switch {
     use super::*;
 
-    pub fn configure_admin(mut context: &mut Context<ConfigureAdminAccountConstraints>) -> Result<()> {
+    pub fn configure_admin(
+        mut context: &mut Context<ConfigureAdminAccountConstraints>,
+    ) -> Result<()> {
         let bump = context.bumps.admin_config;
         handle_is_admin(&mut context.accounts)?;
         handle_configure_admin(&mut context.accounts, bump)
@@ -36,7 +38,10 @@ pub mod transfer_switch {
 
     // sha256("spl-transfer-hook-interface:execute")[..8]
     #[discrim = [105, 37, 101, 197, 75, 251, 102, 26]]
-    pub fn transfer_hook(mut context: &mut Context<TransferHookAccountConstraints>, _amount: u64) -> Result<()> {
+    pub fn transfer_hook(
+        mut context: &mut Context<TransferHookAccountConstraints>,
+        _amount: u64,
+    ) -> Result<()> {
         handle_assert_is_transferring(&mut context.accounts)?;
         handle_assert_switch_is_on(&mut context.accounts)
     }

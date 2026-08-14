@@ -1,7 +1,6 @@
 use {
     anchor_lang::{
-        solana_program::instruction::Instruction, system_program, InstructionData,
-        ToAccountMetas,
+        solana_program::instruction::Instruction, system_program, InstructionData, ToAccountMetas,
     },
     borsh::BorshDeserialize,
     litesvm::LiteSVM,

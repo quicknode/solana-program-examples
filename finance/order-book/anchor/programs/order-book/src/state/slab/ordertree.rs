@@ -135,7 +135,11 @@ impl OrderTreeNodes {
     }
 
     /// Look up a leaf by its full 128-bit key.
-    pub fn find_by_key(&self, root: &OrderTreeRoot, search_key: u128) -> Option<(NodeHandle, &LeafNode)> {
+    pub fn find_by_key(
+        &self,
+        root: &OrderTreeRoot,
+        search_key: u128,
+    ) -> Option<(NodeHandle, &LeafNode)> {
         let mut handle = root.node()?;
         loop {
             let node = self.node(handle)?;

@@ -49,7 +49,10 @@ pub mod vault_strategy {
     }
 
     /// Add a curator-approved asset to the strategy at the next index. Manager only.
-    pub fn add_asset(context: &mut Context<AddAssetAccountConstraints>, weight_bps: u16) -> Result<()> {
+    pub fn add_asset(
+        context: &mut Context<AddAssetAccountConstraints>,
+        weight_bps: u16,
+    ) -> Result<()> {
         instructions::add_asset::handle_add_asset(context, weight_bps)
     }
 

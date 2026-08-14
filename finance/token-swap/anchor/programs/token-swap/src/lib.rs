@@ -30,12 +30,7 @@ pub mod swap_example {
         amount_b: u64,
         minimum_lp_tokens_out: u64,
     ) -> Result<()> {
-        instructions::handle_deposit_liquidity(
-            context,
-            amount_a,
-            amount_b,
-            minimum_lp_tokens_out,
-        )
+        instructions::handle_deposit_liquidity(context, amount_a, amount_b, minimum_lp_tokens_out)
     }
 
     pub fn withdraw_liquidity(
@@ -58,12 +53,7 @@ pub mod swap_example {
         input_amount: u64,
         min_output_amount: u64,
     ) -> Result<()> {
-        instructions::handle_swap_tokens(
-            context,
-            input_is_token_a,
-            input_amount,
-            min_output_amount,
-        )
+        instructions::handle_swap_tokens(context, input_is_token_a, input_amount, min_output_amount)
     }
 
     pub fn claim_admin_fees(context: &mut Context<ClaimAdminFeesAccountConstraints>) -> Result<()> {

@@ -1,7 +1,7 @@
 use {
     anchor_lang::{
-        solana_program::{instruction::Instruction, pubkey::Pubkey, system_program},
-        AccountDeserialize, InstructionData, ToAccountMetas,
+        solana_program::instruction::Instruction,
+        AccountDeserialize, Address, system_program, InstructionData, ToAccountMetas,
     },
     litesvm::LiteSVM,
     perpetual_futures::{instructions::initialize_pool::PoolParameters, state::Pool, state::Side},
@@ -22,20 +22,20 @@ const DECIMALS: u8 = 6;
 // The oracle quotes prices with 8 decimals, so $100 is 100 * 10^8.
 const ORACLE_SCALE: u32 = 8;
 
-fn token_program_id() -> Pubkey {
+fn token_program_id() -> Address {
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         .parse()
         .unwrap()
 }
 
-fn ata_program_id() -> Pubkey {
+fn ata_program_id() -> Address {
     "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
         .parse()
         .unwrap()
 }
 
-fn derive_ata(wallet: &Pubkey, mint: &Pubkey) -> Pubkey {
-    Pubkey::find_program_address(
+fn derive_ata(wallet: &Address, mint: &Address) -> Address {
+    Address::find_program_address(
         &[wallet.as_ref(), token_program_id().as_ref(), mint.as_ref()],
         &ata_program_id(),
     )
@@ -52,12 +52,12 @@ struct Market {
     svm: LiteSVM,
     payer: Keypair,
     admin: Keypair,
-    collateral_mint: Pubkey,
-    feed: Pubkey,
-    pool: Pubkey,
-    pool_authority: Pubkey,
-    lp_mint: Pubkey,
-    custody_vault: Pubkey,
+    collateral_mint: Address,
+    feed: Address,
+    pool: Address,
+    pool_authority: Address,
+    lp_mint: Address,
+    custody_vault: Address,
 }
 
 impl Market {
@@ -117,7 +117,7 @@ impl Market {
             mock_switchboard::accounts::InitializeFeedAccountConstraints {
                 feed: feed_keypair.pubkey(),
                 authority: admin.pubkey(),
-                system_program: system_program::id(),
+                system_program: system_program::ID,
             }
             .to_account_metas(None),
         );
@@ -130,18 +130,18 @@ impl Market {
         .unwrap();
         let feed = feed_keypair.pubkey();
 
-        let pool = Pubkey::find_program_address(
+        let pool = Address::find_program_address(
             &[b"pool", collateral_mint.as_ref(), feed.as_ref()],
             &perpetual_futures::id(),
         )
         .0;
         let pool_authority =
-            Pubkey::find_program_address(&[b"authority", pool.as_ref()], &perpetual_futures::id())
+            Address::find_program_address(&[b"authority", pool.as_ref()], &perpetual_futures::id())
                 .0;
         let lp_mint =
-            Pubkey::find_program_address(&[b"lp_mint", pool.as_ref()], &perpetual_futures::id()).0;
+            Address::find_program_address(&[b"lp_mint", pool.as_ref()], &perpetual_futures::id()).0;
         let custody_vault =
-            Pubkey::find_program_address(&[b"vault", pool.as_ref()], &perpetual_futures::id()).0;
+            Address::find_program_address(&[b"vault", pool.as_ref()], &perpetual_futures::id()).0;
 
         let initialize_pool = Instruction::new_with_bytes(
             perpetual_futures::id(),
@@ -156,7 +156,7 @@ impl Market {
                 custody_vault,
                 token_program: token_program_id(),
                 associated_token_program: ata_program_id(),
-                system_program: system_program::id(),
+                system_program: system_program::ID,
             }
             .to_account_metas(None),
         );
@@ -233,7 +233,7 @@ impl Market {
 
     /// Create a wallet holding `amount` collateral tokens in its associated
     /// token account.
-    fn funded_trader(&mut self, amount: u64) -> (Keypair, Pubkey) {
+    fn funded_trader(&mut self, amount: u64) -> (Keypair, Address) {
         let trader = create_wallet(&mut self.svm, 100_000_000_000).unwrap();
         let token_account = create_associated_token_account(
             &mut self.svm,
@@ -256,7 +256,7 @@ impl Market {
     fn add_liquidity(
         &mut self,
         provider: &Keypair,
-        provider_collateral: Pubkey,
+        provider_collateral: Address,
         amount: u64,
         minimum_shares_out: u64,
     ) -> Result<(), ()> {
@@ -280,7 +280,7 @@ impl Market {
                 provider_lp,
                 token_program: token_program_id(),
                 associated_token_program: ata_program_id(),
-                system_program: system_program::id(),
+                system_program: system_program::ID,
             }
             .to_account_metas(None),
         );
@@ -297,7 +297,7 @@ impl Market {
     fn remove_liquidity(
         &mut self,
         provider: &Keypair,
-        provider_collateral: Pubkey,
+        provider_collateral: Address,
         shares: u64,
         minimum_amount_out: u64,
     ) -> Result<(), ()> {
@@ -321,7 +321,7 @@ impl Market {
                 provider_lp,
                 token_program: token_program_id(),
                 associated_token_program: ata_program_id(),
-                system_program: system_program::id(),
+                system_program: system_program::ID,
             }
             .to_account_metas(None),
         );
@@ -335,12 +335,12 @@ impl Market {
         .map_err(|_| ())
     }
 
-    fn position_pda(&self, owner: &Pubkey, side: Side) -> Pubkey {
+    fn position_pda(&self, owner: &Address, side: Side) -> Address {
         let side_seed: &[u8] = match side {
             Side::Long => b"long",
             Side::Short => b"short",
         };
-        Pubkey::find_program_address(
+        Address::find_program_address(
             &[b"position", self.pool.as_ref(), owner.as_ref(), side_seed],
             &perpetual_futures::id(),
         )
@@ -350,7 +350,7 @@ impl Market {
     fn open_position(
         &mut self,
         trader: &Keypair,
-        trader_collateral: Pubkey,
+        trader_collateral: Address,
         side: Side,
         collateral_amount: u64,
         size: u64,
@@ -376,7 +376,7 @@ impl Market {
                 trader_collateral,
                 token_program: token_program_id(),
                 associated_token_program: ata_program_id(),
-                system_program: system_program::id(),
+                system_program: system_program::ID,
             }
             .to_account_metas(None),
         );
@@ -393,7 +393,7 @@ impl Market {
     fn close_position(
         &mut self,
         trader: &Keypair,
-        trader_collateral: Pubkey,
+        trader_collateral: Address,
         side: Side,
         minimum_payout: u64,
     ) -> Result<(), ()> {
@@ -412,7 +412,7 @@ impl Market {
                 trader_collateral,
                 token_program: token_program_id(),
                 associated_token_program: ata_program_id(),
-                system_program: system_program::id(),
+                system_program: system_program::ID,
             }
             .to_account_metas(None),
         );
@@ -429,8 +429,8 @@ impl Market {
     fn liquidate(
         &mut self,
         liquidator: &Keypair,
-        owner: &Pubkey,
-        owner_collateral: Pubkey,
+        owner: &Address,
+        owner_collateral: Address,
         side: Side,
     ) -> Result<(), ()> {
         let position = self.position_pda(owner, side);
@@ -451,7 +451,7 @@ impl Market {
                 liquidator_collateral,
                 token_program: token_program_id(),
                 associated_token_program: ata_program_id(),
-                system_program: system_program::id(),
+                system_program: system_program::ID,
             }
             .to_account_metas(None),
         );
@@ -479,7 +479,7 @@ impl Market {
                 authority_collateral,
                 token_program: token_program_id(),
                 associated_token_program: ata_program_id(),
-                system_program: system_program::id(),
+                system_program: system_program::ID,
             }
             .to_account_metas(None),
         );
@@ -495,7 +495,7 @@ impl Market {
 
     /// Deposit a large amount of liquidity so the pool can pay trader profits,
     /// returning the provider and its collateral account.
-    fn seed_liquidity(&mut self, amount: u64) -> (Keypair, Pubkey) {
+    fn seed_liquidity(&mut self, amount: u64) -> (Keypair, Address) {
         let (provider, provider_collateral) = self.funded_trader(amount);
         self.add_liquidity(&provider, provider_collateral, amount, 0)
             .unwrap();

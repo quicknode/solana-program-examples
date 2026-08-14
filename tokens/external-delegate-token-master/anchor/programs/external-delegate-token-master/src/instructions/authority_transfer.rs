@@ -29,7 +29,10 @@ pub struct AuthorityTransferAccountConstraints {
     pub token_program: Interface<'static, TokenInterface>,
 }
 
-pub fn handler(context: &mut Context<AuthorityTransferAccountConstraints>, amount: u64) -> Result<()> {
+pub fn handler(
+    context: &mut Context<AuthorityTransferAccountConstraints>,
+    amount: u64,
+) -> Result<()> {
     let transfer_accounts = TransferChecked {
         from: context.accounts.user_token_account.cpi_handle_mut(),
         mint: context.accounts.mint.cpi_handle(),

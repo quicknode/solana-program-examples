@@ -37,8 +37,7 @@ pub fn handle_deposit_liquidity(
     // silently clamped to the available balance, which broke slippage protection
     // for callers building on top - they expected their input amount to be the
     // amount actually deposited.
-    if amount_a > context.accounts.token_a.amount()
-        || amount_b > context.accounts.token_b.amount()
+    if amount_a > context.accounts.token_a.amount() || amount_b > context.accounts.token_b.amount()
     {
         return err!(AmmError::InsufficientBalance);
     }
@@ -150,8 +149,7 @@ pub fn handle_deposit_liquidity(
             .checked_mul(amount_b as u128)
             .ok_or(AmmError::MathOverflow)?;
         let sqrt_product = integer_sqrt(product);
-        let sqrt_product_u64 = u64::try_from(sqrt_product)
-            .map_err(|_| AmmError::MathOverflow)?;
+        let sqrt_product_u64 = u64::try_from(sqrt_product).map_err(|_| AmmError::MathOverflow)?;
         if sqrt_product_u64 < MINIMUM_LIQUIDITY {
             return err!(AmmError::DepositTooSmall);
         }

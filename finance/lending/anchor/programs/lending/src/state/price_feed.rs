@@ -44,7 +44,10 @@ impl PriceFeed {
         let age = current_slot
             .checked_sub(self.last_updated_slot)
             .ok_or(LendingError::MathOverflow)?;
-        require!(age <= MAX_PRICE_STALENESS_SLOTS, LendingError::StalePriceFeed);
+        require!(
+            age <= MAX_PRICE_STALENESS_SLOTS,
+            LendingError::StalePriceFeed
+        );
 
         // Restart handling. A cluster halt stops the slot count but not the
         // wall clock, so after a restart a feed can look fresh in slots while

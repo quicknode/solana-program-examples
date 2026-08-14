@@ -26,7 +26,8 @@ pub fn handle_redeem_reserve_collateral(
         reserve.total_liquidity()?,
         share_supply,
     )?;
-    let liquidity_amount = u64::try_from(liquidity_amount).map_err(|_| LendingError::MathOverflow)?;
+    let liquidity_amount =
+        u64::try_from(liquidity_amount).map_err(|_| LendingError::MathOverflow)?;
     require!(
         liquidity_amount <= reserve.available_liquidity,
         LendingError::InsufficientReserveLiquidity

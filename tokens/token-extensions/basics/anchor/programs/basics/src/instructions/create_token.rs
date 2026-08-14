@@ -20,7 +20,10 @@ pub struct CreateTokenAccountConstraints {
     pub token_program: Interface<'static, TokenInterface>,
 }
 
-pub fn handler(_context: &mut Context<CreateTokenAccountConstraints>, _token_name: String) -> Result<()> {
+pub fn handler(
+    _context: &mut Context<CreateTokenAccountConstraints>,
+    _token_name: String,
+) -> Result<()> {
     msg!("Create Token");
     Ok(())
 }

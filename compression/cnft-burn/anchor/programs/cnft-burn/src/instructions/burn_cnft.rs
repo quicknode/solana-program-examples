@@ -5,7 +5,7 @@ use anchor_lang::solana_program::{
 };
 use borsh::BorshSerialize;
 
-use crate::{MPL_BUBBLEGUM_ID, SPLCompression};
+use crate::{SPLCompression, MPL_BUBBLEGUM_ID};
 
 /// Burn instruction discriminator from mpl-bubblegum
 const BURN_DISCRIMINATOR: [u8; 8] = [116, 110, 29, 56, 107, 219, 42, 93];
@@ -83,7 +83,10 @@ pub fn handle_burn_cnft<'info>(
         *context.accounts.leaf_owner.address(),
         false,
     ));
-    accounts.push(AccountMeta::new(*context.accounts.merkle_tree.address(), false));
+    accounts.push(AccountMeta::new(
+        *context.accounts.merkle_tree.address(),
+        false,
+    ));
     accounts.push(AccountMeta::new_readonly(
         *context.accounts.log_wrapper.address(),
         false,

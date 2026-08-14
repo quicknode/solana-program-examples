@@ -16,7 +16,9 @@ pub fn handle_collect_protocol_fees(context: &mut Context<CollectProtocolFees>) 
     let reserve = &mut context.accounts.reserve;
     // Fees are a claim on liquidity; only what is currently un-borrowed can be paid
     // out right now. Any remainder stays owed until borrowers repay.
-    let amount = reserve.accumulated_protocol_fees.min(reserve.available_liquidity);
+    let amount = reserve
+        .accumulated_protocol_fees
+        .min(reserve.available_liquidity);
     require!(amount > 0, LendingError::NothingToCollect);
 
     reserve.accumulated_protocol_fees = reserve

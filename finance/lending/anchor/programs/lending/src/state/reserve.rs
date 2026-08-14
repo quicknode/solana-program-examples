@@ -77,7 +77,9 @@ pub struct Reserve {
 }
 
 /// Risk and interest-rate parameters. All ratios are basis points (10_000 = 100%).
-#[derive(InitSpace, Clone, Copy, Debug, Default, IdlType, wincode::SchemaRead, wincode::SchemaWrite)]
+#[derive(
+    InitSpace, Clone, Copy, Debug, Default, IdlType, wincode::SchemaRead, wincode::SchemaWrite,
+)]
 pub struct ReserveConfig {
     /// Fraction of deposited collateral value a borrower may borrow against.
     pub loan_to_value_bps: u16,
@@ -168,7 +170,11 @@ impl Reserve {
         if gross == 0 {
             return Ok(0);
         }
-        mul_div_floor(self.current_borrowed_amount()? as u128, BPS_DENOMINATOR, gross)
+        mul_div_floor(
+            self.current_borrowed_amount()? as u128,
+            BPS_DENOMINATOR,
+            gross,
+        )
     }
 
     /// Per-slot borrow rate (FIXED_POINT_SCALE-scaled) from the kinked curve:

@@ -5,8 +5,8 @@ use anchor_spl::token_interface::{
 
 use crate::errors::ErrorCode;
 use crate::state::{
-    add_open_order, plan_fills, remove_open_order, Market, Order, OrderBook, OrderSide,
-    OrderStatus, MarketUser, MARKET_SEED, ORDER_SEED, MARKET_USER_SEED,
+    add_open_order, plan_fills, remove_open_order, Market, MarketUser, Order, OrderBook, OrderSide,
+    OrderStatus, MARKET_SEED, MARKET_USER_SEED, ORDER_SEED,
 };
 
 // Mirror of MarketUser.open_orders max_len. Kept as a constant so the
@@ -290,8 +290,7 @@ pub fn handle_place_order<'info>(
             .checked_add(fill.fill_quantity)
             .ok_or(ErrorCode::NumericalOverflow)?;
 
-        let maker_fully_filled =
-            maker_order.filled_quantity >= maker_order.original_quantity;
+        let maker_fully_filled = maker_order.filled_quantity >= maker_order.original_quantity;
         maker_order.status = if maker_fully_filled {
             OrderStatus::Filled
         } else {
@@ -380,10 +379,7 @@ pub fn handle_place_order<'info>(
         let mut order_book = order_book_loader.load_mut()?;
         let id = order_book.allocate_order_id()?;
         if taker_remaining > 0 {
-            require!(
-                !order_book.is_side_full(side),
-                ErrorCode::OrderBookFull
-            );
+            require!(!order_book.is_side_full(side), ErrorCode::OrderBookFull);
             order_book.place_resting(
                 side,
                 price,

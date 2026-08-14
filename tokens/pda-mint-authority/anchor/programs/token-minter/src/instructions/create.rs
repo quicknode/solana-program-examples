@@ -69,7 +69,7 @@ pub fn handle_create_token(
                 update_authority: context.accounts.mint_account.cpi_handle(), // PDA is update authority
                 payer: context.accounts.payer.cpi_handle_mut(),
                 system_program: context.accounts.system_program.cpi_handle(),
-                    update_authority_is_signer: true,
+                update_authority_is_signer: true,
             },
         )
         .with_signer(signer_seeds),

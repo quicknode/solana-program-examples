@@ -1,38 +1,39 @@
 use {
     anchor_lang::{
-        solana_program::{instruction::Instruction, pubkey::Pubkey, system_program},
-        InstructionData, ToAccountMetas,
+        solana_program::instruction::Instruction, system_program, Address, InstructionData,
+        ToAccountMetas,
     },
     litesvm::LiteSVM,
     solana_keypair::Keypair,
     solana_kite::{
         create_associated_token_account, create_token_mint, create_wallet,
-        get_token_account_balance, mint_tokens_to_token_account, send_transaction_from_instructions,
+        get_token_account_balance, mint_tokens_to_token_account,
+        send_transaction_from_instructions,
     },
     solana_signer::Signer,
 };
 
-fn token_program_id() -> Pubkey {
+fn token_program_id() -> Address {
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         .parse()
         .unwrap()
 }
 
-fn ata_program_id() -> Pubkey {
+fn ata_program_id() -> Address {
     "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
         .parse()
         .unwrap()
 }
 
-fn derive_ata(wallet: &Pubkey, mint: &Pubkey) -> Pubkey {
-    let (ata, _bump) = Pubkey::find_program_address(
+fn derive_ata(wallet: &Address, mint: &Address) -> Address {
+    let (ata, _bump) = Address::find_program_address(
         &[wallet.as_ref(), token_program_id().as_ref(), mint.as_ref()],
         &ata_program_id(),
     );
     ata
 }
 
-fn setup() -> (LiteSVM, Pubkey, Keypair) {
+fn setup() -> (LiteSVM, Address, Keypair) {
     let program_id = swap_example::id();
     let mut svm = LiteSVM::new();
 
@@ -44,7 +45,7 @@ fn setup() -> (LiteSVM, Pubkey, Keypair) {
 }
 
 /// Ensure mint_a < mint_b by pubkey ordering (the program may require this).
-fn ordered_mints(svm: &mut LiteSVM, authority: &Keypair, decimals: u8) -> (Pubkey, Pubkey) {
+fn ordered_mints(svm: &mut LiteSVM, authority: &Keypair, decimals: u8) -> (Address, Address) {
     loop {
         let a = create_token_mint(svm, authority, decimals, None).unwrap();
         let b = create_token_mint(svm, authority, decimals, None).unwrap();
@@ -56,20 +57,20 @@ fn ordered_mints(svm: &mut LiteSVM, authority: &Keypair, decimals: u8) -> (Pubke
 
 struct TestSetup {
     svm: LiteSVM,
-    program_id: Pubkey,
+    program_id: Address,
     payer: Keypair,
     admin: Keypair,
-    config_key: Pubkey,
-    mint_a: Pubkey,
-    mint_b: Pubkey,
-    pool_config_key: Pubkey,
-    pool_authority: Pubkey,
-    liquidity_provider_mint: Pubkey,
-    pool_a: Pubkey,
-    pool_b: Pubkey,
-    holder_account_a: Pubkey,
-    holder_account_b: Pubkey,
-    liquidity_account: Pubkey,
+    config_key: Address,
+    mint_a: Address,
+    mint_b: Address,
+    pool_config_key: Address,
+    pool_authority: Address,
+    liquidity_provider_mint: Address,
+    pool_a: Address,
+    pool_b: Address,
+    holder_account_a: Address,
+    holder_account_b: Address,
+    liquidity_account: Address,
 }
 
 fn full_setup() -> TestSetup {
@@ -87,12 +88,12 @@ fn full_setup() -> TestSetup {
 
     // Derive the singleton Config PDA (seeds = [b"config"]). One config per
     // deployed program.
-    let (config_key, _) = Pubkey::find_program_address(&[b"config"], &program_id);
-    let (pool_config_key, _) = Pubkey::find_program_address(
+    let (config_key, _) = Address::find_program_address(&[b"config"], &program_id);
+    let (pool_config_key, _) = Address::find_program_address(
         &[config_key.as_ref(), mint_a.as_ref(), mint_b.as_ref()],
         &program_id,
     );
-    let (pool_authority, _) = Pubkey::find_program_address(
+    let (pool_authority, _) = Address::find_program_address(
         &[
             config_key.as_ref(),
             mint_a.as_ref(),
@@ -101,7 +102,7 @@ fn full_setup() -> TestSetup {
         ],
         &program_id,
     );
-    let (liquidity_provider_mint, _) = Pubkey::find_program_address(
+    let (liquidity_provider_mint, _) = Address::find_program_address(
         &[
             config_key.as_ref(),
             mint_a.as_ref(),
@@ -121,18 +122,24 @@ fn full_setup() -> TestSetup {
     let holder_account_b =
         create_associated_token_account(&mut svm, &admin.pubkey(), &mint_b, &payer).unwrap();
 
-    mint_tokens_to_token_account(&mut svm, &mint_a, &holder_account_a, minted_amount, &admin).unwrap();
-    mint_tokens_to_token_account(&mut svm, &mint_b, &holder_account_b, minted_amount, &admin).unwrap();
+    mint_tokens_to_token_account(&mut svm, &mint_a, &holder_account_a, minted_amount, &admin)
+        .unwrap();
+    mint_tokens_to_token_account(&mut svm, &mint_b, &holder_account_b, minted_amount, &admin)
+        .unwrap();
 
     // Create AMM
     let initialize_config_ix = Instruction::new_with_bytes(
         program_id,
-        &swap_example::instruction::InitializeConfig { fee, admin_share_bps }.data(),
+        &swap_example::instruction::InitializeConfig {
+            fee,
+            admin_share_bps,
+        }
+        .data(),
         swap_example::accounts::InitializeConfigAccountConstraints {
             config: config_key,
             admin: admin.pubkey(),
             payer: payer.pubkey(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
@@ -160,7 +167,7 @@ fn full_setup() -> TestSetup {
             payer: payer.pubkey(),
             token_program: token_program_id(),
             associated_token_program: ata_program_id(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
@@ -198,16 +205,20 @@ fn test_initialize_config() {
     let admin_share_bps: u16 = 1667;
     let admin = Keypair::new();
 
-    let (config_key, _) = Pubkey::find_program_address(&[b"config"], &program_id);
+    let (config_key, _) = Address::find_program_address(&[b"config"], &program_id);
 
     let initialize_config_ix = Instruction::new_with_bytes(
         program_id,
-        &swap_example::instruction::InitializeConfig { fee, admin_share_bps }.data(),
+        &swap_example::instruction::InitializeConfig {
+            fee,
+            admin_share_bps,
+        }
+        .data(),
         swap_example::accounts::InitializeConfigAccountConstraints {
             config: config_key,
             admin: admin.pubkey(),
             payer: payer.pubkey(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
@@ -257,7 +268,7 @@ fn test_deposit_liquidity() {
             payer: ts.payer.pubkey(),
             token_program: token_program_id(),
             associated_token_program: ata_program_id(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
@@ -304,7 +315,7 @@ fn test_swap_a_to_b() {
             payer: ts.payer.pubkey(),
             token_program: token_program_id(),
             associated_token_program: ata_program_id(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
@@ -342,7 +353,7 @@ fn test_swap_a_to_b() {
             payer: ts.payer.pubkey(),
             token_program: token_program_id(),
             associated_token_program: ata_program_id(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
@@ -391,7 +402,7 @@ fn test_withdraw_liquidity() {
             payer: ts.payer.pubkey(),
             token_program: token_program_id(),
             associated_token_program: ata_program_id(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
@@ -433,7 +444,7 @@ fn test_withdraw_liquidity() {
             payer: ts.payer.pubkey(),
             token_program: token_program_id(),
             associated_token_program: ata_program_id(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
@@ -452,7 +463,12 @@ fn test_withdraw_liquidity() {
 
 /// Helper: do a deposit and one A->B swap on top of `full_setup`.
 /// Returns the swap input amount (token A base units) for fee-arithmetic checks.
-fn deposit_and_swap_a_to_b(ts: &mut TestSetup, deposit_a: u64, deposit_b: u64, swap_in_a: u64) -> u64 {
+fn deposit_and_swap_a_to_b(
+    ts: &mut TestSetup,
+    deposit_a: u64,
+    deposit_b: u64,
+    swap_in_a: u64,
+) -> u64 {
     let deposit_ix = Instruction::new_with_bytes(
         ts.program_id,
         &swap_example::instruction::DepositLiquidity {
@@ -477,7 +493,7 @@ fn deposit_and_swap_a_to_b(ts: &mut TestSetup, deposit_a: u64, deposit_b: u64, s
             payer: ts.payer.pubkey(),
             token_program: token_program_id(),
             associated_token_program: ata_program_id(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
@@ -511,7 +527,7 @@ fn deposit_and_swap_a_to_b(ts: &mut TestSetup, deposit_a: u64, deposit_b: u64, s
             payer: ts.payer.pubkey(),
             token_program: token_program_id(),
             associated_token_program: ata_program_id(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
@@ -572,7 +588,7 @@ fn swap_a_to_b(ts: &mut TestSetup, input_amount: u64) {
             payer: ts.payer.pubkey(),
             token_program: token_program_id(),
             associated_token_program: ata_program_id(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
@@ -600,10 +616,8 @@ fn test_claim_admin_fees() {
     assert!(expected_admin_a > 0, "expected admin portion > 0");
 
     // ---- Phase 1: first claim transfers the accumulated A-side fees ----
-    let admin_balance_a_before =
-        get_token_account_balance(&ts.svm, &ts.holder_account_a).unwrap();
-    let admin_balance_b_before =
-        get_token_account_balance(&ts.svm, &ts.holder_account_b).unwrap();
+    let admin_balance_a_before = get_token_account_balance(&ts.svm, &ts.holder_account_a).unwrap();
+    let admin_balance_b_before = get_token_account_balance(&ts.svm, &ts.holder_account_b).unwrap();
 
     let claim_ix_first = claim_admin_fees_ix(&ts);
     send_transaction_from_instructions(
@@ -614,10 +628,8 @@ fn test_claim_admin_fees() {
     )
     .unwrap();
 
-    let admin_balance_a_after =
-        get_token_account_balance(&ts.svm, &ts.holder_account_a).unwrap();
-    let admin_balance_b_after =
-        get_token_account_balance(&ts.svm, &ts.holder_account_b).unwrap();
+    let admin_balance_a_after = get_token_account_balance(&ts.svm, &ts.holder_account_a).unwrap();
+    let admin_balance_b_after = get_token_account_balance(&ts.svm, &ts.holder_account_b).unwrap();
 
     assert_eq!(
         admin_balance_a_after - admin_balance_a_before,
@@ -640,8 +652,7 @@ fn test_claim_admin_fees() {
     let expected_admin_a_2 = fee_amount_2 * 1667 / 10_000;
     assert!(expected_admin_a_2 > 0, "expected second admin portion > 0");
 
-    let balance_a_pre_claim_2 =
-        get_token_account_balance(&ts.svm, &ts.holder_account_a).unwrap();
+    let balance_a_pre_claim_2 = get_token_account_balance(&ts.svm, &ts.holder_account_a).unwrap();
 
     // Bump the blockhash so this claim-ix tx isn't byte-identical to the
     // earlier one (same accounts + same payload → same signature →
@@ -656,8 +667,7 @@ fn test_claim_admin_fees() {
     )
     .unwrap();
 
-    let balance_a_post_claim_2 =
-        get_token_account_balance(&ts.svm, &ts.holder_account_a).unwrap();
+    let balance_a_post_claim_2 = get_token_account_balance(&ts.svm, &ts.holder_account_a).unwrap();
     assert_eq!(
         balance_a_post_claim_2 - balance_a_pre_claim_2,
         expected_admin_a_2,
@@ -701,7 +711,9 @@ fn test_claim_admin_fees() {
     );
     let err_msg = format!("{:?}", result.unwrap_err());
     assert!(
-        err_msg.contains("NothingToClaim") || err_msg.contains("0x1777") || err_msg.contains("6007"),
+        err_msg.contains("NothingToClaim")
+            || err_msg.contains("0x1777")
+            || err_msg.contains("6007"),
         "expected NothingToClaim error, got: {err_msg}"
     );
 
@@ -791,7 +803,7 @@ fn deposit_ix(ts: &TestSetup, amount_a: u64, amount_b: u64) -> Instruction {
             payer: ts.payer.pubkey(),
             token_program: token_program_id(),
             associated_token_program: ata_program_id(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     )
@@ -847,7 +859,10 @@ fn test_deposit_into_funded_pool_at_correct_ratio() {
         2_000_000,
         "pool_b should grow by the full requested amount_b"
     );
-    assert!(lp_after > lp_before, "LP tokens should be minted to depositor");
+    assert!(
+        lp_after > lp_before,
+        "LP tokens should be minted to depositor"
+    );
 }
 
 /// Test B: depositor offers more token B than the ratio needs. `amount_b`
@@ -964,7 +979,7 @@ fn test_deposit_after_swap_uses_shifted_effective_ratio() {
             payer: ts.payer.pubkey(),
             token_program: token_program_id(),
             associated_token_program: ata_program_id(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
@@ -980,8 +995,8 @@ fn test_deposit_after_swap_uses_shifted_effective_ratio() {
     let pool_b_after_swap = get_token_account_balance(&ts.svm, &ts.pool_b).unwrap();
     let admin_owed_a: u64 = {
         let account = ts.svm.get_account(&ts.pool_config_key).unwrap();
-        // PoolConfig layout: 8-byte anchor discriminator, then Pubkey config
-        // (32), Pubkey mint_a (32), Pubkey mint_b (32), u64
+        // PoolConfig layout: 8-byte anchor discriminator, then Address config
+        // (32), Address mint_a (32), Address mint_b (32), u64
         // admin_fees_owed_a (8), u64 admin_fees_owed_b (8), u8 bump.
         let start = 8 + 32 * 3;
         u64::from_le_bytes(account.data[start..start + 8].try_into().unwrap())
@@ -999,8 +1014,8 @@ fn test_deposit_after_swap_uses_shifted_effective_ratio() {
     // ratio so both sides should be pulled in full. Pick a base of 1M on the
     // B side and compute the matching A side from effective reserves.
     let deposit_b = 1_000_000u64;
-    let deposit_a = ((deposit_b as u128) * (effective_pool_a as u128)
-        / (effective_pool_b as u128)) as u64;
+    let deposit_a =
+        ((deposit_b as u128) * (effective_pool_a as u128) / (effective_pool_b as u128)) as u64;
 
     let holder_a_before = get_token_account_balance(&ts.svm, &ts.holder_account_a).unwrap();
     let holder_b_before = get_token_account_balance(&ts.svm, &ts.holder_account_b).unwrap();
@@ -1121,8 +1136,8 @@ fn test_lp_mint_after_swap_uses_effective_reserves() {
 
     // Deposit at exactly the effective ratio. Pick deposit_b, derive deposit_a.
     let deposit_b: u64 = 1_000_000;
-    let deposit_a = ((deposit_b as u128) * (effective_pool_a as u128)
-        / (effective_pool_b as u128)) as u64;
+    let deposit_a =
+        ((deposit_b as u128) * (effective_pool_a as u128) / (effective_pool_b as u128)) as u64;
 
     // Expected LP minted = min(a*supply/pool_a, b*supply/pool_b) using the
     // *clamped* (a, b) the program actually transfers. After clamp at the
@@ -1131,12 +1146,12 @@ fn test_lp_mint_after_swap_uses_effective_reserves() {
     // We pass `deposit_a` exactly, so amount_b_required = deposit_a * pool_b
     // / pool_a, which rounds down to ≤ deposit_b. The program then uses
     // (deposit_a, amount_b_required). Compute the expected LP from that.
-    let amount_b_used = ((deposit_a as u128) * (effective_pool_b as u128)
-        / (effective_pool_a as u128)) as u64;
-    let expected_liquidity_from_a = (deposit_a as u128) * (total_supply_before_second as u128)
-        / (effective_pool_a as u128);
-    let expected_liquidity_from_b = (amount_b_used as u128) * (total_supply_before_second as u128)
-        / (effective_pool_b as u128);
+    let amount_b_used =
+        ((deposit_a as u128) * (effective_pool_b as u128) / (effective_pool_a as u128)) as u64;
+    let expected_liquidity_from_a =
+        (deposit_a as u128) * (total_supply_before_second as u128) / (effective_pool_a as u128);
+    let expected_liquidity_from_b =
+        (amount_b_used as u128) * (total_supply_before_second as u128) / (effective_pool_b as u128);
     let expected_liquidity = expected_liquidity_from_a.min(expected_liquidity_from_b) as u64;
 
     let lp_before = get_token_account_balance(&ts.svm, &ts.liquidity_account).unwrap();
@@ -1178,7 +1193,7 @@ fn swap_a_to_b_ix(ts: &TestSetup, input_amount: u64, min_output_amount: u64) -> 
             payer: ts.payer.pubkey(),
             token_program: token_program_id(),
             associated_token_program: ata_program_id(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     )
@@ -1214,7 +1229,7 @@ fn deposit_ix_with_min_lp(
             payer: ts.payer.pubkey(),
             token_program: token_program_id(),
             associated_token_program: ata_program_id(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     )
@@ -1251,7 +1266,7 @@ fn withdraw_ix_with_min(
             payer: ts.payer.pubkey(),
             token_program: token_program_id(),
             associated_token_program: ata_program_id(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     )
@@ -1321,8 +1336,7 @@ fn test_deposit_reverts_when_lp_below_min() {
     let achievable_lp = lp_from_a.min(lp_from_b) as u64;
 
     // Require *strictly more* than that - the deposit must revert.
-    let strict_ix =
-        deposit_ix_with_min_lp(&ts, 4_000_000, 1_000_000, achievable_lp + 1);
+    let strict_ix = deposit_ix_with_min_lp(&ts, 4_000_000, 1_000_000, achievable_lp + 1);
     let result = send_transaction_from_instructions(
         &mut ts.svm,
         vec![strict_ix],
@@ -1431,7 +1445,7 @@ fn swap_b_to_a_ix(ts: &TestSetup, input_amount: u64, min_output_amount: u64) -> 
             payer: ts.payer.pubkey(),
             token_program: token_program_id(),
             associated_token_program: ata_program_id(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     )

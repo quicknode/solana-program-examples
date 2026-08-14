@@ -19,13 +19,16 @@ pub struct RemoveKeyAccountConstraints {
 
 // Invoke the remove_key instruction from spl_token_metadata_interface directly
 // There is not an anchor CpiContext for this instruction
-pub fn process_remove_key(context: &mut Context<RemoveKeyAccountConstraints>, key: String) -> Result<()> {
+pub fn process_remove_key(
+    context: &mut Context<RemoveKeyAccountConstraints>,
+    key: String,
+) -> Result<()> {
     invoke(
         &remove_key(
-            &context.accounts.token_program.address(),    // token program id
-            &context.accounts.mint_account.address(),     // "metadata" account
+            &context.accounts.token_program.address(), // token program id
+            &context.accounts.mint_account.address(),  // "metadata" account
             &context.accounts.update_authority.address(), // update authority
-            key,                                      // key to remove
+            key,                                       // key to remove
             true, // idempotent flag, if true transaction will not fail if key does not exist
         ),
         &[

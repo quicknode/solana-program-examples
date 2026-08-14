@@ -22,7 +22,8 @@ pub fn handler(context: &mut Context<AddToWhiteListAccountConstraints>) -> Resul
         panic!("Only the authority can add to the white list!");
     }
 
-    context.accounts
+    context
+        .accounts
         .white_list
         .white_list
         .push(*context.accounts.new_account.address());

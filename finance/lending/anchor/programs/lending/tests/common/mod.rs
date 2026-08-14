@@ -28,7 +28,7 @@ use lending::constants::{
 };
 use lending::state::{Obligation, Reserve, ReserveConfig};
 
-pub use anchor_lang::prelude::Pubkey;
+pub use anchor_lang::prelude::Address;
 
 /// A FIXED_POINT_SCALE-scaled price exponent: prices are passed as
 /// `mantissa * 10^-18`, matching a Switchboard On-Demand feed's 1e18 result.
@@ -43,19 +43,19 @@ pub fn cents(amount: u64) -> i128 {
     (amount as i128) * 10_000_000_000_000_000
 }
 
-pub fn ata(owner: &Pubkey, mint: &Pubkey) -> Pubkey {
-    let ata_program: Pubkey = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+pub fn ata(owner: &Address, mint: &Address) -> Address {
+    let ata_program: Address = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
         .parse()
         .unwrap();
-    Pubkey::find_program_address(
+    Address::find_program_address(
         &[owner.as_ref(), TOKEN_PROGRAM_ID.as_ref(), mint.as_ref()],
         &ata_program,
     )
     .0
 }
 
-fn pda(seeds: &[&[u8]]) -> Pubkey {
-    Pubkey::find_program_address(seeds, &lending::id()).0
+fn pda(seeds: &[&[u8]]) -> Address {
+    Address::find_program_address(seeds, &lending::id()).0
 }
 
 /// Map kite's transaction result to a String so tests can assert on the program
@@ -64,7 +64,7 @@ fn send(
     svm: &mut LiteSVM,
     instructions: Vec<Instruction>,
     signers: &[&Keypair],
-    payer: &Pubkey,
+    payer: &Address,
 ) -> Result<(), String> {
     send_transaction_from_instructions(svm, instructions, signers, payer)
         .map_err(|thrown| format!("{thrown:?}"))
@@ -73,12 +73,12 @@ fn send(
 /// Handle to one reserve and its associated PDAs.
 #[derive(Clone, Copy)]
 pub struct ReserveHandle {
-    pub mint: Pubkey,
+    pub mint: Address,
     pub decimals: u8,
-    pub reserve: Pubkey,
-    pub share_mint: Pubkey,
-    pub liquidity_vault: Pubkey,
-    pub price_feed: Pubkey,
+    pub reserve: Address,
+    pub share_mint: Address,
+    pub liquidity_vault: Address,
+    pub price_feed: Address,
 }
 
 pub struct Env {
@@ -86,7 +86,7 @@ pub struct Env {
     /// Market owner; also the mint authority for every test mint and the price
     /// feed authority.
     pub owner: Keypair,
-    pub market: Pubkey,
+    pub market: Address,
 }
 
 impl Env {
@@ -107,7 +107,7 @@ impl Env {
                 lending_market: market,
                 owner: owner.pubkey(),
                 quote_currency_mint: quote_mint,
-                system_program: system_program::id(),
+                system_program: system_program::ID,
             }
             .to_account_metas(None),
             data: lending::instruction::InitializeLendingMarket { market_id }.data(),
@@ -118,12 +118,14 @@ impl Env {
     }
 
     pub fn current_slot(&self) -> u64 {
-        self.svm.get_sysvar::<anchor_lang::solana_program::clock::Clock>().slot
+        self.svm
+            .get_sysvar::<anchor_lang::solana_program::clock::Clock>()
+            .slot
     }
 
     /// Create a second lending market owned by `market_owner`, for tests that
     /// exercise cross-market isolation.
-    pub fn init_market_for(&mut self, market_owner: &Keypair) -> Pubkey {
+    pub fn init_market_for(&mut self, market_owner: &Keypair) -> Address {
         let env_owner = self.owner.insecure_clone();
         let quote_mint = create_token_mint(&mut self.svm, &env_owner, 6, None).unwrap();
         // A distinct id from the env's market 0, since the id is the market's
@@ -136,12 +138,18 @@ impl Env {
                 lending_market: market,
                 owner: market_owner.pubkey(),
                 quote_currency_mint: quote_mint,
-                system_program: system_program::id(),
+                system_program: system_program::ID,
             }
             .to_account_metas(None),
             data: lending::instruction::InitializeLendingMarket { market_id }.data(),
         };
-        send(&mut self.svm, vec![instruction], &[market_owner], &market_owner.pubkey()).unwrap();
+        send(
+            &mut self.svm,
+            vec![instruction],
+            &[market_owner],
+            &market_owner.pubkey(),
+        )
+        .unwrap();
         market
     }
 
@@ -151,7 +159,7 @@ impl Env {
     pub fn add_reserve_to(
         &mut self,
         market_owner: &Keypair,
-        market: Pubkey,
+        market: Address,
         decimals: u8,
         price_mantissa: i128,
         config: ReserveConfig,
@@ -176,12 +184,18 @@ impl Env {
                 share_mint,
                 price_feed,
                 token_program: TOKEN_PROGRAM_ID,
-                system_program: system_program::id(),
+                system_program: system_program::ID,
             }
             .to_account_metas(None),
             data: lending::instruction::InitializeReserve { config }.data(),
         };
-        send(&mut self.svm, vec![instruction], &[market_owner], &market_owner.pubkey()).unwrap();
+        send(
+            &mut self.svm,
+            vec![instruction],
+            &[market_owner],
+            &market_owner.pubkey(),
+        )
+        .unwrap();
 
         ReserveHandle {
             mint,
@@ -203,19 +217,20 @@ impl Env {
     /// Simulate a cluster restart at `slot`: prices stamped at or before it
     /// must be rejected until the publisher posts again.
     pub fn set_last_restart_slot(&mut self, slot: u64) {
-        self.svm.set_sysvar(&solana_sysvar::last_restart_slot::LastRestartSlot {
-            last_restart_slot: slot,
-        });
+        self.svm
+            .set_sysvar(&solana_sysvar::last_restart_slot::LastRestartSlot {
+                last_restart_slot: slot,
+            });
     }
 
     /// The feed PDA the market owner writes for `mint`: seeded by the owner's
     /// key, so it is the feed `add_reserve` registers reserves against.
     /// The feed PDA for a given market and mint (seeds `["price_feed", market, mint]`).
-    pub fn price_feed_address(&self, market: Pubkey, mint: Pubkey) -> Pubkey {
+    pub fn price_feed_address(&self, market: Address, mint: Address) -> Address {
         pda(&[PRICE_FEED_SEED, market.as_ref(), mint.as_ref()])
     }
 
-    pub fn set_price(&mut self, mint: Pubkey, price_mantissa: i128) {
+    pub fn set_price(&mut self, mint: Address, price_mantissa: i128) {
         let owner = self.owner.insecure_clone();
         let market = self.market;
         self.set_price_for(&owner, market, mint, price_mantissa);
@@ -225,8 +240,8 @@ impl Env {
     pub fn set_price_for(
         &mut self,
         owner: &Keypair,
-        market: Pubkey,
-        mint: Pubkey,
+        market: Address,
+        mint: Address,
         price_mantissa: i128,
     ) {
         let price_feed = self.price_feed_address(market, mint);
@@ -237,7 +252,7 @@ impl Env {
                 owner: owner.pubkey(),
                 price_feed,
                 mint,
-                system_program: system_program::id(),
+                system_program: system_program::ID,
             }
             .to_account_metas(None),
             data: lending::instruction::SetPrice {
@@ -284,7 +299,7 @@ impl Env {
     }
 
     /// Create the user's token account for a mint and mint `amount` into it.
-    pub fn fund(&mut self, user: &Keypair, mint: Pubkey, amount: u64) -> Pubkey {
+    pub fn fund(&mut self, user: &Keypair, mint: Address, amount: u64) -> Address {
         let owner = self.owner.insecure_clone();
         let token_account =
             create_associated_token_account(&mut self.svm, &user.pubkey(), &mint, user).unwrap();
@@ -313,7 +328,7 @@ impl Env {
         user: &Keypair,
         handle: &ReserveHandle,
         amount: u64,
-    ) -> Result<Pubkey, String> {
+    ) -> Result<Address, String> {
         let user_liquidity = ata(&user.pubkey(), &handle.mint);
         let user_share = create_associated_token_account(
             &mut self.svm,
@@ -342,11 +357,16 @@ impl Env {
             .data(),
         };
         let refresh = self.refresh_reserve_ix(handle);
-        send(&mut self.svm, vec![refresh, deposit], &[user], &user.pubkey())?;
+        send(
+            &mut self.svm,
+            vec![refresh, deposit],
+            &[user],
+            &user.pubkey(),
+        )?;
         Ok(user_share)
     }
 
-    pub fn supply(&mut self, user: &Keypair, handle: &ReserveHandle, amount: u64) -> Pubkey {
+    pub fn supply(&mut self, user: &Keypair, handle: &ReserveHandle, amount: u64) -> Address {
         self.try_supply(user, handle, amount).unwrap()
     }
 
@@ -374,18 +394,27 @@ impl Env {
             data: lending::instruction::RedeemReserveCollateral { share_amount }.data(),
         };
         let refresh = self.refresh_reserve_ix(handle);
-        send(&mut self.svm, vec![refresh, redeem], &[user], &user.pubkey())
+        send(
+            &mut self.svm,
+            vec![refresh, redeem],
+            &[user],
+            &user.pubkey(),
+        )
     }
 
-    pub fn initialize_obligation(&mut self, user: &Keypair) -> Pubkey {
-        let obligation = pda(&[OBLIGATION_SEED, self.market.as_ref(), user.pubkey().as_ref()]);
+    pub fn initialize_obligation(&mut self, user: &Keypair) -> Address {
+        let obligation = pda(&[
+            OBLIGATION_SEED,
+            self.market.as_ref(),
+            user.pubkey().as_ref(),
+        ]);
         let instruction = Instruction {
             program_id: lending::id(),
             accounts: lending::accounts::InitializeObligation {
                 lending_market: self.market,
                 obligation,
                 owner: user.pubkey(),
-                system_program: system_program::id(),
+                system_program: system_program::ID,
             }
             .to_account_metas(None),
             data: lending::instruction::InitializeObligation {}.data(),
@@ -394,7 +423,7 @@ impl Env {
         obligation
     }
 
-    pub fn obligation_share_vault(&self, handle: &ReserveHandle, obligation: Pubkey) -> Pubkey {
+    pub fn obligation_share_vault(&self, handle: &ReserveHandle, obligation: Address) -> Address {
         pda(&[
             OBLIGATION_SHARE_VAULT_SEED,
             handle.reserve.as_ref(),
@@ -405,7 +434,7 @@ impl Env {
     pub fn try_post_collateral(
         &mut self,
         user: &Keypair,
-        obligation: Pubkey,
+        obligation: Address,
         handle: &ReserveHandle,
         share_amount: u64,
     ) -> Result<(), String> {
@@ -421,7 +450,7 @@ impl Env {
                 obligation_share_vault: vault,
                 user_share,
                 token_program: TOKEN_PROGRAM_ID,
-                system_program: system_program::id(),
+                system_program: system_program::ID,
             }
             .to_account_metas(None),
             data: lending::instruction::DepositObligationCollateral { share_amount }.data(),
@@ -432,7 +461,7 @@ impl Env {
     pub fn post_collateral(
         &mut self,
         user: &Keypair,
-        obligation: Pubkey,
+        obligation: Address,
         handle: &ReserveHandle,
         share_amount: u64,
     ) {
@@ -442,11 +471,12 @@ impl Env {
 
     fn refresh_obligation_ix(
         &self,
-        obligation: Pubkey,
+        obligation: Address,
         deposit_reserves: &[&ReserveHandle],
         borrow_reserves: &[&ReserveHandle],
     ) -> Instruction {
-        let mut accounts = lending::accounts::RefreshObligation { obligation }.to_account_metas(None);
+        let mut accounts =
+            lending::accounts::RefreshObligation { obligation }.to_account_metas(None);
         for handle in deposit_reserves.iter().chain(borrow_reserves.iter()) {
             accounts.push(AccountMeta::new_readonly(handle.reserve, false));
             accounts.push(AccountMeta::new_readonly(handle.price_feed, false));
@@ -461,7 +491,7 @@ impl Env {
     /// All reserves an obligation touches must be refreshed before
     /// refresh_obligation; this collects the de-duplicated refresh instructions.
     fn refresh_all_ix(&self, reserves: &[&ReserveHandle]) -> Vec<Instruction> {
-        let mut seen: Vec<Pubkey> = Vec::new();
+        let mut seen: Vec<Address> = Vec::new();
         let mut instructions = Vec::new();
         for handle in reserves {
             if !seen.contains(&handle.reserve) {
@@ -481,7 +511,7 @@ impl Env {
     pub fn try_borrow(
         &mut self,
         user: &Keypair,
-        obligation: Pubkey,
+        obligation: Address,
         existing_deposits: &[&ReserveHandle],
         existing_borrows: &[&ReserveHandle],
         borrow: &ReserveHandle,
@@ -492,7 +522,11 @@ impl Env {
         refresh_set.push(borrow);
 
         let mut instructions = self.refresh_all_ix(&refresh_set);
-        instructions.push(self.refresh_obligation_ix(obligation, existing_deposits, existing_borrows));
+        instructions.push(self.refresh_obligation_ix(
+            obligation,
+            existing_deposits,
+            existing_borrows,
+        ));
         instructions.push(self.borrow_ix(user, obligation, borrow, amount));
         send(&mut self.svm, instructions, &[user], &user.pubkey())
     }
@@ -500,7 +534,7 @@ impl Env {
     fn borrow_ix(
         &self,
         user: &Keypair,
-        obligation: Pubkey,
+        obligation: Address,
         borrow: &ReserveHandle,
         amount: u64,
     ) -> Instruction {
@@ -530,7 +564,7 @@ impl Env {
     pub fn try_borrow_skip_obligation_refresh(
         &mut self,
         user: &Keypair,
-        obligation: Pubkey,
+        obligation: Address,
         all_reserves: &[&ReserveHandle],
         borrow: &ReserveHandle,
         amount: u64,
@@ -543,7 +577,7 @@ impl Env {
     pub fn repay(
         &mut self,
         user: &Keypair,
-        obligation: Pubkey,
+        obligation: Address,
         borrow: &ReserveHandle,
         amount: u64,
     ) {
@@ -575,7 +609,7 @@ impl Env {
     pub fn try_withdraw_collateral(
         &mut self,
         user: &Keypair,
-        obligation: Pubkey,
+        obligation: Address,
         deposit_reserves: &[&ReserveHandle],
         borrow_reserves: &[&ReserveHandle],
         collateral: &ReserveHandle,
@@ -587,7 +621,11 @@ impl Env {
         all.extend_from_slice(borrow_reserves);
 
         let mut instructions = self.refresh_all_ix(&all);
-        instructions.push(self.refresh_obligation_ix(obligation, deposit_reserves, borrow_reserves));
+        instructions.push(self.refresh_obligation_ix(
+            obligation,
+            deposit_reserves,
+            borrow_reserves,
+        ));
         instructions.push(Instruction {
             program_id: lending::id(),
             accounts: lending::accounts::WithdrawObligationCollateral {
@@ -610,7 +648,7 @@ impl Env {
     pub fn try_liquidate(
         &mut self,
         liquidator: &Keypair,
-        obligation: Pubkey,
+        obligation: Address,
         deposit_reserves: &[&ReserveHandle],
         borrow_reserves: &[&ReserveHandle],
         repay: &ReserveHandle,
@@ -635,7 +673,11 @@ impl Env {
         let mut all: Vec<&ReserveHandle> = deposit_reserves.to_vec();
         all.extend_from_slice(borrow_reserves);
         let mut instructions = self.refresh_all_ix(&all);
-        instructions.push(self.refresh_obligation_ix(obligation, deposit_reserves, borrow_reserves));
+        instructions.push(self.refresh_obligation_ix(
+            obligation,
+            deposit_reserves,
+            borrow_reserves,
+        ));
         instructions.push(Instruction {
             program_id: lending::id(),
             accounts: lending::accounts::LiquidateObligation {
@@ -659,7 +701,12 @@ impl Env {
             }
             .data(),
         });
-        send(&mut self.svm, instructions, &[liquidator], &liquidator.pubkey())
+        send(
+            &mut self.svm,
+            instructions,
+            &[liquidator],
+            &liquidator.pubkey(),
+        )
     }
 
     /// Send a lone `refresh_reserve` so accrued interest lands in the index.
@@ -672,7 +719,7 @@ impl Env {
     pub fn refresh_obligation_only(
         &mut self,
         payer: &Keypair,
-        obligation: Pubkey,
+        obligation: Address,
         deposits: &[&ReserveHandle],
         borrows: &[&ReserveHandle],
     ) {
@@ -686,7 +733,7 @@ impl Env {
     /// Market owner collects accrued protocol fees from a reserve to their own
     /// token account. Bundles `refresh_reserve` so fees are current. Returns the
     /// owner's fee-receiving token account.
-    pub fn collect_protocol_fees(&mut self, handle: &ReserveHandle) -> Pubkey {
+    pub fn collect_protocol_fees(&mut self, handle: &ReserveHandle) -> Address {
         let owner = self.owner.insecure_clone();
         let owner_liquidity = ata(&owner.pubkey(), &handle.mint);
         if self.svm.get_account(&owner_liquidity).is_none() {
@@ -708,7 +755,13 @@ impl Env {
             .to_account_metas(None),
             data: lending::instruction::CollectProtocolFees {}.data(),
         };
-        send(&mut self.svm, vec![refresh, collect], &[&owner], &owner.pubkey()).unwrap();
+        send(
+            &mut self.svm,
+            vec![refresh, collect],
+            &[&owner],
+            &owner.pubkey(),
+        )
+        .unwrap();
         owner_liquidity
     }
 
@@ -719,12 +772,12 @@ impl Env {
         Reserve::try_deserialize(&mut account.data.as_slice()).unwrap()
     }
 
-    pub fn obligation(&self, obligation: Pubkey) -> Obligation {
+    pub fn obligation(&self, obligation: Address) -> Obligation {
         let account = self.svm.get_account(&obligation).unwrap();
         Obligation::try_deserialize(&mut account.data.as_slice()).unwrap()
     }
 
-    pub fn token_balance(&self, token_account: Pubkey) -> u64 {
+    pub fn token_balance(&self, token_account: Address) -> u64 {
         get_token_account_balance(&self.svm, &token_account).unwrap()
     }
 }

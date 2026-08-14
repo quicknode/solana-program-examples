@@ -7,7 +7,13 @@ use solana_signer::Signer;
 /// One market with a collateral reserve and a separately-supplied borrow
 /// reserve, plus a borrower who has posted 1000 units of collateral (value
 /// $1000, so 75% LTV => $750 borrow power). Both tokens priced at $1, 6 decimals.
-fn setup() -> (Env, ReserveHandle, ReserveHandle, Keypair, anchor_lang::prelude::Pubkey) {
+fn setup() -> (
+    Env,
+    ReserveHandle,
+    ReserveHandle,
+    Keypair,
+    anchor_lang::prelude::Pubkey,
+) {
     let mut env = Env::new();
     let collateral = env.add_reserve(6, dollars(1), default_config());
     let borrow = env.add_reserve(6, dollars(1), default_config());
@@ -32,15 +38,29 @@ fn borrow_up_to_max_ltv_then_one_more_fails() {
     let (mut env, collateral, borrow, borrower, obligation) = setup();
 
     // $750 of borrow power, borrowing a $1 token => 750 units exactly.
-    env.try_borrow(&borrower, obligation, &[&collateral], &[], &borrow, 750_000_000)
-        .unwrap();
+    env.try_borrow(
+        &borrower,
+        obligation,
+        &[&collateral],
+        &[],
+        &borrow,
+        750_000_000,
+    )
+    .unwrap();
     assert_eq!(
         env.token_balance(ata(&borrower.pubkey(), &borrow.mint)),
         750_000_000
     );
 
     // One more unit exceeds the allowed borrow value.
-    let result = env.try_borrow(&borrower, obligation, &[&collateral], &[&borrow], &borrow, 1);
+    let result = env.try_borrow(
+        &borrower,
+        obligation,
+        &[&collateral],
+        &[&borrow],
+        &borrow,
+        1,
+    );
     assert!(
         result.unwrap_err().contains("BorrowTooLarge"),
         "borrowing past the LTV limit must be rejected"
@@ -65,7 +85,14 @@ fn borrow_with_stale_price_feed_is_rejected() {
     let (mut env, collateral, borrow, borrower, obligation) = setup();
     // Advance well past the staleness window without re-publishing prices.
     env.warp_slots(50);
-    let result = env.try_borrow(&borrower, obligation, &[&collateral], &[], &borrow, 100_000_000);
+    let result = env.try_borrow(
+        &borrower,
+        obligation,
+        &[&collateral],
+        &[],
+        &borrow,
+        100_000_000,
+    );
     assert!(result.unwrap_err().contains("StalePriceFeed"));
 }
 
@@ -83,7 +110,14 @@ fn borrow_with_price_from_before_a_restart_is_rejected() {
     env.warp_slots(5);
     env.set_last_restart_slot(restart_slot);
 
-    let result = env.try_borrow(&borrower, obligation, &[&collateral], &[], &borrow, 100_000_000);
+    let result = env.try_borrow(
+        &borrower,
+        obligation,
+        &[&collateral],
+        &[],
+        &borrow,
+        100_000_000,
+    );
     assert!(
         result.unwrap_err().contains("PricePredatesRestart"),
         "a pre-restart price must be rejected even inside the staleness window"
@@ -96,15 +130,29 @@ fn borrow_with_price_from_before_a_restart_is_rejected() {
     env.warp_slots(1);
     env.set_price(collateral.mint, dollars(1));
     env.set_price(borrow.mint, dollars(1));
-    env.try_borrow(&borrower, obligation, &[&collateral], &[], &borrow, 100_000_000)
-        .expect("a freshly published price must be accepted after a restart");
+    env.try_borrow(
+        &borrower,
+        obligation,
+        &[&collateral],
+        &[],
+        &borrow,
+        100_000_000,
+    )
+    .expect("a freshly published price must be accepted after a restart");
 }
 
 #[test]
 fn repay_reduces_debt_and_over_repay_clamps() {
     let (mut env, collateral, borrow, borrower, obligation) = setup();
-    env.try_borrow(&borrower, obligation, &[&collateral], &[], &borrow, 500_000_000)
-        .unwrap();
+    env.try_borrow(
+        &borrower,
+        obligation,
+        &[&collateral],
+        &[],
+        &borrow,
+        500_000_000,
+    )
+    .unwrap();
     assert_eq!(env.reserve(&borrow).borrowed_principal > 0, true);
 
     env.repay(&borrower, obligation, &borrow, 200_000_000);
@@ -120,8 +168,15 @@ fn repay_reduces_debt_and_over_repay_clamps() {
 #[test]
 fn withdraw_blocked_while_borrowed_then_allowed_after_repay() {
     let (mut env, collateral, borrow, borrower, obligation) = setup();
-    env.try_borrow(&borrower, obligation, &[&collateral], &[], &borrow, 750_000_000)
-        .unwrap();
+    env.try_borrow(
+        &borrower,
+        obligation,
+        &[&collateral],
+        &[],
+        &borrow,
+        750_000_000,
+    )
+    .unwrap();
 
     // At the LTV limit, withdrawing any collateral would undercollateralize.
     let blocked = env.try_withdraw_collateral(

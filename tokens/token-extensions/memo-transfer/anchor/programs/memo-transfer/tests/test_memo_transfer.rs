@@ -2,12 +2,13 @@ use {
     anchor_lang::{
         solana_program::{
             instruction::{AccountMeta, Instruction},
-            pubkey::Pubkey,
+            pubkey::Address,
             system_program,
         },
         InstructionData, ToAccountMetas,
     },
     litesvm::LiteSVM,
+    solana_keypair::Keypair,
     solana_kite::{
         assert_token_account_balance, create_wallet, send_transaction_from_instructions,
         token_extensions::{
@@ -15,11 +16,10 @@ use {
             TOKEN_EXTENSIONS_PROGRAM_ID,
         },
     },
-    solana_keypair::Keypair,
     solana_signer::Signer,
 };
 
-fn memo_program_id() -> Pubkey {
+fn memo_program_id() -> Address {
     "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"
         .parse()
         .unwrap()
@@ -29,12 +29,12 @@ fn memo_program_id() -> Pubkey {
 /// Uses explicit keypair - not an ATA - because the test needs multiple
 /// source accounts for the same owner+mint.
 fn create_token_account_instructions(
-    payer: &Pubkey,
-    token_account: &Pubkey,
-    mint: &Pubkey,
-    owner: &Pubkey,
+    payer: &Address,
+    token_account: &Address,
+    mint: &Address,
+    owner: &Address,
 ) -> Vec<Instruction> {
-    let rent_sysvar: Pubkey = "SysvarRent111111111111111111111111111111111"
+    let rent_sysvar: Address = "SysvarRent111111111111111111111111111111111"
         .parse()
         .unwrap();
     let create_ix = anchor_lang::solana_program::system_instruction::create_account(
@@ -59,9 +59,9 @@ fn create_token_account_instructions(
 
 /// Transfer instruction for Token Extensions (instruction 3).
 fn transfer_instruction(
-    source: &Pubkey,
-    dest: &Pubkey,
-    authority: &Pubkey,
+    source: &Address,
+    dest: &Address,
+    authority: &Address,
     amount: u64,
 ) -> Instruction {
     let mut data = vec![3u8];
@@ -78,7 +78,7 @@ fn transfer_instruction(
 }
 
 /// Memo instruction: just the memo text as bytes.
-fn memo_instruction(memo_text: &str, signers: &[&Pubkey]) -> Instruction {
+fn memo_instruction(memo_text: &str, signers: &[&Address]) -> Instruction {
     let accounts: Vec<AccountMeta> = signers
         .iter()
         .map(|s| AccountMeta::new_readonly(**s, true))
@@ -90,7 +90,7 @@ fn memo_instruction(memo_text: &str, signers: &[&Pubkey]) -> Instruction {
     }
 }
 
-fn setup() -> (LiteSVM, Pubkey, Keypair) {
+fn setup() -> (LiteSVM, Address, Keypair) {
     let program_id = memo_transfer::id();
     let mut svm = LiteSVM::new();
 
@@ -124,11 +124,17 @@ fn test_memo_transfer() {
             token_account: token_keypair.pubkey(),
             mint_account: mint,
             token_program: TOKEN_EXTENSIONS_PROGRAM_ID,
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![initialize_ix], &[&payer, &token_keypair], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        vec![initialize_ix],
+        &[&payer, &token_keypair],
+        &payer.pubkey(),
+    )
+    .unwrap();
 
     // Verify token account exists
     let token_account = svm
@@ -149,16 +155,17 @@ fn test_memo_transfer() {
         &mint,
         &payer.pubkey(),
     );
-    send_transaction_from_instructions(&mut svm, create_source_ixs, &[&payer, &source_keypair], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        create_source_ixs,
+        &[&payer, &source_keypair],
+        &payer.pubkey(),
+    )
+    .unwrap();
     svm.expire_blockhash();
 
-    mint_tokens_to_token_extensions_account(
-        &mut svm,
-        &mint,
-        &source_keypair.pubkey(),
-        100,
-        &payer,
-    ).unwrap();
+    mint_tokens_to_token_extensions_account(&mut svm, &mint, &source_keypair.pubkey(), 100, &payer)
+        .unwrap();
     svm.expire_blockhash();
 
     // Step 4: Transfer without memo - should fail
@@ -168,11 +175,9 @@ fn test_memo_transfer() {
         &payer.pubkey(),
         1,
     );
-    let result = send_transaction_from_instructions(&mut svm, vec![transfer_ix], &[&payer], &payer.pubkey());
-    assert!(
-        result.is_err(),
-        "Transfer without memo should fail"
-    );
+    let result =
+        send_transaction_from_instructions(&mut svm, vec![transfer_ix], &[&payer], &payer.pubkey());
+    assert!(result.is_err(), "Transfer without memo should fail");
     svm.expire_blockhash();
 
     // Step 5: Transfer with memo - should succeed
@@ -183,10 +188,21 @@ fn test_memo_transfer() {
         &payer.pubkey(),
         1,
     );
-    send_transaction_from_instructions(&mut svm, vec![memo_ix, transfer_ix], &[&payer], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        vec![memo_ix, transfer_ix],
+        &[&payer],
+        &payer.pubkey(),
+    )
+    .unwrap();
     svm.expire_blockhash();
 
-    assert_token_account_balance(&svm, &token_keypair.pubkey(), 1, "Should have 1 token after transfer with memo");
+    assert_token_account_balance(
+        &svm,
+        &token_keypair.pubkey(),
+        1,
+        "Should have 1 token after transfer with memo",
+    );
 
     // Step 6: Disable RequiredMemo extension
     let disable_ix = Instruction::new_with_bytes(
@@ -199,7 +215,8 @@ fn test_memo_transfer() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![disable_ix], &[&payer], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(&mut svm, vec![disable_ix], &[&payer], &payer.pubkey())
+        .unwrap();
     svm.expire_blockhash();
 
     // Step 7: Transfer without memo should now succeed (memo disabled)
@@ -210,7 +227,13 @@ fn test_memo_transfer() {
         &mint,
         &payer.pubkey(),
     );
-    send_transaction_from_instructions(&mut svm, create_source2_ixs, &[&payer, &source2_keypair], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        create_source2_ixs,
+        &[&payer, &source2_keypair],
+        &payer.pubkey(),
+    )
+    .unwrap();
     svm.expire_blockhash();
 
     mint_tokens_to_token_extensions_account(
@@ -219,7 +242,8 @@ fn test_memo_transfer() {
         &source2_keypair.pubkey(),
         100,
         &payer,
-    ).unwrap();
+    )
+    .unwrap();
     svm.expire_blockhash();
 
     let transfer_ix2 = transfer_instruction(
@@ -228,7 +252,8 @@ fn test_memo_transfer() {
         &payer.pubkey(),
         1,
     );
-    send_transaction_from_instructions(&mut svm, vec![transfer_ix2], &[&payer], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(&mut svm, vec![transfer_ix2], &[&payer], &payer.pubkey())
+        .unwrap();
 
     assert_token_account_balance(
         &svm,

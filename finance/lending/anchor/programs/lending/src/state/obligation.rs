@@ -42,14 +42,18 @@ pub struct Obligation {
     pub bump: u8,
 }
 
-#[derive(InitSpace, Clone, Copy, Debug, Default, IdlType, wincode::SchemaRead, wincode::SchemaWrite)]
+#[derive(
+    InitSpace, Clone, Copy, Debug, Default, IdlType, wincode::SchemaRead, wincode::SchemaWrite,
+)]
 pub struct ObligationCollateral {
     pub reserve: Address,
     pub deposited_shares: u64,
     pub market_value: u128,
 }
 
-#[derive(InitSpace, Clone, Copy, Debug, Default, IdlType, wincode::SchemaRead, wincode::SchemaWrite)]
+#[derive(
+    InitSpace, Clone, Copy, Debug, Default, IdlType, wincode::SchemaRead, wincode::SchemaWrite,
+)]
 pub struct ObligationLiquidity {
     pub reserve: Address,
     /// Borrowed principal, scaled by the reserve's index at borrow time so the
@@ -75,7 +79,11 @@ impl Obligation {
     /// Index of the collateral entry for `reserve`, creating an empty one if the
     /// obligation has room. Used when posting collateral.
     pub fn upsert_collateral(&mut self, reserve: Address) -> Result<usize> {
-        if let Some(index) = self.deposits.iter().position(|entry| entry.reserve == reserve) {
+        if let Some(index) = self
+            .deposits
+            .iter()
+            .position(|entry| entry.reserve == reserve)
+        {
             return Ok(index);
         }
         require!(
@@ -93,7 +101,11 @@ impl Obligation {
     /// Index of the borrow entry for `reserve`, creating an empty one if the
     /// obligation has room. Used when borrowing.
     pub fn upsert_borrow(&mut self, reserve: Address) -> Result<usize> {
-        if let Some(index) = self.borrows.iter().position(|entry| entry.reserve == reserve) {
+        if let Some(index) = self
+            .borrows
+            .iter()
+            .position(|entry| entry.reserve == reserve)
+        {
             return Ok(index);
         }
         require!(

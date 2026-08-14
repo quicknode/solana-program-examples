@@ -64,7 +64,11 @@ impl NodeTag {
 /// largest key first; inverting seq_num makes the earlier order's seq_num
 /// the larger one at any given price.)
 pub fn new_node_key(side: OrderSide, price_data: u64, seq_num: u64) -> u128 {
-    let seq_num = if side == OrderSide::Bid { !seq_num } else { seq_num };
+    let seq_num = if side == OrderSide::Bid {
+        !seq_num
+    } else {
+        seq_num
+    };
     ((price_data as u128) << 64) | (seq_num as u128)
 }
 
@@ -186,13 +190,7 @@ const_assert_eq!(size_of::<LeafNode>(), NODE_SIZE);
 const_assert_eq!(size_of::<LeafNode>() % 8, 0);
 
 impl LeafNode {
-    pub fn new(
-        key: u128,
-        owner: Address,
-        quantity: u64,
-        order_id: u64,
-        timestamp: i64,
-    ) -> Self {
+    pub fn new(key: u128, owner: Address, quantity: u64, order_id: u64, timestamp: i64) -> Self {
         Self {
             tag: NodeTag::LeafNode as u8,
             padding: [0; 7],

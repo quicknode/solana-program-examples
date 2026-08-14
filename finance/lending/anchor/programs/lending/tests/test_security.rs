@@ -1,8 +1,7 @@
 mod common;
 
 use anchor_lang::{
-    solana_program::{instruction::Instruction, system_program},
-    InstructionData, ToAccountMetas,
+    solana_program::instruction::Instruction, system_program, InstructionData, ToAccountMetas,
 };
 use common::{default_config, dollars, Env};
 use solana_signer::Signer;
@@ -56,7 +55,7 @@ fn non_owner_cannot_write_market_price_feed() {
             owner: attacker.pubkey(),
             price_feed: market_feed,
             mint: usdc.mint,
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
         data: lending::instruction::SetPrice {

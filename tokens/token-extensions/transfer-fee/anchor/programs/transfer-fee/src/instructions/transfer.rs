@@ -43,7 +43,10 @@ pub struct TransferAccountConstraints {
 // transfer fees are automatically deducted from the transfer amount
 // recipients receives (transfer amount - fees)
 // transfer fees are stored directly on the recipient token account and must be "harvested"
-pub fn handle_process_transfer(context: &mut Context<TransferAccountConstraints>, amount: u64) -> Result<()> {
+pub fn handle_process_transfer(
+    context: &mut Context<TransferAccountConstraints>,
+    amount: u64,
+) -> Result<()> {
     // read mint account extension data
     let mint = &context.accounts.mint_account.cpi_handle_mut();
     let mint_data = mint.data.borrow();

@@ -35,7 +35,9 @@ pub mod order_book {
 
     /// Create a per-user, per-market account that tracks a user's open orders
     /// and unsettled balances.
-    pub fn initialize_market_user(context: &mut Context<InitializeMarketUserAccountConstraints>) -> Result<()> {
+    pub fn initialize_market_user(
+        context: &mut Context<InitializeMarketUserAccountConstraints>,
+    ) -> Result<()> {
         instructions::initialize_market_user::handle_initialize_market_user(context)
     }
 

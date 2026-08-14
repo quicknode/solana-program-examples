@@ -80,7 +80,10 @@ pub struct PlaceBetAccountConstraints {
     pub system_program: Program<System>,
 }
 
-pub fn handle_place_bet(context: &mut Context<PlaceBetAccountConstraints>, amount: u64) -> Result<()> {
+pub fn handle_place_bet(
+    context: &mut Context<PlaceBetAccountConstraints>,
+    amount: u64,
+) -> Result<()> {
     require!(amount > 0, BettingError::ZeroAmount);
     require!(
         context.accounts.event.status == EventStatus::Open,

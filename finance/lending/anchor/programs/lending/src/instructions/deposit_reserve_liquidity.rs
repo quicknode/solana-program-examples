@@ -23,7 +23,11 @@ pub fn handle_deposit_reserve_liquidity(
     let share_amount = if share_supply == 0 {
         liquidity_amount as u128
     } else {
-        mul_div_floor(liquidity_amount as u128, share_supply, reserve.total_liquidity()?)?
+        mul_div_floor(
+            liquidity_amount as u128,
+            share_supply,
+            reserve.total_liquidity()?,
+        )?
     };
     require!(share_amount > 0, LendingError::DepositTooSmall);
     let share_amount = u64::try_from(share_amount).map_err(|_| LendingError::MathOverflow)?;

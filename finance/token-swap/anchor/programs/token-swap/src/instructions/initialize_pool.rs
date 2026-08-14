@@ -11,7 +11,9 @@ use crate::{
     state::{Config, PoolConfig},
 };
 
-pub fn handle_initialize_pool(context: &mut Context<InitializePoolAccountConstraints>) -> Result<()> {
+pub fn handle_initialize_pool(
+    context: &mut Context<InitializePoolAccountConstraints>,
+) -> Result<()> {
     let bump = context.bumps.pool_config;
     let pool_config = &mut context.accounts.pool_config;
     pool_config.config = *context.accounts.config.address();

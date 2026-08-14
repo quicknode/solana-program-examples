@@ -1,8 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token_2022::spl_token_2022::{
     extension::{
-        interest_bearing_mint::InterestBearingConfig, BaseStateWithExtensions,
-        StateWithExtensions,
+        interest_bearing_mint::InterestBearingConfig, BaseStateWithExtensions, StateWithExtensions,
     },
     state::Mint as MintState,
 };
@@ -18,11 +17,17 @@ pub mod interest_bearing {
 
     use super::*;
 
-    pub fn initialize(context: &mut Context<InitializeAccountConstraints>, rate: i16) -> Result<()> {
+    pub fn initialize(
+        context: &mut Context<InitializeAccountConstraints>,
+        rate: i16,
+    ) -> Result<()> {
         instructions::initialize::handler(context, rate)
     }
 
-    pub fn update_rate(context: &mut Context<UpdateRateAccountConstraints>, rate: i16) -> Result<()> {
+    pub fn update_rate(
+        context: &mut Context<UpdateRateAccountConstraints>,
+        rate: i16,
+    ) -> Result<()> {
         instructions::update_rate::handler(context, rate)
     }
 }

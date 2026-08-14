@@ -35,7 +35,9 @@ pub struct CloseLosingBetAccountConstraints {
     pub user: BorshAccount<User>,
 }
 
-pub fn handle_close_losing_bet(context: &mut Context<CloseLosingBetAccountConstraints>) -> Result<()> {
+pub fn handle_close_losing_bet(
+    context: &mut Context<CloseLosingBetAccountConstraints>,
+) -> Result<()> {
     require!(
         context.accounts.event.status == EventStatus::Settled,
         BettingError::EventNotSettled

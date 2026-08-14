@@ -1,7 +1,7 @@
 use {
     anchor_lang::{
-        solana_program::{instruction::Instruction, pubkey::Pubkey, system_program},
-        AccountDeserialize, InstructionData, ToAccountMetas,
+        solana_program::instruction::Instruction,
+        AccountDeserialize, Address, system_program, InstructionData, ToAccountMetas,
     },
     litesvm::LiteSVM,
     prop_amm::{
@@ -29,20 +29,20 @@ const ORACLE_SCALE: u32 = 8;
 const SPREAD_BPS: u16 = 10;
 const MAX_CONFIDENCE_BPS: u16 = 100;
 
-fn token_program_id() -> Pubkey {
+fn token_program_id() -> Address {
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         .parse()
         .unwrap()
 }
 
-fn ata_program_id() -> Pubkey {
+fn ata_program_id() -> Address {
     "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
         .parse()
         .unwrap()
 }
 
-fn derive_ata(wallet: &Pubkey, mint: &Pubkey) -> Pubkey {
-    Pubkey::find_program_address(
+fn derive_ata(wallet: &Address, mint: &Address) -> Address {
+    Address::find_program_address(
         &[wallet.as_ref(), token_program_id().as_ref(), mint.as_ref()],
         &ata_program_id(),
     )
@@ -59,15 +59,15 @@ struct Market {
     svm: LiteSVM,
     payer: Keypair,
     operator: Keypair,
-    operator_base: Pubkey,
-    operator_quote: Pubkey,
-    base_mint: Pubkey,
-    quote_mint: Pubkey,
-    feed: Pubkey,
-    market: Pubkey,
-    market_authority: Pubkey,
-    base_vault: Pubkey,
-    quote_vault: Pubkey,
+    operator_base: Address,
+    operator_quote: Address,
+    base_mint: Address,
+    quote_mint: Address,
+    feed: Address,
+    market: Address,
+    market_authority: Address,
+    base_vault: Address,
+    quote_vault: Address,
 }
 
 impl Market {
@@ -123,7 +123,7 @@ impl Market {
             mock_switchboard::accounts::InitializeFeedAccountConstraints {
                 feed: feed_keypair.pubkey(),
                 authority: operator.pubkey(),
-                system_program: system_program::id(),
+                system_program: system_program::ID,
             }
             .to_account_metas(None),
         );
@@ -136,17 +136,17 @@ impl Market {
         .unwrap();
         let feed = feed_keypair.pubkey();
 
-        let market = Pubkey::find_program_address(
+        let market = Address::find_program_address(
             &[b"market", base_mint.as_ref(), quote_mint.as_ref()],
             &prop_amm::id(),
         )
         .0;
         let market_authority =
-            Pubkey::find_program_address(&[b"authority", market.as_ref()], &prop_amm::id()).0;
+            Address::find_program_address(&[b"authority", market.as_ref()], &prop_amm::id()).0;
         let base_vault =
-            Pubkey::find_program_address(&[b"base_vault", market.as_ref()], &prop_amm::id()).0;
+            Address::find_program_address(&[b"base_vault", market.as_ref()], &prop_amm::id()).0;
         let quote_vault =
-            Pubkey::find_program_address(&[b"quote_vault", market.as_ref()], &prop_amm::id()).0;
+            Address::find_program_address(&[b"quote_vault", market.as_ref()], &prop_amm::id()).0;
 
         let initialize_market = Instruction::new_with_bytes(
             prop_amm::id(),
@@ -162,7 +162,7 @@ impl Market {
                 quote_vault,
                 token_program: token_program_id(),
                 associated_token_program: ata_program_id(),
-                system_program: system_program::id(),
+                system_program: system_program::ID,
             }
             .to_account_metas(None),
         );
@@ -278,7 +278,7 @@ impl Market {
 
     /// Create a wallet holding `base` and `quote` minor units in associated
     /// token accounts.
-    fn funded_trader(&mut self, base: u64, quote: u64) -> (Keypair, Pubkey, Pubkey) {
+    fn funded_trader(&mut self, base: u64, quote: u64) -> (Keypair, Address, Address) {
         let trader = create_wallet(&mut self.svm, 100_000_000_000).unwrap();
         let base_account = create_associated_token_account(
             &mut self.svm,
@@ -437,7 +437,7 @@ impl Market {
                 trader_quote,
                 token_program: token_program_id(),
                 associated_token_program: ata_program_id(),
-                system_program: system_program::id(),
+                system_program: system_program::ID,
             }
             .to_account_metas(None),
         );
@@ -446,7 +446,7 @@ impl Market {
             .map_err(|_| ())
     }
 
-    fn balance(&self, token_account: &Pubkey) -> u64 {
+    fn balance(&self, token_account: &Address) -> u64 {
         get_token_account_balance(&self.svm, token_account).unwrap()
     }
 }

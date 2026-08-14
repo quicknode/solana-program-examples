@@ -31,7 +31,8 @@ pub fn handle_repay_obligation_liquidity(
     let repay = liquidity_amount.min(debt_now);
     require!(repay > 0, LendingError::ZeroAmount);
 
-    let scaled_removed = mul_div_floor(repay as u128, FIXED_POINT_SCALE, index)?.min(borrowed_principal);
+    let scaled_removed =
+        mul_div_floor(repay as u128, FIXED_POINT_SCALE, index)?.min(borrowed_principal);
 
     {
         let reserve = &mut context.accounts.reserve;

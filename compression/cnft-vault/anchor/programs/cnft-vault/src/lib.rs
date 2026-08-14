@@ -87,7 +87,9 @@ pub fn build_transfer_instruction(
 pub mod cnft_vault {
     use super::*;
 
-    pub fn initialize_vault(context: &mut Context<InitializeVaultAccountConstraints>) -> Result<()> {
+    pub fn initialize_vault(
+        context: &mut Context<InitializeVaultAccountConstraints>,
+    ) -> Result<()> {
         instructions::initialize_vault::handler(context)
     }
 

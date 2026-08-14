@@ -165,7 +165,11 @@ pub fn handle_withdraw<'info>(
             config.vault,
             VaultError::InvalidAssetAccount
         );
-        require_keys_eq!(mint_ai.address(), config.mint, VaultError::InvalidAssetAccount);
+        require_keys_eq!(
+            mint_ai.address(),
+            config.mint,
+            VaultError::InvalidAssetAccount
+        );
 
         let (recipient_mint, recipient_owner) = read_token_mint_and_owner(user_ata_ai)?;
         require_keys_eq!(recipient_owner, user_key, VaultError::InvalidRecipient);

@@ -1,13 +1,11 @@
 use {
     anchor_lang::{
-        solana_program::{instruction::Instruction, pubkey::Pubkey, system_program},
-        InstructionData, ToAccountMetas,
+        solana_program::instruction::Instruction, system_program, Address, InstructionData,
+        ToAccountMetas,
     },
     litesvm::LiteSVM,
     solana_keypair::Keypair,
-    solana_kite::{
-        create_wallet, get_token_account_balance, send_transaction_from_instructions,
-    },
+    solana_kite::{create_wallet, get_token_account_balance, send_transaction_from_instructions},
     solana_signer::Signer,
 };
 
@@ -21,52 +19,48 @@ fn to_minor_units(major_units: u64) -> u64 {
     major_units.checked_mul(10u64.pow(MINT_DECIMALS)).unwrap()
 }
 
-fn metadata_program_id() -> Pubkey {
+fn metadata_program_id() -> Address {
     "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
         .parse()
         .unwrap()
 }
 
-fn token_program_id() -> Pubkey {
+fn token_program_id() -> Address {
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         .parse()
         .unwrap()
 }
 
-fn associated_token_program_id() -> Pubkey {
+fn associated_token_program_id() -> Address {
     "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
         .parse()
         .unwrap()
 }
 
-fn rent_sysvar_id() -> Pubkey {
+fn rent_sysvar_id() -> Address {
     "SysvarRent111111111111111111111111111111111"
         .parse()
         .unwrap()
 }
 
-fn derive_metadata_pda(mint: &Pubkey) -> Pubkey {
+fn derive_metadata_pda(mint: &Address) -> Address {
     let metadata_pid = metadata_program_id();
-    let (pda, _bump) = Pubkey::find_program_address(
+    let (pda, _bump) = Address::find_program_address(
         &[b"metadata", metadata_pid.as_ref(), mint.as_ref()],
         &metadata_pid,
     );
     pda
 }
 
-fn derive_ata(wallet: &Pubkey, mint: &Pubkey) -> Pubkey {
-    let (ata, _bump) = Pubkey::find_program_address(
-        &[
-            wallet.as_ref(),
-            token_program_id().as_ref(),
-            mint.as_ref(),
-        ],
+fn derive_ata(wallet: &Address, mint: &Address) -> Address {
+    let (ata, _bump) = Address::find_program_address(
+        &[wallet.as_ref(), token_program_id().as_ref(), mint.as_ref()],
         &associated_token_program_id(),
     );
     ata
 }
 
-fn setup() -> (LiteSVM, Pubkey, Keypair) {
+fn setup() -> (LiteSVM, Address, Keypair) {
     let program_id = token_minter::id();
     let mut svm = LiteSVM::new();
 
@@ -86,7 +80,7 @@ fn test_create_token_and_mint() {
     let (mut svm, program_id, payer) = setup();
 
     // Derive the PDA mint account (seeds = [b"mint"])
-    let (mint_pda, _bump) = Pubkey::find_program_address(&[b"mint"], &program_id);
+    let (mint_pda, _bump) = Address::find_program_address(&[b"mint"], &program_id);
     let metadata_account = derive_metadata_pda(&mint_pda);
 
     // 1. Create token
@@ -104,18 +98,13 @@ fn test_create_token_and_mint() {
             metadata_account,
             token_program: token_program_id(),
             token_metadata_program: metadata_program_id(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
             rent: rent_sysvar_id(),
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(
-        &mut svm,
-        vec![create_ix],
-        &[&payer],
-        &payer.pubkey(),
-    )
-    .unwrap();
+    send_transaction_from_instructions(&mut svm, vec![create_ix], &[&payer], &payer.pubkey())
+        .unwrap();
 
     // Verify mint created
     let mint_account = svm.get_account(&mint_pda).expect("Mint PDA should exist");
@@ -143,17 +132,12 @@ fn test_create_token_and_mint() {
             associated_token_account: ata,
             token_program: token_program_id(),
             associated_token_program: associated_token_program_id(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(
-        &mut svm,
-        vec![mint_ix],
-        &[&payer],
-        &payer.pubkey(),
-    )
-    .unwrap();
+    send_transaction_from_instructions(&mut svm, vec![mint_ix], &[&payer], &payer.pubkey())
+        .unwrap();
 
     // Verify 100 tokens minted (in minor units)
     let balance = get_token_account_balance(&svm, &ata).unwrap();

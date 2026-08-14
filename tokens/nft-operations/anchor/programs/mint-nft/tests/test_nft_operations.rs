@@ -1,60 +1,58 @@
 use {
     anchor_lang::{
-        solana_program::{instruction::Instruction, pubkey::Pubkey, system_program},
-        InstructionData, ToAccountMetas,
+        solana_program::instruction::Instruction, system_program, Address, InstructionData,
+        ToAccountMetas,
     },
     litesvm::LiteSVM,
     solana_keypair::Keypair,
-    solana_kite::{
-        create_wallet, get_token_account_balance, send_transaction_from_instructions,
-    },
+    solana_kite::{create_wallet, get_token_account_balance, send_transaction_from_instructions},
     solana_signer::Signer,
 };
 
-fn token_program_id() -> Pubkey {
+fn token_program_id() -> Address {
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         .parse()
         .unwrap()
 }
 
-fn ata_program_id() -> Pubkey {
+fn ata_program_id() -> Address {
     "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
         .parse()
         .unwrap()
 }
 
-fn metadata_program_id() -> Pubkey {
+fn metadata_program_id() -> Address {
     "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
         .parse()
         .unwrap()
 }
 
-fn instructions_sysvar_id() -> Pubkey {
+fn instructions_sysvar_id() -> Address {
     "Sysvar1nstructions1111111111111111111111111"
         .parse()
         .unwrap()
 }
 
-fn derive_ata(wallet: &Pubkey, mint: &Pubkey) -> Pubkey {
-    let (ata, _bump) = Pubkey::find_program_address(
+fn derive_ata(wallet: &Address, mint: &Address) -> Address {
+    let (ata, _bump) = Address::find_program_address(
         &[wallet.as_ref(), token_program_id().as_ref(), mint.as_ref()],
         &ata_program_id(),
     );
     ata
 }
 
-fn derive_metadata_pda(mint: &Pubkey) -> Pubkey {
+fn derive_metadata_pda(mint: &Address) -> Address {
     let metadata_pid = metadata_program_id();
-    let (pda, _bump) = Pubkey::find_program_address(
+    let (pda, _bump) = Address::find_program_address(
         &[b"metadata", metadata_pid.as_ref(), mint.as_ref()],
         &metadata_pid,
     );
     pda
 }
 
-fn derive_edition_pda(mint: &Pubkey) -> Pubkey {
+fn derive_edition_pda(mint: &Address) -> Address {
     let metadata_pid = metadata_program_id();
-    let (pda, _bump) = Pubkey::find_program_address(
+    let (pda, _bump) = Address::find_program_address(
         &[
             b"metadata",
             metadata_pid.as_ref(),
@@ -70,10 +68,12 @@ fn derive_edition_pda(mint: &Pubkey) -> Pubkey {
 /// caller-supplied metadata strings landed in the Metaplex metadata account
 /// without fully deserializing the Metaplex layout.
 fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
-    haystack.windows(needle.len()).any(|window| window == needle)
+    haystack
+        .windows(needle.len())
+        .any(|window| window == needle)
 }
 
-fn setup() -> (LiteSVM, Pubkey, Keypair) {
+fn setup() -> (LiteSVM, Address, Keypair) {
     let program_id = mint_nft::id();
     let mut svm = LiteSVM::new();
 
@@ -93,7 +93,7 @@ fn test_create_collection() {
     let (mut svm, program_id, payer) = setup();
     let collection_keypair = Keypair::new();
 
-    let (mint_authority, _) = Pubkey::find_program_address(&[b"authority"], &program_id);
+    let (mint_authority, _) = Address::find_program_address(&[b"authority"], &program_id);
 
     let metadata = derive_metadata_pda(&collection_keypair.pubkey());
     let master_edition = derive_edition_pda(&collection_keypair.pubkey());
@@ -114,7 +114,7 @@ fn test_create_collection() {
             metadata,
             master_edition,
             destination,
-            system_program: system_program::id(),
+            system_program: system_program::ID,
             token_program: token_program_id(),
             associated_token_program: ata_program_id(),
             token_metadata_program: metadata_program_id(),
@@ -137,9 +137,7 @@ fn test_create_collection() {
     assert!(!mint_account.data.is_empty());
 
     // Verify metadata exists and carries the caller-supplied name
-    let meta_account = svm
-        .get_account(&metadata)
-        .expect("Metadata should exist");
+    let meta_account = svm.get_account(&metadata).expect("Metadata should exist");
     assert!(!meta_account.data.is_empty());
     assert!(
         contains_bytes(&meta_account.data, b"Example Collection"),
@@ -161,7 +159,7 @@ fn test_create_collection() {
 fn test_mint_nft_to_collection() {
     let (mut svm, program_id, payer) = setup();
 
-    let (mint_authority, _) = Pubkey::find_program_address(&[b"authority"], &program_id);
+    let (mint_authority, _) = Address::find_program_address(&[b"authority"], &program_id);
 
     // Step 1: Create the collection
     let collection_keypair = Keypair::new();
@@ -184,7 +182,7 @@ fn test_mint_nft_to_collection() {
             metadata: collection_metadata,
             master_edition: collection_master_edition,
             destination: collection_destination,
-            system_program: system_program::id(),
+            system_program: system_program::ID,
             token_program: token_program_id(),
             associated_token_program: ata_program_id(),
             token_metadata_program: metadata_program_id(),
@@ -223,7 +221,7 @@ fn test_mint_nft_to_collection() {
             master_edition: nft_master_edition,
             mint_authority,
             collection_mint: collection_keypair.pubkey(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
             token_program: token_program_id(),
             associated_token_program: ata_program_id(),
             token_metadata_program: metadata_program_id(),
@@ -258,7 +256,7 @@ fn test_mint_nft_to_collection() {
 fn test_verify_collection() {
     let (mut svm, program_id, payer) = setup();
 
-    let (mint_authority, _) = Pubkey::find_program_address(&[b"authority"], &program_id);
+    let (mint_authority, _) = Address::find_program_address(&[b"authority"], &program_id);
 
     // Step 1: Create collection
     let collection_keypair = Keypair::new();
@@ -281,7 +279,7 @@ fn test_verify_collection() {
             metadata: collection_metadata,
             master_edition: collection_master_edition,
             destination: collection_destination,
-            system_program: system_program::id(),
+            system_program: system_program::ID,
             token_program: token_program_id(),
             associated_token_program: ata_program_id(),
             token_metadata_program: metadata_program_id(),
@@ -320,7 +318,7 @@ fn test_verify_collection() {
             master_edition: nft_master_edition,
             mint_authority,
             collection_mint: collection_keypair.pubkey(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
             token_program: token_program_id(),
             associated_token_program: ata_program_id(),
             token_metadata_program: metadata_program_id(),
@@ -349,20 +347,15 @@ fn test_verify_collection() {
             collection_mint: collection_keypair.pubkey(),
             collection_metadata,
             collection_master_edition,
-            system_program: system_program::id(),
+            system_program: system_program::ID,
             sysvar_instruction: instructions_sysvar_id(),
             token_metadata_program: metadata_program_id(),
         }
         .to_account_metas(None),
     );
 
-    send_transaction_from_instructions(
-        &mut svm,
-        vec![verify_ix],
-        &[&payer],
-        &payer.pubkey(),
-    )
-    .unwrap();
+    send_transaction_from_instructions(&mut svm, vec![verify_ix], &[&payer], &payer.pubkey())
+        .unwrap();
 
     // Verify the metadata still exists after verification
     let nft_meta = svm

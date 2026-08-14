@@ -120,7 +120,10 @@ pub fn handle_mint<'info>(
         *context.accounts.leaf_delegate.address(),
         false,
     ));
-    accounts.push(AccountMeta::new(*context.accounts.merkle_tree.address(), false));
+    accounts.push(AccountMeta::new(
+        *context.accounts.merkle_tree.address(),
+        false,
+    ));
     accounts.push(AccountMeta::new_readonly(
         *context.accounts.payer.address(),
         true,

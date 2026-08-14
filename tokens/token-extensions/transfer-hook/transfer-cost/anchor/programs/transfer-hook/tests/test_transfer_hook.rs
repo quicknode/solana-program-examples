@@ -1,13 +1,10 @@
 use {
     anchor_lang::{
-        solana_program::{
-            instruction::Instruction,
-            pubkey::Pubkey,
-            system_program,
-        },
-        InstructionData, ToAccountMetas,
+        solana_program::instruction::Instruction, system_program, Address, InstructionData,
+        ToAccountMetas,
     },
     litesvm::LiteSVM,
+    solana_keypair::Keypair,
     solana_kite::{
         create_wallet, send_transaction_from_instructions,
         token_extensions::{
@@ -15,11 +12,10 @@ use {
         },
         transfer_hook::get_hook_accounts_address,
     },
-    solana_keypair::Keypair,
     solana_signer::Signer,
 };
 
-fn setup() -> (LiteSVM, Pubkey, Keypair) {
+fn setup() -> (LiteSVM, Address, Keypair) {
     let program_id = transfer_hook::id();
     let mut svm = LiteSVM::new();
 
@@ -49,9 +45,8 @@ fn test_initialize_extra_account_meta_list() {
     svm.expire_blockhash();
 
     // PDAs
-    let extra_account_meta_list =
-        get_hook_accounts_address(&mint, &program_id);
-    let (counter_pda, _) = Pubkey::find_program_address(&[b"counter"], &program_id);
+    let extra_account_meta_list = get_hook_accounts_address(&mint, &program_id);
+    let (counter_pda, _) = Address::find_program_address(&[b"counter"], &program_id);
 
     // Step 2: Initialize ExtraAccountMetaList (also creates counter PDA)
     let init_extra_ix = Instruction::new_with_bytes(
@@ -62,11 +57,12 @@ fn test_initialize_extra_account_meta_list() {
             extra_account_meta_list,
             mint,
             counter_account: counter_pda,
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![init_extra_ix], &[&payer], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(&mut svm, vec![init_extra_ix], &[&payer], &payer.pubkey())
+        .unwrap();
 
     // Verify the ExtraAccountMetaList account was created
     let account = svm.get_account(&extra_account_meta_list);

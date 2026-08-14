@@ -48,7 +48,9 @@ pub mod fundraiser {
         Ok(())
     }
 
-    pub fn close_fundraiser(mut context: &mut Context<CloseFundraiserAccountConstraints>) -> Result<()> {
+    pub fn close_fundraiser(
+        mut context: &mut Context<CloseFundraiserAccountConstraints>,
+    ) -> Result<()> {
         handle_close_fundraiser(&mut context.accounts)?;
 
         Ok(())

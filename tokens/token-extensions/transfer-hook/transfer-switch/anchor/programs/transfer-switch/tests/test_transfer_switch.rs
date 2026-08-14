@@ -1,13 +1,10 @@
 use {
     anchor_lang::{
-        solana_program::{
-            instruction::Instruction,
-            pubkey::Pubkey,
-            system_program,
-        },
-        InstructionData, ToAccountMetas,
+        solana_program::instruction::Instruction, system_program, Address, InstructionData,
+        ToAccountMetas,
     },
     litesvm::LiteSVM,
+    solana_keypair::Keypair,
     solana_kite::{
         create_wallet, send_transaction_from_instructions,
         token_extensions::{
@@ -17,11 +14,10 @@ use {
         },
         transfer_hook::{build_hook_accounts, get_hook_accounts_address, HookAccount},
     },
-    solana_keypair::Keypair,
     solana_signer::Signer,
 };
 
-fn setup() -> (LiteSVM, Pubkey, Keypair) {
+fn setup() -> (LiteSVM, Address, Keypair) {
     let program_id = transfer_switch::id();
     let mut svm = LiteSVM::new();
 
@@ -40,9 +36,9 @@ fn test_transfer_switch() {
     let decimals: u8 = 9;
 
     // Derive PDAs
-    let (admin_config, _) = Pubkey::find_program_address(&[b"admin-config"], &program_id);
+    let (admin_config, _) = Address::find_program_address(&[b"admin-config"], &program_id);
     let (sender_switch, _) =
-        Pubkey::find_program_address(&[sender.pubkey().as_ref()], &program_id);
+        Address::find_program_address(&[sender.pubkey().as_ref()], &program_id);
 
     // Step 1: Create mint with TransferHook extension
     let mint = create_token_extensions_mint(
@@ -57,34 +53,19 @@ fn test_transfer_switch() {
     .unwrap();
     svm.expire_blockhash();
 
-    let extra_account_meta_list =
-        get_hook_accounts_address(&mint, &program_id);
+    let extra_account_meta_list = get_hook_accounts_address(&mint, &program_id);
 
     // Step 2: Create token accounts and mint tokens
     let amount: u64 = 100 * 10u64.pow(decimals as u32);
-    let source_ata = create_token_extensions_account(
-        &mut svm,
-        &sender.pubkey(),
-        &mint,
-        &payer,
-    ).unwrap();
+    let source_ata =
+        create_token_extensions_account(&mut svm, &sender.pubkey(), &mint, &payer).unwrap();
     svm.expire_blockhash();
 
-    let dest_ata = create_token_extensions_account(
-        &mut svm,
-        &recipient.pubkey(),
-        &mint,
-        &payer,
-    ).unwrap();
+    let dest_ata =
+        create_token_extensions_account(&mut svm, &recipient.pubkey(), &mint, &payer).unwrap();
     svm.expire_blockhash();
 
-    mint_tokens_to_token_extensions_account(
-        &mut svm,
-        &mint,
-        &source_ata,
-        amount,
-        &payer,
-    ).unwrap();
+    mint_tokens_to_token_extensions_account(&mut svm, &mint, &source_ata, amount, &payer).unwrap();
     svm.expire_blockhash();
 
     // Step 3: Configure admin
@@ -95,11 +76,17 @@ fn test_transfer_switch() {
             admin: payer.pubkey(),
             new_admin: payer.pubkey(),
             admin_config,
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![configure_admin_ix], &[&payer], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        vec![configure_admin_ix],
+        &[&payer],
+        &payer.pubkey(),
+    )
+    .unwrap();
     svm.expire_blockhash();
 
     // Step 4: Initialize extra account metas list
@@ -110,11 +97,12 @@ fn test_transfer_switch() {
             payer: payer.pubkey(),
             token_mint: mint,
             extra_account_metas_list: extra_account_meta_list,
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![init_extra_ix], &[&payer], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(&mut svm, vec![init_extra_ix], &[&payer], &payer.pubkey())
+        .unwrap();
     svm.expire_blockhash();
 
     // Step 5: Turn transfers OFF for sender
@@ -126,11 +114,12 @@ fn test_transfer_switch() {
             wallet: sender.pubkey(),
             admin_config,
             wallet_switch: sender_switch,
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![switch_off_ix], &[&payer], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(&mut svm, vec![switch_off_ix], &[&payer], &payer.pubkey())
+        .unwrap();
     svm.expire_blockhash();
 
     // Step 6: Try transfer - should FAIL (switch is off)
@@ -154,10 +143,7 @@ fn test_transfer_switch() {
         decimals,
         &extra_accounts,
     );
-    assert!(
-        result.is_err(),
-        "Transfer should fail when switch is off"
-    );
+    assert!(result.is_err(), "Transfer should fail when switch is off");
     svm.expire_blockhash();
 
     // Step 7: Turn transfers ON for sender
@@ -169,11 +155,12 @@ fn test_transfer_switch() {
             wallet: sender.pubkey(),
             admin_config,
             wallet_switch: sender_switch,
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![switch_on_ix], &[&payer], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(&mut svm, vec![switch_on_ix], &[&payer], &payer.pubkey())
+        .unwrap();
     svm.expire_blockhash();
 
     // Step 8: Transfer - should SUCCEED (switch is on)
@@ -186,5 +173,6 @@ fn test_transfer_switch() {
         transfer_amount,
         decimals,
         &extra_accounts,
-    ).unwrap();
+    )
+    .unwrap();
 }

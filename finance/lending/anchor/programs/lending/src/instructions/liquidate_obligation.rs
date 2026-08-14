@@ -62,7 +62,8 @@ pub fn handle_liquidate_obligation(
         repay_reserve.config.close_factor_bps as u128,
         BPS_DENOMINATOR,
     )?;
-    let repay = liquidity_amount.min(u64::try_from(max_repay).map_err(|_| LendingError::MathOverflow)?);
+    let repay =
+        liquidity_amount.min(u64::try_from(max_repay).map_err(|_| LendingError::MathOverflow)?);
     require!(repay > 0, LendingError::ZeroAmount);
 
     // Collateral to seize: value of the repayment plus the bonus, converted into
@@ -100,8 +101,8 @@ pub fn handle_liquidate_obligation(
         LendingError::LiquidationTooLarge
     );
 
-    let scaled_removed =
-        mul_div_floor(repay as u128, FIXED_POINT_SCALE, accumulation_factor)?.min(borrowed_principal);
+    let scaled_removed = mul_div_floor(repay as u128, FIXED_POINT_SCALE, accumulation_factor)?
+        .min(borrowed_principal);
 
     // Effects: repay side.
     {
@@ -151,12 +152,20 @@ pub fn handle_liquidate_obligation(
     )?;
 
     let bump = [obligation_bump];
-    let seeds: [&[u8]; 4] = [OBLIGATION_SEED, lending_market.as_ref(), owner.as_ref(), &bump];
+    let seeds: [&[u8]; 4] = [
+        OBLIGATION_SEED,
+        lending_market.as_ref(),
+        owner.as_ref(),
+        &bump,
+    ];
     transfer_checked(
         CpiContext::new_with_signer(
             context.accounts.token_program.address(),
             TransferChecked {
-                from: context.accounts.obligation_collateral_vault.cpi_handle_mut(),
+                from: context
+                    .accounts
+                    .obligation_collateral_vault
+                    .cpi_handle_mut(),
                 mint: context.accounts.collateral_share_mint.cpi_handle(),
                 to: context.accounts.liquidator_collateral_dest.cpi_handle_mut(),
                 authority: context.accounts.obligation.cpi_handle(),

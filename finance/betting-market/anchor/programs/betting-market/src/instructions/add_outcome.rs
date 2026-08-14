@@ -35,7 +35,10 @@ pub struct AddOutcomeAccountConstraints {
     pub system_program: Program<System>,
 }
 
-pub fn handle_add_outcome(context: &mut Context<AddOutcomeAccountConstraints>, label: String) -> Result<()> {
+pub fn handle_add_outcome(
+    context: &mut Context<AddOutcomeAccountConstraints>,
+    label: String,
+) -> Result<()> {
     require!(label.len() <= MAX_LABEL_LEN, BettingError::LabelTooLong);
     require!(
         context.accounts.event.status == EventStatus::Open,

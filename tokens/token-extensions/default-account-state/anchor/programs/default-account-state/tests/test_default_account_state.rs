@@ -2,31 +2,29 @@ use {
     anchor_lang::{
         solana_program::{
             instruction::{AccountMeta, Instruction},
-            pubkey::Pubkey,
+            pubkey::Address,
             system_program,
         },
         InstructionData, ToAccountMetas,
     },
     litesvm::LiteSVM,
+    solana_keypair::Keypair,
     solana_kite::{
         assert_token_account_balance, create_wallet, send_transaction_from_instructions,
-        token_extensions::{
-            mint_tokens_to_token_extensions_account, TOKEN_EXTENSIONS_PROGRAM_ID,
-        },
+        token_extensions::{mint_tokens_to_token_extensions_account, TOKEN_EXTENSIONS_PROGRAM_ID},
     },
-    solana_keypair::Keypair,
     solana_signer::Signer,
 };
 
 /// Create a Token Extensions token account (165 bytes, no extra extensions).
 /// Uses explicit keypair - not an ATA - so we can inspect account state bytes.
 fn create_token_account_instruction(
-    payer: &Pubkey,
-    token_account: &Pubkey,
-    mint: &Pubkey,
-    owner: &Pubkey,
+    payer: &Address,
+    token_account: &Address,
+    mint: &Address,
+    owner: &Address,
 ) -> Vec<Instruction> {
-    let rent_sysvar: Pubkey = "SysvarRent111111111111111111111111111111111"
+    let rent_sysvar: Address = "SysvarRent111111111111111111111111111111111"
         .parse()
         .unwrap();
     let create_ix = anchor_lang::solana_program::system_instruction::create_account(
@@ -49,7 +47,7 @@ fn create_token_account_instruction(
     vec![create_ix, init_ix]
 }
 
-fn setup() -> (LiteSVM, Pubkey, Keypair) {
+fn setup() -> (LiteSVM, Address, Keypair) {
     let program_id = default_account_state::id();
     let mut svm = LiteSVM::new();
 
@@ -73,11 +71,17 @@ fn test_default_account_state() {
             payer: payer.pubkey(),
             mint_account: mint_keypair.pubkey(),
             token_program: TOKEN_EXTENSIONS_PROGRAM_ID,
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![initialize_ix], &[&payer, &mint_keypair], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        vec![initialize_ix],
+        &[&payer, &mint_keypair],
+        &payer.pubkey(),
+    )
+    .unwrap();
     svm.expire_blockhash();
 
     // Verify mint exists
@@ -92,7 +96,13 @@ fn test_default_account_state() {
         &mint_keypair.pubkey(),
         &payer.pubkey(),
     );
-    send_transaction_from_instructions(&mut svm, create_token1_ixs, &[&payer, &token1], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        create_token1_ixs,
+        &[&payer, &token1],
+        &payer.pubkey(),
+    )
+    .unwrap();
     svm.expire_blockhash();
 
     // Verify token account state is frozen (byte 108 = account state: 0=uninitialized, 1=initialized, 2=frozen)
@@ -110,10 +120,7 @@ fn test_default_account_state() {
         1,
         &payer,
     );
-    assert!(
-        result.is_err(),
-        "Minting to a frozen account should fail"
-    );
+    assert!(result.is_err(), "Minting to a frozen account should fail");
     svm.expire_blockhash();
 
     // Step 4: Update default state to Initialized
@@ -127,11 +134,12 @@ fn test_default_account_state() {
             freeze_authority: payer.pubkey(),
             mint_account: mint_keypair.pubkey(),
             token_program: TOKEN_EXTENSIONS_PROGRAM_ID,
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![update_ix], &[&payer], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(&mut svm, vec![update_ix], &[&payer], &payer.pubkey())
+        .unwrap();
     svm.expire_blockhash();
 
     // Step 5: Create a new token account - should be initialized (not frozen) now
@@ -142,7 +150,13 @@ fn test_default_account_state() {
         &mint_keypair.pubkey(),
         &payer.pubkey(),
     );
-    send_transaction_from_instructions(&mut svm, create_token2_ixs, &[&payer, &token2], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        create_token2_ixs,
+        &[&payer, &token2],
+        &payer.pubkey(),
+    )
+    .unwrap();
     svm.expire_blockhash();
 
     // Verify token2 is initialized (not frozen)
@@ -159,7 +173,8 @@ fn test_default_account_state() {
         &token2.pubkey(),
         1,
         &payer,
-    ).unwrap();
+    )
+    .unwrap();
 
     assert_token_account_balance(&svm, &token2.pubkey(), 1, "Should have minted 1 token");
 }

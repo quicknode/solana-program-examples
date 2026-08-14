@@ -28,7 +28,9 @@ pub struct InitializeExtraAccountMetaListAccountConstraints {
     pub white_list: BorshAccount<WhiteList>,
 }
 
-pub fn handler(mut context: &mut Context<InitializeExtraAccountMetaListAccountConstraints>) -> Result<()> {
+pub fn handler(
+    mut context: &mut Context<InitializeExtraAccountMetaListAccountConstraints>,
+) -> Result<()> {
     // set authority field on white_list account as payer address
     context.accounts.white_list.authority = *context.accounts.payer.address();
     context.accounts.white_list.bump = context.bumps.white_list;
@@ -38,9 +40,11 @@ pub fn handler(mut context: &mut Context<InitializeExtraAccountMetaListAccountCo
     // initialize ExtraAccountMetaList account with extra accounts
     // .map_err() needed because spl-tlv-account-resolution uses solana-program-error 2.x
     // while anchor-lang 1.0 uses 3.x - structurally identical but different semver types
-    ExtraAccountMetaList::init::<ExecuteInstruction>(
-        &mut context.accounts.extra_account_meta_list.try_borrow_mut_data()?,
-        &extra_account_metas,
-    ).map_err(|_| ProgramError::InvalidAccountData)?;
+    // `AccountView` is Copy, and a copy still points at the same backing
+    // buffer, so the borrow writes through to the real account.
+    let mut meta_list_view = *context.accounts.extra_account_meta_list.account();
+    let mut meta_list_data = meta_list_view.try_borrow_mut()?;
+    ExtraAccountMetaList::init::<ExecuteInstruction>(&mut meta_list_data, &extra_account_metas)
+        .map_err(|_| ProgramError::InvalidAccountData)?;
     Ok(())
 }
