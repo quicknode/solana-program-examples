@@ -19,11 +19,11 @@ pub const MAX_ORDERS_PER_SIDE: usize = MAX_TREE_NODES;
 /// counter that gives every order a unique tie-break and acts as the public
 /// `order_id`.
 ///
-/// Stored as one `AccountLoader<OrderBook>` (zero-copy). The account is far
+/// Stored as one `Account<OrderBook>` (zero-copy). The account is far
 /// larger than Anchor's borsh `Account<T>` would happily deserialize on every
 /// instruction - zero-copy gives us per-field memory access without paying
 /// the (de)serialization cost.
-#[account(zero_copy(unsafe))]
+#[account]
 #[repr(C)]
 pub struct OrderBook {
     /// Market PDA this book belongs to. Constrained onchain via the

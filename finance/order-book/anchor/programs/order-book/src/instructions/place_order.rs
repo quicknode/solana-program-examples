@@ -124,7 +124,7 @@ pub fn handle_place_order(
     // RefCell-based runtime borrow, so the loaded ref must not outlive the
     // plan we copy out of it.
     let (fills, taker_remaining) = {
-        let order_book = order_book_loader.load()?;
+        let order_book = (&*order_book_loader);
         plan_fills(&order_book, side, price, quantity)
     };
 
@@ -139,7 +139,18 @@ pub fn handle_place_order(
     // market.
     for (fill_index, fill) in fills.iter().enumerate() {
         let maker_order_info = &maker_accounts[fill_index * ACCOUNTS_PER_MAKER];
-        let maker_order = Account::<Order>::try_from(maker_order_info)?;
+        let maker_order = {
+            let data = maker_order_info.try_borrow()?;
+            let disc_len = <Order as anchor_lang::Discriminator>::DISCRIMINATOR.len();
+            require!(
+                data.len() > disc_len
+                    && &data[..disc_len] == <Order as anchor_lang::Discriminator>::DISCRIMINATOR,
+                ErrorCode::MakerAccountMismatch
+            );
+            let mut payload = &data[disc_len..];
+            <Order as wincode::SchemaRead<anchor_lang::BorshConfig>>::get(&mut payload)
+                .map_err(|_| ErrorCode::MakerAccountMismatch)?
+        };
         require!(
             maker_order.order_id == fill.maker_order_id,
             ErrorCode::MakerAccountMismatch
@@ -317,7 +328,7 @@ pub fn handle_place_order(
     };
 
     {
-        let mut order_book = order_book_loader.load_mut()?;
+        let mut order_book = (&mut *order_book_loader);
         for fill in &fills {
             order_book.apply_fill_to_maker(
                 maker_side,
@@ -379,7 +390,7 @@ pub fn handle_place_order(
     // ---------------------------------------------------------------
     let timestamp = Clock::get()?.unix_timestamp;
     let order_id = {
-        let mut order_book = order_book_loader.load_mut()?;
+        let mut order_book = (&mut *order_book_loader);
         let id = order_book.allocate_order_id()?;
         if taker_remaining > 0 {
             require!(!order_book.is_side_full(side), ErrorCode::OrderBookFull);
@@ -453,7 +464,7 @@ pub struct PlaceOrderAccountConstraints {
     // `has_one = order_book` on `market` is what ties this specific account
     // to this specific market.
     #[account(mut)]
-    pub order_book: AccountLoader<OrderBook>,
+    pub order_book: Account<OrderBook>,
 
     // The order PDA seed uses the book's `next_order_id` *before* this
     // instruction increments it - i.e. the id this new order will receive.
@@ -465,7 +476,7 @@ pub struct PlaceOrderAccountConstraints {
         seeds = [
             ORDER_SEED,
             market.address().as_ref(),
-            order_book.load()?.next_order_id.to_le_bytes()
+            (&*order_book).next_order_id.to_le_bytes()
         ],
         bump
     )]

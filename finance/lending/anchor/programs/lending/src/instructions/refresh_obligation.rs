@@ -152,7 +152,18 @@ where
         reserve.price_feed,
         LendingError::InvalidObligationAccount
     );
-    let price_feed = Account::<PriceFeed>::try_from(price_info)?;
+    let price_feed = {
+        let data = price_info.try_borrow()?;
+        let disc_len = <PriceFeed as anchor_lang::Discriminator>::DISCRIMINATOR.len();
+        require!(
+            data.len() > disc_len
+                && &data[..disc_len] == <PriceFeed as anchor_lang::Discriminator>::DISCRIMINATOR,
+            ErrorCode::MakerAccountMismatch
+        );
+        let mut payload = &data[disc_len..];
+        <PriceFeed as wincode::SchemaRead<anchor_lang::BorshConfig>>::get(&mut payload)
+            .map_err(|_| ErrorCode::MakerAccountMismatch)?
+    };
     let price_scaled = price_feed.price_scaled(slot)?;
 
     Ok((reserve.into_inner(), price_scaled))

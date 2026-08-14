@@ -70,7 +70,7 @@ pub struct InitializeMarketAccountConstraints {
     // instruction, sizing the account to ORDER_BOOK_ACCOUNT_SIZE, owned by
     // this program, and zero-initialized.
     //
-    // `#[account(zero)]` verifies the account is owned by this program
+    // `#[account(zeroed)]` verifies the account is owned by this program
     // and has its discriminator unset, which is exactly what a freshly
     // create_account-d account looks like. The handler then stamps the
     // discriminator + struct via `load_init()`.
@@ -80,8 +80,8 @@ pub struct InitializeMarketAccountConstraints {
     // client must generate a real keypair for it. The program ties this
     // account to its market via `has_one = order_book` on `market`, not via
     // seeds.
-    #[account(zero)]
-    pub order_book: AccountLoader<OrderBook>,
+    #[account(zeroed)]
+    pub order_book: Account<OrderBook>,
 
     pub base_mint: InterfaceAccount<Mint>,
 
