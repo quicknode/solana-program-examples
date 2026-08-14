@@ -63,21 +63,27 @@ pub fn handler(
         context.accounts.merkle_tree.address()
     );
 
-    let proof_metas: Vec<AccountMeta> = context
-        .remaining_accounts
+    // `remaining_accounts()` returns an owned vec; take it once so the proof
+    // views stay alive for the CPI below.
+    let proof_accounts = context.remaining_accounts()?;
+
+    // Read the bump before the CPI handles take a mutable borrow of `vault`.
+    let vault_bump = context.accounts.vault.bump;
+
+    let proof_metas: Vec<AccountMeta> = proof_accounts
         .iter()
-        .map(|acc| AccountMeta::new_readonly(acc.address(), false))
+        .map(|acc| AccountMeta::new_readonly(*acc.address(), false))
         .collect();
 
     let instruction = build_transfer_instruction(
-        context.accounts.tree_authority.address(),
-        context.accounts.vault.address(),
-        context.accounts.vault.address(),
-        context.accounts.new_leaf_owner.address(),
-        context.accounts.merkle_tree.address(),
-        context.accounts.log_wrapper.address(),
-        context.accounts.compression_program.address(),
-        context.accounts.system_program.address(),
+        *context.accounts.tree_authority.address(),
+        *context.accounts.vault.address(),
+        *context.accounts.vault.address(),
+        *context.accounts.new_leaf_owner.address(),
+        *context.accounts.merkle_tree.address(),
+        *context.accounts.log_wrapper.address(),
+        *context.accounts.compression_program.address(),
+        *context.accounts.system_program.address(),
         &proof_metas,
         TransferArgs {
             root,
@@ -88,8 +94,10 @@ pub fn handler(
         },
     )?;
 
-    // Gather all account infos for the CPI
-    let mut account_infos = vec![
+    // Gather all account infos for the CPI. `invoke_signed` takes erased
+    // `CpiHandle`s, so the writable handles convert on the way in and the
+    // proof nodes (read-only to Bubblegum) are wrapped directly.
+    let mut account_infos: Vec<CpiHandle> = vec![
         context.accounts.bubblegum_program.cpi_handle_mut(),
         context.accounts.tree_authority.cpi_handle_mut(),
         context.accounts.vault.cpi_handle_mut(),
@@ -98,15 +106,18 @@ pub fn handler(
         context.accounts.log_wrapper.cpi_handle_mut(),
         context.accounts.compression_program.cpi_handle_mut(),
         context.accounts.system_program.cpi_handle_mut(),
-    ];
-    for acc in context.remaining_accounts()?.iter() {
-        account_infos.push(acc.cpi_handle_mut());
+    ]
+    .into_iter()
+    .map(CpiHandle::from)
+    .collect();
+    for acc in proof_accounts.iter() {
+        account_infos.push(CpiHandle::readonly(acc));
     }
 
     invoke_signed(
         &instruction,
         &account_infos,
-        &[&[VAULT_SEED, &[context.accounts.vault.bump]]],
+        &[&[VAULT_SEED, &[vault_bump]]],
     )?;
 
     Ok(())

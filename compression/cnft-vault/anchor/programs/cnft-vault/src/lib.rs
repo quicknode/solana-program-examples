@@ -74,7 +74,8 @@ pub fn build_transfer_instruction(
     accounts.extend_from_slice(remaining_accounts);
 
     let mut data = TRANSFER_DISCRIMINATOR.to_vec();
-    args.serialize(&mut data)?;
+    args.serialize(&mut data)
+        .map_err(|_| ProgramError::InvalidInstructionData)?;
 
     Ok(Instruction {
         program_id: MPL_BUBBLEGUM_ID,

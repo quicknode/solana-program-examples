@@ -104,7 +104,8 @@ pub fn handle_mint(
     };
 
     let mut data = MINT_TO_COLLECTION_V1_DISCRIMINATOR.to_vec();
-    args.serialize(&mut data)?;
+    args.serialize(&mut data)
+        .map_err(|_| ProgramError::InvalidInstructionData)?;
 
     // Build account metas matching MintToCollectionV1 instruction layout
     let mut accounts = Vec::with_capacity(16);
@@ -180,8 +181,9 @@ pub fn handle_mint(
         data,
     };
 
-    // Gather all account infos for the CPI
-    let account_infos = vec![
+    // Gather all account infos for the CPI. `invoke` takes erased `CpiHandle`s,
+    // so each writable handle is converted on the way in.
+    let account_infos: Vec<CpiHandle> = vec![
         context.accounts.bubblegum_program.cpi_handle_mut(),
         context.accounts.tree_authority.cpi_handle_mut(),
         context.accounts.leaf_owner.cpi_handle_mut(),
@@ -202,7 +204,11 @@ pub fn handle_mint(
         context.accounts.compression_program.cpi_handle_mut(),
         context.accounts.token_metadata_program.cpi_handle_mut(),
         context.accounts.system_program.cpi_handle_mut(),
-    ];
+    ]
+    .into_iter()
+    .map(CpiHandle::from)
+    .collect();
+
 
     invoke(&instruction, &account_infos)?;
 

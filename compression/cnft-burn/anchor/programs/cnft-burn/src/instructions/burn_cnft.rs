@@ -57,6 +57,10 @@ pub fn handle_burn_cnft(
     nonce: u64,
     index: u32,
 ) -> Result<()> {
+    // `remaining_accounts()` walks the input cursor and returns an owned vec,
+    // so take it once up front and use the local everywhere below.
+    let proof_accounts = context.remaining_accounts()?;
+
     // Build instruction data: discriminator + borsh-serialized args
     let args = BurnArgs {
         root,
@@ -66,10 +70,11 @@ pub fn handle_burn_cnft(
         index,
     };
     let mut data = BURN_DISCRIMINATOR.to_vec();
-    args.serialize(&mut data)?;
+    args.serialize(&mut data)
+        .map_err(|_| ProgramError::InvalidInstructionData)?;
 
     // Build account metas matching mpl-bubblegum Burn instruction layout
-    let mut accounts = Vec::with_capacity(7 + context.remaining_accounts()?.len());
+    let mut accounts = Vec::with_capacity(7 + proof_accounts.len());
     accounts.push(AccountMeta::new_readonly(
         *context.accounts.tree_authority.address(),
         false,
@@ -100,8 +105,8 @@ pub fn handle_burn_cnft(
         false,
     ));
     // Append remaining accounts (proof nodes)
-    for acc in context.remaining_accounts()?.iter() {
-        accounts.push(AccountMeta::new_readonly(acc.address(), false));
+    for acc in proof_accounts.iter() {
+        accounts.push(AccountMeta::new_readonly(*acc.address(), false));
     }
 
     let instruction = Instruction {
@@ -110,8 +115,10 @@ pub fn handle_burn_cnft(
         data,
     };
 
-    // Gather all account infos for the CPI
-    let mut account_infos = vec![
+    // Gather all account infos for the CPI. `invoke` takes erased `CpiHandle`s,
+    // so the writable handles are converted on the way in and the proof nodes
+    // (bare `AccountView`s, read-only to Bubblegum) are wrapped directly.
+    let mut account_infos: Vec<CpiHandle> = vec![
         context.accounts.bubblegum_program.cpi_handle_mut(),
         context.accounts.tree_authority.cpi_handle_mut(),
         context.accounts.leaf_owner.cpi_handle_mut(),
@@ -119,9 +126,12 @@ pub fn handle_burn_cnft(
         context.accounts.log_wrapper.cpi_handle_mut(),
         context.accounts.compression_program.cpi_handle_mut(),
         context.accounts.system_program.cpi_handle_mut(),
-    ];
-    for acc in context.remaining_accounts()?.iter() {
-        account_infos.push(acc.cpi_handle_mut());
+    ]
+    .into_iter()
+    .map(CpiHandle::from)
+    .collect();
+    for acc in proof_accounts.iter() {
+        account_infos.push(CpiHandle::readonly(acc));
     }
 
     invoke(&instruction, &account_infos)?;

@@ -35,6 +35,11 @@ pub fn handle_verify(
     context: &mut Context<VerifyAccountConstraints>,
     params: &VerifyParams,
 ) -> Result<()> {
+    // `remaining_accounts()` walks the input cursor and hands back an owned
+    // vec, so take it once up front: the mutable borrow of `context` ends here
+    // and the proof accounts stay alive for the CPI below.
+    let proof_accounts = context.remaining_accounts()?;
+
     let asset_id = get_asset_id(&context.accounts.merkle_tree.address(), params.nonce);
     let leaf_hash = leaf_schema_v1_hash(
         &asset_id,
@@ -52,8 +57,8 @@ pub fn handle_verify(
         *context.accounts.merkle_tree.address(),
         false,
     )];
-    for acc in context.remaining_accounts()?.iter() {
-        accounts.push(AccountMeta::new_readonly(acc.address(), false));
+    for acc in proof_accounts.iter() {
+        accounts.push(AccountMeta::new_readonly(*acc.address(), false));
     }
 
     let mut data = VERIFY_LEAF_DISCRIMINATOR.to_vec();
@@ -61,9 +66,11 @@ pub fn handle_verify(
     data.extend_from_slice(&leaf_hash);
     data.extend_from_slice(&params.index.to_le_bytes());
 
-    let mut account_infos = vec![context.accounts.merkle_tree.cpi_handle_mut()];
-    for acc in context.remaining_accounts()?.iter() {
-        account_infos.push(acc.cpi_handle_mut());
+    // `verify_leaf` only reads, so every handle is readonly; the proof nodes
+    // arrive as bare `AccountView`s and are wrapped directly.
+    let mut account_infos = vec![context.accounts.merkle_tree.cpi_handle()];
+    for acc in proof_accounts.iter() {
+        account_infos.push(CpiHandle::readonly(acc));
     }
 
     anchor_lang::solana_program::program::invoke(

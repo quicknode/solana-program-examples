@@ -92,41 +92,47 @@ pub fn handler(
     // The proof lengths are client-supplied: bounds-check them against the
     // accounts actually provided before slicing, so adversarial input gets a
     // clean named error instead of a panic.
+    // `remaining_accounts()` returns an owned vec; take it once so the proof
+    // views stay alive for both CPIs below.
+    let proof_accounts = context.remaining_accounts()?;
+
     let proof_1_length = proof_1_length as usize;
     let proof_2_length = proof_2_length as usize;
     require!(
         proof_1_length
             .checked_add(proof_2_length)
-            .is_some_and(|total| total == context.remaining_accounts()?.len()),
+            .is_some_and(|total| total == proof_accounts.len()),
         VaultError::ProofLengthMismatch
     );
 
-    let signer_seeds: &[&[u8]] = &[VAULT_SEED, &[context.accounts.vault.bump]];
+    // Read the bump before the CPI handles take a mutable borrow of `vault`.
+    let vault_bump = context.accounts.vault.bump;
+    let signer_seeds: &[&[u8]] = &[VAULT_SEED, &[vault_bump]];
 
     // Split remaining accounts into proof1 and proof2
-    let (proof1_accounts, proof2_accounts) = context.remaining_accounts()?.split_at(proof_1_length);
+    let (proof1_accounts, proof2_accounts) = proof_accounts.split_at(proof_1_length);
 
     let proof1_metas: Vec<AccountMeta> = proof1_accounts
         .iter()
-        .map(|acc| AccountMeta::new_readonly(acc.address(), false))
+        .map(|acc| AccountMeta::new_readonly(*acc.address(), false))
         .collect();
 
     let proof2_metas: Vec<AccountMeta> = proof2_accounts
         .iter()
-        .map(|acc| AccountMeta::new_readonly(acc.address(), false))
+        .map(|acc| AccountMeta::new_readonly(*acc.address(), false))
         .collect();
 
     // Withdraw cNFT#1
     msg!("withdrawing cNFT#1");
     let instruction1 = build_transfer_instruction(
-        context.accounts.tree_authority1.address(),
-        context.accounts.vault.address(),
-        context.accounts.vault.address(),
-        context.accounts.new_leaf_owner1.address(),
-        context.accounts.merkle_tree1.address(),
-        context.accounts.log_wrapper.address(),
-        context.accounts.compression_program.address(),
-        context.accounts.system_program.address(),
+        *context.accounts.tree_authority1.address(),
+        *context.accounts.vault.address(),
+        *context.accounts.vault.address(),
+        *context.accounts.new_leaf_owner1.address(),
+        *context.accounts.merkle_tree1.address(),
+        *context.accounts.log_wrapper.address(),
+        *context.accounts.compression_program.address(),
+        *context.accounts.system_program.address(),
         &proof1_metas,
         TransferArgs {
             root: root1,
@@ -137,7 +143,7 @@ pub fn handler(
         },
     )?;
 
-    let mut account_infos1 = vec![
+    let mut account_infos1: Vec<CpiHandle> = vec![
         context.accounts.bubblegum_program.cpi_handle_mut(),
         context.accounts.tree_authority1.cpi_handle_mut(),
         context.accounts.vault.cpi_handle_mut(),
@@ -146,9 +152,12 @@ pub fn handler(
         context.accounts.log_wrapper.cpi_handle_mut(),
         context.accounts.compression_program.cpi_handle_mut(),
         context.accounts.system_program.cpi_handle_mut(),
-    ];
+    ]
+    .into_iter()
+    .map(CpiHandle::from)
+    .collect();
     for acc in proof1_accounts.iter() {
-        account_infos1.push(acc.cpi_handle_mut());
+        account_infos1.push(CpiHandle::readonly(acc));
     }
 
     invoke_signed(&instruction1, &account_infos1, &[signer_seeds])?;
@@ -156,14 +165,14 @@ pub fn handler(
     // Withdraw cNFT#2
     msg!("withdrawing cNFT#2");
     let instruction2 = build_transfer_instruction(
-        context.accounts.tree_authority2.address(),
-        context.accounts.vault.address(),
-        context.accounts.vault.address(),
-        context.accounts.new_leaf_owner2.address(),
-        context.accounts.merkle_tree2.address(),
-        context.accounts.log_wrapper.address(),
-        context.accounts.compression_program.address(),
-        context.accounts.system_program.address(),
+        *context.accounts.tree_authority2.address(),
+        *context.accounts.vault.address(),
+        *context.accounts.vault.address(),
+        *context.accounts.new_leaf_owner2.address(),
+        *context.accounts.merkle_tree2.address(),
+        *context.accounts.log_wrapper.address(),
+        *context.accounts.compression_program.address(),
+        *context.accounts.system_program.address(),
         &proof2_metas,
         TransferArgs {
             root: root2,
@@ -174,7 +183,7 @@ pub fn handler(
         },
     )?;
 
-    let mut account_infos2 = vec![
+    let mut account_infos2: Vec<CpiHandle> = vec![
         context.accounts.bubblegum_program.cpi_handle_mut(),
         context.accounts.tree_authority2.cpi_handle_mut(),
         context.accounts.vault.cpi_handle_mut(),
@@ -183,9 +192,12 @@ pub fn handler(
         context.accounts.log_wrapper.cpi_handle_mut(),
         context.accounts.compression_program.cpi_handle_mut(),
         context.accounts.system_program.cpi_handle_mut(),
-    ];
+    ]
+    .into_iter()
+    .map(CpiHandle::from)
+    .collect();
     for acc in proof2_accounts.iter() {
-        account_infos2.push(acc.cpi_handle_mut());
+        account_infos2.push(CpiHandle::readonly(acc));
     }
 
     invoke_signed(&instruction2, &account_infos2, &[signer_seeds])?;
