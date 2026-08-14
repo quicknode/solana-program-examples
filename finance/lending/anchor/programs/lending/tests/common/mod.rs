@@ -7,11 +7,8 @@
 //! instructions into the same transaction, exactly as a real client must.
 
 use anchor_lang::{
-    solana_program::{
-        instruction::{AccountMeta, Instruction},
-        system_program,
-    },
-    AccountDeserialize, InstructionData, ToAccountMetas,
+    solana_program::instruction::{AccountMeta, Instruction},
+    system_program, AccountDeserialize, InstructionData, ToAccountMetas,
 };
 use anchor_spl::token::ID as TOKEN_PROGRAM_ID;
 use litesvm::LiteSVM;

@@ -6,14 +6,13 @@ use {
     borsh::BorshDeserialize,
     fundraiser::SECONDS_TO_DAYS,
     litesvm::LiteSVM,
-    solana_clock::Clock,
-    solana_keypair::Keypair,
     solana_kite::{
         create_associated_token_account, create_token_mint, create_wallet,
         get_token_account_balance, mint_tokens_to_token_account,
         send_transaction_from_instructions,
     },
     solana_signer::Signer,
+    solana_solana_keypair::Keypair,
 };
 
 const MINT_DECIMALS: u8 = 6;

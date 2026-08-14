@@ -83,7 +83,7 @@ fn init_player_ix(program_id: &Pubkey, signer: &Pubkey) -> Instruction {
             player: player_pda(program_id, signer),
             game_data: game_data_pda(program_id, LEVEL_SEED),
             signer: *signer,
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
         data: extension_nft::instruction::InitPlayer {
@@ -98,7 +98,7 @@ fn mint_nft_ix(program_id: &Pubkey, signer: &Pubkey, mint: &Pubkey) -> Instructi
         program_id: *program_id,
         accounts: extension_nft::accounts::MintNftAccountConstraints {
             signer: *signer,
-            system_program: system_program::id(),
+            system_program: system_program::ID,
             token_program: TOKEN_2022_ID,
             token_account: associated_token_address(signer, mint),
             mint: *mint,
@@ -121,7 +121,7 @@ fn chop_tree_ix(program_id: &Pubkey, signer: &Pubkey, mint: &Pubkey, counter: u1
             player: player_pda(program_id, signer),
             game_data: game_data_pda(program_id, LEVEL_SEED),
             signer: *signer,
-            system_program: system_program::id(),
+            system_program: system_program::ID,
             mint: *mint,
             nft_authority: nft_authority_pda(program_id),
             token_program: TOKEN_2022_ID,

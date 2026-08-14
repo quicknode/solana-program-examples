@@ -13,7 +13,6 @@ use {
     anchor_lang::{
         solana_program::{
             instruction::{AccountMeta, Instruction},
-            pubkey::Address,
             system_instruction, system_program,
         },
         Discriminator, InstructionData, ToAccountMetas,

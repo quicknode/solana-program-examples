@@ -1,11 +1,10 @@
 use {
     anchor_lang::{
         solana_program::instruction::Instruction,
-        InstructionData, ToAccountMetas,
+        Address, InstructionData, ToAccountMetas,
     },
     litesvm::LiteSVM,
-    solana_clock::Clock,
-    pythexample::MAXIMUM_PRICE_AGE_SECONDS,
+    solana_pythexample::MAXIMUM_PRICE_AGE_SECONDS,
     solana_keypair::Keypair,
     solana_kite::{create_wallet, send_transaction_from_instructions},
     solana_signer::Signer,
