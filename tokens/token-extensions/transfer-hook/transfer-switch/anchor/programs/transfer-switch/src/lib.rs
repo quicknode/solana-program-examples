@@ -11,10 +11,13 @@ use spl_transfer_hook_interface::instruction::{
 
 declare_id!("FjcHckEgXcBhFmSGai3FRpDLiT6hbpV893n8iTxVd81g");
 
-// v2's `#[program(interface)]` declares an interface for CPI and emits no
-// entrypoint. This is a real deployable program that also implements the
-// transfer-hook interface, so it stays a plain `#[program]`; the interface
-// instruction gets its discriminator from `#[discrim = ...]` below.
+pub mod entrypoint;
+
+// v2's `#[program(interface, ...)]` declares an interface for other programs to
+// CPI into and emits no entrypoint, and an executable `#[program]` only accepts
+// one-byte custom discriminators — so the transfer-hook interface's eight-byte
+// discriminators have no direct spelling. `entrypoint` bridges the gap: it maps
+// each of them onto a handler before anchor's dispatch runs.
 #[program]
 pub mod transfer_switch {
     use super::*;
@@ -28,7 +31,6 @@ pub mod transfer_switch {
     }
 
     // sha256("spl-transfer-hook-interface:initialize-extra-account-metas")[..8]
-    #[discrim = [43, 34, 13, 49, 167, 88, 235, 235]]
     pub fn initialize_extra_account_metas_list(
         mut context: &mut Context<InitializeExtraAccountMetasAccountConstraints>,
     ) -> Result<()> {
@@ -41,7 +43,6 @@ pub mod transfer_switch {
     }
 
     // sha256("spl-transfer-hook-interface:execute")[..8]
-    #[discrim = [105, 37, 101, 197, 75, 251, 102, 26]]
     pub fn transfer_hook(
         mut context: &mut Context<TransferHookAccountConstraints>,
         _amount: u64,

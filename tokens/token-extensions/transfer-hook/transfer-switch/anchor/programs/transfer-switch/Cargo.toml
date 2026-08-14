@@ -9,7 +9,11 @@ crate-type = ["cdylib", "lib"]
 name = "transfer_switch"
 
 [features]
-default = []
+# `no-entrypoint` is always on: anchor then exports its dispatch as
+# `__anchor_dispatch` rather than claiming the `entrypoint` symbol, leaving
+# src/entrypoint.rs free to claim it and map the transfer-hook interface's
+# discriminators onto this program's handlers.
+default = ["no-entrypoint"]
 cpi = ["no-entrypoint"]
 no-entrypoint = []
 no-idl = []

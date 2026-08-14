@@ -3,7 +3,7 @@ use std::cell::RefMut;
 use anchor_lang::prelude::*;
 use anchor_spl::token_2022::spl_token_2022::{
     extension::{
-        transfer_hook::TransferHookAccount, BaseStateWithExtensionsMut, PodStateWithExtensionsMut,
+        transfer_hook::TransferHookAccount, BaseStateWithExtensions, PodStateWithExtensions,
     },
     pod::PodAccount,
 };
@@ -26,16 +26,18 @@ pub enum TransferError {
     IsNotCurrentlyTransferring,
 }
 
-// v2's `#[program(interface)]` declares an interface for CPI and emits no
-// entrypoint. This is a real deployable program that also implements the
-// transfer-hook interface, so it stays a plain `#[program]`; the interface
-// instruction gets its discriminator from `#[discrim = ...]` below.
+pub mod entrypoint;
+
+// v2's `#[program(interface, ...)]` declares an interface for other programs to
+// CPI into and emits no entrypoint, and an executable `#[program]` only accepts
+// one-byte custom discriminators — so the transfer-hook interface's eight-byte
+// discriminators have no direct spelling. `entrypoint` bridges the gap: it maps
+// each of them onto a handler before anchor's dispatch runs.
 #[program]
 pub mod transfer_hook {
     use super::*;
 
     // sha256("spl-transfer-hook-interface:initialize-extra-account-metas")[..8]
-    #[discrim = [43, 34, 13, 49, 167, 88, 235, 235]]
     pub fn initialize_extra_account_meta_list(
         context: &mut Context<InitializeExtraAccountMetaListAccountConstraints>,
     ) -> Result<()> {
@@ -43,7 +45,6 @@ pub mod transfer_hook {
     }
 
     // sha256("spl-transfer-hook-interface:execute")[..8]
-    #[discrim = [105, 37, 101, 197, 75, 251, 102, 26]]
     pub fn transfer_hook(
         context: &mut Context<TransferHookAccountConstraints>,
         amount: u64,
@@ -53,10 +54,16 @@ pub mod transfer_hook {
 }
 
 pub fn check_is_transferring(context: &Context<TransferHookAccountConstraints>) -> Result<()> {
-    let mut source_token_info = *context.accounts.source_token.account();
-    let mut account_data_ref = source_token_info.try_borrow_mut()?;
-    let mut account = PodStateWithExtensionsMut::<PodAccount>::unpack(&mut account_data_ref)?;
-    let account_extension = account.get_extension_mut::<TransferHookAccount>()?;
+    // Read-only: the account already holds a shared borrow of its buffer, and a
+    // second shared borrow is fine where `try_borrow_mut` would be rejected.
+    let account_data_ref = context.accounts.source_token.account().try_borrow()?;
+    // .map_err() needed because spl-token-2022 uses solana-program-error 2.x
+    // while anchor-lang uses 3.x - structurally identical but different semver types
+    let account = PodStateWithExtensions::<PodAccount>::unpack(&account_data_ref)
+        .map_err(|_| ProgramError::InvalidAccountData)?;
+    let account_extension = account
+        .get_extension::<TransferHookAccount>()
+        .map_err(|_| ProgramError::InvalidAccountData)?;
 
     if !bool::from(account_extension.transferring) {
         return err!(TransferError::IsNotCurrentlyTransferring);
