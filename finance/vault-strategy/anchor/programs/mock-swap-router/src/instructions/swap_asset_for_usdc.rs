@@ -24,7 +24,7 @@ pub struct SwapAssetForUsdcAccountConstraints {
     )]
     pub asset_rate: BorshAccount<AssetRate>,
 
-    #[account(constraint = usdc_mint.address() == router_config.usdc_mint @ RouterError::WrongUsdcMint)]
+    #[account(constraint = *usdc_mint.address() == router_config.usdc_mint @ RouterError::WrongUsdcMint)]
     pub usdc_mint: Box<InterfaceAccount<Mint>>,
 
     #[account(mut)]

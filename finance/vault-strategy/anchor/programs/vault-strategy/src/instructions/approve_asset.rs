@@ -34,8 +34,8 @@ pub fn handle_approve_asset(
     price_feed: Address,
 ) -> Result<()> {
     *context.accounts.approved_asset = (ApprovedAsset {
-        registry: context.accounts.registry.address(),
-        mint: context.accounts.asset_mint.address(),
+        registry: *context.accounts.registry.address(),
+        mint: *context.accounts.asset_mint.address(),
         price_feed,
         bump: context.bumps.approved_asset,
     });

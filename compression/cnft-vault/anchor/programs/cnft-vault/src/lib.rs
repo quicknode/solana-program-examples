@@ -93,8 +93,8 @@ pub mod cnft_vault {
         instructions::initialize_vault::handler(context)
     }
 
-    pub fn withdraw_cnft<'info>(
-        context: &mut Context<'info, WithdrawCnftAccountConstraints<'info>>,
+    pub fn withdraw_cnft(
+        context: &mut Context<WithdrawCnftAccountConstraints>,
         root: [u8; 32],
         data_hash: [u8; 32],
         creator_hash: [u8; 32],
@@ -105,8 +105,8 @@ pub mod cnft_vault {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn withdraw_two_cnfts<'info>(
-        context: &mut Context<'info, WithdrawTwoCnftsAccountConstraints<'info>>,
+    pub fn withdraw_two_cnfts(
+        context: &mut Context<WithdrawTwoCnftsAccountConstraints>,
         root1: [u8; 32],
         data_hash1: [u8; 32],
         creator_hash1: [u8; 32],

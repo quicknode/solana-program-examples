@@ -52,8 +52,8 @@ pub mod order_book {
     /// `remaining_accounts`, in pairs of
     /// `(maker_order_pda, maker_user_account_pda)`, ordered by the
     /// book's price-time priority (i.e. best ask first for a taker bid).
-    pub fn place_order<'info>(
-        context: &mut Context<'info, PlaceOrderAccountConstraints<'info>>,
+    pub fn place_order(
+        context: &mut Context<PlaceOrderAccountConstraints>,
         side: state::OrderSide,
         price: u64,
         quantity: u64,

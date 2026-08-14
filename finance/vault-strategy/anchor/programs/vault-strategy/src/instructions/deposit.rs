@@ -71,9 +71,10 @@ pub struct DepositAccountConstraints {
     pub router_authority: UncheckedAccount,
 
     #[account(
-        constraint = swap_router_program.address() == strategy.swap_router @ VaultError::InvalidSwapRouter
+        constraint = *swap_router_program.address() == strategy.swap_router @ VaultError::InvalidSwapRouter
     )]
-    pub swap_router_program: Program<mock_swap_router::program::MockSwapRouter>,
+/// CHECK: validated by the address constraint above
+    pub swap_router_program: UncheckedAccount,
 
     pub associated_token_program: Program<AssociatedToken>,
     pub token_program: Interface<'static, TokenInterface>,
@@ -88,8 +89,8 @@ pub struct DepositAccountConstraints {
 /// invested. For each asset the handler swaps `usdc_amount * weight_bps / 10000`
 /// through the registered router, so a depositor's money is invested in the same
 /// transaction they put it in (only sub-cent rounding dust can remain as USDC).
-pub fn handle_deposit<'info>(
-    context: &mut Context<'info, DepositAccountConstraints<'info>>,
+pub fn handle_deposit(
+    context: &mut Context<DepositAccountConstraints>,
     usdc_amount: u64,
     minimum_shares: u64,
 ) -> Result<()> {
@@ -106,7 +107,7 @@ pub fn handle_deposit<'info>(
     let usdc_decimals = context.accounts.usdc_mint.decimals();
     let strategy_index = context.accounts.strategy.index;
     let strategy_bump = context.accounts.strategy.bump;
-    let strategy_key = context.accounts.strategy.address();
+    let strategy_key = *context.accounts.strategy.address();
     let max_slippage_bps = context.accounts.strategy.max_slippage_bps;
     let asset_count = context.accounts.strategy.asset_count as usize;
 
@@ -115,7 +116,7 @@ pub fn handle_deposit<'info>(
     // Net asset value over the complete asset set. The assets are exactly indices
     // 0..asset_count, so requiring five accounts per index, in order, each with a
     // matching index, makes it impossible to omit an asset and understate NAV.
-    let remaining = context.remaining_accounts();
+    let remaining = context.remaining_accounts()?;
     require!(
         remaining.len() == asset_count * 5,
         VaultError::IncompleteAssetAccounts
@@ -139,7 +140,7 @@ pub fn handle_deposit<'info>(
             VaultError::InvalidAssetAccount
         );
         require_keys_eq!(
-            vault_account.address(),
+            *vault_account.address(),
             config.vault,
             VaultError::InvalidAssetAccount
         );
@@ -174,9 +175,9 @@ pub fn handle_deposit<'info>(
     // Pull the depositor's USDC into the strategy's USDC vault.
     let transfer_accounts = TransferChecked {
         from: context.accounts.depositor_usdc_account.cpi_handle_mut(),
-        mint: context.accounts.usdc_mint.cpi_handle_mut(),
+        mint: context.accounts.usdc_mint.cpi_handle(),
         to: context.accounts.vault_usdc.cpi_handle_mut(),
-        authority: context.accounts.depositor.cpi_handle_mut(),
+        authority: context.accounts.depositor.cpi_handle(),
     };
     let cpi_ctx = CpiContext::new(context.accounts.token_program.address(), transfer_accounts);
     transfer_checked(cpi_ctx, usdc_amount, usdc_decimals)?;
@@ -190,14 +191,14 @@ pub fn handle_deposit<'info>(
     // controls.
     for index in 0..asset_count {
         let config_account = &remaining[index * 5];
-        let vault_account = &remaining[index * 5 + 1];
-        let mint_account = &remaining[index * 5 + 2];
+        let mut vault_account = remaining[index * 5 + 1];
+        let mut mint_account = remaining[index * 5 + 2];
         let rate_account = &remaining[index * 5 + 3];
         let feed_account = &remaining[index * 5 + 4];
 
         let config = AssetConfig::load_checked(config_account)?;
         require_keys_eq!(
-            mint_account.address(),
+            *mint_account.address(),
             config.mint,
             VaultError::InvalidAssetAccount
         );
@@ -233,18 +234,18 @@ pub fn handle_deposit<'info>(
             .map_err(|_| VaultError::MathOverflow)?;
 
         let cpi_accounts = RouterSwapAccounts {
-            caller: context.accounts.strategy.cpi_handle_mut(),
-            router_config: context.accounts.router_config.cpi_handle_mut(),
-            asset_rate: rate_account.clone(),
-            usdc_mint: context.accounts.usdc_mint.cpi_handle_mut(),
-            asset_mint: mint_account.clone(),
+            caller: context.accounts.strategy.cpi_handle(),
+            router_config: context.accounts.router_config.cpi_handle(),
+            asset_rate: CpiHandle::readonly(&rate_account),
+            usdc_mint: context.accounts.usdc_mint.cpi_handle(),
+            asset_mint: CpiHandleMut::writable(&mut mint_account),
             caller_usdc_account: context.accounts.vault_usdc.cpi_handle_mut(),
-            caller_asset_account: vault_account.clone(),
+            caller_asset_account: CpiHandleMut::writable(&mut vault_account),
             router_usdc_treasury: context.accounts.router_usdc_treasury.cpi_handle_mut(),
-            router_authority: context.accounts.router_authority.cpi_handle_mut(),
-            associated_token_program: context.accounts.associated_token_program.cpi_handle_mut(),
-            token_program: context.accounts.token_program.cpi_handle_mut(),
-            system_program: context.accounts.system_program.cpi_handle_mut(),
+            router_authority: context.accounts.router_authority.cpi_handle(),
+            associated_token_program: context.accounts.associated_token_program.cpi_handle(),
+            token_program: context.accounts.token_program.cpi_handle(),
+            system_program: context.accounts.system_program.cpi_handle(),
         };
         let cpi_ctx = CpiContext::new_with_signer(
             context.accounts.swap_router_program.address(),
@@ -258,7 +259,7 @@ pub fn handle_deposit<'info>(
     let mint_accounts = MintTo {
         mint: context.accounts.share_mint.cpi_handle_mut(),
         to: context.accounts.depositor_share_account.cpi_handle_mut(),
-        authority: context.accounts.strategy.cpi_handle_mut(),
+        authority: context.accounts.strategy.cpi_handle(),
     };
     let cpi_ctx = CpiContext::new_with_signer(
         context.accounts.token_program.address(),

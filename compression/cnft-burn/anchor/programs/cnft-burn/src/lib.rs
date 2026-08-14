@@ -30,8 +30,8 @@ impl anchor_lang::Id for SPLCompression {
 pub mod cnft_burn {
     use super::*;
 
-    pub fn burn_cnft<'info>(
-        context: &mut Context<'info, BurnCnftAccountConstraints<'info>>,
+    pub fn burn_cnft(
+        context: &mut Context<BurnCnftAccountConstraints>,
         root: [u8; 32],
         data_hash: [u8; 32],
         creator_hash: [u8; 32],

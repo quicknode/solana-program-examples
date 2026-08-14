@@ -70,12 +70,20 @@ impl AssetConfig {
     /// Avoids the lifetime invariance of `Account::try_from` on borrowed infos.
     pub fn load_checked(account: &AccountView) -> Result<AssetConfig> {
         require_keys_eq!(
-            *account.owner,
+            *account.owner(),
             crate::ID,
             crate::error::VaultError::InvalidAssetAccount
         );
-        let data = account.try_borrow_data()?;
-        AssetConfig::try_deserialize(&mut &data[..])
+        let data = account.try_borrow()?;
+        let disc_len = <AssetConfig as anchor_lang::Discriminator>::DISCRIMINATOR.len();
+        require!(
+            data.len() > disc_len
+                && &data[..disc_len]
+                    == <AssetConfig as anchor_lang::Discriminator>::DISCRIMINATOR,
+            crate::error::VaultError::InvalidAssetAccount
+        );
+        let mut payload = &data[disc_len..];
+        <AssetConfig as wincode::SchemaRead<anchor_lang::BorshConfig>>::get(&mut payload)
             .map_err(|_| error!(crate::error::VaultError::InvalidAssetAccount))
     }
 }

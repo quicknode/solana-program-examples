@@ -65,8 +65,8 @@ pub struct WithdrawAccountConstraints {
     // The user's asset token accounts must already exist.
 }
 
-pub fn handle_withdraw<'info>(
-    context: &mut Context<'info, WithdrawAccountConstraints<'info>>,
+pub fn handle_withdraw(
+    context: &mut Context<WithdrawAccountConstraints>,
     shares_to_burn: u64,
     min_usdc_out: u64,
 ) -> Result<()> {
@@ -84,7 +84,7 @@ pub fn handle_withdraw<'info>(
     let asset_count = context.accounts.strategy.asset_count as usize;
 
     require!(
-        context.remaining_accounts().len() == asset_count * 4,
+        context.remaining_accounts()?.len() == asset_count * 4,
         VaultError::IncompleteAssetAccounts
     );
 
@@ -110,20 +110,27 @@ pub fn handle_withdraw<'info>(
     // Hoist owned account-info handles for every CPI up front, so the asset loop
     // can borrow remaining_accounts without also re-borrowing `context.accounts`
     // (Account is invariant over its lifetime, which otherwise fails to unify).
-    let strategy_info = context.accounts.strategy.cpi_handle_mut();
-    let share_mint_info = context.accounts.share_mint.cpi_handle_mut();
-    let usdc_mint_info = context.accounts.usdc_mint.cpi_handle_mut();
-    let vault_usdc_info = context.accounts.vault_usdc.cpi_handle_mut();
-    let user_info = context.accounts.user.cpi_handle_mut();
-    let user_share_info = context.accounts.user_share_account.cpi_handle_mut();
-    let user_usdc_info = context.accounts.user_usdc_account.cpi_handle_mut();
+    // `strategy` signs the payouts below. It is a data account holding a live
+    // borrow on its buffer, so release it across the CPIs and take it back
+    // afterwards — the runtime rejects a CPI that borrows an account we hold.
+    context.accounts.strategy.release_borrow()?;
+
+    // `AccountView` is Copy; each copy still points at the same account, and the
+    // typed handles below carry the borrow provenance v2 wants.
+    let strategy_view = *context.accounts.strategy.account();
+    let mut share_mint_view = *context.accounts.share_mint.account();
+    let usdc_mint_view = *context.accounts.usdc_mint.account();
+    let mut vault_usdc_view = *context.accounts.vault_usdc.account();
+    let user_view = *context.accounts.user.account();
+    let mut user_share_view = *context.accounts.user_share_account.account();
+    let mut user_usdc_view = *context.accounts.user_usdc_account.account();
     let token_program_key = context.accounts.token_program.address();
 
     // Burn the user's shares.
     let burn_accounts = Burn {
-        mint: share_mint_info,
-        from: user_share_info,
-        authority: user_info,
+        mint: CpiHandleMut::writable(&mut share_mint_view),
+        from: CpiHandleMut::writable(&mut user_share_view),
+        authority: CpiHandle::readonly(&user_view),
     };
     burn(
         CpiContext::new(token_program_key, burn_accounts),
@@ -133,10 +140,10 @@ pub fn handle_withdraw<'info>(
     // USDC payout.
     if amount_usdc > 0 {
         let transfer_accounts = TransferChecked {
-            from: vault_usdc_info,
-            mint: usdc_mint_info,
-            to: user_usdc_info,
-            authority: strategy_info.clone(),
+            from: CpiHandleMut::writable(&mut vault_usdc_view),
+            mint: CpiHandle::readonly(&usdc_mint_view),
+            to: CpiHandleMut::writable(&mut user_usdc_view),
+            authority: CpiHandle::readonly(&strategy_view),
         };
         transfer_checked(
             CpiContext::new_with_signer(token_program_key, transfer_accounts, signer_seeds),
@@ -146,36 +153,36 @@ pub fn handle_withdraw<'info>(
     }
 
     // Each basket asset, paid in kind, proportional to shares burned.
-    let remaining = context.remaining_accounts();
+    let remaining = context.remaining_accounts()?;
     for i in 0..asset_count {
         let config_ai = &remaining[i * 4];
-        let vault_ai = &remaining[i * 4 + 1];
-        let mint_ai = &remaining[i * 4 + 2];
-        let user_ata_ai = &remaining[i * 4 + 3];
+        let mut vault_ai = remaining[i * 4 + 1];
+        let mint_ai = remaining[i * 4 + 2];
+        let mut user_ata_ai = remaining[i * 4 + 3];
 
-        let config = AssetConfig::load_checked(config_ai)?;
+        let config = AssetConfig::load_checked(&config_ai)?;
         require_keys_eq!(
             config.strategy,
-            strategy_key,
+            *strategy_key,
             VaultError::InvalidAssetAccount
         );
         require!(config.index as usize == i, VaultError::InvalidAssetAccount);
         require_keys_eq!(
-            vault_ai.address(),
+            *vault_ai.address(),
             config.vault,
             VaultError::InvalidAssetAccount
         );
         require_keys_eq!(
-            mint_ai.address(),
+            *mint_ai.address(),
             config.mint,
             VaultError::InvalidAssetAccount
         );
 
-        let (recipient_mint, recipient_owner) = read_token_mint_and_owner(user_ata_ai)?;
-        require_keys_eq!(recipient_owner, user_key, VaultError::InvalidRecipient);
+        let (recipient_mint, recipient_owner) = read_token_mint_and_owner(&user_ata_ai)?;
+        require_keys_eq!(recipient_owner, *user_key, VaultError::InvalidRecipient);
         require_keys_eq!(recipient_mint, config.mint, VaultError::InvalidRecipient);
 
-        let vault_balance = read_token_amount(vault_ai)?;
+        let vault_balance = read_token_amount(&vault_ai)?;
         let amount: u64 = (vault_balance as u128)
             .checked_mul(shares_u128)
             .ok_or(VaultError::MathOverflow)?
@@ -183,12 +190,12 @@ pub fn handle_withdraw<'info>(
             .ok_or(VaultError::MathOverflow)? as u64;
 
         if amount > 0 {
-            let decimals = read_mint_decimals(mint_ai)?;
+            let decimals = read_mint_decimals(&mint_ai)?;
             let transfer_accounts = TransferChecked {
-                from: vault_ai.cpi_handle_mut(),
-                mint: mint_ai.cpi_handle_mut(),
-                to: user_ata_ai.cpi_handle_mut(),
-                authority: strategy_info.clone(),
+                from: CpiHandleMut::writable(&mut vault_ai),
+                mint: CpiHandle::readonly(&mint_ai),
+                to: CpiHandleMut::writable(&mut user_ata_ai),
+                authority: CpiHandle::readonly(&strategy_view),
             };
             transfer_checked(
                 CpiContext::new_with_signer(token_program_key, transfer_accounts, signer_seeds),

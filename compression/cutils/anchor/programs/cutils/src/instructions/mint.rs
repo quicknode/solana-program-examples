@@ -74,8 +74,8 @@ pub struct MintParams {
 // `with_capacity` + push is intentional here: it documents the exact 16-account
 // MintToCollectionV1 layout in CPI order, so allow clippy's vec_init_then_push.
 #[allow(clippy::vec_init_then_push)]
-pub fn handle_mint<'info>(
-    context: &mut Context<'info, MintAccountConstraints<'info>>,
+pub fn handle_mint(
+    context: &mut Context<MintAccountConstraints>,
     params: MintParams,
 ) -> Result<()> {
     // Build MintToCollectionV1 instruction data

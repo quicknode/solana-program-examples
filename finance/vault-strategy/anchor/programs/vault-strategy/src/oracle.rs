@@ -43,7 +43,7 @@ fn read_pyth_raw(account_data: &[u8]) -> Result<(i64, i64)> {
 /// return its positive, fresh price as u128. `now` is the current unix timestamp.
 pub fn load_price(price_feed: &AccountView, expected_key: &Address, now: i64) -> Result<u128> {
     require_keys_eq!(
-        price_feed.address(),
+        *price_feed.address(),
         *expected_key,
         VaultError::InvalidPriceFeed
     );

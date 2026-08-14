@@ -96,16 +96,25 @@ pub fn handle_settle_event(
     if fee > 0 {
         let event_id = context.accounts.event.event_id;
         let event_bump = context.accounts.event.bump;
+        // `event` signs the transfer below. Release its borrow across the CPI —
+        // the runtime rejects a CPI that borrows an account we still hold.
+        context.accounts.event.release_borrow()?;
+        let event_view = *context.accounts.event.account();
+
         transfer_tokens_from_vault(
             &mut context.accounts.vault,
             &mut context.accounts.fee_recipient_token_account,
             fee,
             &context.accounts.token_mint,
-            *context.accounts.event.account(),
+            event_view,
             &context.accounts.token_program,
             event_id,
             event_bump,
         )?;
+
+        // Take the borrow back before writing the settled state through it.
+        // Only released on this branch, so only reacquired here.
+        context.accounts.event.reacquire_borrow_mut()?;
     }
 
     let event = &mut context.accounts.event;

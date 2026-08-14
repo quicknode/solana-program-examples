@@ -17,7 +17,7 @@ pub struct SetWeightAccountConstraints {
 
     #[account(
         mut,
-        constraint = asset_config.strategy == strategy.address() @ VaultError::InvalidAssetAccount,
+        constraint = asset_config.strategy == *strategy.address() @ VaultError::InvalidAssetAccount,
     )]
     pub asset_config: Box<BorshAccount<AssetConfig>>,
 }

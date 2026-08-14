@@ -82,12 +82,12 @@ pub fn handle_initialize_strategy(
 
     let clock = Clock::get()?;
 
-    *context.accounts.strategy = (Strategy {
+    **context.accounts.strategy = (Strategy {
         index,
-        manager: context.accounts.manager.address(),
-        registry: context.accounts.registry.address(),
-        share_mint: context.accounts.share_mint.address(),
-        usdc_mint: context.accounts.usdc_mint.address(),
+        manager: *context.accounts.manager.address(),
+        registry: *context.accounts.registry.address(),
+        share_mint: *context.accounts.share_mint.address(),
+        usdc_mint: *context.accounts.usdc_mint.address(),
         swap_router,
         fee_bps,
         max_slippage_bps,

@@ -21,7 +21,7 @@ pub fn handle_remove_liquidity(
     let pool = &mut context.accounts.pool;
     let price = refresh_price_and_funding(pool, &context.accounts.oracle_feed)?;
 
-    let lp_supply = context.accounts.lp_mint.supply;
+    let lp_supply = context.accounts.lp_mint.supply();
     let aum = liquidity_provider_aum(pool, price)?;
     require!(aum > 0, PerpError::PoolInsolvent);
 

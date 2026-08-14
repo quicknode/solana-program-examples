@@ -64,8 +64,8 @@ pub mod vault_strategy {
         instructions::set_weight::handle_set_weight(context, weight_bps)
     }
 
-    pub fn deposit<'info>(
-        context: &mut Context<'info, DepositAccountConstraints<'info>>,
+    pub fn deposit(
+        context: &mut Context<DepositAccountConstraints>,
         usdc_amount: u64,
         minimum_shares: u64,
     ) -> Result<()> {
@@ -76,8 +76,8 @@ pub mod vault_strategy {
         instructions::collect_fees::handle_collect_fees(context)
     }
 
-    pub fn withdraw<'info>(
-        context: &mut Context<'info, WithdrawAccountConstraints<'info>>,
+    pub fn withdraw(
+        context: &mut Context<WithdrawAccountConstraints>,
         shares_to_burn: u64,
         min_usdc_out: u64,
     ) -> Result<()> {

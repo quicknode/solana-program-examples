@@ -23,7 +23,7 @@ pub fn handle_initialize_registry(
     context: &mut Context<InitializeRegistryAccountConstraints>,
 ) -> Result<()> {
     *context.accounts.registry = (Registry {
-        authority: context.accounts.authority.address(),
+        authority: *context.accounts.authority.address(),
         bump: context.bumps.registry,
     });
     Ok(())

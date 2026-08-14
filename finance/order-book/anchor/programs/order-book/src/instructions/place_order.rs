@@ -25,8 +25,8 @@ const BASIS_POINTS_DENOMINATOR: u128 = 10_000;
 // small.
 const ACCOUNTS_PER_MAKER: usize = 2;
 
-pub fn handle_place_order<'info>(
-    context: &mut Context<'info, PlaceOrderAccountConstraints<'info>>,
+pub fn handle_place_order(
+    context: &mut Context<PlaceOrderAccountConstraints>,
     side: OrderSide,
     price: u64,
     quantity: u64,
@@ -111,7 +111,7 @@ pub fn handle_place_order<'info>(
     // transaction's remaining_accounts, in the same price-time-priority
     // order the book would walk. We plan fills against the resting tree,
     // then verify the caller's account list matches the plan, then apply.
-    let maker_accounts = &context.remaining_accounts();
+    let maker_accounts = &context.remaining_accounts()?;
     require!(
         maker_accounts.len() % ACCOUNTS_PER_MAKER == 0,
         ErrorCode::MissingMakerAccounts

@@ -16,7 +16,11 @@ pub struct ClaimRefundAccountConstraints {
     #[account(mint::token_program = token_program)]
     pub token_mint: InterfaceAccount<Mint>,
 
+    // `mut` so the borrow released for the vault CPI below can be reacquired:
+    // v2 has no read-only reacquire, and the derive dereferences `event` again
+    // when it checks the constraints that name it.
     #[account(
+        mut,
         seeds = [b"event", event.event_id.to_le_bytes()],
         bump = event.bump,
     )]
@@ -76,16 +80,24 @@ pub fn handle_claim_refund(context: &mut Context<ClaimRefundAccountConstraints>)
 
     let event_id = context.accounts.event.event_id;
     let event_bump = context.accounts.event.bump;
+    // `event` signs the transfer below. Release its borrow across
+    // the CPI — the runtime rejects a CPI that borrows an account we hold.
+    context.accounts.event.release_borrow()?;
+    let event_view = *context.accounts.event.account();
+
     transfer_tokens_from_vault(
         &mut context.accounts.vault,
         &mut context.accounts.bettor_token_account,
         stake,
         &context.accounts.token_mint,
-        *context.accounts.event.account(),
+        event_view,
         &context.accounts.token_program,
         event_id,
         event_bump,
     )?;
+
+    // Take the borrow back before the derive's exit path touches `event` again.
+    context.accounts.event.reacquire_borrow_mut()?;
 
     Ok(())
 }

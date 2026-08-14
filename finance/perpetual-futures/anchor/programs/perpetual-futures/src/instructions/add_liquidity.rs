@@ -21,7 +21,7 @@ pub fn handle_add_liquidity(
     let pool = &mut context.accounts.pool;
     let price = refresh_price_and_funding(pool, &context.accounts.oracle_feed)?;
 
-    let lp_supply = context.accounts.lp_mint.supply;
+    let lp_supply = context.accounts.lp_mint.supply();
     let shares: u64 = if lp_supply == 0 {
         // Bootstrap: shares track collateral one-for-one, less the withheld
         // minimum, so the share supply can never start at a dust amount.

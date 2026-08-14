@@ -33,6 +33,7 @@ anchor-spl = "2.0.0-rc.1"
 
 [dev-dependencies]
 litesvm = "0.13.1"
+solana-clock = "3.0.1"
 solana-signer = "3.0.0"
 solana-keypair = "3.0.1"
 solana-kite = "0.4.0"

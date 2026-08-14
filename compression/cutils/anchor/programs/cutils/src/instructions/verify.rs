@@ -31,8 +31,8 @@ pub struct VerifyParams {
 /// at runtime burns compute for no benefit.
 const VERIFY_LEAF_DISCRIMINATOR: [u8; 8] = [124, 220, 22, 223, 104, 10, 250, 224];
 
-pub fn handle_verify<'info>(
-    context: &mut Context<'info, VerifyAccountConstraints<'info>>,
+pub fn handle_verify(
+    context: &mut Context<VerifyAccountConstraints>,
     params: &VerifyParams,
 ) -> Result<()> {
     let asset_id = get_asset_id(&context.accounts.merkle_tree.address(), params.nonce);
@@ -52,7 +52,7 @@ pub fn handle_verify<'info>(
         *context.accounts.merkle_tree.address(),
         false,
     )];
-    for acc in context.remaining_accounts().iter() {
+    for acc in context.remaining_accounts()?.iter() {
         accounts.push(AccountMeta::new_readonly(acc.address(), false));
     }
 
@@ -62,7 +62,7 @@ pub fn handle_verify<'info>(
     data.extend_from_slice(&params.index.to_le_bytes());
 
     let mut account_infos = vec![context.accounts.merkle_tree.cpi_handle_mut()];
-    for acc in context.remaining_accounts().iter() {
+    for acc in context.remaining_accounts()?.iter() {
         account_infos.push(acc.cpi_handle_mut());
     }
 

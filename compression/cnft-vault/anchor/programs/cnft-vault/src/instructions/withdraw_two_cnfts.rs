@@ -66,8 +66,8 @@ pub struct WithdrawTwoCnftsAccountConstraints {
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn handler<'info>(
-    context: &mut Context<'info, WithdrawTwoCnftsAccountConstraints<'info>>,
+pub fn handler(
+    context: &mut Context<WithdrawTwoCnftsAccountConstraints>,
     root1: [u8; 32],
     data_hash1: [u8; 32],
     creator_hash1: [u8; 32],
@@ -97,14 +97,14 @@ pub fn handler<'info>(
     require!(
         proof_1_length
             .checked_add(proof_2_length)
-            .is_some_and(|total| total == context.remaining_accounts().len()),
+            .is_some_and(|total| total == context.remaining_accounts()?.len()),
         VaultError::ProofLengthMismatch
     );
 
     let signer_seeds: &[&[u8]] = &[VAULT_SEED, &[context.accounts.vault.bump]];
 
     // Split remaining accounts into proof1 and proof2
-    let (proof1_accounts, proof2_accounts) = context.remaining_accounts().split_at(proof_1_length);
+    let (proof1_accounts, proof2_accounts) = context.remaining_accounts()?.split_at(proof_1_length);
 
     let proof1_metas: Vec<AccountMeta> = proof1_accounts
         .iter()

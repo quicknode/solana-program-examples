@@ -34,25 +34,25 @@ pub struct RebalanceAccountConstraints {
     pub buy_mint: Box<InterfaceAccount<Mint>>,
 
     #[account(
-        constraint = sell_config.strategy == strategy.address() @ VaultError::InvalidAssetAccount,
-        constraint = sell_config.mint == sell_mint.address() @ VaultError::AssetNotFound,
-        constraint = sell_config.vault == vault_sell.address() @ VaultError::InvalidAssetAccount,
+        constraint = sell_config.strategy == *strategy.address() @ VaultError::InvalidAssetAccount,
+        constraint = sell_config.mint == *sell_mint.address() @ VaultError::AssetNotFound,
+        constraint = sell_config.vault == *vault_sell.address() @ VaultError::InvalidAssetAccount,
     )]
     pub sell_config: Box<BorshAccount<AssetConfig>>,
 
     #[account(
-        constraint = buy_config.strategy == strategy.address() @ VaultError::InvalidAssetAccount,
-        constraint = buy_config.mint == buy_mint.address() @ VaultError::AssetNotFound,
-        constraint = buy_config.vault == vault_buy.address() @ VaultError::InvalidAssetAccount,
+        constraint = buy_config.strategy == *strategy.address() @ VaultError::InvalidAssetAccount,
+        constraint = buy_config.mint == *buy_mint.address() @ VaultError::AssetNotFound,
+        constraint = buy_config.vault == *vault_buy.address() @ VaultError::InvalidAssetAccount,
     )]
     pub buy_config: Box<BorshAccount<AssetConfig>>,
 
     /// CHECK: Pyth feed - validated against sell asset's registered feed
-    #[account(constraint = sell_price_feed.address() == sell_config.price_feed @ VaultError::InvalidPriceFeed)]
+    #[account(constraint = *sell_price_feed.address() == sell_config.price_feed @ VaultError::InvalidPriceFeed)]
     pub sell_price_feed: UncheckedAccount,
 
     /// CHECK: Pyth feed - validated against buy asset's registered feed
-    #[account(constraint = buy_price_feed.address() == buy_config.price_feed @ VaultError::InvalidPriceFeed)]
+    #[account(constraint = *buy_price_feed.address() == buy_config.price_feed @ VaultError::InvalidPriceFeed)]
     pub buy_price_feed: UncheckedAccount,
 
     #[account(
@@ -96,9 +96,10 @@ pub struct RebalanceAccountConstraints {
     pub router_authority: UncheckedAccount,
 
     #[account(
-        constraint = swap_router_program.address() == strategy.swap_router @ VaultError::InvalidSwapRouter
+        constraint = *swap_router_program.address() == strategy.swap_router @ VaultError::InvalidSwapRouter
     )]
-    pub swap_router_program: Program<mock_swap_router::program::MockSwapRouter>,
+/// CHECK: validated by the address constraint above
+    pub swap_router_program: UncheckedAccount,
 
     pub associated_token_program: Program<AssociatedToken>,
     pub token_program: Interface<'static, TokenInterface>,
@@ -165,18 +166,18 @@ pub fn handle_rebalance(
 
     // Step 1: sell basket token -> USDC
     let sell_cpi_accounts = RouterSellAccounts {
-        caller: context.accounts.strategy.cpi_handle_mut(),
-        router_config: context.accounts.router_config.cpi_handle_mut(),
-        asset_rate: context.accounts.sell_rate.cpi_handle_mut(),
-        usdc_mint: context.accounts.usdc_mint.cpi_handle_mut(),
+        caller: context.accounts.strategy.cpi_handle(),
+        router_config: context.accounts.router_config.cpi_handle(),
+        asset_rate: context.accounts.sell_rate.cpi_handle(),
+        usdc_mint: context.accounts.usdc_mint.cpi_handle(),
         asset_mint: context.accounts.sell_mint.cpi_handle_mut(),
         caller_asset_account: context.accounts.vault_sell.cpi_handle_mut(),
         caller_usdc_account: context.accounts.vault_usdc.cpi_handle_mut(),
         router_usdc_treasury: context.accounts.router_usdc_treasury.cpi_handle_mut(),
-        router_authority: context.accounts.router_authority.cpi_handle_mut(),
-        associated_token_program: context.accounts.associated_token_program.cpi_handle_mut(),
-        token_program: context.accounts.token_program.cpi_handle_mut(),
-        system_program: context.accounts.system_program.cpi_handle_mut(),
+        router_authority: context.accounts.router_authority.cpi_handle(),
+        associated_token_program: context.accounts.associated_token_program.cpi_handle(),
+        token_program: context.accounts.token_program.cpi_handle(),
+        system_program: context.accounts.system_program.cpi_handle(),
     };
     mock_swap_router::cpi::swap_asset_for_usdc(
         CpiContext::new_with_signer(
@@ -190,18 +191,18 @@ pub fn handle_rebalance(
 
     // Step 2: buy basket token with USDC
     let buy_cpi_accounts = RouterBuyAccounts {
-        caller: context.accounts.strategy.cpi_handle_mut(),
-        router_config: context.accounts.router_config.cpi_handle_mut(),
-        asset_rate: context.accounts.buy_rate.cpi_handle_mut(),
-        usdc_mint: context.accounts.usdc_mint.cpi_handle_mut(),
+        caller: context.accounts.strategy.cpi_handle(),
+        router_config: context.accounts.router_config.cpi_handle(),
+        asset_rate: context.accounts.buy_rate.cpi_handle(),
+        usdc_mint: context.accounts.usdc_mint.cpi_handle(),
         asset_mint: context.accounts.buy_mint.cpi_handle_mut(),
         caller_usdc_account: context.accounts.vault_usdc.cpi_handle_mut(),
         caller_asset_account: context.accounts.vault_buy.cpi_handle_mut(),
         router_usdc_treasury: context.accounts.router_usdc_treasury.cpi_handle_mut(),
-        router_authority: context.accounts.router_authority.cpi_handle_mut(),
-        associated_token_program: context.accounts.associated_token_program.cpi_handle_mut(),
-        token_program: context.accounts.token_program.cpi_handle_mut(),
-        system_program: context.accounts.system_program.cpi_handle_mut(),
+        router_authority: context.accounts.router_authority.cpi_handle(),
+        associated_token_program: context.accounts.associated_token_program.cpi_handle(),
+        token_program: context.accounts.token_program.cpi_handle(),
+        system_program: context.accounts.system_program.cpi_handle(),
     };
     mock_swap_router::cpi::swap_usdc_for_asset(
         CpiContext::new_with_signer(

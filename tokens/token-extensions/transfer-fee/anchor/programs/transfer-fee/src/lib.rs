@@ -21,9 +21,7 @@ pub mod transfer_fee {
         handle_process_transfer(context, amount)
     }
 
-    pub fn harvest<'info>(
-        context: &mut Context<'info, HarvestAccountConstraints<'info>>,
-    ) -> Result<()> {
+    pub fn harvest(context: &mut Context<HarvestAccountConstraints>) -> Result<()> {
         process_harvest(context)
     }
 

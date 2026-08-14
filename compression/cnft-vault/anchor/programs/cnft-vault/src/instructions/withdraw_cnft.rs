@@ -49,8 +49,8 @@ pub struct WithdrawCnftAccountConstraints {
     pub system_program: Program<System>,
 }
 
-pub fn handler<'info>(
-    context: &mut Context<'info, WithdrawCnftAccountConstraints<'info>>,
+pub fn handler(
+    context: &mut Context<WithdrawCnftAccountConstraints>,
     root: [u8; 32],
     data_hash: [u8; 32],
     creator_hash: [u8; 32],
@@ -99,7 +99,7 @@ pub fn handler<'info>(
         context.accounts.compression_program.cpi_handle_mut(),
         context.accounts.system_program.cpi_handle_mut(),
     ];
-    for acc in context.remaining_accounts().iter() {
+    for acc in context.remaining_accounts()?.iter() {
         account_infos.push(acc.cpi_handle_mut());
     }
 

@@ -1,11 +1,12 @@
 use {
     anchor_lang::{
-        solana_program::{clock::Clock, instruction::Instruction},
-        system_program, Address, InstructionData, ToAccountMetas,
+        solana_program::instruction::Instruction, system_program, Address, InstructionData,
+        ToAccountMetas,
     },
     borsh::BorshDeserialize,
     fundraiser::SECONDS_TO_DAYS,
     litesvm::LiteSVM,
+    solana_clock::Clock,
     solana_keypair::Keypair,
     solana_kite::{
         create_associated_token_account, create_token_mint, create_wallet,

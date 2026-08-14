@@ -265,7 +265,7 @@ impl Market {
     }
 
     fn current_slot(&self) -> u64 {
-        self.svm.get_sysvar::<anchor_lang::prelude::Clock>().slot
+        self.svm.get_sysvar::<solana_clock::Clock>().slot
     }
 
     /// Simulate a cluster restart at `slot`: prices stamped at or before it

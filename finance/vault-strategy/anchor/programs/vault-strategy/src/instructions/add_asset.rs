@@ -72,13 +72,13 @@ pub fn handle_add_asset(
 
     let index = strategy.asset_count;
 
-    *context.accounts.asset_config = (AssetConfig {
-        strategy: strategy.address(),
+    **context.accounts.asset_config = (AssetConfig {
+        strategy: *strategy.address(),
         index,
-        mint: context.accounts.asset_mint.address(),
+        mint: *context.accounts.asset_mint.address(),
         // Copied from the registry entry, never supplied by the manager.
         price_feed: context.accounts.approved_asset.price_feed,
-        vault: context.accounts.vault_asset.address(),
+        vault: *context.accounts.vault_asset.address(),
         weight_bps,
         bump: context.bumps.asset_config,
     });

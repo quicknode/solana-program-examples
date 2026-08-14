@@ -1,5 +1,5 @@
 use anchor_lang::prelude::*;
-use solana_sysvar::last_restart_slot::LastRestartSlot;
+use crate::last_restart::LastRestartSlot;
 
 use crate::constants::{BASIS_POINTS_DENOMINATOR, MAX_PRICE_STALENESS_SLOTS};
 use crate::errors::PropAmmError;
@@ -46,7 +46,7 @@ pub fn read_oracle_price(
     expected_scale: u32,
     max_confidence_bps: u16,
 ) -> Result<u64> {
-    let data = feed.try_borrow_data()?;
+    let data = feed.try_borrow()?;
     require!(
         data.len() >= FEED_MINIMUM_LENGTH,
         PropAmmError::OracleDataTooShort
@@ -90,7 +90,7 @@ pub fn read_oracle_price(
     // whoever trades first, so reject any price stamped at or before the
     // restart slot; the market refuses to quote until the publisher posts
     // again. Zero means the cluster has never restarted.
-    let last_restart_slot = LastRestartSlot::get()?.last_restart_slot;
+    let last_restart_slot = LastRestartSlot::get()?.last_restart_slot();
     require!(
         last_restart_slot == 0 || last_update_slot > last_restart_slot,
         PropAmmError::PricePredatesRestart

@@ -49,8 +49,8 @@ pub struct BurnCnftAccountConstraints {
     pub system_program: Program<System>,
 }
 
-pub fn handle_burn_cnft<'info>(
-    context: &mut Context<'info, BurnCnftAccountConstraints<'info>>,
+pub fn handle_burn_cnft(
+    context: &mut Context<BurnCnftAccountConstraints>,
     root: [u8; 32],
     data_hash: [u8; 32],
     creator_hash: [u8; 32],
@@ -69,7 +69,7 @@ pub fn handle_burn_cnft<'info>(
     args.serialize(&mut data)?;
 
     // Build account metas matching mpl-bubblegum Burn instruction layout
-    let mut accounts = Vec::with_capacity(7 + context.remaining_accounts().len());
+    let mut accounts = Vec::with_capacity(7 + context.remaining_accounts()?.len());
     accounts.push(AccountMeta::new_readonly(
         *context.accounts.tree_authority.address(),
         false,
@@ -100,7 +100,7 @@ pub fn handle_burn_cnft<'info>(
         false,
     ));
     // Append remaining accounts (proof nodes)
-    for acc in context.remaining_accounts().iter() {
+    for acc in context.remaining_accounts()?.iter() {
         accounts.push(AccountMeta::new_readonly(acc.address(), false));
     }
 
@@ -120,7 +120,7 @@ pub fn handle_burn_cnft<'info>(
         context.accounts.compression_program.cpi_handle_mut(),
         context.accounts.system_program.cpi_handle_mut(),
     ];
-    for acc in context.remaining_accounts().iter() {
+    for acc in context.remaining_accounts()?.iter() {
         account_infos.push(acc.cpi_handle_mut());
     }
 

@@ -36,15 +36,12 @@ declare_id!("BuFyrgRYzg2nPhqYrxZ7d9uYUs4VXtxH71U8EcoAfTQZ");
 pub mod cutils {
     use super::*;
 
-    pub fn mint<'info>(
-        context: &mut Context<'info, MintAccountConstraints<'info>>,
-        params: MintParams,
-    ) -> Result<()> {
+    pub fn mint(context: &mut Context<MintAccountConstraints>, params: MintParams) -> Result<()> {
         instructions::mint::handle_mint(context, params)
     }
 
-    pub fn verify<'info>(
-        context: &mut Context<'info, VerifyAccountConstraints<'info>>,
+    pub fn verify(
+        context: &mut Context<VerifyAccountConstraints>,
         params: VerifyParams,
     ) -> Result<()> {
         instructions::verify::handle_verify(context, &params)

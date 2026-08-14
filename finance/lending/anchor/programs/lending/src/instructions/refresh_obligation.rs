@@ -19,7 +19,7 @@ pub fn handle_refresh_obligation(context: &mut Context<RefreshObligation>) -> Re
     let slot = Clock::get()?.slot;
     let obligation = &mut context.accounts.obligation;
     let lending_market = obligation.lending_market;
-    let accounts = context.remaining_accounts();
+    let accounts = context.remaining_accounts()?;
     let mut cursor = 0usize;
 
     let mut deposited_value: u128 = 0;
