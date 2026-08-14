@@ -158,6 +158,32 @@ Three ways this goes wrong:
 Also: asking a read-only account for a writable handle panics, so read
 `*account.address()` rather than `account.cpi_handle_mut().address()`.
 
+## Instruction discriminators, and programs that implement an interface
+
+By default a handler still dispatches on `sha256("global:<name>")[..8]`, so
+existing clients and tests keep working. What changed is the override:
+
+- `#[interface(...)]` and the `interface-instructions` feature are **gone**.
+- `#[discrim = N]` on an executable `#[program]` takes a **single byte**, and
+  it is all-or-nothing — if one handler has it, every handler needs one.
+- `#[program(interface, program_id = ID)]` accepts arbitrary discriminator
+  bytes, but it declares an interface for *other* programs to CPI into. It
+  generates a CPI client and no dispatch, so the crate builds to a ~900-byte
+  object with no `entrypoint` symbol and fails to load with
+  `ProgramLoad("Entrypoint out of bounds")`.
+
+That leaves no direct way to write a program that answers to a foreign
+eight-byte discriminator — an SPL transfer hook's `Execute`, say. The
+transfer-hook examples here handle it by taking the entrypoint over: the crate
+sets `default = ["no-entrypoint"]`, which makes anchor export its dispatch as
+`__anchor_dispatch` instead of claiming `entrypoint`, and `src/entrypoint.rs`
+claims `entrypoint` itself, swaps the interface discriminator for the matching
+handler's, and delegates. The payload behind the discriminator is unchanged, so
+nothing else has to be replicated. With `no-entrypoint` set, the crate also has
+to invoke `pinocchio::default_allocator!()` and
+`pinocchio::default_panic_handler!()` itself — anchor only emits those on the
+path where it owns the entrypoint.
+
 ## anchor-spl
 
 `Mint` moved from `anchor_spl::token` to `anchor_spl::mint`, and the namespaced
