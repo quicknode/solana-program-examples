@@ -57,6 +57,21 @@ older 1.x already in the graph, which does not fix anything.
 | `AccountLoader<'info, T>` + `load()` | `Account<T>`, which derefs straight to `T` |
 | `set_inner(X { .. })` | `*ctx.accounts.foo = X { .. }` |
 | `error!(MyError::X)` | `MyError::X` (compat-only macro; `?` converts, tail position needs `.into()`) |
+| `#[account(has_one = x)]` on the owner | `#[account(address = owner.x)]` on the **sibling** field |
+
+`has_one` is deprecated, not removed — but this repository's `rust.yml` runs
+`cargo clippy -- -D warnings`, so every remaining use is a **hard CI failure**.
+The check moves off the owning account and onto the sibling it names:
+
+```rust
+// v1: on `offer`
+#[account(mut, close = maker, has_one = maker)]
+pub offer: BorshAccount<Offer>,
+
+// v2: the constraint lives on `maker`
+#[account(mut, address = offer.maker)]
+pub maker: SystemAccount,
+```
 
 Dropping the `'info` lifetime from handler signatures is mechanical, but do not
 strip `<'a>` from free functions that genuinely use it — a helper returning
@@ -174,6 +189,40 @@ let mint_size = ExtensionType::try_calculate_account_len::<PodMint>(&[
 ```
 
 Extension initialization must come before `InitializeMint2`.
+
+## v2-only primitives worth reaching for
+
+These have no v1 equivalent, so a mechanical port never produces them — but they
+are often the right answer when a straight translation gets ugly:
+
+| Primitive | Use |
+|---|---|
+| `Slab<H, Item>` | Zero-copy header + dynamic item tail (ledgers, order books, event logs). `Account<T>` is `Slab<T, HeaderOnly>` underneath. |
+| `PodVec<T, MAX>` | Fixed-capacity vec with a `u16` length, stored inline — variable-length data without leaving Pod. |
+| `PodU64`, `PodI128`, `PodBool`, … | Alignment-1 integer wrappers, so a `#[repr(C)]` struct packs with no padding. |
+| `#[pod_wrapper]` | Safe enum-to-Pod conversion that validates the discriminant on equality and conversion. |
+| `Nested<T>` | Share one `#[derive(Accounts)]` validation block across instructions. |
+| `#[event(bytemuck)]` | Fixed-size events: disc + one memcpy. Plain `#[event]` defaults to wincode (borsh-wire-compatible). |
+
+If a program was zero-copy in v1 and the port is fighting Pod's rules, the
+answer is usually one of the first four rather than moving it to borsh.
+
+### Feature flags
+
+- `guardrails` (default on) — runtime safety nets. Dropping it saves ~300 bytes
+  and 1–2 CU per account, at the cost of diagnostic panics on misuse.
+- `const-rent` (default off) — folds `Rent::get()` to a compile-time constant,
+  ~85 CU per `create_account`. Burns the rent formula into the binary, so a
+  formula change (SIMD-0194) needs a rebuild.
+- `compat` (default off) — restores v1-shaped `error!`, `err!`, `pubkey!`,
+  `debug!`. Useful mid-port; `debug!` heap-allocates through `alloc::format!`.
+
+### Tooling
+
+- `anchor debugger` — TUI stepping through SBF instructions per test.
+- `anchor test --profile` — per-test register-trace flamegraphs under
+  `target/anchor-v2-profile/`.
+- `anchor-v2-testing` — wraps LiteSVM with optional register-trace capture.
 
 ## Seeds, sysvars, cross-program types
 
