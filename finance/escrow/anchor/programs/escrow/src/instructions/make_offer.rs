@@ -47,7 +47,7 @@ pub struct MakeOfferAccountConstraints {
         init,
         payer = maker,
         space = Offer::DISCRIMINATOR.len() + Offer::INIT_SPACE,
-        seeds = [b"offer", maker.address().as_ref(), id.to_le_bytes().as_ref()],
+        seeds = [b"offer", maker.address().as_ref(), id.to_le_bytes()],
         bump
     )]
     pub offer: BorshAccount<Offer>,
@@ -68,12 +68,12 @@ pub struct MakeOfferAccountConstraints {
 
 // Move the tokens from the maker's ATA to the vault
 pub fn handle_send_offered_tokens_to_vault(
-    context: &Context<MakeOfferAccountConstraints>,
+    context: &mut Context<MakeOfferAccountConstraints>,
     token_a_offered_amount: u64,
 ) -> Result<()> {
     transfer_tokens(
-        &context.accounts.maker_token_account_a,
-        &context.accounts.vault,
+        &mut context.accounts.maker_token_account_a,
+        &mut context.accounts.vault,
         &token_a_offered_amount,
         &context.accounts.token_mint_a,
         *context.accounts.maker.account(),

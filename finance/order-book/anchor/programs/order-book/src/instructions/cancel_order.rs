@@ -82,7 +82,7 @@ pub struct CancelOrderAccountConstraints {
 
     #[account(
         mut,
-        seeds = [ORDER_SEED, market.address().as_ref(), order.order_id.to_le_bytes().as_ref()],
+        seeds = [ORDER_SEED, market.address().as_ref(), order.order_id.to_le_bytes()],
         bump = order.bump
     )]
     pub order: BorshAccount<Order>,

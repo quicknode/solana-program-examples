@@ -1,13 +1,13 @@
 use anchor_lang::prelude::*;
+
+use crate::state::Event;
 use anchor_spl::mint;
 use anchor_spl::{
     associated_token::AssociatedToken,
     token_interface::{Mint, TokenAccount, TokenInterface},
 };
 
-use crate::{
-    error::BettingError, Bet, Config, Event, EventStatus, Outcome, User, MAX_BETS_PER_USER,
-};
+use crate::{error::BettingError, Bet, Config, EventStatus, Outcome, User, MAX_BETS_PER_USER};
 
 use super::transfer_tokens_to_vault;
 
@@ -28,7 +28,7 @@ pub struct PlaceBetAccountConstraints {
 
     #[account(
         mut,
-        seeds = [b"event", event.event_id.to_le_bytes().as_ref()],
+        seeds = [b"event", event.event_id.to_le_bytes()],
         bump = event.bump,
     )]
     pub event: Box<BorshAccount<Event>>,
@@ -91,19 +91,19 @@ pub fn handle_place_bet(
     );
 
     transfer_tokens_to_vault(
-        &context.accounts.bettor_token_account,
-        &context.accounts.vault,
+        &mut context.accounts.bettor_token_account,
+        &mut context.accounts.vault,
         amount,
         &context.accounts.token_mint,
         &context.accounts.bettor,
         &context.accounts.token_program,
     )?;
 
-    let bettor_key = context.accounts.bettor.address();
-    let event_key = context.accounts.event.address();
-    let outcome_key = context.accounts.outcome.address();
+    let bettor_key = *context.accounts.bettor.address();
+    let event_key = *context.accounts.event.address();
+    let outcome_key = *context.accounts.outcome.address();
     let outcome_index = context.accounts.outcome.index;
-    let bet_key = context.accounts.bet.address();
+    let bet_key = *context.accounts.bet.address();
     let bet_bump = context.bumps.bet;
     let user_bump = context.bumps.user;
 
@@ -112,9 +112,9 @@ pub fn handle_place_bet(
     // on this outcome from a top-up, and it gates the per-outcome bookkeeping.
     let is_new_bet = bet.amount == 0;
     if is_new_bet {
-        bet.bettor = *bettor_key;
+        bet.bettor = bettor_key;
         bet.event = event_key;
-        bet.outcome = *outcome_key;
+        bet.outcome = outcome_key;
         bet.outcome_index = outcome_index;
         bet.bump = bet_bump;
     }
@@ -143,7 +143,7 @@ pub fn handle_place_bet(
 
     let user = &mut context.accounts.user;
     if user.authority == Address::default() {
-        user.authority = *bettor_key;
+        user.authority = bettor_key;
         user.bump = user_bump;
     }
     if is_new_bet {
@@ -151,7 +151,7 @@ pub fn handle_place_bet(
             user.bets.len() < MAX_BETS_PER_USER,
             BettingError::TooManyBets
         );
-        user.bets.push(*bet_key);
+        user.bets.push(bet_key);
     }
 
     Ok(())

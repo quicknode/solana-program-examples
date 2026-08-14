@@ -465,7 +465,7 @@ pub struct PlaceOrderAccountConstraints {
         seeds = [
             ORDER_SEED,
             market.address().as_ref(),
-            order_book.load()?.next_order_id.to_le_bytes().as_ref()
+            order_book.load()?.next_order_id.to_le_bytes()
         ],
         bump
     )]

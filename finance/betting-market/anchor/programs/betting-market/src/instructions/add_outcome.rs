@@ -1,6 +1,8 @@
 use anchor_lang::prelude::*;
 
-use crate::{error::BettingError, Config, Event, EventStatus, Outcome};
+use crate::state::Event;
+
+use crate::{error::BettingError, Config, EventStatus, Outcome};
 
 pub const MAX_LABEL_LEN: usize = 64;
 
@@ -18,7 +20,7 @@ pub struct AddOutcomeAccountConstraints {
 
     #[account(
         mut,
-        seeds = [b"event", event.event_id.to_le_bytes().as_ref()],
+        seeds = [b"event", event.event_id.to_le_bytes()],
         bump = event.bump,
     )]
     pub event: BorshAccount<Event>,
@@ -53,7 +55,7 @@ pub fn handle_add_outcome(
 
     let index = context.accounts.event.outcome_count;
     *context.accounts.outcome = (Outcome {
-        event: context.accounts.event.address(),
+        event: *context.accounts.event.address(),
         index,
         label,
         total_amount: 0,

@@ -1,6 +1,8 @@
 use anchor_lang::prelude::*;
 
-use crate::{error::BettingError, Bet, Event, EventStatus, User};
+use crate::state::Event;
+
+use crate::{error::BettingError, Bet, EventStatus, User};
 
 // A losing bet pays nothing, but it still occupies a slot in the bettor's
 // User index and holds rent. Closing it frees the slot (so the bettor can
@@ -12,7 +14,7 @@ pub struct CloseLosingBetAccountConstraints {
     pub bettor: Signer,
 
     #[account(
-        seeds = [b"event", event.event_id.to_le_bytes().as_ref()],
+        seeds = [b"event", event.event_id.to_le_bytes()],
         bump = event.bump,
     )]
     pub event: BorshAccount<Event>,

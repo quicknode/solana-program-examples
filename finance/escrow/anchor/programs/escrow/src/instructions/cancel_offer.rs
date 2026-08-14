@@ -33,7 +33,7 @@ pub struct CancelOfferAccountConstraints {
         close = maker,
         has_one = maker,
         has_one = token_mint_a,
-        seeds = [b"offer", maker.address().as_ref(), offer.id.to_le_bytes().as_ref()],
+        seeds = [b"offer", maker.address().as_ref(), offer.id.to_le_bytes()],
         bump = offer.bump,
     )]
     pub offer: BorshAccount<Offer>,
@@ -57,13 +57,22 @@ pub fn handle_cancel_offer(context: &mut Context<CancelOfferAccountConstraints>)
     let bump = [context.accounts.offer.bump];
     let offer_seeds: &[&[u8]] = &[b"offer", maker_key.as_ref(), id_bytes.as_ref(), &bump];
 
+    // Read the balance before taking the mutable borrow of the vault.
+    let vault_amount = context.accounts.vault.amount();
+
+    // `offer` signs both CPIs below. It is a data account, so it holds a live
+    // borrow on its buffer; the runtime rejects a CPI that borrows it again.
+    // Release the borrow for the duration of the CPIs and take it back after.
+    context.accounts.offer.release_borrow()?;
+    let offer_view = *context.accounts.offer.account();
+
     // Move all tokens back from the vault to the maker.
     transfer_tokens(
         &mut context.accounts.vault,
         &mut context.accounts.maker_token_account_a,
-        &context.accounts.vault.amount(),
+        &vault_amount,
         &context.accounts.token_mint_a,
-        *context.accounts.offer.account(),
+        offer_view,
         &context.accounts.token_program,
         Some(offer_seeds),
     )?;
@@ -72,7 +81,7 @@ pub fn handle_cancel_offer(context: &mut Context<CancelOfferAccountConstraints>)
     close_token_account(
         &mut context.accounts.vault,
         *context.accounts.maker.account(),
-        *context.accounts.offer.account(),
+        offer_view,
         &context.accounts.token_program,
         Some(offer_seeds),
     )?;

@@ -16,7 +16,7 @@ pub struct AddAssetAccountConstraints {
         mut,
         has_one = manager,
         has_one = registry @ VaultError::InvalidRegistry,
-        seeds = [b"strategy", strategy.index.to_le_bytes().as_ref()],
+        seeds = [b"strategy", strategy.index.to_le_bytes()],
         bump = strategy.bump
     )]
     pub strategy: Box<BorshAccount<Strategy>>,

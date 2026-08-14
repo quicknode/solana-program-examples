@@ -1,11 +1,13 @@
 use anchor_lang::prelude::*;
+
+use crate::state::Event;
 use anchor_spl::mint;
 use anchor_spl::{
     associated_token::AssociatedToken,
     token_interface::{Mint, TokenAccount, TokenInterface},
 };
 
-use crate::{error::BettingError, Config, Event, EventStatus};
+use crate::{error::BettingError, Config, EventStatus};
 
 pub const MAX_DESCRIPTION_LEN: usize = 200;
 
@@ -31,7 +33,7 @@ pub struct InitializeEventAccountConstraints {
         init,
         payer = admin,
         space = Event::DISCRIMINATOR.len() + Event::INIT_SPACE,
-        seeds = [b"event", event_id.to_le_bytes().as_ref()],
+        seeds = [b"event", event_id.to_le_bytes()],
         bump
     )]
     pub event: BorshAccount<Event>,

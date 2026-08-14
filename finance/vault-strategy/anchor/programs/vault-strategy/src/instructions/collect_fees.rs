@@ -17,7 +17,7 @@ pub struct CollectFeesAccountConstraints {
     #[account(
         mut,
         has_one = manager,
-        seeds = [b"strategy", strategy.index.to_le_bytes().as_ref()],
+        seeds = [b"strategy", strategy.index.to_le_bytes()],
         bump = strategy.bump
     )]
     pub strategy: BorshAccount<Strategy>,

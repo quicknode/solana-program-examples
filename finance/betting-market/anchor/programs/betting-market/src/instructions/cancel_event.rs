@@ -1,6 +1,8 @@
 use anchor_lang::prelude::*;
 
-use crate::{error::BettingError, Config, Event, EventStatus};
+use crate::state::Event;
+
+use crate::{error::BettingError, Config, EventStatus};
 
 // Abandon an event that can't be resolved (e.g. the real-world result is void).
 // Bettors then reclaim their exact stakes via `claim_refund`; no fee is taken.
@@ -17,7 +19,7 @@ pub struct CancelEventAccountConstraints {
 
     #[account(
         mut,
-        seeds = [b"event", event.event_id.to_le_bytes().as_ref()],
+        seeds = [b"event", event.event_id.to_le_bytes()],
         bump = event.bump,
     )]
     pub event: BorshAccount<Event>,

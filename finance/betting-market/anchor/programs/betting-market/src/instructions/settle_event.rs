@@ -1,11 +1,13 @@
 use anchor_lang::prelude::*;
+
+use crate::state::Event;
 use anchor_spl::mint;
 use anchor_spl::{
     associated_token::AssociatedToken,
     token_interface::{Mint, TokenAccount, TokenInterface},
 };
 
-use crate::{error::BettingError, Config, Event, EventStatus, Outcome};
+use crate::{error::BettingError, Config, EventStatus, Outcome};
 
 use super::transfer_tokens_from_vault;
 
@@ -31,7 +33,7 @@ pub struct SettleEventAccountConstraints {
 
     #[account(
         mut,
-        seeds = [b"event", event.event_id.to_le_bytes().as_ref()],
+        seeds = [b"event", event.event_id.to_le_bytes()],
         bump = event.bump,
     )]
     pub event: BorshAccount<Event>,
@@ -95,11 +97,11 @@ pub fn handle_settle_event(
         let event_id = context.accounts.event.event_id;
         let event_bump = context.accounts.event.bump;
         transfer_tokens_from_vault(
-            &context.accounts.vault,
-            &context.accounts.fee_recipient_token_account,
+            &mut context.accounts.vault,
+            &mut context.accounts.fee_recipient_token_account,
             fee,
             &context.accounts.token_mint,
-            &context.accounts.event.cpi_handle_mut(),
+            *context.accounts.event.account(),
             &context.accounts.token_program,
             event_id,
             event_bump,

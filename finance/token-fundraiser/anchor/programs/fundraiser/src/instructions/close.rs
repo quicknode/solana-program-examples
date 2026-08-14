@@ -83,11 +83,16 @@ pub fn handle_close_fundraiser(accounts: &mut CloseFundraiserAccountConstraints)
         FundraiserError::RefundsOutstanding
     );
 
+    // Read these before any of the CPI handles below take their borrows.
+    let maker_address = *accounts.maker.address();
+    let vault_amount = accounts.vault.amount();
+    let mint_decimals = accounts.mint_to_raise.decimals();
+
     // The vault is owned by the fundraiser PDA, so both CPIs are signed with
     // its seeds.
     let signer_seeds: [&[&[u8]]; 1] = [&[
         b"fundraiser".as_ref(),
-        accounts.maker.cpi_handle_mut().address().as_ref(),
+        maker_address.as_ref(),
         &[accounts.fundraiser.bump],
     ]];
 
@@ -106,11 +111,7 @@ pub fn handle_close_fundraiser(accounts: &mut CloseFundraiserAccountConstraints)
             transfer_accounts,
             &signer_seeds,
         );
-        transfer_checked(
-            transfer_context,
-            accounts.vault.amount(),
-            accounts.mint_to_raise.decimals(),
-        )?;
+        transfer_checked(transfer_context, vault_amount, mint_decimals)?;
     }
 
     // Close the empty vault so its rent goes back to the maker. The

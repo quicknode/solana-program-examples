@@ -1,8 +1,10 @@
 use anchor_lang::prelude::*;
+
+use crate::state::Event;
 use anchor_spl::mint;
 use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
 
-use crate::{error::BettingError, Bet, Event, EventStatus, User};
+use crate::{error::BettingError, Bet, EventStatus, User};
 
 use super::transfer_tokens_from_vault;
 
@@ -15,7 +17,7 @@ pub struct ClaimWinningsAccountConstraints {
     pub token_mint: InterfaceAccount<Mint>,
 
     #[account(
-        seeds = [b"event", event.event_id.to_le_bytes().as_ref()],
+        seeds = [b"event", event.event_id.to_le_bytes()],
         bump = event.bump,
     )]
     pub event: BorshAccount<Event>,
@@ -100,11 +102,11 @@ pub fn handle_claim_winnings(context: &mut Context<ClaimWinningsAccountConstrain
     let event_id = context.accounts.event.event_id;
     let event_bump = context.accounts.event.bump;
     transfer_tokens_from_vault(
-        &context.accounts.vault,
-        &context.accounts.bettor_token_account,
+        &mut context.accounts.vault,
+        &mut context.accounts.bettor_token_account,
         payout,
         &context.accounts.token_mint,
-        &context.accounts.event.cpi_handle_mut(),
+        *context.accounts.event.account(),
         &context.accounts.token_program,
         event_id,
         event_bump,

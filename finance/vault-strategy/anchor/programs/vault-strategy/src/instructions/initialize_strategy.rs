@@ -35,7 +35,7 @@ pub struct InitializeStrategyAccountConstraints {
         init,
         payer = manager,
         space = Strategy::DISCRIMINATOR.len() + Strategy::INIT_SPACE,
-        seeds = [b"strategy", index.to_le_bytes().as_ref()],
+        seeds = [b"strategy", index.to_le_bytes()],
         bump
     )]
     pub strategy: Box<BorshAccount<Strategy>>,

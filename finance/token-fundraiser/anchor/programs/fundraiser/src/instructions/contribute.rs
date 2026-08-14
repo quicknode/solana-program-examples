@@ -42,7 +42,7 @@ pub struct ContributeAccountConstraints {
 
     #[account(
         mut,
-        associated_token::mint = fundraiser.mint_to_raise,
+        associated_token::mint = mint_to_raise,
         associated_token::authority = fundraiser,
         associated_token::token_program = token_program,
     )]
