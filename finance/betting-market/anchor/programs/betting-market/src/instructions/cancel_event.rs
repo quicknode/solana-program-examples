@@ -8,13 +8,11 @@ use crate::{error::BettingError, Config, EventStatus};
 // Bettors then reclaim their exact stakes via `claim_refund`; no fee is taken.
 #[derive(Accounts)]
 pub struct CancelEventAccountConstraints {
+    #[account(address = config.admin @ BettingError::Unauthorized)]
     pub admin: Signer,
 
-    #[account(
-        seeds = [b"config"],
-        bump = config.bump,
-        has_one = admin @ BettingError::Unauthorized,
-    )]
+    #[account(seeds = [b"config"],
+        bump = config.bump)]
     pub config: BorshAccount<Config>,
 
     #[account(

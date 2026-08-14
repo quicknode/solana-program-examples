@@ -46,18 +46,18 @@ pub fn handle_deposit_obligation_collateral(
 
 #[derive(Accounts)]
 pub struct DepositObligationCollateral {
-    #[account(mut, has_one = owner)]
+    #[account(mut)]
     pub obligation: BorshAccount<Obligation>,
 
-    #[account(mut)]
+    #[account(mut, address = obligation.owner)]
     pub owner: Signer,
 
     #[account(
-        has_one = share_mint,
         constraint = reserve.lending_market == obligation.lending_market @ LendingError::MarketMismatch,
     )]
     pub reserve: BorshAccount<Reserve>,
 
+    #[account(address = reserve.share_mint)]
     pub share_mint: InterfaceAccount<Mint>,
 
     #[account(

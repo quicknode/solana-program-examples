@@ -10,7 +10,7 @@ use super::transfer_tokens_from_vault;
 
 #[derive(Accounts)]
 pub struct ClaimWinningsAccountConstraints {
-    #[account(mut)]
+    #[account(mut, address = bet.bettor)]
     pub bettor: Signer,
 
     #[account(mint::token_program = token_program)]
@@ -23,6 +23,7 @@ pub struct ClaimWinningsAccountConstraints {
         mut,
         seeds = [b"event", event.event_id.to_le_bytes()],
         bump = event.bump,
+        address = bet.event,
     )]
     pub event: BorshAccount<Event>,
 
@@ -31,8 +32,6 @@ pub struct ClaimWinningsAccountConstraints {
     #[account(
         mut,
         close = bettor,
-        has_one = bettor,
-        has_one = event,
         seeds = [b"bet", bet.outcome.as_ref(), bettor.address().as_ref()],
         bump = bet.bump,
     )]

@@ -4,14 +4,11 @@ use crate::{ABWallet, Config};
 
 #[derive(Accounts)]
 pub struct RemoveWalletAccountConstraints {
-    #[account(mut)]
+    #[account(mut, address = config.authority)]
     pub authority: Signer,
 
-    #[account(
-        seeds = [b"config"],
-        bump = config.bump,
-        has_one = authority,
-    )]
+    #[account(seeds = [b"config"],
+        bump = config.bump)]
     pub config: Box<BorshAccount<Config>>,
 
     #[account(

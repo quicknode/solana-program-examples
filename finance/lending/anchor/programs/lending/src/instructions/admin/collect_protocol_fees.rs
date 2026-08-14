@@ -52,25 +52,21 @@ pub fn handle_collect_protocol_fees(context: &mut Context<CollectProtocolFees>) 
 
 #[derive(Accounts)]
 pub struct CollectProtocolFees {
-    // Identified by the reserve's `has_one = lending_market`; we only prove the
+    // Identified by `address = reserve.lending_market`; we only prove the
     // signer owns it.
-    #[account(has_one = owner)]
+    #[account(address = reserve.lending_market)]
     pub lending_market: BorshAccount<LendingMarket>,
 
-    #[account(mut)]
+    #[account(mut, address = lending_market.owner)]
     pub owner: Signer,
 
-    #[account(
-        mut,
-        has_one = lending_market,
-        has_one = liquidity_mint,
-        has_one = liquidity_vault,
-    )]
+    #[account(mut)]
     pub reserve: BorshAccount<Reserve>,
 
+    #[account(address = reserve.liquidity_mint)]
     pub liquidity_mint: InterfaceAccount<Mint>,
 
-    #[account(mut)]
+    #[account(mut, address = reserve.liquidity_vault)]
     pub liquidity_vault: InterfaceAccount<TokenAccount>,
 
     #[account(mut)]

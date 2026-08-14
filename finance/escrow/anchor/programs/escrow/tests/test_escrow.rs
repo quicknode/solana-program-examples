@@ -459,7 +459,7 @@ fn test_cancel_offer_rejects_non_maker() {
     )
     .unwrap();
 
-    // Bob tries to cancel Alice's offer - the has_one = maker / signer + seeds
+    // Bob tries to cancel Alice's offer - the address = offer.maker / signer + seeds
     // constraints should reject this.
     let bob_ata_a =
         create_associated_token_account(&mut es.svm, &es.bob.pubkey(), &es.mint_a, &es.payer)

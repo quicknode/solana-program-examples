@@ -6,7 +6,7 @@ use {
 #[derive(Accounts)]
 pub struct SwitchAccountConstraints {
     /// admin that controls the switch
-    #[account(mut)]
+    #[account(mut, address = admin_config.admin)]
     pub admin: Signer,
 
     /// CHECK: wallet - transfer sender
@@ -14,11 +14,8 @@ pub struct SwitchAccountConstraints {
     pub wallet: UncheckedAccount,
 
     /// admin config
-    #[account(
-        has_one=admin,
-        seeds=[b"admin-config"],
-        bump,
-    )]
+    #[account(seeds=[b"admin-config"],
+        bump)]
     pub admin_config: BorshAccount<AdminConfig>,
 
     /// the wallet (sender) transfer switch

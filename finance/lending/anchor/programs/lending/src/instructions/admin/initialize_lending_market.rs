@@ -21,7 +21,7 @@ pub fn handle_initialize_lending_market(
 pub struct InitializeLendingMarket {
     // Seeded by `market_id` alone — the market is not identified by any
     // individual's address. `owner` is stored as a field and used only for
-    // authorization (`has_one = owner`) on admin instructions.
+    // authorization (`address = lending_market.owner`) on admin instructions.
     #[account(
         init,
         payer = owner,

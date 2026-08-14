@@ -29,10 +29,9 @@ pub fn handle_set_price(
 #[derive(Accounts)]
 pub struct SetPrice {
     // Only the market's owner may publish its prices.
-    #[account(has_one = owner)]
     pub lending_market: BorshAccount<LendingMarket>,
 
-    #[account(mut)]
+    #[account(mut, address = lending_market.owner)]
     pub owner: Signer,
 
     #[account(

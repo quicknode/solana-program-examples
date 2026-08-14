@@ -76,20 +76,16 @@ pub fn handle_deposit_reserve_liquidity(
 
 #[derive(Accounts)]
 pub struct DepositReserveLiquidity {
-    #[account(
-        mut,
-        has_one = liquidity_mint,
-        has_one = liquidity_vault,
-        has_one = share_mint,
-    )]
+    #[account(mut)]
     pub reserve: BorshAccount<Reserve>,
 
+    #[account(address = reserve.liquidity_mint)]
     pub liquidity_mint: InterfaceAccount<Mint>,
 
-    #[account(mut)]
+    #[account(mut, address = reserve.liquidity_vault)]
     pub liquidity_vault: InterfaceAccount<TokenAccount>,
 
-    #[account(mut)]
+    #[account(mut, address = reserve.share_mint)]
     pub share_mint: InterfaceAccount<Mint>,
 
     #[account(mut)]

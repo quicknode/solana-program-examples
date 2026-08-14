@@ -72,19 +72,13 @@ pub fn handle_settle_funds(context: &mut Context<SettleFundsAccountConstraints>)
 
 #[derive(Accounts)]
 pub struct SettleFundsAccountConstraints {
-    // `has_one` constraints bind these vaults/mints to the addresses stored
+    // `address` constraints bind these vaults/mints to the addresses stored
     // on the Market PDA at initialise_market time. Without them a caller
     // could substitute the fee_vault (same mint + same authority as
     // quote_vault) for `quote_vault` and drain accumulated taker fees,
     // since transfer_checked only verifies mint + authority on the source
     // account, not its identity.
-    #[account(
-        mut,
-        has_one = base_vault @ ErrorCode::InvalidBaseVault,
-        has_one = quote_vault @ ErrorCode::InvalidQuoteVault,
-        has_one = base_mint @ ErrorCode::InvalidBaseMint,
-        has_one = quote_mint @ ErrorCode::InvalidQuoteMint,
-    )]
+    #[account(mut)]
     pub market: BorshAccount<Market>,
 
     #[account(
@@ -96,10 +90,10 @@ pub struct SettleFundsAccountConstraints {
 
     // Boxed for the same reason as in PlaceOrderAccountConstraints -
     // InterfaceAccount is too large to keep on the BPF stack in bulk.
-    #[account(mut)]
+    #[account(mut, address = market.base_vault @ ErrorCode::InvalidBaseVault)]
     pub base_vault: Box<InterfaceAccount<TokenAccount>>,
 
-    #[account(mut)]
+    #[account(mut, address = market.quote_vault @ ErrorCode::InvalidQuoteVault)]
     pub quote_vault: Box<InterfaceAccount<TokenAccount>>,
 
     #[account(mut)]
@@ -108,8 +102,10 @@ pub struct SettleFundsAccountConstraints {
     #[account(mut)]
     pub user_quote_account: Box<InterfaceAccount<TokenAccount>>,
 
+    #[account(address = market.base_mint @ ErrorCode::InvalidBaseMint)]
     pub base_mint: Box<InterfaceAccount<Mint>>,
 
+    #[account(address = market.quote_mint @ ErrorCode::InvalidQuoteMint)]
     pub quote_mint: Box<InterfaceAccount<Mint>>,
 
     pub owner: Signer,

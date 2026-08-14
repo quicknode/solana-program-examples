@@ -14,19 +14,15 @@ pub const MAX_DESCRIPTION_LEN: usize = 200;
 #[derive(Accounts)]
 #[instruction(event_id: u64)]
 pub struct InitializeEventAccountConstraints {
-    #[account(mut)]
+    #[account(mut, address = config.admin @ BettingError::Unauthorized)]
     pub admin: Signer,
 
-    #[account(
-        mut,
+    #[account(mut,
         seeds = [b"config"],
-        bump = config.bump,
-        has_one = admin @ BettingError::Unauthorized,
-        has_one = token_mint,
-    )]
+        bump = config.bump)]
     pub config: BorshAccount<Config>,
 
-    #[account(mint::token_program = token_program)]
+    #[account(mint::token_program = token_program, address = config.token_mint)]
     pub token_mint: InterfaceAccount<Mint>,
 
     #[account(

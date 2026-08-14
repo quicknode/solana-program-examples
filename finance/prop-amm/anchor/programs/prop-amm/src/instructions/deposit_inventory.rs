@@ -54,30 +54,28 @@ pub fn handle_deposit_inventory(
 
 #[derive(Accounts)]
 pub struct DepositInventoryAccountConstraints {
-    // `has_one = operator` on the market is the whole access control: only the
+    // `address = market.operator` on the operator is the whole access control: only the
     // firm's key can stock the market.
-    #[account(mut)]
+    #[account(mut, address = market.operator)]
     pub operator: Signer,
 
     #[account(
         seeds = [MARKET_SEED, market.base_mint.as_ref(), market.quote_mint.as_ref()],
         bump = market.bump,
-        has_one = operator,
-        has_one = base_mint,
-        has_one = quote_mint,
-        has_one = base_vault,
-        has_one = quote_vault,
     )]
     pub market: Box<BorshAccount<Market>>,
 
+    #[account(address = market.base_mint)]
     pub base_mint: Box<InterfaceAccount<Mint>>,
 
+    #[account(address = market.quote_mint)]
     pub quote_mint: Box<InterfaceAccount<Mint>>,
 
     #[account(
         mut,
         seeds = [BASE_VAULT_SEED, market.address().as_ref()],
         bump,
+        address = market.base_vault,
     )]
     pub base_vault: Box<InterfaceAccount<TokenAccount>>,
 
@@ -85,6 +83,7 @@ pub struct DepositInventoryAccountConstraints {
         mut,
         seeds = [QUOTE_VAULT_SEED, market.address().as_ref()],
         bump,
+        address = market.quote_vault,
     )]
     pub quote_vault: Box<InterfaceAccount<TokenAccount>>,
 

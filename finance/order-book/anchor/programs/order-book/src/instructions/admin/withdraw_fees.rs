@@ -56,14 +56,11 @@ pub fn handle_withdraw_fees(context: &mut Context<WithdrawFeesAccountConstraints
 
 #[derive(Accounts)]
 pub struct WithdrawFeesAccountConstraints {
-    #[account(
-        mut,
-        has_one = fee_vault @ ErrorCode::InvalidFeeVault,
-    )]
+    #[account(mut)]
     pub market: BorshAccount<Market>,
 
     // Boxed to keep the struct under the BPF stack limit (see PlaceOrderAccountConstraints).
-    #[account(mut)]
+    #[account(mut, address = market.fee_vault @ ErrorCode::InvalidFeeVault)]
     pub fee_vault: Box<InterfaceAccount<TokenAccount>>,
 
     #[account(mut)]

@@ -16,26 +16,23 @@ pub struct PlaceBetAccountConstraints {
     #[account(mut)]
     pub bettor: Signer,
 
-    #[account(
-        seeds = [b"config"],
-        bump = config.bump,
-        has_one = token_mint,
-    )]
+    #[account(seeds = [b"config"],
+        bump = config.bump)]
     pub config: BorshAccount<Config>,
 
-    #[account(mint::token_program = token_program)]
+    #[account(mint::token_program = token_program, address = config.token_mint)]
     pub token_mint: Box<InterfaceAccount<Mint>>,
 
     #[account(
         mut,
         seeds = [b"event", event.event_id.to_le_bytes()],
         bump = event.bump,
+        address = outcome.event,
     )]
     pub event: Box<BorshAccount<Event>>,
 
     #[account(
         mut,
-        has_one = event,
         seeds = [b"outcome", event.address().as_ref(), &[outcome.index]],
         bump = outcome.bump,
     )]

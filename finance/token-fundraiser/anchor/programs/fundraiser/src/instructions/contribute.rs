@@ -13,11 +13,11 @@ pub struct ContributeAccountConstraints {
     #[account(mut)]
     pub contributor: Signer,
 
+    #[account(address = fundraiser.mint_to_raise)]
     pub mint_to_raise: InterfaceAccount<Mint>,
 
     #[account(
         mut,
-        has_one = mint_to_raise,
         seeds = [b"fundraiser".as_ref(), fundraiser.maker.as_ref()],
         bump = fundraiser.bump,
     )]

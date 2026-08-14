@@ -8,14 +8,11 @@ pub const MAX_LABEL_LEN: usize = 64;
 
 #[derive(Accounts)]
 pub struct AddOutcomeAccountConstraints {
-    #[account(mut)]
+    #[account(mut, address = config.admin @ BettingError::Unauthorized)]
     pub admin: Signer,
 
-    #[account(
-        seeds = [b"config"],
-        bump = config.bump,
-        has_one = admin @ BettingError::Unauthorized,
-    )]
+    #[account(seeds = [b"config"],
+        bump = config.bump)]
     pub config: BorshAccount<Config>,
 
     #[account(

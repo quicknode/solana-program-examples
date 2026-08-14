@@ -4,9 +4,10 @@ use crate::UserAccount;
 
 #[derive(Accounts)]
 pub struct SetEthereumAddressAccountConstraints {
-    #[account(mut, has_one = authority)]
+    #[account(mut)]
     pub user_account: BorshAccount<UserAccount>,
 
+    #[account(address = user_account.authority)]
     pub authority: Signer,
 }
 

@@ -191,11 +191,6 @@ pub struct SwapAccountConstraints {
     #[account(
         seeds = [MARKET_SEED, market.base_mint.as_ref(), market.quote_mint.as_ref()],
         bump = market.bump,
-        has_one = base_mint,
-        has_one = quote_mint,
-        has_one = oracle_feed,
-        has_one = base_vault,
-        has_one = quote_vault,
     )]
     pub market: Box<BorshAccount<Market>>,
 
@@ -206,17 +201,21 @@ pub struct SwapAccountConstraints {
     )]
     pub market_authority: UncheckedAccount,
 
-    /// CHECK: validated by the `has_one = oracle_feed` constraint on the market.
+    /// CHECK: validated by the `address = market.oracle_feed` constraint below.
+    #[account(address = market.oracle_feed)]
     pub oracle_feed: UncheckedAccount,
 
+    #[account(address = market.base_mint)]
     pub base_mint: Box<InterfaceAccount<Mint>>,
 
+    #[account(address = market.quote_mint)]
     pub quote_mint: Box<InterfaceAccount<Mint>>,
 
     #[account(
         mut,
         seeds = [BASE_VAULT_SEED, market.address().as_ref()],
         bump,
+        address = market.base_vault,
     )]
     pub base_vault: Box<InterfaceAccount<TokenAccount>>,
 
@@ -224,6 +223,7 @@ pub struct SwapAccountConstraints {
         mut,
         seeds = [QUOTE_VAULT_SEED, market.address().as_ref()],
         bump,
+        address = market.quote_vault,
     )]
     pub quote_vault: Box<InterfaceAccount<TokenAccount>>,
 

@@ -105,20 +105,21 @@ pub fn handle_withdraw_obligation_collateral(
 
 #[derive(Accounts)]
 pub struct WithdrawObligationCollateral {
-    #[account(mut, has_one = owner)]
+    #[account(mut)]
     pub obligation: BorshAccount<Obligation>,
 
+    #[account(address = obligation.owner)]
     pub owner: Signer,
 
     #[account(
-        has_one = share_mint,
-        has_one = price_feed,
         constraint = reserve.lending_market == obligation.lending_market @ LendingError::MarketMismatch,
     )]
     pub reserve: BorshAccount<Reserve>,
 
+    #[account(address = reserve.price_feed)]
     pub price_feed: BorshAccount<PriceFeed>,
 
+    #[account(address = reserve.share_mint)]
     pub share_mint: InterfaceAccount<Mint>,
 
     #[account(

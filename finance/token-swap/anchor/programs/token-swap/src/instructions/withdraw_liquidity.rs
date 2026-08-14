@@ -154,8 +154,6 @@ pub struct WithdrawLiquidityAccountConstraints {
             pool_config.mint_b.address().as_ref(),
         ],
         bump,
-        has_one = mint_a,
-        has_one = mint_b,
     )]
     pub pool_config: BorshAccount<PoolConfig>,
 
@@ -185,10 +183,10 @@ pub struct WithdrawLiquidityAccountConstraints {
     )]
     pub liquidity_provider_mint: Box<InterfaceAccount<Mint>>,
 
-    #[account(mut)]
+    #[account(mut, address = pool_config.mint_a)]
     pub mint_a: Box<InterfaceAccount<Mint>>,
 
-    #[account(mut)]
+    #[account(mut, address = pool_config.mint_b)]
     pub mint_b: Box<InterfaceAccount<Mint>>,
 
     #[account(

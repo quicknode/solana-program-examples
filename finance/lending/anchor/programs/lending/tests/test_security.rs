@@ -46,7 +46,7 @@ fn non_owner_cannot_write_market_price_feed() {
     // The market's feed for this mint (seeds ["price_feed", market, mint]).
     let market_feed = env.price_feed_address(env.market, usdc.mint);
 
-    // The attacker passes the real market but signs as themself; `has_one = owner`
+    // The attacker passes the real market but signs as themself; `address = lending_market.owner`
     // on the market rejects them before any write.
     let instruction = Instruction {
         program_id: lending::id(),

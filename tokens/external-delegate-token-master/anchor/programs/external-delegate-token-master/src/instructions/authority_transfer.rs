@@ -7,9 +7,9 @@ use crate::UserAccount;
 
 #[derive(Accounts)]
 pub struct AuthorityTransferAccountConstraints {
-    #[account(has_one = authority)]
     pub user_account: BorshAccount<UserAccount>,
 
+    #[account(address = user_account.authority)]
     pub authority: Signer,
 
     pub mint: InterfaceAccount<Mint>,

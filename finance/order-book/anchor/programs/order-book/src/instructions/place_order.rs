@@ -440,30 +440,22 @@ pub fn handle_place_order(
 #[derive(Accounts)]
 #[instruction(side: OrderSide, price: u64, quantity: u64)]
 pub struct PlaceOrderAccountConstraints {
-    // `has_one` ties every market-owned account on this struct to the
+    // `address` ties every market-owned account on this struct to the
     // addresses recorded on the Market PDA. Crucially, without
-    // has_one on base_vault / quote_vault / base_mint / quote_mint a caller
+    // address constraints on base_vault / quote_vault / base_mint / quote_mint a caller
     // could swap fee_vault in for quote_vault (same mint, same authority)
     // and steer the per-fill fee transfer to drain real fees instead of
     // routing them in.
-    #[account(
-        mut,
-        has_one = fee_vault @ ErrorCode::InvalidFeeVault,
-        has_one = base_vault @ ErrorCode::InvalidBaseVault,
-        has_one = quote_vault @ ErrorCode::InvalidQuoteVault,
-        has_one = base_mint @ ErrorCode::InvalidBaseMint,
-        has_one = quote_mint @ ErrorCode::InvalidQuoteMint,
-        has_one = order_book @ ErrorCode::InvalidOrderBook,
-    )]
+    #[account(mut)]
     pub market: BorshAccount<Market>,
 
     // Zero-copy: AccountLoader streams the slab in/out without paying
     // borsh (de)serialization on every instruction. See order_book.rs for
     // the layout. Not a PDA - the client created it directly via
     // system_program::create_account (see initialize_market.rs for why);
-    // `has_one = order_book` on `market` is what ties this specific account
+    // `address = market.order_book` is what ties this specific account
     // to this specific market.
-    #[account(mut)]
+    #[account(mut, address = market.order_book @ ErrorCode::InvalidOrderBook)]
     pub order_book: Account<OrderBook>,
 
     // The order PDA seed uses the book's `next_order_id` *before* this
@@ -491,15 +483,15 @@ pub struct PlaceOrderAccountConstraints {
 
     // InterfaceAccount on the stack is ~1 KB each; with 7 of them this struct
     // blows the 4 KB stack-offset limit on BPF. Boxing moves each to the heap.
-    #[account(mut)]
+    #[account(mut, address = market.base_vault @ ErrorCode::InvalidBaseVault)]
     pub base_vault: Box<InterfaceAccount<TokenAccount>>,
 
-    #[account(mut)]
+    #[account(mut, address = market.quote_vault @ ErrorCode::InvalidQuoteVault)]
     pub quote_vault: Box<InterfaceAccount<TokenAccount>>,
 
-    // Taker fees are routed here. Constrained via `has_one = fee_vault` on
+    // Taker fees are routed here. Constrained via `address = market.fee_vault` on
     // `market` above so the program can trust it without re-checking.
-    #[account(mut)]
+    #[account(mut, address = market.fee_vault @ ErrorCode::InvalidFeeVault)]
     pub fee_vault: Box<InterfaceAccount<TokenAccount>>,
 
     #[account(mut)]
@@ -508,8 +500,10 @@ pub struct PlaceOrderAccountConstraints {
     #[account(mut)]
     pub user_quote_account: Box<InterfaceAccount<TokenAccount>>,
 
+    #[account(address = market.base_mint @ ErrorCode::InvalidBaseMint)]
     pub base_mint: Box<InterfaceAccount<Mint>>,
 
+    #[account(address = market.quote_mint @ ErrorCode::InvalidQuoteMint)]
     pub quote_mint: Box<InterfaceAccount<Mint>>,
 
     #[account(mut)]

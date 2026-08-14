@@ -18,9 +18,8 @@ pub struct DepositAccountConstraints {
 
     #[account(
         mut,
-        has_one = usdc_mint @ VaultError::InvalidUsdcMint,
         seeds = [b"strategy", strategy.index.to_le_bytes()],
-        bump = strategy.bump
+        bump = strategy.bump,
     )]
     pub strategy: Box<BorshAccount<Strategy>>,
 
@@ -31,6 +30,7 @@ pub struct DepositAccountConstraints {
     )]
     pub share_mint: Box<InterfaceAccount<Mint>>,
 
+    #[account(address = strategy.usdc_mint @ VaultError::InvalidUsdcMint)]
     pub usdc_mint: Box<InterfaceAccount<Mint>>,
 
     #[account(

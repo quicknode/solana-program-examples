@@ -762,7 +762,7 @@ fn test_claim_admin_fees_rejects_non_admin() {
     );
 
     // Should fail because the signer (attacker) does not match Config.admin
-    // (enforced by Anchor's `has_one = admin` constraint).
+    // (enforced by Anchor's `address = config.admin` constraint).
     let result = send_transaction_from_instructions(
         &mut ts.svm,
         vec![claim_ix],

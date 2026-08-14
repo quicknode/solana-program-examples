@@ -5,13 +5,12 @@ use crate::state::{ApprovedAsset, Registry};
 
 #[derive(Accounts)]
 pub struct ApproveAssetAccountConstraints {
-    #[account(mut)]
+    #[account(mut, address = registry.authority)]
     pub authority: Signer,
 
     #[account(
-        has_one = authority,
         seeds = [b"registry", authority.address().as_ref()],
-        bump = registry.bump
+        bump = registry.bump,
     )]
     pub registry: BorshAccount<Registry>,
 

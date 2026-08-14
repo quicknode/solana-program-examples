@@ -10,20 +10,19 @@ use crate::{error::BettingError, Bet, EventStatus, User};
 // claim_winnings instead, which also pays out the stake and winnings.
 #[derive(Accounts)]
 pub struct CloseLosingBetAccountConstraints {
-    #[account(mut)]
+    #[account(mut, address = bet.bettor)]
     pub bettor: Signer,
 
     #[account(
         seeds = [b"event", event.event_id.to_le_bytes()],
         bump = event.bump,
+        address = bet.event,
     )]
     pub event: BorshAccount<Event>,
 
     #[account(
         mut,
         close = bettor,
-        has_one = bettor,
-        has_one = event,
         seeds = [b"bet", bet.outcome.as_ref(), bettor.address().as_ref()],
         bump = bet.bump,
     )]

@@ -93,25 +93,25 @@ pub fn handle_borrow_obligation_liquidity(
 
 #[derive(Accounts)]
 pub struct BorrowObligationLiquidity {
-    #[account(mut, has_one = owner)]
+    #[account(mut)]
     pub obligation: BorshAccount<Obligation>,
 
+    #[account(address = obligation.owner)]
     pub owner: Signer,
 
     #[account(
         mut,
-        has_one = liquidity_mint,
-        has_one = liquidity_vault,
-        has_one = price_feed,
         constraint = reserve.lending_market == obligation.lending_market @ LendingError::MarketMismatch,
     )]
     pub reserve: BorshAccount<Reserve>,
 
+    #[account(address = reserve.price_feed)]
     pub price_feed: BorshAccount<PriceFeed>,
 
+    #[account(address = reserve.liquidity_mint)]
     pub liquidity_mint: InterfaceAccount<Mint>,
 
-    #[account(mut)]
+    #[account(mut, address = reserve.liquidity_vault)]
     pub liquidity_vault: InterfaceAccount<TokenAccount>,
 
     #[account(mut)]

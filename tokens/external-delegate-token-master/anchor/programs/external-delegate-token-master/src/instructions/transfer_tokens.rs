@@ -9,9 +9,10 @@ use crate::{
 
 #[derive(Accounts)]
 pub struct TransferTokensAccountConstraints {
-    #[account(mut, has_one = authority)]
+    #[account(mut)]
     pub user_account: BorshAccount<UserAccount>,
 
+    #[account(address = user_account.authority)]
     pub authority: Signer,
 
     pub mint: InterfaceAccount<Mint>,

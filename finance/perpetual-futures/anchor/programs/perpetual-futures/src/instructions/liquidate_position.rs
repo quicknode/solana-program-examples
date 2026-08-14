@@ -105,18 +105,16 @@ pub struct LiquidatePositionAccountConstraints {
     #[account(mut)]
     pub liquidator: Signer,
 
-    /// CHECK: the position owner, validated by the position's `has_one = owner`.
+    /// CHECK: the position owner, validated by `address = position.owner` below.
     /// Receives the position account's rent and any equity refund.
-    #[account(mut)]
+    #[account(mut, address = position.owner)]
     pub owner: UncheckedAccount,
 
     #[account(
         mut,
         seeds = [POOL_SEED, pool.collateral_mint.as_ref(), pool.oracle_feed.as_ref()],
         bump = pool.bump,
-        has_one = collateral_mint,
-        has_one = custody_vault,
-        has_one = oracle_feed,
+        address = position.pool,
     )]
     pub pool: Box<BorshAccount<Pool>>,
 
@@ -125,8 +123,6 @@ pub struct LiquidatePositionAccountConstraints {
         close = owner,
         seeds = [POSITION_SEED, pool.address().as_ref(), owner.address().as_ref(), position.side.as_seed()],
         bump = position.bump,
-        has_one = owner,
-        has_one = pool,
     )]
     pub position: Box<BorshAccount<Position>>,
 
@@ -137,15 +133,18 @@ pub struct LiquidatePositionAccountConstraints {
     )]
     pub pool_authority: UncheckedAccount,
 
-    /// CHECK: validated by the `has_one = oracle_feed` constraint on the pool.
+    /// CHECK: validated by the `address = pool.oracle_feed` constraint below.
+    #[account(address = pool.oracle_feed)]
     pub oracle_feed: UncheckedAccount,
 
+    #[account(address = pool.collateral_mint)]
     pub collateral_mint: Box<InterfaceAccount<Mint>>,
 
     #[account(
         mut,
         seeds = [VAULT_SEED, pool.address().as_ref()],
         bump,
+        address = pool.custody_vault,
     )]
     pub custody_vault: Box<InterfaceAccount<TokenAccount>>,
 

@@ -14,11 +14,11 @@ pub struct CloseFundraiserAccountConstraints {
     #[account(mut)]
     pub maker: Signer,
 
+    #[account(address = fundraiser.mint_to_raise)]
     pub mint_to_raise: InterfaceAccount<Mint>,
 
     #[account(
         mut,
-        has_one = mint_to_raise,
         seeds = [b"fundraiser".as_ref(), maker.address().as_ref()],
         bump = fundraiser.bump,
         close = maker,

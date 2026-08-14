@@ -13,16 +13,14 @@ pub fn handle_update_reserve_config(
 
 #[derive(Accounts)]
 pub struct UpdateReserveConfig {
-    // The market is identified by the reserve's `has_one = lending_market`; we
+    // The market is identified by `address = reserve.lending_market`; we
     // only need to prove the signer owns it, not re-derive its address.
-    #[account(has_one = owner)]
+    #[account(address = reserve.lending_market)]
     pub lending_market: BorshAccount<LendingMarket>,
 
+    #[account(address = lending_market.owner)]
     pub owner: Signer,
 
-    #[account(
-        mut,
-        has_one = lending_market,
-    )]
+    #[account(mut)]
     pub reserve: BorshAccount<Reserve>,
 }

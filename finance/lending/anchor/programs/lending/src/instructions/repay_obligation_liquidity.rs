@@ -81,15 +81,14 @@ pub struct RepayObligationLiquidity {
 
     #[account(
         mut,
-        has_one = liquidity_mint,
-        has_one = liquidity_vault,
         constraint = reserve.lending_market == obligation.lending_market @ LendingError::MarketMismatch,
     )]
     pub reserve: BorshAccount<Reserve>,
 
+    #[account(address = reserve.liquidity_mint)]
     pub liquidity_mint: InterfaceAccount<Mint>,
 
-    #[account(mut)]
+    #[account(mut, address = reserve.liquidity_vault)]
     pub liquidity_vault: InterfaceAccount<TokenAccount>,
 
     #[account(mut)]

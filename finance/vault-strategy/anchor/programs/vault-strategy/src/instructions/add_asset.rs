@@ -9,18 +9,17 @@ use crate::state::{ApprovedAsset, AssetConfig, Registry, Strategy, MAX_ASSETS};
 
 #[derive(Accounts)]
 pub struct AddAssetAccountConstraints {
-    #[account(mut)]
+    #[account(mut, address = strategy.manager)]
     pub manager: Signer,
 
     #[account(
         mut,
-        has_one = manager,
-        has_one = registry @ VaultError::InvalidRegistry,
         seeds = [b"strategy", strategy.index.to_le_bytes()],
-        bump = strategy.bump
+        bump = strategy.bump,
     )]
     pub strategy: Box<BorshAccount<Strategy>>,
 
+    #[account(address = strategy.registry @ VaultError::InvalidRegistry)]
     pub registry: Box<BorshAccount<Registry>>,
 
     pub asset_mint: Box<InterfaceAccount<Mint>>,

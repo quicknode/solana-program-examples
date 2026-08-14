@@ -15,11 +15,11 @@ pub struct RefundAccountConstraints {
 
     pub maker: SystemAccount,
 
+    #[account(address = fundraiser.mint_to_raise)]
     pub mint_to_raise: InterfaceAccount<Mint>,
 
     #[account(
         mut,
-        has_one = mint_to_raise,
         seeds = [b"fundraiser", maker.address().as_ref()],
         bump = fundraiser.bump,
     )]

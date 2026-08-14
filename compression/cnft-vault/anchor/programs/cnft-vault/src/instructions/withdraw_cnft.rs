@@ -8,15 +8,13 @@ use crate::{build_transfer_instruction, SPLCompression, TransferArgs, MPL_BUBBLE
 #[derive(Accounts)]
 pub struct WithdrawCnftAccountConstraints {
     /// The stored vault authority. Only this signer may withdraw.
+    #[account(address = vault.authority @ VaultError::InvalidWithdrawAuthority)]
     pub authority: Signer,
 
     // The vault PDA owns the cNFTs (as Bubblegum leaf owner) and signs the
     // transfer CPI via invoke_signed.
-    #[account(
-        seeds = [VAULT_SEED],
-        bump = vault.bump,
-        has_one = authority @ VaultError::InvalidWithdrawAuthority,
-    )]
+    #[account(seeds = [VAULT_SEED],
+        bump = vault.bump)]
     pub vault: BorshAccount<Vault>,
 
     #[account(mut)]

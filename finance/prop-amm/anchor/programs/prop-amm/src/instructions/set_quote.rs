@@ -32,13 +32,13 @@ pub fn handle_set_quote(
 
 #[derive(Accounts)]
 pub struct SetQuoteAccountConstraints {
+    #[account(address = market.operator)]
     pub operator: Signer,
 
     #[account(
         mut,
         seeds = [MARKET_SEED, market.base_mint.as_ref(), market.quote_mint.as_ref()],
         bump = market.bump,
-        has_one = operator,
     )]
     pub market: Box<BorshAccount<Market>>,
 }

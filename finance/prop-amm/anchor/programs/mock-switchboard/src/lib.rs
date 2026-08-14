@@ -72,12 +72,10 @@ pub struct InitializeFeedAccountConstraints {
 
 #[derive(Accounts)]
 pub struct SetPriceAccountConstraints {
-    #[account(
-        mut,
-        has_one = authority,
-    )]
+    #[account(mut)]
     pub feed: BorshAccount<MockFeed>,
 
+    #[account(address = feed.authority)]
     pub authority: Signer,
 }
 

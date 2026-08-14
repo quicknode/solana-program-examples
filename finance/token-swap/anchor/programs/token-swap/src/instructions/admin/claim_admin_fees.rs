@@ -16,10 +16,10 @@ use crate::{
 /// `admin_fees_owed_b`). This handler transfers those amounts out of the
 /// pool reserves into the admin's ATAs and resets the accumulators to zero.
 ///
-/// Authorisation: the `has_one = admin` constraint on `config` plus the
+/// Authorisation: the `address = config.admin` constraint on `admin` plus the
 /// `Signer` constraint on `admin` together mean only the address stored in
 /// `Config.admin` can call this. Any other signer will be rejected by
-/// Anchor's built-in `has_one` check.
+/// Anchor's built-in `address` check.
 pub fn handle_claim_admin_fees(
     context: &mut Context<ClaimAdminFeesAccountConstraints>,
 ) -> Result<()> {
@@ -106,11 +106,8 @@ pub fn handle_claim_admin_fees(
 
 #[derive(Accounts)]
 pub struct ClaimAdminFeesAccountConstraints {
-    #[account(
-        seeds = [CONFIG_SEED],
-        bump,
-        has_one = admin,
-    )]
+    #[account(seeds = [CONFIG_SEED],
+        bump, address = pool_config.config)]
     pub config: BorshAccount<Config>,
 
     #[account(
@@ -121,9 +118,6 @@ pub struct ClaimAdminFeesAccountConstraints {
             pool_config.mint_b.address().as_ref(),
         ],
         bump,
-        has_one = config,
-        has_one = mint_a,
-        has_one = mint_b,
     )]
     pub pool_config: BorshAccount<PoolConfig>,
 
@@ -139,8 +133,10 @@ pub struct ClaimAdminFeesAccountConstraints {
     )]
     pub pool_authority: UncheckedAccount,
 
+    #[account(address = pool_config.mint_a)]
     pub mint_a: Box<InterfaceAccount<Mint>>,
 
+    #[account(address = pool_config.mint_b)]
     pub mint_b: Box<InterfaceAccount<Mint>>,
 
     /// The pool's token-A reserve. The admin's owed token-A fees are paid out
@@ -164,7 +160,8 @@ pub struct ClaimAdminFeesAccountConstraints {
     pub pool_b: Box<InterfaceAccount<TokenAccount>>,
 
     /// Must match the address stored in `Config.admin` (enforced by
-    /// `has_one = admin` above).
+    /// `address = config.admin` above).
+    #[account(address = config.admin)]
     pub admin: Signer,
 
     /// Admin's token-A receiving account. Must already exist; the admin is

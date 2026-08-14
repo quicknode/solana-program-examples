@@ -4,14 +4,11 @@ use crate::{ABWallet, Config, AB_WALLET_SEED, CONFIG_SEED};
 
 #[derive(Accounts)]
 pub struct InitWalletAccountConstraints {
-    #[account(mut)]
+    #[account(mut, address = config.authority)]
     pub authority: Signer,
 
-    #[account(
-        seeds = [CONFIG_SEED],
-        bump = config.bump,
-        has_one = authority,
-    )]
+    #[account(seeds = [CONFIG_SEED],
+        bump = config.bump)]
     pub config: Box<BorshAccount<Config>>,
 
     pub wallet: SystemAccount,

@@ -1027,10 +1027,10 @@ fn cancel_and_settle_bid_refunds_full_quote() {
 
 // Regression test for the fee-drain attack on settle_funds. Pre-fix,
 // `SettleFundsAccountConstraints` did not bind `quote_vault` to `market.quote_vault` via
-// `has_one`, so a caller could pass `market.fee_vault` (same mint and
+// an address constraint, so a caller could pass `market.fee_vault` (same mint and
 // same authority) where `quote_vault` was expected and drain accumulated
 // taker fees while spending their own unsettled_quote credit. The
-// has_one constraint now bound on the `market` field must surface this
+// address constraint now bound on the vault field must surface this
 // as `ConstraintHasOne` (anchor error 2001) before any transfer runs.
 #[test]
 fn settle_funds_rejects_fee_vault_substituted_for_quote_vault() {
@@ -1066,7 +1066,7 @@ fn settle_funds_rejects_fee_vault_substituted_for_quote_vault() {
     // Build a settle_funds ix but swap fee_vault in for quote_vault.
     // Everything else (base_vault, mints, user accounts, owner) stays
     // correct, so the only thing that should reject this is the new
-    // has_one constraint on the market PDA.
+    // address constraint tying the vault to the market PDA.
     let attack_ix = Instruction::new_with_bytes(
         sc.program_id,
         &order_book::instruction::SettleFunds {}.data(),

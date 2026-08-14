@@ -36,10 +36,9 @@ pub fn handle_initialize_reserve(
 pub struct InitializeReserve {
     // The reserve PDA below is seeded by this market's address, so the market is
     // pinned by that seed; we only need to prove the signer owns it.
-    #[account(has_one = owner)]
     pub lending_market: BorshAccount<LendingMarket>,
 
-    #[account(mut)]
+    #[account(mut, address = lending_market.owner)]
     pub owner: Signer,
 
     #[account(

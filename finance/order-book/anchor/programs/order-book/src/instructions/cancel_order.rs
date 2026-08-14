@@ -73,11 +73,10 @@ pub fn handle_cancel_order(context: &mut Context<CancelOrderAccountConstraints>)
 
 #[derive(Accounts)]
 pub struct CancelOrderAccountConstraints {
-    #[account(has_one = order_book @ ErrorCode::InvalidOrderBook)]
     pub market: BorshAccount<Market>,
 
-    // Not a PDA (see initialize_market.rs); bound to `market` via has_one.
-    #[account(mut)]
+    // Not a PDA (see initialize_market.rs); bound to `market` via `address`.
+    #[account(mut, address = market.order_book @ ErrorCode::InvalidOrderBook)]
     pub order_book: Account<OrderBook>,
 
     #[account(

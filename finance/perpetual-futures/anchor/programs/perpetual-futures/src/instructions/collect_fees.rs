@@ -38,16 +38,13 @@ pub fn handle_collect_fees(context: &mut Context<CollectFeesAccountConstraints>)
 
 #[derive(Accounts)]
 pub struct CollectFeesAccountConstraints {
-    #[account(mut)]
+    #[account(mut, address = pool.authority)]
     pub authority: Signer,
 
     #[account(
         mut,
         seeds = [POOL_SEED, pool.collateral_mint.as_ref(), pool.oracle_feed.as_ref()],
         bump = pool.bump,
-        has_one = authority,
-        has_one = collateral_mint,
-        has_one = custody_vault,
     )]
     pub pool: Box<BorshAccount<Pool>>,
 
@@ -58,12 +55,14 @@ pub struct CollectFeesAccountConstraints {
     )]
     pub pool_authority: UncheckedAccount,
 
+    #[account(address = pool.collateral_mint)]
     pub collateral_mint: Box<InterfaceAccount<Mint>>,
 
     #[account(
         mut,
         seeds = [VAULT_SEED, pool.address().as_ref()],
         bump,
+        address = pool.custody_vault,
     )]
     pub custody_vault: Box<InterfaceAccount<TokenAccount>>,
 

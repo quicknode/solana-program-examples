@@ -12,13 +12,13 @@ const SECONDS_PER_YEAR: u64 = 31_536_000;
 #[derive(Accounts)]
 pub struct CollectFeesAccountConstraints {
     /// CHECK: manager is stored in strategy; we only read their pubkey for derivation
+    #[account(address = strategy.manager)]
     pub manager: UncheckedAccount,
 
     #[account(
         mut,
-        has_one = manager,
         seeds = [b"strategy", strategy.index.to_le_bytes()],
-        bump = strategy.bump
+        bump = strategy.bump,
     )]
     pub strategy: BorshAccount<Strategy>,
 

@@ -274,10 +274,8 @@ pub fn handle_swap_tokens(
 
 #[derive(Accounts)]
 pub struct SwapTokensAccountConstraints {
-    #[account(
-        seeds = [CONFIG_SEED],
-        bump,
-    )]
+    #[account(seeds = [CONFIG_SEED],
+        bump, address = pool_config.config)]
     pub config: BorshAccount<Config>,
 
     #[account(
@@ -288,9 +286,6 @@ pub struct SwapTokensAccountConstraints {
             pool_config.mint_b.address().as_ref(),
         ],
         bump,
-        has_one = config,
-        has_one = mint_a,
-        has_one = mint_b,
     )]
     pub pool_config: BorshAccount<PoolConfig>,
 
@@ -309,8 +304,10 @@ pub struct SwapTokensAccountConstraints {
     /// The account doing the swap
     pub trader: Signer,
 
+    #[account(address = pool_config.mint_a)]
     pub mint_a: Box<InterfaceAccount<Mint>>,
 
+    #[account(address = pool_config.mint_b)]
     pub mint_b: Box<InterfaceAccount<Mint>>,
 
     #[account(

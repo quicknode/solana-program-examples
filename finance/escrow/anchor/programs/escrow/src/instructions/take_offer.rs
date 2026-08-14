@@ -14,11 +14,13 @@ pub struct TakeOfferAccountConstraints {
     #[account(mut)]
     pub taker: Signer,
 
-    #[account(mut)]
+    #[account(mut, address = offer.maker)]
     pub maker: SystemAccount,
 
+    #[account(address = offer.token_mint_a)]
     pub token_mint_a: InterfaceAccount<Mint>,
 
+    #[account(address = offer.token_mint_b)]
     pub token_mint_b: InterfaceAccount<Mint>,
 
     #[account(
@@ -50,11 +52,8 @@ pub struct TakeOfferAccountConstraints {
     #[account(
         mut,
         close = maker,
-        has_one = maker,
-        has_one = token_mint_a,
-        has_one = token_mint_b,
         seeds = [b"offer", maker.address().as_ref(), offer.id.to_le_bytes()],
-        bump = offer.bump
+        bump = offer.bump,
     )]
     offer: BorshAccount<Offer>,
 

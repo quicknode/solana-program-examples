@@ -16,30 +16,25 @@ const BPS_DENOMINATOR: u128 = 10_000;
 #[derive(Accounts)]
 #[instruction(winning_outcome_index: u8)]
 pub struct SettleEventAccountConstraints {
-    #[account(mut)]
+    #[account(mut, address = config.admin @ BettingError::Unauthorized)]
     pub admin: Signer,
 
-    #[account(
-        seeds = [b"config"],
-        bump = config.bump,
-        has_one = admin @ BettingError::Unauthorized,
-        has_one = token_mint,
-        has_one = fee_recipient,
-    )]
+    #[account(seeds = [b"config"],
+        bump = config.bump)]
     pub config: BorshAccount<Config>,
 
-    #[account(mint::token_program = token_program)]
+    #[account(mint::token_program = token_program, address = config.token_mint)]
     pub token_mint: InterfaceAccount<Mint>,
 
     #[account(
         mut,
         seeds = [b"event", event.event_id.to_le_bytes()],
         bump = event.bump,
+        address = winning_outcome.event,
     )]
     pub event: BorshAccount<Event>,
 
     #[account(
-        has_one = event,
         seeds = [b"outcome", event.address().as_ref(), &[winning_outcome_index]],
         bump = winning_outcome.bump,
     )]
@@ -53,7 +48,8 @@ pub struct SettleEventAccountConstraints {
     )]
     pub vault: InterfaceAccount<TokenAccount>,
 
-    /// CHECK: validated against config.fee_recipient by the `has_one` above.
+    /// CHECK: validated against config.fee_recipient by the `address` constraint.
+    #[account(address = config.fee_recipient)]
     pub fee_recipient: UncheckedAccount,
 
     #[account(

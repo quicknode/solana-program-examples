@@ -8,14 +8,11 @@ use crate::state::{AssetRate, RouterConfig};
 
 #[derive(Accounts)]
 pub struct SetRateAccountConstraints {
-    #[account(mut)]
+    #[account(mut, address = router_config.authority)]
     pub authority: Signer,
 
-    #[account(
-        has_one = authority,
-        seeds = [b"router_config"],
-        bump = router_config.bump
-    )]
+    #[account(seeds = [b"router_config"],
+        bump = router_config.bump)]
     pub router_config: BorshAccount<RouterConfig>,
 
     pub asset_mint: InterfaceAccount<Mint>,

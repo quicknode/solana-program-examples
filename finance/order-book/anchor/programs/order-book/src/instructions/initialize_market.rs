@@ -78,7 +78,7 @@ pub struct InitializeMarketAccountConstraints {
     // This is not a PDA. create_account requires the new account to sign
     // its own creation, and a PDA has no private key to sign with, so the
     // client must generate a real keypair for it. The program ties this
-    // account to its market via `has_one = order_book` on `market`, not via
+    // account to its market via `address = market.order_book`, not via
     // seeds.
     #[account(zeroed)]
     pub order_book: Account<OrderBook>,

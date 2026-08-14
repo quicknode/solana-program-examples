@@ -15,9 +15,10 @@ use super::{close_token_account, transfer_tokens};
 // the maker, and both the vault and the offer accounts are closed.
 #[derive(Accounts)]
 pub struct CancelOfferAccountConstraints {
-    #[account(mut)]
+    #[account(mut, address = offer.maker)]
     pub maker: Signer,
 
+    #[account(address = offer.token_mint_a)]
     pub token_mint_a: InterfaceAccount<Mint>,
 
     #[account(
@@ -31,8 +32,6 @@ pub struct CancelOfferAccountConstraints {
     #[account(
         mut,
         close = maker,
-        has_one = maker,
-        has_one = token_mint_a,
         seeds = [b"offer", maker.address().as_ref(), offer.id.to_le_bytes()],
         bump = offer.bump,
     )]

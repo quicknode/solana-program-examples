@@ -27,7 +27,7 @@ pub const MAX_ORDERS_PER_SIDE: usize = MAX_TREE_NODES;
 #[repr(C)]
 pub struct OrderBook {
     /// Market PDA this book belongs to. Constrained onchain via the
-    /// `market` `has_one = order_book` (and vice-versa) bindings.
+    /// `market` / `order_book` address bindings.
     pub market: Address,
 
     /// Tree roots for the two sides. Kept on this struct (rather than inside

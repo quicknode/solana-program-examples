@@ -5,13 +5,13 @@ use crate::state::{AssetConfig, Strategy};
 
 #[derive(Accounts)]
 pub struct SetWeightAccountConstraints {
+    #[account(address = strategy.manager)]
     pub manager: Signer,
 
     #[account(
         mut,
-        has_one = manager,
         seeds = [b"strategy", strategy.index.to_le_bytes()],
-        bump = strategy.bump
+        bump = strategy.bump,
     )]
     pub strategy: Box<BorshAccount<Strategy>>,
 

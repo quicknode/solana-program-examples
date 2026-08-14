@@ -14,17 +14,17 @@ use crate::state::{AssetConfig, Strategy};
 
 #[derive(Accounts)]
 pub struct RebalanceAccountConstraints {
+    #[account(address = strategy.manager)]
     pub manager: Signer,
 
     #[account(
         mut,
-        has_one = manager,
-        has_one = usdc_mint @ VaultError::InvalidUsdcMint,
         seeds = [b"strategy", strategy.index.to_le_bytes()],
-        bump = strategy.bump
+        bump = strategy.bump,
     )]
     pub strategy: Box<BorshAccount<Strategy>>,
 
+    #[account(address = strategy.usdc_mint @ VaultError::InvalidUsdcMint)]
     pub usdc_mint: Box<InterfaceAccount<Mint>>,
 
     #[account(mut)]
