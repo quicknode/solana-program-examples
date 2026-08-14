@@ -7,7 +7,7 @@ use {
         cpi::{
             AddLiquidityInstruction, ClosePositionInstruction, CollectFeesInstruction,
             InitializePoolInstruction, LiquidatePositionInstruction, OpenPositionInstruction,
-            RemoveLiquidityInstruction,
+            RemoveLiquidityInstruction, SetFundingRateInstruction,
         },
         state::{Pool, Position},
         LpMintPda, VaultPda,
@@ -92,12 +92,21 @@ fn set_last_restart_slot(test: &mut Test, slot: u64) {
 }
 
 fn init_pool(test: &mut Test, maintenance_margin_bps: u16, close_fee_bps: u16) -> Outcome {
+    init_pool_with_funding(test, maintenance_margin_bps, close_fee_bps, 0)
+}
+
+fn init_pool_with_funding(
+    test: &mut Test,
+    maintenance_margin_bps: u16,
+    close_fee_bps: u16,
+    funding_rate_per_slot: u64,
+) -> Outcome {
     test.send(InitializePoolInstruction {
         authority: ADMIN,
         collateral_mint: COLLATERAL_MINT,
         oracle_feed: FEED,
         oracle_scale: ORACLE_SCALE,
-        funding_rate_per_slot: 0,
+        funding_rate_per_slot,
         open_fee_bps: 10,
         close_fee_bps,
         max_leverage: 10,
@@ -118,10 +127,16 @@ struct Env {
 /// initialized pool (0.1% open/close fees, 10x max leverage, 5% maintenance
 /// margin, 1% liquidation fee, 1% max confidence).
 fn setup(test: &mut Test) -> Env {
+    setup_with_funding(test, 0)
+}
+
+/// Like `setup`, but with a non-zero per-slot funding rate so funding accrues
+/// as slots pass.
+fn setup_with_funding(test: &mut Test, funding_rate_per_slot: u64) -> Env {
     test.add(Wallet::new().at(ADMIN));
     test.add(Mint::new(ADMIN).at(COLLATERAL_MINT).decimals(6));
     set_feed(test, dollars(100), 0);
-    init_pool(test, 500, 10).succeeds();
+    init_pool_with_funding(test, 500, 10, funding_rate_per_slot).succeeds();
 
     let pool = test.derive_pda(Pool::seeds(&COLLATERAL_MINT, &FEED));
     Env {
@@ -356,6 +371,79 @@ fn collect_fees_sweeps_the_open_fee_to_the_admin(test: &mut Test) {
     .succeeds()
     // The open fee (0.1% of notional) was swept to the admin.
     .has_tokens(ADMIN_COLLATERAL, size / 1_000);
+}
+
+/// The funding rate is quoted per slot, so what a position costs per hour also
+/// depends on the cluster's slot time. When the protocol shortens the slot, the
+/// pool authority retunes the rate, and the retune settles the slots already
+/// elapsed at the old rate rather than repricing them at the new one.
+///
+/// Both halves below hold the same position for the same slots at the same
+/// price, so the size and price scaling cancels and only the rates differ: the
+/// spanning position pays one window at the old rate plus one at the new (3
+/// window-rates), and the position opened afterwards pays one window wholly at
+/// the new rate (2 window-rates).
+#[quasar_test]
+fn set_funding_rate_settles_at_the_old_rate_first(test: &mut Test) {
+    let rate = 5_000;
+    let window = 2_000;
+    let size = 5_000 * ONE_USDC;
+    let collateral = 1_000 * ONE_USDC;
+    let fees = 2 * (size / 1_000); // open and close, 0.1% of notional each
+
+    let env = setup_with_funding(test, rate);
+    fund(test, PROVIDER, PROVIDER_COLLATERAL, 100_000 * ONE_USDC);
+    add_liquidity(test, &env, 100_000 * ONE_USDC).succeeds();
+    fund(test, TRADER, TRADER_COLLATERAL, 10_000 * ONE_USDC);
+
+    // A position held across the retune: one window at `rate`, one at `rate * 2`.
+    let before_spanning = test.tokens(TRADER_COLLATERAL);
+    open_position(test, &env, 0, collateral, size).succeeds();
+    set_clock_at(test, window);
+    test.send(SetFundingRateInstruction {
+        authority: ADMIN,
+        collateral_mint: COLLATERAL_MINT,
+        oracle_feed: FEED,
+        funding_rate_per_slot: rate * 2,
+    })
+    .succeeds();
+    set_clock_at(test, 2 * window);
+    set_feed_at_slot(test, dollars(100), 2 * window, 0);
+    close_position(test, &env).succeeds();
+    let spanning = (before_spanning - test.tokens(TRADER_COLLATERAL)) - fees;
+
+    // A fresh position over one window, now wholly at the doubled rate.
+    let before_doubled = test.tokens(TRADER_COLLATERAL);
+    open_position(test, &env, 0, collateral, size).succeeds();
+    set_clock_at(test, 3 * window);
+    set_feed_at_slot(test, dollars(100), 3 * window, 0);
+    close_position(test, &env).succeeds();
+    let doubled = (before_doubled - test.tokens(TRADER_COLLATERAL)) - fees;
+
+    assert!(doubled > 0, "the doubled-rate window must charge some funding");
+    assert_eq!(
+        spanning * 2,
+        doubled * 3,
+        "a position spanning the retune should pay 1.5x one doubled window: \
+         spanning {spanning}, doubled {doubled}"
+    );
+}
+
+#[quasar_test]
+fn only_the_authority_can_set_the_funding_rate(test: &mut Test) {
+    let env = setup_with_funding(test, 5_000);
+    let _ = env;
+    fund(test, TRADER, TRADER_COLLATERAL, ONE_USDC);
+    assert!(
+        test.send(SetFundingRateInstruction {
+            authority: TRADER,
+            collateral_mint: COLLATERAL_MINT,
+            oracle_feed: FEED,
+            funding_rate_per_slot: 1,
+        })
+        .is_err(),
+        "a non-authority must not be able to retune the funding rate"
+    );
 }
 
 #[quasar_test]
