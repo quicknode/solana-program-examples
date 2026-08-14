@@ -22,6 +22,9 @@ pub struct InitializeAccountConstraints {
 }
 
 pub fn handler(context: &mut Context<InitializeAccountConstraints>) -> Result<()> {
+    // `AccountView` is Copy, and a copy still points at the same
+    // account — v2's typed handles make the aliasing a compile error.
+    let payer_view = *context.accounts.payer.account();
     // Calculate space required for token and extension data
     let token_account_size =
         ExtensionType::try_calculate_account_len::<PodAccount>(&[ExtensionType::MemoTransfer])?;
@@ -49,7 +52,7 @@ pub fn handler(context: &mut Context<InitializeAccountConstraints>) -> Result<()
         InitializeAccount3 {
             account: context.accounts.token_account.cpi_handle_mut(),
             mint: context.accounts.mint_account.cpi_handle(),
-            authority: context.accounts.payer.cpi_handle(),
+            authority: CpiHandle::readonly(&payer_view),
         },
     ))?;
 
@@ -59,7 +62,7 @@ pub fn handler(context: &mut Context<InitializeAccountConstraints>) -> Result<()
         context.accounts.token_program.address(),
         MemoTransfer {
             account: context.accounts.token_account.cpi_handle_mut(),
-            owner: context.accounts.payer.cpi_handle(),
+            owner: CpiHandle::readonly(&payer_view),
         },
     ))?;
     Ok(())

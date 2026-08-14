@@ -76,7 +76,7 @@ pub fn handle_send_offered_tokens_to_vault(
         &context.accounts.vault,
         &token_a_offered_amount,
         &context.accounts.token_mint_a,
-        &context.accounts.maker.cpi_handle_mut(),
+        *context.accounts.maker.account(),
         &context.accounts.token_program,
         None,
     )

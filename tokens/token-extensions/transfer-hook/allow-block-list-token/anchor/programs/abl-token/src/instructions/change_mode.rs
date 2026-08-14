@@ -2,6 +2,7 @@ use anchor_lang::solana_program::program::invoke;
 use anchor_lang::{prelude::*, solana_program::system_instruction::transfer};
 use anchor_spl::token_interface::spl_token_metadata_interface::state::TokenMetadata;
 use anchor_spl::{
+    mint,
     token_2022::{
         spl_token_2022::extension::{BaseStateWithExtensions, StateWithExtensions},
         spl_token_2022::state::Mint,

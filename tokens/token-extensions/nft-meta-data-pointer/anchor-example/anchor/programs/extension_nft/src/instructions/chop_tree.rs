@@ -7,7 +7,15 @@ use anchor_spl::token_2022_extensions::spl_token_metadata_interface;
 use anchor_spl::token_interface::{spl_token_2022, Token2022};
 use session_keys::{Session, SessionToken};
 
-pub fn chop_tree(context: &mut Context<ChopTreeAccountConstraints>, counter: u16, amount: u64) -> Result<()> {
+pub fn chop_tree(
+    context: &mut Context<ChopTreeAccountConstraints>,
+    counter: u16,
+    amount: u64,
+) -> Result<()> {
+    // `AccountView` is Copy, and a copy still points at the same
+    // account — v2's typed handles make the aliasing a compile error.
+    let mint_view = *context.accounts.mint.account();
+    let nft_authority_view = *context.accounts.nft_authority.account();
     // Save game_data bump on first creation (init_if_needed). See init_player.rs
     // for the same pattern.
     let game_data_bump = context.bumps.game_data;
@@ -48,8 +56,8 @@ pub fn chop_tree(context: &mut Context<ChopTreeAccountConstraints>, counter: u16
             context.accounts.player.wood.to_string(),
         ),
         &[
-            context.accounts.mint.cpi_handle().clone(),
-            context.accounts.nft_authority.cpi_handle().clone(),
+            CpiHandle::readonly(&mint_view).clone(),
+            CpiHandle::readonly(&nft_authority_view).clone(),
         ],
         signer,
     )?;

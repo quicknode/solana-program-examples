@@ -44,6 +44,9 @@ pub fn handle_mint_token(
     context: &mut Context<MintTokenAccountConstraints>,
     amount: u64,
 ) -> Result<()> {
+    // `AccountView` is Copy, and a copy still points at the same
+    // account — v2's typed handles make the aliasing a compile error.
+    let mint_account_view = *context.accounts.mint_account.account();
     msg!("Minting token to associated token account...");
     msg!("Mint: {}", &context.accounts.mint_account.address());
     msg!(
@@ -61,7 +64,7 @@ pub fn handle_mint_token(
             MintTo {
                 mint: context.accounts.mint_account.cpi_handle_mut(),
                 to: context.accounts.associated_token_account.cpi_handle_mut(),
-                authority: context.accounts.mint_account.cpi_handle(), // PDA mint authority, required as signer
+                authority: CpiHandle::readonly(&mint_account_view), // PDA mint authority, required as signer
             },
         )
         .with_signer(signer_seeds), // using PDA to sign

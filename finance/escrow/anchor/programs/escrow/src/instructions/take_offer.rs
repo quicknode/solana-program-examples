@@ -75,11 +75,11 @@ pub fn handle_send_wanted_tokens_to_maker(
     context: &Context<TakeOfferAccountConstraints>,
 ) -> Result<()> {
     transfer_tokens(
-        &context.accounts.taker_token_account_b,
-        &context.accounts.maker_token_account_b,
+        &mut context.accounts.taker_token_account_b,
+        &mut context.accounts.maker_token_account_b,
         &context.accounts.offer.token_b_wanted_amount,
         &context.accounts.token_mint_b,
-        &context.accounts.taker.cpi_handle_mut(),
+        *context.accounts.taker.account(),
         &context.accounts.token_program,
         None,
     )
@@ -98,7 +98,7 @@ pub fn handle_withdraw_and_close_vault(
         &context.accounts.taker_token_account_a,
         &context.accounts.vault.amount(),
         &context.accounts.token_mint_a,
-        &context.accounts.offer.cpi_handle_mut(),
+        *context.accounts.offer.account(),
         &context.accounts.token_program,
         Some(offer_seeds),
     )?;
@@ -107,8 +107,8 @@ pub fn handle_withdraw_and_close_vault(
     // to the maker (the offer account does the same via `close = maker`).
     close_token_account(
         &context.accounts.vault,
-        &context.accounts.maker.cpi_handle_mut(),
-        &context.accounts.offer.cpi_handle_mut(),
+        *context.accounts.maker.account(),
+        *context.accounts.offer.account(),
         &context.accounts.token_program,
         Some(offer_seeds),
     )

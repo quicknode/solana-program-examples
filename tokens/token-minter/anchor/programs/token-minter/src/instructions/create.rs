@@ -45,6 +45,9 @@ pub fn handle_create_token(
     token_symbol: String,
     token_uri: String,
 ) -> Result<()> {
+    // `AccountView` is Copy, and a copy still points at the same
+    // account — v2's typed handles make the aliasing a compile error.
+    let payer_view = *context.accounts.payer.account();
     msg!("Creating metadata account");
 
     // Cross Program Invocation (CPI)
@@ -55,8 +58,8 @@ pub fn handle_create_token(
             CreateMetadataAccountsV3 {
                 metadata: context.accounts.metadata_account.cpi_handle_mut(),
                 mint: context.accounts.mint_account.cpi_handle(),
-                mint_authority: context.accounts.payer.cpi_handle(),
-                update_authority: context.accounts.payer.cpi_handle(),
+                mint_authority: CpiHandle::readonly(&payer_view),
+                update_authority: CpiHandle::readonly(&payer_view),
                 payer: context.accounts.payer.cpi_handle_mut(),
                 system_program: context.accounts.system_program.cpi_handle(),
                 update_authority_is_signer: true,
@@ -72,7 +75,6 @@ pub fn handle_create_token(
             uses: None,
         },
         false, // Is mutable
-        true,  // Update authority is signer
         None,  // Collection details
     )?;
 

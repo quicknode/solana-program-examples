@@ -24,6 +24,9 @@ pub fn process_update_field(
     context: &mut Context<UpdateFieldAccountConstraints>,
     args: UpdateFieldArgs,
 ) -> Result<()> {
+    // `AccountView` is Copy, and a copy still points at the same
+    // account — v2's typed handles make the aliasing a compile error.
+    let authority_view = *context.accounts.authority.account();
     let UpdateFieldArgs { field, value } = args;
 
     // Convert to Field type from spl_token_metadata_interface
@@ -82,7 +85,7 @@ pub fn process_update_field(
             context.accounts.token_program.address(),
             TokenMetadataUpdateField {
                 metadata: context.accounts.mint_account.cpi_handle_mut(),
-                update_authority: context.accounts.authority.cpi_handle(),
+                update_authority: CpiHandle::readonly(&authority_view),
             },
         ),
         field,

@@ -31,6 +31,9 @@ pub fn handle_place_order<'info>(
     price: u64,
     quantity: u64,
 ) -> Result<()> {
+    // `AccountView` is Copy, and a copy still points at the same
+    // account — v2's typed handles make the aliasing a compile error.
+    let quote_mint_view = *context.accounts.quote_mint.account();
     let market = &context.accounts.market;
 
     require!(market.is_active, ErrorCode::MarketPaused);
@@ -342,7 +345,7 @@ pub fn handle_place_order<'info>(
                 context.accounts.token_program.address(),
                 TransferChecked {
                     from: context.accounts.quote_vault.cpi_handle_mut(),
-                    mint: context.accounts.quote_mint.cpi_handle(),
+                    mint: CpiHandle::readonly(&quote_mint_view),
                     to: context.accounts.fee_vault.cpi_handle_mut(),
                     authority: market.cpi_handle(),
                 },

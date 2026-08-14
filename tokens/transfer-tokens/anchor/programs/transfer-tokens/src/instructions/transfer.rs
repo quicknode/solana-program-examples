@@ -50,6 +50,9 @@ pub fn handle_transfer_tokens(
     context: &mut Context<TransferTokensAccountConstraints>,
     amount: u64,
 ) -> Result<()> {
+    // `AccountView` is Copy, and a copy still points at the same
+    // account — v2's typed handles make the aliasing a compile error.
+    let mint_account_view = *context.accounts.mint_account.account();
     msg!("Transferring tokens...");
     msg!(
         "Mint: {}",
@@ -70,7 +73,7 @@ pub fn handle_transfer_tokens(
             context.accounts.token_program.address(),
             TransferChecked {
                 from: context.accounts.sender_token_account.cpi_handle_mut(),
-                mint: context.accounts.mint_account.cpi_handle(),
+                mint: CpiHandle::readonly(&mint_account_view),
                 to: context.accounts.recipient_token_account.cpi_handle_mut(),
                 authority: context.accounts.sender.cpi_handle(),
             },

@@ -83,7 +83,6 @@ pub fn handle_create_token(
             uses: None,
         },
         false, // Is mutable
-        true,  // Update authority is signer
         None,  // Collection details
     )?;
 

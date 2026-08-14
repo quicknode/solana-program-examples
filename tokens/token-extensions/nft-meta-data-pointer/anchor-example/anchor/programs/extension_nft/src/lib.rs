@@ -24,7 +24,10 @@ declare_id!("9aZZ7TJ2fQZxY8hMtWXywp5y6BgqC4N2BPcr9FDT47sW");
 pub mod extension_nft {
     use super::*;
 
-    pub fn init_player(context: &mut Context<InitPlayerAccountConstraints>, _level_seed: String) -> Result<()> {
+    pub fn init_player(
+        context: &mut Context<InitPlayerAccountConstraints>,
+        _level_seed: String,
+    ) -> Result<()> {
         init_player::handle_init_player(context)
     }
 
@@ -39,7 +42,11 @@ pub mod extension_nft {
         ctx.accounts.player.authority.address() == ctx.accounts.signer.address(),
         GameErrorCode::WrongAuthority
     )]
-    pub fn chop_tree(ctx: &mut Context<ChopTreeAccountConstraints>, _level_seed: String, counter: u16) -> Result<()> {
+    pub fn chop_tree(
+        ctx: &mut Context<ChopTreeAccountConstraints>,
+        _level_seed: String,
+        counter: u16,
+    ) -> Result<()> {
         chop_tree::chop_tree(ctx, counter, 1)
     }
 

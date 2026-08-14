@@ -7,6 +7,7 @@ use {
             mpl_token_metadata::types::DataV2, CreateMasterEditionV3, CreateMetadataAccountsV3,
             Metadata,
         },
+        mint,
         token::{mint_to, Mint, MintTo, Token, TokenAccount},
     },
 };
@@ -23,6 +24,10 @@ pub mod nft_minter {
         nft_symbol: String,
         nft_uri: String,
     ) -> Result<()> {
+        // `AccountView` is Copy, and a copy still points at the same
+        // account — v2's typed handles make the aliasing a compile error.
+        let mint_account_view = *context.accounts.mint_account.account();
+        let payer_view = *context.accounts.payer.account();
         msg!("Minting Token");
         // Cross Program Invocation (CPI)
         // Invoking the mint_to instruction on the token program
@@ -32,7 +37,7 @@ pub mod nft_minter {
                 MintTo {
                     mint: context.accounts.mint_account.cpi_handle_mut(),
                     to: context.accounts.associated_token_account.cpi_handle_mut(),
-                    authority: context.accounts.payer.cpi_handle(),
+                    authority: CpiHandle::readonly(&payer_view),
                 },
             ),
             1,
@@ -46,9 +51,9 @@ pub mod nft_minter {
                 context.accounts.token_metadata_program.address(),
                 CreateMetadataAccountsV3 {
                     metadata: context.accounts.metadata_account.cpi_handle_mut(),
-                    mint: context.accounts.mint_account.cpi_handle(),
-                    mint_authority: context.accounts.payer.cpi_handle(),
-                    update_authority: context.accounts.payer.cpi_handle(),
+                    mint: CpiHandle::readonly(&mint_account_view),
+                    mint_authority: CpiHandle::readonly(&payer_view),
+                    update_authority: CpiHandle::readonly(&payer_view),
                     payer: context.accounts.payer.cpi_handle_mut(),
                     system_program: context.accounts.system_program.cpi_handle(),
                     update_authority_is_signer: true,
@@ -64,7 +69,6 @@ pub mod nft_minter {
                 uses: None,
             },
             false, // Is mutable
-            true,  // Update authority is signer
             None,  // Collection details
         )?;
 
@@ -77,8 +81,8 @@ pub mod nft_minter {
                 CreateMasterEditionV3 {
                     edition: context.accounts.edition_account.cpi_handle_mut(),
                     mint: context.accounts.mint_account.cpi_handle_mut(),
-                    update_authority: context.accounts.payer.cpi_handle(),
-                    mint_authority: context.accounts.payer.cpi_handle(),
+                    update_authority: CpiHandle::readonly(&payer_view),
+                    mint_authority: CpiHandle::readonly(&payer_view),
                     payer: context.accounts.payer.cpi_handle_mut(),
                     metadata: context.accounts.metadata_account.cpi_handle_mut(),
                     token_program: context.accounts.token_program.cpi_handle(),

@@ -14,6 +14,11 @@ use anchor_spl::{
 };
 
 pub fn handle_mint_nft(context: &mut Context<MintNftAccountConstraints>) -> Result<()> {
+    // `AccountView` is Copy, and a copy still points at the same
+    // account — v2's typed handles make the aliasing a compile error.
+    let mint_view = *context.accounts.mint.account();
+    let nft_authority_view = *context.accounts.nft_authority.account();
+    let signer_view = *context.accounts.signer.account();
     msg!("Mint nft with meta data extension and additional meta data");
 
     let space =
@@ -78,8 +83,8 @@ pub fn handle_mint_nft(context: &mut Context<MintNftAccountConstraints>) -> Resu
     invoke(
         &init_meta_data_pointer_ix,
         &[
-            context.accounts.mint.cpi_handle(),
-            context.accounts.nft_authority.cpi_handle(),
+            CpiHandle::readonly(&mint_view),
+            CpiHandle::readonly(&nft_authority_view),
         ],
     )?;
 
@@ -91,8 +96,13 @@ pub fn handle_mint_nft(context: &mut Context<MintNftAccountConstraints>) -> Resu
         },
     );
 
-    token_2022::initialize_mint2(mint_cpi_ix, 0, &context.accounts.nft_authority.address(), None)
-        .unwrap();
+    token_2022::initialize_mint2(
+        mint_cpi_ix,
+        0,
+        &context.accounts.nft_authority.address(),
+        None,
+    )
+    .unwrap();
 
     // We use a PDA as a mint authority for the metadata account because
     // we want to be able to update the NFT from the program.
@@ -120,8 +130,8 @@ pub fn handle_mint_nft(context: &mut Context<MintNftAccountConstraints>) -> Resu
     invoke_signed(
         init_token_meta_data_ix,
         &[
-            context.accounts.mint.cpi_handle().clone(),
-            context.accounts.nft_authority.cpi_handle().clone(),
+            CpiHandle::readonly(&mint_view).clone(),
+            CpiHandle::readonly(&nft_authority_view).clone(),
         ],
         signer,
     )?;
@@ -136,8 +146,8 @@ pub fn handle_mint_nft(context: &mut Context<MintNftAccountConstraints>) -> Resu
             "1".to_string(),
         ),
         &[
-            context.accounts.mint.cpi_handle().clone(),
-            context.accounts.nft_authority.cpi_handle().clone(),
+            CpiHandle::readonly(&mint_view).clone(),
+            CpiHandle::readonly(&nft_authority_view).clone(),
         ],
         signer,
     )?;
@@ -148,8 +158,8 @@ pub fn handle_mint_nft(context: &mut Context<MintNftAccountConstraints>) -> Resu
         associated_token::Create {
             payer: context.accounts.signer.cpi_handle_mut(),
             associated_token: context.accounts.token_account.cpi_handle_mut(),
-            authority: context.accounts.signer.cpi_handle(),
-            mint: context.accounts.mint.cpi_handle(),
+            authority: CpiHandle::readonly(&signer_view),
+            mint: CpiHandle::readonly(&mint_view),
             system_program: context.accounts.system_program.cpi_handle(),
             token_program: context.accounts.token_program.cpi_handle(),
         },
@@ -162,7 +172,7 @@ pub fn handle_mint_nft(context: &mut Context<MintNftAccountConstraints>) -> Resu
             token_2022::MintTo {
                 mint: context.accounts.mint.cpi_handle_mut(),
                 to: context.accounts.token_account.cpi_handle_mut(),
-                authority: context.accounts.nft_authority.cpi_handle(),
+                authority: CpiHandle::readonly(&nft_authority_view),
             },
             signer,
         ),
@@ -174,7 +184,7 @@ pub fn handle_mint_nft(context: &mut Context<MintNftAccountConstraints>) -> Resu
         CpiContext::new_with_signer(
             context.accounts.token_program.address(),
             token_2022::SetAuthority {
-                current_authority: context.accounts.nft_authority.cpi_handle(),
+                current_authority: CpiHandle::readonly(&nft_authority_view),
                 account_or_mint: context.accounts.mint.cpi_handle_mut(),
             },
             signer,

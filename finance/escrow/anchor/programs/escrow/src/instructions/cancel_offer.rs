@@ -59,20 +59,20 @@ pub fn handle_cancel_offer(context: &mut Context<CancelOfferAccountConstraints>)
 
     // Move all tokens back from the vault to the maker.
     transfer_tokens(
-        &context.accounts.vault,
-        &context.accounts.maker_token_account_a,
+        &mut context.accounts.vault,
+        &mut context.accounts.maker_token_account_a,
         &context.accounts.vault.amount(),
         &context.accounts.token_mint_a,
-        &context.accounts.offer.cpi_handle_mut(),
+        *context.accounts.offer.account(),
         &context.accounts.token_program,
         Some(offer_seeds),
     )?;
 
     // Close the vault, sending its rent lamports back to the maker.
     close_token_account(
-        &context.accounts.vault,
-        &context.accounts.maker.cpi_handle_mut(),
-        &context.accounts.offer.cpi_handle_mut(),
+        &mut context.accounts.vault,
+        *context.accounts.maker.account(),
+        *context.accounts.offer.account(),
         &context.accounts.token_program,
         Some(offer_seeds),
     )?;

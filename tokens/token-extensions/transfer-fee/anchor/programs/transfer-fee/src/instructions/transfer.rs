@@ -47,6 +47,9 @@ pub fn handle_process_transfer(
     context: &mut Context<TransferAccountConstraints>,
     amount: u64,
 ) -> Result<()> {
+    // `AccountView` is Copy, and a copy still points at the same
+    // account — v2's typed handles make the aliasing a compile error.
+    let mint_account_view = *context.accounts.mint_account.account();
     // read mint account extension data
     let mint = &context.accounts.mint_account.cpi_handle_mut();
     let mint_data = mint.data.borrow();
@@ -65,7 +68,7 @@ pub fn handle_process_transfer(
             context.accounts.token_program.address(),
             TransferCheckedWithFee {
                 source: context.accounts.sender_token_account.cpi_handle_mut(),
-                mint: context.accounts.mint_account.cpi_handle(),
+                mint: CpiHandle::readonly(&mint_account_view),
                 destination: context.accounts.recipient_token_account.cpi_handle_mut(),
                 authority: context.accounts.sender.cpi_handle(),
             },
