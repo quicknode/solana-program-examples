@@ -85,29 +85,39 @@ pub fn handle_refund(accounts: &mut RefundAccountConstraints) -> Result<()> {
         .ok_or(FundraiserError::MathOverflow)?;
     accounts.contributor_account.amount = 0;
 
+    // Read these before any CPI handle below takes its borrow. `maker` is a
+    // read-only account here, so asking it for a writable handle would panic.
+    let maker_address = *accounts.maker.address();
+    let mint_decimals = accounts.mint_to_raise.decimals();
+    let fundraiser_bump = accounts.fundraiser.bump;
+
+    // `fundraiser` signs the transfer. It is a data account holding a live
+    // borrow on its buffer, so release it across the CPI and take it back after.
+    accounts.fundraiser.release_borrow()?;
+    let fundraiser_view = *accounts.fundraiser.account();
+
     // Transfer the funds from the vault back to the contributor. The vault is
     // owned by the fundraiser PDA, so the CPI is signed with its seeds.
     let cpi_accounts = TransferChecked {
         from: accounts.vault.cpi_handle_mut(),
         mint: accounts.mint_to_raise.cpi_handle(),
         to: accounts.contributor_ata.cpi_handle_mut(),
-        authority: accounts.fundraiser.cpi_handle(),
+        authority: CpiHandle::readonly(&fundraiser_view),
     };
     let signer_seeds: [&[&[u8]]; 1] = [&[
         b"fundraiser".as_ref(),
-        accounts.maker.cpi_handle_mut().address().as_ref(),
-        &[accounts.fundraiser.bump],
+        maker_address.as_ref(),
+        &[fundraiser_bump],
     ]];
     let cpi_context = CpiContext::new_with_signer(
         accounts.token_program.address(),
         cpi_accounts,
         &signer_seeds,
     );
-    transfer_checked(
-        cpi_context,
-        refund_amount,
-        accounts.mint_to_raise.decimals(),
-    )?;
+    transfer_checked(cpi_context, refund_amount, mint_decimals)?;
+
+    // Take the borrow back before the derive's exit path touches it again.
+    accounts.fundraiser.reacquire_borrow_mut()?;
 
     Ok(())
 }

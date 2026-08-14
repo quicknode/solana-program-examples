@@ -79,8 +79,8 @@ pub fn handle_withdraw(
     let usdc_decimals = context.accounts.usdc_mint.decimals();
     let strategy_index = context.accounts.strategy.index;
     let strategy_bump = context.accounts.strategy.bump;
-    let strategy_key = context.accounts.strategy.address();
-    let user_key = context.accounts.user.address();
+    let strategy_key = *context.accounts.strategy.address();
+    let user_key = *context.accounts.user.address();
     let asset_count = context.accounts.strategy.asset_count as usize;
 
     require!(
@@ -107,9 +107,12 @@ pub fn handle_withdraw(
     let index_bytes = strategy_index.to_le_bytes();
     let signer_seeds: &[&[&[u8]]] = &[&[b"strategy", index_bytes.as_ref(), &[strategy_bump]]];
 
+    // `remaining_accounts()` takes `&mut Context`, so collect it before the
+    // per-account views below borrow `context.accounts`.
+    let remaining = context.remaining_accounts()?;
+
     // Hoist owned account-info handles for every CPI up front, so the asset loop
-    // can borrow remaining_accounts without also re-borrowing `context.accounts`
-    // (Account is invariant over its lifetime, which otherwise fails to unify).
+    // can borrow remaining_accounts without also re-borrowing `context.accounts`.
     // `strategy` signs the payouts below. It is a data account holding a live
     // borrow on its buffer, so release it across the CPIs and take it back
     // afterwards — the runtime rejects a CPI that borrows an account we hold.
@@ -153,7 +156,6 @@ pub fn handle_withdraw(
     }
 
     // Each basket asset, paid in kind, proportional to shares burned.
-    let remaining = context.remaining_accounts()?;
     for i in 0..asset_count {
         let config_ai = &remaining[i * 4];
         let mut vault_ai = remaining[i * 4 + 1];
@@ -163,7 +165,7 @@ pub fn handle_withdraw(
         let config = AssetConfig::load_checked(&config_ai)?;
         require_keys_eq!(
             config.strategy,
-            *strategy_key,
+            strategy_key,
             VaultError::InvalidAssetAccount
         );
         require!(config.index as usize == i, VaultError::InvalidAssetAccount);
@@ -179,7 +181,7 @@ pub fn handle_withdraw(
         );
 
         let (recipient_mint, recipient_owner) = read_token_mint_and_owner(&user_ata_ai)?;
-        require_keys_eq!(recipient_owner, *user_key, VaultError::InvalidRecipient);
+        require_keys_eq!(recipient_owner, user_key, VaultError::InvalidRecipient);
         require_keys_eq!(recipient_mint, config.mint, VaultError::InvalidRecipient);
 
         let vault_balance = read_token_amount(&vault_ai)?;

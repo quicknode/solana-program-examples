@@ -88,12 +88,19 @@ pub fn handle_close_fundraiser(accounts: &mut CloseFundraiserAccountConstraints)
     let vault_amount = accounts.vault.amount();
     let mint_decimals = accounts.mint_to_raise.decimals();
 
+    // `fundraiser` signs both CPIs below. It is a data account holding a live
+    // borrow on its buffer, so release it across the CPIs — the runtime rejects
+    // a CPI that borrows an account we still hold — and take it back after.
+    let fundraiser_bump = accounts.fundraiser.bump;
+    accounts.fundraiser.release_borrow()?;
+    let fundraiser_view = *accounts.fundraiser.account();
+
     // The vault is owned by the fundraiser PDA, so both CPIs are signed with
     // its seeds.
     let signer_seeds: [&[&[u8]]; 1] = [&[
         b"fundraiser".as_ref(),
         maker_address.as_ref(),
-        &[accounts.fundraiser.bump],
+        &[fundraiser_bump],
     ]];
 
     // Refunds have already drained every tracked contribution, so anything
@@ -104,7 +111,7 @@ pub fn handle_close_fundraiser(accounts: &mut CloseFundraiserAccountConstraints)
             from: accounts.vault.cpi_handle_mut(),
             mint: accounts.mint_to_raise.cpi_handle(),
             to: accounts.maker_ata.cpi_handle_mut(),
-            authority: accounts.fundraiser.cpi_handle(),
+            authority: CpiHandle::readonly(&fundraiser_view),
         };
         let transfer_context = CpiContext::new_with_signer(
             accounts.token_program.address(),
@@ -119,7 +126,7 @@ pub fn handle_close_fundraiser(accounts: &mut CloseFundraiserAccountConstraints)
     let close_accounts = CloseAccount {
         account: accounts.vault.cpi_handle_mut(),
         destination: accounts.maker.cpi_handle_mut(),
-        authority: accounts.fundraiser.cpi_handle(),
+        authority: CpiHandle::readonly(&fundraiser_view),
     };
     let close_context = CpiContext::new_with_signer(
         accounts.token_program.address(),
@@ -127,6 +134,9 @@ pub fn handle_close_fundraiser(accounts: &mut CloseFundraiserAccountConstraints)
         &signer_seeds,
     );
     close_account(close_context)?;
+
+    // Take the borrow back before the derive's exit path touches it again.
+    accounts.fundraiser.reacquire_borrow_mut()?;
 
     Ok(())
 }
