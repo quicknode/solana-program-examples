@@ -8,10 +8,7 @@ pub struct RemoveKeyAccountConstraints {
     #[account(mut)]
     pub update_authority: Signer,
 
-    #[account(
-        mut,
-        extensions::metadata_pointer::metadata_address = mint_account,
-    )]
+    #[account(mut)]
     pub mint_account: InterfaceAccount<Mint>,
     pub token_program: Program<Token2022>,
     pub system_program: Program<System>,

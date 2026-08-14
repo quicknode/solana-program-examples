@@ -14,10 +14,7 @@ pub struct UpdateFieldAccountConstraints {
     #[account(mut)]
     pub authority: Signer,
 
-    #[account(
-        mut,
-        extensions::metadata_pointer::metadata_address = mint_account,
-    )]
+    #[account(mut)]
     pub mint_account: InterfaceAccount<Mint>,
     pub token_program: Program<Token2022>,
     pub system_program: Program<System>,
@@ -34,9 +31,10 @@ pub fn process_update_field(
     msg!("Field: {:?}, Value: {}", field, value);
 
     let (current_lamports, required_lamports) = {
-        // Get the current state of the mint account
-        let mint = &context.accounts.mint_account.cpi_handle_mut();
-        let buffer = mint.try_borrow_data()?;
+        // Get the current state of the mint account. `AccountView` is Copy and
+        // a copy still points at the same backing buffer.
+        let mint = *context.accounts.mint_account.account();
+        let buffer = mint.try_borrow()?;
         let state = PodStateWithExtensions::<PodMint>::unpack(&buffer)?;
 
         // Get and update the token metadata
@@ -83,7 +81,6 @@ pub fn process_update_field(
         CpiContext::new(
             context.accounts.token_program.address(),
             TokenMetadataUpdateField {
-                program_id: context.accounts.token_program.cpi_handle_mut(),
                 metadata: context.accounts.mint_account.cpi_handle_mut(),
                 update_authority: context.accounts.authority.cpi_handle(),
             },
