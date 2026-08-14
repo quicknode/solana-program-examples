@@ -138,7 +138,7 @@ where
         );
         let mut payload = &data[disc_len..];
         <Reserve as wincode::SchemaRead<anchor_lang::BorshConfig>>::get(&mut payload)
-            .map_err(|_| error!(LendingError::InvalidObligationAccount))?
+            .map_err(|_| LendingError::InvalidObligationAccount)?
     };
     require_keys_eq!(
         reserve.lending_market,

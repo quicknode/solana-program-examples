@@ -84,6 +84,6 @@ impl AssetConfig {
         );
         let mut payload = &data[disc_len..];
         <AssetConfig as wincode::SchemaRead<anchor_lang::BorshConfig>>::get(&mut payload)
-            .map_err(|_| error!(crate::error::VaultError::InvalidAssetAccount))
+            .map_err(|_| crate::error::VaultError::InvalidAssetAccount.into())
     }
 }

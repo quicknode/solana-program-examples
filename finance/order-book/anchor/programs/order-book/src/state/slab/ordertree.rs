@@ -281,7 +281,7 @@ impl OrderTreeNodes {
         loop {
             let parent_contents = *self
                 .node(parent_handle)
-                .ok_or_else(|| error!(ErrorCode::OrderBookFull))?;
+                .ok_or_else(|| ErrorCode::OrderBookFull)?;
             let parent_key = parent_contents.address().unwrap();
 
             // Exact-key collision: only possible if the existing slot is a

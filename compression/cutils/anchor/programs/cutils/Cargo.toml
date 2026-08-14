@@ -33,7 +33,7 @@ solana-address = ">=2.6, <2.7"
 # which is incompatible with Anchor 1.0's solana 3.x types. CPI calls are built manually
 # using raw invoke() with hardcoded program IDs and discriminators. Bubblegum types
 # (MetadataArgs, LeafSchema, etc.) are re-implemented in bubblegum_types.rs.
-borsh = "1"
+borsh = { version = "1", features = ["derive"] }
 sha3 = "0.10"
 
 [lints.rust]

@@ -73,7 +73,7 @@ pub fn handle_place_order(
                     .checked_mul(market.quote_lot_size as u128)
                     .ok_or(ErrorCode::NumericalOverflow)?
                     .try_into()
-                    .map_err(|_| error!(ErrorCode::NumericalOverflow))?,
+                    .map_err(|_| ErrorCode::NumericalOverflow)?,
                 context.accounts.quote_vault.cpi_handle_mut(),
             ),
             OrderSide::Ask => (
@@ -84,7 +84,7 @@ pub fn handle_place_order(
                     .checked_mul(market.base_lot_size as u128)
                     .ok_or(ErrorCode::NumericalOverflow)?
                     .try_into()
-                    .map_err(|_| error!(ErrorCode::NumericalOverflow))?,
+                    .map_err(|_| ErrorCode::NumericalOverflow)?,
                 context.accounts.base_vault.cpi_handle_mut(),
             ),
         };
@@ -202,7 +202,7 @@ pub fn handle_place_order(
             .checked_mul(market.quote_lot_size as u128)
             .ok_or(ErrorCode::NumericalOverflow)?
             .try_into()
-            .map_err(|_| error!(ErrorCode::NumericalOverflow))?;
+            .map_err(|_| ErrorCode::NumericalOverflow)?;
 
         // Ceiling division: round the fee in the protocol's favour. Flooring
         // would leak up to 1 minor unit of quote per fill to the maker, which
@@ -215,7 +215,7 @@ pub fn handle_place_order(
             .checked_div(BASIS_POINTS_DENOMINATOR)
             .ok_or(ErrorCode::NumericalOverflow)?
             .try_into()
-            .map_err(|_| error!(ErrorCode::NumericalOverflow))?;
+            .map_err(|_| ErrorCode::NumericalOverflow)?;
 
         // Defensive invariant: fees are a fraction of gross, never more.
         // `fee_basis_points <= 10_000` is enforced at market init, so this
@@ -238,7 +238,7 @@ pub fn handle_place_order(
                     .checked_mul(market.base_lot_size as u128)
                     .ok_or(ErrorCode::NumericalOverflow)?
                     .try_into()
-                    .map_err(|_| error!(ErrorCode::NumericalOverflow))?;
+                    .map_err(|_| ErrorCode::NumericalOverflow)?;
                 taker_base_received = taker_base_received
                     .checked_add(base_from_fill)
                     .ok_or(ErrorCode::NumericalOverflow)?;
@@ -254,7 +254,7 @@ pub fn handle_place_order(
                     .checked_mul(market.quote_lot_size as u128)
                     .ok_or(ErrorCode::NumericalOverflow)?
                     .try_into()
-                    .map_err(|_| error!(ErrorCode::NumericalOverflow))?;
+                    .map_err(|_| ErrorCode::NumericalOverflow)?;
                 let rebate: u64 = locked_for_this_fill
                     .checked_sub(gross_quote)
                     .ok_or(ErrorCode::NumericalOverflow)?;
@@ -268,7 +268,7 @@ pub fn handle_place_order(
                     .checked_mul(market.base_lot_size as u128)
                     .ok_or(ErrorCode::NumericalOverflow)?
                     .try_into()
-                    .map_err(|_| error!(ErrorCode::NumericalOverflow))?;
+                    .map_err(|_| ErrorCode::NumericalOverflow)?;
                 maker_market_user.unsettled_base = maker_market_user
                     .unsettled_base
                     .checked_add(base_from_fill)

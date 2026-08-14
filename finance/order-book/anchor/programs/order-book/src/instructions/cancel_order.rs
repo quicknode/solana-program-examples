@@ -35,7 +35,7 @@ pub fn handle_cancel_order(context: &mut Context<CancelOrderAccountConstraints>)
                     .checked_mul(context.accounts.market.quote_lot_size as u128)
                     .ok_or(ErrorCode::NumericalOverflow)?
                     .try_into()
-                    .map_err(|_| error!(ErrorCode::NumericalOverflow))?;
+                    .map_err(|_| ErrorCode::NumericalOverflow)?;
                 market_user.unsettled_quote = market_user
                     .unsettled_quote
                     .checked_add(quote_amount)
@@ -46,7 +46,7 @@ pub fn handle_cancel_order(context: &mut Context<CancelOrderAccountConstraints>)
                     .checked_mul(context.accounts.market.base_lot_size as u128)
                     .ok_or(ErrorCode::NumericalOverflow)?
                     .try_into()
-                    .map_err(|_| error!(ErrorCode::NumericalOverflow))?;
+                    .map_err(|_| ErrorCode::NumericalOverflow)?;
                 market_user.unsettled_base = market_user
                     .unsettled_base
                     .checked_add(base_amount)

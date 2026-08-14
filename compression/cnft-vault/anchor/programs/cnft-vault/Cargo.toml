@@ -32,7 +32,7 @@ solana-address = ">=2.6, <2.7"
 # mpl-bubblegum and spl-account-compression removed: they depend on solana-program 2.x
 # which is incompatible with Anchor 1.0's solana 3.x types. CPI calls are built manually
 # using raw invoke_signed() with hardcoded program IDs and discriminators.
-borsh = "1"
+borsh = { version = "1", features = ["derive"] }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }

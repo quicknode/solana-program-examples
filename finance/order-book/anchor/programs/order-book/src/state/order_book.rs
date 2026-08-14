@@ -102,7 +102,7 @@ impl OrderBook {
         self.next_order_id = self
             .next_order_id
             .checked_add(1)
-            .ok_or_else(|| error!(ErrorCode::NumericalOverflow))?;
+            .ok_or_else(|| ErrorCode::NumericalOverflow)?;
         Ok(id)
     }
 
@@ -221,11 +221,11 @@ impl OrderBook {
         let (handle, remaining_after) = {
             let (handle, leaf) = nodes
                 .find_by_key(root, key)
-                .ok_or_else(|| error!(ErrorCode::OrderNotFound))?;
+                .ok_or_else(|| ErrorCode::OrderNotFound)?;
             let remaining = leaf
                 .quantity
                 .checked_sub(fill_quantity)
-                .ok_or_else(|| error!(ErrorCode::NumericalOverflow))?;
+                .ok_or_else(|| ErrorCode::NumericalOverflow)?;
             (handle, remaining)
         };
         if remaining_after == 0 {
@@ -237,7 +237,7 @@ impl OrderBook {
             let leaf = nodes
                 .node_mut(handle)
                 .and_then(AnyNode::as_leaf_mut)
-                .ok_or_else(|| error!(ErrorCode::OrderNotFound))?;
+                .ok_or_else(|| ErrorCode::OrderNotFound)?;
             leaf.quantity = remaining_after;
         }
         Ok(())

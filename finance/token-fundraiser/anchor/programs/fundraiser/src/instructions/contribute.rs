@@ -62,7 +62,7 @@ fn calculate_max_contribution(amount_to_raise: u64) -> Result<u64> {
         .checked_div(PERCENTAGE_SCALER as u128)
         .ok_or(FundraiserError::MathOverflow)?
         .try_into()
-        .map_err(|_| error!(FundraiserError::MathOverflow))
+        .map_err(|_| FundraiserError::MathOverflow.into())
 }
 
 pub fn handle_contribute(
