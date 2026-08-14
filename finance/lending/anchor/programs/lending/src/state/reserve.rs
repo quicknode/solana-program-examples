@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-use crate::constants::{BPS_DENOMINATOR, FIXED_POINT_SCALE, RESERVE_SEED, SLOTS_PER_YEAR};
+use crate::constants::{BPS_DENOMINATOR, FIXED_POINT_SCALE, RESERVE_SEED};
 use crate::errors::LendingError;
 use crate::math::{mul_div_ceil, mul_div_floor};
 
@@ -98,6 +98,14 @@ pub struct ReserveConfig {
     pub optimal_borrow_rate_bps: u16,
     /// Borrow APR at 100% utilization.
     pub max_borrow_rate_bps: u16,
+    /// Slots in a year: the divisor that turns the APR fields above into the
+    /// per-slot rate interest actually accrues at. This is the cluster's slot
+    /// time expressed as a count, so it belongs in configuration rather than in
+    /// a constant. The protocol lowers the slot time over time, and a value left
+    /// behind here charges borrowers at the wrong wall-clock rate while every
+    /// other number in this struct still reads correctly. The owner updates it
+    /// with `update_reserve_config` when the slot time changes.
+    pub slots_per_year: u64,
 }
 
 impl ReserveConfig {
@@ -130,6 +138,8 @@ impl ReserveConfig {
                 && self.optimal_borrow_rate_bps <= self.max_borrow_rate_bps,
             LendingError::InvalidConfig
         );
+        // Zero would divide by zero when converting the APR to a per-slot rate.
+        require!(self.slots_per_year > 0, LendingError::InvalidConfig);
         Ok(())
     }
 }
@@ -202,9 +212,9 @@ impl Reserve {
                 .ok_or(LendingError::MathOverflow)?
         };
 
-        // apr_bps / (BPS_DENOMINATOR * SLOTS_PER_YEAR), carried at FIXED_POINT_SCALE.
+        // apr_bps / (BPS_DENOMINATOR * slots_per_year), carried at FIXED_POINT_SCALE.
         let per_year_denominator = BPS_DENOMINATOR
-            .checked_mul(SLOTS_PER_YEAR)
+            .checked_mul(self.config.slots_per_year as u128)
             .ok_or(LendingError::MathOverflow)?;
         mul_div_floor(apr_bps, FIXED_POINT_SCALE, per_year_denominator)
     }

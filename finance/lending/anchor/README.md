@@ -64,6 +64,16 @@ utilization. Each borrow stores its principal as **scaled debt** (principal ÷
 index at borrow time), so every obligation's debt grows automatically as the
 index advances: no per-obligation accrual loop.
 
+Those curve parameters are annual, and the conversion to a per-slot rate divides
+by `config.slots_per_year`. That divisor is the cluster's slot time expressed as
+a count, which is why it is configuration and not a constant: Solana lowers the
+slot time over time, and a reserve left on an old figure charges borrowers more
+per day than the APR it advertises, with nothing in the program changed to say
+so. Read the current slot time off the cluster you deploy against (two
+[`getBlockTime`](https://solana.com/docs/rpc/http/getblocktime) results a known
+number of slots apart) and keep the reserve in step with
+`update_reserve_config`.
+
 ### Protocol fees (how the market earns)
 
 Borrowers owe the full interest, but suppliers don't receive all of it. On each

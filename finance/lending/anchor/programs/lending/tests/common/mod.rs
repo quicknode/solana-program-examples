@@ -732,6 +732,13 @@ impl Env {
 /// A reasonable default reserve config: 75% LTV, 80% liquidation threshold,
 /// 5% bonus, 50% close factor, 10% reserve factor (protocol's cut of interest),
 /// kink at 80% utilization, 2%/20%/150% APR curve.
+/// Slots in a year, which is how a reserve turns an APR into a per-slot rate.
+/// 78_840_000 is a 400ms slot: 2.5 slots/second * 60 * 60 * 24 * 365. It is a
+/// test fixture, not a law: a deployment reads the slot time off the cluster it
+/// points at (two `getBlockTime` results a known number of slots apart) and
+/// updates the reserve when the protocol changes it.
+pub const SLOTS_PER_YEAR: u64 = 78_840_000;
+
 pub fn default_config() -> ReserveConfig {
     ReserveConfig {
         loan_to_value_bps: 7_500,
@@ -743,5 +750,6 @@ pub fn default_config() -> ReserveConfig {
         min_borrow_rate_bps: 200,
         optimal_borrow_rate_bps: 2_000,
         max_borrow_rate_bps: 15_000,
+        slots_per_year: SLOTS_PER_YEAR,
     }
 }

@@ -83,6 +83,7 @@ impl InitializeReserve {
         min_borrow_rate_bps: u16,
         optimal_borrow_rate_bps: u16,
         max_borrow_rate_bps: u16,
+        slots_per_year: u64,
         bumps: &InitializeReserveBumps,
     ) -> Result<(), ProgramError> {
         validate_config(
@@ -95,6 +96,7 @@ impl InitializeReserve {
             min_borrow_rate_bps,
             optimal_borrow_rate_bps,
             max_borrow_rate_bps,
+            slots_per_year,
         )?;
 
         let reserve_address = *self.reserve.address();
@@ -154,6 +156,7 @@ impl InitializeReserve {
             borrowed_principal: 0,
             borrow_accumulation_factor: crate::constants::FIXED_POINT_SCALE,
             last_update_slot: now()?,
+            slots_per_year,
             liquidity_decimals: decimals,
             loan_to_value_bps,
             liquidation_threshold_bps,
@@ -166,6 +169,39 @@ impl InitializeReserve {
             max_borrow_rate_bps,
             bump: bumps.reserve,
         });
+        Ok(())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// update_slots_per_year
+// ---------------------------------------------------------------------------
+
+#[derive(Accounts)]
+pub struct UpdateSlotsPerYear {
+    pub owner: Signer,
+    #[account(has_one(owner))]
+    pub lending_market: Account<LendingMarket>,
+    #[account(mut, has_one(lending_market))]
+    pub reserve: Account<Reserve>,
+}
+
+impl UpdateSlotsPerYear {
+    /// Retune the reserve to the cluster's current slot time. Every other config
+    /// value is a policy choice the owner makes; this one tracks a protocol
+    /// parameter that changes without asking, so it gets its own handler.
+    ///
+    /// Interest is accrued at the old rate first, so the slots already elapsed
+    /// are charged at the figure that was in force for them rather than being
+    /// silently repriced by the new one.
+    #[inline(always)]
+    pub fn run(&mut self, slots_per_year: u64) -> Result<(), ProgramError> {
+        require!(slots_per_year > 0, LendingError::InvalidConfig);
+
+        let mut reserve = snapshot_reserve(&self.reserve);
+        accrue(&mut reserve, now()?)?;
+        reserve.slots_per_year = slots_per_year;
+        self.reserve.set_inner(reserve);
         Ok(())
     }
 }

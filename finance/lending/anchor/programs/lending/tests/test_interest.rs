@@ -1,6 +1,6 @@
 mod common;
 
-use common::{default_config, dollars, ata, Env};
+use common::{default_config, dollars, ata, Env, SLOTS_PER_YEAR};
 use lending::constants::FIXED_POINT_SCALE;
 use solana_signer::Signer;
 
@@ -31,8 +31,9 @@ fn interest_accrues_on_borrows_over_time() {
 
     assert_eq!(env.reserve(&borrow).borrow_accumulation_factor, FIXED_POINT_SCALE);
 
-    // Let ~0.1 year pass (2.5 slots/s => ~7.884M slots), re-publish prices, refresh.
-    env.warp_slots(7_884_000);
+    // Let a tenth of a year pass, counted at the reserve's own slots-per-year
+    // figure, then re-publish prices and refresh.
+    env.warp_slots(SLOTS_PER_YEAR / 10);
     env.set_price(collateral.mint, dollars(1));
     env.set_price(borrow.mint, dollars(1));
     env.refresh_reserve_only(&borrower, &borrow);
