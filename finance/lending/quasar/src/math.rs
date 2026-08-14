@@ -5,7 +5,7 @@
 use quasar_lang::prelude::*;
 
 use crate::{
-    constants::{BPS_DENOMINATOR, FIXED_POINT_SCALE, FIXED_POINT_SCALE_DECIMALS, SLOTS_PER_YEAR},
+    constants::{BPS_DENOMINATOR, FIXED_POINT_SCALE, FIXED_POINT_SCALE_DECIMALS},
     error::LendingError,
 };
 
@@ -137,6 +137,7 @@ pub fn borrow_rate_per_slot(
     min_rate_bps: u16,
     optimal_rate_bps: u16,
     max_rate_bps: u16,
+    slots_per_year: u64,
 ) -> Result<u128, ProgramError> {
     let optimal_utilization = optimal_utilization_bps as u128;
     let apr_bps = if utilization <= optimal_utilization {
@@ -161,7 +162,7 @@ pub fn borrow_rate_per_slot(
             .ok_or(LendingError::MathOverflow)?
     };
     let denominator = BPS_DENOMINATOR
-        .checked_mul(SLOTS_PER_YEAR)
+        .checked_mul(slots_per_year as u128)
         .ok_or(LendingError::MathOverflow)?;
     mul_div_floor(apr_bps, FIXED_POINT_SCALE, denominator)
 }
@@ -179,6 +180,7 @@ pub fn accrue_factor(
     min_rate_bps: u16,
     optimal_rate_bps: u16,
     max_rate_bps: u16,
+    slots_per_year: u64,
 ) -> Result<u128, ProgramError> {
     let elapsed = now
         .checked_sub(last_update_slot)
@@ -193,6 +195,7 @@ pub fn accrue_factor(
         min_rate_bps,
         optimal_rate_bps,
         max_rate_bps,
+        slots_per_year,
     )?;
     let growth = FIXED_POINT_SCALE
         .checked_add(rate.checked_mul(elapsed as u128).ok_or(LendingError::MathOverflow)?)
@@ -211,6 +214,7 @@ pub fn validate_config(
     min_borrow_rate_bps: u16,
     optimal_borrow_rate_bps: u16,
     max_borrow_rate_bps: u16,
+    slots_per_year: u64,
 ) -> Result<(), ProgramError> {
     let within = |value: u16| (value as u128) <= BPS_DENOMINATOR;
     require!(
@@ -236,5 +240,7 @@ pub fn validate_config(
             && optimal_borrow_rate_bps <= max_borrow_rate_bps,
         LendingError::InvalidConfig
     );
+    // Zero would divide by zero when converting the APR to a per-slot rate.
+    require!(slots_per_year > 0, LendingError::InvalidConfig);
     Ok(())
 }

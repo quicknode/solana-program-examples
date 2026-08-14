@@ -14,7 +14,9 @@ pub const SIZE_PRECISION: u128 = 1_000_000_000;
 /// supply never starts at a dust amount.
 pub const MINIMUM_LIQUIDITY: u64 = 1_000;
 
-/// Reject an oracle price older than this many slots (~1 minute at 400ms).
+/// Reject an oracle price older than this many slots. Counted in slots because
+/// the runtime guarantees slot progression; the seconds that comes to follow
+/// the cluster's slot time, which the protocol lowers over time.
 pub const MAX_PRICE_STALENESS_SLOTS: u64 = 150;
 
 /// Upper bound on a pool's configurable `max_leverage`.

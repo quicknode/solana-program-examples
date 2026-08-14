@@ -34,6 +34,7 @@ pub fn snapshot_reserve(reserve: &Account<Reserve>) -> ReserveInner {
         borrowed_principal: u128::from(reserve.borrowed_principal),
         borrow_accumulation_factor: u128::from(reserve.borrow_accumulation_factor),
         last_update_slot: u64::from(reserve.last_update_slot),
+        slots_per_year: u64::from(reserve.slots_per_year),
         liquidity_decimals: reserve.liquidity_decimals,
         loan_to_value_bps: u16::from(reserve.loan_to_value_bps),
         liquidation_threshold_bps: u16::from(reserve.liquidation_threshold_bps),
@@ -78,6 +79,7 @@ pub fn accrue(reserve: &mut ReserveInner, slot: u64) -> Result<(), ProgramError>
         reserve.min_borrow_rate_bps,
         reserve.optimal_borrow_rate_bps,
         reserve.max_borrow_rate_bps,
+        reserve.slots_per_year,
     )?;
     // The protocol keeps `reserve_factor_bps` of the newly accrued interest; the
     // rest lifts the supplier exchange rate. Flooring rounds the owner's cut down.

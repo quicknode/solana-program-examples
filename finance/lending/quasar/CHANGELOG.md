@@ -1,5 +1,26 @@
 # Changelog
 
+## [2026-08-14]
+
+### Added
+
+- `update_slots_per_year` (discriminator 12, owner-only): retunes a reserve to
+  the cluster's current slot time. It accrues at the old figure before storing
+  the new one, so slots already elapsed are charged at the rate that was in
+  force for them. Every other config value is a policy choice the owner makes;
+  this one tracks a protocol parameter that changes without asking, which is why
+  it gets its own handler.
+
+### Changed
+
+- `Reserve` carries `slots_per_year`, and `initialize_reserve` takes it as a
+  parameter. Converting an APR into a per-slot rate needs a slots-per-year
+  divisor, and that divisor is the cluster's slot time in disguise; it was a
+  `SLOTS_PER_YEAR` constant fixed at a 400ms slot, so a protocol change to the
+  slot time would have raised the wall-clock rate every borrower pays with no
+  code change. `validate_config` rejects zero. Tested by
+  `retuning_slots_per_year_rescales_accrual`.
+
 ## [2026-08-04]
 
 ### Changed

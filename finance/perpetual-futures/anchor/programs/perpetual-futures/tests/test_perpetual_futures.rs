@@ -493,6 +493,29 @@ impl Market {
         .map_err(|_| ())
     }
 
+    fn set_funding_rate(&mut self, authority: &Keypair, rate: u64) -> Result<(), ()> {
+        let instruction = Instruction::new_with_bytes(
+            perpetual_futures::id(),
+            &perpetual_futures::instruction::SetFundingRate {
+                funding_rate_per_slot: rate,
+            }
+            .data(),
+            perpetual_futures::accounts::SetFundingRateAccountConstraints {
+                authority: authority.pubkey(),
+                pool: self.pool,
+            }
+            .to_account_metas(None),
+        );
+        send_transaction_from_instructions(
+            &mut self.svm,
+            vec![instruction],
+            &[authority],
+            &authority.pubkey(),
+        )
+        .map(|_| ())
+        .map_err(|_| ())
+    }
+
     /// Deposit a large amount of liquidity so the pool can pay trader profits,
     /// returning the provider and its collateral account.
     fn seed_liquidity(&mut self, amount: u64) -> (Keypair, Pubkey) {
@@ -887,6 +910,70 @@ fn test_funding_charged_to_long() {
     assert_eq!(
         market.pool_state().liquidity,
         liquidity_before + funding_paid
+    );
+}
+
+/// The funding rate is quoted per slot, so what a position costs per hour also
+/// depends on the cluster's slot time. When the protocol shortens the slot, the
+/// pool authority retunes the rate, and the retune must settle the slots already
+/// elapsed at the old rate rather than repricing them at the new one.
+#[test]
+fn test_set_funding_rate_settles_at_the_old_rate_first() {
+    let rate = 5_000;
+    let window = 2_000;
+
+    // Same position and the same total elapsed slots in both runs. The only
+    // difference is that the second doubles the rate halfway through, so it
+    // should pay 1x for the first window and 2x for the second: 1.5x overall.
+    let funding_for = |retune: bool| -> u64 {
+        let mut market = Market::new(dollars(100), rate);
+        market.seed_liquidity(100_000 * ONE_USDC);
+
+        let collateral = 1_000 * ONE_USDC;
+        let size = 5_000 * ONE_USDC;
+        let (trader, trader_collateral) = market.funded_trader(collateral);
+        market
+            .open_position(&trader, trader_collateral, Side::Long, collateral, size, 0)
+            .unwrap();
+
+        let opened_at = market.current_slot();
+        market.warp(opened_at + window);
+        if retune {
+            let admin = market.admin.insecure_clone();
+            market.set_funding_rate(&admin, rate * 2).unwrap();
+        }
+        market.warp(opened_at + 2 * window);
+        market.set_price(dollars(100));
+        market
+            .close_position(&trader, trader_collateral, Side::Long, 0)
+            .unwrap();
+
+        let fee = size / 1_000;
+        let payout = get_token_account_balance(&market.svm, &trader_collateral).unwrap();
+        (collateral - fee - fee) - payout
+    };
+
+    let flat = funding_for(false);
+    let retuned = funding_for(true);
+    assert!(flat > 0, "the flat run must pay some funding to compare against");
+
+    // Half the elapsed slots at 1x and half at 2x is 1.5x the flat run. Had the
+    // handler skipped its accrual, the new rate would have applied to every
+    // slot and this would be 2x.
+    assert_eq!(
+        retuned * 2,
+        flat * 3,
+        "retuning halfway should cost 1.5x the flat run: flat {flat}, retuned {retuned}"
+    );
+}
+
+#[test]
+fn test_only_authority_can_set_funding_rate() {
+    let mut market = Market::new(dollars(100), 5_000);
+    let (impostor, _) = market.funded_trader(ONE_USDC);
+    assert!(
+        market.set_funding_rate(&impostor, 1).is_err(),
+        "a non-authority must not be able to retune the funding rate"
     );
 }
 
