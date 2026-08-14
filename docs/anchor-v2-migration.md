@@ -224,6 +224,49 @@ answer is usually one of the first four rather than moving it to borsh.
   `target/anchor-v2-profile/`.
 - `anchor-v2-testing` — wraps LiteSVM with optional register-trace capture.
 
+## Hand-built CPIs (`invoke` / `invoke_signed`)
+
+An example that builds its own `Instruction` — because the callee's crate is
+not on a compatible Solana version — hands `invoke` a slice of `CpiHandle`
+rather than a slice of `AccountInfo`. Four rules, all of them enforced at
+runtime rather than by the compiler:
+
+- **The handles are positional.** v2 walks the instruction's account metas and
+  binds each one to the next handle in the slice. A handle that does not match
+  the meta at its position fails the whole call with `InvalidArgument`, so the
+  list has to mirror the metas exactly.
+- **The program account is not a handle.** v1 code habitually pushed the callee
+  program's `AccountInfo` into the infos vec; in v2 that extra leading entry is
+  what breaks the positional match.
+- **An account filling two meta slots supplies two handles.** Bubblegum's
+  `Transfer` names the same PDA as both `leaf_owner` and `leaf_delegate`, so the
+  handle appears twice. Read-only handles make this trivial — `cpi_handle()`
+  takes `&self`.
+- **Writability has to be at least as strong as the meta.** A writable meta
+  needs a writable handle; a read-only meta accepts either. Going the other way,
+  `cpi_handle_mut()` on an account not declared `mut` panics outright with
+  *"cpi_handle_mut called on a read-only account"*, which surfaces as
+  `ProgramFailedToComplete` and a `src/traits.rs` log line.
+
+Mixing the two handle kinds in one vec means converting element-wise —
+`vec![a.cpi_handle_mut().into(), b.cpi_handle()]` — since a trailing
+`.map(CpiHandle::from)` forces every element to be a `CpiHandleMut`.
+
+A `BorshAccount` that signs such a CPI still needs `release_borrow()` first, per
+[Borrows across CPIs](#borrows-across-cpis). When the account is read-only and
+nothing reads it after the CPI, there is no reacquire — `reacquire_borrow_mut`
+asserts the account was loaded mutably.
+
+Vendored types that derive `BorshSerialize` over `Address` fields need the
+`borsh` feature on `solana-address`; `Address` is pinocchio's re-export of that
+crate's type and carries no borsh impls by default. Their `serialize` returns
+`io::Error`, which no longer converts into `ProgramError` — map it:
+
+```rust
+args.serialize(&mut data)
+    .map_err(|_| ProgramError::InvalidInstructionData)?;
+```
+
 ## Seeds, sysvars, cross-program types
 
 `seeds` takes a byte array directly and binds it itself — `id.to_le_bytes()`,
@@ -253,6 +296,10 @@ The test-side surface barely changed, but three things move:
   `anchor_lang::Address` is the same 32-byte type.
 - `anchor_lang::prelude::Clock` is pinocchio's on-chain type. LiteSVM's
   `get_sysvar` / `set_sysvar` want the host-side `solana_clock::Clock`.
+- `#[error_code]` no longer generates `From<MyError> for u32`. It makes the enum
+  `#[repr(u32)]` and generates only `From<MyError> for anchor_lang::Error`, so a
+  test asserting on the wire code writes `my_error as u32 + 6000` (6000 being
+  the default offset, overridable with `#[error_code(offset = ...)]`).
 
 Tests that decode account bytes with borsh keep working, because
 `BorshConfig` makes wincode's wire format byte-identical — but a Pod account
