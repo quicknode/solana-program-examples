@@ -36,21 +36,21 @@ pub struct AttachToMintAccountConstraints {
     pub token_program: Program<Token2022>,
 }
 
-impl AttachToMintAccountConstraints<'_> {
+impl AttachToMintAccountConstraints {
     pub fn attach_to_mint(&mut self) -> Result<()> {
         let tx_hook_accs = TransferHookUpdate {
             mint: self.mint.cpi_handle_mut(),
-            authority: self.payer.cpi_handle_mut(),
+            authority: self.payer.cpi_handle(),
         };
 
         let context = CpiContext::new(self.token_program.address(), tx_hook_accs);
 
-        transfer_hook_update(context, Some(crate::ID_CONST))?;
+        transfer_hook_update(context, Some(&crate::ID))?;
 
         // initialize the extra metas account
-        let extra_metas_account = &self.extra_metas_account;
         let metas = get_extra_account_metas()?;
-        let mut data = extra_metas_account.try_borrow_mut_data()?;
+        let mut extra_metas_view = *self.extra_metas_account.account();
+        let mut data = extra_metas_view.try_borrow_mut()?;
         ExtraAccountMetaList::init::<ExecuteInstruction>(&mut data, &metas)
             .map_err(|_| ProgramError::InvalidAccountData)?;
 

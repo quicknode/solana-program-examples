@@ -18,12 +18,12 @@ pub struct InitConfigAccountConstraints {
     pub system_program: Program<System>,
 }
 
-impl InitConfigAccountConstraints<'_> {
+impl InitConfigAccountConstraints {
     pub fn init_config(&mut self, config_bump: u8) -> Result<()> {
-        *self.config = (Config {
-            authority: self.payer.address(),
+        **self.config = Config {
+            authority: *self.payer.address(),
             bump: config_bump,
-        });
+        };
 
         Ok(())
     }

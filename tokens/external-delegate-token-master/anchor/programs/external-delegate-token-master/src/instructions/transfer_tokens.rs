@@ -37,8 +37,10 @@ pub fn handler(
     amount: u64,
     signature: [u8; 65],
 ) -> Result<()> {
+    // Copy out what the message needs, so the shared borrow ends before the
+    // nonce bump below takes a mutable one.
+    let user_account_key = *context.accounts.user_account.address();
     let user_account = &context.accounts.user_account;
-    let user_account_key = user_account.address();
 
     // Rebuild the authorized message onchain so the signature commits to
     // this exact transfer (amount, recipient, and the current nonce).

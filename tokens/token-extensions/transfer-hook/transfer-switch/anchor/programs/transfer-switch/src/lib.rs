@@ -11,7 +11,11 @@ use spl_transfer_hook_interface::instruction::{
 
 declare_id!("FjcHckEgXcBhFmSGai3FRpDLiT6hbpV893n8iTxVd81g");
 
-#[program(interface, program_id = ID)]
+// v2's `#[program(interface)]` declares an interface for CPI and emits no
+// entrypoint. This is a real deployable program that also implements the
+// transfer-hook interface, so it stays a plain `#[program]`; the interface
+// instruction gets its discriminator from `#[discrim = ...]` below.
+#[program]
 pub mod transfer_switch {
     use super::*;
 

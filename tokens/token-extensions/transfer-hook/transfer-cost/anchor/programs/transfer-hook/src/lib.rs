@@ -36,7 +36,11 @@ pub enum TransferError {
     IsNotCurrentlyTransferring,
 }
 
-#[program(interface, program_id = ID)]
+// v2's `#[program(interface)]` declares an interface for CPI and emits no
+// entrypoint. This is a real deployable program that also implements the
+// transfer-hook interface, so it stays a plain `#[program]`; the interface
+// instruction gets its discriminator from `#[discrim = ...]` below.
+#[program]
 pub mod transfer_hook {
     use super::*;
 

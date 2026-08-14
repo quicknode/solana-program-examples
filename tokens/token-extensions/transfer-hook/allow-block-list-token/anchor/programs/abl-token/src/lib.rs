@@ -15,7 +15,14 @@ pub use utils::*;
 
 declare_id!("3ku1ZEGvBEEfhaYsAzBZuecTPEa58ZRhoVqHVGpGxVGi");
 
-#[program(interface, program_id = ID)]
+pub mod entrypoint;
+
+// v2's `#[program(interface, ...)]` declares an interface for other programs to
+// CPI into and emits no entrypoint, and an executable `#[program]` only accepts
+// one-byte custom discriminators — so the transfer-hook interface's eight-byte
+// `Execute` discriminator has no direct spelling. `entrypoint` bridges the gap:
+// it routes `Execute` to `tx_hook` and hands everything else to anchor.
+#[program]
 pub mod abl_token {
 
     use super::*;
@@ -35,8 +42,6 @@ pub mod abl_token {
         context.accounts.attach_to_mint()
     }
 
-    // sha256("spl-transfer-hook-interface:execute")[..8]
-    #[discrim = [105, 37, 101, 197, 75, 251, 102, 26]]
     pub fn tx_hook(context: &mut Context<TxHookAccountConstraints>, amount: u64) -> Result<()> {
         context.accounts.tx_hook(amount)
     }

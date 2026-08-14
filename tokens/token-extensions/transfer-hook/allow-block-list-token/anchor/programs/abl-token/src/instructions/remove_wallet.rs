@@ -20,7 +20,7 @@ pub struct RemoveWalletAccountConstraints {
     pub system_program: Program<System>,
 }
 
-impl RemoveWalletAccountConstraints<'_> {
+impl RemoveWalletAccountConstraints {
     pub fn remove_wallet(&mut self) -> Result<()> {
         Ok(())
     }

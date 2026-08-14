@@ -9,7 +9,11 @@ crate-type = ["cdylib", "lib"]
 name = "abl_token"
 
 [features]
-default = []
+# `no-entrypoint` is always on: anchor then exports its dispatch as
+# `__anchor_dispatch` rather than claiming the `entrypoint` symbol, leaving
+# src/entrypoint.rs free to claim it and route the transfer-hook interface's
+# `Execute` discriminator to `tx_hook`.
+default = ["no-entrypoint"]
 cpi = ["no-entrypoint"]
 no-entrypoint = []
 no-idl = []
@@ -31,10 +35,9 @@ wincode = { version = "0.5", features = ["derive"] }
 # belong to the version the account derives are not using and every
 # `SchemaRead`/`SchemaWrite` bound fails. 2.6.1 is the last 0.5-line release.
 solana-address = ">=2.6, <2.7"
-anchor-spl = { version = "2.0.0-rc.1", features = [
-    "token_2022_extensions",
-    "token_2022",
-] }
+# v2's anchor-spl has only `guardrails` (default) and `metadata`; the
+# Token-2022 modules are unconditional now.
+anchor-spl = "2.0.0-rc.1"
 
 spl-tlv-account-resolution = "0.11.1"
 spl-transfer-hook-interface = { version = "2.1.0" }
