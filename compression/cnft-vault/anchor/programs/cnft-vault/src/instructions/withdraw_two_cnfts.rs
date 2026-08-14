@@ -122,6 +122,11 @@ pub fn handler(
         .map(|acc| AccountMeta::new_readonly(*acc.address(), false))
         .collect();
 
+    // `vault` signs both transfers, so its data borrow has to be handed back to
+    // the runtime before the CPIs. It is read-only here and nothing reads it
+    // afterwards, so there is no reacquire.
+    context.accounts.vault.release_borrow()?;
+
     // Withdraw cNFT#1
     msg!("withdrawing cNFT#1");
     let instruction1 = build_transfer_instruction(
@@ -143,19 +148,19 @@ pub fn handler(
         },
     )?;
 
+    // Handles line up positionally with the instruction's metas: the program
+    // account is not listed, and the vault fills both the leaf_owner and
+    // leaf_delegate slots.
     let mut account_infos1: Vec<CpiHandle> = vec![
-        context.accounts.bubblegum_program.cpi_handle_mut(),
-        context.accounts.tree_authority1.cpi_handle_mut(),
-        context.accounts.vault.cpi_handle_mut(),
-        context.accounts.new_leaf_owner1.cpi_handle_mut(),
-        context.accounts.merkle_tree1.cpi_handle_mut(),
-        context.accounts.log_wrapper.cpi_handle_mut(),
-        context.accounts.compression_program.cpi_handle_mut(),
-        context.accounts.system_program.cpi_handle_mut(),
-    ]
-    .into_iter()
-    .map(CpiHandle::from)
-    .collect();
+        context.accounts.tree_authority1.cpi_handle_mut().into(),
+        context.accounts.vault.cpi_handle(),
+        context.accounts.vault.cpi_handle(),
+        context.accounts.new_leaf_owner1.cpi_handle(),
+        context.accounts.merkle_tree1.cpi_handle_mut().into(),
+        context.accounts.log_wrapper.cpi_handle(),
+        context.accounts.compression_program.cpi_handle(),
+        context.accounts.system_program.cpi_handle(),
+    ];
     for acc in proof1_accounts.iter() {
         account_infos1.push(CpiHandle::readonly(acc));
     }
@@ -183,19 +188,19 @@ pub fn handler(
         },
     )?;
 
+    // Handles line up positionally with the instruction's metas: the program
+    // account is not listed, and the vault fills both the leaf_owner and
+    // leaf_delegate slots.
     let mut account_infos2: Vec<CpiHandle> = vec![
-        context.accounts.bubblegum_program.cpi_handle_mut(),
-        context.accounts.tree_authority2.cpi_handle_mut(),
-        context.accounts.vault.cpi_handle_mut(),
-        context.accounts.new_leaf_owner2.cpi_handle_mut(),
-        context.accounts.merkle_tree2.cpi_handle_mut(),
-        context.accounts.log_wrapper.cpi_handle_mut(),
-        context.accounts.compression_program.cpi_handle_mut(),
-        context.accounts.system_program.cpi_handle_mut(),
-    ]
-    .into_iter()
-    .map(CpiHandle::from)
-    .collect();
+        context.accounts.tree_authority2.cpi_handle_mut().into(),
+        context.accounts.vault.cpi_handle(),
+        context.accounts.vault.cpi_handle(),
+        context.accounts.new_leaf_owner2.cpi_handle(),
+        context.accounts.merkle_tree2.cpi_handle_mut().into(),
+        context.accounts.log_wrapper.cpi_handle(),
+        context.accounts.compression_program.cpi_handle(),
+        context.accounts.system_program.cpi_handle(),
+    ];
     for acc in proof2_accounts.iter() {
         account_infos2.push(CpiHandle::readonly(acc));
     }

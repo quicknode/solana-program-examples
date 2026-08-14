@@ -181,33 +181,27 @@ pub fn handle_mint(
         data,
     };
 
-    // Gather all account infos for the CPI. `invoke` takes erased `CpiHandle`s,
-    // so each writable handle is converted on the way in.
+    // Account handles have to line up positionally with the instruction's
+    // account metas above: v2's `invoke` matches each meta to the next handle
+    // in order, and the program account is not listed.
     let account_infos: Vec<CpiHandle> = vec![
-        context.accounts.bubblegum_program.cpi_handle_mut(),
-        context.accounts.tree_authority.cpi_handle_mut(),
-        context.accounts.leaf_owner.cpi_handle_mut(),
-        context.accounts.leaf_delegate.cpi_handle_mut(),
-        context.accounts.merkle_tree.cpi_handle_mut(),
-        context.accounts.payer.cpi_handle_mut(),
-        context.accounts.tree_delegate.cpi_handle_mut(),
-        context.accounts.collection_authority.cpi_handle_mut(),
-        context
-            .accounts
-            .collection_authority_record_pda
-            .cpi_handle_mut(),
-        context.accounts.collection_mint.cpi_handle_mut(),
-        context.accounts.collection_metadata.cpi_handle_mut(),
-        context.accounts.edition_account.cpi_handle_mut(),
-        context.accounts.bubblegum_signer.cpi_handle_mut(),
-        context.accounts.log_wrapper.cpi_handle_mut(),
-        context.accounts.compression_program.cpi_handle_mut(),
-        context.accounts.token_metadata_program.cpi_handle_mut(),
-        context.accounts.system_program.cpi_handle_mut(),
-    ]
-    .into_iter()
-    .map(CpiHandle::from)
-    .collect();
+        context.accounts.tree_authority.cpi_handle_mut().into(),
+        context.accounts.leaf_owner.cpi_handle(),
+        context.accounts.leaf_delegate.cpi_handle(),
+        context.accounts.merkle_tree.cpi_handle_mut().into(),
+        context.accounts.payer.cpi_handle(),
+        context.accounts.tree_delegate.cpi_handle(),
+        context.accounts.collection_authority.cpi_handle(),
+        context.accounts.collection_authority_record_pda.cpi_handle(),
+        context.accounts.collection_mint.cpi_handle(),
+        context.accounts.collection_metadata.cpi_handle_mut().into(),
+        context.accounts.edition_account.cpi_handle(),
+        context.accounts.bubblegum_signer.cpi_handle(),
+        context.accounts.log_wrapper.cpi_handle(),
+        context.accounts.compression_program.cpi_handle(),
+        context.accounts.token_metadata_program.cpi_handle(),
+        context.accounts.system_program.cpi_handle(),
+    ];
 
 
     invoke(&instruction, &account_infos)?;

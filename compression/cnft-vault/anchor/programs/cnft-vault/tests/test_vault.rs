@@ -268,7 +268,10 @@ fn assert_custom_error(
     expected: VaultError,
 ) {
     let failed = result.expect_err("transaction should fail");
-    let expected_code = u32::from(expected);
+    // v2's `#[error_code]` makes the enum `#[repr(u32)]` and only generates
+    // `From<VaultError> for anchor_lang::Error`, so the on-wire custom code is
+    // the discriminant plus the default 6000 offset.
+    let expected_code = expected as u32 + 6000;
     let error_text = format!("{:?}", failed.err);
     assert!(
         error_text.contains(&format!("Custom({expected_code})")),

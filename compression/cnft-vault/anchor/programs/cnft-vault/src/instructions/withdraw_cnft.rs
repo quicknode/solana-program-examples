@@ -94,22 +94,26 @@ pub fn handler(
         },
     )?;
 
-    // Gather all account infos for the CPI. `invoke_signed` takes erased
-    // `CpiHandle`s, so the writable handles convert on the way in and the
-    // proof nodes (read-only to Bubblegum) are wrapped directly.
+    // `vault` signs the transfer, so its data borrow has to be handed back to
+    // the runtime before the CPI. It is read-only here and nothing reads it
+    // afterwards, so there is no reacquire.
+    context.accounts.vault.release_borrow()?;
+
+    // Account handles have to line up positionally with the instruction's
+    // account metas: v2's `invoke` matches each meta to the next handle in
+    // order, so the program account is not listed and an account that fills
+    // two slots supplies two handles.
     let mut account_infos: Vec<CpiHandle> = vec![
-        context.accounts.bubblegum_program.cpi_handle_mut(),
-        context.accounts.tree_authority.cpi_handle_mut(),
-        context.accounts.vault.cpi_handle_mut(),
-        context.accounts.new_leaf_owner.cpi_handle_mut(),
-        context.accounts.merkle_tree.cpi_handle_mut(),
-        context.accounts.log_wrapper.cpi_handle_mut(),
-        context.accounts.compression_program.cpi_handle_mut(),
-        context.accounts.system_program.cpi_handle_mut(),
-    ]
-    .into_iter()
-    .map(CpiHandle::from)
-    .collect();
+        context.accounts.tree_authority.cpi_handle_mut().into(),
+        // leaf_owner and leaf_delegate are both the vault PDA
+        context.accounts.vault.cpi_handle(),
+        context.accounts.vault.cpi_handle(),
+        context.accounts.new_leaf_owner.cpi_handle(),
+        context.accounts.merkle_tree.cpi_handle_mut().into(),
+        context.accounts.log_wrapper.cpi_handle(),
+        context.accounts.compression_program.cpi_handle(),
+        context.accounts.system_program.cpi_handle(),
+    ];
     for acc in proof_accounts.iter() {
         account_infos.push(CpiHandle::readonly(acc));
     }
