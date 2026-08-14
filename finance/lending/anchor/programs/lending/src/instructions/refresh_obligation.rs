@@ -124,11 +124,22 @@ where
     *cursor += 2;
 
     require_keys_eq!(
-        reserve_info.address(),
+        *reserve_info.address(),
         expected_reserve,
         LendingError::InvalidObligationAccount
     );
-    let reserve = Account::<Reserve>::try_from(reserve_info)?;
+    let reserve = {
+        let data = reserve_info.try_borrow()?;
+        let disc_len = <Reserve as anchor_lang::Discriminator>::DISCRIMINATOR.len();
+        require!(
+            data.len() > disc_len
+                && &data[..disc_len] == <Reserve as anchor_lang::Discriminator>::DISCRIMINATOR,
+            LendingError::InvalidObligationAccount
+        );
+        let mut payload = &data[disc_len..];
+        <Reserve as wincode::SchemaRead<anchor_lang::BorshConfig>>::get(&mut payload)
+            .map_err(|_| error!(LendingError::InvalidObligationAccount))?
+    };
     require_keys_eq!(
         reserve.lending_market,
         lending_market,
@@ -137,7 +148,7 @@ where
     reserve.require_refreshed()?;
 
     require_keys_eq!(
-        price_info.address(),
+        *price_info.address(),
         reserve.price_feed,
         LendingError::InvalidObligationAccount
     );

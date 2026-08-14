@@ -6,7 +6,7 @@ use crate::math::{mul_div_ceil, mul_div_floor};
 
 /// Signer seeds for a reserve PDA, which is the authority over its liquidity
 /// vault and the mint authority of its share token.
-pub fn reserve_signer_seeds(
+pub fn reserve_signer_seeds<'a>(
     lending_market: &'a Address,
     liquidity_mint: &'a Address,
     bump: &'a [u8; 1],
