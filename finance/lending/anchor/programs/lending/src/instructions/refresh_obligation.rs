@@ -17,9 +17,11 @@ use crate::state::{Obligation, PriceFeed, Reserve};
 /// evaluated conservatively against the borrower.
 pub fn handle_refresh_obligation(context: &mut Context<RefreshObligation>) -> Result<()> {
     let slot = Clock::get()?.slot;
+    // `remaining_accounts()` takes `&mut context`, so collect it before the
+    // obligation's own mutable borrow starts. It hands back an owned vec.
+    let accounts = context.remaining_accounts()?;
     let obligation = &mut context.accounts.obligation;
     let lending_market = obligation.lending_market;
-    let accounts = context.remaining_accounts()?;
     let mut cursor = 0usize;
 
     let mut deposited_value: u128 = 0;
@@ -28,7 +30,7 @@ pub fn handle_refresh_obligation(context: &mut Context<RefreshObligation>) -> Re
 
     for collateral in obligation.deposits.iter_mut() {
         let (reserve, price_scaled) = read_pair(
-            accounts,
+            &accounts,
             &mut cursor,
             collateral.reserve,
             lending_market,
@@ -71,7 +73,7 @@ pub fn handle_refresh_obligation(context: &mut Context<RefreshObligation>) -> Re
     let mut borrowed_value: u128 = 0;
     for borrow in obligation.borrows.iter_mut() {
         let (reserve, price_scaled) =
-            read_pair(accounts, &mut cursor, borrow.reserve, lending_market, slot)?;
+            read_pair(&accounts, &mut cursor, borrow.reserve, lending_market, slot)?;
 
         let debt = mul_div_ceil(
             borrow.borrowed_principal,
@@ -105,16 +107,13 @@ pub fn handle_refresh_obligation(context: &mut Context<RefreshObligation>) -> Re
 /// checking it matches the obligation's stored reserve, belongs to the
 /// obligation's lending market, and that both the reserve (refreshed this
 /// slot) and the price (fresh) are usable.
-fn read_pair<'a, 'info>(
-    accounts: &'a [AccountView],
+fn read_pair(
+    accounts: &[AccountView],
     cursor: &mut usize,
     expected_reserve: Address,
     lending_market: Address,
     slot: u64,
-) -> Result<(Reserve, u128)>
-where
-    'a: 'info,
-{
+) -> Result<(Reserve, u128)> {
     let reserve_info = accounts
         .get(*cursor)
         .ok_or(LendingError::InvalidObligationAccount)?;
@@ -158,15 +157,15 @@ where
         require!(
             data.len() > disc_len
                 && &data[..disc_len] == <PriceFeed as anchor_lang::Discriminator>::DISCRIMINATOR,
-            ErrorCode::MakerAccountMismatch
+            LendingError::InvalidObligationAccount
         );
         let mut payload = &data[disc_len..];
         <PriceFeed as wincode::SchemaRead<anchor_lang::BorshConfig>>::get(&mut payload)
-            .map_err(|_| ErrorCode::MakerAccountMismatch)?
+            .map_err(|_| LendingError::InvalidObligationAccount)?
     };
     let price_scaled = price_feed.price_scaled(slot)?;
 
-    Ok((reserve.into_inner(), price_scaled))
+    Ok((reserve, price_scaled))
 }
 
 #[derive(Accounts)]

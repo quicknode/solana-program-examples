@@ -18,7 +18,7 @@ pub fn handle_borrow_obligation_liquidity(
 ) -> Result<()> {
     require!(liquidity_amount > 0, LendingError::ZeroAmount);
     let slot = Clock::get()?.slot;
-    let reserve_key = context.accounts.reserve.address();
+    let reserve_key = *context.accounts.reserve.address();
 
     context.accounts.obligation.require_refreshed()?;
     context.accounts.reserve.require_refreshed()?;
@@ -62,7 +62,7 @@ pub fn handle_borrow_obligation_liquidity(
 
     {
         let obligation = &mut context.accounts.obligation;
-        let index = obligation.upsert_borrow(*reserve_key)?;
+        let index = obligation.upsert_borrow(reserve_key)?;
         obligation.borrows[index].borrowed_principal = obligation.borrows[index]
             .borrowed_principal
             .checked_add(scaled_added)

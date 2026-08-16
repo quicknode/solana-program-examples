@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::{
     associated_token::AssociatedToken,
-    token::Token,
+    token::{self, Token},
     token_interface::{transfer_checked, Mint, TokenAccount, TransferChecked},
 };
 
@@ -68,21 +68,19 @@ pub fn handler(context: &mut Context<TransferHookAccountConstraints>, amount: u6
         context.accounts.counter_account.counter
     );
 
+    // Read through the AccountView: these accounts are not declared `mut`, and
+    // asking a read-only account for a writable handle panics.
     msg!(
         "Is writable mint {0}",
-        context.accounts.mint.cpi_handle_mut().is_writable
+        context.accounts.mint.account().is_writable()
     );
     msg!(
         "Is destination mint {0}",
-        context
-            .accounts
-            .destination_token
-            .cpi_handle_mut()
-            .is_writable
+        context.accounts.destination_token.account().is_writable()
     );
     msg!(
         "Is source mint {0}",
-        context.accounts.source_token.cpi_handle_mut().is_writable
+        context.accounts.source_token.account().is_writable()
     );
 
     let signer_seeds: &[&[&[u8]]] = &[&[b"delegate", &[context.bumps.delegate]]];

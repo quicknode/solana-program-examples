@@ -1,11 +1,11 @@
-use anchor_lang::{prelude::*, solana_program::pubkey::Address};
+use anchor_lang::prelude::*;
 use anchor_spl::{
     associated_token::AssociatedToken,
     token::Token,
     token_2022::spl_token_2022::{
         extension::{
-            transfer_hook::TransferHookAccount, BaseStateWithExtensionsMut,
-            PodStateWithExtensionsMut,
+            transfer_hook::TransferHookAccount, BaseStateWithExtensions,
+            PodStateWithExtensions,
         },
         pod::PodAccount,
     },
