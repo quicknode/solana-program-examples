@@ -12,6 +12,9 @@ pub struct CreateAssociatedTokenAccountAccountConstraints {
         associated_token::mint = mint,
         payer = signer,
         associated_token::authority = signer,
+        // Required when the token program is an `Interface`: without it the
+        // init CPI is rejected with InvalidArgument.
+        associated_token::token_program = token_program,
     )]
     pub token_account: InterfaceAccount<TokenAccount>,
     pub system_program: Program<System>,

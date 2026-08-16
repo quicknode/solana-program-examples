@@ -11,6 +11,9 @@ pub struct CreateTokenAccountAccountConstraints {
         init,
         token::mint = mint,
         token::authority = signer,
+        // Required when the token program is an `Interface`: without it
+        // the init CPI is rejected with InvalidArgument.
+        token::token_program = token_program,
         payer = signer,
         seeds = [b"token-2022-token-account", signer.address().as_ref(), mint.address().as_ref()],
         bump,

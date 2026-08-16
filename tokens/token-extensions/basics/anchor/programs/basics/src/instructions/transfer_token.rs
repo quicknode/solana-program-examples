@@ -13,7 +13,10 @@ pub struct TransferTokenAccountConstraints {
         init,
         associated_token::mint = mint,
         payer = signer,
-        associated_token::authority = to
+        associated_token::authority = to,
+        // Required when the token program is an `Interface`: without it the
+        // init CPI is rejected with InvalidArgument.
+        associated_token::token_program = token_program,
     )]
     pub to_ata: InterfaceAccount<TokenAccount>,
     #[account(mut)]
