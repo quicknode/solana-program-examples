@@ -31,9 +31,16 @@ pub fn handle_place_order(
     price: u64,
     quantity: u64,
 ) -> Result<()> {
+    // `remaining_accounts()` takes `&mut context` and returns an owned vec, so
+    // collect it before anything borrows `context.accounts`.
+    let maker_accounts = context.remaining_accounts()?;
+
     // `AccountView` is Copy, and a copy still points at the same
     // account — v2's typed handles make the aliasing a compile error.
     let quote_mint_view = *context.accounts.quote_mint.account();
+    // Read the decimals up front: the CPI handles below borrow the mints.
+    let quote_decimals = context.accounts.quote_mint.decimals();
+    let base_decimals = context.accounts.base_mint.decimals();
     let market = &context.accounts.market;
 
     require!(market.is_active, ErrorCode::MarketPaused);
@@ -64,9 +71,9 @@ pub fn handle_place_order(
     let (source_account, mint_account_info, decimals, transfer_amount, destination_vault) =
         match side {
             OrderSide::Bid => (
-                context.accounts.user_quote_account.cpi_handle_mut(),
-                context.accounts.quote_mint.cpi_handle_mut(),
-                context.accounts.quote_mint.decimals(),
+                context.accounts.user_quote_account.to_cpi_handle_mut(),
+                context.accounts.quote_mint.to_cpi_handle(),
+                quote_decimals,
                 (price as u128)
                     .checked_mul(quantity as u128)
                     .ok_or(ErrorCode::NumericalOverflow)?
@@ -74,18 +81,18 @@ pub fn handle_place_order(
                     .ok_or(ErrorCode::NumericalOverflow)?
                     .try_into()
                     .map_err(|_| ErrorCode::NumericalOverflow)?,
-                context.accounts.quote_vault.cpi_handle_mut(),
+                context.accounts.quote_vault.to_cpi_handle_mut(),
             ),
             OrderSide::Ask => (
-                context.accounts.user_base_account.cpi_handle_mut(),
-                context.accounts.base_mint.cpi_handle_mut(),
-                context.accounts.base_mint.decimals(),
+                context.accounts.user_base_account.to_cpi_handle_mut(),
+                context.accounts.base_mint.to_cpi_handle(),
+                base_decimals,
                 (quantity as u128)
                     .checked_mul(market.base_lot_size as u128)
                     .ok_or(ErrorCode::NumericalOverflow)?
                     .try_into()
                     .map_err(|_| ErrorCode::NumericalOverflow)?,
-                context.accounts.base_vault.cpi_handle_mut(),
+                context.accounts.base_vault.to_cpi_handle_mut(),
             ),
         };
 
@@ -111,13 +118,12 @@ pub fn handle_place_order(
     // transaction's remaining_accounts, in the same price-time-priority
     // order the book would walk. We plan fills against the resting tree,
     // then verify the caller's account list matches the plan, then apply.
-    let maker_accounts = &context.remaining_accounts()?;
     require!(
         maker_accounts.len() % ACCOUNTS_PER_MAKER == 0,
         ErrorCode::MissingMakerAccounts
     );
 
-    let order_book_loader = &context.accounts.order_book;
+    let order_book_loader = &mut context.accounts.order_book;
 
     // Plan in an immutable load scope, copy the fills out, then drop the
     // borrow before we re-borrow for mutations. AccountLoader::load() is a
@@ -177,8 +183,13 @@ pub fn handle_place_order(
         let maker_order_info = &maker_accounts[fill_index * ACCOUNTS_PER_MAKER];
         let maker_user_info = &maker_accounts[fill_index * ACCOUNTS_PER_MAKER + 1];
 
-        let mut maker_order = Account::<Order>::try_from(maker_order_info)?;
-        let mut maker_market_user = Account::<MarketUser>::try_from(maker_user_info)?;
+        // v2 has no `Account::try_from`. `AnchorAccount::load_mut` is the
+        // equivalent for a writable account reached through remaining_accounts;
+        // it is unsafe because the caller must guarantee no other live `&mut`
+        // to the same data, which the distinct maker accounts here satisfy.
+        let mut maker_order = unsafe { BorshAccount::<Order>::load_mut(*maker_order_info) }?;
+        let mut maker_market_user =
+            unsafe { BorshAccount::<MarketUser>::load_mut(*maker_user_info) }?;
 
         require!(
             maker_order.owner == maker_market_user.owner,
@@ -314,8 +325,8 @@ pub fn handle_place_order(
             remove_open_order(&mut maker_market_user, maker_order.order_id);
         }
 
-        maker_order.exit(context.program_id)?;
-        maker_market_user.exit(context.program_id)?;
+        maker_order.exit()?;
+        maker_market_user.exit()?;
     }
 
     // ---------------------------------------------------------------
@@ -342,29 +353,36 @@ pub fn handle_place_order(
     // Move accumulated fee from quote_vault → fee_vault (one CPI signed
     // by the market PDA).
     if total_fee_quote > 0 {
-        let market_bump = [market.bump];
+        // Copied out because `market` has to release its data borrow before it
+        // signs: the runtime would otherwise reject the CPI's own borrow of the
+        // same account with AccountBorrowFailed.
+        let market_bump = [context.accounts.market.bump];
+        let base_mint = context.accounts.market.base_mint;
+        let quote_mint = context.accounts.market.quote_mint;
         let signer_seeds: [&[u8]; 4] = [
             MARKET_SEED,
-            market.base_mint.as_ref(),
-            market.quote_mint.as_ref(),
+            base_mint.as_ref(),
+            quote_mint.as_ref(),
             &market_bump,
         ];
         let signer_seeds = &[&signer_seeds[..]];
 
+        context.accounts.market.release_borrow()?;
         transfer_checked(
             CpiContext::new_with_signer(
                 context.accounts.token_program.address(),
                 TransferChecked {
-                    from: context.accounts.quote_vault.cpi_handle_mut(),
+                    from: context.accounts.quote_vault.to_cpi_handle_mut(),
                     mint: CpiHandle::readonly(&quote_mint_view),
-                    to: context.accounts.fee_vault.cpi_handle_mut(),
-                    authority: market.cpi_handle(),
+                    to: context.accounts.fee_vault.to_cpi_handle_mut(),
+                    authority: context.accounts.market.cpi_handle(),
                 },
                 signer_seeds,
             ),
             total_fee_quote,
-            context.accounts.quote_mint.decimals(),
+            quote_decimals,
         )?;
+        context.accounts.market.reacquire_borrow_mut()?;
     }
 
     // Apply taker accounting deltas in a single mutation.
@@ -398,7 +416,7 @@ pub fn handle_place_order(
                 side,
                 price,
                 taker_remaining,
-                context.accounts.owner.address(),
+                *context.accounts.owner.address(),
                 id,
                 timestamp,
             )?;
@@ -407,7 +425,7 @@ pub fn handle_place_order(
     };
 
     let order = &mut context.accounts.order;
-    order.market = *market.address();
+    order.market = *context.accounts.market.address();
     order.owner = *context.accounts.owner.address();
     order.order_id = order_id;
     order.side = side;

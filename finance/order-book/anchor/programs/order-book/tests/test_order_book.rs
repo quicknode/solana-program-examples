@@ -13,9 +13,11 @@ use {
     anchor_lang::{
         solana_program::{
             instruction::{AccountMeta, Instruction},
-            system_instruction, system_program,
+            system_instruction,
         },
-        Discriminator, InstructionData, ToAccountMetas,
+        // `system_program` moved to the crate root in v2, and `Pubkey` is
+        // compat-only — `Address` is the same 32-byte type.
+        system_program, Address, Discriminator, InstructionData, ToAccountMetas,
     },
     litesvm::LiteSVM,
     solana_keypair::Keypair,

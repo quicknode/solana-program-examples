@@ -8,7 +8,6 @@ use crate::state::{Market, MarketUser, MARKET_SEED, MARKET_USER_SEED};
 
 pub fn handle_settle_funds(context: &mut Context<SettleFundsAccountConstraints>) -> Result<()> {
     let market_user = &mut context.accounts.market_user;
-    let market = &context.accounts.market;
 
     // Snapshot the amounts the user is owed, then zero the counters
     // BEFORE the token transfers. Checks-effects-interactions: even though
@@ -23,30 +22,43 @@ pub fn handle_settle_funds(context: &mut Context<SettleFundsAccountConstraints>)
     market_user.unsettled_quote = 0;
 
     // Seeds to sign as the market PDA (the authority of both vaults). Built
-    // once and reused for the two possible transfers.
+    // once and reused for the two possible transfers. The values are copied
+    // out because `market` has to release its data borrow before it signs.
+    let market = &context.accounts.market;
     let market_bump = [market.bump];
+    let base_mint = market.base_mint;
+    let quote_mint = market.quote_mint;
     let signer_seeds: [&[u8]; 4] = [
         MARKET_SEED,
-        market.base_mint.as_ref(),
-        market.quote_mint.as_ref(),
+        base_mint.as_ref(),
+        quote_mint.as_ref(),
         &market_bump,
     ];
     let signer_seeds = &[&signer_seeds[..]];
+
+    // Read the decimals before the CPI handles borrow the mints.
+    let base_decimals = context.accounts.base_mint.decimals();
+    let quote_decimals = context.accounts.quote_mint.decimals();
+
+    // `market` signs both transfers. It is a data account holding a live borrow
+    // on its buffer, which the runtime would reject when the CPI borrows the
+    // same account, so hand the borrow back across the calls.
+    context.accounts.market.release_borrow()?;
 
     if base_amount > 0 {
         transfer_checked(
             CpiContext::new_with_signer(
                 context.accounts.token_program.address(),
                 TransferChecked {
-                    from: context.accounts.base_vault.cpi_handle_mut(),
-                    mint: context.accounts.base_mint.cpi_handle(),
-                    to: context.accounts.user_base_account.cpi_handle_mut(),
-                    authority: market.cpi_handle(),
+                    from: context.accounts.base_vault.to_cpi_handle_mut(),
+                    mint: context.accounts.base_mint.to_cpi_handle(),
+                    to: context.accounts.user_base_account.to_cpi_handle_mut(),
+                    authority: context.accounts.market.cpi_handle(),
                 },
                 signer_seeds,
             ),
             base_amount,
-            context.accounts.base_mint.decimals(),
+            base_decimals,
         )?;
     }
 
@@ -55,17 +67,19 @@ pub fn handle_settle_funds(context: &mut Context<SettleFundsAccountConstraints>)
             CpiContext::new_with_signer(
                 context.accounts.token_program.address(),
                 TransferChecked {
-                    from: context.accounts.quote_vault.cpi_handle_mut(),
-                    mint: context.accounts.quote_mint.cpi_handle(),
-                    to: context.accounts.user_quote_account.cpi_handle_mut(),
-                    authority: market.cpi_handle(),
+                    from: context.accounts.quote_vault.to_cpi_handle_mut(),
+                    mint: context.accounts.quote_mint.to_cpi_handle(),
+                    to: context.accounts.user_quote_account.to_cpi_handle_mut(),
+                    authority: context.accounts.market.cpi_handle(),
                 },
                 signer_seeds,
             ),
             quote_amount,
-            context.accounts.quote_mint.decimals(),
+            quote_decimals,
         )?;
     }
+
+    context.accounts.market.reacquire_borrow_mut()?;
 
     Ok(())
 }

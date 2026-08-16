@@ -15,7 +15,7 @@ pub fn handle_withdraw_fees(context: &mut Context<WithdrawFeesAccountConstraints
     let market = &context.accounts.market;
 
     require!(
-        context.accounts.authority.address() == market.authority,
+        *context.accounts.authority.address() == market.authority,
         ErrorCode::NotMarketAuthority
     );
 
@@ -27,29 +27,37 @@ pub fn handle_withdraw_fees(context: &mut Context<WithdrawFeesAccountConstraints
         return Ok(());
     }
 
+    // Copied out because `market` has to release its data borrow before it
+    // signs: the runtime would otherwise reject the CPI's own borrow of the
+    // same account with AccountBorrowFailed.
     let market_bump = [market.bump];
+    let base_mint = market.base_mint;
+    let quote_mint = market.quote_mint;
     let signer_seeds: [&[u8]; 4] = [
         MARKET_SEED,
-        market.base_mint.as_ref(),
-        market.quote_mint.as_ref(),
+        base_mint.as_ref(),
+        quote_mint.as_ref(),
         &market_bump,
     ];
     let signer_seeds = &[&signer_seeds[..]];
+    let quote_decimals = context.accounts.quote_mint.decimals();
 
+    context.accounts.market.release_borrow()?;
     transfer_checked(
         CpiContext::new_with_signer(
             context.accounts.token_program.address(),
             TransferChecked {
-                from: context.accounts.fee_vault.cpi_handle_mut(),
-                mint: context.accounts.quote_mint.cpi_handle(),
-                to: context.accounts.authority_quote_account.cpi_handle_mut(),
-                authority: market.cpi_handle(),
+                from: context.accounts.fee_vault.to_cpi_handle_mut(),
+                mint: context.accounts.quote_mint.to_cpi_handle(),
+                to: context.accounts.authority_quote_account.to_cpi_handle_mut(),
+                authority: context.accounts.market.cpi_handle(),
             },
             signer_seeds,
         ),
         fee_balance,
-        context.accounts.quote_mint.decimals(),
+        quote_decimals,
     )?;
+    context.accounts.market.reacquire_borrow_mut()?;
 
     Ok(())
 }

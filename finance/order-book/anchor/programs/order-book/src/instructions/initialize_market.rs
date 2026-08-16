@@ -33,7 +33,7 @@ pub fn handle_initialize_market(
     market.base_vault = *context.accounts.base_vault.address();
     market.quote_vault = *context.accounts.quote_vault.address();
     market.fee_vault = *context.accounts.fee_vault.address();
-    market.order_book = context.accounts.order_book.address();
+    market.order_book = *context.accounts.order_book.address();
     market.fee_basis_points = fee_basis_points;
     market.tick_size = tick_size;
     market.base_lot_size = base_lot_size;
@@ -42,12 +42,12 @@ pub fn handle_initialize_market(
     market.is_active = true;
     market.bump = context.bumps.market;
 
-    // Zero-copy account: initialize the slab in place. `load_init` is the
-    // first-write path - every subsequent handler uses `load` / `load_mut`.
-    // The order book is not a PDA (see the comment on the `order_book`
-    // account below), so `bump` is unused and stored as 0.
-    let mut order_book = context.accounts.order_book.load_init()?;
-    order_book.initialize(context.accounts.market.address(), 0);
+    // Zero-copy account: v2's `Account<T>` derefs straight to `T`, so the slab
+    // is written in place with no `load_init` / `load_mut` step. The order book
+    // is not a PDA (see the comment on the `order_book` account below), so
+    // `bump` is unused and stored as 0.
+    let market_address = *context.accounts.market.address();
+    context.accounts.order_book.initialize(market_address, 0);
 
     Ok(())
 }
