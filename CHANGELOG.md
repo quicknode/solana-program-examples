@@ -4,6 +4,51 @@ All notable changes to this repository are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-08-16] - Every Anchor example on Anchor v2.0.0-rc.1
+
+### Changed
+
+- The remaining 39 Anchor examples — all of `tokens/`, `finance/` and
+  `compression/` — now build against `anchor-lang` 2.0.0-rc.1, joining the
+  `basics/` examples ported below. `.github/workflows/anchor.yml` installs
+  2.0.0-rc.1, since `anchor build` under a v2 CLI will not build v1 programs.
+- `docs/anchor-v2-migration.md` collects every difference the port ran into,
+  ordered by how often it bites. The rules the compiler will not catch for you
+  are called out: borrows held across CPIs, `Box`'s missing `cpi_handle_mut`
+  forwarding, and hand-built read-only handles over a live data account.
+- `has_one` is deprecated in v2 and this repository's `rust.yml` runs
+  `cargo clippy -- -D warnings`, so all 152 uses across 59 files move to the
+  `address` constraint on the sibling field they named.
+- The seven `transfer-hook` examples supply their own entrypoint. v2's
+  `#[program(interface, ...)]` generates a CPI client and no dispatch — a
+  program declared that way builds to a ~900-byte object with no `entrypoint`
+  symbol — while an executable `#[program]` limits custom discriminators to one
+  byte, which the transfer-hook interface's eight-byte values cannot use. Each
+  crate now builds with `no-entrypoint`, so anchor exports its dispatch as
+  `__anchor_dispatch`, and `src/entrypoint.rs` maps the interface
+  discriminators onto handlers before delegating.
+- `tokens/pda-mint-authority` and `tokens/token-extensions/cpi-guard` build
+  their PDA by hand (`create_account` plus `initialize_mint2` /
+  `initialize_account3`). Both examples exist to show an account that is its own
+  authority, and a v2 SPL `init` constraint cannot name the account being
+  initialized.
+- `finance/order-book` keeps its ~180 KB zero-copy critbit book zero-copy: v2's
+  `Account<T>` derefs straight to `T`, so `load_init` / `load_mut` simply go
+  away rather than the state converting to borsh.
+- Tests that asserted on an Anchor error *name* now assert on the numeric custom
+  code (the `#[error_code]` discriminant plus the default 6000 offset). v2 does
+  not log variant names, so the old assertions could never match.
+
+### Removed
+
+- `tokens/token-extensions/nft-meta-data-pointer` no longer depends on
+  `session-keys`. That crate is Anchor v1 only — its `Session` derive requires
+  `Option<Account<'info, SessionToken>>`, and `SessionToken` is not `Pod`, so
+  v2's zero-copy `Account<T>` cannot hold it either. The program reads the
+  session-token account layout itself (`src/session.rs`), checking owner,
+  discriminator and PDA, and spells out the `#[session_auth_or]` fallback in the
+  handler, so the gasless-session lesson and its security warning both survive.
+
 ## [2026-08-13] - Anchor examples in `basics/` move to Anchor v2.0.0-rc.1
 
 ### Changed
