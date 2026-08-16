@@ -1,3 +1,8 @@
+// v2's `#[derive(Accounts)]` binds the `#[instruction(...)]` args in more
+// than one generated item, and only the one evaluating the constraints below
+// reads them — so the binding looks unused to rustc even though `space` uses it.
+#![allow(unused_variables)]
+
 use anchor_lang::prelude::*;
 use anchor_spl::mint;
 use anchor_spl::{
@@ -20,9 +25,6 @@ pub const MAX_FEE_BPS: u16 = 1_000;
 /// that the bound is meaningless.
 pub const MAX_SLIPPAGE_BPS: u16 = 1_000;
 
-// v2's `#[derive(Accounts)]` binds the `#[instruction(...)]` args on a code
-// path that does not use them, even when a constraint below does.
-#[allow(unused_variables)]
 #[derive(Accounts)]
 #[instruction(index: u64)]
 pub struct InitializeStrategyAccountConstraints {

@@ -1,10 +1,12 @@
+// v2's `#[derive(Accounts)]` binds the `#[instruction(...)]` args in more
+// than one generated item, and only the one evaluating the constraints below
+// reads them — so the binding looks unused to rustc even though `space` uses it.
+#![allow(unused_variables)]
+
 use anchor_lang::prelude::*;
 
 use crate::Message;
 
-// v2's `#[derive(Accounts)]` binds the `#[instruction(...)]` args on a code
-// path that does not use them, even when a constraint below does.
-#[allow(unused_variables)]
 #[derive(Accounts)]
 #[instruction(input: String)]
 pub struct InitializeAccountConstraints {
