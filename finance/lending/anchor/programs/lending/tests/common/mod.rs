@@ -67,6 +67,25 @@ fn send(
         .map_err(|thrown| format!("{thrown:?}"))
 }
 
+/// v2's `#[error_code]` does not log the variant name, so a failed transaction
+/// carries only the numeric custom code: the enum discriminant plus anchor's
+/// default 6000 offset. Assert on that rather than on a name that is no longer
+/// in the logs.
+pub const ANCHOR_ERROR_OFFSET: u32 = 6000;
+
+macro_rules! assert_program_error {
+    ($result:expr, $variant:path) => {{
+        let message = $result.expect_err("transaction should have failed");
+        let code = $variant as u32 + $crate::common::ANCHOR_ERROR_OFFSET;
+        assert!(
+            message.contains(&format!("Custom({code})")),
+            "expected {} (Custom({code})), got: {message}",
+            stringify!($variant),
+        );
+    }};
+}
+pub(crate) use assert_program_error;
+
 /// Handle to one reserve and its associated PDAs.
 #[derive(Clone, Copy)]
 pub struct ReserveHandle {

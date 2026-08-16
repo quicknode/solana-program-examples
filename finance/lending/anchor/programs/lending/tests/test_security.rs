@@ -1,5 +1,7 @@
 mod common;
 
+use lending::errors::LendingError;
+
 use anchor_lang::{
     solana_program::instruction::Instruction, system_program, InstructionData, ToAccountMetas,
 };
@@ -29,10 +31,7 @@ fn cross_market_reserve_is_rejected() {
     // token movement.
     env.fund(&borrower, foreign_reserve.share_mint, 0); // create the share ATA
     let result = env.try_post_collateral(&borrower, obligation, &foreign_reserve, 1);
-    assert!(
-        result.unwrap_err().contains("MarketMismatch"),
-        "a reserve from another lending market must be rejected"
-    );
+    common::assert_program_error!(result, LendingError::MarketMismatch);
 }
 
 /// A market's price feed can only be written by that market's owner: an

@@ -137,13 +137,18 @@ pub fn handle_liquidate_obligation(
     };
 
     // Interactions: liquidator repays, then receives the seized share tokens.
+    //
+    // These accounts are `Box`ed, and `Box`'s `AnchorAccount` impl does not
+    // override `cpi_handle_mut`, so that call would build a handle without
+    // releasing the wrapper's data borrow and the CPI would be rejected with
+    // `AccountBorrowFailed`. `to_cpi_handle_mut` forwards to the inner type.
     transfer_checked(
         CpiContext::new(
             context.accounts.token_program.address(),
             TransferChecked {
-                from: context.accounts.liquidator_repay_source.cpi_handle_mut(),
-                mint: context.accounts.repay_liquidity_mint.cpi_handle(),
-                to: context.accounts.repay_liquidity_vault.cpi_handle_mut(),
+                from: context.accounts.liquidator_repay_source.to_cpi_handle_mut(),
+                mint: context.accounts.repay_liquidity_mint.to_cpi_handle(),
+                to: context.accounts.repay_liquidity_vault.to_cpi_handle_mut(),
                 authority: context.accounts.liquidator.cpi_handle(),
             },
         ),
@@ -158,6 +163,11 @@ pub fn handle_liquidate_obligation(
         owner.as_ref(),
         &bump,
     ];
+    // `obligation` signs this CPI. It is a data account holding a live borrow on
+    // its buffer, which the runtime would reject when the CPI borrows the same
+    // account — so hand the borrow back across the call. `release_borrow`
+    // flushes the pending writes, and `reacquire_borrow_mut` re-reads them.
+    context.accounts.obligation.release_borrow()?;
     transfer_checked(
         CpiContext::new_with_signer(
             context.accounts.token_program.address(),
@@ -165,9 +175,9 @@ pub fn handle_liquidate_obligation(
                 from: context
                     .accounts
                     .obligation_collateral_vault
-                    .cpi_handle_mut(),
-                mint: context.accounts.collateral_share_mint.cpi_handle(),
-                to: context.accounts.liquidator_collateral_dest.cpi_handle_mut(),
+                    .to_cpi_handle_mut(),
+                mint: context.accounts.collateral_share_mint.to_cpi_handle(),
+                to: context.accounts.liquidator_collateral_dest.to_cpi_handle_mut(),
                 authority: context.accounts.obligation.cpi_handle(),
             },
             &[&seeds],
@@ -175,6 +185,7 @@ pub fn handle_liquidate_obligation(
         seize_shares,
         context.accounts.collateral_share_mint.decimals(),
     )?;
+    context.accounts.obligation.reacquire_borrow_mut()?;
 
     Ok(())
 }

@@ -85,6 +85,11 @@ pub fn handle_withdraw_obligation_collateral(
         owner.as_ref(),
         &bump,
     ];
+    // `obligation` signs this CPI. It is a data account holding a live borrow on
+    // its buffer, which the runtime would reject when the CPI borrows the same
+    // account — so hand the borrow back across the call. `release_borrow`
+    // flushes the pending writes, and `reacquire_borrow_mut` re-reads them.
+    context.accounts.obligation.release_borrow()?;
     transfer_checked(
         CpiContext::new_with_signer(
             context.accounts.token_program.address(),
@@ -92,13 +97,14 @@ pub fn handle_withdraw_obligation_collateral(
                 from: context.accounts.obligation_share_vault.cpi_handle_mut(),
                 mint: context.accounts.share_mint.cpi_handle(),
                 to: context.accounts.user_share.cpi_handle_mut(),
-                authority: obligation.cpi_handle(),
+                authority: context.accounts.obligation.cpi_handle(),
             },
             &[&seeds],
         ),
         share_amount,
         context.accounts.share_mint.decimals(),
     )?;
+    context.accounts.obligation.reacquire_borrow_mut()?;
 
     Ok(())
 }

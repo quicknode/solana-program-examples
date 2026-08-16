@@ -57,6 +57,7 @@ pub struct InitializeReserve {
         payer = owner,
         token::mint = liquidity_mint,
         token::authority = reserve,
+        token::token_program = token_program,
         seeds = [LIQUIDITY_VAULT_SEED, reserve.address().as_ref()],
         bump,
     )]
@@ -67,6 +68,7 @@ pub struct InitializeReserve {
         payer = owner,
         mint::decimals = liquidity_mint.decimals(),
         mint::authority = reserve,
+        mint::token_program = token_program,
         seeds = [SHARE_MINT_SEED, reserve.address().as_ref()],
         bump,
     )]

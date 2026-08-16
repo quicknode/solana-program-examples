@@ -1,5 +1,7 @@
 mod common;
 
+use lending::errors::LendingError;
+
 use common::{ata, default_config, dollars, Env};
 use solana_signer::Signer;
 
@@ -42,10 +44,7 @@ fn deposit_that_would_mint_zero_shares_is_rejected() {
     let dust_depositor = env.create_user();
     env.fund(&dust_depositor, borrow.mint, 1);
     let result = env.try_supply(&dust_depositor, &borrow, 1);
-    assert!(
-        result.unwrap_err().contains("DepositTooSmall"),
-        "a 1-unit deposit into an appreciated pool mints zero shares and must be rejected"
-    );
+    common::assert_program_error!(result, LendingError::DepositTooSmall);
 }
 
 #[test]
@@ -118,5 +117,5 @@ fn withdraw_at_health_boundary_then_one_more_unit_fails() {
         &collateral,
         1,
     );
-    assert!(result.unwrap_err().contains("WithdrawTooLarge"));
+    common::assert_program_error!(result, LendingError::WithdrawTooLarge);
 }

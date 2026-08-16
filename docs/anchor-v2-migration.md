@@ -158,6 +158,18 @@ Three ways this goes wrong:
 Also: asking a read-only account for a writable handle panics, so read
 `*account.address()` rather than `account.cpi_handle_mut().address()`.
 
+**On a `Box`ed account, call `to_cpi_handle_mut()` / `to_cpi_handle()`, not
+`cpi_handle_mut()` / `cpi_handle()`.** `Box<T>`'s `AnchorAccount` impl supplies
+only `account()`, so `cpi_handle_mut()` falls through to the default, which
+builds a handle *without* releasing the wrapper's data borrow — the CPI is then
+rejected with `AccountBorrowFailed`. `Box`'s `ToCpiHandleMut` impl does forward
+to the inner type, which is where the release lives. It compiles either way,
+so this only shows up in a test.
+
+Not every failure of this kind needs a release: a handler that only *reads* an
+account can take a second shared borrow (`account().try_borrow()`) where
+`try_borrow_mut` on a copied view would be rejected.
+
 ## Instruction discriminators, and programs that implement an interface
 
 By default a handler still dispatches on `sha256("global:<name>")[..8]`, so

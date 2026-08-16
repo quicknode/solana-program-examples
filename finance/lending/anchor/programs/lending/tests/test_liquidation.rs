@@ -1,5 +1,7 @@
 mod common;
 
+use lending::errors::LendingError;
+
 use common::{ata, cents, default_config, dollars, Env, ReserveHandle};
 use solana_keypair::Keypair;
 use solana_signer::Signer;
@@ -56,7 +58,7 @@ fn healthy_obligation_cannot_be_liquidated() {
         &collateral,
         100_000_000,
     );
-    assert!(result.unwrap_err().contains("ObligationHealthy"));
+    common::assert_program_error!(result, LendingError::ObligationHealthy);
 }
 
 #[test]
@@ -130,7 +132,7 @@ fn over_seizing_liquidation_rejected_smaller_succeeds() {
         &collateral,
         350_000_000,
     );
-    assert!(over_seize.unwrap_err().contains("LiquidationTooLarge"));
+    common::assert_program_error!(over_seize, LendingError::LiquidationTooLarge);
 
     // Repaying $50 seizes $52.50 of collateral = 525 units at $0.10 — fits.
     env.try_liquidate(

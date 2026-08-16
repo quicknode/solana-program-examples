@@ -30,8 +30,17 @@ pub fn handle_collect_protocol_fees(context: &mut Context<CollectProtocolFees>) 
         .checked_sub(amount)
         .ok_or(LendingError::MathOverflow)?;
 
+    // Copy the seed inputs out: `release_borrow` below needs `&mut reserve`.
     let bump = [reserve.bump];
-    let seeds = reserve_signer_seeds(&reserve.lending_market, &reserve.liquidity_mint, &bump);
+    let lending_market = reserve.lending_market;
+    let liquidity_mint = reserve.liquidity_mint;
+    let decimals = reserve.liquidity_decimals;
+    let seeds = reserve_signer_seeds(&lending_market, &liquidity_mint, &bump);
+    // `reserve` signs this CPI. It is a data account holding a live borrow on
+    // its buffer, which the runtime would reject when the CPI borrows the same
+    // account — so hand the borrow back across the call. `release_borrow`
+    // flushes the pending writes, and `reacquire_borrow_mut` re-reads them.
+    context.accounts.reserve.release_borrow()?;
     transfer_checked(
         CpiContext::new_with_signer(
             context.accounts.token_program.address(),
@@ -39,13 +48,14 @@ pub fn handle_collect_protocol_fees(context: &mut Context<CollectProtocolFees>) 
                 from: context.accounts.liquidity_vault.cpi_handle_mut(),
                 mint: context.accounts.liquidity_mint.cpi_handle(),
                 to: context.accounts.owner_liquidity.cpi_handle_mut(),
-                authority: reserve.cpi_handle(),
+                authority: context.accounts.reserve.cpi_handle(),
             },
             &[&seeds],
         ),
         amount,
-        reserve.liquidity_decimals,
+        decimals,
     )?;
+    context.accounts.reserve.reacquire_borrow_mut()?;
 
     Ok(())
 }

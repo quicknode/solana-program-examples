@@ -1,5 +1,7 @@
 mod common;
 
+use lending::errors::LendingError;
+
 use common::{ata, default_config, dollars, Env, ReserveHandle};
 use solana_keypair::Keypair;
 use solana_signer::Signer;
@@ -61,10 +63,7 @@ fn borrow_up_to_max_ltv_then_one_more_fails() {
         &borrow,
         1,
     );
-    assert!(
-        result.unwrap_err().contains("BorrowTooLarge"),
-        "borrowing past the LTV limit must be rejected"
-    );
+    common::assert_program_error!(result, LendingError::BorrowTooLarge);
 }
 
 #[test]
@@ -77,7 +76,7 @@ fn borrow_without_obligation_refresh_is_rejected() {
         &borrow,
         100_000_000,
     );
-    assert!(result.unwrap_err().contains("ObligationStale"));
+    common::assert_program_error!(result, LendingError::ObligationStale);
 }
 
 #[test]
@@ -93,7 +92,7 @@ fn borrow_with_stale_price_feed_is_rejected() {
         &borrow,
         100_000_000,
     );
-    assert!(result.unwrap_err().contains("StalePriceFeed"));
+    common::assert_program_error!(result, LendingError::StalePriceFeed);
 }
 
 /// A cluster restart passes hours of wall-clock time in zero slots, so a price
@@ -118,10 +117,7 @@ fn borrow_with_price_from_before_a_restart_is_rejected() {
         &borrow,
         100_000_000,
     );
-    assert!(
-        result.unwrap_err().contains("PricePredatesRestart"),
-        "a pre-restart price must be rejected even inside the staleness window"
-    );
+    common::assert_program_error!(result, LendingError::PricePredatesRestart);
 
     // Publishing after the restart reopens the market. Warp first: the retry is
     // otherwise byte-identical to the rejected borrow, so it would carry the
@@ -187,7 +183,7 @@ fn withdraw_blocked_while_borrowed_then_allowed_after_repay() {
         &collateral,
         100_000_000,
     );
-    assert!(blocked.unwrap_err().contains("WithdrawTooLarge"));
+    common::assert_program_error!(blocked, LendingError::WithdrawTooLarge);
 
     // Repay everything, then the collateral is free to withdraw.
     env.repay(&borrower, obligation, &borrow, 750_000_000);

@@ -65,6 +65,7 @@ pub struct DepositObligationCollateral {
         payer = owner,
         token::mint = share_mint,
         token::authority = obligation,
+        token::token_program = token_program,
         seeds = [OBLIGATION_SHARE_VAULT_SEED, reserve.address().as_ref(), obligation.address().as_ref()],
         bump,
     )]

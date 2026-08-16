@@ -1,5 +1,7 @@
 mod common;
 
+use lending::errors::LendingError;
+
 use common::{default_config, Env};
 use lending::constants::FIXED_POINT_SCALE;
 
@@ -28,10 +30,7 @@ fn rejects_ltv_above_liquidation_threshold() {
     bad.loan_to_value_bps = 9_000;
     bad.liquidation_threshold_bps = 8_000;
     let result = env.try_update_config(&usdc, bad);
-    assert!(
-        result.unwrap_err().contains("InvalidConfig"),
-        "LTV above the liquidation threshold must be rejected"
-    );
+    common::assert_program_error!(result, LendingError::InvalidConfig);
 }
 
 #[test]
@@ -44,7 +43,7 @@ fn rejects_misordered_interest_rate_curve() {
     bad.optimal_borrow_rate_bps = 2_000; // optimal below min
     bad.max_borrow_rate_bps = 15_000;
     let result = env.try_update_config(&usdc, bad);
-    assert!(result.unwrap_err().contains("InvalidConfig"));
+    common::assert_program_error!(result, LendingError::InvalidConfig);
 }
 
 #[test]
