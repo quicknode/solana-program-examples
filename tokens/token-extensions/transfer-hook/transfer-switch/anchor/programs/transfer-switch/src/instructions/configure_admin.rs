@@ -47,10 +47,10 @@ pub fn handle_configure_admin(
     accounts: &mut ConfigureAdminAccountConstraints,
     bump: u8,
 ) -> Result<()> {
-    *accounts.admin_config = (AdminConfig {
+    *accounts.admin_config = AdminConfig {
         admin: *accounts.new_admin.address(), // set the admin pubkey that can switch transfers on/off
         is_initialised: true,                 // let us know an admin has been set
         bump,                                 // canonical bump for the admin-config PDA
-    });
+    };
     Ok(())
 }

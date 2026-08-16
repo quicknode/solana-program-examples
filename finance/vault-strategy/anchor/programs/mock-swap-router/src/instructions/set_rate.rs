@@ -54,10 +54,10 @@ pub fn handle_set_rate(
     _mint: Address,
     usdc_per_token: u64,
 ) -> Result<()> {
-    *context.accounts.asset_rate = (AssetRate {
+    *context.accounts.asset_rate = AssetRate {
         mint: *context.accounts.asset_mint.address(),
         usdc_per_token,
         bump: context.bumps.asset_rate,
-    });
+    };
     Ok(())
 }

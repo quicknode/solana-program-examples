@@ -88,13 +88,13 @@ pub fn handle_save_offer(
     id: u64,
     token_b_wanted_amount: u64,
 ) -> Result<()> {
-    *context.accounts.offer = (Offer {
+    *context.accounts.offer = Offer {
         id,
         maker: *context.accounts.maker.address(),
         token_mint_a: *context.accounts.token_mint_a.address(),
         token_mint_b: *context.accounts.token_mint_b.address(),
         token_b_wanted_amount,
         bump: context.bumps.offer,
-    });
+    };
     Ok(())
 }

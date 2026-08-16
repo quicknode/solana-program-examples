@@ -51,14 +51,14 @@ pub fn handle_add_outcome(
     );
 
     let index = context.accounts.event.outcome_count;
-    *context.accounts.outcome = (Outcome {
+    *context.accounts.outcome = Outcome {
         event: *context.accounts.event.address(),
         index,
         label,
         total_amount: 0,
         bet_count: 0,
         bump: context.bumps.outcome,
-    });
+    };
 
     context.accounts.event.outcome_count += 1;
     Ok(())

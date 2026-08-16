@@ -34,5 +34,5 @@ pub fn eat_food(ix: EatFoodInstructionData) -> Result<()> {
         }
     }
 
-    Err(ProgramError::InvalidInstructionData.into())
+    Err(ProgramError::InvalidInstructionData)
 }

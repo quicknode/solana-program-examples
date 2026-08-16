@@ -59,7 +59,7 @@ pub fn handle_initialize_event(
         BettingError::DescriptionTooLong
     );
 
-    *context.accounts.event = (Event {
+    *context.accounts.event = Event {
         event_id,
         description,
         outcome_count: 0,
@@ -70,7 +70,7 @@ pub fn handle_initialize_event(
         winning_pool: 0,
         distributable_losing_pool: 0,
         bump: context.bumps.event,
-    });
+    };
 
     context.accounts.config.event_count += 1;
     Ok(())

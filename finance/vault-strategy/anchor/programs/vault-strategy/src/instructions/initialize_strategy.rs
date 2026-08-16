@@ -82,7 +82,7 @@ pub fn handle_initialize_strategy(
 
     let clock = Clock::get()?;
 
-    **context.accounts.strategy = (Strategy {
+    **context.accounts.strategy = Strategy {
         index,
         manager: *context.accounts.manager.address(),
         registry: *context.accounts.registry.address(),
@@ -96,7 +96,7 @@ pub fn handle_initialize_strategy(
         asset_count: 0,
         total_weight_bps: 0,
         bump: context.bumps.strategy,
-    });
+    };
 
     Ok(())
 }

@@ -34,13 +34,13 @@ pub fn handle_initialize_config(
 ) -> Result<()> {
     require!(fee_bps <= MAX_FEE_BPS, BettingError::FeeTooHigh);
 
-    *context.accounts.config = (Config {
+    *context.accounts.config = Config {
         admin: *context.accounts.admin.address(),
         token_mint: *context.accounts.token_mint.address(),
         fee_recipient,
         fee_bps,
         event_count: 0,
         bump: context.bumps.config,
-    });
+    };
     Ok(())
 }

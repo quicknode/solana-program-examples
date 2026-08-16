@@ -32,11 +32,11 @@ pub fn handle_approve_asset(
     context: &mut Context<ApproveAssetAccountConstraints>,
     price_feed: Address,
 ) -> Result<()> {
-    *context.accounts.approved_asset = (ApprovedAsset {
+    *context.accounts.approved_asset = ApprovedAsset {
         registry: *context.accounts.registry.address(),
         mint: *context.accounts.asset_mint.address(),
         price_feed,
         bump: context.bumps.approved_asset,
-    });
+    };
     Ok(())
 }

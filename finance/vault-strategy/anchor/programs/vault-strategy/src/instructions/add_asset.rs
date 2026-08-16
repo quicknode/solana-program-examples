@@ -71,7 +71,7 @@ pub fn handle_add_asset(
 
     let index = strategy.asset_count;
 
-    **context.accounts.asset_config = (AssetConfig {
+    **context.accounts.asset_config = AssetConfig {
         strategy: *strategy.address(),
         index,
         mint: *context.accounts.asset_mint.address(),
@@ -80,7 +80,7 @@ pub fn handle_add_asset(
         vault: *context.accounts.vault_asset.address(),
         weight_bps,
         bump: context.bumps.asset_config,
-    });
+    };
 
     strategy.asset_count = index.checked_add(1).ok_or(VaultError::MathOverflow)?;
     strategy.total_weight_bps = new_total as u16;

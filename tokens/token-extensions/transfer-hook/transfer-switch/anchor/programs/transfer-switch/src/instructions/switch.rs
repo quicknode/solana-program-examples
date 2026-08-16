@@ -34,11 +34,11 @@ pub struct SwitchAccountConstraints {
 pub fn handle_switch(accounts: &mut SwitchAccountConstraints, on: bool, bump: u8) -> Result<()> {
     // toggle switch on/off for the given wallet
     //
-    *accounts.wallet_switch = (TransferSwitch {
+    *accounts.wallet_switch = TransferSwitch {
         wallet: *accounts.wallet.address(),
         on,
         bump, // canonical bump for this wallet's PDA
-    });
+    };
     Ok(())
 }
 

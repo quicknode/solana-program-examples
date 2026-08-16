@@ -34,10 +34,10 @@ pub fn handle_initialize_router(
     context: &mut Context<InitializeRouterAccountConstraints>,
     _usdc_mint: Address,
 ) -> Result<()> {
-    *context.accounts.router_config = (RouterConfig {
+    *context.accounts.router_config = RouterConfig {
         authority: *context.accounts.authority.address(),
         usdc_mint: *context.accounts.usdc_mint.address(),
         bump: context.bumps.router_config,
-    });
+    };
     Ok(())
 }

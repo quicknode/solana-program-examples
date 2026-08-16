@@ -57,7 +57,7 @@ pub fn handle_initialize_fundraiser(
         FundraiserError::InvalidAmount
     );
 
-    *accounts.fundraiser = (Fundraiser {
+    *accounts.fundraiser = Fundraiser {
         maker: *accounts.maker.address(),
         mint_to_raise: *accounts.mint_to_raise.address(),
         amount_to_raise: amount,
@@ -65,7 +65,7 @@ pub fn handle_initialize_fundraiser(
         time_started: Clock::get()?.unix_timestamp,
         duration,
         bump: bumps.fundraiser,
-    });
+    };
 
     Ok(())
 }
