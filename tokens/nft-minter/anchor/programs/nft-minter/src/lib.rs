@@ -56,7 +56,6 @@ pub mod nft_minter {
                     update_authority: CpiHandle::readonly(&payer_view),
                     payer: context.accounts.payer.cpi_handle_mut(),
                     system_program: context.accounts.system_program.cpi_handle(),
-                    update_authority_is_signer: true,
                 },
             ),
             DataV2 {
@@ -87,7 +86,6 @@ pub mod nft_minter {
                     metadata: context.accounts.metadata_account.cpi_handle_mut(),
                     token_program: context.accounts.token_program.cpi_handle(),
                     system_program: context.accounts.system_program.cpi_handle(),
-                    update_authority_is_signer: true,
                 },
             ),
             None, // Max Supply

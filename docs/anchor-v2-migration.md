@@ -136,7 +136,31 @@ let payer_view = *ctx.accounts.payer.account();
 
 On a still-borrowed data account the copy passes the compiler and then fails at
 runtime with `AccountBorrowFailed`, because `CpiHandle::readonly` keeps the
-borrow check on.
+borrow check on. Use `into_readonly()` instead: `CpiHandleMut` is `Copy`, and
+erasing it carries the wrapper's relaxed borrow flag across.
+
+```rust
+// one account filling a writable slot and a read-only one
+let mint_handle = ctx.accounts.mint_account.cpi_handle_mut();
+let authority_handle = mint_handle.into_readonly();
+MintTo { mint: mint_handle, to: ..., authority: authority_handle }
+```
+
+Take the writable handle **last**: it borrows the field mutably for the rest of
+the scope, so any `msg!` or `.address()` on the same account has to come first.
+
+## Constraints that reference the account being initialized
+
+`mint::authority = mint_account` on `mint_account` itself — a PDA that is its
+own mint authority — is rejected at macro-expansion time: an SPL `init`
+constraint has to name a *sibling* field. The same goes for
+`token::authority = <self>`.
+
+Where that idiom is the point of the example, build the account by hand
+(`create_account` + `initialize_mint2` / `initialize_account3`) rather than
+adding a second field for the same address, which would then trip v2's
+duplicate-mutable-account check. `initialize_mint2` and `initialize_account3`
+take the authority as an address, so nothing is lost.
 
 For a **data** account (`Account`, `BorshAccount`, `InterfaceAccount`) that
 copy is not enough. The account holds a live borrow on its buffer, and the

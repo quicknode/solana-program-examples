@@ -1,7 +1,12 @@
 use anchor_lang::prelude::*;
+use anchor_lang::system_program::{create_account, CreateAccount};
 use anchor_spl::token;
 use anchor_spl::{
-    token_2022::{transfer_checked, TransferChecked},
+    token_2022::{
+        initialize_account3,
+        spl_token_2022::{extension::ExtensionType, pod::PodAccount},
+        transfer_checked, InitializeAccount3, TransferChecked,
+    },
     token_interface::{Mint, Token2022, TokenAccount},
 };
 
@@ -14,6 +19,45 @@ pub mod cpi_guard {
     use super::*;
 
     pub fn cpi_transfer(context: &mut Context<CpiTransferAccountConstraints>) -> Result<()> {
+        // The recipient token account is a PDA that is its own authority. v2
+        // rejects an `init` constraint naming the account being initialized
+        // (`token::authority` has to name a sibling field), so the account is
+        // created here instead — the `init_if_needed` semantics become an
+        // explicit "create when empty".
+        if context.accounts.recipient_token_account.account().data_len() == 0 {
+            let space = ExtensionType::try_calculate_account_len::<PodAccount>(&[])?;
+            let lamports = Rent::get()?.try_minimum_balance(space)?;
+            let signer_seeds: &[&[&[u8]]] =
+                &[&[b"pda", &[context.bumps.recipient_token_account]]];
+
+            create_account(
+                CpiContext::new(
+                    context.accounts.system_program.address(),
+                    CreateAccount {
+                        from: context.accounts.sender.cpi_handle_mut(),
+                        to: context.accounts.recipient_token_account.cpi_handle_mut(),
+                    },
+                )
+                .with_signer(signer_seeds),
+                lamports,
+                space as u64,
+                context.accounts.token_program.address(),
+            )?;
+
+            let recipient_handle = context.accounts.recipient_token_account.cpi_handle_mut();
+            initialize_account3(
+                CpiContext::new(
+                    context.accounts.token_program.address(),
+                    InitializeAccount3 {
+                        account: recipient_handle,
+                        mint: context.accounts.mint_account.cpi_handle(),
+                        // The account is its own authority.
+                        authority: recipient_handle.into_readonly(),
+                    },
+                ),
+            )?;
+        }
+
         transfer_checked(
             CpiContext::new(
                 context.accounts.token_program.address(),
@@ -41,16 +85,14 @@ pub struct CpiTransferAccountConstraints {
         token::mint = mint_account
     )]
     pub sender_token_account: InterfaceAccount<TokenAccount>,
+    /// CHECK: created and initialized as a token account by this instruction,
+    /// with itself as the authority — see `cpi_transfer` above.
     #[account(
-        init_if_needed,
-        payer = sender,
+        mut,
         seeds = [b"pda"],
         bump,
-        token::mint = mint_account,
-        token::authority = recipient_token_account,
-        token::token_program = token_program
     )]
-    pub recipient_token_account: InterfaceAccount<TokenAccount>,
+    pub recipient_token_account: UncheckedAccount,
     pub mint_account: InterfaceAccount<Mint>,
     pub token_program: Program<Token2022>,
     pub system_program: Program<System>,

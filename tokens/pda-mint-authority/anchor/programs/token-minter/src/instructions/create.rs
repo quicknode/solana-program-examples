@@ -2,13 +2,15 @@
 // This is to demonstrate that the same PDA can be used for both the address of an account and CPI signing
 use {
     anchor_lang::prelude::*,
+    // `Mint::LEN` comes from `Pack`, which anchor-spl does not re-export.
+    solana_program_pack::Pack,
+    anchor_lang::system_program::{create_account, CreateAccount},
     anchor_spl::{
         metadata::{
             create_metadata_accounts_v3, mpl_token_metadata::types::DataV2,
             CreateMetadataAccountsV3, Metadata,
         },
-        mint::{self, Mint},
-        token::{self, Token},
+        token::{initialize_mint2, spl_token::state::Mint as MintState, InitializeMint2, Token},
     },
 };
 
@@ -17,19 +19,19 @@ pub struct CreateTokenAccountConstraints {
     #[account(mut)]
     pub payer: Signer,
 
-    // Create mint account
-    // Same PDA as address of the account and mint/freeze authority
+    // Create mint account. The same PDA is both the account's address and its
+    // mint/freeze authority — which is the point of this example, and which v2
+    // cannot express as an `init` constraint: `mint::authority` has to name a
+    // sibling field, and referencing the account being initialized is rejected
+    // at macro-expansion time. So the mint is created by hand in
+    // `handle_create_token` below.
+    /// CHECK: created and initialized as a mint by this instruction.
     #[account(
-        init,
+        mut,
         seeds = [b"mint"],
         bump,
-        payer = payer,
-        mint::decimals = 9,
-        mint::authority = mint_account,
-        mint::freeze_authority = mint_account,
-
     )]
-    pub mint_account: Account<Mint>,
+    pub mint_account: UncheckedAccount,
 
     /// CHECK: Validate address by deriving pda
     #[account(
@@ -52,10 +54,43 @@ pub fn handle_create_token(
     token_symbol: String,
     token_uri: String,
 ) -> Result<()> {
-    msg!("Creating metadata account");
-
     // PDA signer seeds
     let signer_seeds: &[&[&[u8]]] = &[&[b"mint", &[context.bumps.mint_account]]];
+
+    msg!("Creating mint account");
+
+    // Allocate and initialize the mint, naming the mint PDA as both mint and
+    // freeze authority. `create_account` is signed by the PDA because the PDA
+    // is the account being created.
+    let mint_address = *context.accounts.mint_account.address();
+    let lamports = Rent::get()?.try_minimum_balance(MintState::LEN)?;
+    create_account(
+        CpiContext::new(
+            context.accounts.system_program.address(),
+            CreateAccount {
+                from: context.accounts.payer.cpi_handle_mut(),
+                to: context.accounts.mint_account.cpi_handle_mut(),
+            },
+        )
+        .with_signer(signer_seeds),
+        lamports,
+        MintState::LEN as u64,
+        context.accounts.token_program.address(),
+    )?;
+
+    initialize_mint2(
+        CpiContext::new(
+            context.accounts.token_program.address(),
+            InitializeMint2 {
+                mint: context.accounts.mint_account.cpi_handle_mut(),
+            },
+        ),
+        9,
+        &mint_address,
+        Some(&mint_address),
+    )?;
+
+    msg!("Creating metadata account");
 
     // Cross Program Invocation (CPI) signed by PDA
     // Invoking the create_metadata_account_v3 instruction on the token metadata program

@@ -44,27 +44,31 @@ pub fn handle_mint_token(
     context: &mut Context<MintTokenAccountConstraints>,
     amount: u64,
 ) -> Result<()> {
-    // `AccountView` is Copy, and a copy still points at the same
-    // account — v2's typed handles make the aliasing a compile error.
-    let mint_account_view = *context.accounts.mint_account.account();
     msg!("Minting token to associated token account...");
-    msg!("Mint: {}", &context.accounts.mint_account.address());
+    msg!("Mint: {}", context.accounts.mint_account.address());
     msg!(
         "Token Address: {}",
-        &context.accounts.associated_token_account.address()
+        context.accounts.associated_token_account.address()
     );
 
     // PDA signer seeds
     let signer_seeds: &[&[&[u8]]] = &[&[b"mint", &[context.bumps.mint_account]]];
+
+    // The mint is its own authority, so it fills a writable slot and a
+    // read-only one. `CpiHandleMut` is Copy and `into_readonly()` erases it
+    // while carrying the wrapper's relaxed borrow flag across — which a
+    // handle built by hand over a copy of the `AccountView` would not.
+    let mint_handle = context.accounts.mint_account.cpi_handle_mut();
+    let mint_authority_handle = mint_handle.into_readonly();
 
     // Invoke the mint_to instruction on the token program
     mint_to(
         CpiContext::new(
             context.accounts.token_program.address(),
             MintTo {
-                mint: context.accounts.mint_account.cpi_handle_mut(),
+                mint: mint_handle,
                 to: context.accounts.associated_token_account.cpi_handle_mut(),
-                authority: CpiHandle::readonly(&mint_account_view), // PDA mint authority, required as signer
+                authority: mint_authority_handle,
             },
         )
         .with_signer(signer_seeds), // using PDA to sign
