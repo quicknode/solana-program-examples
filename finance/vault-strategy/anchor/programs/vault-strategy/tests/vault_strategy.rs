@@ -12,7 +12,7 @@ use {
         send_transaction_from_instructions,
     },
     solana_signer::Signer,
-    solana_solana_account::Account as SolanaAccount,
+    solana_account::Account as SolanaAccount,
 };
 
 fn token_program_id() -> Address {
