@@ -4,20 +4,20 @@
 
 pub use crate::errors::GameErrorCode;
 pub use anchor_lang::prelude::*;
-pub use session_keys::{session_auth_or, Session, SessionError};
 pub mod constants;
 pub mod errors;
 pub mod instructions;
+pub mod session;
 pub mod state;
 use instructions::*;
 
-// WARNING: This example depends on the `session-keys` crate, which has not
-// been independently audited. It is included here purely for educational
-// purposes - demonstrating how a game might let a player sign with a
-// short-lived session token instead of their main wallet. Do not ship this
-// crate (or this program) to mainnet in its current form: review the upstream
-// `session-keys` source, get an audit, and harden the session-token issuance
-// and expiry handling first.
+// WARNING: this example reads gpl-session's `SessionToken` account (see
+// `session.rs`), and that program has not been independently audited. It is
+// included here purely for educational purposes - demonstrating how a game
+// might let a player sign with a short-lived session token instead of their
+// main wallet. Do not ship this pattern to mainnet in its current form: review
+// the upstream session-keys source, get an audit, and harden the session-token
+// issuance and expiry handling first.
 declare_id!("9aZZ7TJ2fQZxY8hMtWXywp5y6BgqC4N2BPcr9FDT47sW");
 
 #[program]
@@ -35,18 +35,25 @@ pub mod extension_nft {
     // lets the player either use their session token or their main wallet. (The counter is only
     // there so that the player can do multiple transactions in the same block. Without it multiple transactions
     // in the same block would result in the same signature and therefore fail.)
-    // NOTE: the `#[session_auth_or]` macro injects code that refers to the
-    // context binding by the literal name `ctx`, so this handler's context
-    // parameter must be named `ctx` (not `context`) for the macro to expand.
-    #[session_auth_or(
-        ctx.accounts.player.authority.address() == ctx.accounts.signer.address(),
-        GameErrorCode::WrongAuthority
-    )]
+    // The session-keys `#[session_auth_or]` attribute macro is Anchor v1 only,
+    // so the same check is spelled out: a live session token authorizes the
+    // call, and otherwise the signer has to be the player's own authority.
     pub fn chop_tree(
         ctx: &mut Context<ChopTreeAccountConstraints>,
         _level_seed: String,
         counter: u16,
     ) -> Result<()> {
+        let signer = *ctx.accounts.signer.address();
+        let authority = ctx.accounts.player.authority;
+        let has_session = match ctx.accounts.session_token.as_ref() {
+            Some(token) => session::is_valid_session(token, &signer, &authority)?,
+            None => false,
+        };
+        require!(
+            has_session || authority == signer,
+            GameErrorCode::WrongAuthority
+        );
+
         chop_tree::chop_tree(ctx, counter, 1)
     }
 

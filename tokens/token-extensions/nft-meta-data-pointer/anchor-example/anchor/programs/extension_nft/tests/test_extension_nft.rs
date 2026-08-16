@@ -20,9 +20,9 @@
 //! working after the id is regenerated.
 
 use {
-    anchor_lang::{
-        prelude::Pubkey, solana_program::system_program, InstructionData, ToAccountMetas,
-    },
+    // `system_program` moved to the crate root in v2, and `Pubkey` is
+    // compat-only — `Address` is the same 32-byte type.
+    anchor_lang::{system_program, Address as Pubkey, InstructionData, ToAccountMetas},
     litesvm::LiteSVM,
     solana_instruction::Instruction,
     solana_keypair::Keypair,
@@ -142,7 +142,7 @@ struct Player {
 }
 
 fn fetch_player(svm: &LiteSVM, player: &Pubkey) -> Player {
-    use anchor_lang::AnchorDeserialize;
+    use borsh::BorshDeserialize;
     let account = svm.get_account(player).expect("player account exists");
     // Skip the 8-byte Anchor discriminator.
     let mut data = &account.data[8..];

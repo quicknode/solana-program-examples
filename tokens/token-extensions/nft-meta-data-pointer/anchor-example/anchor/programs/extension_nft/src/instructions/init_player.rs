@@ -34,7 +34,7 @@ pub struct InitPlayerAccountConstraints {
         init_if_needed,
         payer = signer,
         space = GameData::DISCRIMINATOR.len() + GameData::INIT_SPACE,
-        seeds = [level_seed.as_ref()],
+        seeds = [level_seed.as_bytes()],
         bump,
     )]
     pub game_data: BorshAccount<GameData>,

@@ -5,21 +5,18 @@ use anchor_lang::prelude::*;
 use anchor_lang::solana_program::program::invoke_signed;
 use anchor_spl::token_2022_extensions::spl_token_metadata_interface;
 use anchor_spl::token_interface::{spl_token_2022, Token2022};
-use session_keys::{Session, SessionToken};
 
 pub fn chop_tree(
     context: &mut Context<ChopTreeAccountConstraints>,
     counter: u16,
     amount: u64,
 ) -> Result<()> {
-    // `AccountView` is Copy, and a copy still points at the same
-    // account — v2's typed handles make the aliasing a compile error.
-    let mint_view = *context.accounts.mint.account();
-    let nft_authority_view = *context.accounts.nft_authority.account();
+    let mint_address = *context.accounts.mint.address();
+    let nft_authority_address = *context.accounts.nft_authority.address();
     // Save game_data bump on first creation (init_if_needed). See init_player.rs
     // for the same pattern.
     let game_data_bump = context.bumps.game_data;
-    let account: &mut ChopTreeAccountConstraints<'_> = context.accounts;
+    let account = &mut context.accounts;
     account.player.update_energy()?;
     account.player.print()?;
 
@@ -47,40 +44,48 @@ pub fn chop_tree(
     let signer: &[&[&[u8]]] = &[&[seeds, &[bump]]];
 
     // Update the metadata account with an additional metadata field in this case the player level
+    // The handles have to line up positionally with the instruction's account
+    // metas: `update_field` names the metadata account (the mint, writable) and
+    // its update authority, in that order.
+    let wood = context.accounts.player.wood.to_string();
+
+    // `nft_authority` signs the CPI. It is a data account holding a live borrow
+    // on its buffer, which the runtime would reject when the CPI borrows the
+    // same account, so hand the borrow back across the call.
+    context.accounts.nft_authority.release_borrow()?;
     invoke_signed(
         &spl_token_metadata_interface::instruction::update_field(
             &spl_token_2022::id(),
-            context.accounts.mint.cpi_handle_mut().key,
-            context.accounts.nft_authority.cpi_handle_mut().key,
+            &mint_address,
+            &nft_authority_address,
             spl_token_metadata_interface::state::Field::Key("wood".to_string()),
-            context.accounts.player.wood.to_string(),
+            wood,
         ),
         &[
-            CpiHandle::readonly(&mint_view).clone(),
-            CpiHandle::readonly(&nft_authority_view).clone(),
+            context.accounts.mint.cpi_handle_mut().into(),
+            context.accounts.nft_authority.cpi_handle(),
         ],
         signer,
     )?;
+    context.accounts.nft_authority.reacquire_borrow_mut()?;
 
     Ok(())
 }
 
-#[derive(Accounts, Session)]
+#[derive(Accounts)]
 #[instruction(level_seed: String)]
 pub struct ChopTreeAccountConstraints {
-    #[session(
-        // The ephemeral key pair signing the transaction
-        signer = signer,
-        // The authority of the user account which must have created the session
-        authority = player.authority.address()
-    )]
-    // Session Tokens are passed as optional accounts
-    pub session_token: Option<Account<SessionToken>>,
+    // Session tokens are passed as optional accounts. The token is validated in
+    // `chop_tree` (see `session::is_valid_session`) rather than by a derive,
+    // since the session-keys `Session` derive is Anchor v1 only.
+    /// CHECK: read as gpl-session's SessionToken; validated by seeds, owner and
+    /// discriminator before it is trusted.
+    pub session_token: Option<UncheckedAccount>,
 
     // There is one PlayerData account
     #[account(
         mut,
-        seeds = [b"player".as_ref(), player.authority.address().as_ref()],
+        seeds = [b"player".as_ref(), player.authority.as_ref()],
         bump,
     )]
     pub player: BorshAccount<PlayerData>,
@@ -91,7 +96,7 @@ pub struct ChopTreeAccountConstraints {
         init_if_needed,
         payer = signer,
         space = GameData::DISCRIMINATOR.len() + GameData::INIT_SPACE,
-        seeds = [level_seed.as_ref()],
+        seeds = [level_seed.as_bytes()],
         bump,
     )]
     pub game_data: BorshAccount<GameData>,

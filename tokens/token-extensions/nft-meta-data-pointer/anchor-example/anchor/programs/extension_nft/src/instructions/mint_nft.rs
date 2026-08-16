@@ -14,11 +14,22 @@ use anchor_spl::{
 };
 
 pub fn handle_mint_nft(context: &mut Context<MintNftAccountConstraints>) -> Result<()> {
-    // `AccountView` is Copy, and a copy still points at the same
-    // account — v2's typed handles make the aliasing a compile error.
-    let mint_view = *context.accounts.mint.account();
+    // `AccountView` is Copy, and a copy still points at the same account — v2's
+    // typed handles make the aliasing a compile error. `mint` and `signer` are
+    // Signers and `nft_authority` releases its data borrow below, so none of
+    // these copies aliases a live borrow.
+    let mut mint_view = *context.accounts.mint.account();
+    let mint_view_readonly = *context.accounts.mint.account();
     let nft_authority_view = *context.accounts.nft_authority.account();
     let signer_view = *context.accounts.signer.account();
+    let mint_address = *context.accounts.mint.address();
+    let nft_authority_address = *context.accounts.nft_authority.address();
+
+    // `nft_authority` signs every CPI below. It is a data account holding a
+    // live borrow on its buffer, which the runtime would reject when the CPI
+    // borrows the same account, so hand the borrow back for the duration.
+    context.accounts.nft_authority.release_borrow()?;
+
     msg!("Mint nft with meta data extension and additional meta data");
 
     let space =
@@ -44,7 +55,7 @@ pub fn handle_mint_nft(context: &mut Context<MintNftAccountConstraints>) -> Resu
 
     system_program::create_account(
         CpiContext::new(
-            context.accounts.token_program.address(),
+            context.accounts.system_program.address(),
             system_program::CreateAccount {
                 from: context.accounts.signer.cpi_handle_mut(),
                 to: context.accounts.mint.cpi_handle_mut(),
@@ -58,7 +69,7 @@ pub fn handle_mint_nft(context: &mut Context<MintNftAccountConstraints>) -> Resu
     // Assign the mint to the token program
     system_program::assign(
         CpiContext::new(
-            context.accounts.token_program.address(),
+            context.accounts.system_program.address(),
             system_program::Assign {
                 account_to_assign: context.accounts.mint.cpi_handle_mut(),
             },
@@ -80,12 +91,11 @@ pub fn handle_mint_nft(context: &mut Context<MintNftAccountConstraints>) -> Resu
             }
         };
 
+    // Handles line up positionally with the instruction's metas, and a writable
+    // meta needs a writable handle: `initialize` names only the mint, writable.
     invoke(
         &init_meta_data_pointer_ix,
-        &[
-            CpiHandle::readonly(&mint_view),
-            CpiHandle::readonly(&nft_authority_view),
-        ],
+        &[CpiHandleMut::writable(&mut mint_view).into()],
     )?;
 
     // Initialize the mint cpi
@@ -96,12 +106,7 @@ pub fn handle_mint_nft(context: &mut Context<MintNftAccountConstraints>) -> Resu
         },
     );
 
-    token_2022::initialize_mint2(
-        mint_cpi_ix,
-        0,
-        &context.accounts.nft_authority.address(),
-        None,
-    )
+    token_2022::initialize_mint2(mint_cpi_ix, 0, &nft_authority_address, None)
     .unwrap();
 
     // We use a PDA as a mint authority for the metadata account because
@@ -110,28 +115,29 @@ pub fn handle_mint_nft(context: &mut Context<MintNftAccountConstraints>) -> Resu
     let bump = context.bumps.nft_authority;
     let signer: &[&[&[u8]]] = &[&[seeds, &[bump]]];
 
-    msg!(
-        "Init metadata {0}",
-        context.accounts.nft_authority.cpi_handle_mut().key
-    );
+    msg!("Init metadata {0}", nft_authority_address);
 
     // Init the metadata account
     let init_token_meta_data_ix = &spl_token_metadata_interface::instruction::initialize(
         &spl_token_2022::id(),
-        context.accounts.mint.key,
-        context.accounts.nft_authority.cpi_handle_mut().key,
-        context.accounts.mint.key,
-        context.accounts.nft_authority.cpi_handle_mut().key,
+        &mint_address,
+        &nft_authority_address,
+        &mint_address,
+        &nft_authority_address,
         "Beaver".to_string(),
         "BVA".to_string(),
         "https://arweave.net/MHK3Iopy0GgvDoM7LkkiAdg7pQqExuuWvedApCnzfj0".to_string(),
     );
 
+    // `initialize` names metadata (the mint, writable), update_authority, mint
+    // and mint_authority — so the mint and the authority each fill two slots.
     invoke_signed(
         init_token_meta_data_ix,
         &[
-            CpiHandle::readonly(&mint_view).clone(),
-            CpiHandle::readonly(&nft_authority_view).clone(),
+            CpiHandleMut::writable(&mut mint_view).into(),
+            CpiHandle::readonly(&nft_authority_view),
+            CpiHandle::readonly(&mint_view_readonly),
+            CpiHandle::readonly(&nft_authority_view),
         ],
         signer,
     )?;
@@ -140,14 +146,14 @@ pub fn handle_mint_nft(context: &mut Context<MintNftAccountConstraints>) -> Resu
     invoke_signed(
         &spl_token_metadata_interface::instruction::update_field(
             &spl_token_2022::id(),
-            context.accounts.mint.key,
-            context.accounts.nft_authority.cpi_handle_mut().key,
+            &mint_address,
+            &nft_authority_address,
             spl_token_metadata_interface::state::Field::Key("level".to_string()),
             "1".to_string(),
         ),
         &[
-            CpiHandle::readonly(&mint_view).clone(),
-            CpiHandle::readonly(&nft_authority_view).clone(),
+            CpiHandleMut::writable(&mut mint_view).into(),
+            CpiHandle::readonly(&nft_authority_view),
         ],
         signer,
     )?;
@@ -192,6 +198,8 @@ pub fn handle_mint_nft(context: &mut Context<MintNftAccountConstraints>) -> Resu
         AuthorityType::MintTokens,
         None,
     )?;
+
+    context.accounts.nft_authority.reacquire_borrow_mut()?;
 
     Ok(())
 }
