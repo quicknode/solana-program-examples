@@ -33,7 +33,14 @@ pub mod interest_bearing {
 }
 
 pub fn check_mint_data(mint_account_info: &AccountView, authority_key: &Address) -> Result<()> {
-    let mint_data = mint_account_info.try_borrow()?;
+    // The mint is declared `mut`, and v2 marks a mutable data account as
+    // exclusively borrowed (pinocchio's `borrow_state == 0`), so `try_borrow()`
+    // on it is rejected. Reading through the exclusive borrow we already hold
+    // is what the wrapper itself does.
+    //
+    // SAFETY: the caller holds the mint's exclusive borrow for the whole
+    // instruction, and this reads it without handing out a second one.
+    let mint_data = unsafe { mint_account_info.borrow_unchecked() };
     let mint_with_extension = StateWithExtensions::<MintState>::unpack(&mint_data)?;
     let extension_data = mint_with_extension.get_extension::<InterestBearingConfig>()?;
 

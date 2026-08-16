@@ -34,10 +34,16 @@ pub fn process_update_field(
     msg!("Field: {:?}, Value: {}", field, value);
 
     let (current_lamports, required_lamports) = {
-        // Get the current state of the mint account. `AccountView` is Copy and
-        // a copy still points at the same backing buffer.
+        // Get the current state of the mint account. It is declared `mut`, and
+        // v2 marks a mutable data account as exclusively borrowed (pinocchio's
+        // `borrow_state == 0`), so `try_borrow()` on it is rejected — reading
+        // through the exclusive borrow we already hold is what the wrapper
+        // itself does.
+        //
+        // SAFETY: this instruction holds the mint's exclusive borrow for its
+        // whole duration, and this reads it without handing out a second one.
         let mint = *context.accounts.mint_account.account();
-        let buffer = mint.try_borrow()?;
+        let buffer = unsafe { mint.borrow_unchecked() };
         let state = PodStateWithExtensions::<PodMint>::unpack(&buffer)?;
 
         // Get and update the token metadata

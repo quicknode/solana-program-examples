@@ -216,9 +216,22 @@ rejected with `AccountBorrowFailed`. `Box`'s `ToCpiHandleMut` impl does forward
 to the inner type, which is where the release lives. It compiles either way,
 so this only shows up in a test.
 
-Not every failure of this kind needs a release: a handler that only *reads* an
-account can take a second shared borrow (`account().try_borrow()`) where
-`try_borrow_mut` on a copied view would be rejected.
+Not every failure of this kind needs a release: a handler that only *reads* a
+**read-only** account can take a second shared borrow (`account().try_borrow()`)
+where `try_borrow_mut` on a copied view would be rejected.
+
+A **`mut`** data account is different. Loading one sets pinocchio's exclusive
+sentinel (`borrow_state == 0`), so *any* `try_borrow()` on it fails — the
+wrapper itself reads through `borrow_unchecked`. Two ways out, in order of
+preference:
+
+1. Drop the `mut` if the account is not actually written. A mint passed to
+   `transfer_checked_with_fee` is read-only: the withheld fee accrues on the
+   destination token account.
+2. Read through the exclusive borrow you already hold:
+   `unsafe { account.account().borrow_unchecked() }`. Sound whenever the
+   instruction holds that borrow for its whole duration and hands out no second
+   one — which is the case for anything reached through `ctx.accounts`.
 
 ## Instruction discriminators, and programs that implement an interface
 

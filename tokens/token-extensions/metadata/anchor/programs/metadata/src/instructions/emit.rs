@@ -19,10 +19,10 @@ pub fn process_emit(context: &mut Context<EmitAccountConstraints>) -> Result<()>
             None,
             None,
         ),
-        &[
-            context.accounts.token_program.cpi_handle(),
-            context.accounts.mint_account.cpi_handle(),
-        ],
+        // Handles line up positionally with the instruction's metas: `emit`
+        // names only the metadata account (the mint), read-only. The program
+        // account is not one of them.
+        &[context.accounts.mint_account.cpi_handle()],
     )?;
     Ok(())
 }

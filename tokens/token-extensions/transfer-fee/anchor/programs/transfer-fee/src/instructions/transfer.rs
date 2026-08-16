@@ -18,7 +18,10 @@ pub struct TransferAccountConstraints {
     pub sender: Signer,
     pub recipient: SystemAccount,
 
-    #[account(mut)]
+    // Read-only: `transfer_checked_with_fee` accrues the withheld fee on the
+    // destination token account, not the mint. It also has to be read-only for
+    // the extension read below — a mutable data account holds an exclusive
+    // borrow, so a second `try_borrow()` on it is rejected.
     pub mint_account: InterfaceAccount<Mint>,
     #[account(
         mut,
@@ -47,19 +50,16 @@ pub fn handle_process_transfer(
     context: &mut Context<TransferAccountConstraints>,
     amount: u64,
 ) -> Result<()> {
-    // `AccountView` is Copy, and a copy still points at the same
-    // account — v2's typed handles make the aliasing a compile error.
-    let mint_account_view = *context.accounts.mint_account.account();
-    // read mint account extension data
-    // Read-only: the account already holds a shared borrow of its buffer, and a
-    // second shared borrow is fine where a writable handle would be rejected.
-    let mint_data = context.accounts.mint_account.account().try_borrow()?;
-    let mint_with_extension = StateWithExtensions::<MintState>::unpack(&mint_data)?;
-    let extension_data = mint_with_extension.get_extension::<TransferFeeConfig>()?;
-
-    // calculate expected fee
+    // Read the mint's extension data in its own scope: the `Ref` has to drop
+    // before the CPI below, or the runtime rejects the CPI's borrow of the same
+    // account with AccountBorrowFailed.
     let epoch = Clock::get()?.epoch;
-    let fee = extension_data.calculate_epoch_fee(epoch, amount).unwrap();
+    let fee = {
+        let mint_data = context.accounts.mint_account.account().try_borrow()?;
+        let mint_with_extension = StateWithExtensions::<MintState>::unpack(&mint_data)?;
+        let extension_data = mint_with_extension.get_extension::<TransferFeeConfig>()?;
+        extension_data.calculate_epoch_fee(epoch, amount).unwrap()
+    };
 
     // mint account decimals
     let decimals = context.accounts.mint_account.decimals();
@@ -69,7 +69,10 @@ pub fn handle_process_transfer(
             context.accounts.token_program.address(),
             TransferCheckedWithFee {
                 source: context.accounts.sender_token_account.cpi_handle_mut(),
-                mint: CpiHandle::readonly(&mint_account_view),
+                // Read-only slots take the wrapper's own handle: on a data account
+                // it relaxes the runtime borrow check that a hand-built handle
+                // over a copy of the view would still trip.
+                mint: context.accounts.mint_account.cpi_handle(),
                 destination: context.accounts.recipient_token_account.cpi_handle_mut(),
                 authority: context.accounts.sender.cpi_handle(),
             },

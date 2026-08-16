@@ -28,9 +28,12 @@ pub fn process_remove_key(
             key,                                       // key to remove
             true, // idempotent flag, if true transaction will not fail if key does not exist
         ),
+        // Handles line up positionally with the instruction's metas, and a
+        // writable meta needs a writable handle: `remove_key` names the metadata
+        // account (the mint, writable) then the update authority. The program
+        // account is not one of them.
         &[
-            context.accounts.token_program.cpi_handle(),
-            context.accounts.mint_account.cpi_handle(),
+            context.accounts.mint_account.cpi_handle_mut().into(),
             context.accounts.update_authority.cpi_handle(),
         ],
     )?;
