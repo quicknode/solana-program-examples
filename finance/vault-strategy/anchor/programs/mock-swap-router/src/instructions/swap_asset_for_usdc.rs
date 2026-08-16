@@ -87,8 +87,8 @@ pub fn handle_swap_asset_for_usdc(
 
     // Burn asset tokens from caller
     let burn_accounts = Burn {
-        mint: context.accounts.asset_mint.cpi_handle_mut(),
-        from: context.accounts.caller_asset_account.cpi_handle_mut(),
+        mint: context.accounts.asset_mint.to_cpi_handle_mut(),
+        from: context.accounts.caller_asset_account.to_cpi_handle_mut(),
         authority: context.accounts.caller.cpi_handle(),
     };
     burn(
@@ -101,9 +101,9 @@ pub fn handle_swap_asset_for_usdc(
     let signer_seeds: &[&[&[u8]]] = &[&[b"router_authority", &[router_authority_bump]]];
 
     let transfer_accounts = TransferChecked {
-        from: context.accounts.router_usdc_treasury.cpi_handle_mut(),
-        mint: context.accounts.usdc_mint.cpi_handle(),
-        to: context.accounts.caller_usdc_account.cpi_handle_mut(),
+        from: context.accounts.router_usdc_treasury.to_cpi_handle_mut(),
+        mint: context.accounts.usdc_mint.to_cpi_handle(),
+        to: context.accounts.caller_usdc_account.to_cpi_handle_mut(),
         authority: context.accounts.router_authority.cpi_handle(),
     };
     transfer_checked(

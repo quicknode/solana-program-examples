@@ -89,10 +89,15 @@ pub fn handle_collect_fees(context: &mut Context<CollectFeesAccountConstraints>)
     let index_bytes = strategy_index.to_le_bytes();
     let signer_seeds: &[&[&[u8]]] = &[&[b"strategy", index_bytes.as_ref(), &[strategy_bump]]];
 
+    // `strategy` signs the CPI(s) below. It is a data account holding a live
+    // borrow on its buffer, which the runtime would reject when the CPI borrows
+    // the same account — so hand the borrow back for the duration.
+    context.accounts.strategy.release_borrow()?;
+
     let mint_accounts = MintTo {
-        mint: context.accounts.share_mint.cpi_handle_mut(),
+        mint: context.accounts.share_mint.to_cpi_handle_mut(),
         to: context.accounts.manager_share_account.cpi_handle_mut(),
-        authority: context.accounts.strategy.cpi_handle(),
+        authority: context.accounts.strategy.to_cpi_handle(),
     };
     let cpi_ctx = CpiContext::new_with_signer(
         context.accounts.token_program.address(),
@@ -100,6 +105,8 @@ pub fn handle_collect_fees(context: &mut Context<CollectFeesAccountConstraints>)
         signer_seeds,
     );
     mint_to(cpi_ctx, fee_shares)?;
+
+    context.accounts.strategy.reacquire_borrow_mut()?;
 
     Ok(())
 }

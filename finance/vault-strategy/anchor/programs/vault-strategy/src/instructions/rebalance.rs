@@ -164,15 +164,20 @@ pub fn handle_rebalance(
     let index_bytes = strategy_index.to_le_bytes();
     let signer_seeds: &[&[&[u8]]] = &[&[b"strategy", index_bytes.as_ref(), &[strategy_bump]]];
 
+    // `strategy` signs the CPI(s) below. It is a data account holding a live
+    // borrow on its buffer, which the runtime would reject when the CPI borrows
+    // the same account — so hand the borrow back for the duration.
+    context.accounts.strategy.release_borrow()?;
+
     // Step 1: sell basket token -> USDC
     let sell_cpi_accounts = RouterSellAccounts {
-        caller: context.accounts.strategy.cpi_handle(),
+        caller: context.accounts.strategy.to_cpi_handle(),
         router_config: context.accounts.router_config.cpi_handle(),
         asset_rate: context.accounts.sell_rate.cpi_handle(),
-        usdc_mint: context.accounts.usdc_mint.cpi_handle(),
-        asset_mint: context.accounts.sell_mint.cpi_handle_mut(),
-        caller_asset_account: context.accounts.vault_sell.cpi_handle_mut(),
-        caller_usdc_account: context.accounts.vault_usdc.cpi_handle_mut(),
+        usdc_mint: context.accounts.usdc_mint.to_cpi_handle(),
+        asset_mint: context.accounts.sell_mint.to_cpi_handle_mut(),
+        caller_asset_account: context.accounts.vault_sell.to_cpi_handle_mut(),
+        caller_usdc_account: context.accounts.vault_usdc.to_cpi_handle_mut(),
         router_usdc_treasury: context.accounts.router_usdc_treasury.cpi_handle_mut(),
         router_authority: context.accounts.router_authority.cpi_handle(),
         associated_token_program: context.accounts.associated_token_program.cpi_handle(),
@@ -191,13 +196,13 @@ pub fn handle_rebalance(
 
     // Step 2: buy basket token with USDC
     let buy_cpi_accounts = RouterBuyAccounts {
-        caller: context.accounts.strategy.cpi_handle(),
+        caller: context.accounts.strategy.to_cpi_handle(),
         router_config: context.accounts.router_config.cpi_handle(),
         asset_rate: context.accounts.buy_rate.cpi_handle(),
-        usdc_mint: context.accounts.usdc_mint.cpi_handle(),
-        asset_mint: context.accounts.buy_mint.cpi_handle_mut(),
-        caller_usdc_account: context.accounts.vault_usdc.cpi_handle_mut(),
-        caller_asset_account: context.accounts.vault_buy.cpi_handle_mut(),
+        usdc_mint: context.accounts.usdc_mint.to_cpi_handle(),
+        asset_mint: context.accounts.buy_mint.to_cpi_handle_mut(),
+        caller_usdc_account: context.accounts.vault_usdc.to_cpi_handle_mut(),
+        caller_asset_account: context.accounts.vault_buy.to_cpi_handle_mut(),
         router_usdc_treasury: context.accounts.router_usdc_treasury.cpi_handle_mut(),
         router_authority: context.accounts.router_authority.cpi_handle(),
         associated_token_program: context.accounts.associated_token_program.cpi_handle(),
@@ -213,6 +218,8 @@ pub fn handle_rebalance(
         usdc_to_invest,
         minimum_buy_amount,
     )?;
+
+    context.accounts.strategy.reacquire_borrow_mut()?;
 
     Ok(())
 }

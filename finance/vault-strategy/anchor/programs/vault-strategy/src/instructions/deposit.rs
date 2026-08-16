@@ -174,9 +174,9 @@ pub fn handle_deposit(
 
     // Pull the depositor's USDC into the strategy's USDC vault.
     let transfer_accounts = TransferChecked {
-        from: context.accounts.depositor_usdc_account.cpi_handle_mut(),
-        mint: context.accounts.usdc_mint.cpi_handle(),
-        to: context.accounts.vault_usdc.cpi_handle_mut(),
+        from: context.accounts.depositor_usdc_account.to_cpi_handle_mut(),
+        mint: context.accounts.usdc_mint.to_cpi_handle(),
+        to: context.accounts.vault_usdc.to_cpi_handle_mut(),
         authority: context.accounts.depositor.cpi_handle(),
     };
     let cpi_ctx = CpiContext::new(context.accounts.token_program.address(), transfer_accounts);
@@ -184,6 +184,13 @@ pub fn handle_deposit(
 
     let index_bytes = strategy_index.to_le_bytes();
     let signer_seeds: &[&[&[u8]]] = &[&[b"strategy", index_bytes.as_ref(), &[strategy_bump]]];
+
+    // `strategy` signs every CPI below. It is a data account holding a live
+    // borrow on its buffer, which the runtime would reject when the CPI borrows
+    // the same account — so hand the borrow back for the duration.
+    // `release_borrow` flushes the pending writes and `reacquire_borrow_mut`
+    // re-reads them.
+    context.accounts.strategy.release_borrow()?;
 
     // Deploy the deposit across the basket at its target weights. Each leg swaps a
     // weight-sized slice of the deposit through the router, under an oracle-computed
@@ -234,12 +241,12 @@ pub fn handle_deposit(
             .map_err(|_| VaultError::MathOverflow)?;
 
         let cpi_accounts = RouterSwapAccounts {
-            caller: context.accounts.strategy.cpi_handle(),
+            caller: context.accounts.strategy.to_cpi_handle(),
             router_config: context.accounts.router_config.cpi_handle(),
             asset_rate: CpiHandle::readonly(rate_account),
-            usdc_mint: context.accounts.usdc_mint.cpi_handle(),
+            usdc_mint: context.accounts.usdc_mint.to_cpi_handle(),
             asset_mint: CpiHandleMut::writable(&mut mint_account),
-            caller_usdc_account: context.accounts.vault_usdc.cpi_handle_mut(),
+            caller_usdc_account: context.accounts.vault_usdc.to_cpi_handle_mut(),
             caller_asset_account: CpiHandleMut::writable(&mut vault_account),
             router_usdc_treasury: context.accounts.router_usdc_treasury.cpi_handle_mut(),
             router_authority: context.accounts.router_authority.cpi_handle(),
@@ -257,9 +264,9 @@ pub fn handle_deposit(
 
     // Mint the shares last, with the strategy PDA signing as the share mint authority.
     let mint_accounts = MintTo {
-        mint: context.accounts.share_mint.cpi_handle_mut(),
-        to: context.accounts.depositor_share_account.cpi_handle_mut(),
-        authority: context.accounts.strategy.cpi_handle(),
+        mint: context.accounts.share_mint.to_cpi_handle_mut(),
+        to: context.accounts.depositor_share_account.to_cpi_handle_mut(),
+        authority: context.accounts.strategy.to_cpi_handle(),
     };
     let cpi_ctx = CpiContext::new_with_signer(
         context.accounts.token_program.address(),
@@ -267,6 +274,8 @@ pub fn handle_deposit(
         signer_seeds,
     );
     mint_to(cpi_ctx, shares_to_mint)?;
+
+    context.accounts.strategy.reacquire_borrow_mut()?;
 
     Ok(())
 }

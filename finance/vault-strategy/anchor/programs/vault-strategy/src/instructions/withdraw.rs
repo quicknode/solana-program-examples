@@ -111,29 +111,23 @@ pub fn handle_withdraw(
     // per-account views below borrow `context.accounts`.
     let remaining = context.remaining_accounts()?;
 
-    // Hoist owned account-info handles for every CPI up front, so the asset loop
-    // can borrow remaining_accounts without also re-borrowing `context.accounts`.
     // `strategy` signs the payouts below. It is a data account holding a live
     // borrow on its buffer, so release it across the CPIs and take it back
     // afterwards — the runtime rejects a CPI that borrows an account we hold.
     context.accounts.strategy.release_borrow()?;
 
-    // `AccountView` is Copy; each copy still points at the same account, and the
-    // typed handles below carry the borrow provenance v2 wants.
+    // Every other account here goes through its own wrapper handle. A handle
+    // built by hand over a copy of the `AccountView` keeps the runtime borrow
+    // check on, and a mutable data account is marked exclusively borrowed, so
+    // the copy would be rejected where the wrapper's handle is not.
     let strategy_view = *context.accounts.strategy.account();
-    let mut share_mint_view = *context.accounts.share_mint.account();
-    let usdc_mint_view = *context.accounts.usdc_mint.account();
-    let mut vault_usdc_view = *context.accounts.vault_usdc.account();
-    let user_view = *context.accounts.user.account();
-    let mut user_share_view = *context.accounts.user_share_account.account();
-    let mut user_usdc_view = *context.accounts.user_usdc_account.account();
     let token_program_key = context.accounts.token_program.address();
 
     // Burn the user's shares.
     let burn_accounts = Burn {
-        mint: CpiHandleMut::writable(&mut share_mint_view),
-        from: CpiHandleMut::writable(&mut user_share_view),
-        authority: CpiHandle::readonly(&user_view),
+        mint: context.accounts.share_mint.to_cpi_handle_mut(),
+        from: context.accounts.user_share_account.to_cpi_handle_mut(),
+        authority: context.accounts.user.cpi_handle(),
     };
     burn(
         CpiContext::new(token_program_key, burn_accounts),
@@ -143,9 +137,9 @@ pub fn handle_withdraw(
     // USDC payout.
     if amount_usdc > 0 {
         let transfer_accounts = TransferChecked {
-            from: CpiHandleMut::writable(&mut vault_usdc_view),
-            mint: CpiHandle::readonly(&usdc_mint_view),
-            to: CpiHandleMut::writable(&mut user_usdc_view),
+            from: context.accounts.vault_usdc.to_cpi_handle_mut(),
+            mint: context.accounts.usdc_mint.to_cpi_handle(),
+            to: context.accounts.user_usdc_account.to_cpi_handle_mut(),
             authority: CpiHandle::readonly(&strategy_view),
         };
         transfer_checked(

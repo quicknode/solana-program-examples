@@ -91,9 +91,9 @@ pub fn handle_swap_usdc_for_asset(
 
     // Transfer USDC from caller to router treasury
     let transfer_accounts = TransferChecked {
-        from: context.accounts.caller_usdc_account.cpi_handle_mut(),
-        mint: context.accounts.usdc_mint.cpi_handle(),
-        to: context.accounts.router_usdc_treasury.cpi_handle_mut(),
+        from: context.accounts.caller_usdc_account.to_cpi_handle_mut(),
+        mint: context.accounts.usdc_mint.to_cpi_handle(),
+        to: context.accounts.router_usdc_treasury.to_cpi_handle_mut(),
         authority: context.accounts.caller.cpi_handle(),
     };
     let cpi_ctx = CpiContext::new(context.accounts.token_program.address(), transfer_accounts);
@@ -108,8 +108,8 @@ pub fn handle_swap_usdc_for_asset(
     let signer_seeds: &[&[&[u8]]] = &[&[b"router_authority", &[router_authority_bump]]];
 
     let mint_accounts = MintTo {
-        mint: context.accounts.asset_mint.cpi_handle_mut(),
-        to: context.accounts.caller_asset_account.cpi_handle_mut(),
+        mint: context.accounts.asset_mint.to_cpi_handle_mut(),
+        to: context.accounts.caller_asset_account.to_cpi_handle_mut(),
         authority: context.accounts.router_authority.cpi_handle(),
     };
     let cpi_ctx = CpiContext::new_with_signer(
