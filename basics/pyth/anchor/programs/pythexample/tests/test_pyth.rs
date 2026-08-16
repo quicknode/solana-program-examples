@@ -1,10 +1,11 @@
 use {
     anchor_lang::{
-        solana_program::instruction::Instruction,
-        Address, InstructionData, ToAccountMetas,
+        solana_program::instruction::Instruction, Address, InstructionData, ToAccountMetas,
     },
     litesvm::LiteSVM,
-    solana_pythexample::MAXIMUM_PRICE_AGE_SECONDS,
+    pythexample::MAXIMUM_PRICE_AGE_SECONDS,
+    // LiteSVM's get_sysvar wants the host-side Clock, not pinocchio's.
+    solana_clock::Clock,
     solana_keypair::Keypair,
     solana_kite::{create_wallet, send_transaction_from_instructions},
     solana_signer::Signer,
@@ -19,9 +20,7 @@ fn pyth_receiver_program_id() -> anchor_lang::Address {
 }
 
 /// Build mock PriceUpdateV2 account data with Anchor discriminator.
-fn build_mock_price_update_account(
-    write_authority: &anchor_lang::Address,
-) -> Vec<u8> {
+fn build_mock_price_update_account(write_authority: &anchor_lang::Address) -> Vec<u8> {
     // Discriminator: sha256("account:PriceUpdateV2")[..8]
     let discriminator: [u8; 8] = [34, 241, 35, 99, 157, 126, 244, 205];
 
@@ -111,9 +110,7 @@ fn setup_with_price_account(
     (svm, payer, price_update_key)
 }
 
-fn read_price_instruction(
-    price_update: anchor_lang::Address,
-) -> Instruction {
+fn read_price_instruction(price_update: anchor_lang::Address) -> Instruction {
     let ix_data = pythexample::instruction::ReadPrice {}.data();
     let accounts =
         pythexample::accounts::ReadPriceAccountConstraints { price_update }.to_account_metas(None);

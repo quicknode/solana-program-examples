@@ -121,4 +121,3 @@ impl anchor_lang::Discriminator for PriceUpdateV2 {
 impl anchor_lang::Owner for PriceUpdateV2 {
     const OWNER: Address = PYTH_RECEIVER_PROGRAM_ID;
 }
-
