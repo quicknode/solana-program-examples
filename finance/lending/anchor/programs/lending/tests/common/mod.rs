@@ -116,7 +116,7 @@ impl Env {
 
     pub fn current_slot(&self) -> u64 {
         self.svm
-            .get_sysvar::<anchor_lang::solana_program::clock::Clock>()
+            .get_sysvar::<solana_clock::Clock>()
             .slot
     }
 

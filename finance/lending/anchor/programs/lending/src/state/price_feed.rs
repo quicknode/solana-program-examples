@@ -1,5 +1,4 @@
 use anchor_lang::prelude::*;
-use solana_sysvar::last_restart_slot::LastRestartSlot;
 
 use crate::constants::MAX_PRICE_STALENESS_SLOTS;
 use crate::errors::LendingError;
@@ -55,7 +54,7 @@ impl PriceFeed {
         // restart slot; the market then pauses valuation until the publisher
         // posts again, rather than lending against a pre-halt price. Zero
         // means the cluster has never restarted.
-        let last_restart_slot = LastRestartSlot::get()?.last_restart_slot;
+        let last_restart_slot = crate::last_restart::LastRestartSlot::get()?.last_restart_slot();
         require!(
             last_restart_slot == 0 || self.last_updated_slot > last_restart_slot,
             LendingError::PricePredatesRestart

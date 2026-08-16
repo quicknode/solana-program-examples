@@ -146,7 +146,7 @@ Three ways this goes wrong:
 
 1. **Dereferencing after release panics** (`account borrow released (closed)`).
    That includes the derive's own use of the account after the handler returns —
-   `associated_token::authority = event`, `has_one = event` and friends all
+   `associated_token::authority = event`, `address = event.x` and friends all
    deref it. So the reacquire has to happen before the handler ends.
 2. **Release and reacquire must be on the same branch.** Releasing inside
    `if fee > 0` and reacquiring unconditionally re-borrows an account you still

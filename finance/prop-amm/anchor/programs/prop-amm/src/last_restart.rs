@@ -15,6 +15,8 @@
 use anchor_lang::prelude::*;
 
 /// `SysvarLastRestartS1ot1111111111111111111111`, decoded at compile time.
+/// Only the on-chain branch of `get` reads it.
+#[cfg_attr(not(any(target_os = "solana", target_arch = "bpf")), allow(dead_code))]
 const LAST_RESTART_SLOT_ID: Address =
     anchor_lang::address!("SysvarLastRestartS1ot1111111111111111111111");
 

@@ -12,7 +12,7 @@ fn setup() -> (
     ReserveHandle,
     ReserveHandle,
     Keypair,
-    anchor_lang::prelude::Pubkey,
+    solana_pubkey::Pubkey,
 ) {
     let mut env = Env::new();
     let collateral = env.add_reserve(6, dollars(1), default_config());

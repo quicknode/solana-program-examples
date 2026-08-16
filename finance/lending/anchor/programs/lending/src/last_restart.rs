@@ -8,8 +8,8 @@
 //!
 //! Why the program reads it: a halt stops the slot count but not the wall
 //! clock, so after a restart an oracle price can look fresh in slots while
-//! its value is hours old. `read_oracle_price` rejects any price stamped at
-//! or before the restart slot, so the pool pauses valuation until the
+//! its value is hours old. `PriceFeed::price_scaled` rejects any price stamped
+//! at or before the restart slot, so the market pauses valuation until the
 //! publisher posts again.
 
 use anchor_lang::prelude::*;

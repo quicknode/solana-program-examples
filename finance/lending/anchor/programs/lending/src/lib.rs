@@ -1,5 +1,6 @@
 use anchor_lang::prelude::*;
 
+pub mod last_restart;
 pub mod constants;
 pub mod errors;
 pub mod instructions;

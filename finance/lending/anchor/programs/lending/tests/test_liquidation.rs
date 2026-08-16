@@ -11,7 +11,7 @@ fn setup() -> (
     ReserveHandle,
     ReserveHandle,
     Keypair,
-    anchor_lang::prelude::Pubkey,
+    solana_pubkey::Pubkey,
     Keypair,
 ) {
     let mut env = Env::new();
