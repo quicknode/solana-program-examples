@@ -55,9 +55,9 @@ pub fn handle_add_liquidity(
         CpiContext::new(
             context.accounts.token_program.address(),
             TransferChecked {
-                from: context.accounts.provider_collateral.cpi_handle_mut(),
-                mint: context.accounts.collateral_mint.cpi_handle(),
-                to: context.accounts.custody_vault.cpi_handle_mut(),
+                from: context.accounts.provider_collateral.to_cpi_handle_mut(),
+                mint: context.accounts.collateral_mint.to_cpi_handle(),
+                to: context.accounts.custody_vault.to_cpi_handle_mut(),
                 authority: context.accounts.provider.cpi_handle(),
             },
         ),
@@ -71,8 +71,8 @@ pub fn handle_add_liquidity(
         CpiContext::new_with_signer(
             context.accounts.token_program.address(),
             MintTo {
-                mint: context.accounts.lp_mint.cpi_handle_mut(),
-                to: context.accounts.provider_lp.cpi_handle_mut(),
+                mint: context.accounts.lp_mint.to_cpi_handle_mut(),
+                to: context.accounts.provider_lp.to_cpi_handle_mut(),
                 authority: context.accounts.pool_authority.cpi_handle(),
             },
             &[authority_seeds],

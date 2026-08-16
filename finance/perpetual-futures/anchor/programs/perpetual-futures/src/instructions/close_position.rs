@@ -72,9 +72,9 @@ pub fn handle_close_position(
         CpiContext::new_with_signer(
             context.accounts.token_program.address(),
             TransferChecked {
-                from: context.accounts.custody_vault.cpi_handle_mut(),
-                mint: context.accounts.collateral_mint.cpi_handle(),
-                to: context.accounts.trader_collateral.cpi_handle_mut(),
+                from: context.accounts.custody_vault.to_cpi_handle_mut(),
+                mint: context.accounts.collateral_mint.to_cpi_handle(),
+                to: context.accounts.trader_collateral.to_cpi_handle_mut(),
                 authority: context.accounts.pool_authority.cpi_handle(),
             },
             &[authority_seeds],

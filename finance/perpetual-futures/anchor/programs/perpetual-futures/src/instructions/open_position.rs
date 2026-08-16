@@ -112,9 +112,9 @@ pub fn handle_open_position(
         CpiContext::new(
             context.accounts.token_program.address(),
             TransferChecked {
-                from: context.accounts.trader_collateral.cpi_handle_mut(),
-                mint: context.accounts.collateral_mint.cpi_handle(),
-                to: context.accounts.custody_vault.cpi_handle_mut(),
+                from: context.accounts.trader_collateral.to_cpi_handle_mut(),
+                mint: context.accounts.collateral_mint.to_cpi_handle(),
+                to: context.accounts.custody_vault.to_cpi_handle_mut(),
                 authority: context.accounts.owner.cpi_handle(),
             },
         ),

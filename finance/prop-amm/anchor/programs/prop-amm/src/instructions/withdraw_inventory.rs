@@ -44,9 +44,9 @@ pub fn handle_withdraw_inventory(
             CpiContext::new_with_signer(
                 context.accounts.token_program.address(),
                 TransferChecked {
-                    from: context.accounts.base_vault.cpi_handle_mut(),
-                    mint: context.accounts.base_mint.cpi_handle(),
-                    to: context.accounts.operator_base.cpi_handle_mut(),
+                    from: context.accounts.base_vault.to_cpi_handle_mut(),
+                    mint: context.accounts.base_mint.to_cpi_handle(),
+                    to: context.accounts.operator_base.to_cpi_handle_mut(),
                     authority: context.accounts.market_authority.cpi_handle(),
                 },
                 &[authority_seeds],
@@ -61,9 +61,9 @@ pub fn handle_withdraw_inventory(
             CpiContext::new_with_signer(
                 context.accounts.token_program.address(),
                 TransferChecked {
-                    from: context.accounts.quote_vault.cpi_handle_mut(),
-                    mint: context.accounts.quote_mint.cpi_handle(),
-                    to: context.accounts.operator_quote.cpi_handle_mut(),
+                    from: context.accounts.quote_vault.to_cpi_handle_mut(),
+                    mint: context.accounts.quote_mint.to_cpi_handle(),
+                    to: context.accounts.operator_quote.to_cpi_handle_mut(),
                     authority: context.accounts.market_authority.cpi_handle(),
                 },
                 &[authority_seeds],

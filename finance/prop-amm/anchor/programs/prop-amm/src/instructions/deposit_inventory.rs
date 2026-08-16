@@ -22,9 +22,9 @@ pub fn handle_deposit_inventory(
             CpiContext::new(
                 context.accounts.token_program.address(),
                 TransferChecked {
-                    from: context.accounts.operator_base.cpi_handle_mut(),
-                    mint: context.accounts.base_mint.cpi_handle(),
-                    to: context.accounts.base_vault.cpi_handle_mut(),
+                    from: context.accounts.operator_base.to_cpi_handle_mut(),
+                    mint: context.accounts.base_mint.to_cpi_handle(),
+                    to: context.accounts.base_vault.to_cpi_handle_mut(),
                     authority: context.accounts.operator.cpi_handle(),
                 },
             ),
@@ -38,9 +38,9 @@ pub fn handle_deposit_inventory(
             CpiContext::new(
                 context.accounts.token_program.address(),
                 TransferChecked {
-                    from: context.accounts.operator_quote.cpi_handle_mut(),
-                    mint: context.accounts.quote_mint.cpi_handle(),
-                    to: context.accounts.quote_vault.cpi_handle_mut(),
+                    from: context.accounts.operator_quote.to_cpi_handle_mut(),
+                    mint: context.accounts.quote_mint.to_cpi_handle(),
+                    to: context.accounts.quote_vault.to_cpi_handle_mut(),
                     authority: context.accounts.operator.cpi_handle(),
                 },
             ),
