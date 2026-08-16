@@ -51,11 +51,12 @@ pub mod nft_minter {
                 context.accounts.token_metadata_program.address(),
                 CreateMetadataAccountsV3 {
                     metadata: context.accounts.metadata_account.cpi_handle_mut(),
-                    mint: CpiHandle::readonly(&mint_account_view),
+                    mint: context.accounts.mint_account.cpi_handle(),
                     mint_authority: CpiHandle::readonly(&payer_view),
                     update_authority: CpiHandle::readonly(&payer_view),
                     payer: context.accounts.payer.cpi_handle_mut(),
                     system_program: context.accounts.system_program.cpi_handle(),
+                    update_authority_is_signer: true,
                 },
             ),
             DataV2 {
