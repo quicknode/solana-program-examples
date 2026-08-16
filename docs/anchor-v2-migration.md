@@ -418,6 +418,18 @@ Tests that decode account bytes with borsh keep working, because
 that grew explicit padding needs that padding mirrored in the test's decode
 struct, since `try_from_slice` rejects trailing bytes.
 
+## Building a workspace with more than one program
+
+`cargo-build-sbf` at an anchor workspace root builds every member in one
+invocation, and cargo unifies features across them. A program that depends on a
+sibling with `features = ["cpi"]` — which implies `no-entrypoint` — therefore
+makes that sibling's *own* `.so` build with `no-entrypoint` too, and in v2 that
+exports its dispatch as `__anchor_dispatch` rather than `entrypoint`. The
+result loads with `ProgramLoad("Entrypoint out of bounds")`.
+
+`anchor build` builds each program separately and is unaffected. Anything else
+driving `cargo-build-sbf` has to do the same.
+
 ## Toolchain
 
 CI installs the CLI with `avm install 2.0.0-rc.1`; it is a pre-release, so it

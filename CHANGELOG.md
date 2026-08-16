@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [2026-08-16] - Every Anchor example on Anchor v2.0.0-rc.1
 
+All 55 Anchor examples build and pass their tests on 2.0.0-rc.1 (304 tests),
+and `cargo fmt --check` and `cargo clippy -- -D warnings` are clean.
+
 ### Changed
 
 - The remaining 39 Anchor examples — all of `tokens/`, `finance/` and
