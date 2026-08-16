@@ -33,7 +33,7 @@ pub mod interest_bearing {
 }
 
 pub fn check_mint_data(mint_account_info: &AccountView, authority_key: &Address) -> Result<()> {
-    let mint_data = mint_account_info.data.borrow();
+    let mint_data = mint_account_info.try_borrow()?;
     let mint_with_extension = StateWithExtensions::<MintState>::unpack(&mint_data)?;
     let extension_data = mint_with_extension.get_extension::<InterestBearingConfig>()?;
 

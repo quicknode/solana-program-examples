@@ -6,13 +6,13 @@ use anchor_spl::{
     token::{mint_to, Mint, MintTo, Token, TokenAccount},
 };
 
-use anchor_spl::metadata::mpl_token_metadata::{
-    instructions::{
-        CreateMasterEditionV3Cpi, CreateMasterEditionV3CpiAccounts,
-        CreateMasterEditionV3InstructionArgs, CreateMetadataAccountV3Cpi,
-        CreateMetadataAccountV3CpiAccounts, CreateMetadataAccountV3InstructionArgs,
-    },
-    types::{Collection, Creator, DataV2},
+// v2's anchor-spl wraps these CPIs in terms of `CpiHandle`s, so the raw
+// mpl-token-metadata `*Cpi` builders — which want `&AccountInfo` — are not
+// usable here.
+use anchor_spl::metadata::{
+    create_master_edition_v3, create_metadata_accounts_v3,
+    mpl_token_metadata::types::{Collection, Creator, DataV2},
+    CreateMasterEditionV3, CreateMetadataAccountsV3,
 };
 
 use super::validate_metadata_strings;
@@ -77,15 +77,6 @@ pub fn handle_mint_nft(
 ) -> Result<()> {
     validate_metadata_strings(&name, &symbol, &uri)?;
 
-    let metadata = &accounts.metadata.cpi_handle_mut();
-    let master_edition = &accounts.master_edition.cpi_handle_mut();
-    let mint = &accounts.mint.cpi_handle_mut();
-    let authority = &accounts.mint_authority.cpi_handle_mut();
-    let payer = &accounts.owner.cpi_handle_mut();
-    let system_program = &accounts.system_program.cpi_handle_mut();
-    let spl_token_program = &accounts.token_program.cpi_handle_mut();
-    let spl_metadata_program = &accounts.token_metadata_program.cpi_handle_mut();
-
     let seeds = &[&b"authority"[..], &[bumps.mint_authority]];
     let signer_seeds = &[&seeds[..]];
 
@@ -105,54 +96,57 @@ pub fn handle_mint_nft(
         share: 100,
     }];
 
-    let metadata_account = CreateMetadataAccountV3Cpi::new(
-        spl_metadata_program,
-        CreateMetadataAccountV3CpiAccounts {
-            metadata,
-            mint,
-            mint_authority: authority,
-            payer,
-            update_authority: (authority, true),
-            system_program,
-            rent: None,
-        },
-        CreateMetadataAccountV3InstructionArgs {
-            data: DataV2 {
-                name,
-                symbol,
-                uri,
-                seller_fee_basis_points: 0,
-                creators: Some(creator),
-                collection: Some(Collection {
-                    verified: false,
-                    key: *accounts.collection_mint.address(),
-                }),
-                uses: None,
+    // Read-only slots use the wrapper's own `cpi_handle()`: it takes `&self`,
+    // so one account can fill several of them, and on a data account it also
+    // relaxes the runtime borrow check that a hand-built
+    // `CpiHandle::readonly(&copied_view)` would still trip.
+    create_metadata_accounts_v3(
+        CpiContext::new_with_signer(
+            accounts.token_metadata_program.address(),
+            CreateMetadataAccountsV3 {
+                metadata: accounts.metadata.cpi_handle_mut(),
+                mint: accounts.mint.cpi_handle(),
+                mint_authority: accounts.mint_authority.cpi_handle(),
+                payer: accounts.owner.cpi_handle_mut(),
+                update_authority: accounts.mint_authority.cpi_handle(),
+                system_program: accounts.system_program.cpi_handle(),
+                update_authority_is_signer: true,
             },
-            is_mutable: true,
-            collection_details: None,
+            signer_seeds,
+        ),
+        DataV2 {
+            name,
+            symbol,
+            uri,
+            seller_fee_basis_points: 0,
+            creators: Some(creator),
+            collection: Some(Collection {
+                verified: false,
+                key: *accounts.collection_mint.address(),
+            }),
+            uses: None,
         },
-    );
-    metadata_account.invoke_signed(signer_seeds)?;
+        true,
+        None,
+    )?;
 
-    let master_edition_account = CreateMasterEditionV3Cpi::new(
-        spl_metadata_program,
-        CreateMasterEditionV3CpiAccounts {
-            edition: master_edition,
-            update_authority: authority,
-            mint_authority: authority,
-            mint,
-            payer,
-            metadata,
-            token_program: spl_token_program,
-            system_program,
-            rent: None,
-        },
-        CreateMasterEditionV3InstructionArgs {
-            max_supply: Some(0),
-        },
-    );
-    master_edition_account.invoke_signed(signer_seeds)?;
+    create_master_edition_v3(
+        CpiContext::new_with_signer(
+            accounts.token_metadata_program.address(),
+            CreateMasterEditionV3 {
+                edition: accounts.master_edition.cpi_handle_mut(),
+                mint: accounts.mint.cpi_handle_mut(),
+                update_authority: accounts.mint_authority.cpi_handle(),
+                mint_authority: accounts.mint_authority.cpi_handle(),
+                payer: accounts.owner.cpi_handle_mut(),
+                metadata: accounts.metadata.cpi_handle_mut(),
+                token_program: accounts.token_program.cpi_handle(),
+                system_program: accounts.system_program.cpi_handle(),
+            },
+            signer_seeds,
+        ),
+        Some(0),
+    )?;
 
     Ok(())
 }

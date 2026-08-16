@@ -117,15 +117,26 @@ account — a vendored Pyth or Bubblegum type, say — straightforward to declar
 **This is the rule tests catch and the compiler does not.**
 
 v2's typed CPI handles make aliasing a compile error: passing one account into
-both a writable and a read-only CPI slot will not build. The obvious workaround
-— copying the `AccountView`, which is `Copy` — satisfies the compiler, and is
-correct **only for accounts that hold no data borrow** (`Signer`,
-`UncheckedAccount`, `Program`):
+both a writable and a read-only CPI slot will not build.
+
+For **two read-only slots** there is nothing to work around: `cpi_handle()`
+takes `&self`, so calling it twice on the same field is fine. Prefer it — on a
+data account the wrapper's own `cpi_handle()` also relaxes the runtime borrow
+check, which a hand-built handle does not.
+
+When a read-only slot has to coexist with a writable one, copying the
+`AccountView` (which is `Copy`) satisfies the compiler. That is correct **only
+for accounts that hold no data borrow** (`Signer`, `UncheckedAccount`,
+`Program`), or for a data account whose borrow has already been released:
 
 ```rust
 let payer_view = *ctx.accounts.payer.account();
 // ... CpiHandle::readonly(&payer_view) in the read-only slots
 ```
+
+On a still-borrowed data account the copy passes the compiler and then fails at
+runtime with `AccountBorrowFailed`, because `CpiHandle::readonly` keeps the
+borrow check on.
 
 For a **data** account (`Account`, `BorshAccount`, `InterfaceAccount`) that
 copy is not enough. The account holds a live borrow on its buffer, and the

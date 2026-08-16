@@ -51,8 +51,9 @@ pub fn handle_process_transfer(
     // account — v2's typed handles make the aliasing a compile error.
     let mint_account_view = *context.accounts.mint_account.account();
     // read mint account extension data
-    let mint = &context.accounts.mint_account.cpi_handle_mut();
-    let mint_data = mint.data.borrow();
+    // Read-only: the account already holds a shared borrow of its buffer, and a
+    // second shared borrow is fine where a writable handle would be rejected.
+    let mint_data = context.accounts.mint_account.account().try_borrow()?;
     let mint_with_extension = StateWithExtensions::<MintState>::unpack(&mint_data)?;
     let extension_data = mint_with_extension.get_extension::<TransferFeeConfig>()?;
 

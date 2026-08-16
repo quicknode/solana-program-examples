@@ -92,19 +92,20 @@ pub fn handle_process_initialize(
 
 // helper to demonstrate how to read mint extension data within a program
 pub fn handle_check_mint_data(accounts: &InitializeAccountConstraints) -> Result<()> {
-    let mint = &accounts.mint_account.cpi_handle_mut();
-    let mint_data = mint.data.borrow();
+    // Read-only: the account already holds a shared borrow of its buffer, and a
+    // second shared borrow is fine where a writable handle would be rejected.
+    let mint_data = accounts.mint_account.account().try_borrow()?;
     let mint_with_extension = StateWithExtensions::<MintState>::unpack(&mint_data)?;
     let extension_data = mint_with_extension.get_extension::<TransferFeeConfig>()?;
 
     assert_eq!(
         extension_data.transfer_fee_config_authority,
-        OptionalNonZeroPubkey::try_from(Some(accounts.payer.address()))?
+        OptionalNonZeroPubkey::try_from(Some(*accounts.payer.address()))?
     );
 
     assert_eq!(
         extension_data.withdraw_withheld_authority,
-        OptionalNonZeroPubkey::try_from(Some(accounts.payer.address()))?
+        OptionalNonZeroPubkey::try_from(Some(*accounts.payer.address()))?
     );
 
     msg!("{:?}", extension_data);

@@ -29,7 +29,7 @@ pub fn handler(context: &mut Context<UpdateRateAccountConstraints>, rate: i16) -
     )?;
 
     check_mint_data(
-        &context.accounts.mint_account.cpi_handle_mut(),
+        context.accounts.mint_account.account(),
         &context.accounts.authority.address(),
     )?;
     Ok(())

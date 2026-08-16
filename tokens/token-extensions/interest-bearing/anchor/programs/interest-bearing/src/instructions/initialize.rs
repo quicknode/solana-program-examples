@@ -72,7 +72,7 @@ pub fn handler(context: &mut Context<InitializeAccountConstraints>, rate: i16) -
     )?;
 
     check_mint_data(
-        &context.accounts.mint_account.cpi_handle_mut(),
+        context.accounts.mint_account.account(),
         &context.accounts.payer.address(),
     )?;
     Ok(())

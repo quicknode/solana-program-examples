@@ -1,19 +1,24 @@
 use anchor_lang::prelude::*;
 
-use anchor_spl::metadata::mpl_token_metadata::instructions::{
-    VerifyCollectionV1Cpi, VerifyCollectionV1CpiAccounts,
+// v2's anchor-spl wraps this CPI in terms of `CpiHandle`s, so the raw
+// mpl-token-metadata `*Cpi` builder — which wants `&AccountInfo` — is not
+// usable here. The collection is created sized (`CollectionDetails::V1`), so
+// the sized-item variant is the matching instruction.
+use anchor_spl::metadata::{
+    verify_sized_collection_item, MasterEditionAccount, MetadataAccount,
+    VerifySizedCollectionItem,
 };
-use anchor_spl::metadata::{MasterEditionAccount, MetadataAccount};
 use anchor_spl::{metadata::Metadata, token::Mint};
-// In Anchor 1.0, sysvar::instructions::ID moved - use the well-known address directly
+// pinocchio does not re-export the instructions sysvar id; decode it here.
 const INSTRUCTIONS_SYSVAR_ID: Address =
-    anchor_lang::solana_program::pubkey::pubkey!("Sysvar1nstructions1111111111111111111111111");
+    anchor_lang::address!("Sysvar1nstructions1111111111111111111111111");
 
 #[derive(Accounts)]
 pub struct VerifyCollectionMintAccountConstraints {
+    #[account(mut)]
     pub authority: Signer,
     #[account(mut)]
-    pub metadata: Account<MetadataAccount>,
+    pub metadata: MetadataAccount,
     pub mint: Account<Mint>,
     #[account(
         seeds = [b"authority"],
@@ -23,8 +28,8 @@ pub struct VerifyCollectionMintAccountConstraints {
     pub mint_authority: UncheckedAccount,
     pub collection_mint: Account<Mint>,
     #[account(mut)]
-    pub collection_metadata: Account<MetadataAccount>,
-    pub collection_master_edition: Account<MasterEditionAccount>,
+    pub collection_metadata: MetadataAccount,
+    pub collection_master_edition: MasterEditionAccount,
     pub system_program: Program<System>,
     #[account(address = INSTRUCTIONS_SYSVAR_ID)]
     /// CHECK: Sysvar instruction account that is being checked with an address constraint
@@ -36,32 +41,24 @@ pub fn handle_verify_collection(
     accounts: &mut VerifyCollectionMintAccountConstraints,
     bumps: &VerifyCollectionMintAccountConstraintsBumps,
 ) -> Result<()> {
-    let metadata = &accounts.metadata.cpi_handle_mut();
-    let authority = &accounts.mint_authority.cpi_handle_mut();
-    let collection_mint = &accounts.collection_mint.cpi_handle_mut();
-    let collection_metadata = &accounts.collection_metadata.cpi_handle_mut();
-    let collection_master_edition = &accounts.collection_master_edition.cpi_handle_mut();
-    let system_program = &accounts.system_program.cpi_handle_mut();
-    let sysvar_instructions = &accounts.sysvar_instruction.cpi_handle_mut();
-    let spl_metadata_program = &accounts.token_metadata_program.cpi_handle_mut();
-
     let seeds = &[&b"authority"[..], &[bumps.mint_authority]];
     let signer_seeds = &[&seeds[..]];
 
-    let verify_collection = VerifyCollectionV1Cpi::new(
-        spl_metadata_program,
-        VerifyCollectionV1CpiAccounts {
-            authority,
-            delegate_record: None,
-            metadata,
-            collection_mint,
-            collection_metadata: Some(collection_metadata),
-            collection_master_edition: Some(collection_master_edition),
-            system_program,
-            sysvar_instructions,
-        },
-    );
-    verify_collection.invoke_signed(signer_seeds)?;
+    verify_sized_collection_item(
+        CpiContext::new_with_signer(
+            accounts.token_metadata_program.address(),
+            VerifySizedCollectionItem {
+                metadata: accounts.metadata.cpi_handle_mut(),
+                collection_authority: accounts.mint_authority.cpi_handle(),
+                payer: accounts.authority.cpi_handle_mut(),
+                collection_mint: accounts.collection_mint.cpi_handle(),
+                collection_metadata: accounts.collection_metadata.cpi_handle_mut(),
+                collection_master_edition: accounts.collection_master_edition.cpi_handle(),
+            },
+            signer_seeds,
+        ),
+        None,
+    )?;
 
     msg!("Collection Verified!");
 
