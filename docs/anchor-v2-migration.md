@@ -184,6 +184,17 @@ to invoke `pinocchio::default_allocator!()` and
 `pinocchio::default_panic_handler!()` itself — anchor only emits those on the
 path where it owns the entrypoint.
 
+## Duplicate accounts
+
+v2 rejects an account that appears in more than one declared slot when any of
+those slots is mutable — `ConstraintDuplicateMutableAccount`, custom error
+2040. `#[account(unsafe(dup))]` opts a slot out; it implies `mut`, so it
+replaces the `mut` rather than joining it.
+
+The catch: the walker flags **both** indices of a duplicate, so marking only
+the second one still leaves the first intersecting the mutable mask. Every slot
+that can legitimately alias needs the constraint, including a `payer`.
+
 ## anchor-spl
 
 `Mint` moved from `anchor_spl::token` to `anchor_spl::mint`, and the namespaced
