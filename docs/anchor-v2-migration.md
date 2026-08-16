@@ -56,6 +56,10 @@ older 1.x already in the graph, which does not fix anything.
 | `#[account(zero_copy(unsafe))]` | `#[account]` — already zero-copy |
 | `AccountLoader<'info, T>` + `load()` | `Account<T>`, which derefs straight to `T` |
 | `set_inner(X { .. })` | `*ctx.accounts.foo = X { .. }` |
+| `account.data.borrow()` | `account.account().try_borrow()?` |
+| `account.reload()?` | `account.revalidate_after_cpi()?` — zero-copy reads are already live |
+| `Account::<T>::try_from(view)` | `AnchorAccount::load(view)`, or `load_mut` (unsafe) to write back |
+| `.exit(program_id)` | `.exit()` |
 | `error!(MyError::X)` | `MyError::X` (compat-only macro; `?` converts, tail position needs `.into()`) |
 | `#[account(has_one = x)]` on the owner | `#[account(address = owner.x)]` on the **sibling** field |
 
@@ -94,7 +98,18 @@ tests keep working. Only keep zero-copy where the program deliberately wants it
 (a large slab, say) — converting such a program to borsh defeats its purpose.
 
 v2 has no `Account::try_from(&AccountView)`. To load a borsh account out of
-`remaining_accounts`, check the discriminator and read the payload yourself:
+`remaining_accounts` **for writing**, use `AnchorAccount::load_mut`, which is
+`unsafe` because the caller has to guarantee no other live `&mut` to the same
+data; `exit()` then writes it back:
+
+```rust
+let mut order = unsafe { BorshAccount::<Order>::load_mut(*view) }?;
+order.filled_quantity += fill;
+order.exit()?;
+```
+
+To read one without taking ownership of the write path, check the discriminator
+and decode the payload yourself:
 
 ```rust
 let data = account.try_borrow()?;
