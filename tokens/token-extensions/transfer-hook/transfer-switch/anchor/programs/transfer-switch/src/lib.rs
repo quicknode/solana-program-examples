@@ -34,7 +34,7 @@ pub mod transfer_switch {
     pub fn initialize_extra_account_metas_list(
         mut context: &mut Context<InitializeExtraAccountMetasAccountConstraints>,
     ) -> Result<()> {
-        handle_initialize_extra_account_metas_list(&mut context.accounts, context.bumps)
+        handle_initialize_extra_account_metas_list(&mut context.accounts, &context.bumps)
     }
 
     pub fn switch(mut context: &mut Context<SwitchAccountConstraints>, on: bool) -> Result<()> {

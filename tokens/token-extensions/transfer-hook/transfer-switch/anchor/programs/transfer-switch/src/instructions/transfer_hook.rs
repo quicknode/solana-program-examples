@@ -4,8 +4,8 @@ use {
     anchor_spl::{
         token_2022::spl_token_2022::{
             extension::{
-                transfer_hook::TransferHookAccount, BaseStateWithExtensionsMut,
-                PodStateWithExtensionsMut,
+                transfer_hook::TransferHookAccount, BaseStateWithExtensions,
+                PodStateWithExtensions,
             },
             pod::PodAccount,
         },
@@ -54,14 +54,15 @@ pub fn handle_assert_switch_is_on(accounts: &mut TransferHookAccountConstraints)
 }
 
 pub fn handle_assert_is_transferring(accounts: &mut TransferHookAccountConstraints) -> Result<()> {
-    let source_token_info = accounts.source_token_account.cpi_handle_mut();
-    let mut account_data_ref = source_token_info.try_borrow_mut_data()?;
+    // Read-only: the account already holds a shared borrow of its buffer, and a
+    // second shared borrow is fine where `try_borrow_mut` would be rejected.
+    let account_data_ref = accounts.source_token_account.account().try_borrow()?;
     // .map_err() needed because spl-token-2022 uses solana-program-error 2.x
-    // while anchor-lang 1.0 uses 3.x - structurally identical but different semver types
-    let mut account = PodStateWithExtensionsMut::<PodAccount>::unpack(&mut account_data_ref)
+    // while anchor-lang uses 3.x - structurally identical but different semver types
+    let account = PodStateWithExtensions::<PodAccount>::unpack(&account_data_ref)
         .map_err(|_| ProgramError::InvalidAccountData)?;
     let account_extension = account
-        .get_extension_mut::<TransferHookAccount>()
+        .get_extension::<TransferHookAccount>()
         .map_err(|_| ProgramError::InvalidAccountData)?;
 
     if !bool::from(account_extension.transferring) {

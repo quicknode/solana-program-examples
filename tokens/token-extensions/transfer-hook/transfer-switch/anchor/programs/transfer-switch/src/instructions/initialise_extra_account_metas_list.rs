@@ -31,7 +31,7 @@ pub struct InitializeExtraAccountMetasAccountConstraints {
 
 pub fn handle_initialize_extra_account_metas_list(
     accounts: &mut InitializeExtraAccountMetasAccountConstraints,
-    bumps: InitializeExtraAccountMetasAccountConstraintsBumps,
+    bumps: &InitializeExtraAccountMetasAccountConstraintsBumps,
 ) -> Result<()> {
     // .map_err() needed because spl-tlv-account-resolution uses solana-program-error 2.x
     // while anchor-lang 1.0 uses 3.x - structurally identical but different semver types
@@ -76,8 +76,9 @@ pub fn handle_initialize_extra_account_metas_list(
     )?;
 
     // Initialize the account data to store the list of ExtraAccountMetas
+    let mut list_view = *accounts.extra_account_metas_list.account();
     ExtraAccountMetaList::init::<ExecuteInstruction>(
-        &mut accounts.extra_account_metas_list.try_borrow_mut_data()?,
+        &mut list_view.try_borrow_mut()?,
         &account_metas,
     )
     .map_err(|_| ProgramError::InvalidAccountData)?;

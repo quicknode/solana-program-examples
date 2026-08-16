@@ -2,11 +2,16 @@ use {crate::state::AdminConfig, anchor_lang::prelude::*};
 
 #[derive(Accounts)]
 pub struct ConfigureAdminAccountConstraints {
-    #[account(mut)]
+    // Bootstrapping the config passes the same key as both `admin` and
+    // `new_admin`, so the two slots legitimately alias. v2 rejects an account
+    // that appears twice while any of its slots is in the mutable mask, and it
+    // flags *both* indices — so both carry `unsafe(dup)`, which keeps them
+    // writable while taking them out of that mask.
+    #[account(unsafe(dup))]
     pub admin: Signer,
 
     /// CHECK: the new admin
-    #[account(mut)]
+    #[account(unsafe(dup))]
     pub new_admin: UncheckedAccount,
 
     /// To hold the address of the admin that controls switches
@@ -29,7 +34,7 @@ pub fn handle_is_admin(accounts: &mut ConfigureAdminAccountConstraints) -> Resul
     if accounts.admin_config.is_initialised {
         // make sure it's the admin
         //
-        require_keys_eq!(accounts.admin.address(), accounts.admin_config.admin,);
+        require_keys_eq!(*accounts.admin.address(), accounts.admin_config.admin,);
 
         // make sure the admin is not reentering their key
         //
