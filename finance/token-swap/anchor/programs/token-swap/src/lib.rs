@@ -1,15 +1,19 @@
 use anchor_lang::prelude::*;
 
 mod constants;
-mod errors;
-mod instructions;
+pub mod errors;
+pub mod instructions;
 mod state;
+
+// The `#[derive(Accounts)]` client modules are generated beside their structs,
+// and `#[program]` resolves them at `super::` — the crate root. Re-exporting
+// here rather than inside the module puts them where it looks.
+use instructions::*;
 
 declare_id!("GahM6PrXesrBkHiGJ5no4EskLNnVBCaSwVKbM4UtzyK6");
 
 #[program]
 pub mod swap_example {
-    pub use super::instructions::*;
     use super::*;
 
     pub fn initialize_config(

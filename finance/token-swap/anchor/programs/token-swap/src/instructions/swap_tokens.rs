@@ -177,9 +177,9 @@ pub fn handle_swap_tokens(
             CpiContext::new(
                 context.accounts.token_program.address(),
                 TransferChecked {
-                    from: context.accounts.token_a.cpi_handle_mut(),
-                    mint: context.accounts.mint_a.cpi_handle(),
-                    to: context.accounts.pool_a.cpi_handle_mut(),
+                    from: context.accounts.token_a.to_cpi_handle_mut(),
+                    mint: context.accounts.mint_a.to_cpi_handle(),
+                    to: context.accounts.pool_a.to_cpi_handle_mut(),
                     authority: context.accounts.trader.cpi_handle(),
                 },
             ),
@@ -190,9 +190,9 @@ pub fn handle_swap_tokens(
             CpiContext::new_with_signer(
                 context.accounts.token_program.address(),
                 TransferChecked {
-                    from: context.accounts.pool_b.cpi_handle_mut(),
-                    mint: context.accounts.mint_b.cpi_handle(),
-                    to: context.accounts.token_b.cpi_handle_mut(),
+                    from: context.accounts.pool_b.to_cpi_handle_mut(),
+                    mint: context.accounts.mint_b.to_cpi_handle(),
+                    to: context.accounts.token_b.to_cpi_handle_mut(),
                     authority: context.accounts.pool_authority.cpi_handle(),
                 },
                 signer_seeds,
@@ -205,9 +205,9 @@ pub fn handle_swap_tokens(
             CpiContext::new_with_signer(
                 context.accounts.token_program.address(),
                 TransferChecked {
-                    from: context.accounts.pool_a.cpi_handle_mut(),
-                    mint: context.accounts.mint_a.cpi_handle(),
-                    to: context.accounts.token_a.cpi_handle_mut(),
+                    from: context.accounts.pool_a.to_cpi_handle_mut(),
+                    mint: context.accounts.mint_a.to_cpi_handle(),
+                    to: context.accounts.token_a.to_cpi_handle_mut(),
                     authority: context.accounts.pool_authority.cpi_handle(),
                 },
                 signer_seeds,
@@ -219,9 +219,9 @@ pub fn handle_swap_tokens(
             CpiContext::new(
                 context.accounts.token_program.address(),
                 TransferChecked {
-                    from: context.accounts.token_b.cpi_handle_mut(),
-                    mint: context.accounts.mint_b.cpi_handle(),
-                    to: context.accounts.pool_b.cpi_handle_mut(),
+                    from: context.accounts.token_b.to_cpi_handle_mut(),
+                    mint: context.accounts.mint_b.to_cpi_handle(),
+                    to: context.accounts.pool_b.to_cpi_handle_mut(),
                     authority: context.accounts.trader.cpi_handle(),
                 },
             ),
@@ -249,8 +249,11 @@ pub fn handle_swap_tokens(
     // the pool).
     //
     // u128 + checked: same overflow concern as the pre-trade invariant.
-    context.accounts.pool_a.reload()?;
-    context.accounts.pool_b.reload()?;
+    // v2's token accounts are zero-copy, so the balances below are read live
+    // from the runtime buffer — there is nothing to reload. What the CPI can
+    // change is the schema, so re-run the load-time checks instead.
+    context.accounts.pool_a.revalidate_after_cpi()?;
+    context.accounts.pool_b.revalidate_after_cpi()?;
     let pool_config = &context.accounts.pool_config;
     let effective_pool_a_after = context
         .accounts
@@ -282,8 +285,8 @@ pub struct SwapTokensAccountConstraints {
         mut,
         seeds = [
             pool_config.config.as_ref(),
-            pool_config.mint_a.address().as_ref(),
-            pool_config.mint_b.address().as_ref(),
+            pool_config.mint_a.as_ref(),
+            pool_config.mint_b.as_ref(),
         ],
         bump,
     )]

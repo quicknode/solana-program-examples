@@ -70,6 +70,9 @@ pub struct InitializePoolAccountConstraints {
         bump,
         mint::decimals = 6,
         mint::authority = pool_authority,
+        // Required when the token program is an `Interface`: without it the
+        // init CPI is rejected with InvalidArgument.
+        mint::token_program = token_program,
     )]
     pub liquidity_provider_mint: Box<InterfaceAccount<Mint>>,
 

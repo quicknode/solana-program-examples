@@ -1,3 +1,5 @@
+use swap_example::errors::AmmError;
+
 use {
     anchor_lang::{
         solana_program::instruction::Instruction, system_program, Address, InstructionData,
@@ -196,6 +198,20 @@ fn full_setup() -> TestSetup {
         holder_account_b,
         liquidity_account,
     }
+}
+
+/// v2's `#[error_code]` does not log the variant name, so a failed transaction
+/// carries only the numeric custom code: the enum discriminant plus anchor's
+/// default 6000 offset. Assert on that rather than on a name that is no longer
+/// in the logs.
+const ANCHOR_ERROR_OFFSET: u32 = 6000;
+
+fn assert_program_error(message: &str, expected: AmmError, name: &str) {
+    let code = expected as u32 + ANCHOR_ERROR_OFFSET;
+    assert!(
+        message.contains(&format!("Custom({code})")),
+        "expected {name} (Custom({code})), got: {message}"
+    );
 }
 
 #[test]
@@ -710,12 +726,7 @@ fn test_claim_admin_fees() {
         "claim with both accumulators at zero must revert"
     );
     let err_msg = format!("{:?}", result.unwrap_err());
-    assert!(
-        err_msg.contains("NothingToClaim")
-            || err_msg.contains("0x1777")
-            || err_msg.contains("6007"),
-        "expected NothingToClaim error, got: {err_msg}"
-    );
+    assert_program_error(&err_msg, AmmError::NothingToClaim, "NothingToClaim");
 
     // Balance unchanged - the revert rolled back any partial state.
     let balance_a_after_third_claim =
@@ -1309,10 +1320,7 @@ fn test_swap_reverts_when_output_below_min() {
         &ts.payer.pubkey(),
     );
     let err = format!("{:?}", result.expect_err("must revert"));
-    assert!(
-        err.contains("SlippageExceeded"),
-        "expected SlippageExceeded, got: {err}"
-    );
+    assert_program_error(&err, AmmError::SlippageExceeded, "SlippageExceeded");
 }
 
 /// Slippage test: a deposit with `minimum_lp_tokens_out` strictly higher
@@ -1344,10 +1352,7 @@ fn test_deposit_reverts_when_lp_below_min() {
         &ts.payer.pubkey(),
     );
     let err = format!("{:?}", result.expect_err("must revert"));
-    assert!(
-        err.contains("DepositBelowMinimum"),
-        "expected DepositBelowMinimum, got: {err}"
-    );
+    assert_program_error(&err, AmmError::DepositBelowMinimum, "DepositBelowMinimum");
 
     // Sanity: the same deposit with `achievable_lp` as the floor succeeds.
     let ok_ix = deposit_ix_with_min_lp(&ts, 4_000_000, 1_000_000, achievable_lp);
@@ -1380,10 +1385,7 @@ fn test_withdraw_reverts_when_below_min() {
         &ts.payer.pubkey(),
     );
     let err = format!("{:?}", result.expect_err("must revert (A side)"));
-    assert!(
-        err.contains("WithdrawalBelowMinimum"),
-        "expected WithdrawalBelowMinimum (A side), got: {err}"
-    );
+    assert_program_error(&err, AmmError::WithdrawalBelowMinimum, "WithdrawalBelowMinimum");
 
     // Same on the B side.
     let strict_ix_b = withdraw_ix_with_min(&ts, lp / 2, 0, 4_000_000);
@@ -1394,10 +1396,7 @@ fn test_withdraw_reverts_when_below_min() {
         &ts.payer.pubkey(),
     );
     let err_b = format!("{:?}", result_b.expect_err("must revert (B side)"));
-    assert!(
-        err_b.contains("WithdrawalBelowMinimum"),
-        "expected WithdrawalBelowMinimum (B side), got: {err_b}"
-    );
+    assert_program_error(&err_b, AmmError::WithdrawalBelowMinimum, "WithdrawalBelowMinimum");
 }
 
 /// Slippage test: passing `min_output_amount = 0` is the explicit

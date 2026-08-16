@@ -62,7 +62,7 @@ pub fn handle_withdraw_liquidity(
     // Both amounts are computed up-front (before the slippage checks) so
     // the LP gets a consistent error regardless of which side trips first,
     // and so we don't transfer one side then revert.
-    let divisor = (context.accounts.liquidity_provider_mint.supply as u128)
+    let divisor = (context.accounts.liquidity_provider_mint.supply() as u128)
         .checked_add(MINIMUM_LIQUIDITY as u128)
         .ok_or(AmmError::MathOverflow)?;
     let amount_a_u128 = (amount as u128)
@@ -96,9 +96,9 @@ pub fn handle_withdraw_liquidity(
         CpiContext::new_with_signer(
             context.accounts.token_program.address(),
             TransferChecked {
-                from: context.accounts.pool_a.cpi_handle_mut(),
-                mint: context.accounts.mint_a.cpi_handle(),
-                to: context.accounts.token_a.cpi_handle_mut(),
+                from: context.accounts.pool_a.to_cpi_handle_mut(),
+                mint: context.accounts.mint_a.to_cpi_handle(),
+                to: context.accounts.token_a.to_cpi_handle_mut(),
                 authority: context.accounts.pool_authority.cpi_handle(),
             },
             signer_seeds,
@@ -111,9 +111,9 @@ pub fn handle_withdraw_liquidity(
         CpiContext::new_with_signer(
             context.accounts.token_program.address(),
             TransferChecked {
-                from: context.accounts.pool_b.cpi_handle_mut(),
-                mint: context.accounts.mint_b.cpi_handle(),
-                to: context.accounts.token_b.cpi_handle_mut(),
+                from: context.accounts.pool_b.to_cpi_handle_mut(),
+                mint: context.accounts.mint_b.to_cpi_handle(),
+                to: context.accounts.token_b.to_cpi_handle_mut(),
                 authority: context.accounts.pool_authority.cpi_handle(),
             },
             signer_seeds,
@@ -128,8 +128,8 @@ pub fn handle_withdraw_liquidity(
         CpiContext::new(
             context.accounts.token_program.address(),
             Burn {
-                mint: context.accounts.liquidity_provider_mint.cpi_handle_mut(),
-                from: context.accounts.liquidity_provider_token.cpi_handle_mut(),
+                mint: context.accounts.liquidity_provider_mint.to_cpi_handle_mut(),
+                from: context.accounts.liquidity_provider_token.to_cpi_handle_mut(),
                 authority: context.accounts.withdrawer.cpi_handle(),
             },
         ),
@@ -150,8 +150,8 @@ pub struct WithdrawLiquidityAccountConstraints {
     #[account(
         seeds = [
             pool_config.config.as_ref(),
-            pool_config.mint_a.address().as_ref(),
-            pool_config.mint_b.address().as_ref(),
+            pool_config.mint_a.as_ref(),
+            pool_config.mint_b.as_ref(),
         ],
         bump,
     )]

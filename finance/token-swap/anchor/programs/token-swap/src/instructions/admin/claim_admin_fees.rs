@@ -66,9 +66,9 @@ pub fn handle_claim_admin_fees(
             CpiContext::new_with_signer(
                 context.accounts.token_program.address(),
                 TransferChecked {
-                    from: context.accounts.pool_a.cpi_handle_mut(),
-                    mint: context.accounts.mint_a.cpi_handle(),
-                    to: context.accounts.admin_token_a.cpi_handle_mut(),
+                    from: context.accounts.pool_a.to_cpi_handle_mut(),
+                    mint: context.accounts.mint_a.to_cpi_handle(),
+                    to: context.accounts.admin_token_a.to_cpi_handle_mut(),
                     authority: context.accounts.pool_authority.cpi_handle(),
                 },
                 signer_seeds,
@@ -83,9 +83,9 @@ pub fn handle_claim_admin_fees(
             CpiContext::new_with_signer(
                 context.accounts.token_program.address(),
                 TransferChecked {
-                    from: context.accounts.pool_b.cpi_handle_mut(),
-                    mint: context.accounts.mint_b.cpi_handle(),
-                    to: context.accounts.admin_token_b.cpi_handle_mut(),
+                    from: context.accounts.pool_b.to_cpi_handle_mut(),
+                    mint: context.accounts.mint_b.to_cpi_handle(),
+                    to: context.accounts.admin_token_b.to_cpi_handle_mut(),
                     authority: context.accounts.pool_authority.cpi_handle(),
                 },
                 signer_seeds,
@@ -114,8 +114,8 @@ pub struct ClaimAdminFeesAccountConstraints {
         mut,
         seeds = [
             pool_config.config.as_ref(),
-            pool_config.mint_a.address().as_ref(),
-            pool_config.mint_b.address().as_ref(),
+            pool_config.mint_a.as_ref(),
+            pool_config.mint_b.as_ref(),
         ],
         bump,
     )]

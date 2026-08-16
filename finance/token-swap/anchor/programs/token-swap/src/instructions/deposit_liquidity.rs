@@ -157,7 +157,7 @@ pub fn handle_deposit_liquidity(
             .checked_sub(MINIMUM_LIQUIDITY)
             .ok_or(AmmError::MathOverflow)?
     } else {
-        let total_supply = context.accounts.liquidity_provider_mint.supply as u128;
+        let total_supply = context.accounts.liquidity_provider_mint.supply() as u128;
         let liquidity_from_a = (amount_a as u128)
             .checked_mul(total_supply)
             .ok_or(AmmError::MathOverflow)?
@@ -198,9 +198,9 @@ pub fn handle_deposit_liquidity(
         CpiContext::new(
             context.accounts.token_program.address(),
             TransferChecked {
-                from: context.accounts.token_a.cpi_handle_mut(),
-                mint: context.accounts.mint_a.cpi_handle(),
-                to: context.accounts.pool_a.cpi_handle_mut(),
+                from: context.accounts.token_a.to_cpi_handle_mut(),
+                mint: context.accounts.mint_a.to_cpi_handle(),
+                to: context.accounts.pool_a.to_cpi_handle_mut(),
                 authority: context.accounts.depositor.cpi_handle(),
             },
         ),
@@ -211,9 +211,9 @@ pub fn handle_deposit_liquidity(
         CpiContext::new(
             context.accounts.token_program.address(),
             TransferChecked {
-                from: context.accounts.token_b.cpi_handle_mut(),
-                mint: context.accounts.mint_b.cpi_handle(),
-                to: context.accounts.pool_b.cpi_handle_mut(),
+                from: context.accounts.token_b.to_cpi_handle_mut(),
+                mint: context.accounts.mint_b.to_cpi_handle(),
+                to: context.accounts.pool_b.to_cpi_handle_mut(),
                 authority: context.accounts.depositor.cpi_handle(),
             },
         ),
@@ -235,8 +235,8 @@ pub fn handle_deposit_liquidity(
         CpiContext::new_with_signer(
             context.accounts.token_program.address(),
             MintTo {
-                mint: context.accounts.liquidity_provider_mint.cpi_handle_mut(),
-                to: context.accounts.liquidity_provider_token.cpi_handle_mut(),
+                mint: context.accounts.liquidity_provider_mint.to_cpi_handle_mut(),
+                to: context.accounts.liquidity_provider_token.to_cpi_handle_mut(),
                 authority: context.accounts.pool_authority.cpi_handle(),
             },
             signer_seeds,
@@ -252,8 +252,8 @@ pub struct DepositLiquidityAccountConstraints {
     #[account(
         seeds = [
             pool_config.config.as_ref(),
-            pool_config.mint_a.address().as_ref(),
-            pool_config.mint_b.address().as_ref(),
+            pool_config.mint_a.as_ref(),
+            pool_config.mint_b.as_ref(),
         ],
         bump,
     )]
