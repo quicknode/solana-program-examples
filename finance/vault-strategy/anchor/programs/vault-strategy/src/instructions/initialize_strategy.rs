@@ -21,7 +21,7 @@ pub const MAX_FEE_BPS: u16 = 1_000;
 pub const MAX_SLIPPAGE_BPS: u16 = 1_000;
 
 #[derive(Accounts)]
-#[instruction(index: u64)]
+#[instruction(_index: u64)]
 pub struct InitializeStrategyAccountConstraints {
     #[account(mut)]
     pub manager: Signer,

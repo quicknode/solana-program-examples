@@ -3,7 +3,7 @@ use anchor_lang::prelude::*;
 use crate::Message;
 
 #[derive(Accounts)]
-#[instruction(input: String)]
+#[instruction(_input: String)]
 pub struct InitializeAccountConstraints {
     #[account(mut)]
     pub payer: Signer,

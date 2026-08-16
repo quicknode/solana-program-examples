@@ -162,7 +162,7 @@ pub fn handle_withdraw(
         let mint_ai = remaining[i * 4 + 2];
         let mut user_ata_ai = remaining[i * 4 + 3];
 
-        let config = AssetConfig::load_checked(&config_ai)?;
+        let config = AssetConfig::load_checked(config_ai)?;
         require_keys_eq!(
             config.strategy,
             strategy_key,

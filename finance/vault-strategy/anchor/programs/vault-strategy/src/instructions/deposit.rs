@@ -236,7 +236,7 @@ pub fn handle_deposit(
         let cpi_accounts = RouterSwapAccounts {
             caller: context.accounts.strategy.cpi_handle(),
             router_config: context.accounts.router_config.cpi_handle(),
-            asset_rate: CpiHandle::readonly(&rate_account),
+            asset_rate: CpiHandle::readonly(rate_account),
             usdc_mint: context.accounts.usdc_mint.cpi_handle(),
             asset_mint: CpiHandleMut::writable(&mut mint_account),
             caller_usdc_account: context.accounts.vault_usdc.cpi_handle_mut(),
