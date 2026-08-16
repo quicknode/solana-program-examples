@@ -8,7 +8,11 @@ use {
 
 #[derive(Accounts)]
 pub struct MintTokenAccountConstraints {
-    #[account(mut)]
+    // Minting to yourself is ordinary, so `mint_authority` and `recipient` may
+    // be the same account. v2 rejects an account that appears twice while any
+    // of its slots is in the mutable mask, and `unsafe(dup)` takes this one out
+    // of that mask while keeping it writable (it is still the init payer).
+    #[account(unsafe(dup))]
     pub mint_authority: Signer,
 
     pub recipient: SystemAccount,

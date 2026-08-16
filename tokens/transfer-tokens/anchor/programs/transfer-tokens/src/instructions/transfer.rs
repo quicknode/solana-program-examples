@@ -8,7 +8,11 @@ use {
 
 #[derive(Accounts)]
 pub struct TransferTokensAccountConstraints {
-    #[account(mut)]
+    // The sender and the recipient may be the same account (minting or
+    // sending to yourself). v2 rejects an account that appears twice while any
+    // of its slots is in the mutable mask, and `unsafe(dup)` takes this one out
+    // of that mask while keeping it writable.
+    #[account(unsafe(dup))]
     pub sender: Signer,
 
     pub recipient: SystemAccount,
@@ -50,14 +54,8 @@ pub fn handle_transfer_tokens(
     context: &mut Context<TransferTokensAccountConstraints>,
     amount: u64,
 ) -> Result<()> {
-    // `AccountView` is Copy, and a copy still points at the same
-    // account — v2's typed handles make the aliasing a compile error.
-    let mint_account_view = *context.accounts.mint_account.account();
     msg!("Transferring tokens...");
-    msg!(
-        "Mint: {}",
-        &context.accounts.mint_account.cpi_handle_mut().address()
-    );
+    msg!("Mint: {}", context.accounts.mint_account.address());
     msg!(
         "From Token Address: {}",
         &context.accounts.sender_token_account.address()
@@ -73,7 +71,10 @@ pub fn handle_transfer_tokens(
             context.accounts.token_program.address(),
             TransferChecked {
                 from: context.accounts.sender_token_account.cpi_handle_mut(),
-                mint: CpiHandle::readonly(&mint_account_view),
+                // Read-only slots take the wrapper's own handle: on a data account
+                // it relaxes the runtime borrow check that a hand-built handle
+                // over a copy of the view would still trip.
+                mint: context.accounts.mint_account.cpi_handle(),
                 to: context.accounts.recipient_token_account.cpi_handle_mut(),
                 authority: context.accounts.sender.cpi_handle(),
             },
