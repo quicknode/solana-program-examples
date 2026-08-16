@@ -5,7 +5,6 @@ use {
     },
     anchor_spl::token::spl_token,
     litesvm::LiteSVM,
-    solana_solana_account::Account as SolanaAccount,
     solana_keypair::Keypair,
     solana_kite::{
         create_associated_token_account, create_token_mint, create_wallet,
@@ -13,6 +12,7 @@ use {
         send_transaction_from_instructions,
     },
     solana_signer::Signer,
+    solana_solana_account::Account as SolanaAccount,
 };
 
 fn token_program_id() -> Address {

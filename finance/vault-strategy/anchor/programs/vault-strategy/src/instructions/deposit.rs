@@ -73,7 +73,7 @@ pub struct DepositAccountConstraints {
     #[account(
         constraint = *swap_router_program.address() == strategy.swap_router @ VaultError::InvalidSwapRouter
     )]
-/// CHECK: validated by the address constraint above
+    /// CHECK: validated by the address constraint above
     pub swap_router_program: UncheckedAccount,
 
     pub associated_token_program: Program<AssociatedToken>,

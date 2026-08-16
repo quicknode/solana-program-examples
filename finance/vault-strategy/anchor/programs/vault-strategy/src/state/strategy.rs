@@ -78,8 +78,7 @@ impl AssetConfig {
         let disc_len = <AssetConfig as anchor_lang::Discriminator>::DISCRIMINATOR.len();
         require!(
             data.len() > disc_len
-                && &data[..disc_len]
-                    == <AssetConfig as anchor_lang::Discriminator>::DISCRIMINATOR,
+                && &data[..disc_len] == <AssetConfig as anchor_lang::Discriminator>::DISCRIMINATOR,
             crate::error::VaultError::InvalidAssetAccount
         );
         let mut payload = &data[disc_len..];
