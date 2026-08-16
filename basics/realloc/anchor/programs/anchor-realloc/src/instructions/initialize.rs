@@ -2,8 +2,11 @@ use anchor_lang::prelude::*;
 
 use crate::Message;
 
+// v2's `#[derive(Accounts)]` binds the `#[instruction(...)]` args on a code
+// path that does not use them, even when a constraint below does.
+#[allow(unused_variables)]
 #[derive(Accounts)]
-#[instruction(_input: String)]
+#[instruction(input: String)]
 pub struct InitializeAccountConstraints {
     #[account(mut)]
     pub payer: Signer,

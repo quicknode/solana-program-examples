@@ -66,6 +66,6 @@ impl AddressData {
     /// has to be sized — and therefore rent-funded — for.
     fn serialized_span(&self) -> Result<usize> {
         <Self as wincode::SchemaWrite<anchor_lang::BorshConfig>>::size_of(self)
-            .map_err(|_| ProgramError::InvalidInstructionData.into())
+            .map_err(|_| ProgramError::InvalidInstructionData)
     }
 }

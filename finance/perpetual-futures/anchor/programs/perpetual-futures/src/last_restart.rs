@@ -65,7 +65,7 @@ impl LastRestartSlot {
             // SAFETY: on success the syscall (or the zeroing above) has
             // initialized all 8 bytes.
             0 => Ok(unsafe { var.assume_init() }),
-            _ => Err(ProgramError::UnsupportedSysvar.into()),
+            _ => Err(ProgramError::UnsupportedSysvar),
         }
     }
 }
