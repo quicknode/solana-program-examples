@@ -222,16 +222,65 @@ where `try_borrow_mut` on a copied view would be rejected.
 
 A **`mut`** data account is different. Loading one sets pinocchio's exclusive
 sentinel (`borrow_state == 0`), so *any* `try_borrow()` on it fails — the
-wrapper itself reads through `borrow_unchecked`. Two ways out, in order of
+wrapper itself reads through `borrow_unchecked`. Three ways out, in order of
 preference:
 
-1. Drop the `mut` if the account is not actually written. A mint passed to
+1. **For a Token-2022 extension, use anchor-spl's accessor.**
+   `TokenInterfaceAccountExtensions::get_extension::<T>()` on an
+   `InterfaceAccount<Mint>` or `InterfaceAccount<TokenAccount>` parses the TLV
+   through the borrow the wrapper already holds, and checks the account is
+   owned by Token-2022 on the way. It is bounded on `Pod`, so it covers every
+   fixed-size extension but not a variable-length one like `TokenMetadata`.
+2. **Drop the `mut`** if the account is not actually written. A mint passed to
    `transfer_checked_with_fee` is read-only: the withheld fee accrues on the
    destination token account.
-2. Read through the exclusive borrow you already hold:
-   `unsafe { account.account().borrow_unchecked() }`. Sound whenever the
-   instruction holds that borrow for its whole duration and hands out no second
-   one — which is the case for anything reached through `ctx.accounts`.
+3. **Declare the field `UncheckedAccount` and load the typed wrapper by hand.**
+   `AnchorAccount::load` is safe, runs exactly the validation the derive would
+   have run, and registers a *shared* borrow rather than an exclusive one, so
+   an ordinary `try_borrow()` still has room:
+
+   ```rust
+   /// CHECK: loaded and validated as an `InterfaceAccount<Mint>` below.
+   #[account(mut)]
+   pub mint_account: UncheckedAccount,
+   ...
+   let mint = InterfaceAccount::<Mint>::load(*ctx.accounts.mint_account.account())?;
+   let buffer = mint.account().try_borrow()?;
+   ```
+
+   Keep the `mut`: it is what marks the account writable in the IDL, which the
+   client needs for the CPI that writes to it. `cpi_handle_mut()` on an
+   `UncheckedAccount` checks the runtime writable flag, not the wrapper's own
+   mutability. Drop the loaded wrapper before the CPI so its shared borrow is
+   released. This is what `token-extensions/metadata` does to reach
+   `TokenMetadata`, which `get_extension` cannot.
+
+`unsafe { account.account().borrow_unchecked() }` — reading through the
+exclusive borrow you already hold — is what `get_extension` does internally, and
+it is sound whenever the instruction holds that borrow for its whole duration
+and hands out no second one. It is nonetheless not needed anywhere in this
+repository's Anchor programs, and it should stay that way: one of the three
+options above has covered every case so far.
+
+## What still needs `unsafe`
+
+Three Anchor programs read the `LastRestartSlot` sysvar, which pinocchio has no
+typed accessor for. Call **`pinocchio::sysvars::get_sysvar(&mut buf, &id, 0)`**
+rather than the `sol_get_sysvar` syscall directly: it is a safe wrapper, and
+off-chain it is a no-op that leaves the buffer zeroed, so IDL and client builds
+read "the cluster has never restarted" without a `cfg` split of their own.
+
+After that, two kinds of `unsafe` are left in the Anchor programs, and neither
+has a safe equivalent in v2:
+
+| Site | Why |
+| --- | --- |
+| `transfer-hook/*/anchor/…/entrypoint.rs` | `pub unsafe extern "C" fn entrypoint` is the loader ABI. These programs claim the entrypoint themselves to remap an SPL interface discriminator, so the `unsafe` the `#[program]` macro would have hidden is written out. |
+| `order-book/…/place_order.rs` | `AnchorAccount::load_mut` is an `unsafe fn` on the trait, and it is the only way to get a writable typed wrapper for an account arriving through `remaining_accounts`. `BorshAccount`'s implementation borrows through the checked `try_borrow_mut`, so a duplicate fails with `AccountBorrowFailed` rather than aliasing. |
+
+Any lint that bans `unsafe` repository-wide has to exempt those, plus the
+Quasar and pinocchio programs, where raw zero-copy access is the point of the
+example rather than an escape hatch.
 
 ## Instruction discriminators, and programs that implement an interface
 
@@ -269,6 +318,30 @@ replaces the `mut` rather than joining it.
 The catch: the walker flags **both** indices of a duplicate, so marking only
 the second one still leaves the first intersecting the mutable mask. Every slot
 that can legitimately alias needs the constraint, including a `payer`.
+
+Why the rule exists: v1 deserialized each `Account<T>` into an owned copy and
+serialized it back at the end of the instruction. Two slots over one account
+meant two independent copies, and the second write-back silently clobbered the
+first — the classic self-transfer bug, where debiting one copy and crediting
+the other and writing both leaves the balance higher than it started. v2
+accounts are zero-copy views into the runtime's buffer, so two mutable wrappers
+over one account would be two `&mut` to the same bytes. Hence the loader
+rejects rather than warns.
+
+The `unsafe` is not decoration, so check two things before reaching for it:
+
+1. **That the accounts can actually alias.** If no caller ever passes the same
+   address twice, the constraint disables a live check for nothing. Leave it
+   off. `transfer-tokens`' `transfer` is this case — its test funds a fresh
+   `Keypair` as the recipient.
+2. **That the aliasing slots hold no deserialized state.** `Signer`,
+   `SystemAccount` and `UncheckedAccount` carry no copy to write back, so
+   there is no lost update to worry about. The two `mint` instructions here are
+   this case: minting to yourself makes `mint_authority` and `recipient` the
+   same `Signer`, and the duplication comes from the caller rather than the
+   program, so refusing it would make an ordinary mint fail with 2040. Two
+   aliasing `Account<T>` slots are what the check is *for*, and the fix there
+   is to restructure the accounts so only one of them exists.
 
 ## anchor-spl
 

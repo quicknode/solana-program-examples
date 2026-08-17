@@ -31,8 +31,8 @@ wincode = { version = "0.5", features = ["derive"] }
 # `SchemaRead`/`SchemaWrite` bound fails. 2.6.1 is the last 0.5-line release.
 solana-address = ">=2.6, <2.7"
 # pinocchio ships only Clock and Rent, so LastRestartSlot is read through
-# the raw sol_get_sysvar syscall (see src/last_restart.rs).
-solana-define-syscall = "5.0"
+# pinocchio's own `get_sysvar` wrapper (see src/last_restart.rs).
+pinocchio = "0.11"
 anchor-spl = "2.0.0-rc.1"
 
 [dev-dependencies]

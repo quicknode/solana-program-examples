@@ -1,7 +1,7 @@
 use {
     anchor_lang::{
-        solana_program::instruction::Instruction,
-        AccountDeserialize, Address, system_program, InstructionData, ToAccountMetas,
+        solana_program::instruction::Instruction, system_program, AccountDeserialize, Address,
+        InstructionData, ToAccountMetas,
     },
     litesvm::LiteSVM,
     prop_amm::{
@@ -175,20 +175,12 @@ impl Market {
         .map_err(|_| ())?;
 
         // Fund the operator's inventory accounts.
-        let operator_base = create_associated_token_account(
-            &mut svm,
-            &operator.pubkey(),
-            &base_mint,
-            &payer,
-        )
-        .unwrap();
-        let operator_quote = create_associated_token_account(
-            &mut svm,
-            &operator.pubkey(),
-            &quote_mint,
-            &payer,
-        )
-        .unwrap();
+        let operator_base =
+            create_associated_token_account(&mut svm, &operator.pubkey(), &base_mint, &payer)
+                .unwrap();
+        let operator_quote =
+            create_associated_token_account(&mut svm, &operator.pubkey(), &quote_mint, &payer)
+                .unwrap();
         mint_tokens_to_token_account(
             &mut svm,
             &base_mint,
@@ -271,9 +263,10 @@ impl Market {
     /// Simulate a cluster restart at `slot`: prices stamped at or before it
     /// must be rejected until the publisher posts again.
     fn set_last_restart_slot(&mut self, slot: u64) {
-        self.svm.set_sysvar(&solana_sysvar::last_restart_slot::LastRestartSlot {
-            last_restart_slot: slot,
-        });
+        self.svm
+            .set_sysvar(&solana_sysvar::last_restart_slot::LastRestartSlot {
+                last_restart_slot: slot,
+            });
     }
 
     /// Create a wallet holding `base` and `quote` minor units in associated
@@ -372,9 +365,14 @@ impl Market {
                 .to_account_metas(None),
             )
         };
-        send_transaction_from_instructions(&mut self.svm, vec![instruction], &[signer], &signer.pubkey())
-            .map(|_| ())
-            .map_err(|_| ())
+        send_transaction_from_instructions(
+            &mut self.svm,
+            vec![instruction],
+            &[signer],
+            &signer.pubkey(),
+        )
+        .map(|_| ())
+        .map_err(|_| ())
     }
 
     fn deposit_inventory(&mut self, base_amount: u64, quote_amount: u64) -> Result<(), ()> {
@@ -397,9 +395,14 @@ impl Market {
             }
             .to_account_metas(None),
         );
-        send_transaction_from_instructions(&mut self.svm, vec![instruction], &[signer], &signer.pubkey())
-            .map(|_| ())
-            .map_err(|_| ())
+        send_transaction_from_instructions(
+            &mut self.svm,
+            vec![instruction],
+            &[signer],
+            &signer.pubkey(),
+        )
+        .map(|_| ())
+        .map_err(|_| ())
     }
 
     fn set_quote(&mut self, spread_bps: u16, paused: bool) -> Result<(), ()> {
@@ -441,9 +444,14 @@ impl Market {
             }
             .to_account_metas(None),
         );
-        send_transaction_from_instructions(&mut self.svm, vec![instruction], &[trader], &trader.pubkey())
-            .map(|_| ())
-            .map_err(|_| ())
+        send_transaction_from_instructions(
+            &mut self.svm,
+            vec![instruction],
+            &[trader],
+            &trader.pubkey(),
+        )
+        .map(|_| ())
+        .map_err(|_| ())
     }
 
     fn balance(&self, token_account: &Address) -> u64 {
@@ -587,9 +595,7 @@ fn test_operator_can_withdraw_everything_and_swaps_then_fail() {
 #[test]
 fn test_withdraw_more_than_inventory_fails() {
     let mut market = Market::default_market();
-    assert!(market
-        .withdraw_inventory(1_001 * ONE_TOKEN, 0)
-        .is_err());
+    assert!(market.withdraw_inventory(1_001 * ONE_TOKEN, 0).is_err());
 }
 
 #[test]
@@ -723,7 +729,9 @@ fn test_swap_rejects_insufficient_inventory() {
     // but the vault only holds 1,000 NVDAx.
     let quote_in = 181_681_500_000;
     let (whale, _, _) = market.funded_trader(0, quote_in);
-    assert!(market.swap(&whale, Direction::BuyBase, quote_in, 0).is_err());
+    assert!(market
+        .swap(&whale, Direction::BuyBase, quote_in, 0)
+        .is_err());
 }
 
 // ===========================================================================

@@ -177,7 +177,10 @@ pub fn handle_liquidate_obligation(
                     .obligation_collateral_vault
                     .to_cpi_handle_mut(),
                 mint: context.accounts.collateral_share_mint.to_cpi_handle(),
-                to: context.accounts.liquidator_collateral_dest.to_cpi_handle_mut(),
+                to: context
+                    .accounts
+                    .liquidator_collateral_dest
+                    .to_cpi_handle_mut(),
                 authority: context.accounts.obligation.cpi_handle(),
             },
             &[&seeds],

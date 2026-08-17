@@ -1,8 +1,8 @@
 use anchor_lang::prelude::*;
 
 mod constants;
-mod last_restart;
 mod errors;
+mod last_restart;
 // Public so the LiteSVM integration tests can build instruction arguments
 // (`PoolParameters`, `Side`) against the program's own types.
 pub mod instructions;
@@ -72,7 +72,9 @@ pub mod perpetual_futures {
 
     /// Permissionlessly close a position whose equity has fallen to or below
     /// the maintenance margin. The caller earns the liquidation fee.
-    pub fn liquidate_position(context: &mut Context<LiquidatePositionAccountConstraints>) -> Result<()> {
+    pub fn liquidate_position(
+        context: &mut Context<LiquidatePositionAccountConstraints>,
+    ) -> Result<()> {
         instructions::handle_liquidate_position(context)
     }
 

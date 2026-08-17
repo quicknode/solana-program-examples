@@ -27,10 +27,10 @@ anchor-lang = "2.0.0-rc.1"
 # The `#[program]` macro expands to `wincode` paths for instruction-data
 # (de)serialization, so the crate has to be a direct dependency.
 wincode = { version = "0.5", features = ["derive"] }
-# `last_restart.rs` reads the LastRestartSlot sysvar through the raw
-# `sol_get_sysvar` syscall: pinocchio (and so anchor-lang v2) ships only the
-# Clock and Rent sysvars.
-solana-define-syscall = "5.0"
+# `last_restart.rs` reads the LastRestartSlot sysvar through pinocchio's
+# `get_sysvar` wrapper: pinocchio (and so anchor-lang v2) ships only the
+# Clock and Rent sysvars as typed accessors.
+pinocchio = "0.11"
 # anchor-lang 2.0.0-rc.1 is built against wincode 0.5, but solana-address 2.7
 # moved to wincode 0.6. With both in the graph, `Address`'s wincode impls
 # belong to the version the account derives are not using and every

@@ -9,7 +9,14 @@ use anchor_spl::{
     token_interface::{interest_bearing_mint_initialize, InterestBearingMintInitialize, Token2022},
 };
 
-use crate::check_mint_data;
+use anchor_spl::token_2022::spl_token_2022::{
+    extension::{
+        interest_bearing_mint::InterestBearingConfig, BaseStateWithExtensions, StateWithExtensions,
+    },
+    state::Mint as MintState,
+};
+
+use crate::check_rate_authority;
 
 #[derive(Accounts)]
 pub struct InitializeAccountConstraints {
@@ -71,9 +78,14 @@ pub fn handler(context: &mut Context<InitializeAccountConstraints>, rate: i16) -
         Some(&context.accounts.payer.address()), // freeze authority
     )?;
 
-    check_mint_data(
-        context.accounts.mint_account.account(),
-        &context.accounts.payer.address(),
+    // The mint is a `Signer` here, which holds no borrow on the account's data,
+    // so the TLV is read straight from the buffer.
+    let payer_address = *context.accounts.payer.address();
+    let mint_data = context.accounts.mint_account.account().try_borrow()?;
+    let mint = StateWithExtensions::<MintState>::unpack(&mint_data)?;
+    check_rate_authority(
+        mint.get_extension::<InterestBearingConfig>()?,
+        &payer_address,
     )?;
     Ok(())
 }

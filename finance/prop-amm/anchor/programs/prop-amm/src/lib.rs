@@ -1,8 +1,8 @@
 use anchor_lang::prelude::*;
 
 mod constants;
-mod last_restart;
 mod errors;
+mod last_restart;
 // Public so the LiteSVM integration tests can build instruction arguments
 // (`MarketParameters`, `Direction`) against the program's own types.
 pub mod instructions;

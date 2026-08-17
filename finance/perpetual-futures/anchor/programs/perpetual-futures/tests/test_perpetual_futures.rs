@@ -1,7 +1,7 @@
 use {
     anchor_lang::{
-        solana_program::instruction::Instruction,
-        AccountDeserialize, Address, system_program, InstructionData, ToAccountMetas,
+        solana_program::instruction::Instruction, system_program, AccountDeserialize, Address,
+        InstructionData, ToAccountMetas,
     },
     litesvm::LiteSVM,
     perpetual_futures::{instructions::initialize_pool::PoolParameters, state::Pool, state::Side},
@@ -97,7 +97,8 @@ impl Market {
             "/../../target/deploy/mock_switchboard.so"
         ))
         .expect("mock_switchboard.so not found - run `anchor build` first");
-        svm.add_program(mock_switchboard::id(), &switchboard_bytes).unwrap();
+        svm.add_program(mock_switchboard::id(), &switchboard_bytes)
+            .unwrap();
 
         let payer = create_wallet(&mut svm, 100_000_000_000).unwrap();
         let admin = create_wallet(&mut svm, 100_000_000_000).unwrap();
@@ -226,9 +227,10 @@ impl Market {
     /// Simulate a cluster restart at `slot`: prices stamped at or before it
     /// must be rejected until the publisher posts again.
     fn set_last_restart_slot(&mut self, slot: u64) {
-        self.svm.set_sysvar(&solana_sysvar::last_restart_slot::LastRestartSlot {
-            last_restart_slot: slot,
-        });
+        self.svm
+            .set_sysvar(&solana_sysvar::last_restart_slot::LastRestartSlot {
+                last_restart_slot: slot,
+            });
     }
 
     /// Create a wallet holding `amount` collateral tokens in its associated
@@ -824,7 +826,7 @@ fn test_open_rejects_price_from_before_a_restart() {
             Side::Long,
             collateral,
             5_000 * ONE_USDC,
-            u64::MAX
+            u64::MAX,
         )
         .expect("a freshly published price must be accepted after a restart");
 }

@@ -14,8 +14,16 @@ pub struct UpdateFieldAccountConstraints {
     #[account(mut)]
     pub authority: Signer,
 
+    /// CHECK: loaded and validated as an `InterfaceAccount<Mint>` in the handler.
+    ///
+    /// It is declared unchecked here only so that the derive does not take the
+    /// account's exclusive borrow. This instruction has to read the
+    /// variable-length `TokenMetadata` extension out of the TLV, and a wrapper
+    /// loaded by `#[account(mut)]` holds an exclusive borrow that makes any
+    /// `try_borrow()` fail. Loading the same wrapper by hand registers a shared
+    /// borrow instead, which leaves room for the read.
     #[account(mut)]
-    pub mint_account: InterfaceAccount<Mint>,
+    pub mint_account: UncheckedAccount,
     pub token_program: Program<Token2022>,
     pub system_program: Program<System>,
 }
@@ -34,16 +42,16 @@ pub fn process_update_field(
     msg!("Field: {:?}, Value: {}", field, value);
 
     let (current_lamports, required_lamports) = {
-        // Get the current state of the mint account. It is declared `mut`, and
-        // v2 marks a mutable data account as exclusively borrowed (pinocchio's
-        // `borrow_state == 0`), so `try_borrow()` on it is rejected — reading
-        // through the exclusive borrow we already hold is what the wrapper
-        // itself does.
+        // Validate the account as a mint. `load` runs the same owner and
+        // layout checks the derive would have run for an
+        // `InterfaceAccount<Mint>` field, and registers a *shared* borrow, so
+        // the TLV read below is an ordinary `try_borrow()`.
         //
-        // SAFETY: this instruction holds the mint's exclusive borrow for its
-        // whole duration, and this reads it without handing out a second one.
-        let mint = *context.accounts.mint_account.account();
-        let buffer = unsafe { mint.borrow_unchecked() };
+        // anchor-spl's `TokenInterfaceAccountExtensions::get_extension` would
+        // be the shorter route, and is what the other extension examples use,
+        // but it is bounded on `Pod` and `TokenMetadata` is variable-length.
+        let mint = InterfaceAccount::<Mint>::load(*context.accounts.mint_account.account())?;
+        let buffer = mint.account().try_borrow()?;
         let state = PodStateWithExtensions::<PodMint>::unpack(&buffer)?;
 
         // Get and update the token metadata
@@ -58,7 +66,7 @@ pub fn process_update_field(
         // Calculate the required lamports for the new account length
         let required_lamports = Rent::get()?.try_minimum_balance(new_account_len)?;
         // Get the current lamports of the mint account
-        let current_lamports = mint.lamports();
+        let current_lamports = mint.account().lamports();
 
         msg!("Required lamports: {}", required_lamports);
         msg!("Current lamports: {}", current_lamports);

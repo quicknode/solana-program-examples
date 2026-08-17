@@ -184,9 +184,15 @@ pub fn handle_place_order(
         let maker_user_info = &maker_accounts[fill_index * ACCOUNTS_PER_MAKER + 1];
 
         // v2 has no `Account::try_from`. `AnchorAccount::load_mut` is the
-        // equivalent for a writable account reached through remaining_accounts;
-        // it is unsafe because the caller must guarantee no other live `&mut`
-        // to the same data, which the distinct maker accounts here satisfy.
+        // equivalent for a writable account reached through remaining_accounts,
+        // and it is the only route to one: the derive cannot type a variable
+        // number of accounts.
+        //
+        // SAFETY: the obligation is that no other `&mut` to the same data is
+        // live. The trait method is unsafe because `Slab` bypasses the runtime
+        // borrow check; `BorshAccount` does not, taking its guard through
+        // `try_borrow_mut`, so an account already borrowed elsewhere in this
+        // handler yields `AccountBorrowFailed` instead of aliasing.
         let mut maker_order = unsafe { BorshAccount::<Order>::load_mut(*maker_order_info) }?;
         let mut maker_market_user =
             unsafe { BorshAccount::<MarketUser>::load_mut(*maker_user_info) }?;

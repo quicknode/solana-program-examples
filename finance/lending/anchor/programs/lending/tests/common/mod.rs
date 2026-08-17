@@ -134,9 +134,7 @@ impl Env {
     }
 
     pub fn current_slot(&self) -> u64 {
-        self.svm
-            .get_sysvar::<solana_clock::Clock>()
-            .slot
+        self.svm.get_sysvar::<solana_clock::Clock>().slot
     }
 
     /// Create a second lending market owned by `market_owner`, for tests that

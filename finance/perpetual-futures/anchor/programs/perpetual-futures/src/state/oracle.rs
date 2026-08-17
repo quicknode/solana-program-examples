@@ -1,5 +1,5 @@
-use anchor_lang::prelude::*;
 use crate::last_restart::LastRestartSlot;
+use anchor_lang::prelude::*;
 
 use crate::constants::{BASIS_POINTS_DENOMINATOR, MAX_PRICE_STALENESS_SLOTS};
 use crate::errors::PerpError;

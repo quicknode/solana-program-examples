@@ -8,11 +8,7 @@ use {
 
 #[derive(Accounts)]
 pub struct TransferTokensAccountConstraints {
-    // The sender and the recipient may be the same account (minting or
-    // sending to yourself). v2 rejects an account that appears twice while any
-    // of its slots is in the mutable mask, and `unsafe(dup)` takes this one out
-    // of that mask while keeping it writable.
-    #[account(unsafe(dup))]
+    #[account(mut)]
     pub sender: Signer,
 
     pub recipient: SystemAccount,

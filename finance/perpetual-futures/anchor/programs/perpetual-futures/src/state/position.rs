@@ -1,6 +1,8 @@
 use anchor_lang::prelude::*;
 
-#[derive(InitSpace, Clone, Copy, PartialEq, Eq, Debug, IdlType, wincode::SchemaRead, wincode::SchemaWrite)]
+#[derive(
+    InitSpace, Clone, Copy, PartialEq, Eq, Debug, IdlType, wincode::SchemaRead, wincode::SchemaWrite,
+)]
 pub enum Side {
     Long,
     Short,
