@@ -18,10 +18,9 @@ use {
     solana_instruction::{account_meta::AccountMeta, Instruction},
     solana_keccak_hasher::hashv,
     solana_keypair::Keypair,
-    solana_message::Message,
+    solana_kite::{create_wallet, send_transaction_from_instructions},
     solana_pubkey::{pubkey, Pubkey},
     solana_signer::Signer,
-    solana_transaction::Transaction,
 };
 
 // ---- Program IDs ----------------------------------------------------------
@@ -239,19 +238,6 @@ fn read_current_root(data: &[u8]) -> [u8; 32] {
 
 // ---- Helpers ---------------------------------------------------------------
 
-fn send(
-    svm: &mut LiteSVM,
-    ixs: Vec<Instruction>,
-    payer: &Keypair,
-    signers: &[&Keypair],
-) -> Result<(), Box<litesvm::types::FailedTransactionMetadata>> {
-    let msg = Message::new(&ixs, Some(&payer.pubkey()));
-    let blockhash = svm.latest_blockhash();
-    let mut tx = Transaction::new_unsigned(msg);
-    tx.sign(signers, blockhash);
-    svm.send_transaction(tx).map(|_| ()).map_err(Box::new)
-}
-
 #[test]
 fn test_burn_cnft() {
     let mut svm = LiteSVM::new();
@@ -279,15 +265,8 @@ fn test_burn_cnft() {
     .unwrap();
 
     // Fund payer and leaf_owner.
-    let payer = Keypair::new();
-    let leaf_owner = Keypair::new();
-    svm.airdrop(&payer.pubkey(), 100 * solana_native_token::LAMPORTS_PER_SOL)
-        .unwrap();
-    svm.airdrop(
-        &leaf_owner.pubkey(),
-        10 * solana_native_token::LAMPORTS_PER_SOL,
-    )
-    .unwrap();
+    let payer = create_wallet(&mut svm, 100 * solana_native_token::LAMPORTS_PER_SOL).unwrap();
+    let leaf_owner = create_wallet(&mut svm, 10 * solana_native_token::LAMPORTS_PER_SOL).unwrap();
 
     // Create the Merkle tree account, owned by the compression program.
     let merkle_tree = Keypair::new();
@@ -334,11 +313,11 @@ fn test_burn_cnft() {
         },
     };
 
-    send(
+    send_transaction_from_instructions(
         &mut svm,
         vec![create_acc, create_tree_ix],
-        &payer,
         &[&payer, &merkle_tree],
+        &payer.pubkey(),
     )
     .expect("create_tree_config should succeed");
 
@@ -383,7 +362,8 @@ fn test_burn_cnft() {
             d
         },
     };
-    send(&mut svm, vec![mint_ix], &payer, &[&payer]).expect("mint_v1 should succeed");
+    send_transaction_from_instructions(&mut svm, vec![mint_ix], &[&payer], &payer.pubkey())
+        .expect("mint_v1 should succeed");
 
     // Recompute data_hash and creator_hash exactly as Bubblegum does.
     let data_hash = hash_metadata(&metadata);
@@ -432,7 +412,13 @@ fn test_burn_cnft() {
         data: burn_data.clone(),
     };
 
-    send(&mut svm, vec![burn_ix], &leaf_owner, &[&leaf_owner]).expect("burn_cnft should succeed");
+    send_transaction_from_instructions(
+        &mut svm,
+        vec![burn_ix],
+        &[&leaf_owner],
+        &leaf_owner.pubkey(),
+    )
+    .expect("burn_cnft should succeed");
 
     // After burning, leaf 0 is zeroed. The root the test cached is now stale,
     // so a second burn with the same (root, hashes) must fail.
@@ -441,7 +427,12 @@ fn test_burn_cnft() {
         accounts: burn_accounts,
         data: burn_data,
     };
-    let second = send(&mut svm, vec![burn_ix2], &leaf_owner, &[&leaf_owner]);
+    let second = send_transaction_from_instructions(
+        &mut svm,
+        vec![burn_ix2],
+        &[&leaf_owner],
+        &leaf_owner.pubkey(),
+    );
     assert!(
         second.is_err(),
         "second burn must fail: the leaf was already burned"

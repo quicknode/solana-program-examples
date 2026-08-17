@@ -32,10 +32,9 @@ use {
     solana_instruction::{account_meta::AccountMeta, Instruction},
     solana_keccak_hasher::hashv,
     solana_keypair::Keypair,
-    solana_message::Message,
+    solana_kite::{create_wallet, send_transaction_from_instructions, SolanaKiteError},
     solana_pubkey::{pubkey, Pubkey},
     solana_signer::Signer,
-    solana_transaction::Transaction,
 };
 
 // ---- Program IDs ----------------------------------------------------------
@@ -249,30 +248,14 @@ fn read_current_root(data: &[u8]) -> [u8; 32] {
 
 // ---- Transaction helpers ----------------------------------------------------
 
-fn send(
-    svm: &mut LiteSVM,
-    ixs: Vec<Instruction>,
-    payer: &Keypair,
-    signers: &[&Keypair],
-) -> Result<(), Box<litesvm::types::FailedTransactionMetadata>> {
-    let msg = Message::new(&ixs, Some(&payer.pubkey()));
-    let blockhash = svm.latest_blockhash();
-    let mut tx = Transaction::new_unsigned(msg);
-    tx.sign(signers, blockhash);
-    svm.send_transaction(tx).map(|_| ()).map_err(Box::new)
-}
-
 /// Assert a failed transaction carries the given program error.
-fn assert_custom_error(
-    result: Result<(), Box<litesvm::types::FailedTransactionMetadata>>,
-    expected: VaultError,
-) {
+fn assert_custom_error(result: Result<(), SolanaKiteError>, expected: VaultError) {
     let failed = result.expect_err("transaction should fail");
     // v2's `#[error_code]` makes the enum `#[repr(u32)]` and only generates
     // `From<VaultError> for anchor_lang::Error`, so the on-wire custom code is
     // the discriminant plus the default 6000 offset.
     let expected_code = expected as u32 + 6000;
-    let error_text = format!("{:?}", failed.err);
+    let error_text = format!("{failed:?}");
     assert!(
         error_text.contains(&format!("Custom({expected_code})")),
         "expected Custom({expected_code}), got: {error_text}"
@@ -325,16 +308,9 @@ fn setup_vault() -> VaultTestContext {
     )
     .unwrap();
 
-    let payer = Keypair::new();
-    svm.airdrop(&payer.pubkey(), 100 * solana_native_token::LAMPORTS_PER_SOL)
-        .unwrap();
+    let payer = create_wallet(&mut svm, 100 * solana_native_token::LAMPORTS_PER_SOL).unwrap();
 
-    let authority = Keypair::new();
-    svm.airdrop(
-        &authority.pubkey(),
-        10 * solana_native_token::LAMPORTS_PER_SOL,
-    )
-    .unwrap();
+    let authority = create_wallet(&mut svm, 10 * solana_native_token::LAMPORTS_PER_SOL).unwrap();
 
     // The vault PDA that stores the authority, owns the cNFTs (as Bubblegum
     // leaf owner) and signs the transfer CPI.
@@ -357,11 +333,11 @@ fn setup_vault() -> VaultTestContext {
         vault_pda,
     };
     let authority_keypair = svm_context.authority.insecure_clone();
-    send(
+    send_transaction_from_instructions(
         &mut svm_context.svm,
         vec![initialize_ix],
-        &authority_keypair,
         &[&authority_keypair],
+        &authority_keypair.pubkey(),
     )
     .expect("initialize_vault should succeed");
 
@@ -419,11 +395,11 @@ fn create_tree_with_vault_cnft(context: &mut VaultTestContext) -> TreeWithVaultC
         },
     };
 
-    send(
+    send_transaction_from_instructions(
         &mut context.svm,
         vec![create_acc, create_tree_ix],
-        &payer,
         &[&payer, &merkle_tree],
+        &payer.pubkey(),
     )
     .expect("create_tree_config should succeed");
 
@@ -469,7 +445,8 @@ fn create_tree_with_vault_cnft(context: &mut VaultTestContext) -> TreeWithVaultC
             d
         },
     };
-    send(&mut context.svm, vec![mint_ix], &payer, &[&payer]).expect("mint_v1 should succeed");
+    send_transaction_from_instructions(&mut context.svm, vec![mint_ix], &[&payer], &payer.pubkey())
+        .expect("mint_v1 should succeed");
 
     // Recompute data_hash and creator_hash exactly as Bubblegum does.
     let data_hash = hash_metadata(&metadata);
@@ -612,22 +589,22 @@ fn test_withdraw_cnft_by_authority() {
 
     // The stored authority signs, so the withdraw succeeds (the vault PDA
     // signs the Bubblegum CPI via invoke_signed inside the program).
-    send(
+    send_transaction_from_instructions(
         &mut context.svm,
         vec![withdraw_ix.clone()],
-        &authority,
         &[&authority],
+        &authority.pubkey(),
     )
     .expect("withdraw_cnft signed by the vault authority should succeed");
 
     // After transfer, leaf 0's owner changed (vault -> recipient), so the root
     // moved. A second withdraw replaying the same (root, hashes) must fail: the
     // cached root is stale and the leaf no longer hashes to it for the vault.
-    let second = send(
+    let second = send_transaction_from_instructions(
         &mut context.svm,
         vec![withdraw_ix],
-        &authority,
         &[&authority],
+        &authority.pubkey(),
     );
     assert!(
         second.is_err(),
@@ -643,19 +620,18 @@ fn test_withdraw_cnft_rejected_for_non_authority() {
 
     // An attacker funds and signs their own withdraw attempt; the vault's
     // stored authority did not sign.
-    let attacker = Keypair::new();
-    context
-        .svm
-        .airdrop(
-            &attacker.pubkey(),
-            10 * solana_native_token::LAMPORTS_PER_SOL,
-        )
-        .unwrap();
+    let attacker =
+        create_wallet(&mut context.svm, 10 * solana_native_token::LAMPORTS_PER_SOL).unwrap();
 
     let withdraw_ix =
         build_withdraw_cnft_instruction(&context, attacker.pubkey(), &tree, recipient.pubkey());
 
-    let result = send(&mut context.svm, vec![withdraw_ix], &attacker, &[&attacker]);
+    let result = send_transaction_from_instructions(
+        &mut context.svm,
+        vec![withdraw_ix],
+        &[&attacker],
+        &attacker.pubkey(),
+    );
     assert_custom_error(result, VaultError::InvalidWithdrawAuthority);
 }
 
@@ -677,11 +653,11 @@ fn test_withdraw_two_cnfts_by_authority() {
         MAX_DEPTH as u8,
     );
 
-    send(
+    send_transaction_from_instructions(
         &mut context.svm,
         vec![withdraw_ix],
-        &authority,
         &[&authority],
+        &authority.pubkey(),
     )
     .expect("withdraw_two_cnfts signed by the vault authority should succeed");
 
@@ -689,7 +665,12 @@ fn test_withdraw_two_cnfts_by_authority() {
     // single-tree withdraw against either tree with the cached roots fails.
     let replay1 =
         build_withdraw_cnft_instruction(&context, authority.pubkey(), &tree1, recipient.pubkey());
-    let replay = send(&mut context.svm, vec![replay1], &authority, &[&authority]);
+    let replay = send_transaction_from_instructions(
+        &mut context.svm,
+        vec![replay1],
+        &[&authority],
+        &authority.pubkey(),
+    );
     assert!(
         replay.is_err(),
         "cNFT#1 already left the vault, replay must fail"
@@ -720,11 +701,11 @@ fn test_withdraw_two_cnfts_rejects_out_of_range_proof_length() {
         0,
     );
 
-    let result = send(
+    let result = send_transaction_from_instructions(
         &mut context.svm,
         vec![withdraw_ix],
-        &authority,
         &[&authority],
+        &authority.pubkey(),
     );
     assert_custom_error(result, VaultError::ProofLengthMismatch);
 }
@@ -749,11 +730,11 @@ fn test_withdraw_two_cnfts_rejects_inconsistent_proof_lengths() {
         MAX_DEPTH as u8,
     );
 
-    let result = send(
+    let result = send_transaction_from_instructions(
         &mut context.svm,
         vec![withdraw_ix],
-        &authority,
         &[&authority],
+        &authority.pubkey(),
     );
     assert_custom_error(result, VaultError::ProofLengthMismatch);
 }
