@@ -129,7 +129,10 @@ pub fn handle_withdraw_liquidity(
             context.accounts.token_program.address(),
             Burn {
                 mint: context.accounts.liquidity_provider_mint.to_cpi_handle_mut(),
-                from: context.accounts.liquidity_provider_token.to_cpi_handle_mut(),
+                from: context
+                    .accounts
+                    .liquidity_provider_token
+                    .to_cpi_handle_mut(),
                 authority: context.accounts.withdrawer.cpi_handle(),
             },
         ),

@@ -58,10 +58,12 @@ pub fn handle_cancel_order(context: &mut Context<CancelOrderAccountConstraints>)
     // Remove the leaf from the slab. The current cancel API doesn't tell us
     // which side the order is on without reading the Order PDA - which we
     // already have, so use it.
-    let mut order_book = (&mut *context.accounts.order_book);
-    let removed = order_book.remove_from(order.side, order.order_id).is_some();
+    let removed = context
+        .accounts
+        .order_book
+        .remove_from(order.side, order.order_id)
+        .is_some();
     require!(removed, ErrorCode::OrderNotFound);
-    drop(order_book);
 
     let market_user = &mut context.accounts.market_user;
     remove_open_order(market_user, order.order_id);

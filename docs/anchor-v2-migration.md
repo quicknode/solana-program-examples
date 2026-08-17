@@ -207,6 +207,15 @@ Three ways this goes wrong:
    That includes the derive's own use of the account after the handler returns:
    `associated_token::authority = event`, `address = event.x` and friends all
    deref it. So the reacquire has to happen before the handler ends.
+
+   It also means the *seed material* has to be read before the release, since
+   reading `event.event_id` is a deref. Where a helper needs it, copy the fields
+   into a small struct while the borrow is live and pass that, so the ordering is
+   enforced by having to construct the struct first. `betting-market`'s
+   `EventSigner::new` is this; three handlers there sign a transfer for the event
+   PDA and all three would panic if they read `event_id` a line later. Clippy
+   pushes the other way here, because passing the fields individually is what
+   trips `too_many_arguments` on the helper: bundling them satisfies both.
 2. **Release and reacquire must be on the same branch.** Releasing inside
    `if fee > 0` and reacquiring unconditionally re-borrows an account you still
    hold.

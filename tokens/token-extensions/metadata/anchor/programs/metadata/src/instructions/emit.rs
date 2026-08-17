@@ -14,8 +14,8 @@ pub struct EmitAccountConstraints {
 pub fn process_emit(context: &mut Context<EmitAccountConstraints>) -> Result<()> {
     invoke(
         &emit(
-            &context.accounts.token_program.address(), // token program id
-            &context.accounts.mint_account.address(),  // "metadata" account
+            context.accounts.token_program.address(), // token program id
+            context.accounts.mint_account.address(),  // "metadata" account
             None,
             None,
         ),

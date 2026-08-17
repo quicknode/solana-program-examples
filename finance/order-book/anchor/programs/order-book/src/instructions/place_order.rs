@@ -45,7 +45,10 @@ pub fn handle_place_order(
 
     require!(market.is_active, ErrorCode::MarketPaused);
     require!(price > 0, ErrorCode::InvalidPrice);
-    require!(price % market.tick_size == 0, ErrorCode::InvalidTickSize);
+    require!(
+        price.is_multiple_of(market.tick_size),
+        ErrorCode::InvalidTickSize
+    );
     require!(
         quantity >= market.min_order_size,
         ErrorCode::BelowMinOrderSize
@@ -130,8 +133,8 @@ pub fn handle_place_order(
     // RefCell-based runtime borrow, so the loaded ref must not outlive the
     // plan we copy out of it.
     let (fills, taker_remaining) = {
-        let order_book = (&*order_book_loader);
-        plan_fills(&order_book, side, price, quantity)
+        let order_book = &*order_book_loader;
+        plan_fills(order_book, side, price, quantity)
     };
 
     require!(
@@ -345,7 +348,7 @@ pub fn handle_place_order(
     };
 
     {
-        let mut order_book = (&mut *order_book_loader);
+        let order_book = &mut *order_book_loader;
         for fill in &fills {
             order_book.apply_fill_to_maker(
                 maker_side,
@@ -414,7 +417,7 @@ pub fn handle_place_order(
     // ---------------------------------------------------------------
     let timestamp = Clock::get()?.unix_timestamp;
     let order_id = {
-        let mut order_book = (&mut *order_book_loader);
+        let order_book = &mut *order_book_loader;
         let id = order_book.allocate_order_id()?;
         if taker_remaining > 0 {
             require!(!order_book.is_side_full(side), ErrorCode::OrderBookFull);
@@ -462,7 +465,7 @@ pub fn handle_place_order(
 }
 
 #[derive(Accounts)]
-#[instruction(side: OrderSide, price: u64, quantity: u64)]
+#[instruction(_side: OrderSide, _price: u64, _quantity: u64)]
 pub struct PlaceOrderAccountConstraints {
     // `address` ties every market-owned account on this struct to the
     // addresses recorded on the Market PDA. Crucially, without
@@ -492,7 +495,7 @@ pub struct PlaceOrderAccountConstraints {
         seeds = [
             ORDER_SEED,
             market.address().as_ref(),
-            (&*order_book).next_order_id.to_le_bytes()
+            order_book.next_order_id.to_le_bytes()
         ],
         bump
     )]

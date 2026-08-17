@@ -6,7 +6,7 @@ use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
 
 use crate::{error::BettingError, Bet, EventStatus, User};
 
-use super::transfer_tokens_from_vault;
+use super::{transfer_tokens_from_vault, EventSigner};
 
 #[derive(Accounts)]
 pub struct ClaimWinningsAccountConstraints {
@@ -100,24 +100,21 @@ pub fn handle_claim_winnings(context: &mut Context<ClaimWinningsAccountConstrain
     // transfer (effects before interactions); the Bet account itself closes
     // when the instruction finishes.
     let bet_key = context.accounts.bet.address();
-    context.accounts.user.remove_bet(&bet_key)?;
+    context.accounts.user.remove_bet(bet_key)?;
 
-    let event_id = context.accounts.event.event_id;
-    let event_bump = context.accounts.event.bump;
+    // Gather the signing material before the borrow goes away.
+    let event_signer = EventSigner::new(&context.accounts.event);
     // `event` signs the transfer below. Release its borrow across
     // the CPI: the runtime rejects a CPI that borrows an account we hold.
     context.accounts.event.release_borrow()?;
-    let event_view = *context.accounts.event.account();
 
     transfer_tokens_from_vault(
         &mut context.accounts.vault,
         &mut context.accounts.bettor_token_account,
         payout,
         &context.accounts.token_mint,
-        event_view,
+        &event_signer,
         &context.accounts.token_program,
-        event_id,
-        event_bump,
     )?;
 
     // Take the borrow back before the derive's exit path touches `event` again.

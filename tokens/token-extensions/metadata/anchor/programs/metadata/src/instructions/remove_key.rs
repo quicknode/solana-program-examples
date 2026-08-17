@@ -22,9 +22,9 @@ pub fn process_remove_key(
 ) -> Result<()> {
     invoke(
         &remove_key(
-            &context.accounts.token_program.address(), // token program id
-            &context.accounts.mint_account.address(),  // "metadata" account
-            &context.accounts.update_authority.address(), // update authority
+            context.accounts.token_program.address(), // token program id
+            context.accounts.mint_account.address(),  // "metadata" account
+            context.accounts.update_authority.address(), // update authority
             key,                                       // key to remove
             true, // idempotent flag, if true transaction will not fail if key does not exist
         ),

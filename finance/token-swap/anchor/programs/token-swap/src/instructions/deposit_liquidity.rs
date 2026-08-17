@@ -19,7 +19,7 @@ fn integer_sqrt(n: u128) -> u128 {
         return n;
     }
     let mut x = n;
-    let mut y = (x + 1) / 2;
+    let mut y = x.div_ceil(2);
     while y < x {
         x = y;
         y = (x + n / x) / 2;
@@ -236,7 +236,10 @@ pub fn handle_deposit_liquidity(
             context.accounts.token_program.address(),
             MintTo {
                 mint: context.accounts.liquidity_provider_mint.to_cpi_handle_mut(),
-                to: context.accounts.liquidity_provider_token.to_cpi_handle_mut(),
+                to: context
+                    .accounts
+                    .liquidity_provider_token
+                    .to_cpi_handle_mut(),
                 authority: context.accounts.pool_authority.cpi_handle(),
             },
             signer_seeds,

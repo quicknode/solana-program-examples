@@ -51,6 +51,23 @@ members = [
     "basics/transfer-sol/asm",
 
     # finance
+    #
+    # Each of these also sits under its project's own `anchor/Cargo.toml`
+    # workspace, which is what `anchor build` uses. Listing them here as well
+    # puts them in front of the repository-wide `cargo fmt` and `cargo clippy`
+    # jobs, which only ever see members of this workspace.
+    #
+    # The two `mock-switchboard` crates are excluded below: they share a package
+    # name, and one workspace cannot hold two packages called the same thing.
+    # They stay path dependencies of the programs that test against them.
+    "finance/betting-market/anchor/programs/betting-market",
+    "finance/escrow/anchor/programs/escrow",
+    "finance/lending/anchor/programs/lending",
+    "finance/order-book/anchor/programs/order-book",
+    "finance/perpetual-futures/anchor/programs/perpetual-futures",
+    "finance/prop-amm/anchor/programs/prop-amm",
+    "finance/token-fundraiser/anchor/programs/fundraiser",
+    "finance/token-swap/anchor/programs/token-swap",
     "finance/vault-strategy/anchor/programs/vault-strategy",
     "finance/vault-strategy/anchor/programs/mock-swap-router",
 
@@ -65,6 +82,13 @@ members = [
     "tokens/transfer-tokens/native/program",
     "tokens/nft-minter/native/program",
     "tokens/pda-mint-authority/native/program",
+]
+# A path dependency inside the workspace directory joins the workspace unless it
+# is excluded. Both of these are named `mock_switchboard`, so leaving them in
+# fails with "two packages named `mock_switchboard` in this workspace".
+exclude = [
+    "finance/perpetual-futures/anchor/programs/mock-switchboard",
+    "finance/prop-amm/anchor/programs/mock-switchboard",
 ]
 resolver = "2"
 
