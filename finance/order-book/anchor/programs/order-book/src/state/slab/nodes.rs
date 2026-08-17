@@ -258,7 +258,7 @@ pub enum NodeRefMut<'a> {
 }
 
 impl AnyNode {
-    pub fn case(&self) -> Option<NodeRef> {
+    pub fn case(&self) -> Option<NodeRef<'_>> {
         match NodeTag::from_u8(self.tag)? {
             NodeTag::InnerNode => Some(NodeRef::Inner(cast_ref(self))),
             NodeTag::LeafNode => Some(NodeRef::Leaf(cast_ref(self))),
@@ -266,7 +266,7 @@ impl AnyNode {
         }
     }
 
-    pub fn case_mut(&mut self) -> Option<NodeRefMut> {
+    pub fn case_mut(&mut self) -> Option<NodeRefMut<'_>> {
         match NodeTag::from_u8(self.tag)? {
             NodeTag::InnerNode => Some(NodeRefMut::Inner(cast_mut(self))),
             NodeTag::LeafNode => Some(NodeRefMut::Leaf(cast_mut(self))),

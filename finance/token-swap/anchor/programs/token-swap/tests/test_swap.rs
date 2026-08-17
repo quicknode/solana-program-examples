@@ -1385,7 +1385,11 @@ fn test_withdraw_reverts_when_below_min() {
         &ts.payer.pubkey(),
     );
     let err = format!("{:?}", result.expect_err("must revert (A side)"));
-    assert_program_error(&err, AmmError::WithdrawalBelowMinimum, "WithdrawalBelowMinimum");
+    assert_program_error(
+        &err,
+        AmmError::WithdrawalBelowMinimum,
+        "WithdrawalBelowMinimum",
+    );
 
     // Same on the B side.
     let strict_ix_b = withdraw_ix_with_min(&ts, lp / 2, 0, 4_000_000);
@@ -1396,7 +1400,11 @@ fn test_withdraw_reverts_when_below_min() {
         &ts.payer.pubkey(),
     );
     let err_b = format!("{:?}", result_b.expect_err("must revert (B side)"));
-    assert_program_error(&err_b, AmmError::WithdrawalBelowMinimum, "WithdrawalBelowMinimum");
+    assert_program_error(
+        &err_b,
+        AmmError::WithdrawalBelowMinimum,
+        "WithdrawalBelowMinimum",
+    );
 }
 
 /// Slippage test: passing `min_output_amount = 0` is the explicit

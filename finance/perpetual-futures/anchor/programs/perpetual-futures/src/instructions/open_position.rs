@@ -126,7 +126,10 @@ pub fn handle_open_position(
 }
 
 #[derive(Accounts)]
-#[instruction(side: Side)]
+// The leading underscore is for rustc: `#[derive(Accounts)]` expands
+// `_side` into a path that never reads it, so the plain name warns as
+// unused. The `seeds` expression below is the real use.
+#[instruction(_side: Side)]
 pub struct OpenPositionAccountConstraints {
     #[account(mut)]
     pub owner: Signer,
@@ -142,7 +145,7 @@ pub struct OpenPositionAccountConstraints {
         init,
         payer = owner,
         space = Position::DISCRIMINATOR.len() + Position::INIT_SPACE,
-        seeds = [POSITION_SEED, pool.address().as_ref(), owner.address().as_ref(), side.as_seed()],
+        seeds = [POSITION_SEED, pool.address().as_ref(), owner.address().as_ref(), _side.as_seed()],
         bump,
     )]
     pub position: Box<BorshAccount<Position>>,

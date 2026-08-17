@@ -29,7 +29,7 @@ wincode = { version = "0.5", features = ["derive"] }
 # belong to the version the account derives are not using and every
 # `SchemaRead`/`SchemaWrite` bound fails. 2.6.1 is the last 0.5-line release.
 solana-address = ">=2.6, <2.7"
-anchor-spl = { version = "2.0.0-rc.1", features = ["metadata"] }
+anchor-spl = "2.0.0-rc.1"
 # `fixed` removed: all financial math is now u128 + checked_*, matching how
 # production Solana AMMs (Orca, Raydium, Meteora, Saber) do it. Floats /
 # fixed-point types are not used for money in this program.

@@ -21,8 +21,11 @@ pub fn handle_initialize_config(
     Ok(())
 }
 
+// The leading underscores are for rustc: `#[derive(Accounts)]` expands these
+// into a path that never reads them, so the plain names warn as unused. The
+// `constraint` expressions below are the real use.
 #[derive(Accounts)]
-#[instruction(fee: u16, admin_share_bps: u16)]
+#[instruction(_fee: u16, _admin_share_bps: u16)]
 pub struct InitializeConfigAccountConstraints {
     #[account(
         init,
@@ -30,8 +33,8 @@ pub struct InitializeConfigAccountConstraints {
         space = Config::DISCRIMINATOR.len() + Config::INIT_SPACE,
         seeds = [CONFIG_SEED],
         bump,
-        constraint = (fee as u64) < BASIS_POINTS_DIVISOR @ AmmError::InvalidFee,
-        constraint = (admin_share_bps as u64) < BASIS_POINTS_DIVISOR @ AmmError::AdminShareTooHigh,
+        constraint = (_fee as u64) < BASIS_POINTS_DIVISOR @ AmmError::InvalidFee,
+        constraint = (_admin_share_bps as u64) < BASIS_POINTS_DIVISOR @ AmmError::AdminShareTooHigh,
     )]
     pub config: BorshAccount<Config>,
 

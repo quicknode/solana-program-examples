@@ -54,7 +54,7 @@ solana-kite = "0.4.0"
 borsh = "1.6.1"
 # The LiteSVM tests load the compiled mock oracle program; depending on the
 # crate here lets the tests reuse its instruction-argument types and program ID.
-mock_switchboard = { path = "../mock-switchboard", features = ["no-entrypoint"] }
+mock_switchboard = { package = "mock_switchboard_prop_amm", path = "../mock-switchboard", features = ["no-entrypoint"] }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }
