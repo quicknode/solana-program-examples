@@ -29,7 +29,7 @@ pub struct InitializeExtraAccountMetaListAccountConstraints {
 }
 
 pub fn handler(
-    mut context: &mut Context<InitializeExtraAccountMetaListAccountConstraints>,
+    context: &mut Context<InitializeExtraAccountMetaListAccountConstraints>,
 ) -> Result<()> {
     // set authority field on white_list account as payer address
     context.accounts.white_list.authority = *context.accounts.payer.address();

@@ -10,7 +10,7 @@ use anchor_lang::solana_program::{
 use borsh::BorshSerialize;
 
 #[derive(Accounts)]
-#[instruction(params: MintParams)]
+#[instruction(_params: MintParams)]
 pub struct MintAccountConstraints {
     pub payer: Signer,
 
@@ -192,7 +192,10 @@ pub fn handle_mint(
         context.accounts.payer.cpi_handle(),
         context.accounts.tree_delegate.cpi_handle(),
         context.accounts.collection_authority.cpi_handle(),
-        context.accounts.collection_authority_record_pda.cpi_handle(),
+        context
+            .accounts
+            .collection_authority_record_pda
+            .cpi_handle(),
         context.accounts.collection_mint.cpi_handle(),
         context.accounts.collection_metadata.cpi_handle_mut().into(),
         context.accounts.edition_account.cpi_handle(),
@@ -202,7 +205,6 @@ pub fn handle_mint(
         context.accounts.token_metadata_program.cpi_handle(),
         context.accounts.system_program.cpi_handle(),
     ];
-
 
     invoke(&instruction, &account_infos)?;
 

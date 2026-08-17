@@ -41,9 +41,9 @@ pub fn handler(context: &mut Context<InitializeAccountConstraints>) -> Result<()
                 to: context.accounts.token_account.cpi_handle_mut(),
             },
         ),
-        lamports,                                  // Lamports
-        token_account_size as u64,                 // Space
-        &context.accounts.token_program.address(), // Owner Program
+        lamports,                                 // Lamports
+        token_account_size as u64,                // Space
+        context.accounts.token_program.address(), // Owner Program
     )?;
 
     // Initialize the standard token account data

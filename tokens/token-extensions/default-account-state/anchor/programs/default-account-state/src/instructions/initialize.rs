@@ -39,9 +39,9 @@ pub fn handler(context: &mut Context<InitializeAccountConstraints>) -> Result<()
                 to: context.accounts.mint_account.cpi_handle_mut(),
             },
         ),
-        lamports,                                  // Lamports
-        mint_size as u64,                          // Space
-        &context.accounts.token_program.address(), // Owner Program
+        lamports,                                 // Lamports
+        mint_size as u64,                         // Space
+        context.accounts.token_program.address(), // Owner Program
     )?;
 
     // Initialize the NonTransferable extension
@@ -64,9 +64,9 @@ pub fn handler(context: &mut Context<InitializeAccountConstraints>) -> Result<()
                 mint: context.accounts.mint_account.cpi_handle_mut(),
             },
         ),
-        2,                                       // decimals
-        &context.accounts.payer.address(),       // mint authority
-        Some(&context.accounts.payer.address()), // freeze authority
+        2,                                      // decimals
+        context.accounts.payer.address(),       // mint authority
+        Some(context.accounts.payer.address()), // freeze authority
     )?;
     Ok(())
 }

@@ -63,7 +63,7 @@ pub fn handle_mint_nft(context: &mut Context<MintNftAccountConstraints>) -> Resu
         ),
         lamports_required,
         space as u64,
-        &context.accounts.token_program.address(),
+        context.accounts.token_program.address(),
     )?;
 
     // Assign the mint to the token program
@@ -81,7 +81,7 @@ pub fn handle_mint_nft(context: &mut Context<MintNftAccountConstraints>) -> Resu
     let init_meta_data_pointer_ix =
         match spl_token_2022::extension::metadata_pointer::instruction::initialize(
             &Token2022::id(),
-            &context.accounts.mint.address(),
+            context.accounts.mint.address(),
             Some(*context.accounts.nft_authority.address()),
             Some(*context.accounts.mint.address()),
         ) {
@@ -106,8 +106,7 @@ pub fn handle_mint_nft(context: &mut Context<MintNftAccountConstraints>) -> Resu
         },
     );
 
-    token_2022::initialize_mint2(mint_cpi_ix, 0, &nft_authority_address, None)
-    .unwrap();
+    token_2022::initialize_mint2(mint_cpi_ix, 0, &nft_authority_address, None).unwrap();
 
     // We use a PDA as a mint authority for the metadata account because
     // we want to be able to update the NFT from the program.
