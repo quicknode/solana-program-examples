@@ -28,9 +28,9 @@ pub struct TransferTokenAccountConstraints {
 
 pub fn handler(context: &mut Context<TransferTokenAccountConstraints>, amount: u64) -> Result<()> {
     let cpi_accounts = TransferChecked {
-        from: context.accounts.from.cpi_handle_mut().clone(),
-        mint: context.accounts.mint.cpi_handle().clone(),
-        to: context.accounts.to_ata.cpi_handle_mut().clone(),
+        from: context.accounts.from.cpi_handle_mut(),
+        mint: context.accounts.mint.cpi_handle(),
+        to: context.accounts.to_ata.cpi_handle_mut(),
         authority: context.accounts.signer.cpi_handle(),
     };
     let cpi_program = context.accounts.token_program.address();

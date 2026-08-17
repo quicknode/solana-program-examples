@@ -10,10 +10,14 @@ solana-program.workspace = true
 solana-system-interface = { version = "2.0.0", features = ["bincode"] }
 spl-token-interface = "2.0.0"
 spl-associated-token-account-interface = "2.0.0"
-mpl-token-metadata = "5.1.1"
+# anchor-spl 2.0.0-rc.1 depends on `=5.1.2-alpha.2`, and a caret range excludes
+# pre-releases, so `^5.1.1` here and that exact pin cannot both be satisfied in
+# one lockfile. Matching the pin is what lets the anchor and native token
+# examples share a workspace.
+mpl-token-metadata = "=5.1.2-alpha.2"
 # Alias for the (older) solana-program version mpl-token-metadata's instruction
 # builders return, so we can name that Instruction/Pubkey type when bridging.
-mpl-solana-program = { package = "solana-program", version = "2.3" }
+mpl-solana-program = { package = "solana-program", version = "3.0" }
 
 [lib]
 crate-type = ["cdylib", "lib"]

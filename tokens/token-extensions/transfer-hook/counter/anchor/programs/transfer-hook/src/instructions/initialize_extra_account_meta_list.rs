@@ -31,7 +31,7 @@ pub struct InitializeExtraAccountMetaListAccountConstraints {
 }
 
 pub fn handler(
-    mut context: &mut Context<InitializeExtraAccountMetaListAccountConstraints>,
+    context: &mut Context<InitializeExtraAccountMetaListAccountConstraints>,
 ) -> Result<()> {
     let extra_account_metas = handle_extra_account_metas()?;
 

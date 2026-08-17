@@ -26,13 +26,13 @@ pub struct TransferHookAccountConstraints {
 
 pub fn handler(context: &mut Context<TransferHookAccountConstraints>, _amount: u64) -> Result<()> {
     // Fail this instruction if it is not called from within a transfer hook
-    check_is_transferring(&context)?;
+    check_is_transferring(context)?;
 
     if !context
         .accounts
         .white_list
         .white_list
-        .contains(&context.accounts.destination_token.address())
+        .contains(context.accounts.destination_token.address())
     {
         panic!("Account not in white list!");
     }

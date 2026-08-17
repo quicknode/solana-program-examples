@@ -21,9 +21,13 @@ pinocchio::default_panic_handler!();
 
 /// `sha256("spl-transfer-hook-interface:execute")[..8]`, the discriminator
 /// Token-2022 uses when it calls a mint's transfer hook.
+// Read only by `entrypoint` below, which the host build cfgs out.
+#[cfg(target_os = "solana")]
 const EXECUTE_DISCRIMINATOR: [u8; 8] = [105, 37, 101, 197, 75, 251, 102, 26];
 
 /// `sha256("global:tx_hook")[..8]`, what anchor's dispatch matches on.
+// Read only by `entrypoint` below, which the host build cfgs out.
+#[cfg(target_os = "solana")]
 const TX_HOOK_DISCRIMINATOR: [u8; 8] = [55, 222, 121, 59, 26, 10, 108, 168];
 
 /// # Safety
@@ -37,10 +41,8 @@ const TX_HOOK_DISCRIMINATOR: [u8; 8] = [55, 222, 121, 59, 26, 10, 108, 168];
 pub unsafe extern "C" fn entrypoint(input: *mut u8, ix_data_ptr: *const u8) -> u64 {
     let len = *(ix_data_ptr.sub(8) as *const u64) as usize;
     if len >= EXECUTE_DISCRIMINATOR.len() {
-        let discriminator = core::slice::from_raw_parts_mut(
-            ix_data_ptr as *mut u8,
-            EXECUTE_DISCRIMINATOR.len(),
-        );
+        let discriminator =
+            core::slice::from_raw_parts_mut(ix_data_ptr as *mut u8, EXECUTE_DISCRIMINATOR.len());
         if discriminator == EXECUTE_DISCRIMINATOR {
             discriminator.copy_from_slice(&TX_HOOK_DISCRIMINATOR);
         }

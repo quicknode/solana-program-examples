@@ -54,7 +54,8 @@ pub fn is_valid_session(
         return Ok(false);
     }
     let mut payload = &data[disc_len..];
-    let Ok(token) = <SessionToken as wincode::SchemaRead<anchor_lang::BorshConfig>>::get(&mut payload)
+    let Ok(token) =
+        <SessionToken as wincode::SchemaRead<anchor_lang::BorshConfig>>::get(&mut payload)
     else {
         return Ok(false);
     };

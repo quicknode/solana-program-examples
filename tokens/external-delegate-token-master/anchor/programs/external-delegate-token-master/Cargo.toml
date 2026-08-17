@@ -29,7 +29,7 @@ wincode = { version = "0.5", features = ["derive"] }
 # belong to the version the account derives are not using and every
 # `SchemaRead`/`SchemaWrite` bound fails. 2.6.1 is the last 0.5-line release.
 solana-address = ">=2.6, <2.7"
-anchor-spl = { version = "2.0.0-rc.1", features = ["metadata"] }
+anchor-spl = "2.0.0-rc.1"
 sha3 = "0.10.8"
 solana-secp256k1-recover = "2.0.0"
 

@@ -4,8 +4,7 @@ use {
     anchor_spl::{
         token_2022::spl_token_2022::{
             extension::{
-                transfer_hook::TransferHookAccount, BaseStateWithExtensions,
-                PodStateWithExtensions,
+                transfer_hook::TransferHookAccount, BaseStateWithExtensions, PodStateWithExtensions,
             },
             pod::PodAccount,
         },

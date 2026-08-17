@@ -3,7 +3,7 @@ use crate::*;
 use anchor_lang::solana_program::instruction::{AccountMeta, Instruction};
 
 #[derive(Accounts)]
-#[instruction(params: VerifyParams)]
+#[instruction(_params: VerifyParams)]
 pub struct VerifyAccountConstraints {
     pub leaf_owner: Signer,
 
@@ -40,11 +40,11 @@ pub fn handle_verify(
     // and the proof accounts stay alive for the CPI below.
     let proof_accounts = context.remaining_accounts()?;
 
-    let asset_id = get_asset_id(&context.accounts.merkle_tree.address(), params.nonce);
+    let asset_id = get_asset_id(context.accounts.merkle_tree.address(), params.nonce);
     let leaf_hash = leaf_schema_v1_hash(
         &asset_id,
-        &context.accounts.leaf_owner.address(),
-        &context.accounts.leaf_delegate.address(),
+        context.accounts.leaf_owner.address(),
+        context.accounts.leaf_delegate.address(),
         params.nonce,
         &params.data_hash,
         &params.creator_hash,
