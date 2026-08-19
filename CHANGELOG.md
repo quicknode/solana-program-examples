@@ -11,8 +11,8 @@ and `cargo fmt --check` and `cargo clippy -- -D warnings` are clean.
 
 ### Changed
 
-- The remaining 39 Anchor examples — all of `tokens/`, `finance/` and
-  `compression/` — now build against `anchor-lang` 2.0.0-rc.1, joining the
+- The remaining 39 Anchor examples, all of `tokens/`, `finance/` and
+  `compression/`, now build against `anchor-lang` 2.0.0-rc.1, joining the
   `basics/` examples ported below. `.github/workflows/anchor.yml` installs
   2.0.0-rc.1, since `anchor build` under a v2 CLI will not build v1 programs.
 - `docs/anchor-v2-migration.md` collects every difference the port ran into,
@@ -20,12 +20,13 @@ and `cargo fmt --check` and `cargo clippy -- -D warnings` are clean.
   are called out: borrows held across CPIs, `Box`'s missing `cpi_handle_mut`
   forwarding, and hand-built read-only handles over a live data account.
 - `has_one` is deprecated in v2 and this repository's `rust.yml` runs
-  `cargo clippy -- -D warnings`, so all 152 uses across 59 files move to the
-  `address` constraint on the sibling field they named.
+  `cargo clippy -- -D warnings`, so every one of the 161 uses across 66 files
+  in the Anchor programs moves to the `address` constraint on the sibling field
+  it named. The Quasar crates keep `has_one`, which is still current there.
 - The seven `transfer-hook` examples supply their own entrypoint. v2's
-  `#[program(interface, ...)]` generates a CPI client and no dispatch — a
+  `#[program(interface, ...)]` generates a CPI client and no dispatch, so the
   program declared that way builds to a ~900-byte object with no `entrypoint`
-  symbol — while an executable `#[program]` limits custom discriminators to one
+  crate has no entrypoint symbol, while an executable `#[program]` limits
   byte, which the transfer-hook interface's eight-byte values cannot use. Each
   crate now builds with `no-entrypoint`, so anchor exports its dispatch as
   `__anchor_dispatch`, and `src/entrypoint.rs` maps the interface
@@ -45,7 +46,7 @@ and `cargo fmt --check` and `cargo clippy -- -D warnings` are clean.
 ### Removed
 
 - `tokens/token-extensions/nft-meta-data-pointer` no longer depends on
-  `session-keys`. That crate is Anchor v1 only — its `Session` derive requires
+  `session-keys`. That crate is Anchor v1 only: its `Session` derive requires
   `Option<Account<'info, SessionToken>>`, and `SessionToken` is not `Pod`, so
   v2's zero-copy `Account<T>` cannot hold it either. The program reads the
   session-token account layout itself (`src/session.rs`), checking owner,
