@@ -14,10 +14,11 @@ pub const FIXED_POINT_SCALE_DECIMALS: i32 = 18;
 /// 100% expressed in basis points.
 pub const BPS_DENOMINATOR: u128 = 10_000;
 
-/// Slots per year (~2.5 slots/s), for turning an APR in bps into a per-slot rate.
-pub const SLOTS_PER_YEAR: u128 = 78_840_000;
-
-/// Reject a price feed older than this many slots (~10s at 2.5 slots/s).
+/// Reject a price feed older than this many slots. Freshness is counted in
+/// slots, not unix time, because the runtime guarantees slot progression while
+/// the timestamp is validator-influenced. How long the window is in seconds
+/// follows the cluster's slot time, which the protocol lowers over time, so the
+/// window tightens on its own and never loosens.
 pub const MAX_PRICE_STALENESS_SLOTS: u64 = 25;
 
 /// SPL token account size, for the rent-exempt vault created in `initialize_reserve`.

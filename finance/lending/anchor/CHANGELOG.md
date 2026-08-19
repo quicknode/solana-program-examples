@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-08-14
+
+Move slots-per-year out of the code and into the reserve config. Turning an APR
+into the per-slot rate interest accrues at needs a slots-per-year divisor, and
+that divisor is the cluster's slot time in disguise. It was a `SLOTS_PER_YEAR`
+constant fixed at a 400ms slot, so a protocol change to the slot time would have
+raised the wall-clock rate every borrower pays with no code change and nothing
+to show for it. `ReserveConfig` now carries `slots_per_year`, `validate()`
+rejects zero, and the market owner retunes it with `update_reserve_config`.
+Tested by `slots_per_year_scales_the_per_slot_rate` and
+`rejects_zero_slots_per_year`.
+
 ## 2026-08-04
 
 Reject oracle prices from before a cluster restart. A halt stops the slot

@@ -21,18 +21,16 @@ pub const FIXED_POINT_SCALE_DECIMALS: i32 = 18;
 /// Denominator for every basis-point config value. 100% == 10_000 bps.
 pub const BPS_DENOMINATOR: u128 = 10_000;
 
-/// Slots per year, for turning an APR (in bps) into a per-slot rate.
-/// Solana targets ~2.5 slots/second: 2.5 * 60 * 60 * 24 * 365 = 78_840_000.
-pub const SLOTS_PER_YEAR: u128 = 78_840_000;
-
 /// Maximum distinct reserves an obligation may use as collateral, and
 /// separately as borrows. Bounds the account size and the compute cost of
 /// refresh_obligation (which iterates every entry).
 pub const MAX_OBLIGATION_RESERVES: usize = 4;
 
-/// A price feed older than this many slots is rejected as stale (~10s at 2.5
-/// slots/second). Freshness is measured in slots, not unix time, because the
-/// runtime guarantees slot progression while the timestamp is validator-influenced.
+/// A price feed older than this many slots is rejected as stale. Freshness is
+/// measured in slots, not unix time, because the runtime guarantees slot
+/// progression while the timestamp is validator-influenced. How long the window
+/// is in seconds follows the cluster's slot time, which the protocol lowers over
+/// time, so the window tightens on its own and never loosens.
 pub const MAX_PRICE_STALENESS_SLOTS: u64 = 25;
 
 // PDA seeds.

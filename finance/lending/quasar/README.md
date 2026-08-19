@@ -69,6 +69,16 @@ Everything else mirrors the Anchor version.
   the owner earns.
 - **Integer-only math**: `u128`, scaled by `FIXED_POINT_SCALE` (10^18), every
   conversion rounding in the protocol's favour.
+- **`slots_per_year`**: the divisor that turns a reserve's annual rate curve into
+  the per-slot rate interest accrues at. It is the cluster's slot time expressed
+  as a count, which is why it is stored rather than compiled in: Solana lowers
+  the slot time over time, and a reserve left on an old figure charges borrowers
+  more per day than the APR it advertises. Read the current slot time off the
+  cluster you deploy against (two
+  [`getBlockTime`](https://solana.com/docs/rpc/http/getblocktime) results a known
+  number of slots apart) and keep the reserve in step with
+  `update_slots_per_year`, which accrues at the old figure before storing the new
+  one.
 
 ### Instruction handlers (numeric discriminators)
 
@@ -77,7 +87,7 @@ Everything else mirrors the Anchor version.
 `initialize_obligation` (5), `deposit_obligation_collateral` (6),
 `withdraw_obligation_collateral` (7), `borrow_obligation_liquidity` (8),
 `repay_obligation_liquidity` (9), `liquidate_obligation` (10),
-`collect_protocol_fees` (11).
+`collect_protocol_fees` (11), `update_slots_per_year` (12).
 
 ## Setup
 

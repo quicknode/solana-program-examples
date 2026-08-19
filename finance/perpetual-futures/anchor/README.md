@@ -42,6 +42,8 @@ So a winning trader can always be paid, the pool **reserves** liquidity to back 
 
 [Funding](https://www.investopedia.com/terms/f/futurescontract.asp) anchors the pool's risk: the heavier side of [open interest](https://www.investopedia.com/terms/o/openinterest.asp) pays the pool over time. A cumulative funding index rises while longs are the larger side and falls while shorts are, advancing by `funding_rate_per_slot` each [slot](https://solana.com/docs/terminology#slot); a position records the index at open and settles the change when it closes. In a pool-based perp this is the equivalent of the borrow fee Jupiter Perpetuals charges.
 
+Because the rate is quoted per slot, what a position costs per hour depends on the cluster's slot time as well as on the rate. Solana lowers the slot time over time, so a pool that outlives a reduction charges the heavier side more per hour than it was set up to. `set_funding_rate(funding_rate_per_slot)` lets the pool authority bring it back in line; it advances the index at the old rate first, so slots already elapsed are charged at the rate that was in force for them.
+
 ### Maintenance margin and liquidation
 
 A position's *equity* is its net collateral plus profit/loss minus funding. Once equity falls to or below the [maintenance margin](https://www.investopedia.com/terms/m/maintenancemargin.asp) (`maintenance_margin_bps` of notional), the position can be [liquidated](https://www.investopedia.com/terms/l/liquidation.asp). Liquidation is permissionless: anyone can crank it and earn the liquidation fee.
@@ -205,7 +207,7 @@ This is a teaching example, not an audited exchange. Notably:
 
 ## Testing
 
-The tests run in-process with [LiteSVM](https://www.anchor-lang.com/docs/testing/litesvm) and [solana-kite](https://solanakite.org); no local validator is needed. They deploy both programs, drive the mock oracle, and cover liquidity round-trips, opening and closing longs and shorts in profit and loss, leverage and slippage rejection, stale-price, pre-restart-price, and wide-confidence rejection, funding accrual, liquidation (and the refusal to liquidate a healthy position), reserved-liquidity behaviour (profit capped at the reserve, opens rejected when the pool can't back them, withdrawals blocked by reserved liquidity), and fee collection.
+The tests run in-process with [LiteSVM](https://www.anchor-lang.com/docs/testing/litesvm) and [solana-kite](https://solanakite.org); no local validator is needed. They deploy both programs, drive the mock oracle, and cover liquidity round-trips, opening and closing longs and shorts in profit and loss, leverage and slippage rejection, stale-price, pre-restart-price, and wide-confidence rejection, funding accrual, funding-rate retuning (including that it settles elapsed slots at the old rate, and that only the authority may call it), liquidation (and the refusal to liquidate a healthy position), reserved-liquidity behaviour (profit capped at the reserve, opens rejected when the pool can't back them, withdrawals blocked by reserved liquidity), and fee collection.
 
 ```bash
 anchor build

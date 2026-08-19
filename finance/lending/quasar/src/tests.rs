@@ -29,6 +29,12 @@ fn cents(amount: u64) -> i128 {
 const DECIMALS: u8 = 6;
 const UNIT: u64 = 1_000_000; // 1 token at 6 decimals
 
+/// Slots in a year, which is how a reserve turns an APR into a per-slot rate.
+/// 78_840_000 is a 400ms slot: 2.5 slots/second * 60 * 60 * 24 * 365. It is a
+/// fixture, not a law: a deployment reads the slot time off the cluster it
+/// points at and calls `update_slots_per_year` when the protocol changes it.
+const SLOTS_PER_YEAR: u64 = 78_840_000;
+
 // Deterministic addresses.
 const OWNER: Pubkey = Pubkey::new_from_array([1; 32]);
 const SUPPLIER: Pubkey = Pubkey::new_from_array([2; 32]);
@@ -149,6 +155,7 @@ fn initialize_reserve(test: &mut Test, w: &Pdas, the_mint: Pubkey) {
         min_borrow_rate_bps: 200,
         optimal_borrow_rate_bps: 2_000,
         max_borrow_rate_bps: 15_000,
+        slots_per_year: SLOTS_PER_YEAR,
     })
     .succeeds();
 }
@@ -557,6 +564,7 @@ mod slot_warp {
             for value in config {
                 data.extend_from_slice(&value.to_le_bytes());
             }
+            data.extend_from_slice(&crate::tests::SLOTS_PER_YEAR.to_le_bytes());
             let metas = vec![
                 meta(OWNER, true, true),
                 meta(self.market, false, false),
@@ -718,6 +726,17 @@ mod slot_warp {
         /// Market owner collects accrued protocol fees from the borrow reserve
         /// into `OWNER_BORROW`. The handler accrues interest itself, so no
         /// separate refresh.
+        fn update_slots_per_year(&mut self, slots_per_year: u64) -> quasar_svm::ExecutionResult {
+            let mut data = vec![12u8];
+            data.extend_from_slice(&slots_per_year.to_le_bytes());
+            let metas = vec![
+                meta(OWNER, false, true),
+                meta(self.market, false, false),
+                meta(self.borrow_reserve, true, false),
+            ];
+            self.run(data, metas)
+        }
+
         fn collect_borrow_fees(&mut self) -> quasar_svm::ExecutionResult {
             let metas = vec![
                 meta(OWNER, true, true),
@@ -777,6 +796,44 @@ mod slot_warp {
         world.set_price(COLLATERAL_MINT, world.collateral_price, dollars(1));
         world.set_price(BORROW_MINT, world.borrow_price, dollars(1));
         world.borrow(100 * UNIT).assert_success();
+    }
+
+    /// `slots_per_year` is how the reserve converts its annual rate curve into
+    /// the per-slot rate it actually charges, so it carries the cluster's slot
+    /// time. Halving it doubles what accrues over the same number of slots,
+    /// which is what makes it configuration: when the protocol shortens the
+    /// slot, an owner who leaves the old figure in place charges borrowers more
+    /// per day than the APR they were quoted.
+    #[test]
+    fn retuning_slots_per_year_rescales_accrual() {
+        let mut world = World::new();
+        world.bootstrap_position();
+        world.borrow(500 * UNIT).assert_success();
+
+        // First window, at the figure the reserve was created with.
+        let window = 7_884_000;
+        let start = world.svm.sysvars.clock.slot;
+        world.svm.sysvars.warp_to_slot(start + window);
+        let first = balance(&world.collect_borrow_fees(), OWNER_BORROW);
+        assert!(first > 0, "the first window must accrue collectable fees");
+
+        // Halve the slot time, so a year now takes half as many slots.
+        world
+            .update_slots_per_year(super::SLOTS_PER_YEAR / 2)
+            .assert_success();
+
+        // Second window of exactly the same length.
+        world.svm.sysvars.warp_to_slot(start + 2 * window);
+        let second = balance(&world.collect_borrow_fees(), OWNER_BORROW) - first;
+
+        // Not exactly 2x: the factor compounds across the two windows and the
+        // first collection took liquidity out of the pool, both of which nudge
+        // the second window up. The band is wide enough for that and far too
+        // narrow to pass if the new figure were ignored.
+        assert!(
+            second * 10 >= first * 18 && second * 10 <= first * 22,
+            "halving slots_per_year should roughly double accrual: {first} then {second}"
+        );
     }
 
     #[test]

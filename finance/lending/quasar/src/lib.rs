@@ -55,6 +55,7 @@ mod quasar_lending {
         min_borrow_rate_bps: u16,
         optimal_borrow_rate_bps: u16,
         max_borrow_rate_bps: u16,
+        slots_per_year: u64,
     ) -> Result<(), ProgramError> {
         ctx.accounts.run(
             loan_to_value_bps,
@@ -66,6 +67,7 @@ mod quasar_lending {
             min_borrow_rate_bps,
             optimal_borrow_rate_bps,
             max_borrow_rate_bps,
+            slots_per_year,
             &ctx.bumps,
         )
     }
@@ -143,5 +145,13 @@ mod quasar_lending {
     #[instruction(discriminator = 11)]
     pub fn collect_protocol_fees(ctx: Ctx<CollectProtocolFees>) -> Result<(), ProgramError> {
         ctx.accounts.run()
+    }
+
+    #[instruction(discriminator = 12)]
+    pub fn update_slots_per_year(
+        ctx: Ctx<UpdateSlotsPerYear>,
+        slots_per_year: u64,
+    ) -> Result<(), ProgramError> {
+        ctx.accounts.run(slots_per_year)
     }
 }

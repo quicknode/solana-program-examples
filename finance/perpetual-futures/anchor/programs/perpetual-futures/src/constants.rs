@@ -25,8 +25,9 @@ pub const SIZE_PRECISION: u128 = 1_000_000_000;
 pub const MINIMUM_LIQUIDITY: u64 = 1_000;
 
 /// Reject an oracle price older than this many slots. Slot count is what the
-/// runtime guarantees; unix timestamps are validator-influenced. ~150 slots is
-/// roughly one minute at 400ms/slot.
+/// runtime guarantees; unix timestamps are validator-influenced. How long the
+/// window is in seconds follows the cluster's slot time, which the protocol
+/// lowers over time, so the window tightens on its own and never loosens.
 pub const MAX_PRICE_STALENESS_SLOTS: u64 = 150;
 
 /// Upper bound on the per-pool `max_leverage` parameter, so a pool cannot be
