@@ -31,6 +31,7 @@ idl-build = ["quasar-lang/idl-build"]
 # .github/workflows/quasar.yml.
 quasar-lang = { git = "https://github.com/blueshift-gg/quasar", rev = "be60fca" }
 solana-instruction = { version = "3.2.0" }
+zeropod = "=0.3.3"
 
 [dev-dependencies]
 quasar-test = { git = "https://github.com/blueshift-gg/quasar", rev = "be60fca" }
