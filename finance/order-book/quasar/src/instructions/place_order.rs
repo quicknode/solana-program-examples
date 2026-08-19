@@ -130,14 +130,23 @@ pub fn handle_place_order(
 ) -> Result<(), ProgramError> {
     let side = OrderSide::from_u8(side_byte).ok_or(OrderBookError::InvalidSide)?;
 
-    require!(accounts.market.is_active.is_true(), OrderBookError::MarketPaused);
+    require!(
+        accounts.market.is_active.is_true(),
+        OrderBookError::MarketPaused
+    );
     require!(price > 0, OrderBookError::InvalidPrice);
 
     let tick_size = u64::from(accounts.market.tick_size);
-    require!(price.is_multiple_of(tick_size), OrderBookError::InvalidTickSize);
+    require!(
+        price.is_multiple_of(tick_size),
+        OrderBookError::InvalidTickSize
+    );
 
     let min_order_size = u64::from(accounts.market.min_order_size);
-    require!(quantity >= min_order_size, OrderBookError::BelowMinOrderSize);
+    require!(
+        quantity >= min_order_size,
+        OrderBookError::BelowMinOrderSize
+    );
 
     require!(
         (accounts.market_user.open_orders_len as usize) < MAX_OPEN_ORDERS,
@@ -201,7 +210,10 @@ pub fn handle_place_order(
         // to this account's data is live.
         let data = unsafe { core::slice::from_raw_parts(view.data_ptr(), view.data_len()) };
         let order_book = load_order_book(data)?;
-        require!(order_book.next_order_id == order_id_arg, OrderBookError::OrderIdMismatch);
+        require!(
+            order_book.next_order_id == order_id_arg,
+            OrderBookError::OrderIdMismatch
+        );
         plan_fills(order_book, side, price, quantity)
     };
 
@@ -231,7 +243,8 @@ pub fn handle_place_order(
         // mutable handles.
         let order_view = unsafe { order_ra.as_account_view_unchecked_mut() };
         Account::<Order>::from_account_view(&*order_view)?;
-        let maker_order_acc = unsafe { Account::<Order>::from_account_view_unchecked_mut(order_view) };
+        let maker_order_acc =
+            unsafe { Account::<Order>::from_account_view_unchecked_mut(order_view) };
         let mut maker_order = snapshot_order(maker_order_acc);
 
         let user_view = unsafe { user_ra.as_account_view_unchecked_mut() };
@@ -244,9 +257,21 @@ pub fn handle_place_order(
             maker_order.order_id == fill.maker_order_id,
             OrderBookError::MakerAccountMismatch
         );
-        require_keys_eq!(maker_order.market, market_key, OrderBookError::MakerAccountMismatch);
-        require_keys_eq!(maker_order.owner, maker_user.owner, OrderBookError::MakerOwnerMismatch);
-        require_keys_eq!(maker_user.market, market_key, OrderBookError::MakerAccountMismatch);
+        require_keys_eq!(
+            maker_order.market,
+            market_key,
+            OrderBookError::MakerAccountMismatch
+        );
+        require_keys_eq!(
+            maker_order.owner,
+            maker_user.owner,
+            OrderBookError::MakerOwnerMismatch
+        );
+        require_keys_eq!(
+            maker_user.market,
+            market_key,
+            OrderBookError::MakerAccountMismatch
+        );
 
         // Fee model (maker-funded, no extra taker deposit):
         //   gross = fill_price × fill_quantity × quote_lot_size
@@ -385,8 +410,18 @@ pub fn handle_place_order(
         let order_book = load_order_book_mut(data)?;
         let id = order_book.allocate_order_id()?;
         if plan.taker_remaining > 0 {
-            require!(!order_book.is_side_full(side), OrderBookError::OrderBookFull);
-            order_book.place_resting(side, price, plan.taker_remaining, owner_bytes, id, timestamp)?;
+            require!(
+                !order_book.is_side_full(side),
+                OrderBookError::OrderBookFull
+            );
+            order_book.place_resting(
+                side,
+                price,
+                plan.taker_remaining,
+                owner_bytes,
+                id,
+                timestamp,
+            )?;
         }
         id
     };

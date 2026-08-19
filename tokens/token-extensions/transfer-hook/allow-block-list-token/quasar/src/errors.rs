@@ -1,7 +1,7 @@
 use quasar_lang::prelude::ProgramError;
 
-/// Custom error codes for the allow/block list program.
-/// Encoded as ProgramError::Custom(N).
+// Custom error codes for the allow/block list program.
+// Encoded as ProgramError::Custom(N).
 
 pub const ERROR_INVALID_METADATA: u32 = 6000;
 pub const ERROR_WALLET_NOT_ALLOWED: u32 = 6001;

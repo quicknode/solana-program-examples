@@ -8,9 +8,9 @@ use {
         cpi::{
             BorrowObligationLiquidityInstruction, DepositObligationCollateralInstruction,
             DepositReserveLiquidityInstruction, InitializeLendingMarketInstruction,
-            InitializeObligationInstruction, InitializeReserveInstruction, LiquidateObligationInstruction,
-            RedeemReserveCollateralInstruction, RepayObligationLiquidityInstruction,
-            SetPriceInstruction,
+            InitializeObligationInstruction, InitializeReserveInstruction,
+            LiquidateObligationInstruction, RedeemReserveCollateralInstruction,
+            RepayObligationLiquidityInstruction, SetPriceInstruction,
         },
         state::{LendingMarket, LiquidityVaultPda, Obligation, Reserve, ShareMintPda},
     },
@@ -80,7 +80,8 @@ fn pdas(test: &Test) -> Pdas {
         collateral_share_mint: test.derive_pda(ShareMintPda::seeds(&collateral_reserve)),
         // Feed PDAs are seeded by (market, mint) — scoped to the market, not
         // to any individual.
-        collateral_price: test.derive_pda(crate::state::PriceFeed::seeds(&market, &COLLATERAL_MINT)),
+        collateral_price: test
+            .derive_pda(crate::state::PriceFeed::seeds(&market, &COLLATERAL_MINT)),
         borrow_reserve,
         borrow_vault: test.derive_pda(LiquidityVaultPda::seeds(&borrow_reserve)),
         borrow_share_mint: test.derive_pda(ShareMintPda::seeds(&borrow_reserve)),
@@ -122,7 +123,9 @@ fn base_world(test: &mut Test) -> Pdas {
             .at(LIQUIDATOR_BORROW)
             .amount(1_000 * UNIT),
     );
-    test.add(TokenAccount::new(w.collateral_share_mint, LIQUIDATOR).at(LIQUIDATOR_COLLATERAL_SHARE));
+    test.add(
+        TokenAccount::new(w.collateral_share_mint, LIQUIDATOR).at(LIQUIDATOR_COLLATERAL_SHARE),
+    );
     // Where the market owner receives collected protocol fees.
     test.add(TokenAccount::new(BORROW_MINT, OWNER).at(OWNER_BORROW));
     w
@@ -360,9 +363,9 @@ mod slot_warp {
     use {
         super::{dollars, EXP},
         super::{
-            BORROWER, BORROWER_BORROW, BORROWER_COLLATERAL, BORROWER_COLLATERAL_SHARE,
-            COLLATERAL_MINT, BORROW_MINT, DECIMALS, MARKET_ID, OWNER, OWNER_BORROW, QUOTE_MINT,
-            SUPPLIER, SUPPLIER_BORROW, SUPPLIER_BORROW_SHARE, UNIT,
+            BORROWER, BORROWER_BORROW, BORROWER_COLLATERAL, BORROWER_COLLATERAL_SHARE, BORROW_MINT,
+            COLLATERAL_MINT, DECIMALS, MARKET_ID, OWNER, OWNER_BORROW, QUOTE_MINT, SUPPLIER,
+            SUPPLIER_BORROW, SUPPLIER_BORROW_SHARE, UNIT,
         },
         quasar_svm::{Account, AccountMeta, Instruction, Pubkey, QuasarSvm},
         spl_token::state::{Account as SplToken, AccountState, Mint as SplMint},
@@ -489,7 +492,12 @@ mod slot_warp {
                 token(SUPPLIER_BORROW, BORROW_MINT, SUPPLIER, 1_000 * UNIT),
                 token(SUPPLIER_BORROW_SHARE, borrow_share_mint, SUPPLIER, 0),
                 token(BORROWER_COLLATERAL, COLLATERAL_MINT, BORROWER, 1_000 * UNIT),
-                token(BORROWER_COLLATERAL_SHARE, collateral_share_mint, BORROWER, 0),
+                token(
+                    BORROWER_COLLATERAL_SHARE,
+                    collateral_share_mint,
+                    BORROWER,
+                    0,
+                ),
                 token(BORROWER_BORROW, BORROW_MINT, BORROWER, 0),
                 // Where the market owner receives collected protocol fees.
                 token(OWNER_BORROW, BORROW_MINT, OWNER, 0),
@@ -788,9 +796,11 @@ mod slot_warp {
         world.svm.sysvars.warp_to_slot(restart_slot + 2);
         world.svm.sysvars.last_restart_slot.last_restart_slot = restart_slot;
 
-        world.borrow(100 * UNIT).assert_error(quasar_svm::ProgramError::Custom(
-            crate::error::LendingError::PricePredatesRestart as u32,
-        ));
+        world
+            .borrow(100 * UNIT)
+            .assert_error(quasar_svm::ProgramError::Custom(
+                crate::error::LendingError::PricePredatesRestart as u32,
+            ));
 
         // Publishing after the restart reopens the market.
         world.set_price(COLLATERAL_MINT, world.collateral_price, dollars(1));

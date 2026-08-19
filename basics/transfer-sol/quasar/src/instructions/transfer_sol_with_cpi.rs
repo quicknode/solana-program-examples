@@ -11,8 +11,12 @@ pub struct TransferSolWithCpiAccountConstraints {
 }
 
 #[inline(always)]
-pub fn handle_transfer_sol_with_cpi(accounts: &mut TransferSolWithCpiAccountConstraints, amount: u64) -> Result<(), ProgramError> {
-    accounts.system_program
+pub fn handle_transfer_sol_with_cpi(
+    accounts: &mut TransferSolWithCpiAccountConstraints,
+    amount: u64,
+) -> Result<(), ProgramError> {
+    accounts
+        .system_program
         .transfer(&accounts.payer, &accounts.recipient, amount)
         .invoke()
 }

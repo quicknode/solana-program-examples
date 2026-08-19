@@ -34,7 +34,10 @@ pub fn handle_add_outcome(
     bumps: &AddOutcomeAccountConstraintsBumps,
 ) -> Result<(), ProgramError> {
     let label_bytes = label.as_bytes();
-    require!(label_bytes.len() <= MAX_LABEL_LEN, BettingError::LabelTooLong);
+    require!(
+        label_bytes.len() <= MAX_LABEL_LEN,
+        BettingError::LabelTooLong
+    );
     require!(
         accounts.event.status == EventStatus::Open as u8,
         BettingError::EventNotOpen

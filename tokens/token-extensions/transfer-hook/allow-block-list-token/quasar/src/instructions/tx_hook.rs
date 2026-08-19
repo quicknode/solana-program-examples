@@ -1,7 +1,7 @@
 use quasar_lang::prelude::*;
 
 use crate::errors;
-use crate::state::{read_wallet_allowed, MODE_ALLOW, MODE_BLOCK, MODE_MIXED, AB_WALLET_SIZE};
+use crate::state::{read_wallet_allowed, AB_WALLET_SIZE, MODE_ALLOW, MODE_BLOCK, MODE_MIXED};
 
 /// Transfer hook handler. Called by Token Extensions during transfers.
 ///
@@ -23,7 +23,10 @@ pub struct TxHookAccountConstraints {
 }
 
 #[inline(always)]
-pub fn handle_tx_hook(accounts: &mut TxHookAccountConstraints, amount: u64) -> Result<(), ProgramError> {
+pub fn handle_tx_hook(
+    accounts: &mut TxHookAccountConstraints,
+    amount: u64,
+) -> Result<(), ProgramError> {
     let mint_view = accounts.mint.to_account_view();
     let mint_data = mint_view.try_borrow()?;
 
@@ -42,16 +45,16 @@ pub fn handle_tx_hook(accounts: &mut TxHookAccountConstraints, amount: u64) -> R
         (DecodedMintMode::Block, _) => Ok(()),
 
         // Mixed/Threshold mode: check amount threshold
-        (DecodedMintMode::Threshold(threshold), DecodedWalletMode::None)
-            if amount >= threshold =>
-        {
+        (DecodedMintMode::Threshold(threshold), DecodedWalletMode::None) if amount >= threshold => {
             Err(errors::amount_not_allowed())
         }
         (DecodedMintMode::Threshold(_), _) => Ok(()),
     }
 }
 
-fn decode_wallet_mode(accounts: &TxHookAccountConstraints) -> Result<DecodedWalletMode, ProgramError> {
+fn decode_wallet_mode(
+    accounts: &TxHookAccountConstraints,
+) -> Result<DecodedWalletMode, ProgramError> {
     let wallet_view = accounts.ab_wallet.to_account_view();
     if wallet_view.data_len() == 0 {
         return Ok(DecodedWalletMode::None);
@@ -134,28 +137,32 @@ fn decode_mint_mode(data: &[u8]) -> Result<DecodedMintMode, ProgramError> {
             if mpos + 4 > md.len() {
                 return Err(errors::invalid_metadata());
             }
-            let name_len = u32::from_le_bytes([md[mpos], md[mpos+1], md[mpos+2], md[mpos+3]]) as usize;
+            let name_len =
+                u32::from_le_bytes([md[mpos], md[mpos + 1], md[mpos + 2], md[mpos + 3]]) as usize;
             mpos += 4 + name_len;
 
             // Skip symbol
             if mpos + 4 > md.len() {
                 return Err(errors::invalid_metadata());
             }
-            let sym_len = u32::from_le_bytes([md[mpos], md[mpos+1], md[mpos+2], md[mpos+3]]) as usize;
+            let sym_len =
+                u32::from_le_bytes([md[mpos], md[mpos + 1], md[mpos + 2], md[mpos + 3]]) as usize;
             mpos += 4 + sym_len;
 
             // Skip uri
             if mpos + 4 > md.len() {
                 return Err(errors::invalid_metadata());
             }
-            let uri_len = u32::from_le_bytes([md[mpos], md[mpos+1], md[mpos+2], md[mpos+3]]) as usize;
+            let uri_len =
+                u32::from_le_bytes([md[mpos], md[mpos + 1], md[mpos + 2], md[mpos + 3]]) as usize;
             mpos += 4 + uri_len;
 
             // Read additional_metadata count
             if mpos + 4 > md.len() {
                 return Err(errors::invalid_metadata());
             }
-            let kv_count = u32::from_le_bytes([md[mpos], md[mpos+1], md[mpos+2], md[mpos+3]]) as usize;
+            let kv_count =
+                u32::from_le_bytes([md[mpos], md[mpos + 1], md[mpos + 2], md[mpos + 3]]) as usize;
             mpos += 4;
 
             for _ in 0..kv_count {
@@ -163,7 +170,9 @@ fn decode_mint_mode(data: &[u8]) -> Result<DecodedMintMode, ProgramError> {
                 if mpos + 4 > md.len() {
                     break;
                 }
-                let key_len = u32::from_le_bytes([md[mpos], md[mpos+1], md[mpos+2], md[mpos+3]]) as usize;
+                let key_len =
+                    u32::from_le_bytes([md[mpos], md[mpos + 1], md[mpos + 2], md[mpos + 3]])
+                        as usize;
                 mpos += 4;
                 if mpos + key_len > md.len() {
                     break;
@@ -175,7 +184,9 @@ fn decode_mint_mode(data: &[u8]) -> Result<DecodedMintMode, ProgramError> {
                 if mpos + 4 > md.len() {
                     break;
                 }
-                let val_len = u32::from_le_bytes([md[mpos], md[mpos+1], md[mpos+2], md[mpos+3]]) as usize;
+                let val_len =
+                    u32::from_le_bytes([md[mpos], md[mpos + 1], md[mpos + 2], md[mpos + 3]])
+                        as usize;
                 mpos += 4;
                 if mpos + val_len > md.len() {
                     break;
@@ -217,10 +228,12 @@ fn decode_mint_mode(data: &[u8]) -> Result<DecodedMintMode, ProgramError> {
 fn parse_u64_from_bytes(bytes: &[u8]) -> u64 {
     let mut result: u64 = 0;
     for &byte in bytes {
-        if byte < b'0' || byte > b'9' {
+        if !byte.is_ascii_digit() {
             return 0;
         }
-        result = result.saturating_mul(10).saturating_add((byte - b'0') as u64);
+        result = result
+            .saturating_mul(10)
+            .saturating_add((byte - b'0') as u64);
     }
     result
 }

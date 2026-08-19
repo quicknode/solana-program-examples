@@ -75,7 +75,8 @@ fn handle_create_mint(
     let rent = Rent::get()?;
     let lamports = rent.minimum_balance_unchecked(MINT_SPACE);
 
-    accounts.system_program
+    accounts
+        .system_program
         .create_account(
             &accounts.payer,
             &accounts.mint,
@@ -118,13 +119,11 @@ fn handle_mint_tokens(
     mint_bump: u8,
 ) -> Result<(), ProgramError> {
     let bump = [mint_bump];
-    let seeds: &[Seed] = &[
-        Seed::from(b"mint" as &[u8]),
-        Seed::from(&bump as &[u8]),
-    ];
+    let seeds: &[Seed] = &[Seed::from(b"mint" as &[u8]), Seed::from(&bump as &[u8])];
 
     let mint_view = accounts.mint.to_account_view().clone();
-    accounts.token_program
+    accounts
+        .token_program
         .mint_to(&mint_view, &accounts.token_account, &mint_view, amount)
         .invoke_signed(seeds)
 }

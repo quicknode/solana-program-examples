@@ -12,8 +12,20 @@ pub fn food_stand_name_matches(stand: &FoodStand, other: &str) -> bool {
 /// Static list of food stands.
 pub fn get_food_stands() -> &'static [FoodStand] {
     &[
-        FoodStand { name: "Larry's Pizza", food_type: "pizza", tickets: 3 },
-        FoodStand { name: "Taco Shack", food_type: "taco", tickets: 2 },
-        FoodStand { name: "Dough Boy's", food_type: "fried dough", tickets: 1 },
+        FoodStand {
+            name: "Larry's Pizza",
+            food_type: "pizza",
+            tickets: 3,
+        },
+        FoodStand {
+            name: "Taco Shack",
+            food_type: "taco",
+            tickets: 2,
+        },
+        FoodStand {
+            name: "Dough Boy's",
+            food_type: "fried dough",
+            tickets: 1,
+        },
     ]
 }

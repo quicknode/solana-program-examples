@@ -68,7 +68,10 @@ pub fn handle_check_contributions(
         .invoke_signed(&seeds)?;
 
     // Token conservation: the vault was fully drained.
-    require!(accounts.vault.amount() == 0, FundraiserError::BalanceMismatch);
+    require!(
+        accounts.vault.amount() == 0,
+        FundraiserError::BalanceMismatch
+    );
 
     // Close the vault token account, returning its rent to the maker.
     accounts

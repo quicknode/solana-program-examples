@@ -8,7 +8,7 @@
 use quasar_lang::prelude::*;
 
 mod constants;
-mod instructions;
+pub mod instructions;
 mod last_restart;
 pub mod state;
 #[cfg(test)]
@@ -72,11 +72,7 @@ mod quasar_prop_amm {
     }
 
     #[instruction(discriminator = 3)]
-    pub fn set_quote(
-        ctx: Ctx<SetQuote>,
-        spread_bps: u16,
-        paused: u8,
-    ) -> Result<(), ProgramError> {
+    pub fn set_quote(ctx: Ctx<SetQuote>, spread_bps: u16, paused: u8) -> Result<(), ProgramError> {
         instructions::handle_set_quote(&mut ctx.accounts, spread_bps, paused)
     }
 

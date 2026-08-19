@@ -16,7 +16,8 @@ fn create_page_visits_initializes_the_pda(test: &mut Test) {
 
     // The page-visits PDA and system program are canonical derivations, so
     // the generated instruction only asks for the payer.
-    test.send(CreatePageVisitsInstruction { payer: PAYER }).succeeds();
+    test.send(CreatePageVisitsInstruction { payer: PAYER })
+        .succeeds();
 
     // Byte layout is part of what this example demonstrates:
     // 1 byte discriminator (1) + 8 bytes u64 count (0).
@@ -33,7 +34,8 @@ fn create_page_visits_initializes_the_pda(test: &mut Test) {
 fn increment_page_visits_advances_the_count(test: &mut Test) {
     test.add(Wallet::new().at(PAYER));
     let page_visits = test.derive_pda(PageVisits::seeds(&PAYER));
-    test.send(CreatePageVisitsInstruction { payer: PAYER }).succeeds();
+    test.send(CreatePageVisitsInstruction { payer: PAYER })
+        .succeeds();
 
     // The user account is only used for PDA derivation, not as a signer.
     test.send(IncrementPageVisitsInstruction {

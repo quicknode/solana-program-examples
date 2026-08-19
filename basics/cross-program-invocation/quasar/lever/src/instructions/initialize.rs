@@ -14,8 +14,12 @@ pub struct InitializeLeverAccountConstraints {
 }
 
 #[inline(always)]
-pub fn handle_initialize(accounts: &mut InitializeLeverAccountConstraints) -> Result<(), ProgramError> {
+pub fn handle_initialize(
+    accounts: &mut InitializeLeverAccountConstraints,
+) -> Result<(), ProgramError> {
     // Power starts off (false). Counter-style fixed-size set_inner takes only the inner value.
-    accounts.power.set_inner(PowerStatusInner { is_on: PodBool::from(false) });
+    accounts.power.set_inner(PowerStatusInner {
+        is_on: PodBool::from(false),
+    });
     Ok(())
 }

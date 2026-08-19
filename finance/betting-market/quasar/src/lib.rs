@@ -64,7 +64,10 @@ mod quasar_betting_market {
 
     /// A bettor stakes tokens on one outcome. The stake joins the event's pool.
     #[instruction(discriminator = 3)]
-    pub fn place_bet(ctx: Ctx<PlaceBetAccountConstraints>, amount: u64) -> Result<(), ProgramError> {
+    pub fn place_bet(
+        ctx: Ctx<PlaceBetAccountConstraints>,
+        amount: u64,
+    ) -> Result<(), ProgramError> {
         instructions::place_bet::handle_place_bet(&mut ctx.accounts, amount, &ctx.bumps)
     }
 
@@ -81,9 +84,7 @@ mod quasar_betting_market {
     /// A winner withdraws their stake plus their pro-rata share of the losing
     /// pool. The Bet account closes and leaves the bettor's User index.
     #[instruction(discriminator = 5)]
-    pub fn claim_winnings(
-        ctx: Ctx<ClaimWinningsAccountConstraints>,
-    ) -> Result<(), ProgramError> {
+    pub fn claim_winnings(ctx: Ctx<ClaimWinningsAccountConstraints>) -> Result<(), ProgramError> {
         instructions::claim_winnings::handle_claim_winnings(&mut ctx.accounts)
     }
 

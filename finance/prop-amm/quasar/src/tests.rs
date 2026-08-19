@@ -157,7 +157,15 @@ fn base_world(test: &mut Test, spread_bps: u16) -> (Env, Outcome) {
     )
 }
 
-fn deposit_inventory(test: &mut Test, env: &Env, signer: Pubkey, signer_base: Pubkey, signer_quote: Pubkey, base: u64, quote: u64) -> Outcome {
+fn deposit_inventory(
+    test: &mut Test,
+    env: &Env,
+    signer: Pubkey,
+    signer_base: Pubkey,
+    signer_quote: Pubkey,
+    base: u64,
+    quote: u64,
+) -> Outcome {
     test.send(DepositInventoryInstruction {
         operator: signer,
         base_mint: BASE_MINT,
@@ -176,14 +184,38 @@ fn deposit_inventory(test: &mut Test, env: &Env, signer: Pubkey, signer_base: Pu
 fn setup(test: &mut Test) -> Env {
     let (env, outcome) = base_world(test, SPREAD_BPS);
     outcome.succeeds();
-    deposit_inventory(test, &env, OPERATOR, OPERATOR_BASE, OPERATOR_QUOTE, 1_000 * ONE_TOKEN, 200_000 * ONE_TOKEN).succeeds();
+    deposit_inventory(
+        test,
+        &env,
+        OPERATOR,
+        OPERATOR_BASE,
+        OPERATOR_QUOTE,
+        1_000 * ONE_TOKEN,
+        200_000 * ONE_TOKEN,
+    )
+    .succeeds();
     env
 }
 
-fn fund_trader(test: &mut Test, wallet: Pubkey, base_account: Pubkey, quote_account: Pubkey, base: u64, quote: u64) {
+fn fund_trader(
+    test: &mut Test,
+    wallet: Pubkey,
+    base_account: Pubkey,
+    quote_account: Pubkey,
+    base: u64,
+    quote: u64,
+) {
     test.add(Wallet::new().at(wallet));
-    test.add(TokenAccount::new(BASE_MINT, wallet).at(base_account).amount(base));
-    test.add(TokenAccount::new(QUOTE_MINT, wallet).at(quote_account).amount(quote));
+    test.add(
+        TokenAccount::new(BASE_MINT, wallet)
+            .at(base_account)
+            .amount(base),
+    );
+    test.add(
+        TokenAccount::new(QUOTE_MINT, wallet)
+            .at(quote_account)
+            .amount(quote),
+    );
 }
 
 fn set_quote(test: &mut Test, signer: Pubkey, spread_bps: u16, paused: u8) -> Outcome {
@@ -196,7 +228,16 @@ fn set_quote(test: &mut Test, signer: Pubkey, spread_bps: u16, paused: u8) -> Ou
     })
 }
 
-fn swap(test: &mut Test, env: &Env, trader: Pubkey, trader_base: Pubkey, trader_quote: Pubkey, direction: u8, amount_in: u64, minimum_amount_out: u64) -> Outcome {
+fn swap(
+    test: &mut Test,
+    env: &Env,
+    trader: Pubkey,
+    trader_base: Pubkey,
+    trader_quote: Pubkey,
+    direction: u8,
+    amount_in: u64,
+    minimum_amount_out: u64,
+) -> Outcome {
     test.send(SwapInstruction {
         trader,
         oracle_feed: FEED,
@@ -212,7 +253,15 @@ fn swap(test: &mut Test, env: &Env, trader: Pubkey, trader_base: Pubkey, trader_
     })
 }
 
-fn withdraw_inventory(test: &mut Test, env: &Env, signer: Pubkey, signer_base: Pubkey, signer_quote: Pubkey, base: u64, quote: u64) -> Outcome {
+fn withdraw_inventory(
+    test: &mut Test,
+    env: &Env,
+    signer: Pubkey,
+    signer_base: Pubkey,
+    signer_quote: Pubkey,
+    base: u64,
+    quote: u64,
+) -> Outcome {
     test.send(WithdrawInventoryInstruction {
         operator: signer,
         base_mint: BASE_MINT,
@@ -243,13 +292,22 @@ fn swap_buys_base_at_the_ask(test: &mut Test) {
     let quote_in = 825_825_000;
     fund_trader(test, TRADER, TRADER_BASE, TRADER_QUOTE, 0, quote_in);
 
-    swap(test, &env, TRADER, TRADER_BASE, TRADER_QUOTE, DIRECTION_BUY_BASE, quote_in, 5 * ONE_TOKEN)
-        .succeeds()
-        .has_tokens(TRADER_BASE, 5 * ONE_TOKEN)
-        .has_tokens(TRADER_QUOTE, 0)
-        // Conservation: the vaults moved by exactly the two legs of the fill.
-        .has_tokens(env.base_vault, 995 * ONE_TOKEN)
-        .has_tokens(env.quote_vault, 200_000 * ONE_TOKEN + quote_in);
+    swap(
+        test,
+        &env,
+        TRADER,
+        TRADER_BASE,
+        TRADER_QUOTE,
+        DIRECTION_BUY_BASE,
+        quote_in,
+        5 * ONE_TOKEN,
+    )
+    .succeeds()
+    .has_tokens(TRADER_BASE, 5 * ONE_TOKEN)
+    .has_tokens(TRADER_QUOTE, 0)
+    // Conservation: the vaults moved by exactly the two legs of the fill.
+    .has_tokens(env.base_vault, 995 * ONE_TOKEN)
+    .has_tokens(env.quote_vault, 200_000 * ONE_TOKEN + quote_in);
 }
 
 /// Bob sells 5 NVDAx. At $165 with a 10 bps spread the bid is $164.835, so
@@ -259,10 +317,19 @@ fn swap_sells_base_at_the_bid(test: &mut Test) {
     let env = setup(test);
     fund_trader(test, TRADER, TRADER_BASE, TRADER_QUOTE, 5 * ONE_TOKEN, 0);
 
-    swap(test, &env, TRADER, TRADER_BASE, TRADER_QUOTE, DIRECTION_SELL_BASE, 5 * ONE_TOKEN, 824_175_000)
-        .succeeds()
-        .has_tokens(TRADER_BASE, 0)
-        .has_tokens(TRADER_QUOTE, 824_175_000);
+    swap(
+        test,
+        &env,
+        TRADER,
+        TRADER_BASE,
+        TRADER_QUOTE,
+        DIRECTION_SELL_BASE,
+        5 * ONE_TOKEN,
+        824_175_000,
+    )
+    .succeeds()
+    .has_tokens(TRADER_BASE, 0)
+    .has_tokens(TRADER_QUOTE, 824_175_000);
 }
 
 /// A buy immediately followed by a sell of the same 5 NVDAx costs exactly
@@ -273,12 +340,31 @@ fn round_trip_costs_exactly_the_spread(test: &mut Test) {
     let quote_in = 825_825_000;
     fund_trader(test, TRADER, TRADER_BASE, TRADER_QUOTE, 0, quote_in);
 
-    swap(test, &env, TRADER, TRADER_BASE, TRADER_QUOTE, DIRECTION_BUY_BASE, quote_in, 0).succeeds();
-    swap(test, &env, TRADER, TRADER_BASE, TRADER_QUOTE, DIRECTION_SELL_BASE, 5 * ONE_TOKEN, 0)
-        .succeeds()
-        .has_tokens(TRADER_BASE, 0)
-        .has_tokens(TRADER_QUOTE, quote_in - 1_650_000)
-        .has_tokens(env.quote_vault, 200_000 * ONE_TOKEN + 1_650_000);
+    swap(
+        test,
+        &env,
+        TRADER,
+        TRADER_BASE,
+        TRADER_QUOTE,
+        DIRECTION_BUY_BASE,
+        quote_in,
+        0,
+    )
+    .succeeds();
+    swap(
+        test,
+        &env,
+        TRADER,
+        TRADER_BASE,
+        TRADER_QUOTE,
+        DIRECTION_SELL_BASE,
+        5 * ONE_TOKEN,
+        0,
+    )
+    .succeeds()
+    .has_tokens(TRADER_BASE, 0)
+    .has_tokens(TRADER_QUOTE, quote_in - 1_650_000)
+    .has_tokens(env.quote_vault, 200_000 * ONE_TOKEN + 1_650_000);
 }
 
 /// When the oracle reprices, the quote follows instantly. At $170 the ask is
@@ -290,9 +376,18 @@ fn quote_follows_the_oracle(test: &mut Test) {
 
     let quote_in = 850_850_000;
     fund_trader(test, TRADER, TRADER_BASE, TRADER_QUOTE, 0, quote_in);
-    swap(test, &env, TRADER, TRADER_BASE, TRADER_QUOTE, DIRECTION_BUY_BASE, quote_in, 5 * ONE_TOKEN)
-        .succeeds()
-        .has_tokens(TRADER_BASE, 5 * ONE_TOKEN);
+    swap(
+        test,
+        &env,
+        TRADER,
+        TRADER_BASE,
+        TRADER_QUOTE,
+        DIRECTION_BUY_BASE,
+        quote_in,
+        5 * ONE_TOKEN,
+    )
+    .succeeds()
+    .has_tokens(TRADER_BASE, 5 * ONE_TOKEN);
 }
 
 /// The operator re-quotes to a 50 bps spread; the next fill prices at
@@ -304,9 +399,18 @@ fn set_quote_changes_the_spread(test: &mut Test) {
 
     let quote_in = 829_125_000;
     fund_trader(test, TRADER, TRADER_BASE, TRADER_QUOTE, 0, quote_in);
-    swap(test, &env, TRADER, TRADER_BASE, TRADER_QUOTE, DIRECTION_BUY_BASE, quote_in, 5 * ONE_TOKEN)
-        .succeeds()
-        .has_tokens(TRADER_BASE, 5 * ONE_TOKEN);
+    swap(
+        test,
+        &env,
+        TRADER,
+        TRADER_BASE,
+        TRADER_QUOTE,
+        DIRECTION_BUY_BASE,
+        quote_in,
+        5 * ONE_TOKEN,
+    )
+    .succeeds()
+    .has_tokens(TRADER_BASE, 5 * ONE_TOKEN);
 }
 
 /// The operator can withdraw every token in both vaults at any time — its
@@ -314,14 +418,32 @@ fn set_quote_changes_the_spread(test: &mut Test) {
 #[quasar_test]
 fn operator_can_withdraw_everything_and_swaps_then_fail(test: &mut Test) {
     let env = setup(test);
-    withdraw_inventory(test, &env, OPERATOR, OPERATOR_BASE, OPERATOR_QUOTE, 1_000 * ONE_TOKEN, 200_000 * ONE_TOKEN)
-        .succeeds()
-        .has_tokens(env.base_vault, 0)
-        .has_tokens(env.quote_vault, 0);
+    withdraw_inventory(
+        test,
+        &env,
+        OPERATOR,
+        OPERATOR_BASE,
+        OPERATOR_QUOTE,
+        1_000 * ONE_TOKEN,
+        200_000 * ONE_TOKEN,
+    )
+    .succeeds()
+    .has_tokens(env.base_vault, 0)
+    .has_tokens(env.quote_vault, 0);
 
     fund_trader(test, TRADER, TRADER_BASE, TRADER_QUOTE, 0, 825_825_000);
     assert!(
-        swap(test, &env, TRADER, TRADER_BASE, TRADER_QUOTE, DIRECTION_BUY_BASE, 825_825_000, 0).is_err(),
+        swap(
+            test,
+            &env,
+            TRADER,
+            TRADER_BASE,
+            TRADER_QUOTE,
+            DIRECTION_BUY_BASE,
+            825_825_000,
+            0
+        )
+        .is_err(),
         "a swap against an empty inventory must fail"
     );
 }
@@ -330,8 +452,16 @@ fn operator_can_withdraw_everything_and_swaps_then_fail(test: &mut Test) {
 fn withdraw_more_than_inventory_fails(test: &mut Test) {
     let env = setup(test);
     assert!(
-        withdraw_inventory(test, &env, OPERATOR, OPERATOR_BASE, OPERATOR_QUOTE, 1_001 * ONE_TOKEN, 0)
-            .is_err(),
+        withdraw_inventory(
+            test,
+            &env,
+            OPERATOR,
+            OPERATOR_BASE,
+            OPERATOR_QUOTE,
+            1_001 * ONE_TOKEN,
+            0
+        )
+        .is_err(),
         "withdrawing more than the vault holds must fail"
     );
 }
@@ -339,9 +469,25 @@ fn withdraw_more_than_inventory_fails(test: &mut Test) {
 #[quasar_test]
 fn deposit_rejects_non_operator(test: &mut Test) {
     let env = setup(test);
-    fund_trader(test, MALLORY, MALLORY_BASE, MALLORY_QUOTE, ONE_TOKEN, ONE_TOKEN);
+    fund_trader(
+        test,
+        MALLORY,
+        MALLORY_BASE,
+        MALLORY_QUOTE,
+        ONE_TOKEN,
+        ONE_TOKEN,
+    );
     assert!(
-        deposit_inventory(test, &env, MALLORY, MALLORY_BASE, MALLORY_QUOTE, ONE_TOKEN, 0).is_err(),
+        deposit_inventory(
+            test,
+            &env,
+            MALLORY,
+            MALLORY_BASE,
+            MALLORY_QUOTE,
+            ONE_TOKEN,
+            0
+        )
+        .is_err(),
         "deposit_inventory must reject a non-operator signer"
     );
 }
@@ -351,7 +497,16 @@ fn withdraw_rejects_non_operator(test: &mut Test) {
     let env = setup(test);
     fund_trader(test, MALLORY, MALLORY_BASE, MALLORY_QUOTE, 0, 0);
     assert!(
-        withdraw_inventory(test, &env, MALLORY, MALLORY_BASE, MALLORY_QUOTE, ONE_TOKEN, 0).is_err(),
+        withdraw_inventory(
+            test,
+            &env,
+            MALLORY,
+            MALLORY_BASE,
+            MALLORY_QUOTE,
+            ONE_TOKEN,
+            0
+        )
+        .is_err(),
         "withdraw_inventory must reject a non-operator signer"
     );
 }
@@ -374,8 +529,17 @@ fn swap_rejects_slippage(test: &mut Test) {
     fund_trader(test, TRADER, TRADER_BASE, TRADER_QUOTE, 0, quote_in);
     // The fill would be exactly 5 NVDAx; demand one minor unit more.
     assert!(
-        swap(test, &env, TRADER, TRADER_BASE, TRADER_QUOTE, DIRECTION_BUY_BASE, quote_in, 5 * ONE_TOKEN + 1)
-            .is_err(),
+        swap(
+            test,
+            &env,
+            TRADER,
+            TRADER_BASE,
+            TRADER_QUOTE,
+            DIRECTION_BUY_BASE,
+            quote_in,
+            5 * ONE_TOKEN + 1
+        )
+        .is_err(),
         "a fill below minimum_amount_out must be rejected"
     );
 }
@@ -388,7 +552,17 @@ fn swap_rejects_stale_price(test: &mut Test) {
     make_price_stale(test);
     fund_trader(test, TRADER, TRADER_BASE, TRADER_QUOTE, 0, 825_825_000);
     assert!(
-        swap(test, &env, TRADER, TRADER_BASE, TRADER_QUOTE, DIRECTION_BUY_BASE, 825_825_000, 0).is_err(),
+        swap(
+            test,
+            &env,
+            TRADER,
+            TRADER_BASE,
+            TRADER_QUOTE,
+            DIRECTION_BUY_BASE,
+            825_825_000,
+            0
+        )
+        .is_err(),
         "a stale oracle price must be rejected"
     );
 }
@@ -407,14 +581,33 @@ fn swap_rejects_price_from_before_a_restart(test: &mut Test) {
     set_feed_at_slot(test, dollars(165), SLOT - 5, 0);
     set_last_restart_slot(test, SLOT - 3);
     assert!(
-        swap(test, &env, TRADER, TRADER_BASE, TRADER_QUOTE, DIRECTION_BUY_BASE, 825_825_000, 0).is_err(),
+        swap(
+            test,
+            &env,
+            TRADER,
+            TRADER_BASE,
+            TRADER_QUOTE,
+            DIRECTION_BUY_BASE,
+            825_825_000,
+            0
+        )
+        .is_err(),
         "a pre-restart price must be rejected even inside the staleness bound"
     );
 
     // Publishing after the restart (at `SLOT`) reopens the market.
     set_feed(test, dollars(165), 0);
-    swap(test, &env, TRADER, TRADER_BASE, TRADER_QUOTE, DIRECTION_BUY_BASE, 825_825_000, 0)
-        .succeeds();
+    swap(
+        test,
+        &env,
+        TRADER,
+        TRADER_BASE,
+        TRADER_QUOTE,
+        DIRECTION_BUY_BASE,
+        825_825_000,
+        0,
+    )
+    .succeeds();
 }
 
 /// A price the oracle itself is unsure about is rejected: the confidence band
@@ -425,7 +618,17 @@ fn swap_rejects_wide_confidence(test: &mut Test) {
     set_feed(test, dollars(165), 200_000_000);
     fund_trader(test, TRADER, TRADER_BASE, TRADER_QUOTE, 0, 825_825_000);
     assert!(
-        swap(test, &env, TRADER, TRADER_BASE, TRADER_QUOTE, DIRECTION_BUY_BASE, 825_825_000, 0).is_err(),
+        swap(
+            test,
+            &env,
+            TRADER,
+            TRADER_BASE,
+            TRADER_QUOTE,
+            DIRECTION_BUY_BASE,
+            825_825_000,
+            0
+        )
+        .is_err(),
         "a confidence band wider than max_confidence_bps must be rejected"
     );
 }
@@ -439,13 +642,32 @@ fn swap_rejects_when_paused(test: &mut Test) {
 
     fund_trader(test, TRADER, TRADER_BASE, TRADER_QUOTE, 0, 825_825_000);
     assert!(
-        swap(test, &env, TRADER, TRADER_BASE, TRADER_QUOTE, DIRECTION_BUY_BASE, 825_825_000, 0).is_err(),
+        swap(
+            test,
+            &env,
+            TRADER,
+            TRADER_BASE,
+            TRADER_QUOTE,
+            DIRECTION_BUY_BASE,
+            825_825_000,
+            0
+        )
+        .is_err(),
         "a paused market must reject swaps"
     );
 
     set_quote(test, OPERATOR, SPREAD_BPS, 0).succeeds();
-    swap(test, &env, TRADER, TRADER_BASE, TRADER_QUOTE, DIRECTION_BUY_BASE, 825_825_000, 5 * ONE_TOKEN)
-        .succeeds();
+    swap(
+        test,
+        &env,
+        TRADER,
+        TRADER_BASE,
+        TRADER_QUOTE,
+        DIRECTION_BUY_BASE,
+        825_825_000,
+        5 * ONE_TOKEN,
+    )
+    .succeeds();
 }
 
 #[quasar_test]
@@ -453,7 +675,17 @@ fn swap_rejects_zero_amount(test: &mut Test) {
     let env = setup(test);
     fund_trader(test, TRADER, TRADER_BASE, TRADER_QUOTE, 0, ONE_TOKEN);
     assert!(
-        swap(test, &env, TRADER, TRADER_BASE, TRADER_QUOTE, DIRECTION_BUY_BASE, 0, 0).is_err(),
+        swap(
+            test,
+            &env,
+            TRADER,
+            TRADER_BASE,
+            TRADER_QUOTE,
+            DIRECTION_BUY_BASE,
+            0,
+            0
+        )
+        .is_err(),
         "a zero-amount swap must be rejected"
     );
 }
@@ -468,7 +700,17 @@ fn swap_rejects_insufficient_inventory(test: &mut Test) {
     let quote_in = 181_681_500_000;
     fund_trader(test, TRADER, TRADER_BASE, TRADER_QUOTE, 0, quote_in);
     assert!(
-        swap(test, &env, TRADER, TRADER_BASE, TRADER_QUOTE, DIRECTION_BUY_BASE, quote_in, 0).is_err(),
+        swap(
+            test,
+            &env,
+            TRADER,
+            TRADER_BASE,
+            TRADER_QUOTE,
+            DIRECTION_BUY_BASE,
+            quote_in,
+            0
+        )
+        .is_err(),
         "a swap larger than the inventory must be rejected"
     );
 }

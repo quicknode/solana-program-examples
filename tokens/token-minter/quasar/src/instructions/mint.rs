@@ -32,7 +32,8 @@ pub fn handle_mint_token(
 ) -> Result<(), ProgramError> {
     log("Minting tokens to associated token account...");
 
-    accounts.token_program
+    accounts
+        .token_program
         .mint_to(
             &accounts.mint_account,
             &accounts.associated_token_account,

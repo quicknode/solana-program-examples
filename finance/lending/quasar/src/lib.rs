@@ -17,11 +17,11 @@ use quasar_lang::prelude::*;
 
 mod constants;
 mod error;
-mod instructions;
+pub mod instructions;
 mod last_restart;
 mod logic;
 mod math;
-mod state;
+pub mod state;
 
 #[cfg(test)]
 mod tests;

@@ -1,5 +1,9 @@
 use {
-    crate::{error::AmmError, state::{Config, ConfigInner}, ConfigPda, BASIS_POINTS_DIVISOR},
+    crate::{
+        error::AmmError,
+        state::{Config, ConfigInner},
+        ConfigPda, BASIS_POINTS_DIVISOR,
+    },
     quasar_lang::prelude::*,
 };
 
@@ -33,8 +37,8 @@ pub fn handle_initialize_config(
     );
     accounts.config.set_inner(ConfigInner {
         admin: *accounts.admin.address(),
-        fee: fee.into(),
-        admin_share_bps: admin_share_bps.into(),
+        fee,
+        admin_share_bps,
     });
     Ok(())
 }

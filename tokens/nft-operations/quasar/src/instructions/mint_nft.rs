@@ -68,7 +68,12 @@ pub fn handle_mint_nft(
     // Mint 1 token (the NFT) to the destination.
     accounts
         .token_program
-        .mint_to(&accounts.mint, &accounts.destination, &accounts.mint_authority, 1u64)
+        .mint_to(
+            &accounts.mint,
+            &accounts.destination,
+            &accounts.mint_authority,
+            1u64,
+        )
         .invoke_signed(seeds)?;
     log("NFT minted!");
 

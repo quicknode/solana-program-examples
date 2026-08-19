@@ -1,10 +1,7 @@
 #![cfg_attr(not(test), no_std)]
 
 use quasar_lang::sysvars::Sysvar;
-use quasar_lang::{
-    cpi::Seed,
-    prelude::*,
-};
+use quasar_lang::{cpi::Seed, prelude::*};
 
 #[cfg(test)]
 mod tests;
@@ -33,13 +30,18 @@ mod quasar_transfer_hook_whitelist {
     /// Transfer hook handler - checks if the destination is in the whitelist.
     /// Discriminator = sha256("spl-transfer-hook-interface:execute")[:8]
     #[instruction(discriminator = [105, 37, 101, 197, 75, 251, 102, 26])]
-    pub fn transfer_hook(ctx: Ctx<TransferHookAccountConstraints>, _amount: u64) -> Result<(), ProgramError> {
-        handle_transfer_hook(&mut ctx.accounts)
+    pub fn transfer_hook(
+        ctx: Ctx<TransferHookAccountConstraints>,
+        _amount: u64,
+    ) -> Result<(), ProgramError> {
+        handle_transfer_hook(&ctx.accounts)
     }
 
     /// Add an address to the whitelist. Only callable by the authority.
     #[instruction(discriminator = [0, 0, 0, 0, 0, 0, 0, 2])]
-    pub fn add_to_whitelist(ctx: Ctx<AddToWhitelistAccountConstraints>) -> Result<(), ProgramError> {
+    pub fn add_to_whitelist(
+        ctx: Ctx<AddToWhitelistAccountConstraints>,
+    ) -> Result<(), ProgramError> {
         handle_add_to_whitelist(&mut ctx.accounts)
     }
 }
@@ -62,7 +64,9 @@ pub struct InitializeExtraAccountMetaListAccountConstraints {
 }
 
 #[inline(always)]
-pub fn handle_initialize(accounts: &mut InitializeExtraAccountMetaListAccountConstraints) -> Result<(), ProgramError> {
+pub fn handle_initialize(
+    accounts: &mut InitializeExtraAccountMetaListAccountConstraints,
+) -> Result<(), ProgramError> {
     // Create ExtraAccountMetaList PDA (1 extra account: whitelist)
     let meta_list_size: u64 = 51; // 8 + 4 + 4 + 35
     let lamports = Rent::get()?.try_minimum_balance(meta_list_size as usize)?;
@@ -84,8 +88,15 @@ pub fn handle_initialize(accounts: &mut InitializeExtraAccountMetaListAccountCon
         Seed::from(&bump_bytes as &[u8]),
     ];
 
-    accounts.system_program
-        .create_account(&accounts.payer, &accounts.extra_account_meta_list, lamports, meta_list_size, &crate::ID)
+    accounts
+        .system_program
+        .create_account(
+            &accounts.payer,
+            &accounts.extra_account_meta_list,
+            lamports,
+            meta_list_size,
+            &crate::ID,
+        )
         .invoke_signed(&seeds)?;
 
     // Write TLV data
@@ -126,15 +137,20 @@ pub fn handle_initialize(accounts: &mut InitializeExtraAccountMetaListAccountCon
         Seed::from(&wl_bump_bytes as &[u8]),
     ];
 
-    accounts.system_program
-        .create_account(&accounts.payer, &accounts.white_list, wl_lamports, wl_size, &crate::ID)
+    accounts
+        .system_program
+        .create_account(
+            &accounts.payer,
+            &accounts.white_list,
+            wl_lamports,
+            wl_size,
+            &crate::ID,
+        )
         .invoke_signed(&wl_seeds)?;
 
     // Write authority (payer) to whitelist account
-    let wl_view = unsafe {
-        &mut *(&mut accounts.white_list as *mut UncheckedAccount
-            as *mut AccountView)
-    };
+    let wl_view =
+        unsafe { &mut *(&mut accounts.white_list as *mut UncheckedAccount as *mut AccountView) };
     let mut wl_data = wl_view.try_borrow_mut()?;
     wl_data[0..32].copy_from_slice(accounts.payer.to_account_view().address().as_ref());
     // count = 0 (already zeroed)
@@ -207,11 +223,11 @@ pub struct AddToWhitelistAccountConstraints {
 }
 
 #[inline(always)]
-pub fn handle_add_to_whitelist(accounts: &mut AddToWhitelistAccountConstraints) -> Result<(), ProgramError> {
-    let view = unsafe {
-        &mut *(&mut accounts.white_list as *mut UncheckedAccount
-            as *mut AccountView)
-    };
+pub fn handle_add_to_whitelist(
+    accounts: &mut AddToWhitelistAccountConstraints,
+) -> Result<(), ProgramError> {
+    let view =
+        unsafe { &mut *(&mut accounts.white_list as *mut UncheckedAccount as *mut AccountView) };
     let mut data = view.try_borrow_mut()?;
 
     if data.len() < 36 {

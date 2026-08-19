@@ -17,7 +17,11 @@ pub struct ChangeModeAccountConstraints {
 }
 
 #[inline(always)]
-pub fn handle_change_mode(accounts: &mut ChangeModeAccountConstraints, mode: u8, threshold: u64) -> Result<(), ProgramError> {
+pub fn handle_change_mode(
+    accounts: &mut ChangeModeAccountConstraints,
+    mode: u8,
+    threshold: u64,
+) -> Result<(), ProgramError> {
     let mode_value = mode_to_metadata_value(mode);
     let token_prog = accounts.token_program.to_account_view().address();
     let mint_key = accounts.mint.to_account_view().address();
@@ -51,7 +55,8 @@ pub fn handle_change_mode(accounts: &mut ChangeModeAccountConstraints, mode: u8,
     let current_lamports = mint_view.lamports();
     if min_balance > current_lamports {
         let diff = min_balance - current_lamports;
-        accounts.system_program
+        accounts
+            .system_program
             .transfer(&accounts.authority, &accounts.mint, diff)
             .invoke()?;
     }
@@ -127,7 +132,8 @@ fn has_threshold_in_metadata(ctx: &ChangeModeAccountConstraints) -> Result<bool,
                 if mpos + 4 > md.len() {
                     return Ok(false);
                 }
-                let slen = u32::from_le_bytes([md[mpos], md[mpos+1], md[mpos+2], md[mpos+3]]) as usize;
+                let slen = u32::from_le_bytes([md[mpos], md[mpos + 1], md[mpos + 2], md[mpos + 3]])
+                    as usize;
                 mpos += 4 + slen;
             }
 
@@ -135,14 +141,17 @@ fn has_threshold_in_metadata(ctx: &ChangeModeAccountConstraints) -> Result<bool,
             if mpos + 4 > md.len() {
                 return Ok(false);
             }
-            let kv_count = u32::from_le_bytes([md[mpos], md[mpos+1], md[mpos+2], md[mpos+3]]) as usize;
+            let kv_count =
+                u32::from_le_bytes([md[mpos], md[mpos + 1], md[mpos + 2], md[mpos + 3]]) as usize;
             mpos += 4;
 
             for _ in 0..kv_count {
                 if mpos + 4 > md.len() {
                     break;
                 }
-                let key_len = u32::from_le_bytes([md[mpos], md[mpos+1], md[mpos+2], md[mpos+3]]) as usize;
+                let key_len =
+                    u32::from_le_bytes([md[mpos], md[mpos + 1], md[mpos + 2], md[mpos + 3]])
+                        as usize;
                 mpos += 4;
                 if mpos + key_len > md.len() {
                     break;
@@ -153,7 +162,9 @@ fn has_threshold_in_metadata(ctx: &ChangeModeAccountConstraints) -> Result<bool,
                 if mpos + 4 > md.len() {
                     break;
                 }
-                let val_len = u32::from_le_bytes([md[mpos], md[mpos+1], md[mpos+2], md[mpos+3]]) as usize;
+                let val_len =
+                    u32::from_le_bytes([md[mpos], md[mpos + 1], md[mpos + 2], md[mpos + 3]])
+                        as usize;
                 mpos += 4 + val_len;
 
                 if key == b"threshold" {

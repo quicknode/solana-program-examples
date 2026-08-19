@@ -1,8 +1,4 @@
-use {
-    crate::cpi::PullLeverInstruction,
-    quasar_lang::client::DynString,
-    quasar_test::prelude::*,
-};
+use {crate::cpi::PullLeverInstruction, quasar_lang::client::DynString, quasar_test::prelude::*};
 
 /// PowerStatus discriminator from the lever program.
 const POWER_STATUS_DISCRIMINATOR: u8 = 1;
@@ -51,7 +47,10 @@ fn pull_lever_turns_the_power_on(test: &mut Test) {
 
     let logs = outcome.logs().join("\n");
     assert!(logs.contains("Hand is pulling"), "hand should log");
-    assert!(logs.contains("pulling the power switch"), "lever should log");
+    assert!(
+        logs.contains("pulling the power switch"),
+        "lever should log"
+    );
     assert!(logs.contains("now on"), "power should turn on");
     // Verifies the CPI wire format: the lever logs the name it
     // deserialised. A stale u32 length prefix on either the inbound

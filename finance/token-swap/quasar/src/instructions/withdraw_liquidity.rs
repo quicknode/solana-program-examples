@@ -1,10 +1,10 @@
 use {
-    quasar_lang::cpi::Seed,
     crate::{
         error::AmmError,
         state::{Config, PoolConfig},
         ConfigPda, LiquidityMintPda, PoolAuthorityPda, PoolPda,
     },
+    quasar_lang::cpi::Seed,
     quasar_lang::prelude::*,
     quasar_spl::prelude::*,
 };
@@ -127,18 +127,40 @@ pub fn handle_withdraw_liquidity(
     );
 
     // Transfer token A from pool to depositor.
-    accounts.token_program
-        .transfer_checked(&accounts.pool_a, &accounts.mint_a, &accounts.token_a, &accounts.pool_authority, amount_a, accounts.mint_a.decimals())
+    accounts
+        .token_program
+        .transfer_checked(
+            &accounts.pool_a,
+            &accounts.mint_a,
+            &accounts.token_a,
+            &accounts.pool_authority,
+            amount_a,
+            accounts.mint_a.decimals(),
+        )
         .invoke_signed(seeds)?;
 
     // Transfer token B from pool to depositor.
-    accounts.token_program
-        .transfer_checked(&accounts.pool_b, &accounts.mint_b, &accounts.token_b, &accounts.pool_authority, amount_b, accounts.mint_b.decimals())
+    accounts
+        .token_program
+        .transfer_checked(
+            &accounts.pool_b,
+            &accounts.mint_b,
+            &accounts.token_b,
+            &accounts.pool_authority,
+            amount_b,
+            accounts.mint_b.decimals(),
+        )
         .invoke_signed(seeds)?;
 
     // Burn LP tokens.
-    accounts.token_program
-        .burn(&accounts.liquidity_provider_token, &accounts.liquidity_provider_mint, &accounts.depositor, amount)
+    accounts
+        .token_program
+        .burn(
+            &accounts.liquidity_provider_token,
+            &accounts.liquidity_provider_mint,
+            &accounts.depositor,
+            amount,
+        )
         .invoke()?;
 
     Ok(())

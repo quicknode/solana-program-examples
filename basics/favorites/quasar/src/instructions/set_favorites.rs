@@ -15,7 +15,11 @@ pub struct SetFavoritesAccountConstraints {
 }
 
 #[inline(always)]
-pub fn handle_set_favorites(accounts: &mut SetFavoritesAccountConstraints, number: u64, color: &str) -> Result<(), ProgramError> {
+pub fn handle_set_favorites(
+    accounts: &mut SetFavoritesAccountConstraints,
+    number: u64,
+    color: &str,
+) -> Result<(), ProgramError> {
     let rent = Rent::get()?;
     accounts.favorites.set_inner(
         FavoritesInner { number, color },

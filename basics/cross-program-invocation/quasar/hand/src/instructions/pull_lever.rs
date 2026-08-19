@@ -12,7 +12,10 @@ pub struct PullLeverAccountConstraints {
 }
 
 #[inline(always)]
-pub fn handle_pull_lever(accounts: &PullLeverAccountConstraints, name: &str) -> Result<(), ProgramError> {
+pub fn handle_pull_lever(
+    accounts: &PullLeverAccountConstraints,
+    name: &str,
+) -> Result<(), ProgramError> {
     log("Hand is pulling the lever!");
 
     // Build the switch_power instruction data for the lever program.

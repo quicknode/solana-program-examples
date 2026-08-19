@@ -1,5 +1,4 @@
 use {
-    quasar_lang::cpi::Seed,
     crate::{
         constants::SIDE_LONG,
         instructions::shared::{
@@ -8,6 +7,7 @@ use {
         state::{Pool, Position},
         PoolAuthorityPda,
     },
+    quasar_lang::cpi::Seed,
     quasar_lang::{prelude::*, sysvars::clock::Clock},
     quasar_spl::prelude::*,
 };

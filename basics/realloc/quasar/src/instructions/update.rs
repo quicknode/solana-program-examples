@@ -16,7 +16,10 @@ pub struct UpdateAccountConstraints {
 }
 
 #[inline(always)]
-pub fn handle_update(accounts: &mut UpdateAccountConstraints, message: &str) -> Result<(), ProgramError> {
+pub fn handle_update(
+    accounts: &mut UpdateAccountConstraints,
+    message: &str,
+) -> Result<(), ProgramError> {
     let rent = Rent::get()?;
     accounts.message_account.set_inner(
         MessageAccountInner { message },

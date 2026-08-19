@@ -18,7 +18,9 @@ pub struct AttachToMintAccountConstraints {
 }
 
 #[inline(always)]
-pub fn handle_attach_to_mint(accounts: &mut AttachToMintAccountConstraints) -> Result<(), ProgramError> {
+pub fn handle_attach_to_mint(
+    accounts: &mut AttachToMintAccountConstraints,
+) -> Result<(), ProgramError> {
     let mint_key = accounts.mint.to_account_view().address();
     let payer_key = accounts.payer.to_account_view().address();
     let token_prog = accounts.token_program.to_account_view().address();
@@ -28,7 +30,7 @@ pub fn handle_attach_to_mint(accounts: &mut AttachToMintAccountConstraints) -> R
     let mut update_data = [0u8; 37];
     update_data[0] = 36;
     update_data[1] = 1; // Update sub-instruction
-    // COption<Pubkey>: 4 bytes discriminator (1 = Some) + 32 bytes pubkey
+                        // COption<Pubkey>: 4 bytes discriminator (1 = Some) + 32 bytes pubkey
     update_data[2..6].copy_from_slice(&1u32.to_le_bytes()); // Some
     update_data[6..38 - 1].copy_from_slice(&crate::ID.as_ref()[..31]);
     // Actually, COption encoding is: [1u8 if Some, 0 if None] but SPL uses 4 bytes
@@ -39,8 +41,8 @@ pub fn handle_attach_to_mint(accounts: &mut AttachToMintAccountConstraints) -> R
     // Total ix data = 2 (opcode + sub) + 4 + 32 = 38
     // Let me redo this properly.
     let mut update_data = [0u8; 38];
-    update_data[0] = 36;  // TransferHookExtension opcode
-    update_data[1] = 1;   // Update sub-instruction
+    update_data[0] = 36; // TransferHookExtension opcode
+    update_data[1] = 1; // Update sub-instruction
     update_data[2..6].copy_from_slice(&1u32.to_le_bytes()); // COption::Some
     update_data[6..38].copy_from_slice(crate::ID.as_ref());
 
@@ -77,7 +79,8 @@ pub fn handle_attach_to_mint(accounts: &mut AttachToMintAccountConstraints) -> R
         Seed::from(&bump_bytes as &[u8]),
     ];
 
-    accounts.system_program
+    accounts
+        .system_program
         .create_account(
             &accounts.payer,
             &accounts.extra_metas_account,
@@ -89,8 +92,7 @@ pub fn handle_attach_to_mint(accounts: &mut AttachToMintAccountConstraints) -> R
 
     // Write ExtraAccountMeta TLV data
     let view = unsafe {
-        &mut *(&mut accounts.extra_metas_account as *mut UncheckedAccount
-            as *mut AccountView)
+        &mut *(&mut accounts.extra_metas_account as *mut UncheckedAccount as *mut AccountView)
     };
     let mut data = view.try_borrow_mut()?;
 
@@ -101,9 +103,9 @@ pub fn handle_attach_to_mint(accounts: &mut AttachToMintAccountConstraints) -> R
     // ABWallet PDA: seeds = [Literal("ab_wallet"), AccountData(2, 32, 32)]
     data[16] = 1; // PDA from seeds
     let mut config = [0u8; 32];
-    config[0] = 2;  // 2 seeds
-    config[1] = 0;  // literal
-    config[2] = 9;  // length
+    config[0] = 2; // 2 seeds
+    config[1] = 0; // literal
+    config[2] = 9; // length
     config[3..12].copy_from_slice(AB_WALLET_SEED);
     config[12] = 1; // account data
     config[13] = 2; // account_index (destination token account)

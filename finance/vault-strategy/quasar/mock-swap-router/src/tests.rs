@@ -33,7 +33,11 @@ fn initialize_and_swap_usdc_for_asset(test: &mut Test) {
     test.add(Mint::new(AUTHORITY).at(USDC_MINT).decimals(DECIMALS));
     // The asset mint's authority is the router-authority PDA, so the router
     // can mint it.
-    test.add(Mint::new(router_authority).at(ASSET_MINT).decimals(DECIMALS));
+    test.add(
+        Mint::new(router_authority)
+            .at(ASSET_MINT)
+            .decimals(DECIMALS),
+    );
     test.add(
         TokenAccount::new(USDC_MINT, AUTHORITY)
             .at(CALLER_USDC)

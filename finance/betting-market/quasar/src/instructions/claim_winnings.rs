@@ -2,9 +2,7 @@ use quasar_lang::prelude::*;
 use quasar_spl::prelude::*;
 
 use crate::errors::BettingError;
-use crate::state::{
-    remove_bet, snapshot_user, Bet, Event, EventStatus, EventVaultPda, User,
-};
+use crate::state::{remove_bet, snapshot_user, Bet, Event, EventStatus, EventVaultPda, User};
 
 use super::transfer_from_vault;
 
@@ -84,7 +82,9 @@ pub fn handle_claim_winnings(
         .map_err(|_| BettingError::MathOverflow)?;
 
     // Winners always get their own stake back on top of their winnings.
-    let payout = stake.checked_add(winnings).ok_or(BettingError::MathOverflow)?;
+    let payout = stake
+        .checked_add(winnings)
+        .ok_or(BettingError::MathOverflow)?;
 
     // Drop the Bet from the bettor's index before the transfer (effects before
     // interactions); the Bet account itself closes when the instruction ends.

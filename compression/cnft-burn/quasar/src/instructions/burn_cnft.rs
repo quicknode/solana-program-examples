@@ -1,5 +1,8 @@
 use crate::*;
-use quasar_lang::{cpi::{InstructionAccount, InstructionView}, remaining::RemainingAccounts};
+use quasar_lang::{
+    cpi::{InstructionAccount, InstructionView},
+    remaining::RemainingAccounts,
+};
 
 /// Maximum number of proof nodes for the merkle tree.
 /// Concurrent merkle trees support up to depth 30, but typical depth is 14-20.
@@ -79,9 +82,8 @@ pub fn handle_burn_cnft(
     // leaf_delegate (= leaf_owner, not signer), merkle_tree, log_wrapper,
     // compression_program, system_program, then proof nodes.
     let sys_addr = accounts.system_program.address();
-    let mut ix_accounts: [InstructionAccount; MAX_CPI_ACCOUNTS] = core::array::from_fn(|_| {
-        InstructionAccount::readonly(sys_addr)
-    });
+    let mut ix_accounts: [InstructionAccount; MAX_CPI_ACCOUNTS] =
+        core::array::from_fn(|_| InstructionAccount::readonly(sys_addr));
 
     ix_accounts[0] = InstructionAccount::readonly(accounts.tree_authority.address());
     ix_accounts[1] = InstructionAccount::readonly_signer(accounts.leaf_owner.address());
@@ -108,9 +110,7 @@ pub fn handle_burn_cnft(
     views[5] = accounts.compression_program.to_account_view().clone();
     views[6] = accounts.system_program.to_account_view().clone();
 
-    for i in 0..proof_count {
-        views[7 + i] = proof_views[i].clone();
-    }
+    views[7..7 + proof_count].clone_from_slice(&proof_views[..proof_count]);
 
     let instruction = InstructionView {
         program_id: &MPL_BUBBLEGUM_ID,

@@ -18,7 +18,10 @@ pub struct InitWalletAccountConstraints {
 }
 
 #[inline(always)]
-pub fn handle_init_wallet(accounts: &mut InitWalletAccountConstraints, allowed: bool) -> Result<(), ProgramError> {
+pub fn handle_init_wallet(
+    accounts: &mut InitWalletAccountConstraints,
+    allowed: bool,
+) -> Result<(), ProgramError> {
     // Verify config PDA
     let (config_pda, _) = quasar_lang::pda::try_find_program_address(&[CONFIG_SEED], &crate::ID)?;
     if accounts.config.to_account_view().address() != &config_pda {
@@ -55,7 +58,8 @@ pub fn handle_init_wallet(accounts: &mut InitWalletAccountConstraints, allowed: 
         Seed::from(&bump_bytes as &[u8]),
     ];
 
-    accounts.system_program
+    accounts
+        .system_program
         .create_account(
             &accounts.authority,
             &accounts.ab_wallet,
@@ -66,10 +70,8 @@ pub fn handle_init_wallet(accounts: &mut InitWalletAccountConstraints, allowed: 
         .invoke_signed(&seeds)?;
 
     // Write wallet data
-    let view = unsafe {
-        &mut *(&mut accounts.ab_wallet as *mut UncheckedAccount
-            as *mut AccountView)
-    };
+    let view =
+        unsafe { &mut *(&mut accounts.ab_wallet as *mut UncheckedAccount as *mut AccountView) };
     let mut data = view.try_borrow_mut()?;
     write_ab_wallet(&mut data, wallet_key, allowed);
 

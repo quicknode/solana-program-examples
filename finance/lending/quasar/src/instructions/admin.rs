@@ -32,7 +32,11 @@ pub struct InitializeLendingMarket {
 
 impl InitializeLendingMarket {
     #[inline(always)]
-    pub fn run(&mut self, market_id: u64, bumps: &InitializeLendingMarketBumps) -> Result<(), ProgramError> {
+    pub fn run(
+        &mut self,
+        market_id: u64,
+        bumps: &InitializeLendingMarketBumps,
+    ) -> Result<(), ProgramError> {
         self.lending_market.set_inner(LendingMarketInner {
             owner: *self.owner.address(),
             market_id,
@@ -121,7 +125,11 @@ impl InitializeReserve {
             )
             .invoke_signed(&vault_seeds)?;
         self.token_program
-            .initialize_account3(&self.liquidity_vault, &self.liquidity_mint, &reserve_address)
+            .initialize_account3(
+                &self.liquidity_vault,
+                &self.liquidity_mint,
+                &reserve_address,
+            )
             .invoke()?;
 
         // Create the share-token mint PDA (authority = reserve, same decimals).
@@ -254,7 +262,12 @@ pub struct CollectProtocolFees {
     pub owner: Signer,
     #[account(has_one(owner))]
     pub lending_market: Account<LendingMarket>,
-    #[account(mut, has_one(lending_market), has_one(liquidity_mint), has_one(liquidity_vault))]
+    #[account(
+        mut,
+        has_one(lending_market),
+        has_one(liquidity_mint),
+        has_one(liquidity_vault)
+    )]
     pub reserve: Account<Reserve>,
     pub liquidity_mint: Account<Mint>,
     #[account(mut)]

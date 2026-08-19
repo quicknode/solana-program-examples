@@ -153,9 +153,7 @@ pub fn handle_withdraw_two_cnfts(
         views[6] = accounts.compression_program.to_account_view().clone();
         views[7] = accounts.system_program.to_account_view().clone();
 
-        for i in 0..proof1_count {
-            views[8 + i] = all_proofs[i].clone();
-        }
+        views[8..8 + proof1_count].clone_from_slice(&all_proofs[..proof1_count]);
 
         let instruction = InstructionView {
             program_id: &MPL_BUBBLEGUM_ID,
@@ -166,7 +164,7 @@ pub fn handle_withdraw_two_cnfts(
         solana_instruction_view::cpi::invoke_signed_with_bounds::<MAX_CPI_ACCOUNTS, AccountView>(
             &instruction,
             &views[..total_accounts],
-            &[signer.clone()],
+            core::slice::from_ref(&signer),
         )?;
     }
 
@@ -209,9 +207,8 @@ pub fn handle_withdraw_two_cnfts(
         views[6] = accounts.compression_program.to_account_view().clone();
         views[7] = accounts.system_program.to_account_view().clone();
 
-        for i in 0..proof2_count {
-            views[8 + i] = all_proofs[proof2_start + i].clone();
-        }
+        views[8..8 + proof2_count]
+            .clone_from_slice(&all_proofs[proof2_start..proof2_start + proof2_count]);
 
         let instruction = InstructionView {
             program_id: &MPL_BUBBLEGUM_ID,

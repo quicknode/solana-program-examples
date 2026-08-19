@@ -23,7 +23,12 @@ pub fn handle_create_address_info(
 ) -> Result<(), ProgramError> {
     let rent = Rent::get()?;
     accounts.address_info.set_inner(
-        AddressInfoInner { house_number, name, street, city },
+        AddressInfoInner {
+            house_number,
+            name,
+            street,
+            city,
+        },
         accounts.payer.to_account_view(),
         rent.lamports_per_byte(),
         rent.exemption_threshold_raw(),

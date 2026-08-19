@@ -154,9 +154,7 @@ pub fn handle_withdraw_cnft(
     views[6] = accounts.compression_program.to_account_view().clone();
     views[7] = accounts.system_program.to_account_view().clone();
 
-    for i in 0..proof_count {
-        views[8 + i] = proof_views[i].clone();
-    }
+    views[8..8 + proof_count].clone_from_slice(&proof_views[..proof_count]);
 
     let instruction = InstructionView {
         program_id: &MPL_BUBBLEGUM_ID,

@@ -76,8 +76,7 @@ pub fn remove_bet(
     bet_count: &mut u8,
     bet_key: &Address,
 ) -> Result<(), ProgramError> {
-    let position =
-        position_of(bets, *bet_count, bet_key).ok_or(BettingError::BetNotInUserIndex)?;
+    let position = position_of(bets, *bet_count, bet_key).ok_or(BettingError::BetNotInUserIndex)?;
     let last = *bet_count as usize - 1;
     if position != last {
         let moved = read_bet(bets, last);

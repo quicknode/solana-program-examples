@@ -1,10 +1,10 @@
 use {
-    quasar_lang::cpi::Seed,
     crate::{
         error::AmmError,
         state::{Config, PoolConfig},
         ConfigPda, LiquidityMintPda, PoolAuthorityPda, PoolPda,
     },
+    quasar_lang::cpi::Seed,
     quasar_lang::prelude::*,
     quasar_spl::prelude::*,
 };
@@ -67,7 +67,7 @@ fn isqrt(n: u128) -> u128 {
         return 0;
     }
     let mut x = n;
-    let mut y = (x + 1) / 2;
+    let mut y = x.div_ceil(2);
     while y < x {
         x = y;
         y = (x + n / x) / 2;
@@ -213,13 +213,29 @@ pub fn handle_deposit_liquidity(
     );
 
     // Transfer token A to the pool.
-    accounts.token_program
-        .transfer_checked(&accounts.token_a, &accounts.mint_a, &accounts.pool_a, &accounts.depositor, amount_a, accounts.mint_a.decimals())
+    accounts
+        .token_program
+        .transfer_checked(
+            &accounts.token_a,
+            &accounts.mint_a,
+            &accounts.pool_a,
+            &accounts.depositor,
+            amount_a,
+            accounts.mint_a.decimals(),
+        )
         .invoke()?;
 
     // Transfer token B to the pool.
-    accounts.token_program
-        .transfer_checked(&accounts.token_b, &accounts.mint_b, &accounts.pool_b, &accounts.depositor, amount_b, accounts.mint_b.decimals())
+    accounts
+        .token_program
+        .transfer_checked(
+            &accounts.token_b,
+            &accounts.mint_b,
+            &accounts.pool_b,
+            &accounts.depositor,
+            amount_b,
+            accounts.mint_b.decimals(),
+        )
         .invoke()?;
 
     // Mint LP tokens to the depositor (signed by pool authority).
@@ -233,7 +249,8 @@ pub fn handle_deposit_liquidity(
         Seed::from(&bump as &[u8]),
     ];
 
-    accounts.token_program
+    accounts
+        .token_program
         .mint_to(
             &accounts.liquidity_provider_mint,
             &accounts.liquidity_provider_token,

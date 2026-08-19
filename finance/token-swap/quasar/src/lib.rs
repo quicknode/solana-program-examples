@@ -3,7 +3,7 @@
 use quasar_lang::prelude::*;
 
 pub mod error;
-mod instructions;
+pub mod instructions;
 use instructions::*;
 pub mod state;
 #[cfg(test)]

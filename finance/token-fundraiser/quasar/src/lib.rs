@@ -3,9 +3,9 @@
 use quasar_lang::prelude::*;
 
 mod error;
-mod instructions;
+pub mod instructions;
 use instructions::*;
-mod state;
+pub mod state;
 #[cfg(test)]
 mod tests;
 
@@ -25,19 +25,29 @@ mod quasar_token_fundraiser {
         amount_to_raise: u64,
         duration: u16,
     ) -> Result<(), ProgramError> {
-        instructions::handle_initialize_fundraiser(&mut ctx.accounts, amount_to_raise, duration, ctx.bumps.fundraiser)
+        instructions::handle_initialize_fundraiser(
+            &mut ctx.accounts,
+            amount_to_raise,
+            duration,
+            ctx.bumps.fundraiser,
+        )
     }
 
     /// Contribute tokens to the fundraiser while its window is open. Creates
     /// the contributor's tracking account on first contribution.
     #[instruction(discriminator = 1)]
-    pub fn contribute(ctx: Ctx<ContributeAccountConstraints>, amount: u64) -> Result<(), ProgramError> {
+    pub fn contribute(
+        ctx: Ctx<ContributeAccountConstraints>,
+        amount: u64,
+    ) -> Result<(), ProgramError> {
         instructions::handle_contribute(&mut ctx.accounts, amount, &ctx.bumps)
     }
 
     /// Maker withdraws all funds once the target is met.
     #[instruction(discriminator = 2)]
-    pub fn check_contributions(ctx: Ctx<CheckContributionsAccountConstraints>) -> Result<(), ProgramError> {
+    pub fn check_contributions(
+        ctx: Ctx<CheckContributionsAccountConstraints>,
+    ) -> Result<(), ProgramError> {
         instructions::handle_check_contributions(&mut ctx.accounts, &ctx.bumps)
     }
 

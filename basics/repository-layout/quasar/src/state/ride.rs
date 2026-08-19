@@ -15,9 +15,29 @@ pub fn ride_name_matches(ride: &Ride, other: &str) -> bool {
 /// Static list of carnival rides.
 pub fn get_rides() -> &'static [Ride] {
     &[
-        Ride { name: "Tilt-a-Whirl", upside_down: false, tickets: 3, min_height: 48 },
-        Ride { name: "Scrambler", upside_down: false, tickets: 3, min_height: 48 },
-        Ride { name: "Ferris Wheel", upside_down: false, tickets: 5, min_height: 55 },
-        Ride { name: "Zero Gravity", upside_down: true, tickets: 5, min_height: 60 },
+        Ride {
+            name: "Tilt-a-Whirl",
+            upside_down: false,
+            tickets: 3,
+            min_height: 48,
+        },
+        Ride {
+            name: "Scrambler",
+            upside_down: false,
+            tickets: 3,
+            min_height: 48,
+        },
+        Ride {
+            name: "Ferris Wheel",
+            upside_down: false,
+            tickets: 5,
+            min_height: 55,
+        },
+        Ride {
+            name: "Zero Gravity",
+            upside_down: true,
+            tickets: 5,
+            min_height: 60,
+        },
     ]
 }

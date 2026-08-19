@@ -29,7 +29,12 @@ fn initialize_creates_the_power_status_switched_off(test: &mut Test) {
 fn switch_power_turns_the_power_on(test: &mut Test) {
     let power = test.derive_pda(PowerStatus::seeds());
     // Start with power off.
-    test.write(power, PowerStatusData { is_on: PodBool::from(false) });
+    test.write(
+        power,
+        PowerStatusData {
+            is_on: PodBool::from(false),
+        },
+    );
 
     let outcome = test.send(SwitchPowerInstruction {
         power,
@@ -38,7 +43,10 @@ fn switch_power_turns_the_power_on(test: &mut Test) {
     outcome.succeeds();
 
     let logs = outcome.logs().join("\n");
-    assert!(logs.contains("pulling the power switch"), "should log switch");
+    assert!(
+        logs.contains("pulling the power switch"),
+        "should log switch"
+    );
     assert!(logs.contains("now on"), "should say power is on");
     // Verifies wire format: a stale u32 length prefix would corrupt the
     // deserialised name (e.g. "\0\0\0Al" instead of "Alice").
@@ -55,7 +63,12 @@ fn switch_power_turns_the_power_on(test: &mut Test) {
 fn switch_power_turns_the_power_off(test: &mut Test) {
     let power = test.derive_pda(PowerStatus::seeds());
     // Start with power on.
-    test.write(power, PowerStatusData { is_on: PodBool::from(true) });
+    test.write(
+        power,
+        PowerStatusData {
+            is_on: PodBool::from(true),
+        },
+    );
 
     let outcome = test.send(SwitchPowerInstruction {
         power,

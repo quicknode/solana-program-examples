@@ -1,7 +1,4 @@
-use {
-    crate::state::PowerStatus,
-    quasar_lang::prelude::*,
-};
+use {crate::state::PowerStatus, quasar_lang::prelude::*};
 
 /// Accounts for toggling the power switch.
 #[derive(Accounts)]
@@ -11,7 +8,10 @@ pub struct SwitchPowerAccountConstraints {
 }
 
 #[inline(always)]
-pub fn handle_switch_power(accounts: &mut SwitchPowerAccountConstraints, name: &str) -> Result<(), ProgramError> {
+pub fn handle_switch_power(
+    accounts: &mut SwitchPowerAccountConstraints,
+    name: &str,
+) -> Result<(), ProgramError> {
     let current: bool = accounts.power.is_on.into();
     let new_state = !current;
     accounts.power.is_on = PodBool::from(new_state);

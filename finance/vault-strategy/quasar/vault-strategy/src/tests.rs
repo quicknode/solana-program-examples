@@ -11,9 +11,7 @@ use {
             AddAssetInstruction, ApproveAssetInstruction, DepositInstruction,
             InitializeRegistryInstruction, InitializeStrategyInstruction,
         },
-        state::{
-            AssetConfig, AssetVaultPda, Registry, ShareMintPda, Strategy, UsdcVaultPda,
-        },
+        state::{AssetConfig, AssetVaultPda, Registry, ShareMintPda, Strategy, UsdcVaultPda},
     },
     quasar_test::prelude::*,
 };
@@ -99,7 +97,10 @@ fn setup_strategy(test: &mut Test, asset_mint_authority: Pubkey) {
 
     let registry = test.derive_pda(Registry::seeds(&AUTHORITY));
 
-    test.send(InitializeRegistryInstruction { authority: AUTHORITY }).succeeds();
+    test.send(InitializeRegistryInstruction {
+        authority: AUTHORITY,
+    })
+    .succeeds();
     test.send(ApproveAssetInstruction {
         authority: AUTHORITY,
         asset_mint: ASSET_MINT,
@@ -134,12 +135,19 @@ fn strategy_setup_records_the_basket(test: &mut Test) {
 
     let strategy = test.read::<Strategy>(w.strategy);
     assert_eq!(strategy.asset_count, 1, "asset_count");
-    assert_eq!(u16::from(strategy.total_weight_bps), 10_000, "total_weight_bps");
+    assert_eq!(
+        u16::from(strategy.total_weight_bps),
+        10_000,
+        "total_weight_bps"
+    );
 
     let asset_config = test.read::<AssetConfig>(w.asset_config);
     assert_eq!(u16::from(asset_config.weight_bps), 10_000, "weight_bps");
     assert_eq!(asset_config.mint, ASSET_MINT, "asset mint");
-    assert_eq!(asset_config.price_feed, PRICE_FEED, "price feed copied from registry");
+    assert_eq!(
+        asset_config.price_feed, PRICE_FEED,
+        "price feed copied from registry"
+    );
 }
 
 /// Two-program deposit: set up the router + a single-asset strategy, then
@@ -179,7 +187,9 @@ fn deposit_mints_shares_and_deploys_into_the_basket(test: &mut Test) {
 
     // Initialize the router and set the asset's rate (hand-built: the router's
     // builders live in the sibling crate).
-    let rent_id: Pubkey = "SysvarRent111111111111111111111111111111111".parse().unwrap();
+    let rent_id: Pubkey = "SysvarRent111111111111111111111111111111111"
+        .parse()
+        .unwrap();
     test.send(Instruction {
         program_id: router_id(),
         accounts: vec![

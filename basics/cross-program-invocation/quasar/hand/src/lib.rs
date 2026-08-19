@@ -2,7 +2,7 @@
 
 use quasar_lang::prelude::*;
 
-mod instructions;
+pub mod instructions;
 use instructions::*;
 #[cfg(test)]
 mod tests;
@@ -26,7 +26,10 @@ mod quasar_hand {
 
     /// Pull the lever by invoking the lever program's switch_power via CPI.
     #[instruction(discriminator = 0)]
-    pub fn pull_lever(ctx: Ctx<PullLeverAccountConstraints>, name: String<50>) -> Result<(), ProgramError> {
-        instructions::handle_pull_lever(&mut ctx.accounts, name)
+    pub fn pull_lever(
+        ctx: Ctx<PullLeverAccountConstraints>,
+        name: String<50>,
+    ) -> Result<(), ProgramError> {
+        instructions::handle_pull_lever(&ctx.accounts, name)
     }
 }

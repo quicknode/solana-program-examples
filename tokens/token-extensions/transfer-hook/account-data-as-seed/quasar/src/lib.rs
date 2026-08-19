@@ -1,10 +1,7 @@
 #![cfg_attr(not(test), no_std)]
 
 use quasar_lang::sysvars::Sysvar;
-use quasar_lang::{
-    cpi::Seed,
-    prelude::*,
-};
+use quasar_lang::{cpi::Seed, prelude::*};
 
 #[cfg(test)]
 mod tests;
@@ -36,7 +33,10 @@ mod quasar_transfer_hook_account_data_as_seed {
     /// Transfer hook handler - increments a per-owner counter on each transfer.
     /// Discriminator = sha256("spl-transfer-hook-interface:execute")[:8]
     #[instruction(discriminator = [105, 37, 101, 197, 75, 251, 102, 26])]
-    pub fn transfer_hook(ctx: Ctx<TransferHookAccountConstraints>, _amount: u64) -> Result<(), ProgramError> {
+    pub fn transfer_hook(
+        ctx: Ctx<TransferHookAccountConstraints>,
+        _amount: u64,
+    ) -> Result<(), ProgramError> {
         handle_transfer_hook(&mut ctx.accounts)
     }
 }
@@ -60,7 +60,9 @@ pub struct InitializeExtraAccountMetaListAccountConstraints {
 }
 
 #[inline(always)]
-pub fn handle_initialize_extra_account_meta_list(accounts: &mut InitializeExtraAccountMetaListAccountConstraints) -> Result<(), ProgramError> {
+pub fn handle_initialize_extra_account_meta_list(
+    accounts: &mut InitializeExtraAccountMetaListAccountConstraints,
+) -> Result<(), ProgramError> {
     // ExtraAccountMetaList with 1 extra account.
     // ExtraAccountMeta for a PDA with seeds [Literal("counter"), AccountData(0, 32, 32)]:
     //   The AccountData seed resolves the owner pubkey from account_index=0
@@ -92,7 +94,8 @@ pub fn handle_initialize_extra_account_meta_list(accounts: &mut InitializeExtraA
         Seed::from(&bump_bytes as &[u8]),
     ];
 
-    accounts.system_program
+    accounts
+        .system_program
         .create_account(
             &accounts.payer,
             &accounts.extra_account_meta_list,
@@ -104,8 +107,7 @@ pub fn handle_initialize_extra_account_meta_list(accounts: &mut InitializeExtraA
 
     // Write TLV data
     let view = unsafe {
-        &mut *(&mut accounts.extra_account_meta_list as *mut UncheckedAccount
-            as *mut AccountView)
+        &mut *(&mut accounts.extra_account_meta_list as *mut UncheckedAccount as *mut AccountView)
     };
     let mut data = view.try_borrow_mut()?;
 
@@ -117,7 +119,7 @@ pub fn handle_initialize_extra_account_meta_list(accounts: &mut InitializeExtraA
     data[16] = 1; // discriminator: PDA from seeds
     let mut config = [0u8; 32];
     config[0] = 2; // number of seeds
-    // Seed 0: Literal "counter"
+                   // Seed 0: Literal "counter"
     config[1] = 0; // seed type: literal
     config[2] = 7; // seed length
     config[3..10].copy_from_slice(b"counter");
@@ -135,8 +137,10 @@ pub fn handle_initialize_extra_account_meta_list(accounts: &mut InitializeExtraA
     let counter_size: u64 = 16;
     let counter_lamports = Rent::get()?.try_minimum_balance(counter_size as usize)?;
 
-    let (counter_pda, counter_bump) =
-        quasar_lang::pda::try_find_program_address(&[b"counter", payer_address.as_ref()], &crate::ID)?;
+    let (counter_pda, counter_bump) = quasar_lang::pda::try_find_program_address(
+        &[b"counter", payer_address.as_ref()],
+        &crate::ID,
+    )?;
 
     if accounts.counter_account.to_account_view().address() != &counter_pda {
         return Err(ProgramError::InvalidSeeds);
@@ -149,7 +153,8 @@ pub fn handle_initialize_extra_account_meta_list(accounts: &mut InitializeExtraA
         Seed::from(&counter_bump_bytes as &[u8]),
     ];
 
-    accounts.system_program
+    accounts
+        .system_program
         .create_account(
             &accounts.payer,
             &accounts.counter_account,
@@ -180,10 +185,11 @@ pub struct TransferHookAccountConstraints {
 }
 
 #[inline(always)]
-pub fn handle_transfer_hook(accounts: &mut TransferHookAccountConstraints) -> Result<(), ProgramError> {
+pub fn handle_transfer_hook(
+    accounts: &mut TransferHookAccountConstraints,
+) -> Result<(), ProgramError> {
     let view = unsafe {
-        &mut *(&mut accounts.counter_account as *mut UncheckedAccount
-            as *mut AccountView)
+        &mut *(&mut accounts.counter_account as *mut UncheckedAccount as *mut AccountView)
     };
     let mut data = view.try_borrow_mut()?;
 

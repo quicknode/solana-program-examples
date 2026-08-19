@@ -2,7 +2,7 @@
 
 use quasar_lang::prelude::*;
 
-mod instructions;
+pub mod instructions;
 use instructions::*;
 #[cfg(test)]
 mod tests;
@@ -17,7 +17,11 @@ mod quasar_processing_instructions {
     /// Quasar can parse String instruction args (u32-prefixed wire format) but
     /// can't interpolate them into log messages (no format! in no_std).
     #[instruction(discriminator = 0)]
-    pub fn go_to_park(ctx: Ctx<ParkAccountConstraints>, height: u32, name: String<50>) -> Result<(), ProgramError> {
+    pub fn go_to_park(
+        ctx: Ctx<ParkAccountConstraints>,
+        height: u32,
+        name: String<50>,
+    ) -> Result<(), ProgramError> {
         instructions::handle_go_to_park(&mut ctx.accounts, name, height)
     }
 }

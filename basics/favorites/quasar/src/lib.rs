@@ -2,9 +2,9 @@
 
 use quasar_lang::prelude::*;
 
-mod instructions;
+pub mod instructions;
 use instructions::*;
-mod state;
+pub mod state;
 #[cfg(test)]
 mod tests;
 

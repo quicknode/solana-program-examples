@@ -1,5 +1,4 @@
 use {
-    quasar_lang::cpi::Seed,
     crate::{
         instructions::{
             close_position::remove_open_interest,
@@ -11,6 +10,7 @@ use {
         state::{Pool, Position},
         PoolAuthorityPda,
     },
+    quasar_lang::cpi::Seed,
     quasar_lang::{prelude::*, sysvars::clock::Clock},
     quasar_spl::prelude::*,
 };

@@ -24,7 +24,7 @@ mod quasar_nft_minter {
         nft_symbol: String<10>,
         nft_uri: String<200>,
     ) -> Result<(), ProgramError> {
-        handle_mint_nft(&mut ctx.accounts, &nft_name, &nft_symbol, &nft_uri)
+        handle_mint_nft(&mut ctx.accounts, nft_name, nft_symbol, nft_uri)
     }
 }
 
@@ -83,7 +83,8 @@ fn handle_mint_nft(
 ) -> Result<(), ProgramError> {
     // 1. Mint one token to the associated token account.
     log("Minting token");
-    accounts.token_program
+    accounts
+        .token_program
         .mint_to(
             &accounts.mint_account,
             &accounts.associated_token_account,
@@ -94,7 +95,8 @@ fn handle_mint_nft(
 
     // 2. Create Metaplex metadata account.
     log("Creating metadata account");
-    accounts.token_metadata_program
+    accounts
+        .token_metadata_program
         .create_metadata_accounts_v3(
             &accounts.metadata_account,
             &accounts.mint_account,
@@ -114,7 +116,8 @@ fn handle_mint_nft(
 
     // 3. Create master edition (makes it a verified NFT).
     log("Creating master edition account");
-    accounts.token_metadata_program
+    accounts
+        .token_metadata_program
         .create_master_edition_v3(
             &accounts.edition_account,
             &accounts.mint_account,

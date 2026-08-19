@@ -2,9 +2,9 @@
 
 use quasar_lang::prelude::*;
 
-mod instructions;
+pub mod instructions;
 use instructions::*;
-mod state;
+pub mod state;
 #[cfg(test)]
 mod tests;
 
@@ -30,6 +30,12 @@ mod quasar_account_data {
         street: String<50>,
         city: String<50>,
     ) -> Result<(), ProgramError> {
-        instructions::handle_create_address_info(&mut ctx.accounts, name, house_number, street, city)
+        instructions::handle_create_address_info(
+            &mut ctx.accounts,
+            name,
+            house_number,
+            street,
+            city,
+        )
     }
 }

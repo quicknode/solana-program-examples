@@ -42,7 +42,10 @@ fn tall_rider_with_tickets_boards_the_ride(test: &mut Test) {
     outcome.succeeds();
 
     let logs = outcome.logs().join("\n");
-    assert!(logs.contains("about to go on a ride"), "should announce ride");
+    assert!(
+        logs.contains("about to go on a ride"),
+        "should announce ride"
+    );
     assert!(logs.contains("Welcome aboard"), "should welcome aboard");
 }
 
@@ -54,7 +57,10 @@ fn short_rider_is_turned_away(test: &mut Test) {
     outcome.succeeds();
 
     let logs = outcome.logs().join("\n");
-    assert!(logs.contains("not tall enough"), "should reject short rider");
+    assert!(
+        logs.contains("not tall enough"),
+        "should reject short rider"
+    );
 }
 
 #[quasar_test]
@@ -65,7 +71,10 @@ fn rider_without_enough_tickets_is_turned_away(test: &mut Test) {
     outcome.succeeds();
 
     let logs = outcome.logs().join("\n");
-    assert!(logs.contains("enough tickets"), "should reject insufficient tickets");
+    assert!(
+        logs.contains("enough tickets"),
+        "should reject insufficient tickets"
+    );
 }
 
 #[quasar_test]
@@ -76,7 +85,10 @@ fn upside_down_ride_warns_the_rider(test: &mut Test) {
     outcome.succeeds();
 
     let logs = outcome.logs().join("\n");
-    assert!(logs.contains("upside down"), "should warn about upside down");
+    assert!(
+        logs.contains("upside down"),
+        "should warn about upside down"
+    );
 }
 
 #[quasar_test]
@@ -99,7 +111,10 @@ fn player_without_enough_tickets_is_turned_away(test: &mut Test) {
     outcome.succeeds();
 
     let logs = outcome.logs().join("\n");
-    assert!(logs.contains("enough tickets"), "should reject insufficient tickets");
+    assert!(
+        logs.contains("enough tickets"),
+        "should reject insufficient tickets"
+    );
 }
 
 #[quasar_test]
@@ -122,7 +137,10 @@ fn visitor_without_enough_tickets_cannot_eat(test: &mut Test) {
     outcome.succeeds();
 
     let logs = outcome.logs().join("\n");
-    assert!(logs.contains("enough tickets"), "should reject insufficient tickets");
+    assert!(
+        logs.contains("enough tickets"),
+        "should reject insufficient tickets"
+    );
 }
 
 #[quasar_test]

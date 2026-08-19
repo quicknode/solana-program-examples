@@ -9,7 +9,11 @@ pub struct ParkAccountConstraints {
 }
 
 #[inline(always)]
-pub fn handle_go_to_park(_accounts: &mut ParkAccountConstraints, _name: &str, height: u32) -> Result<(), ProgramError> {
+pub fn handle_go_to_park(
+    _accounts: &mut ParkAccountConstraints,
+    _name: &str,
+    height: u32,
+) -> Result<(), ProgramError> {
     // Quasar's `log()` takes &str, no format! macro available in no_std.
     // We can't interpolate the name or height into the log message, so
     // we use static messages - same logic as the Anchor version, just

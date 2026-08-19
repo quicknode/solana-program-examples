@@ -3,9 +3,9 @@
 use quasar_lang::prelude::*;
 
 mod error;
-mod instructions;
+pub mod instructions;
 use instructions::*;
-mod state;
+pub mod state;
 #[cfg(test)]
 mod tests;
 
@@ -16,7 +16,9 @@ mod quasar_counter {
     use super::*;
 
     #[instruction(discriminator = 0)]
-    pub fn initialize_counter(ctx: Ctx<InitializeCounterAccountConstraints>) -> Result<(), ProgramError> {
+    pub fn initialize_counter(
+        ctx: Ctx<InitializeCounterAccountConstraints>,
+    ) -> Result<(), ProgramError> {
         instructions::handle_initialize_counter(&mut ctx.accounts)
     }
 

@@ -1,10 +1,10 @@
 use {
-    quasar_lang::cpi::Seed,
     crate::{
         error::AmmError,
         state::{Config, PoolConfig, PoolConfigInner},
         ConfigPda, PoolAuthorityPda, PoolPda, BASIS_POINTS_DIVISOR,
     },
+    quasar_lang::cpi::Seed,
     quasar_lang::prelude::*,
     quasar_spl::prelude::*,
 };
@@ -157,13 +157,17 @@ pub fn handle_swap_tokens(
     // transfer.
     let (new_owed_a, new_owed_b) = if input_is_token_a {
         (
-            owed_a.checked_add(admin_portion).ok_or(AmmError::MathOverflow)?,
+            owed_a
+                .checked_add(admin_portion)
+                .ok_or(AmmError::MathOverflow)?,
             owed_b,
         )
     } else {
         (
             owed_a,
-            owed_b.checked_add(admin_portion).ok_or(AmmError::MathOverflow)?,
+            owed_b
+                .checked_add(admin_portion)
+                .ok_or(AmmError::MathOverflow)?,
         )
     };
     let config_addr = *accounts.pool_config.config();
@@ -190,21 +194,53 @@ pub fn handle_swap_tokens(
 
     if input_is_token_a {
         // Trader sends token A to pool.
-        accounts.token_program
-            .transfer_checked(&accounts.token_a, &accounts.mint_a, &accounts.pool_a, &accounts.trader, input, accounts.mint_a.decimals())
+        accounts
+            .token_program
+            .transfer_checked(
+                &accounts.token_a,
+                &accounts.mint_a,
+                &accounts.pool_a,
+                &accounts.trader,
+                input,
+                accounts.mint_a.decimals(),
+            )
             .invoke()?;
         // Pool sends token B to trader (signed).
-        accounts.token_program
-            .transfer_checked(&accounts.pool_b, &accounts.mint_b, &accounts.token_b, &accounts.pool_authority, output, accounts.mint_b.decimals())
+        accounts
+            .token_program
+            .transfer_checked(
+                &accounts.pool_b,
+                &accounts.mint_b,
+                &accounts.token_b,
+                &accounts.pool_authority,
+                output,
+                accounts.mint_b.decimals(),
+            )
             .invoke_signed(seeds)?;
     } else {
         // Pool sends token A to trader (signed).
-        accounts.token_program
-            .transfer_checked(&accounts.pool_a, &accounts.mint_a, &accounts.token_a, &accounts.pool_authority, output, accounts.mint_a.decimals())
+        accounts
+            .token_program
+            .transfer_checked(
+                &accounts.pool_a,
+                &accounts.mint_a,
+                &accounts.token_a,
+                &accounts.pool_authority,
+                output,
+                accounts.mint_a.decimals(),
+            )
             .invoke_signed(seeds)?;
         // Trader sends token B to pool.
-        accounts.token_program
-            .transfer_checked(&accounts.token_b, &accounts.mint_b, &accounts.pool_b, &accounts.trader, input, accounts.mint_b.decimals())
+        accounts
+            .token_program
+            .transfer_checked(
+                &accounts.token_b,
+                &accounts.mint_b,
+                &accounts.pool_b,
+                &accounts.trader,
+                input,
+                accounts.mint_b.decimals(),
+            )
             .invoke()?;
     }
 

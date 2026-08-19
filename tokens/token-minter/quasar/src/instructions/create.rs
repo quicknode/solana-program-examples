@@ -1,8 +1,4 @@
-use {
-    quasar_lang::prelude::*,
-    quasar_metadata::prelude::*,
-    quasar_spl::prelude::*,
-};
+use {quasar_lang::prelude::*, quasar_metadata::prelude::*, quasar_spl::prelude::*};
 
 /// Accounts for creating a new token mint with Metaplex metadata.
 ///
@@ -45,7 +41,8 @@ pub fn handle_create_token(
 ) -> Result<(), ProgramError> {
     log("Creating metadata account");
 
-    accounts.token_metadata_program
+    accounts
+        .token_metadata_program
         .create_metadata_accounts_v3(
             &accounts.metadata_account,
             &accounts.mint_account,

@@ -13,7 +13,9 @@ pub struct IncrementPageVisitsAccountConstraints {
 }
 
 #[inline(always)]
-pub fn handle_increment_page_visits(accounts: &mut IncrementPageVisitsAccountConstraints) -> Result<(), ProgramError> {
+pub fn handle_increment_page_visits(
+    accounts: &mut IncrementPageVisitsAccountConstraints,
+) -> Result<(), ProgramError> {
     let current: u64 = accounts.page_visits.page_visits.into();
     let next = current
         .checked_add(1)
