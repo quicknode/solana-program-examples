@@ -16,7 +16,7 @@ use {
             system_instruction,
         },
         // `system_program` moved to the crate root in v2, and `Pubkey` is
-        // compat-only — `Address` is the same 32-byte type.
+        // compat-only: `Address` is the same 32-byte type.
         system_program, Address, Discriminator, InstructionData, ToAccountMetas,
     },
     litesvm::LiteSVM,

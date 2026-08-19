@@ -187,7 +187,7 @@ pub fn handle_deposit(
 
     // `strategy` signs every CPI below. It is a data account holding a live
     // borrow on its buffer, which the runtime would reject when the CPI borrows
-    // the same account — so hand the borrow back for the duration.
+    // the same account, so hand the borrow back for the duration.
     // `release_borrow` flushes the pending writes and `reacquire_borrow_mut`
     // re-reads them.
     context.accounts.strategy.release_borrow()?;

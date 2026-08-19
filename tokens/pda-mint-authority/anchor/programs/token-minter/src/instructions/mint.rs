@@ -56,7 +56,7 @@ pub fn handle_mint_token(
 
     // The mint is its own authority, so it fills a writable slot and a
     // read-only one. `CpiHandleMut` is Copy and `into_readonly()` erases it
-    // while carrying the wrapper's relaxed borrow flag across — which a
+    // while carrying the wrapper's relaxed borrow flag across, which a
     // handle built by hand over a copy of the `AccountView` would not.
     let mint_handle = context.accounts.mint_account.cpi_handle_mut();
     let mint_authority_handle = mint_handle.into_readonly();

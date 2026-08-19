@@ -36,7 +36,7 @@ pub fn handle_place_order(
     let maker_accounts = context.remaining_accounts()?;
 
     // `AccountView` is Copy, and a copy still points at the same
-    // account — v2's typed handles make the aliasing a compile error.
+    // account. v2's typed handles make the aliasing a compile error.
     let quote_mint_view = *context.accounts.quote_mint.account();
     // Read the decimals up front: the CPI handles below borrow the mints.
     let quote_decimals = context.accounts.quote_mint.decimals();

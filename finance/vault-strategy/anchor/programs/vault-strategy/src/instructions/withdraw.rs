@@ -113,7 +113,7 @@ pub fn handle_withdraw(
 
     // `strategy` signs the payouts below. It is a data account holding a live
     // borrow on its buffer, so release it across the CPIs and take it back
-    // afterwards — the runtime rejects a CPI that borrows an account we hold.
+    // afterwards: the runtime rejects a CPI that borrows an account we hold.
     context.accounts.strategy.release_borrow()?;
 
     // Every other account here goes through its own wrapper handle. A handle

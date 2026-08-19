@@ -22,7 +22,7 @@ pub mod cpi_guard {
         // The recipient token account is a PDA that is its own authority. v2
         // rejects an `init` constraint naming the account being initialized
         // (`token::authority` has to name a sibling field), so the account is
-        // created here instead — the `init_if_needed` semantics become an
+        // created here instead: the `init_if_needed` semantics become an
         // explicit "create when empty".
         if context.accounts.recipient_token_account.account().data_len() == 0 {
             let space = ExtensionType::try_calculate_account_len::<PodAccount>(&[])?;
@@ -86,7 +86,7 @@ pub struct CpiTransferAccountConstraints {
     )]
     pub sender_token_account: InterfaceAccount<TokenAccount>,
     /// CHECK: created and initialized as a token account by this instruction,
-    /// with itself as the authority — see `cpi_transfer` above.
+    /// with itself as the authority. See `cpi_transfer` above.
     #[account(
         mut,
         seeds = [b"pda"],

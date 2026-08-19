@@ -105,7 +105,7 @@ pub fn handle_claim_winnings(context: &mut Context<ClaimWinningsAccountConstrain
     let event_id = context.accounts.event.event_id;
     let event_bump = context.accounts.event.bump;
     // `event` signs the transfer below. Release its borrow across
-    // the CPI — the runtime rejects a CPI that borrows an account we hold.
+    // the CPI: the runtime rejects a CPI that borrows an account we hold.
     context.accounts.event.release_borrow()?;
     let event_view = *context.accounts.event.account();
 

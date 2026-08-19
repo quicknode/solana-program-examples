@@ -125,7 +125,7 @@ impl InitMintAccountConstraints {
 
         // `payer` and `mint` each fill more than one CPI slot below. v2's typed
         // handles enforce borrow exclusivity at compile time, so the read-only
-        // slots are built from copies of the `AccountView` — each copy still
+        // slots are built from copies of the `AccountView`, and each copy still
         // points at the same underlying account.
         let payer_view = *self.payer.account();
         let mint_view = *self.mint.account();

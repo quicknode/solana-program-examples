@@ -5,7 +5,7 @@ pub struct ConfigureAdminAccountConstraints {
     // Bootstrapping the config passes the same key as both `admin` and
     // `new_admin`, so the two slots legitimately alias. v2 rejects an account
     // that appears twice while any of its slots is in the mutable mask, and it
-    // flags *both* indices — so both carry `unsafe(dup)`, which keeps them
+    // flags *both* indices, so both carry `unsafe(dup)`, which keeps them
     // writable while taking them out of that mask.
     #[account(unsafe(dup))]
     pub admin: Signer,

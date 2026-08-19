@@ -23,7 +23,7 @@ pub struct InitializeAccountConstraints {
 
 pub fn handler(context: &mut Context<InitializeAccountConstraints>) -> Result<()> {
     // `AccountView` is Copy, and a copy still points at the same
-    // account — v2's typed handles make the aliasing a compile error.
+    // account. v2's typed handles make the aliasing a compile error.
     let payer_view = *context.accounts.payer.account();
     // Calculate space required for token and extension data
     let token_account_size =

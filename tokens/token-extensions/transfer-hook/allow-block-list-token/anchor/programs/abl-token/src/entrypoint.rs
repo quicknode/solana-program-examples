@@ -6,13 +6,13 @@
 //! to a single byte. The transfer-hook interface calls `Execute` under its own
 //! eight-byte value, which leaves no way to declare that handler directly.
 //! `#[program(interface, ...)]` accepts arbitrary discriminator bytes but only
-//! generates a CPI client — no dispatch, and so no deployable program.
+//! generates a CPI client: no dispatch, and so no deployable program.
 //!
 //! So the crate builds with `no-entrypoint` (which makes anchor export its
 //! dispatch as `__anchor_dispatch` instead of claiming the `entrypoint` symbol)
 //! and this module claims `entrypoint` itself. All it does is swap the
 //! interface's discriminator for `tx_hook`'s before delegating; the payload
-//! behind it — a single `u64` amount — is identical either way.
+//! behind it (a single `u64` amount) is identical either way.
 
 use anchor_lang::pinocchio;
 

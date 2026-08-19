@@ -6,7 +6,7 @@
 //! to a single byte. The transfer-hook interface calls its instructions under
 //! their own eight-byte values, which leaves no way to declare those handlers
 //! directly. `#[program(interface, ...)]` accepts arbitrary discriminator bytes
-//! but only generates a CPI client — no dispatch, and so no deployable program.
+//! but only generates a CPI client: no dispatch, and so no deployable program.
 //!
 //! So the crate builds with `no-entrypoint` (which makes anchor export its
 //! dispatch as `__anchor_dispatch` instead of claiming the `entrypoint` symbol)

@@ -89,8 +89,8 @@ pub fn handle_close_fundraiser(accounts: &mut CloseFundraiserAccountConstraints)
     let mint_decimals = accounts.mint_to_raise.decimals();
 
     // `fundraiser` signs both CPIs below. It is a data account holding a live
-    // borrow on its buffer, so release it across the CPIs — the runtime rejects
-    // a CPI that borrows an account we still hold — and take it back after.
+    // borrow on its buffer, so release it across the CPIs. The runtime rejects
+    // a CPI that borrows an account we still hold. Take it back after.
     let fundraiser_bump = accounts.fundraiser.bump;
     accounts.fundraiser.release_borrow()?;
     let fundraiser_view = *accounts.fundraiser.account();

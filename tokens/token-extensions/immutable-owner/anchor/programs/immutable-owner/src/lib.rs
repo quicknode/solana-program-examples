@@ -19,7 +19,7 @@ pub mod immutable_owner {
     // We can manually create and initialize the token account via CPIs in the instruction handler
     pub fn initialize(context: &mut Context<InitializeAccountConstraints>) -> Result<()> {
         // `AccountView` is Copy, and a copy still points at the same
-        // account — v2's typed handles make the aliasing a compile error.
+        // account. v2's typed handles make the aliasing a compile error.
         let payer_view = *context.accounts.payer.account();
         // Calculate space required for token and extension data
         let token_account_size = ExtensionType::try_calculate_account_len::<PodAccount>(&[

@@ -104,7 +104,7 @@ pub fn process_initialize(
     )?;
 
     // Initialize token metadata. `AccountView` is Copy and a copy still points
-    // at the same account, so the read-only slots come from copies — v2's typed
+    // at the same account, so the read-only slots come from copies. v2's typed
     // handles enforce borrow exclusivity at compile time.
     let payer_view = *context.accounts.payer.account();
     let mint_view = *context.accounts.mint_account.account();

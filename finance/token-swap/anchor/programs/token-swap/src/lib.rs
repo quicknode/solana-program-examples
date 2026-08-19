@@ -6,7 +6,7 @@ pub mod instructions;
 mod state;
 
 // The `#[derive(Accounts)]` client modules are generated beside their structs,
-// and `#[program]` resolves them at `super::` — the crate root. Re-exporting
+// and `#[program]` resolves them at `super::`, the crate root. Re-exporting
 // here rather than inside the module puts them where it looks.
 use instructions::*;
 

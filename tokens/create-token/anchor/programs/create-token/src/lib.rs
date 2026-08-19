@@ -34,7 +34,7 @@ pub mod create_token {
         // `payer` fills three CPI slots (payer, mint authority, update
         // authority). v2's typed handles enforce borrow exclusivity at compile
         // time, so the two read-only slots are built from a copy of the
-        // `AccountView` — it still points at the same underlying account.
+        // `AccountView`, and it still points at the same underlying account.
         let payer_view = *context.accounts.payer.account();
 
         create_metadata_accounts_v3(

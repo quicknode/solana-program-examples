@@ -24,7 +24,7 @@ pub mod lever {
 // `borsh` rather than v2's zero-copy default. A zero-copy `PowerStatus` would
 // have to store `is_on` as `PodBool` (bytemuck rejects `bool`, since only
 // `0x00`/`0x01` are valid bit patterns), and the generated IDL renders
-// `PodBool` as a plain `bool` alias — so `declare_program!` in the `hand`
+// `PodBool` as a plain `bool` alias, so `declare_program!` in the `hand`
 // program would regenerate a struct that is no longer `Pod`. Borsh keeps the
 // field a real `bool` on both sides of the CPI.
 #[account(borsh)]

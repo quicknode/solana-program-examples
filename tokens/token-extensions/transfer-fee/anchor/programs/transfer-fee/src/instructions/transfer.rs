@@ -20,7 +20,7 @@ pub struct TransferAccountConstraints {
 
     // Read-only: `transfer_checked_with_fee` accrues the withheld fee on the
     // destination token account, not the mint. It also has to be read-only for
-    // the extension read below — a mutable data account holds an exclusive
+    // the extension read below: a mutable data account holds an exclusive
     // borrow, so a second `try_borrow()` on it is rejected.
     pub mint_account: InterfaceAccount<Mint>,
     #[account(

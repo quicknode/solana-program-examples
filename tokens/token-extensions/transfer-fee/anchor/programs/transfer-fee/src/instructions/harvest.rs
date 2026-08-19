@@ -23,7 +23,7 @@ pub fn process_harvest(context: &mut Context<HarvestAccountConstraints>) -> Resu
     // v2 has no `InterfaceAccount::try_from`; `AnchorAccount::load` is the
     // equivalent for an account reached through remaining_accounts. The
     // wrapper is dropped at the end of each iteration, so it holds no borrow
-    // across the CPI — only the verdict escapes.
+    // across the CPI: only the verdict escapes.
     let keep: Vec<bool> = candidates
         .iter()
         .map(|account| {

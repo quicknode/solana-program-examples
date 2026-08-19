@@ -46,7 +46,7 @@ pub fn handle_create_token(
     token_uri: String,
 ) -> Result<()> {
     // `AccountView` is Copy, and a copy still points at the same
-    // account — v2's typed handles make the aliasing a compile error.
+    // account. v2's typed handles make the aliasing a compile error.
     let payer_view = *context.accounts.payer.account();
     msg!("Creating metadata account");
 

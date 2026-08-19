@@ -250,7 +250,7 @@ pub fn handle_swap_tokens(
     //
     // u128 + checked: same overflow concern as the pre-trade invariant.
     // v2's token accounts are zero-copy, so the balances below are read live
-    // from the runtime buffer — there is nothing to reload. What the CPI can
+    // from the runtime buffer, so there is nothing to reload. What the CPI can
     // change is the schema, so re-run the load-time checks instead.
     context.accounts.pool_a.revalidate_after_cpi()?;
     context.accounts.pool_b.revalidate_after_cpi()?;

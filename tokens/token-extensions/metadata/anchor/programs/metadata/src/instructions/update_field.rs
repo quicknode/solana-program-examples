@@ -33,7 +33,7 @@ pub fn process_update_field(
     args: UpdateFieldArgs,
 ) -> Result<()> {
     // `AccountView` is Copy, and a copy still points at the same
-    // account — v2's typed handles make the aliasing a compile error.
+    // account. v2's typed handles make the aliasing a compile error.
     let authority_view = *context.accounts.authority.account();
     let UpdateFieldArgs { field, value } = args;
 

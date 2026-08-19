@@ -87,7 +87,7 @@ pub fn handle_withdraw_obligation_collateral(
     ];
     // `obligation` signs this CPI. It is a data account holding a live borrow on
     // its buffer, which the runtime would reject when the CPI borrows the same
-    // account — so hand the borrow back across the call. `release_borrow`
+    // account, so hand the borrow back across the call. `release_borrow`
     // flushes the pending writes, and `reacquire_borrow_mut` re-reads them.
     context.accounts.obligation.release_borrow()?;
     transfer_checked(

@@ -63,7 +63,7 @@ pub fn handle_deposit_reserve_liquidity(
     let seeds = reserve_signer_seeds(&lending_market, &liquidity_mint, &bump);
     // `reserve` signs this CPI. It is a data account holding a live borrow on
     // its buffer, which the runtime would reject when the CPI borrows the same
-    // account — so hand the borrow back across the call. `release_borrow`
+    // account, so hand the borrow back across the call. `release_borrow`
     // flushes the pending writes, and `reacquire_borrow_mut` re-reads them.
     context.accounts.reserve.release_borrow()?;
     mint_to(

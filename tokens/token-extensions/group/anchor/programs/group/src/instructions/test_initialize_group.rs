@@ -62,7 +62,7 @@ pub fn handler(context: &mut Context<InitializeGroupAccountConstraints>) -> Resu
     let lamports = Rent::get()?.try_minimum_balance(mint_size)?;
 
     // The mint PDA is both the authority and the group address, so take a copy
-    // of its `AccountView` for the read-only uses — v2's typed handles enforce
+    // of its `AccountView` for the read-only uses. v2's typed handles enforce
     // borrow exclusivity at compile time.
     let mint_address = *context.accounts.mint_account.address();
 

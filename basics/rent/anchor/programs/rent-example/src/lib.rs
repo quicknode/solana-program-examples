@@ -63,7 +63,7 @@ pub struct AddressData {
 
 impl AddressData {
     /// Bytes this struct occupies on the wire, which is what the new account
-    /// has to be sized — and therefore rent-funded — for.
+    /// has to be sized (and therefore rent-funded) for.
     fn serialized_span(&self) -> Result<usize> {
         <Self as wincode::SchemaWrite<anchor_lang::BorshConfig>>::size_of(self)
             .map_err(|_| ProgramError::InvalidInstructionData)

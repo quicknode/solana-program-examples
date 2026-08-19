@@ -92,7 +92,7 @@ pub fn handle_settle_event(
     if fee > 0 {
         let event_id = context.accounts.event.event_id;
         let event_bump = context.accounts.event.bump;
-        // `event` signs the transfer below. Release its borrow across the CPI —
+        // `event` signs the transfer below. Release its borrow across the CPI:
         // the runtime rejects a CPI that borrows an account we still hold.
         context.accounts.event.release_borrow()?;
         let event_view = *context.accounts.event.account();

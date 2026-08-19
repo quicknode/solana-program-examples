@@ -28,7 +28,7 @@ pub mod entrypoint;
 
 // v2's `#[program(interface, ...)]` declares an interface for other programs to
 // CPI into and emits no entrypoint, and an executable `#[program]` only accepts
-// one-byte custom discriminators — so the transfer-hook interface's eight-byte
+// one-byte custom discriminators, so the transfer-hook interface's eight-byte
 // discriminators have no direct spelling. `entrypoint` bridges the gap: it maps
 // each of them onto a handler before anchor's dispatch runs.
 #[program]

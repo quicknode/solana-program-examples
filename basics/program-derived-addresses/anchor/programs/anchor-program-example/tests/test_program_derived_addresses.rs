@@ -19,7 +19,7 @@ fn setup() -> (LiteSVM, solana_keypair::Keypair) {
 }
 
 /// Mirrors the on-chain layout. v2's `#[account]` is zero-copy, so the struct
-/// carries explicit padding out to its alignment — `try_from_slice` rejects
+/// carries explicit padding out to its alignment: `try_from_slice` rejects
 /// trailing bytes, so the test type has to spell the padding out too.
 #[derive(BorshDeserialize)]
 struct PageVisits {

@@ -1,6 +1,6 @@
 // v2's `#[derive(Accounts)]` binds the `#[instruction(...)]` args in more
 // than one generated item, and only the one evaluating the constraints below
-// reads them — so the binding looks unused to rustc even though `space` uses it.
+// reads them, so the binding looks unused to rustc even though `space` uses it.
 #![allow(unused_variables)]
 
 use anchor_lang::prelude::*;

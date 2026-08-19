@@ -7,7 +7,7 @@ use anchor_spl::{
 };
 
 // v2's anchor-spl wraps these CPIs in terms of `CpiHandle`s, so the raw
-// mpl-token-metadata `*Cpi` builders — which want `&AccountInfo` — are not
+// mpl-token-metadata `*Cpi` builders (which want `&AccountInfo`) are not
 // usable here.
 use anchor_spl::metadata::{
     create_master_edition_v3, create_metadata_accounts_v3,

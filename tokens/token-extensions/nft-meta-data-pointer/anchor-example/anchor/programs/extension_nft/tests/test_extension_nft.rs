@@ -21,7 +21,7 @@
 
 use {
     // `system_program` moved to the crate root in v2, and `Pubkey` is
-    // compat-only — `Address` is the same 32-byte type.
+    // compat-only: `Address` is the same 32-byte type.
     anchor_lang::{system_program, Address as Pubkey, InstructionData, ToAccountMetas},
     litesvm::LiteSVM,
     solana_instruction::Instruction,

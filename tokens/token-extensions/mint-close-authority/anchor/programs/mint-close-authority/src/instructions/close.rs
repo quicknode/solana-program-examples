@@ -19,7 +19,7 @@ pub struct CloseAccountConstraints {
 pub fn handler(context: &mut Context<CloseAccountConstraints>) -> Result<()> {
     // `authority` fills both the destination and authority CPI slots. v2's typed
     // handles enforce borrow exclusivity at compile time, so the read-only slot
-    // is built from a copy of the `AccountView` — it still points at the same
+    // is built from a copy of the `AccountView`, and it still points at the same
     // underlying account.
     let authority_view = *context.accounts.authority.account();
 

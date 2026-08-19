@@ -14,7 +14,7 @@ use anchor_spl::{
 };
 
 pub fn handle_mint_nft(context: &mut Context<MintNftAccountConstraints>) -> Result<()> {
-    // `AccountView` is Copy, and a copy still points at the same account — v2's
+    // `AccountView` is Copy, and a copy still points at the same account. v2's
     // typed handles make the aliasing a compile error. `mint` and `signer` are
     // Signers and `nft_authority` releases its data borrow below, so none of
     // these copies aliases a live borrow.
@@ -130,7 +130,7 @@ pub fn handle_mint_nft(context: &mut Context<MintNftAccountConstraints>) -> Resu
     );
 
     // `initialize` names metadata (the mint, writable), update_authority, mint
-    // and mint_authority — so the mint and the authority each fill two slots.
+    // and mint_authority, so the mint and the authority each fill two slots.
     invoke_signed(
         init_token_meta_data_ix,
         &[

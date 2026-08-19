@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 
 // v2's anchor-spl wraps this CPI in terms of `CpiHandle`s, so the raw
-// mpl-token-metadata `*Cpi` builder — which wants `&AccountInfo` — is not
+// mpl-token-metadata `*Cpi` builder (which wants `&AccountInfo`) is not
 // usable here. The collection is created sized (`CollectionDetails::V1`), so
 // the sized-item variant is the matching instruction.
 use anchor_spl::metadata::{

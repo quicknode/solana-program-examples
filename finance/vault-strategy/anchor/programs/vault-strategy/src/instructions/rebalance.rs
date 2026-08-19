@@ -166,7 +166,7 @@ pub fn handle_rebalance(
 
     // `strategy` signs the CPI(s) below. It is a data account holding a live
     // borrow on its buffer, which the runtime would reject when the CPI borrows
-    // the same account — so hand the borrow back for the duration.
+    // the same account, so hand the borrow back for the duration.
     context.accounts.strategy.release_borrow()?;
 
     // Step 1: sell basket token -> USDC

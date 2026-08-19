@@ -20,7 +20,7 @@ pub struct CreateTokenAccountConstraints {
     pub payer: Signer,
 
     // Create mint account. The same PDA is both the account's address and its
-    // mint/freeze authority — which is the point of this example, and which v2
+    // mint/freeze authority, which is the point of this example, and which v2
     // cannot express as an `init` constraint: `mint::authority` has to name a
     // sibling field, and referencing the account being initialized is rejected
     // at macro-expansion time. So the mint is created by hand in
