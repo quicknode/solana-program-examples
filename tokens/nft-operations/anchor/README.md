@@ -379,7 +379,7 @@ pub fn handle_verify_collection(
 }
 ```
 
-> `INSTRUCTIONS_SYSVAR_ID` is the well-known sysvar address `Sysvar1nstructions1111111111111111111111111`, defined directly in [`verify_collection.rs`](programs/mint-nft/src/instructions/verify_collection.rs) because `sysvar::instructions::ID` moved in Anchor 1.0.
+> `INSTRUCTIONS_SYSVAR_ID` is the well-known sysvar address `Sysvar1nstructions1111111111111111111111111`, defined directly in [`verify_collection.rs`](programs/mint-nft/src/instructions/verify_collection.rs) because pinocchio, which anchor-lang v2 is built on, does not re-export it.
 
 `verify_collection` performs a CPI to the Token Metadata program with the right accounts. The collection NFT's mint authority signs the CPI, and the NFT is verified as part of the collection.
 

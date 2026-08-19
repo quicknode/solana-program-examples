@@ -16,7 +16,7 @@ The pool keeps `x * y = K` invariant: if `x` is the reserve of token A and `y` i
 - **Caller-supplied [slippage](https://www.investopedia.com/terms/s/slippage.asp) floors on every state-changing [instruction](https://solana.com/docs/terminology#instruction):** swaps revert with `SlippageExceeded` if the output falls below `min_output_amount`, deposits revert with `DepositBelowMinimum` if the LP mint amount falls below `minimum_lp_tokens_out`, withdrawals revert with `WithdrawalBelowMinimum` if either side falls below its floor.
 - **Defence-in-depth invariant check:** every swap re-verifies `effective_pool_a * effective_pool_b` doesn't decrease after the transfers, so a bug in the curve math fails the transaction instead of silently giving the trader too much.
 - All financial math in `u128` with checked arithmetic, matching how production Solana AMMs (Orca, Raydium, Meteora, Saber) do it.
-- Anchor 1.0 Rust [program](https://solana.com/docs/terminology#program) with LiteSVM integration tests.
+- Anchor 2.0.0-rc.1 Rust [program](https://solana.com/docs/terminology#program) with LiteSVM integration tests.
 
 ## Why a CPAMM
 
@@ -45,7 +45,7 @@ Implementation choices:
 
 ## Onchain-design principles applied here
 
-- **Store keys in the account.** Even for PDAs, storing the parent keys in the account state makes lookups easier (you can rebuild the PDA without consulting external data) and works well with Anchor's `has_one` constraint.
+- **Store keys in the account.** Even for PDAs, storing the parent keys in the account state makes lookups easier (you can rebuild the PDA without consulting external data) and works well with Anchor's `address` constraint on the sibling field.
 - **Keep seeds simple.** Start with the parent's seeds, then the current object's identifiers in alphabetical order. For the pool, that means `[config, mint_a, mint_b]`.
 - **Keep instruction scope small.** Smaller instructions touch fewer accounts, leaving room in the transaction and improving composability and security.
 
@@ -142,7 +142,7 @@ Burns LP tokens and returns a proportional share of the **effective reserves** (
 
 Lets the address stored in `Config.admin` sweep their accumulated trading-fee claim out of a pool. Transfers `admin_fees_owed_a` from `pool_a` to the admin's token-A account and `admin_fees_owed_b` from `pool_b` to the admin's token-B account, signed by `pool_authority`. Then resets both accumulators to zero.
 
-- Authorisation: enforced by Anchor's `has_one = admin` constraint on `config` plus the `Signer` constraint on `admin`. Calls from any other signer are rejected.
+- Authorisation: enforced by Anchor's `address = config.admin` constraint on `admin` plus the `Signer` constraint on the same field. Calls from any other signer are rejected.
 - The admin's token accounts (`admin_token_a`, `admin_token_b`) must already exist - this handler doesn't auto-create them (keeps the example small).
 - Idempotent: calling again with the accumulators at zero is a successful no-op (transfers are skipped when owed = 0).
 
@@ -342,7 +342,7 @@ After trading activity on both pools, Alice sweeps her accumulated slice from th
 
 - **Handler:** `claim_admin_fees`
 - **Accounts (`ClaimAdminFeesAccounts`):**
-  - `config` - Alice's `Config` (the `has_one = admin` constraint enforces that only she can call this)
+  - `config` - Alice's `Config` (the `address = config.admin` constraint on `admin` enforces that only she can call this)
   - `pool_config`, `pool_authority`
   - `mint_a`, `mint_b`
   - `pool_a`, `pool_b` (the pool's reserves - the source of the transfers)

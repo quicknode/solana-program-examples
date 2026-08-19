@@ -58,29 +58,15 @@ pub struct ReadPriceAccountConstraints {
 // ---------------------------------------------------------------------------
 // Pyth `PriceUpdateV2` account, vendored from `pyth-solana-receiver-sdk`.
 //
-// The official `pyth-solana-receiver-sdk` is NOT Anchor 1.0 compatible (as of
-// June 2026), so this example mirrors the `PriceUpdateV2` account type locally
-// instead of importing it.
+// The SDK's current release (2.0.0, checked August 2026) builds against
+// `anchor-lang` 1.0.2, and this repository is on 2.0.0-rc.1, whose account
+// wrappers are a different set of types. Importing the SDK's `PriceUpdateV2`
+// would pull a second `anchor-lang` into the graph.
 //
-// Details: the latest `pyth-solana-receiver-sdk` (1.2.0) builds against
-// `anchor-lang` 0.32 and pulls `pythnet-sdk` (2.3.1), which still derives
-// borsh 0.10 on `PriceFeedMessage`. Anchor 0.32's `AnchorSerialize` /
-// `AnchorDeserialize` derives require borsh 1.x, so the SDK's own
-// `PriceUpdateV2` fails to compile:
-//
-//     error[E0277]: the trait bound
-//     `pythnet_sdk::messages::PriceFeedMessage: BorshSerialize` is not satisfied
-//
-// No published `pyth-solana-receiver-sdk` targets `anchor-lang` 1.0 (which this
-// repo standardizes on) and no `pythnet-sdk` release has migrated to borsh 1.x,
-// so the dependency can't simply be upgraded. Tracked upstream at
-// https://github.com/pyth-network/pyth-crosschain/issues/3756
-//
-// The fields, order, and 8-byte
-// discriminator below match the onchain account exactly, and it is owned by
-// the Pyth Receiver program (see the `Owner` impl), so accounts written by Pyth
-// deserialize unchanged. Replace this with the SDK type once an Anchor 1.0 /
-// borsh 1.x compatible `pyth-solana-receiver-sdk` release ships.
+// The fields, order, and 8-byte discriminator below match the onchain account
+// exactly, and it is owned by the Pyth Receiver program (see the `Owner` impl),
+// so accounts written by Pyth deserialize unchanged. Import the SDK type once a
+// release targeting `anchor-lang` 2.x ships.
 // ---------------------------------------------------------------------------
 
 #[derive(Clone, Debug, PartialEq, Eq, wincode::SchemaRead, wincode::SchemaWrite)]
