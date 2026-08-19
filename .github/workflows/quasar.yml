@@ -290,6 +290,63 @@ jobs:
         if: always()
         run: sccache --show-stats
 
+  # Rustfmt and Clippy for the Quasar crates.
+  #
+  # The repository-wide `Rust Lint` workflow runs `cargo fmt --check` and
+  # `cargo clippy` from the repository root, and those only ever see members of
+  # the root workspace. Every Quasar crate declares its own `[workspace]`,
+  # because `quasar build` runs `cargo metadata --locked` against a per-project
+  # lockfile, so they cannot be members and that workflow never sees them.
+  #
+  # This walks Cargo manifests rather than reusing `build-and-test`'s project
+  # list, which is directories named exactly `quasar`. That list misses
+  # `tokens/quasar-metadata`, a vendored library three of the examples depend on.
+  # Linting is a host build that needs neither the Quasar CLI nor platform-tools,
+  # and it does not vary by Solana version, so it runs once rather than per
+  # matrix entry.
+  lint:
+    needs: changes
+    if: needs.changes.outputs.total_projects != '0'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Cache Cargo registry and git
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-lint-${{ runner.os }}-${{ hashFiles('**/Cargo.toml') }}
+          restore-keys: |
+            cargo-lint-${{ runner.os }}-
+      - name: Rustfmt and Clippy
+        run: |
+          failed=()
+          while read -r manifest; do
+            crate=$(dirname "$manifest")
+            echo "::group::$crate"
+            if ! ( cd "$crate" && cargo fmt --check ); then
+              echo "::error::cargo fmt --check failed for $crate"
+              failed+=("$crate (fmt)")
+            fi
+            # Matches the repository-wide Clippy job: diverging_sub_expression is
+            # a false positive from the program macro's expansion.
+            if ! ( cd "$crate" && cargo clippy -- -D warnings -A clippy::diverging_sub_expression ); then
+              echo "::error::cargo clippy failed for $crate"
+              failed+=("$crate (clippy)")
+            fi
+            echo "::endgroup::"
+          done < <(grep -rl --include=Cargo.toml 'quasar-lang' . | grep -v '/target/' | sort)
+
+          if [ ${#failed[@]} -ne 0 ]; then
+            printf '%s\n' "Lint failures:" "${failed[@]}"
+            exit 1
+          fi
+          echo "All Quasar crates pass rustfmt and clippy."
+
   summary:
     needs: [changes, build-and-test]
     if: always()
