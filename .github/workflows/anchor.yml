@@ -190,28 +190,28 @@ jobs:
         with:
           path: |
             ~/.cargo/bin/anchor
-            ~/.cargo/bin/avm
-            ~/.avm
           # Pinned to match the anchor-lang/anchor-spl crate version the programs depend on.
-          key: anchor-toolchain-${{ runner.os }}-2.0.0-rc.1
+          key: anchor-cli-crates-io-${{ runner.os }}-2.0.0-rc.1
       - name: Install Anchor 2.0.0-rc.1
         run: |
-          export PATH="$HOME/.cargo/bin:$HOME/.avm/bin:$PATH"
+          export PATH="$HOME/.cargo/bin:$PATH"
           # `anchor --version` can emit more than one line; read the first line only so
           # a multi-line value never reaches downstream parsing.
           current="$(anchor --version 2>/dev/null | head -n1 | awk '{print $2}' || true)"
           if [ "$current" != "2.0.0-rc.1" ]; then
-            cargo install --git https://github.com/solana-foundation/anchor avm --force
-            # 2.0.0-rc.1 is a pre-release, so avm needs it named explicitly, and
-            # --from-source because there is no prebuilt binary published for it:
-            # a plain `avm install` 404s and takes the whole job down before any
-            # project is built. The cache above is what keeps the source build
-            # off the critical path on later runs.
-            avm install 2.0.0-rc.1 --from-source
-            avm use 2.0.0-rc.1
+            # Install the CLI from crates.io rather than through avm. avm has no
+            # prebuilt binary for this pre-release (a plain `avm install` 404s), and
+            # its --from-source path builds the CLI from the git tag, which is not
+            # the same code as the published anchor-lang 2.0.0-rc.1 the programs
+            # compile against: `anchor idl build` then emits a shim referencing
+            # `anchor_lang::IdlBuild`, which that crate does not have, and writes
+            # IDL JSON the parser rejects with "missing field `variants`".
+            # Installing the CLI from crates.io keeps it and the library on one
+            # published release. --locked builds it against its own published
+            # lockfile so the result does not drift with the registry.
+            cargo install anchor-cli --version 2.0.0-rc.1 --locked --force
           fi
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-          echo "$HOME/.avm/bin" >> "$GITHUB_PATH"
       - name: Install Surfpool
         run: curl -sL https://run.surfpool.run/ | bash
       - name: Display Versions
