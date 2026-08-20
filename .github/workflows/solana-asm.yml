@@ -203,7 +203,10 @@ jobs:
           # ELF, which requires litesvm >= 0.13 (Agave 4.0) to load; the
           # workspace pins litesvm 0.13.1. If a future sbpf change breaks
           # loading, pin a revision here with --rev.
-          cargo install --git https://github.com/blueshift-gg/sbpf.git
+          #
+          # The package name is required: the repository now also ships an
+          # `xtask` binary, and cargo refuses to guess between two binaries.
+          cargo install --git https://github.com/blueshift-gg/sbpf.git sbpf
       - name: Setup Solana Stable
         uses: heyAyushh/setup-solana@v5.9
         with:
