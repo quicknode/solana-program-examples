@@ -5,8 +5,7 @@ use anchor_lang::prelude::*;
 // usable here. The collection is created sized (`CollectionDetails::V1`), so
 // the sized-item variant is the matching instruction.
 use anchor_spl::metadata::{
-    verify_sized_collection_item, MasterEditionAccount, MetadataAccount,
-    VerifySizedCollectionItem,
+    verify_sized_collection_item, MasterEditionAccount, MetadataAccount, VerifySizedCollectionItem,
 };
 use anchor_spl::{metadata::Metadata, token::Mint};
 // pinocchio does not re-export the instructions sysvar id; decode it here.

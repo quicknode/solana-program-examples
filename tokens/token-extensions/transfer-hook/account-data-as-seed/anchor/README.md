@@ -4,25 +4,26 @@ Sometimes you want to use [account](https://solana.com/docs/terminology#account)
 
 When creating an `ExtraAccountMeta`, the data of any account can be used as an extra seed. In this example we derive a counter account from the token account owner and the literal `"counter"`. The counter records how many times that owner has transferred tokens.
 
-This is the setup in `extra_account_metas()`:
+This is the setup in `handle_extra_account_metas()`:
 
 ```rust
 // Define extra account metas to store on the extra_account_meta_list account
-impl<'info> InitializeExtraAccountMetaList<'info> {
-    pub fn extra_account_metas() -> Result<Vec<ExtraAccountMeta>> {
-        Ok(vec![ExtraAccountMeta::new_with_seeds(
-            &[
-                Seed::Literal { bytes: b"counter".to_vec() },
-                Seed::AccountData {
-                    account_index: 0,
-                    data_index: 32,
-                    length: 32,
-                },
-            ],
-            false, // is_signer
-            true,  // is_writable
-        )?])
-    }
+pub fn handle_extra_account_metas() -> Result<Vec<ExtraAccountMeta>> {
+    Ok(vec![ExtraAccountMeta::new_with_seeds(
+        &[
+            Seed::Literal {
+                bytes: b"counter".to_vec(),
+            },
+            Seed::AccountData {
+                account_index: 0,
+                data_index: 32,
+                length: 32,
+            },
+        ],
+        false, // is_signer
+        true,  // is_writable
+    )
+    .map_err(|_| ProgramError::InvalidArgument)?])
 }
 ```
 
@@ -50,53 +51,54 @@ Because we derive the counter account from the *sender's* token account owner, w
 
 ```rust
 #[derive(Accounts)]
-pub struct InitializeExtraAccountMetaList<'info> {
+pub struct InitializeExtraAccountMetaListAccountConstraints {
     #[account(mut)]
-    payer: Signer<'info>,
+    payer: Signer,
 
-    /// CHECK: ExtraAccountMetaList account, must use these seeds.
+    /// CHECK: ExtraAccountMetaList Account, must use these seeds
     #[account(
         init,
-        seeds = [b"extra-account-metas", mint.key().as_ref()],
+        seeds = [b"extra-account-metas", mint.address().as_ref()],
         bump,
+        // size_of returns Result with spl's ProgramError - unwrap is safe for known-good input
         space = ExtraAccountMetaList::size_of(
-            InitializeExtraAccountMetaList::extra_account_metas()?.len()
-        )?,
-        payer = payer,
+            handle_extra_account_metas_count()
+        ).unwrap(),
+        payer = payer
     )]
-    pub extra_account_meta_list: AccountInfo<'info>,
-    pub mint: InterfaceAccount<'info, Mint>,
+    pub extra_account_meta_list: UncheckedAccount,
+    pub mint: InterfaceAccount<Mint>,
     #[account(
         init,
-        seeds = [b"counter", payer.key().as_ref()],
+        seeds = [b"counter", payer.address().as_ref()],
         bump,
         payer = payer,
-        space = COUNTER_ACCOUNT_SIZE,
+        space = CounterAccount::DISCRIMINATOR.len() + CounterAccount::INIT_SPACE,
     )]
-    pub counter_account: Account<'info, CounterAccount>,
-    pub token_program: Program<'info, Token2022>,
-    pub associated_token_program: Program<'info, AssociatedToken>,
-    pub system_program: Program<'info, System>,
+    pub counter_account: BorshAccount<CounterAccount>,
+    pub token_program: Program<Token2022>,
+    pub associated_token_program: Program<AssociatedToken>,
+    pub system_program: Program<System>,
 }
 ```
 
-The counter account also has to appear on the `TransferHook` struct - the [program](https://solana.com/docs/terminology#program) needs to know about every account passed in by the runtime:
+The counter account also has to appear on the `TransferHookAccountConstraints` struct - the [program](https://solana.com/docs/terminology#program) needs to know about every account passed in by the runtime. It is `mut` because the hook writes the incremented count back:
 
 ```rust
 #[derive(Accounts)]
-pub struct TransferHook<'info> {
+pub struct TransferHookAccountConstraints {
     #[account(token::mint = mint, token::authority = owner)]
-    pub source_token: InterfaceAccount<'info, TokenAccount>,
-    pub mint: InterfaceAccount<'info, Mint>,
+    pub source_token: InterfaceAccount<TokenAccount>,
+    pub mint: InterfaceAccount<Mint>,
     #[account(token::mint = mint)]
-    pub destination_token: InterfaceAccount<'info, TokenAccount>,
-    /// CHECK: source token account owner; may be a SystemAccount or a PDA owned by another program.
-    pub owner: UncheckedAccount<'info>,
-    /// CHECK: ExtraAccountMetaList account.
-    #[account(seeds = [b"extra-account-metas", mint.key().as_ref()], bump)]
-    pub extra_account_meta_list: UncheckedAccount<'info>,
-    #[account(seeds = [b"counter", owner.key().as_ref()], bump)]
-    pub counter_account: Account<'info, CounterAccount>,
+    pub destination_token: InterfaceAccount<TokenAccount>,
+    /// CHECK: source token account owner, can be SystemAccount or PDA owned by another program
+    pub owner: UncheckedAccount,
+    /// CHECK: ExtraAccountMetaList Account,
+    #[account(seeds = [b"extra-account-metas", mint.address().as_ref()], bump)]
+    pub extra_account_meta_list: UncheckedAccount,
+    #[account(seeds = [b"counter", owner.address().as_ref()], bump)]
+    pub counter_account: BorshAccount<CounterAccount>,
 }
 ```
 
