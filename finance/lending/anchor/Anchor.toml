@@ -17,5 +17,5 @@ cluster = "localnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
-# Anchor 1.0+ runs Rust + LiteSVM tests via cargo test.
+# Anchor runs Rust + LiteSVM tests via cargo test.
 test = "cargo test"

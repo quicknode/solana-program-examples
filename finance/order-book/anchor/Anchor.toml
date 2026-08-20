@@ -1,7 +1,7 @@
 [toolchain]
 # Match the repo package manager (pnpm-lock.yaml at root); avoids Anchor's yarn default.
 package_manager = "pnpm"
-# Pin Solana to the version used across the repo's Anchor 1.0 examples so the
+# Pin Solana to the version used across the repo's Anchor examples so the
 # bundled test validator and BPF toolchain stay in lock-step.
 solana_version = "3.1.8"
 

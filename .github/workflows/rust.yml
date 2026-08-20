@@ -44,5 +44,5 @@ jobs:
         with:
           components: clippy
       - name: Linting
-        # Allow diverging_sub_expression: false positive from Anchor 1.0's #[program] macro expansion
+        # Allow diverging_sub_expression: false positive from Anchor v2's #[program] macro expansion
         run: cargo clippy -- -D warnings -A clippy::diverging_sub_expression

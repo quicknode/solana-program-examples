@@ -51,7 +51,7 @@ pub fn handle_verify(
     );
 
     // Build verify_leaf instruction manually because spl-account-compression 1.0.0
-    // depends on solana-program 2.x which is incompatible with Anchor 1.0's solana 3.x
+    // depends on solana-program 2.x which is incompatible with Anchor v2's solana 3.x
     // types. Once a compatible version is available, replace this with the CPI wrapper.
     let mut accounts = vec![AccountMeta::new_readonly(
         *context.accounts.merkle_tree.address(),
