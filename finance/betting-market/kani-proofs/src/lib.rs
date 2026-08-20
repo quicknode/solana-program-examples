@@ -147,8 +147,7 @@ fn proof_parimutuel_solvency() {
 
     // ...so total payouts (stakes back + winnings) never exceed the vault
     // balance after the fee (winning_pool + distributable).
-    let total_payout =
-        winning_pool as u128 + total_winnings;
+    let total_payout = winning_pool as u128 + total_winnings;
     assert!(total_payout <= winning_pool as u128 + distributable as u128);
 }
 

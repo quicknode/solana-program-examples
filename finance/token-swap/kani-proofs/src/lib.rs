@@ -122,8 +122,8 @@ fn proof_swap_preserves_constant_product() {
     // A trade needs a non-empty denominator.
     kani::assume(reserve_in as u128 + taxed_input as u128 > 0);
 
-    let output = swap_output(taxed_input, reserve_in, reserve_out)
-        .expect("swap output must compute");
+    let output =
+        swap_output(taxed_input, reserve_in, reserve_out).expect("swap output must compute");
 
     // Reserve transition (effective reserves):
     let new_in = reserve_in as u128 + taxed_input as u128 + lp_fee as u128;
@@ -203,12 +203,16 @@ fn proof_swap_at_zero_reserve_drains_whole_pool() {
 // ===========================================================================
 
 /// Verbatim copy of `deposit_liquidity::integer_sqrt` (Newton's method, floor).
+///
+/// Only the `#[cfg(kani)]` proof and the unit tests call it, so a plain
+/// `cargo build` of the library sees no caller.
+#[allow(dead_code)]
 fn integer_sqrt(n: u128) -> u128 {
     if n < 2 {
         return n;
     }
     let mut x = n;
-    let mut y = (x + 1) / 2;
+    let mut y = x.div_ceil(2);
     while y < x {
         x = y;
         y = (x + n / x) / 2;

@@ -342,9 +342,18 @@ mod tests {
     fn rate_curve_endpoints() {
         // min 100, optimal 300, max 2000, kink at 8000 bps.
         // util 0 -> min; util 8000 -> optimal; util 10000 -> max.
-        assert_eq!(borrow_rate_bps(0, 100, 300, 2000, 8000, 10000).unwrap(), 100);
-        assert_eq!(borrow_rate_bps(8000, 100, 300, 2000, 8000, 10000).unwrap(), 300);
-        assert_eq!(borrow_rate_bps(10000, 100, 300, 2000, 8000, 10000).unwrap(), 2000);
+        assert_eq!(
+            borrow_rate_bps(0, 100, 300, 2000, 8000, 10000).unwrap(),
+            100
+        );
+        assert_eq!(
+            borrow_rate_bps(8000, 100, 300, 2000, 8000, 10000).unwrap(),
+            300
+        );
+        assert_eq!(
+            borrow_rate_bps(10000, 100, 300, 2000, 8000, 10000).unwrap(),
+            2000
+        );
     }
 
     #[test]
