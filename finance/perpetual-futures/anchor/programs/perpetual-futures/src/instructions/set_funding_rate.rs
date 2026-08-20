@@ -14,7 +14,7 @@ use crate::state::Pool;
 /// charged at the rate that was in force for them rather than repriced by the
 /// new one.
 pub fn handle_set_funding_rate(
-    context: Context<SetFundingRateAccountConstraints>,
+    context: &mut Context<SetFundingRateAccountConstraints>,
     funding_rate_per_slot: u64,
 ) -> Result<()> {
     let pool = &mut context.accounts.pool;
@@ -24,14 +24,14 @@ pub fn handle_set_funding_rate(
 }
 
 #[derive(Accounts)]
-pub struct SetFundingRateAccountConstraints<'info> {
-    pub authority: Signer<'info>,
+pub struct SetFundingRateAccountConstraints {
+    #[account(address = pool.authority)]
+    pub authority: Signer,
 
     #[account(
         mut,
         seeds = [POOL_SEED, pool.collateral_mint.as_ref(), pool.oracle_feed.as_ref()],
         bump = pool.bump,
-        has_one = authority,
     )]
-    pub pool: Box<Account<'info, Pool>>,
+    pub pool: Box<BorshAccount<Pool>>,
 }

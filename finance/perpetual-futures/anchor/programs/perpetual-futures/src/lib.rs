@@ -86,7 +86,7 @@ pub mod perpetual_futures {
     /// Pool authority retunes the per-slot funding rate, accruing at the old
     /// rate first.
     pub fn set_funding_rate(
-        context: Context<SetFundingRateAccountConstraints>,
+        context: &mut Context<SetFundingRateAccountConstraints>,
         funding_rate_per_slot: u64,
     ) -> Result<()> {
         instructions::handle_set_funding_rate(context, funding_rate_per_slot)

@@ -98,8 +98,15 @@ fn slots_per_year_scales_the_per_slot_rate() {
         env.supply(&borrower, &collateral, 1_000_000_000);
         let obligation = env.initialize_obligation(&borrower);
         env.post_collateral(&borrower, obligation, &collateral, 1_000_000_000);
-        env.try_borrow(&borrower, obligation, &[&collateral], &[], reserve, 500_000_000)
-            .unwrap();
+        env.try_borrow(
+            &borrower,
+            obligation,
+            &[&collateral],
+            &[],
+            reserve,
+            500_000_000,
+        )
+        .unwrap();
     }
 
     let elapsed = SLOTS_PER_YEAR / 100;
