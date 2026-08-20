@@ -957,7 +957,10 @@ fn test_set_funding_rate_settles_at_the_old_rate_first() {
 
     let flat = funding_for(false);
     let retuned = funding_for(true);
-    assert!(flat > 0, "the flat run must pay some funding to compare against");
+    assert!(
+        flat > 0,
+        "the flat run must pay some funding to compare against"
+    );
 
     // Half the elapsed slots at 1x and half at 2x is 1.5x the flat run. Had the
     // handler skipped its accrual, the new rate would have applied to every
