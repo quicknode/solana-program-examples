@@ -3,6 +3,7 @@ use {
         solana_program::instruction::Instruction, system_program, Address, InstructionData,
         ToAccountMetas,
     },
+    borsh::BorshDeserialize,
     litesvm::LiteSVM,
     solana_keypair::Keypair,
     solana_kite::{
@@ -16,6 +17,21 @@ use {
     },
     solana_signer::Signer,
 };
+
+/// Deserialize the CounterAccount (8-byte discriminator + fields).
+#[derive(BorshDeserialize)]
+struct CounterAccountData {
+    _discriminator: [u8; 8],
+    counter: u64,
+    _bump: u8,
+}
+
+fn read_counter(svm: &LiteSVM, counter_pda: &Address) -> u64 {
+    let account = svm.get_account(counter_pda).unwrap();
+    CounterAccountData::deserialize(&mut &account.data[..])
+        .unwrap()
+        .counter
+}
 
 fn associated_token_program_id() -> Address {
     "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
@@ -114,6 +130,10 @@ fn test_transfer_hook_counter() {
     )
     .unwrap();
     svm.expire_blockhash();
+
+    // The hook writes the incremented count back, so it survives the transfer.
+    let counter_after = read_counter(&svm, &counter_pda);
+    assert_eq!(counter_after, 1, "hook should have recorded one transfer");
 
     // Step 5: Try calling transfer_hook directly (should fail - not transferring)
     let direct_hook_ix = Instruction::new_with_bytes(
