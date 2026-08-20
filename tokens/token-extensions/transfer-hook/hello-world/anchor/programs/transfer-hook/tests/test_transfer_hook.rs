@@ -1,13 +1,10 @@
 use {
     anchor_lang::{
-        solana_program::{
-            instruction::Instruction,
-            pubkey::Pubkey,
-            system_program,
-        },
-        InstructionData, ToAccountMetas,
+        solana_program::instruction::Instruction, system_program, Address, InstructionData,
+        ToAccountMetas,
     },
     litesvm::LiteSVM,
+    solana_keypair::Keypair,
     solana_kite::{
         create_wallet, send_transaction_from_instructions,
         token_extensions::{
@@ -17,17 +14,16 @@ use {
         },
         transfer_hook::{build_hook_accounts, get_hook_accounts_address},
     },
-    solana_keypair::Keypair,
     solana_signer::Signer,
 };
 
-fn associated_token_program_id() -> Pubkey {
+fn associated_token_program_id() -> Address {
     "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
         .parse()
         .unwrap()
 }
 
-fn setup() -> (LiteSVM, Pubkey, Keypair) {
+fn setup() -> (LiteSVM, Address, Keypair) {
     let program_id = transfer_hook::id();
     let mut svm = LiteSVM::new();
 
@@ -47,37 +43,36 @@ fn test_transfer_hook_hello_world() {
     let decimals: u8 = 2;
 
     // ExtraAccountMetaList PDA
-    let extra_account_meta_list =
-        get_hook_accounts_address(&mint_keypair.pubkey(), &program_id);
+    let extra_account_meta_list = get_hook_accounts_address(&mint_keypair.pubkey(), &program_id);
 
     // Step 1: Create mint with transfer hook extension pointing to our program
     // (uses the program's own Initialize instruction, not kite, since it sets up
     // the mint with the program as the hook authority)
     let initialize_ix = Instruction::new_with_bytes(
         program_id,
-        &transfer_hook::instruction::Initialize {
-            decimals,
-        }
-        .data(),
+        &transfer_hook::instruction::Initialize { decimals }.data(),
         transfer_hook::accounts::InitializeAccountConstraints {
             payer: payer.pubkey(),
             mint_account: mint_keypair.pubkey(),
             token_program: TOKEN_EXTENSIONS_PROGRAM_ID,
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![initialize_ix], &[&payer, &mint_keypair], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        vec![initialize_ix],
+        &[&payer, &mint_keypair],
+        &payer.pubkey(),
+    )
+    .unwrap();
     svm.expire_blockhash();
 
     // Step 2: Create token accounts and mint tokens
     let amount: u64 = 100 * 10u64.pow(decimals as u32);
-    let source_ata = create_token_extensions_account(
-        &mut svm,
-        &payer.pubkey(),
-        &mint_keypair.pubkey(),
-        &payer,
-    ).unwrap();
+    let source_ata =
+        create_token_extensions_account(&mut svm, &payer.pubkey(), &mint_keypair.pubkey(), &payer)
+            .unwrap();
     svm.expire_blockhash();
 
     let dest_ata = create_token_extensions_account(
@@ -85,7 +80,8 @@ fn test_transfer_hook_hello_world() {
         &recipient.pubkey(),
         &mint_keypair.pubkey(),
         &payer,
-    ).unwrap();
+    )
+    .unwrap();
     svm.expire_blockhash();
 
     mint_tokens_to_token_extensions_account(
@@ -94,7 +90,8 @@ fn test_transfer_hook_hello_world() {
         &source_ata,
         amount,
         &payer,
-    ).unwrap();
+    )
+    .unwrap();
     svm.expire_blockhash();
 
     // Step 3: Create ExtraAccountMetaList account
@@ -107,11 +104,12 @@ fn test_transfer_hook_hello_world() {
             mint: mint_keypair.pubkey(),
             token_program: TOKEN_EXTENSIONS_PROGRAM_ID,
             associated_token_program: ata_program,
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![init_extra_ix], &[&payer], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(&mut svm, vec![init_extra_ix], &[&payer], &payer.pubkey())
+        .unwrap();
     svm.expire_blockhash();
 
     // Step 4: Transfer with transfer hook
@@ -130,7 +128,8 @@ fn test_transfer_hook_hello_world() {
         transfer_amount,
         decimals,
         &extra_accounts,
-    ).unwrap();
+    )
+    .unwrap();
     svm.expire_blockhash();
 
     // Step 5: Try calling transfer_hook directly (should fail - not transferring)
@@ -146,7 +145,12 @@ fn test_transfer_hook_hello_world() {
         }
         .to_account_metas(None),
     );
-    let result = send_transaction_from_instructions(&mut svm, vec![direct_hook_ix], &[&payer], &payer.pubkey());
+    let result = send_transaction_from_instructions(
+        &mut svm,
+        vec![direct_hook_ix],
+        &[&payer],
+        &payer.pubkey(),
+    );
     assert!(
         result.is_err(),
         "Calling transfer_hook directly should fail because token is not transferring"

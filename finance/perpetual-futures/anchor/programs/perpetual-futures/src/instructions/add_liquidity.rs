@@ -12,7 +12,7 @@ use crate::instructions::shared::{liquidity_provider_aum, refresh_price_and_fund
 use crate::state::Pool;
 
 pub fn handle_add_liquidity(
-    context: Context<AddLiquidityAccountConstraints>,
+    context: &mut Context<AddLiquidityAccountConstraints>,
     amount: u64,
     minimum_shares_out: u64,
 ) -> Result<()> {
@@ -21,7 +21,7 @@ pub fn handle_add_liquidity(
     let pool = &mut context.accounts.pool;
     let price = refresh_price_and_funding(pool, &context.accounts.oracle_feed)?;
 
-    let lp_supply = context.accounts.lp_mint.supply;
+    let lp_supply = context.accounts.lp_mint.supply();
     let shares: u64 = if lp_supply == 0 {
         // Bootstrap: shares track collateral one-for-one, less the withheld
         // minimum, so the share supply can never start at a dust amount.
@@ -53,27 +53,27 @@ pub fn handle_add_liquidity(
 
     transfer_checked(
         CpiContext::new(
-            context.accounts.token_program.key(),
+            context.accounts.token_program.address(),
             TransferChecked {
-                from: context.accounts.provider_collateral.to_account_info(),
-                mint: context.accounts.collateral_mint.to_account_info(),
-                to: context.accounts.custody_vault.to_account_info(),
-                authority: context.accounts.provider.to_account_info(),
+                from: context.accounts.provider_collateral.to_cpi_handle_mut(),
+                mint: context.accounts.collateral_mint.to_cpi_handle(),
+                to: context.accounts.custody_vault.to_cpi_handle_mut(),
+                authority: context.accounts.provider.cpi_handle(),
             },
         ),
         amount,
-        context.accounts.collateral_mint.decimals,
+        context.accounts.collateral_mint.decimals(),
     )?;
 
-    let pool_key = pool.key();
+    let pool_key = pool.address();
     let authority_seeds: &[&[u8]] = &[AUTHORITY_SEED, pool_key.as_ref(), &[pool.authority_bump]];
     mint_to(
         CpiContext::new_with_signer(
-            context.accounts.token_program.key(),
+            context.accounts.token_program.address(),
             MintTo {
-                mint: context.accounts.lp_mint.to_account_info(),
-                to: context.accounts.provider_lp.to_account_info(),
-                authority: context.accounts.pool_authority.to_account_info(),
+                mint: context.accounts.lp_mint.to_cpi_handle_mut(),
+                to: context.accounts.provider_lp.to_cpi_handle_mut(),
+                authority: context.accounts.pool_authority.cpi_handle(),
             },
             &[authority_seeds],
         ),
@@ -84,42 +84,41 @@ pub fn handle_add_liquidity(
 }
 
 #[derive(Accounts)]
-pub struct AddLiquidityAccountConstraints<'info> {
+pub struct AddLiquidityAccountConstraints {
     #[account(mut)]
-    pub provider: Signer<'info>,
+    pub provider: Signer,
 
     #[account(
         mut,
         seeds = [POOL_SEED, pool.collateral_mint.as_ref(), pool.oracle_feed.as_ref()],
         bump = pool.bump,
-        has_one = collateral_mint,
-        has_one = lp_mint,
-        has_one = custody_vault,
-        has_one = oracle_feed,
     )]
-    pub pool: Box<Account<'info, Pool>>,
+    pub pool: Box<BorshAccount<Pool>>,
 
     /// CHECK: PDA authority over the vault and liquidity-provider mint.
     #[account(
-        seeds = [AUTHORITY_SEED, pool.key().as_ref()],
+        seeds = [AUTHORITY_SEED, pool.address().as_ref()],
         bump = pool.authority_bump,
     )]
-    pub pool_authority: UncheckedAccount<'info>,
+    pub pool_authority: UncheckedAccount,
 
-    /// CHECK: validated by the `has_one = oracle_feed` constraint on the pool.
-    pub oracle_feed: UncheckedAccount<'info>,
+    /// CHECK: validated by the `address = pool.oracle_feed` constraint below.
+    #[account(address = pool.oracle_feed)]
+    pub oracle_feed: UncheckedAccount,
 
-    pub collateral_mint: Box<InterfaceAccount<'info, Mint>>,
+    #[account(address = pool.collateral_mint)]
+    pub collateral_mint: Box<InterfaceAccount<Mint>>,
 
-    #[account(mut)]
-    pub lp_mint: Box<InterfaceAccount<'info, Mint>>,
+    #[account(mut, address = pool.lp_mint)]
+    pub lp_mint: Box<InterfaceAccount<Mint>>,
 
     #[account(
         mut,
-        seeds = [VAULT_SEED, pool.key().as_ref()],
+        seeds = [VAULT_SEED, pool.address().as_ref()],
         bump,
+        address = pool.custody_vault,
     )]
-    pub custody_vault: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub custody_vault: Box<InterfaceAccount<TokenAccount>>,
 
     #[account(
         mut,
@@ -127,7 +126,7 @@ pub struct AddLiquidityAccountConstraints<'info> {
         associated_token::authority = provider,
         associated_token::token_program = token_program,
     )]
-    pub provider_collateral: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub provider_collateral: Box<InterfaceAccount<TokenAccount>>,
 
     #[account(
         init_if_needed,
@@ -136,9 +135,9 @@ pub struct AddLiquidityAccountConstraints<'info> {
         associated_token::authority = provider,
         associated_token::token_program = token_program,
     )]
-    pub provider_lp: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub provider_lp: Box<InterfaceAccount<TokenAccount>>,
 
-    pub token_program: Interface<'info, TokenInterface>,
-    pub associated_token_program: Program<'info, AssociatedToken>,
-    pub system_program: Program<'info, System>,
+    pub token_program: Interface<'static, TokenInterface>,
+    pub associated_token_program: Program<AssociatedToken>,
+    pub system_program: Program<System>,
 }

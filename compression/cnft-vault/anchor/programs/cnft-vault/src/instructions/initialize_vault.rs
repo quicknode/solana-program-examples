@@ -3,9 +3,9 @@ use anchor_lang::prelude::*;
 use crate::state::{Vault, VAULT_SEED};
 
 #[derive(Accounts)]
-pub struct InitializeVaultAccountConstraints<'info> {
+pub struct InitializeVaultAccountConstraints {
     #[account(mut)]
-    pub authority: Signer<'info>,
+    pub authority: Signer,
 
     #[account(
         init,
@@ -14,14 +14,14 @@ pub struct InitializeVaultAccountConstraints<'info> {
         seeds = [VAULT_SEED],
         bump,
     )]
-    pub vault: Account<'info, Vault>,
+    pub vault: BorshAccount<Vault>,
 
-    pub system_program: Program<'info, System>,
+    pub system_program: Program<System>,
 }
 
-pub fn handler(context: Context<InitializeVaultAccountConstraints>) -> Result<()> {
+pub fn handler(context: &mut Context<InitializeVaultAccountConstraints>) -> Result<()> {
     let vault = &mut context.accounts.vault;
-    vault.authority = context.accounts.authority.key();
+    vault.authority = *context.accounts.authority.address();
     vault.bump = context.bumps.vault;
     Ok(())
 }

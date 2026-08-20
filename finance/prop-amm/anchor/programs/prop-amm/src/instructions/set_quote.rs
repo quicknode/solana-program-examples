@@ -12,7 +12,7 @@ use crate::state::Market;
 /// widen the spread or stop quoting entirely. Onchain prop AMMs do exactly
 /// this — during fast markets their quotes vanish and return minutes later.
 pub fn handle_set_quote(
-    context: Context<SetQuoteAccountConstraints>,
+    context: &mut Context<SetQuoteAccountConstraints>,
     spread_bps: u16,
     paused: bool,
 ) -> Result<()> {
@@ -31,14 +31,14 @@ pub fn handle_set_quote(
 }
 
 #[derive(Accounts)]
-pub struct SetQuoteAccountConstraints<'info> {
-    pub operator: Signer<'info>,
+pub struct SetQuoteAccountConstraints {
+    #[account(address = market.operator)]
+    pub operator: Signer,
 
     #[account(
         mut,
         seeds = [MARKET_SEED, market.base_mint.as_ref(), market.quote_mint.as_ref()],
         bump = market.bump,
-        has_one = operator,
     )]
-    pub market: Box<Account<'info, Market>>,
+    pub market: Box<BorshAccount<Market>>,
 }

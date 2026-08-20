@@ -5,8 +5,8 @@ use anchor_spl::token_interface::{
 
 use crate::errors::ErrorCode;
 use crate::state::{
-    add_open_order, plan_fills, remove_open_order, Market, Order, OrderBook, OrderSide,
-    OrderStatus, MarketUser, MARKET_SEED, ORDER_SEED, MARKET_USER_SEED,
+    add_open_order, plan_fills, remove_open_order, Market, MarketUser, Order, OrderBook, OrderSide,
+    OrderStatus, MARKET_SEED, MARKET_USER_SEED, ORDER_SEED,
 };
 
 // Mirror of MarketUser.open_orders max_len. Kept as a constant so the
@@ -25,12 +25,22 @@ const BASIS_POINTS_DENOMINATOR: u128 = 10_000;
 // small.
 const ACCOUNTS_PER_MAKER: usize = 2;
 
-pub fn handle_place_order<'info>(
-    context: Context<'info, PlaceOrderAccountConstraints<'info>>,
+pub fn handle_place_order(
+    context: &mut Context<PlaceOrderAccountConstraints>,
     side: OrderSide,
     price: u64,
     quantity: u64,
 ) -> Result<()> {
+    // `remaining_accounts()` takes `&mut context` and returns an owned vec, so
+    // collect it before anything borrows `context.accounts`.
+    let maker_accounts = context.remaining_accounts()?;
+
+    // `AccountView` is Copy, and a copy still points at the same
+    // account. v2's typed handles make the aliasing a compile error.
+    let quote_mint_view = *context.accounts.quote_mint.account();
+    // Read the decimals up front: the CPI handles below borrow the mints.
+    let quote_decimals = context.accounts.quote_mint.decimals();
+    let base_decimals = context.accounts.base_mint.decimals();
     let market = &context.accounts.market;
 
     require!(market.is_active, ErrorCode::MarketPaused);
@@ -61,39 +71,39 @@ pub fn handle_place_order<'info>(
     let (source_account, mint_account_info, decimals, transfer_amount, destination_vault) =
         match side {
             OrderSide::Bid => (
-                context.accounts.user_quote_account.to_account_info(),
-                context.accounts.quote_mint.to_account_info(),
-                context.accounts.quote_mint.decimals,
+                context.accounts.user_quote_account.to_cpi_handle_mut(),
+                context.accounts.quote_mint.to_cpi_handle(),
+                quote_decimals,
                 (price as u128)
                     .checked_mul(quantity as u128)
                     .ok_or(ErrorCode::NumericalOverflow)?
                     .checked_mul(market.quote_lot_size as u128)
                     .ok_or(ErrorCode::NumericalOverflow)?
                     .try_into()
-                    .map_err(|_| error!(ErrorCode::NumericalOverflow))?,
-                context.accounts.quote_vault.to_account_info(),
+                    .map_err(|_| ErrorCode::NumericalOverflow)?,
+                context.accounts.quote_vault.to_cpi_handle_mut(),
             ),
             OrderSide::Ask => (
-                context.accounts.user_base_account.to_account_info(),
-                context.accounts.base_mint.to_account_info(),
-                context.accounts.base_mint.decimals,
+                context.accounts.user_base_account.to_cpi_handle_mut(),
+                context.accounts.base_mint.to_cpi_handle(),
+                base_decimals,
                 (quantity as u128)
                     .checked_mul(market.base_lot_size as u128)
                     .ok_or(ErrorCode::NumericalOverflow)?
                     .try_into()
-                    .map_err(|_| error!(ErrorCode::NumericalOverflow))?,
-                context.accounts.base_vault.to_account_info(),
+                    .map_err(|_| ErrorCode::NumericalOverflow)?,
+                context.accounts.base_vault.to_cpi_handle_mut(),
             ),
         };
 
     transfer_checked(
         CpiContext::new(
-            context.accounts.token_program.key(),
+            context.accounts.token_program.address(),
             TransferChecked {
                 from: source_account,
                 mint: mint_account_info,
                 to: destination_vault,
-                authority: context.accounts.owner.to_account_info(),
+                authority: context.accounts.owner.cpi_handle(),
             },
         ),
         transfer_amount,
@@ -108,20 +118,19 @@ pub fn handle_place_order<'info>(
     // transaction's remaining_accounts, in the same price-time-priority
     // order the book would walk. We plan fills against the resting tree,
     // then verify the caller's account list matches the plan, then apply.
-    let maker_accounts = &context.remaining_accounts;
     require!(
         maker_accounts.len() % ACCOUNTS_PER_MAKER == 0,
         ErrorCode::MissingMakerAccounts
     );
 
-    let order_book_loader = &context.accounts.order_book;
+    let order_book_loader = &mut context.accounts.order_book;
 
     // Plan in an immutable load scope, copy the fills out, then drop the
     // borrow before we re-borrow for mutations. AccountLoader::load() is a
     // RefCell-based runtime borrow, so the loaded ref must not outlive the
     // plan we copy out of it.
     let (fills, taker_remaining) = {
-        let order_book = order_book_loader.load()?;
+        let order_book = (&*order_book_loader);
         plan_fills(&order_book, side, price, quantity)
     };
 
@@ -136,13 +145,24 @@ pub fn handle_place_order<'info>(
     // market.
     for (fill_index, fill) in fills.iter().enumerate() {
         let maker_order_info = &maker_accounts[fill_index * ACCOUNTS_PER_MAKER];
-        let maker_order = Account::<Order>::try_from(maker_order_info)?;
+        let maker_order = {
+            let data = maker_order_info.try_borrow()?;
+            let disc_len = <Order as anchor_lang::Discriminator>::DISCRIMINATOR.len();
+            require!(
+                data.len() > disc_len
+                    && &data[..disc_len] == <Order as anchor_lang::Discriminator>::DISCRIMINATOR,
+                ErrorCode::MakerAccountMismatch
+            );
+            let mut payload = &data[disc_len..];
+            <Order as wincode::SchemaRead<anchor_lang::BorshConfig>>::get(&mut payload)
+                .map_err(|_| ErrorCode::MakerAccountMismatch)?
+        };
         require!(
             maker_order.order_id == fill.maker_order_id,
             ErrorCode::MakerAccountMismatch
         );
         require!(
-            maker_order.market == market.key(),
+            maker_order.market == *market.address(),
             ErrorCode::MakerAccountMismatch
         );
     }
@@ -163,15 +183,26 @@ pub fn handle_place_order<'info>(
         let maker_order_info = &maker_accounts[fill_index * ACCOUNTS_PER_MAKER];
         let maker_user_info = &maker_accounts[fill_index * ACCOUNTS_PER_MAKER + 1];
 
-        let mut maker_order = Account::<Order>::try_from(maker_order_info)?;
-        let mut maker_market_user = Account::<MarketUser>::try_from(maker_user_info)?;
+        // v2 has no `Account::try_from`. `AnchorAccount::load_mut` is the
+        // equivalent for a writable account reached through remaining_accounts,
+        // and it is the only route to one: the derive cannot type a variable
+        // number of accounts.
+        //
+        // SAFETY: the obligation is that no other `&mut` to the same data is
+        // live. The trait method is unsafe because `Slab` bypasses the runtime
+        // borrow check; `BorshAccount` does not, taking its guard through
+        // `try_borrow_mut`, so an account already borrowed elsewhere in this
+        // handler yields `AccountBorrowFailed` instead of aliasing.
+        let mut maker_order = unsafe { BorshAccount::<Order>::load_mut(*maker_order_info) }?;
+        let mut maker_market_user =
+            unsafe { BorshAccount::<MarketUser>::load_mut(*maker_user_info) }?;
 
         require!(
             maker_order.owner == maker_market_user.owner,
             ErrorCode::MakerOwnerMismatch
         );
         require!(
-            maker_market_user.market == market.key(),
+            maker_market_user.market == *market.address(),
             ErrorCode::MakerAccountMismatch
         );
 
@@ -199,7 +230,7 @@ pub fn handle_place_order<'info>(
             .checked_mul(market.quote_lot_size as u128)
             .ok_or(ErrorCode::NumericalOverflow)?
             .try_into()
-            .map_err(|_| error!(ErrorCode::NumericalOverflow))?;
+            .map_err(|_| ErrorCode::NumericalOverflow)?;
 
         // Ceiling division: round the fee in the protocol's favour. Flooring
         // would leak up to 1 minor unit of quote per fill to the maker, which
@@ -212,7 +243,7 @@ pub fn handle_place_order<'info>(
             .checked_div(BASIS_POINTS_DENOMINATOR)
             .ok_or(ErrorCode::NumericalOverflow)?
             .try_into()
-            .map_err(|_| error!(ErrorCode::NumericalOverflow))?;
+            .map_err(|_| ErrorCode::NumericalOverflow)?;
 
         // Defensive invariant: fees are a fraction of gross, never more.
         // `fee_basis_points <= 10_000` is enforced at market init, so this
@@ -235,7 +266,7 @@ pub fn handle_place_order<'info>(
                     .checked_mul(market.base_lot_size as u128)
                     .ok_or(ErrorCode::NumericalOverflow)?
                     .try_into()
-                    .map_err(|_| error!(ErrorCode::NumericalOverflow))?;
+                    .map_err(|_| ErrorCode::NumericalOverflow)?;
                 taker_base_received = taker_base_received
                     .checked_add(base_from_fill)
                     .ok_or(ErrorCode::NumericalOverflow)?;
@@ -251,7 +282,7 @@ pub fn handle_place_order<'info>(
                     .checked_mul(market.quote_lot_size as u128)
                     .ok_or(ErrorCode::NumericalOverflow)?
                     .try_into()
-                    .map_err(|_| error!(ErrorCode::NumericalOverflow))?;
+                    .map_err(|_| ErrorCode::NumericalOverflow)?;
                 let rebate: u64 = locked_for_this_fill
                     .checked_sub(gross_quote)
                     .ok_or(ErrorCode::NumericalOverflow)?;
@@ -265,7 +296,7 @@ pub fn handle_place_order<'info>(
                     .checked_mul(market.base_lot_size as u128)
                     .ok_or(ErrorCode::NumericalOverflow)?
                     .try_into()
-                    .map_err(|_| error!(ErrorCode::NumericalOverflow))?;
+                    .map_err(|_| ErrorCode::NumericalOverflow)?;
                 maker_market_user.unsettled_base = maker_market_user
                     .unsettled_base
                     .checked_add(base_from_fill)
@@ -290,8 +321,7 @@ pub fn handle_place_order<'info>(
             .checked_add(fill.fill_quantity)
             .ok_or(ErrorCode::NumericalOverflow)?;
 
-        let maker_fully_filled =
-            maker_order.filled_quantity >= maker_order.original_quantity;
+        let maker_fully_filled = maker_order.filled_quantity >= maker_order.original_quantity;
         maker_order.status = if maker_fully_filled {
             OrderStatus::Filled
         } else {
@@ -301,8 +331,8 @@ pub fn handle_place_order<'info>(
             remove_open_order(&mut maker_market_user, maker_order.order_id);
         }
 
-        maker_order.exit(context.program_id)?;
-        maker_market_user.exit(context.program_id)?;
+        maker_order.exit()?;
+        maker_market_user.exit()?;
     }
 
     // ---------------------------------------------------------------
@@ -315,7 +345,7 @@ pub fn handle_place_order<'info>(
     };
 
     {
-        let mut order_book = order_book_loader.load_mut()?;
+        let mut order_book = (&mut *order_book_loader);
         for fill in &fills {
             order_book.apply_fill_to_maker(
                 maker_side,
@@ -329,29 +359,36 @@ pub fn handle_place_order<'info>(
     // Move accumulated fee from quote_vault → fee_vault (one CPI signed
     // by the market PDA).
     if total_fee_quote > 0 {
-        let market_bump = [market.bump];
+        // Copied out because `market` has to release its data borrow before it
+        // signs: the runtime would otherwise reject the CPI's own borrow of the
+        // same account with AccountBorrowFailed.
+        let market_bump = [context.accounts.market.bump];
+        let base_mint = context.accounts.market.base_mint;
+        let quote_mint = context.accounts.market.quote_mint;
         let signer_seeds: [&[u8]; 4] = [
             MARKET_SEED,
-            market.base_mint.as_ref(),
-            market.quote_mint.as_ref(),
+            base_mint.as_ref(),
+            quote_mint.as_ref(),
             &market_bump,
         ];
         let signer_seeds = &[&signer_seeds[..]];
 
+        context.accounts.market.release_borrow()?;
         transfer_checked(
             CpiContext::new_with_signer(
-                context.accounts.token_program.key(),
+                context.accounts.token_program.address(),
                 TransferChecked {
-                    from: context.accounts.quote_vault.to_account_info(),
-                    mint: context.accounts.quote_mint.to_account_info(),
-                    to: context.accounts.fee_vault.to_account_info(),
-                    authority: market.to_account_info(),
+                    from: context.accounts.quote_vault.to_cpi_handle_mut(),
+                    mint: CpiHandle::readonly(&quote_mint_view),
+                    to: context.accounts.fee_vault.to_cpi_handle_mut(),
+                    authority: context.accounts.market.cpi_handle(),
                 },
                 signer_seeds,
             ),
             total_fee_quote,
-            context.accounts.quote_mint.decimals,
+            quote_decimals,
         )?;
+        context.accounts.market.reacquire_borrow_mut()?;
     }
 
     // Apply taker accounting deltas in a single mutation.
@@ -377,18 +414,15 @@ pub fn handle_place_order<'info>(
     // ---------------------------------------------------------------
     let timestamp = Clock::get()?.unix_timestamp;
     let order_id = {
-        let mut order_book = order_book_loader.load_mut()?;
+        let mut order_book = (&mut *order_book_loader);
         let id = order_book.allocate_order_id()?;
         if taker_remaining > 0 {
-            require!(
-                !order_book.is_side_full(side),
-                ErrorCode::OrderBookFull
-            );
+            require!(!order_book.is_side_full(side), ErrorCode::OrderBookFull);
             order_book.place_resting(
                 side,
                 price,
                 taker_remaining,
-                context.accounts.owner.key(),
+                *context.accounts.owner.address(),
                 id,
                 timestamp,
             )?;
@@ -397,8 +431,8 @@ pub fn handle_place_order<'info>(
     };
 
     let order = &mut context.accounts.order;
-    order.market = market.key();
-    order.owner = context.accounts.owner.key();
+    order.market = *context.accounts.market.address();
+    order.owner = *context.accounts.owner.address();
     order.order_id = order_id;
     order.side = side;
     order.price = price;
@@ -429,32 +463,24 @@ pub fn handle_place_order<'info>(
 
 #[derive(Accounts)]
 #[instruction(side: OrderSide, price: u64, quantity: u64)]
-pub struct PlaceOrderAccountConstraints<'info> {
-    // `has_one` ties every market-owned account on this struct to the
+pub struct PlaceOrderAccountConstraints {
+    // `address` ties every market-owned account on this struct to the
     // addresses recorded on the Market PDA. Crucially, without
-    // has_one on base_vault / quote_vault / base_mint / quote_mint a caller
+    // address constraints on base_vault / quote_vault / base_mint / quote_mint a caller
     // could swap fee_vault in for quote_vault (same mint, same authority)
     // and steer the per-fill fee transfer to drain real fees instead of
     // routing them in.
-    #[account(
-        mut,
-        has_one = fee_vault @ ErrorCode::InvalidFeeVault,
-        has_one = base_vault @ ErrorCode::InvalidBaseVault,
-        has_one = quote_vault @ ErrorCode::InvalidQuoteVault,
-        has_one = base_mint @ ErrorCode::InvalidBaseMint,
-        has_one = quote_mint @ ErrorCode::InvalidQuoteMint,
-        has_one = order_book @ ErrorCode::InvalidOrderBook,
-    )]
-    pub market: Account<'info, Market>,
+    #[account(mut)]
+    pub market: BorshAccount<Market>,
 
     // Zero-copy: AccountLoader streams the slab in/out without paying
     // borsh (de)serialization on every instruction. See order_book.rs for
     // the layout. Not a PDA - the client created it directly via
     // system_program::create_account (see initialize_market.rs for why);
-    // `has_one = order_book` on `market` is what ties this specific account
+    // `address = market.order_book` is what ties this specific account
     // to this specific market.
-    #[account(mut)]
-    pub order_book: AccountLoader<'info, OrderBook>,
+    #[account(mut, address = market.order_book @ ErrorCode::InvalidOrderBook)]
+    pub order_book: Account<OrderBook>,
 
     // The order PDA seed uses the book's `next_order_id` *before* this
     // instruction increments it - i.e. the id this new order will receive.
@@ -465,47 +491,49 @@ pub struct PlaceOrderAccountConstraints<'info> {
         space = Order::DISCRIMINATOR.len() + Order::INIT_SPACE,
         seeds = [
             ORDER_SEED,
-            market.key().as_ref(),
-            order_book.load()?.next_order_id.to_le_bytes().as_ref()
+            market.address().as_ref(),
+            (&*order_book).next_order_id.to_le_bytes()
         ],
         bump
     )]
-    pub order: Account<'info, Order>,
+    pub order: BorshAccount<Order>,
 
     #[account(
         mut,
-        seeds = [MARKET_USER_SEED, market.key().as_ref(), owner.key().as_ref()],
+        seeds = [MARKET_USER_SEED, market.address().as_ref(), owner.address().as_ref()],
         bump = market_user.bump
     )]
-    pub market_user: Account<'info, MarketUser>,
+    pub market_user: BorshAccount<MarketUser>,
 
     // InterfaceAccount on the stack is ~1 KB each; with 7 of them this struct
     // blows the 4 KB stack-offset limit on BPF. Boxing moves each to the heap.
-    #[account(mut)]
-    pub base_vault: Box<InterfaceAccount<'info, TokenAccount>>,
+    #[account(mut, address = market.base_vault @ ErrorCode::InvalidBaseVault)]
+    pub base_vault: Box<InterfaceAccount<TokenAccount>>,
 
-    #[account(mut)]
-    pub quote_vault: Box<InterfaceAccount<'info, TokenAccount>>,
+    #[account(mut, address = market.quote_vault @ ErrorCode::InvalidQuoteVault)]
+    pub quote_vault: Box<InterfaceAccount<TokenAccount>>,
 
-    // Taker fees are routed here. Constrained via `has_one = fee_vault` on
+    // Taker fees are routed here. Constrained via `address = market.fee_vault` on
     // `market` above so the program can trust it without re-checking.
-    #[account(mut)]
-    pub fee_vault: Box<InterfaceAccount<'info, TokenAccount>>,
+    #[account(mut, address = market.fee_vault @ ErrorCode::InvalidFeeVault)]
+    pub fee_vault: Box<InterfaceAccount<TokenAccount>>,
 
     #[account(mut)]
-    pub user_base_account: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub user_base_account: Box<InterfaceAccount<TokenAccount>>,
 
     #[account(mut)]
-    pub user_quote_account: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub user_quote_account: Box<InterfaceAccount<TokenAccount>>,
 
-    pub base_mint: Box<InterfaceAccount<'info, Mint>>,
+    #[account(address = market.base_mint @ ErrorCode::InvalidBaseMint)]
+    pub base_mint: Box<InterfaceAccount<Mint>>,
 
-    pub quote_mint: Box<InterfaceAccount<'info, Mint>>,
+    #[account(address = market.quote_mint @ ErrorCode::InvalidQuoteMint)]
+    pub quote_mint: Box<InterfaceAccount<Mint>>,
 
     #[account(mut)]
-    pub owner: Signer<'info>,
+    pub owner: Signer,
 
-    pub token_program: Interface<'info, TokenInterface>,
+    pub token_program: Interface<'static, TokenInterface>,
 
-    pub system_program: Program<'info, System>,
+    pub system_program: Program<System>,
 }

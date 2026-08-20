@@ -135,7 +135,11 @@ impl OrderTreeNodes {
     }
 
     /// Look up a leaf by its full 128-bit key.
-    pub fn find_by_key(&self, root: &OrderTreeRoot, search_key: u128) -> Option<(NodeHandle, &LeafNode)> {
+    pub fn find_by_key(
+        &self,
+        root: &OrderTreeRoot,
+        search_key: u128,
+    ) -> Option<(NodeHandle, &LeafNode)> {
         let mut handle = root.node()?;
         loop {
             let node = self.node(handle)?;
@@ -277,7 +281,7 @@ impl OrderTreeNodes {
         loop {
             let parent_contents = *self
                 .node(parent_handle)
-                .ok_or_else(|| error!(ErrorCode::OrderBookFull))?;
+                .ok_or_else(|| ErrorCode::OrderBookFull)?;
             let parent_key = parent_contents.key().unwrap();
 
             // Exact-key collision: only possible if the existing slot is a

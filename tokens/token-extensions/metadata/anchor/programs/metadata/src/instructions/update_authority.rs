@@ -1,44 +1,43 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token_interface::{
-    spl_pod::optional_keys::OptionalNonZeroPubkey, token_metadata_update_authority, Mint,
-    Token2022, TokenMetadataUpdateAuthority,
+    token_metadata_update_authority, Mint, Token2022, TokenMetadataUpdateAuthority,
 };
 
 #[derive(Accounts)]
-pub struct UpdateAuthorityAccountConstraints<'info> {
-    pub current_authority: Signer<'info>,
-    pub new_authority: Option<UncheckedAccount<'info>>,
+pub struct UpdateAuthorityAccountConstraints {
+    pub current_authority: Signer,
+    pub new_authority: Option<UncheckedAccount>,
 
-    #[account(
-        mut,
-        extensions::metadata_pointer::metadata_address = mint_account,
-    )]
-    pub mint_account: InterfaceAccount<'info, Mint>,
-    pub token_program: Program<'info, Token2022>,
-    pub system_program: Program<'info, System>,
+    // v2 has no `extensions::*` validation constraint; Token-2022 checks the
+    // metadata pointer and the update authority itself when the CPI runs.
+    #[account(mut)]
+    pub mint_account: InterfaceAccount<Mint>,
+    pub token_program: Program<Token2022>,
+    pub system_program: Program<System>,
 }
 
-pub fn process_update_authority(context: Context<UpdateAuthorityAccountConstraints>) -> Result<()> {
-    let new_authority_key = match &context.accounts.new_authority {
-        Some(account) => OptionalNonZeroPubkey::try_from(Some(account.key()))?,
-        None => OptionalNonZeroPubkey::try_from(None)?,
-    };
+pub fn process_update_authority(
+    context: &mut Context<UpdateAuthorityAccountConstraints>,
+) -> Result<()> {
+    // v2 takes the new authority as a plain `Option<&Address>` and does the
+    // `OptionalNonZeroPubkey` conversion itself.
+    let new_authority = context
+        .accounts
+        .new_authority
+        .as_ref()
+        .map(|account| *account.address());
 
-    // Change update authority
+    // Change update authority. v2's struct drops the program-id and
+    // new-authority slots: neither is passed as an account.
     token_metadata_update_authority(
         CpiContext::new(
-            context.accounts.token_program.key(),
+            context.accounts.token_program.address(),
             TokenMetadataUpdateAuthority {
-                program_id: context.accounts.token_program.to_account_info(),
-                metadata: context.accounts.mint_account.to_account_info(),
-                current_authority: context.accounts.current_authority.to_account_info(),
-
-                // new authority isn't actually needed as account in the CPI
-                // using current_authority as a placeholder to satisfy the struct
-                new_authority: context.accounts.current_authority.to_account_info(),
+                metadata: context.accounts.mint_account.cpi_handle_mut(),
+                current_authority: context.accounts.current_authority.cpi_handle(),
             },
         ),
-        new_authority_key,
+        new_authority.as_ref(),
     )?;
     Ok(())
 }

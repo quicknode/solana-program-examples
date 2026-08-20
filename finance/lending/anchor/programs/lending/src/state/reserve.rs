@@ -7,8 +7,8 @@ use crate::math::{mul_div_ceil, mul_div_floor};
 /// Signer seeds for a reserve PDA, which is the authority over its liquidity
 /// vault and the mint authority of its share token.
 pub fn reserve_signer_seeds<'a>(
-    lending_market: &'a Pubkey,
-    liquidity_mint: &'a Pubkey,
+    lending_market: &'a Address,
+    liquidity_mint: &'a Address,
     bump: &'a [u8; 1],
 ) -> [&'a [u8]; 4] {
     [
@@ -23,22 +23,22 @@ pub fn reserve_signer_seeds<'a>(
 /// `liquidity_vault` and receive share tokens (`share_mint`); the share-to-
 /// liquidity exchange rate rises as borrowers pay interest. Borrowers draw
 /// `liquidity_mint` out against collateral held in their obligation.
-#[account]
+#[account(borsh)]
 #[derive(InitSpace)]
 pub struct Reserve {
-    pub lending_market: Pubkey,
+    pub lending_market: Address,
 
-    pub liquidity_mint: Pubkey,
+    pub liquidity_mint: Address,
 
     /// Program-owned token account holding the un-borrowed liquidity. Its
     /// authority is this reserve PDA.
-    pub liquidity_vault: Pubkey,
+    pub liquidity_vault: Address,
 
     /// Share-token mint. Supply equals `share_mint_supply`. Mint authority is
     /// this reserve PDA.
-    pub share_mint: Pubkey,
+    pub share_mint: Address,
 
-    pub price_feed: Pubkey,
+    pub price_feed: Address,
 
     pub liquidity_decimals: u8,
 
@@ -77,7 +77,9 @@ pub struct Reserve {
 }
 
 /// Risk and interest-rate parameters. All ratios are basis points (10_000 = 100%).
-#[derive(InitSpace, Clone, Copy, AnchorSerialize, AnchorDeserialize, Debug, Default)]
+#[derive(
+    InitSpace, Clone, Copy, Debug, Default, IdlType, wincode::SchemaRead, wincode::SchemaWrite,
+)]
 pub struct ReserveConfig {
     /// Fraction of deposited collateral value a borrower may borrow against.
     pub loan_to_value_bps: u16,
@@ -178,7 +180,11 @@ impl Reserve {
         if gross == 0 {
             return Ok(0);
         }
-        mul_div_floor(self.current_borrowed_amount()? as u128, BPS_DENOMINATOR, gross)
+        mul_div_floor(
+            self.current_borrowed_amount()? as u128,
+            BPS_DENOMINATOR,
+            gross,
+        )
     }
 
     /// Per-slot borrow rate (FIXED_POINT_SCALE-scaled) from the kinked curve:

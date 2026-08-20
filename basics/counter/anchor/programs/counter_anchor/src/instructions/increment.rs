@@ -3,12 +3,12 @@ use anchor_lang::prelude::*;
 use crate::{Counter, CounterError};
 
 #[derive(Accounts)]
-pub struct IncrementAccountConstraints<'info> {
+pub struct IncrementAccountConstraints {
     #[account(mut)]
-    pub counter: Account<'info, Counter>,
+    pub counter: Account<Counter>,
 }
 
-pub fn handler(context: Context<IncrementAccountConstraints>) -> Result<()> {
+pub fn handler(context: &mut Context<IncrementAccountConstraints>) -> Result<()> {
     context.accounts.counter.count = context
         .accounts
         .counter

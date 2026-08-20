@@ -4,34 +4,37 @@ use anchor_spl::token_interface::{Mint, Token2022};
 use spl_token_metadata_interface::instruction::remove_key;
 
 #[derive(Accounts)]
-pub struct RemoveKeyAccountConstraints<'info> {
+pub struct RemoveKeyAccountConstraints {
     #[account(mut)]
-    pub update_authority: Signer<'info>,
+    pub update_authority: Signer,
 
-    #[account(
-        mut,
-        extensions::metadata_pointer::metadata_address = mint_account,
-    )]
-    pub mint_account: InterfaceAccount<'info, Mint>,
-    pub token_program: Program<'info, Token2022>,
-    pub system_program: Program<'info, System>,
+    #[account(mut)]
+    pub mint_account: InterfaceAccount<Mint>,
+    pub token_program: Program<Token2022>,
+    pub system_program: Program<System>,
 }
 
 // Invoke the remove_key instruction from spl_token_metadata_interface directly
 // There is not an anchor CpiContext for this instruction
-pub fn process_remove_key(context: Context<RemoveKeyAccountConstraints>, key: String) -> Result<()> {
+pub fn process_remove_key(
+    context: &mut Context<RemoveKeyAccountConstraints>,
+    key: String,
+) -> Result<()> {
     invoke(
         &remove_key(
-            &context.accounts.token_program.key(),    // token program id
-            &context.accounts.mint_account.key(),     // "metadata" account
-            &context.accounts.update_authority.key(), // update authority
-            key,                                      // key to remove
+            &context.accounts.token_program.address(), // token program id
+            &context.accounts.mint_account.address(),  // "metadata" account
+            &context.accounts.update_authority.address(), // update authority
+            key,                                       // key to remove
             true, // idempotent flag, if true transaction will not fail if key does not exist
         ),
+        // Handles line up positionally with the instruction's metas, and a
+        // writable meta needs a writable handle: `remove_key` names the metadata
+        // account (the mint, writable) then the update authority. The program
+        // account is not one of them.
         &[
-            context.accounts.token_program.to_account_info(),
-            context.accounts.mint_account.to_account_info(),
-            context.accounts.update_authority.to_account_info(),
+            context.accounts.mint_account.cpi_handle_mut().into(),
+            context.accounts.update_authority.cpi_handle(),
         ],
     )?;
     Ok(())

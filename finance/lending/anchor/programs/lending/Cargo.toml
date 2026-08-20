@@ -14,19 +14,26 @@ cpi = ["no-entrypoint"]
 no-entrypoint = []
 no-idl = []
 no-log-ix-name = []
-idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
+idl-build = ["anchor-lang/idl-build"]
 anchor-debug = []
 custom-heap = []
 custom-panic = []
 
 [dependencies]
 # init-if-needed: the obligation share vault and the test price feed are created lazily.
-anchor-lang = { version = "1.1.2", features = ["init-if-needed"] }
-anchor-spl = "1.1.2"
-# For the LastRestartSlot sysvar (not re-exported by anchor-lang): the price
-# feed rejects prices from before a cluster restart. Same major as the
-# solana-sysvar anchor-lang itself uses, so only one copy is compiled in.
-solana-sysvar = "3"
+anchor-lang = "2.0.0-rc.1"
+# The `#[program]` macro expands to `wincode` paths for instruction-data
+# (de)serialization, so the crate has to be a direct dependency.
+wincode = { version = "0.5", features = ["derive"] }
+# anchor-lang 2.0.0-rc.1 is built against wincode 0.5, but solana-address 2.7
+# moved to wincode 0.6. With both in the graph, `Address`'s wincode impls
+# belong to the version the account derives are not using and every
+# `SchemaRead`/`SchemaWrite` bound fails. 2.6.1 is the last 0.5-line release.
+solana-address = ">=2.6, <2.7"
+# pinocchio ships only Clock and Rent, so LastRestartSlot is read through
+# pinocchio's own `get_sysvar` wrapper (see src/last_restart.rs).
+pinocchio = "0.11"
+anchor-spl = "2.0.0-rc.1"
 
 [dev-dependencies]
 litesvm = "0.13.1"
@@ -34,6 +41,11 @@ solana-signer = "3.0.0"
 solana-keypair = "3.0.1"
 solana-kite = "0.4.0"
 borsh = "1.6.1"
+# Test-side only: LiteSVM's get_sysvar/set_sysvar want the host-side sysvar
+# types, not the pinocchio ones anchor-lang exposes on-chain.
+solana-sysvar = "3"
+solana-clock = "3"
+solana-pubkey = "3"
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }

@@ -123,7 +123,7 @@ wall-clock time in zero slots, so `price_scaled` also rejects any price stamped
 at or before the `LastRestartSlot` sysvar's slot, pausing valuation until the
 publisher posts again. The feed PDA is seeded by `[b"price_feed", market, mint]` (scoped to a
 market, not to any individual) and only that market's `owner` may write it
-(`set_price` checks `has_one = owner`). So prices can't be squatted, a reserve
+(`set_price` checks `address = lending_market.owner`). So prices can't be squatted, a reserve
 trusts exactly its own market's feed for the mint, and isolated markets can
 price the same asset independently.
 
@@ -171,7 +171,7 @@ refreshed in the same transaction, so a typical action transaction is
 
 ## Setup
 
-- Rust and the Solana toolchain (`cargo-build-sbf`), Anchor 1.0.x, Solana 3.1.8.
+- Rust and the Solana toolchain (`cargo-build-sbf`), Anchor 2.0.0-rc.1, Solana 3.1.8.
 - This program has no client/JavaScript code; tests are Rust + LiteSVM.
 
 ## Testing

@@ -2,9 +2,9 @@ use crate::{Config, CONFIG_SEED};
 use anchor_lang::prelude::*;
 
 #[derive(Accounts)]
-pub struct InitConfigAccountConstraints<'info> {
+pub struct InitConfigAccountConstraints {
     #[account(mut)]
-    pub payer: Signer<'info>,
+    pub payer: Signer,
 
     #[account(
         init,
@@ -13,17 +13,17 @@ pub struct InitConfigAccountConstraints<'info> {
         seeds = [CONFIG_SEED],
         bump,
     )]
-    pub config: Box<Account<'info, Config>>,
+    pub config: Box<BorshAccount<Config>>,
 
-    pub system_program: Program<'info, System>,
+    pub system_program: Program<System>,
 }
 
-impl InitConfigAccountConstraints<'_> {
+impl InitConfigAccountConstraints {
     pub fn init_config(&mut self, config_bump: u8) -> Result<()> {
-        self.config.set_inner(Config {
-            authority: self.payer.key(),
+        **self.config = Config {
+            authority: *self.payer.address(),
             bump: config_bump,
-        });
+        };
 
         Ok(())
     }

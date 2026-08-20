@@ -6,68 +6,66 @@ use crate::state::{Vault, VAULT_SEED};
 use crate::{build_transfer_instruction, SPLCompression, TransferArgs, MPL_BUBBLEGUM_ID};
 
 #[derive(Accounts)]
-pub struct WithdrawTwoCnftsAccountConstraints<'info> {
+pub struct WithdrawTwoCnftsAccountConstraints {
     /// The stored vault authority. Only this signer may withdraw.
-    pub authority: Signer<'info>,
+    #[account(address = vault.authority @ VaultError::InvalidWithdrawAuthority)]
+    pub authority: Signer,
 
     // The vault PDA owns the cNFTs (as Bubblegum leaf owner) and signs both
     // transfer CPIs via invoke_signed.
-    #[account(
-        seeds = [VAULT_SEED],
-        bump = vault.bump,
-        has_one = authority @ VaultError::InvalidWithdrawAuthority,
-    )]
-    pub vault: Account<'info, Vault>,
+    #[account(seeds = [VAULT_SEED],
+        bump = vault.bump)]
+    pub vault: BorshAccount<Vault>,
 
     #[account(mut)]
     #[account(
-        seeds = [merkle_tree1.key().as_ref()],
+        seeds = [merkle_tree1.address().as_ref()],
         bump,
-        seeds::program = bubblegum_program.key()
+        seeds::program = bubblegum_program.address()
     )]
     /// CHECK: This account is modified in the downstream program
-    pub tree_authority1: UncheckedAccount<'info>,
+    pub tree_authority1: UncheckedAccount,
 
     /// CHECK: This account is neither written to nor read from.
-    pub new_leaf_owner1: UncheckedAccount<'info>,
+    pub new_leaf_owner1: UncheckedAccount,
 
     #[account(mut)]
     /// CHECK: This account is modified in the downstream program
-    pub merkle_tree1: UncheckedAccount<'info>,
+    pub merkle_tree1: UncheckedAccount,
 
     #[account(mut)]
     #[account(
-        seeds = [merkle_tree2.key().as_ref()],
+        seeds = [merkle_tree2.address().as_ref()],
         bump,
-        seeds::program = bubblegum_program.key()
+        seeds::program = bubblegum_program.address()
     )]
     /// CHECK: This account is modified in the downstream program
-    pub tree_authority2: UncheckedAccount<'info>,
+    pub tree_authority2: UncheckedAccount,
 
     /// CHECK: This account is neither written to nor read from.
-    pub new_leaf_owner2: UncheckedAccount<'info>,
+    pub new_leaf_owner2: UncheckedAccount,
 
     #[account(mut)]
     /// CHECK: This account is modified in the downstream program
-    pub merkle_tree2: UncheckedAccount<'info>,
+    pub merkle_tree2: UncheckedAccount,
 
     /// CHECK: This account is neither written to nor read from.
-    pub log_wrapper: UncheckedAccount<'info>,
+    pub log_wrapper: UncheckedAccount,
 
-    pub compression_program: Program<'info, SPLCompression>,
+    pub compression_program: Program<SPLCompression>,
 
     // Pin the bubblegum program account to the known mpl-bubblegum id. Without
     // this constraint the caller could pass any account to the two CPI calls.
     /// CHECK: address constrained to the mpl-bubblegum program id.
     #[account(address = MPL_BUBBLEGUM_ID)]
-    pub bubblegum_program: UncheckedAccount<'info>,
+    pub bubblegum_program: UncheckedAccount,
 
-    pub system_program: Program<'info, System>,
+    pub system_program: Program<System>,
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn handler<'info>(
-    context: Context<'info, WithdrawTwoCnftsAccountConstraints<'info>>,
+pub fn handler(
+    context: &mut Context<WithdrawTwoCnftsAccountConstraints>,
     root1: [u8; 32],
     data_hash1: [u8; 32],
     creator_hash1: [u8; 32],
@@ -81,8 +79,8 @@ pub fn handler<'info>(
     index2: u32,
     proof_2_length: u8,
 ) -> Result<()> {
-    let merkle_tree1 = context.accounts.merkle_tree1.key();
-    let merkle_tree2 = context.accounts.merkle_tree2.key();
+    let merkle_tree1 = context.accounts.merkle_tree1.address();
+    let merkle_tree2 = context.accounts.merkle_tree2.address();
     msg!(
         "attempting to send nfts from trees {} and {}",
         merkle_tree1,
@@ -92,41 +90,52 @@ pub fn handler<'info>(
     // The proof lengths are client-supplied: bounds-check them against the
     // accounts actually provided before slicing, so adversarial input gets a
     // clean named error instead of a panic.
+    // `remaining_accounts()` returns an owned vec; take it once so the proof
+    // views stay alive for both CPIs below.
+    let proof_accounts = context.remaining_accounts()?;
+
     let proof_1_length = proof_1_length as usize;
     let proof_2_length = proof_2_length as usize;
     require!(
         proof_1_length
             .checked_add(proof_2_length)
-            .is_some_and(|total| total == context.remaining_accounts.len()),
+            .is_some_and(|total| total == proof_accounts.len()),
         VaultError::ProofLengthMismatch
     );
 
-    let signer_seeds: &[&[u8]] = &[VAULT_SEED, &[context.accounts.vault.bump]];
+    // Read the bump before the CPI handles take a mutable borrow of `vault`.
+    let vault_bump = context.accounts.vault.bump;
+    let signer_seeds: &[&[u8]] = &[VAULT_SEED, &[vault_bump]];
 
     // Split remaining accounts into proof1 and proof2
-    let (proof1_accounts, proof2_accounts) = context.remaining_accounts.split_at(proof_1_length);
+    let (proof1_accounts, proof2_accounts) = proof_accounts.split_at(proof_1_length);
 
     let proof1_metas: Vec<AccountMeta> = proof1_accounts
         .iter()
-        .map(|acc| AccountMeta::new_readonly(acc.key(), false))
+        .map(|acc| AccountMeta::new_readonly(*acc.address(), false))
         .collect();
 
     let proof2_metas: Vec<AccountMeta> = proof2_accounts
         .iter()
-        .map(|acc| AccountMeta::new_readonly(acc.key(), false))
+        .map(|acc| AccountMeta::new_readonly(*acc.address(), false))
         .collect();
+
+    // `vault` signs both transfers, so its data borrow has to be handed back to
+    // the runtime before the CPIs. It is read-only here and nothing reads it
+    // afterwards, so there is no reacquire.
+    context.accounts.vault.release_borrow()?;
 
     // Withdraw cNFT#1
     msg!("withdrawing cNFT#1");
     let instruction1 = build_transfer_instruction(
-        context.accounts.tree_authority1.key(),
-        context.accounts.vault.key(),
-        context.accounts.vault.key(),
-        context.accounts.new_leaf_owner1.key(),
-        context.accounts.merkle_tree1.key(),
-        context.accounts.log_wrapper.key(),
-        context.accounts.compression_program.key(),
-        context.accounts.system_program.key(),
+        *context.accounts.tree_authority1.address(),
+        *context.accounts.vault.address(),
+        *context.accounts.vault.address(),
+        *context.accounts.new_leaf_owner1.address(),
+        *context.accounts.merkle_tree1.address(),
+        *context.accounts.log_wrapper.address(),
+        *context.accounts.compression_program.address(),
+        *context.accounts.system_program.address(),
         &proof1_metas,
         TransferArgs {
             root: root1,
@@ -137,18 +146,21 @@ pub fn handler<'info>(
         },
     )?;
 
-    let mut account_infos1 = vec![
-        context.accounts.bubblegum_program.to_account_info(),
-        context.accounts.tree_authority1.to_account_info(),
-        context.accounts.vault.to_account_info(),
-        context.accounts.new_leaf_owner1.to_account_info(),
-        context.accounts.merkle_tree1.to_account_info(),
-        context.accounts.log_wrapper.to_account_info(),
-        context.accounts.compression_program.to_account_info(),
-        context.accounts.system_program.to_account_info(),
+    // Handles line up positionally with the instruction's metas: the program
+    // account is not listed, and the vault fills both the leaf_owner and
+    // leaf_delegate slots.
+    let mut account_infos1: Vec<CpiHandle> = vec![
+        context.accounts.tree_authority1.cpi_handle_mut().into(),
+        context.accounts.vault.cpi_handle(),
+        context.accounts.vault.cpi_handle(),
+        context.accounts.new_leaf_owner1.cpi_handle(),
+        context.accounts.merkle_tree1.cpi_handle_mut().into(),
+        context.accounts.log_wrapper.cpi_handle(),
+        context.accounts.compression_program.cpi_handle(),
+        context.accounts.system_program.cpi_handle(),
     ];
     for acc in proof1_accounts.iter() {
-        account_infos1.push(acc.to_account_info());
+        account_infos1.push(CpiHandle::readonly(acc));
     }
 
     invoke_signed(&instruction1, &account_infos1, &[signer_seeds])?;
@@ -156,14 +168,14 @@ pub fn handler<'info>(
     // Withdraw cNFT#2
     msg!("withdrawing cNFT#2");
     let instruction2 = build_transfer_instruction(
-        context.accounts.tree_authority2.key(),
-        context.accounts.vault.key(),
-        context.accounts.vault.key(),
-        context.accounts.new_leaf_owner2.key(),
-        context.accounts.merkle_tree2.key(),
-        context.accounts.log_wrapper.key(),
-        context.accounts.compression_program.key(),
-        context.accounts.system_program.key(),
+        *context.accounts.tree_authority2.address(),
+        *context.accounts.vault.address(),
+        *context.accounts.vault.address(),
+        *context.accounts.new_leaf_owner2.address(),
+        *context.accounts.merkle_tree2.address(),
+        *context.accounts.log_wrapper.address(),
+        *context.accounts.compression_program.address(),
+        *context.accounts.system_program.address(),
         &proof2_metas,
         TransferArgs {
             root: root2,
@@ -174,18 +186,21 @@ pub fn handler<'info>(
         },
     )?;
 
-    let mut account_infos2 = vec![
-        context.accounts.bubblegum_program.to_account_info(),
-        context.accounts.tree_authority2.to_account_info(),
-        context.accounts.vault.to_account_info(),
-        context.accounts.new_leaf_owner2.to_account_info(),
-        context.accounts.merkle_tree2.to_account_info(),
-        context.accounts.log_wrapper.to_account_info(),
-        context.accounts.compression_program.to_account_info(),
-        context.accounts.system_program.to_account_info(),
+    // Handles line up positionally with the instruction's metas: the program
+    // account is not listed, and the vault fills both the leaf_owner and
+    // leaf_delegate slots.
+    let mut account_infos2: Vec<CpiHandle> = vec![
+        context.accounts.tree_authority2.cpi_handle_mut().into(),
+        context.accounts.vault.cpi_handle(),
+        context.accounts.vault.cpi_handle(),
+        context.accounts.new_leaf_owner2.cpi_handle(),
+        context.accounts.merkle_tree2.cpi_handle_mut().into(),
+        context.accounts.log_wrapper.cpi_handle(),
+        context.accounts.compression_program.cpi_handle(),
+        context.accounts.system_program.cpi_handle(),
     ];
     for acc in proof2_accounts.iter() {
-        account_infos2.push(acc.to_account_info());
+        account_infos2.push(CpiHandle::readonly(acc));
     }
 
     invoke_signed(&instruction2, &account_infos2, &[signer_seeds])?;

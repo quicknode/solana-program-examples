@@ -1,26 +1,24 @@
 use {
     anchor_lang::{
-        solana_program::{instruction::Instruction, pubkey::Pubkey, system_program},
-        InstructionData, ToAccountMetas,
+        solana_program::instruction::Instruction, system_program, Address, InstructionData,
+        ToAccountMetas,
     },
     litesvm::LiteSVM,
+    solana_keypair::Keypair,
     solana_kite::{
         assert_token_account_balance, create_wallet, send_transaction_from_instructions,
-        token_extensions::{
-            get_token_extensions_account_address, TOKEN_EXTENSIONS_PROGRAM_ID,
-        },
+        token_extensions::{get_token_extensions_account_address, TOKEN_EXTENSIONS_PROGRAM_ID},
     },
-    solana_keypair::Keypair,
     solana_signer::Signer,
 };
 
-fn associated_token_program_id() -> Pubkey {
+fn associated_token_program_id() -> Address {
     "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
         .parse()
         .unwrap()
 }
 
-fn setup() -> (LiteSVM, Pubkey, Keypair) {
+fn setup() -> (LiteSVM, Address, Keypair) {
     let program_id = anchor::id();
     let mut svm = LiteSVM::new();
 
@@ -38,7 +36,7 @@ fn test_create_token_and_mint_and_transfer() {
     let token_name = "TestToken".to_string();
 
     // Derive the mint PDA
-    let (mint, _bump) = Pubkey::find_program_address(
+    let (mint, _bump) = Address::find_program_address(
         &[
             b"token-2022-token",
             payer.pubkey().as_ref(),
@@ -57,13 +55,14 @@ fn test_create_token_and_mint_and_transfer() {
         anchor::accounts::CreateTokenAccountConstraints {
             signer: payer.pubkey(),
             mint,
-            system_program: system_program::id(),
+            system_program: system_program::ID,
             token_program: TOKEN_EXTENSIONS_PROGRAM_ID,
         }
         .to_account_metas(None),
     );
 
-    send_transaction_from_instructions(&mut svm, vec![create_token_ix], &[&payer], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(&mut svm, vec![create_token_ix], &[&payer], &payer.pubkey())
+        .unwrap();
 
     // Verify mint account exists
     let mint_account = svm.get_account(&mint).expect("Mint account should exist");
@@ -81,19 +80,18 @@ fn test_create_token_and_mint_and_transfer() {
             signer: payer.pubkey(),
             mint,
             token_account: payer_ata,
-            system_program: system_program::id(),
+            system_program: system_program::ID,
             token_program: TOKEN_EXTENSIONS_PROGRAM_ID,
             associated_token_program: associated_token_program_id(),
         }
         .to_account_metas(None),
     );
 
-    send_transaction_from_instructions(&mut svm, vec![create_ata_ix], &[&payer], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(&mut svm, vec![create_ata_ix], &[&payer], &payer.pubkey())
+        .unwrap();
 
     // Verify ATA exists
-    let ata_account = svm
-        .get_account(&payer_ata)
-        .expect("Payer ATA should exist");
+    let ata_account = svm.get_account(&payer_ata).expect("Payer ATA should exist");
     assert!(!ata_account.data.is_empty(), "ATA should have data");
 
     svm.expire_blockhash();
@@ -116,7 +114,8 @@ fn test_create_token_and_mint_and_transfer() {
         .to_account_metas(None),
     );
 
-    send_transaction_from_instructions(&mut svm, vec![mint_token_ix], &[&payer], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(&mut svm, vec![mint_token_ix], &[&payer], &payer.pubkey())
+        .unwrap();
 
     assert_token_account_balance(
         &svm,
@@ -146,13 +145,14 @@ fn test_create_token_and_mint_and_transfer() {
             to_ata: receiver_ata,
             mint,
             token_program: TOKEN_EXTENSIONS_PROGRAM_ID,
-            system_program: system_program::id(),
+            system_program: system_program::ID,
             associated_token_program: associated_token_program_id(),
         }
         .to_account_metas(None),
     );
 
-    send_transaction_from_instructions(&mut svm, vec![transfer_ix], &[&payer], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(&mut svm, vec![transfer_ix], &[&payer], &payer.pubkey())
+        .unwrap();
 
     assert_token_account_balance(
         &svm,

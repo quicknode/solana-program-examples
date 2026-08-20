@@ -10,12 +10,12 @@ declare_id!("5LdYbHiUsFxVG8bfqoeBkhBYMRmWZb3BoLuABgYW7coB");
 pub mod default_account_state {
     use super::*;
 
-    pub fn initialize(context: Context<InitializeAccountConstraints>) -> Result<()> {
+    pub fn initialize(context: &mut Context<InitializeAccountConstraints>) -> Result<()> {
         instructions::initialize::handler(context)
     }
 
     pub fn update_default_state(
-        context: Context<UpdateDefaultStateAccountConstraints>,
+        context: &mut Context<UpdateDefaultStateAccountConstraints>,
         account_state: AnchorAccountState,
     ) -> Result<()> {
         instructions::update_default_state::handler(context, account_state)
@@ -24,7 +24,7 @@ pub mod default_account_state {
 
 // Custom enum to implement AnchorSerialize and AnchorDeserialize
 // This is required to pass the enum as an argument to the instruction
-#[derive(AnchorSerialize, AnchorDeserialize)]
+#[derive(IdlType, wincode::SchemaRead, wincode::SchemaWrite)]
 pub enum AnchorAccountState {
     Uninitialized,
     Initialized,

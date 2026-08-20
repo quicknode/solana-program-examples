@@ -4,46 +4,43 @@ use {
 };
 
 #[derive(Accounts)]
-pub struct SwitchAccountConstraints<'info> {
+pub struct SwitchAccountConstraints {
     /// admin that controls the switch
-    #[account(mut)]
-    pub admin: Signer<'info>,
+    #[account(mut, address = admin_config.admin)]
+    pub admin: Signer,
 
     /// CHECK: wallet - transfer sender
     #[account(mut)]
-    pub wallet: UncheckedAccount<'info>,
+    pub wallet: UncheckedAccount,
 
     /// admin config
-    #[account(
-        has_one=admin,
-        seeds=[b"admin-config"],
-        bump,
-    )]
-    pub admin_config: Account<'info, AdminConfig>,
+    #[account(seeds=[b"admin-config"],
+        bump)]
+    pub admin_config: BorshAccount<AdminConfig>,
 
     /// the wallet (sender) transfer switch
     #[account(
         init_if_needed,
         payer=admin,
         space = TransferSwitch::DISCRIMINATOR.len() + TransferSwitch::INIT_SPACE,
-        seeds = [wallet.key().as_ref()],
+        seeds = [wallet.address().as_ref()],
         bump,
     )]
-    pub wallet_switch: Account<'info, TransferSwitch>,
+    pub wallet_switch: BorshAccount<TransferSwitch>,
 
-    pub system_program: Program<'info, System>,
+    pub system_program: Program<System>,
 }
 
 pub fn handle_switch(accounts: &mut SwitchAccountConstraints, on: bool, bump: u8) -> Result<()> {
-        // toggle switch on/off for the given wallet
-        //
-        accounts.wallet_switch.set_inner(TransferSwitch {
-            wallet: accounts.wallet.key(),
-            on,
-            bump,  // canonical bump for this wallet's PDA
-        });
-        Ok(())
-    }
+    // toggle switch on/off for the given wallet
+    //
+    *accounts.wallet_switch = TransferSwitch {
+        wallet: *accounts.wallet.address(),
+        on,
+        bump, // canonical bump for this wallet's PDA
+    };
+    Ok(())
+}
 
 // admin_config is validated via `seeds=[b"admin-config"], bump` - Anchor
 // re-derives it and fails if it doesn't match, so storing AdminConfig.bump
@@ -51,4 +48,3 @@ pub fn handle_switch(accounts: &mut SwitchAccountConstraints, on: bool, bump: u8
 // bump field on AdminConfig is still populated on creation to satisfy the
 // 'every PDA struct stores its bump' rule and save derivation cost in any
 // future call sites).
-

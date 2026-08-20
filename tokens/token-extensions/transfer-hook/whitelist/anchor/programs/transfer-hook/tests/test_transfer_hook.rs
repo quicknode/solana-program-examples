@@ -1,13 +1,10 @@
 use {
     anchor_lang::{
-        solana_program::{
-            instruction::Instruction,
-            pubkey::Pubkey,
-            system_program,
-        },
-        InstructionData, ToAccountMetas,
+        solana_program::instruction::Instruction, system_program, Address, InstructionData,
+        ToAccountMetas,
     },
     litesvm::LiteSVM,
+    solana_keypair::Keypair,
     solana_kite::{
         create_wallet, send_transaction_from_instructions,
         token_extensions::{
@@ -17,11 +14,10 @@ use {
         },
         transfer_hook::{build_hook_accounts, get_hook_accounts_address, HookAccount},
     },
-    solana_keypair::Keypair,
     solana_signer::Signer,
 };
 
-fn setup() -> (LiteSVM, Pubkey, Keypair) {
+fn setup() -> (LiteSVM, Address, Keypair) {
     let program_id = transfer_hook::id();
     let mut svm = LiteSVM::new();
 
@@ -39,7 +35,7 @@ fn test_whitelist_transfer_hook() {
     let decimals: u8 = 9;
 
     // Derive PDAs
-    let (white_list_pda, _) = Pubkey::find_program_address(&[b"white_list"], &program_id);
+    let (white_list_pda, _) = Address::find_program_address(&[b"white_list"], &program_id);
 
     // Step 1: Create mint with TransferHook extension
     let mint = create_token_extensions_mint(
@@ -54,34 +50,19 @@ fn test_whitelist_transfer_hook() {
     .unwrap();
     svm.expire_blockhash();
 
-    let extra_account_meta_list =
-        get_hook_accounts_address(&mint, &program_id);
+    let extra_account_meta_list = get_hook_accounts_address(&mint, &program_id);
 
     // Step 2: Create token accounts and mint tokens
     let amount: u64 = 100 * 10u64.pow(decimals as u32);
-    let source_ata = create_token_extensions_account(
-        &mut svm,
-        &payer.pubkey(),
-        &mint,
-        &payer,
-    ).unwrap();
+    let source_ata =
+        create_token_extensions_account(&mut svm, &payer.pubkey(), &mint, &payer).unwrap();
     svm.expire_blockhash();
 
-    let dest_ata = create_token_extensions_account(
-        &mut svm,
-        &recipient.pubkey(),
-        &mint,
-        &payer,
-    ).unwrap();
+    let dest_ata =
+        create_token_extensions_account(&mut svm, &recipient.pubkey(), &mint, &payer).unwrap();
     svm.expire_blockhash();
 
-    mint_tokens_to_token_extensions_account(
-        &mut svm,
-        &mint,
-        &source_ata,
-        amount,
-        &payer,
-    ).unwrap();
+    mint_tokens_to_token_extensions_account(&mut svm, &mint, &source_ata, amount, &payer).unwrap();
     svm.expire_blockhash();
 
     // Step 3: Initialize ExtraAccountMetaList (also creates whitelist)
@@ -92,12 +73,13 @@ fn test_whitelist_transfer_hook() {
             payer: payer.pubkey(),
             extra_account_meta_list,
             mint,
-            system_program: system_program::id(),
+            system_program: system_program::ID,
             white_list: white_list_pda,
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![init_extra_ix], &[&payer], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(&mut svm, vec![init_extra_ix], &[&payer], &payer.pubkey())
+        .unwrap();
     svm.expire_blockhash();
 
     // Step 4: Add destination token account to whitelist
@@ -111,7 +93,13 @@ fn test_whitelist_transfer_hook() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![add_to_whitelist_ix], &[&payer], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        vec![add_to_whitelist_ix],
+        &[&payer],
+        &payer.pubkey(),
+    )
+    .unwrap();
     svm.expire_blockhash();
 
     // Step 5: Transfer - should succeed (destination is whitelisted)
@@ -134,5 +122,6 @@ fn test_whitelist_transfer_hook() {
         transfer_amount,
         decimals,
         &extra_accounts,
-    ).unwrap();
+    )
+    .unwrap();
 }

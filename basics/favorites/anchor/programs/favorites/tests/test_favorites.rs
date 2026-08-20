@@ -1,7 +1,7 @@
 use {
     anchor_lang::{
-        solana_program::{instruction::Instruction, pubkey::Pubkey, system_program},
-        InstructionData, ToAccountMetas,
+        solana_program::instruction::Instruction, system_program, Address, InstructionData,
+        ToAccountMetas,
     },
     litesvm::LiteSVM,
     solana_kite::{create_wallet, send_transaction_from_instructions},
@@ -17,7 +17,7 @@ struct FavoritesData {
 /// Manually deserialize the Favorites account data, skipping the 8-byte discriminator.
 /// We can't use BorshDeserialize on the full account because init_if_needed allocates
 /// more space than the serialized data occupies (padding for max_len strings/vecs).
-fn read_favorites(svm: &LiteSVM, pda: &Pubkey) -> FavoritesData {
+fn read_favorites(svm: &LiteSVM, pda: &Address) -> FavoritesData {
     let account = svm.get_account(pda).unwrap();
     let data = &account.data[8..]; // skip discriminator
     let mut offset = 0;
@@ -33,13 +33,11 @@ fn read_favorites(svm: &LiteSVM, pda: &Pubkey) -> FavoritesData {
     offset += color_len;
 
     // Vec<String> hobbies (4-byte vec length + each string)
-    let hobbies_count =
-        u32::from_le_bytes(data[offset..offset + 4].try_into().unwrap()) as usize;
+    let hobbies_count = u32::from_le_bytes(data[offset..offset + 4].try_into().unwrap()) as usize;
     offset += 4;
     let mut hobbies = Vec::with_capacity(hobbies_count);
     for _ in 0..hobbies_count {
-        let hobby_len =
-            u32::from_le_bytes(data[offset..offset + 4].try_into().unwrap()) as usize;
+        let hobby_len = u32::from_le_bytes(data[offset..offset + 4].try_into().unwrap()) as usize;
         offset += 4;
         let hobby = String::from_utf8(data[offset..offset + hobby_len].to_vec()).unwrap();
         offset += hobby_len;
@@ -53,7 +51,7 @@ fn read_favorites(svm: &LiteSVM, pda: &Pubkey) -> FavoritesData {
     }
 }
 
-fn setup() -> (LiteSVM, Pubkey, solana_keypair::Keypair) {
+fn setup() -> (LiteSVM, Address, solana_keypair::Keypair) {
     let program_id = favorites::id();
     let mut svm = LiteSVM::new();
     let bytes = include_bytes!("../../../target/deploy/favorites.so");
@@ -62,8 +60,8 @@ fn setup() -> (LiteSVM, Pubkey, solana_keypair::Keypair) {
     (svm, program_id, payer)
 }
 
-fn favorites_pda(program_id: &Pubkey, user: &Pubkey) -> Pubkey {
-    Pubkey::find_program_address(&[b"favorites", user.as_ref()], program_id).0
+fn favorites_pda(program_id: &Address, user: &Address) -> Address {
+    Address::find_program_address(&[b"favorites", user.as_ref()], program_id).0
 }
 
 #[test]
@@ -86,7 +84,7 @@ fn test_set_favorites() {
         favorites::accounts::SetFavoritesAccountConstraints {
             user: payer.pubkey(),
             favorites: pda,
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
@@ -121,7 +119,7 @@ fn test_update_favorites() {
         favorites::accounts::SetFavoritesAccountConstraints {
             user: payer.pubkey(),
             favorites: pda,
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
@@ -146,7 +144,7 @@ fn test_update_favorites() {
         favorites::accounts::SetFavoritesAccountConstraints {
             user: payer.pubkey(),
             favorites: pda,
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );

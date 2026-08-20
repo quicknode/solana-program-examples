@@ -6,26 +6,26 @@ use anchor_lang::prelude::*;
 ///
 /// Money fields are raw base units of the collateral token. The pool never
 /// assumes decimals — `transfer_checked` carries them through every CPI.
-#[account]
+#[account(borsh)]
 #[derive(InitSpace)]
 pub struct Pool {
     /// Admin: configures the pool and sweeps protocol fees. Not a custody
     /// escape hatch — it cannot touch liquidity-provider or trader funds.
-    pub authority: Pubkey,
+    pub authority: Address,
 
-    pub collateral_mint: Pubkey,
+    pub collateral_mint: Address,
 
     /// Oracle feed this market reads its price from. Stored so handlers can
     /// reject any substituted feed account.
-    pub oracle_feed: Pubkey,
+    pub oracle_feed: Address,
 
     /// Decimal places the oracle price is quoted in. Pinned at creation so a
     /// feed that silently changes scale is rejected rather than mis-read.
     pub oracle_scale: u32,
 
-    pub custody_vault: Pubkey,
+    pub custody_vault: Address,
 
-    pub lp_mint: Pubkey,
+    pub lp_mint: Address,
 
     /// Liquidity-provider-owned assets, in collateral base units. Grows with
     /// deposits, trader losses, fees-to-LPs; shrinks with withdrawals and

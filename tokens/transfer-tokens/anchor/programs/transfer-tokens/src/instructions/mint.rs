@@ -7,14 +7,18 @@ use {
 };
 
 #[derive(Accounts)]
-pub struct MintTokenAccountConstraints<'info> {
-    #[account(mut)]
-    pub mint_authority: Signer<'info>,
+pub struct MintTokenAccountConstraints {
+    // The mint authority and the recipient may be the same account (minting or
+    // sending to yourself). v2 rejects an account that appears twice while any
+    // of its slots is in the mutable mask, and `unsafe(dup)` takes this one out
+    // of that mask while keeping it writable.
+    #[account(unsafe(dup))]
+    pub mint_authority: Signer,
 
-    pub recipient: SystemAccount<'info>,
+    pub recipient: SystemAccount,
 
     #[account(mut)]
-    pub mint_account: InterfaceAccount<'info, Mint>,
+    pub mint_account: InterfaceAccount<Mint>,
 
     #[account(
         init_if_needed,
@@ -23,11 +27,11 @@ pub struct MintTokenAccountConstraints<'info> {
         associated_token::authority = recipient,
         associated_token::token_program = token_program,
     )]
-    pub associated_token_account: InterfaceAccount<'info, TokenAccount>,
+    pub associated_token_account: InterfaceAccount<TokenAccount>,
 
-    pub token_program: Interface<'info, TokenInterface>,
-    pub associated_token_program: Program<'info, AssociatedToken>,
-    pub system_program: Program<'info, System>,
+    pub token_program: Interface<'static, TokenInterface>,
+    pub associated_token_program: Program<AssociatedToken>,
+    pub system_program: Program<System>,
 }
 
 /// Mints `amount` tokens to the recipient's associated token account.
@@ -36,24 +40,24 @@ pub struct MintTokenAccountConstraints<'info> {
 /// on). Clients convert from major units, e.g. 1 token with 9 decimals is
 /// `1 * 10u64.pow(9)` minor units.
 pub fn handle_mint_token(
-    context: Context<MintTokenAccountConstraints>,
+    context: &mut Context<MintTokenAccountConstraints>,
     amount: u64,
 ) -> Result<()> {
     msg!("Minting tokens to associated token account...");
-    msg!("Mint: {}", &context.accounts.mint_account.key());
+    msg!("Mint: {}", &context.accounts.mint_account.address());
     msg!(
         "Token Address: {}",
-        &context.accounts.associated_token_account.key()
+        &context.accounts.associated_token_account.address()
     );
 
     // Invoke the mint_to instruction on the token program
     mint_to(
         CpiContext::new(
-            context.accounts.token_program.key(),
+            context.accounts.token_program.address(),
             MintTo {
-                mint: context.accounts.mint_account.to_account_info(),
-                to: context.accounts.associated_token_account.to_account_info(),
-                authority: context.accounts.mint_authority.to_account_info(),
+                mint: context.accounts.mint_account.cpi_handle_mut(),
+                to: context.accounts.associated_token_account.cpi_handle_mut(),
+                authority: context.accounts.mint_authority.cpi_handle(),
             },
         ),
         amount,

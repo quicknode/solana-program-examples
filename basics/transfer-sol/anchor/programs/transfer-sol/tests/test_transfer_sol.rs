@@ -1,7 +1,6 @@
 use {
     anchor_lang::{
-        solana_program::{instruction::Instruction, system_program},
-        InstructionData, ToAccountMetas,
+        solana_program::instruction::Instruction, system_program, InstructionData, ToAccountMetas,
     },
     litesvm::LiteSVM,
     solana_keypair::Keypair,
@@ -30,7 +29,7 @@ fn test_transfer_sol_with_cpi() {
         transfer_sol::accounts::TransferSolWithCpiAccountConstraints {
             payer: payer.pubkey(),
             recipient: recipient.pubkey(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );

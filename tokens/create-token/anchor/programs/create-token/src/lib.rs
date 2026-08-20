@@ -5,7 +5,8 @@ use {
             create_metadata_accounts_v3, mpl_token_metadata::types::DataV2,
             CreateMetadataAccountsV3, Metadata,
         },
-        token::{Mint, Token},
+        mint::{self, Mint},
+        token::Token,
     },
 };
 
@@ -16,7 +17,7 @@ pub mod create_token {
     use super::*;
 
     pub fn create_token_mint(
-        context: Context<CreateTokenMintAccountConstraints>,
+        context: &mut Context<CreateTokenMintAccountConstraints>,
         _token_decimals: u8,
         token_name: String,
         token_symbol: String,
@@ -25,22 +26,28 @@ pub mod create_token {
         msg!("Creating metadata account...");
         msg!(
             "Metadata account address: {}",
-            &context.accounts.metadata_account.key()
+            &context.accounts.metadata_account.address()
         );
 
         // Cross Program Invocation (CPI)
         // Invoking the create_metadata_account_v3 instruction on the token metadata program
+        // `payer` fills three CPI slots (payer, mint authority, update
+        // authority). v2's typed handles enforce borrow exclusivity at compile
+        // time, so the two read-only slots are built from a copy of the
+        // `AccountView`, and it still points at the same underlying account.
+        let payer_view = *context.accounts.payer.account();
+
         create_metadata_accounts_v3(
             CpiContext::new(
-                context.accounts.token_metadata_program.key(),
+                context.accounts.token_metadata_program.address(),
                 CreateMetadataAccountsV3 {
-                    metadata: context.accounts.metadata_account.to_account_info(),
-                    mint: context.accounts.mint_account.to_account_info(),
-                    mint_authority: context.accounts.payer.to_account_info(),
-                    update_authority: context.accounts.payer.to_account_info(),
-                    payer: context.accounts.payer.to_account_info(),
-                    system_program: context.accounts.system_program.to_account_info(),
-                    rent: context.accounts.rent.to_account_info(),
+                    metadata: context.accounts.metadata_account.cpi_handle_mut(),
+                    mint: context.accounts.mint_account.cpi_handle(),
+                    mint_authority: CpiHandle::readonly(&payer_view),
+                    update_authority: CpiHandle::readonly(&payer_view),
+                    payer: context.accounts.payer.cpi_handle_mut(),
+                    system_program: context.accounts.system_program.cpi_handle(),
+                    update_authority_is_signer: true,
                 },
             ),
             DataV2 {
@@ -53,7 +60,6 @@ pub mod create_token {
                 uses: None,
             },
             false, // Is mutable
-            true,  // Update authority is signer
             None,  // Collection details
         )?;
 
@@ -65,29 +71,29 @@ pub mod create_token {
 
 #[derive(Accounts)]
 #[instruction(_token_decimals: u8)]
-pub struct CreateTokenMintAccountConstraints<'info> {
+pub struct CreateTokenMintAccountConstraints {
     #[account(mut)]
-    pub payer: Signer<'info>,
+    pub payer: Signer,
 
     /// CHECK: Validate address by deriving pda
     #[account(
         mut,
-        seeds = [b"metadata", token_metadata_program.key().as_ref(), mint_account.key().as_ref()],
+        seeds = [b"metadata", token_metadata_program.address().as_ref(), mint_account.address().as_ref()],
         bump,
-        seeds::program = token_metadata_program.key(),
+        seeds::program = token_metadata_program.address(),
     )]
-    pub metadata_account: UncheckedAccount<'info>,
+    pub metadata_account: UncheckedAccount,
     // Create new mint account
     #[account(
         init,
         payer = payer,
         mint::decimals = _token_decimals,
-        mint::authority = payer.key(),
+        mint::authority = payer,
     )]
-    pub mint_account: Account<'info, Mint>,
+    pub mint_account: Account<Mint>,
 
-    pub token_metadata_program: Program<'info, Metadata>,
-    pub token_program: Program<'info, Token>,
-    pub system_program: Program<'info, System>,
-    pub rent: Sysvar<'info, Rent>,
+    pub token_metadata_program: Program<Metadata>,
+    pub token_program: Program<Token>,
+    pub system_program: Program<System>,
+    pub rent: Sysvar<Rent>,
 }

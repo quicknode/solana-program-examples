@@ -1,24 +1,18 @@
 use {
     anchor_lang::{
-        solana_program::{
-            instruction::{AccountMeta, Instruction},
-            pubkey::Pubkey,
-            system_program,
-        },
-        InstructionData, ToAccountMetas,
+        solana_program::instruction::{AccountMeta, Instruction},
+        system_program, Address, InstructionData, ToAccountMetas,
     },
     litesvm::LiteSVM,
+    solana_keypair::Keypair,
     solana_kite::{
         assert_token_account_balance, create_wallet, send_transaction_from_instructions,
-        token_extensions::{
-            mint_tokens_to_token_extensions_account, TOKEN_EXTENSIONS_PROGRAM_ID,
-        },
+        token_extensions::{mint_tokens_to_token_extensions_account, TOKEN_EXTENSIONS_PROGRAM_ID},
     },
-    solana_keypair::Keypair,
     solana_signer::Signer,
 };
 
-fn setup() -> (LiteSVM, Pubkey, Keypair) {
+fn setup() -> (LiteSVM, Address, Keypair) {
     let program_id = permanent_delegate::id();
     let mut svm = LiteSVM::new();
 
@@ -32,15 +26,19 @@ fn setup() -> (LiteSVM, Pubkey, Keypair) {
 /// Create a Token Extensions token account (CreateAccount + InitializeAccount3).
 /// This creates a non-ATA token account with explicit keypair, which kite doesn't provide.
 fn create_token_account_instructions(
-    payer: &Pubkey,
-    account: &Pubkey,
-    mint: &Pubkey,
-    owner: &Pubkey,
+    payer: &Address,
+    account: &Address,
+    mint: &Address,
+    owner: &Address,
 ) -> Vec<Instruction> {
     let space: u64 = 200;
     let lamports: u64 = 3_000_000;
     let create_account_ix = anchor_lang::solana_program::system_instruction::create_account(
-        payer, account, lamports, space, &TOKEN_EXTENSIONS_PROGRAM_ID,
+        payer,
+        account,
+        lamports,
+        space,
+        &TOKEN_EXTENSIONS_PROGRAM_ID,
     );
     // InitializeAccount3 (instruction 18): [18, owner(32)]
     let mut init_data = vec![18u8];
@@ -58,9 +56,9 @@ fn create_token_account_instructions(
 
 /// BurnChecked instruction for Token Extensions (instruction 15).
 fn burn_checked_ix(
-    account: &Pubkey,
-    mint: &Pubkey,
-    authority: &Pubkey,
+    account: &Address,
+    mint: &Address,
+    authority: &Address,
     amount: u64,
     decimals: u8,
 ) -> Instruction {
@@ -91,11 +89,17 @@ fn test_create_mint_with_permanent_delegate_and_burn() {
             payer: payer.pubkey(),
             mint_account: mint_keypair.pubkey(),
             token_program: TOKEN_EXTENSIONS_PROGRAM_ID,
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![initialize_ix], &[&payer, &mint_keypair], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        vec![initialize_ix],
+        &[&payer, &mint_keypair],
+        &payer.pubkey(),
+    )
+    .unwrap();
     svm.expire_blockhash();
 
     // Step 2: Create a token account owned by a random keypair
@@ -107,7 +111,13 @@ fn test_create_mint_with_permanent_delegate_and_burn() {
         &mint_keypair.pubkey(),
         &random_owner.pubkey(),
     );
-    send_transaction_from_instructions(&mut svm, create_ata_ixs, &[&payer, &token_account], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        create_ata_ixs,
+        &[&payer, &token_account],
+        &payer.pubkey(),
+    )
+    .unwrap();
     svm.expire_blockhash();
 
     // Step 3: Mint 100 tokens to the token account
@@ -117,7 +127,8 @@ fn test_create_mint_with_permanent_delegate_and_burn() {
         &token_account.pubkey(),
         100,
         &payer,
-    ).unwrap();
+    )
+    .unwrap();
     svm.expire_blockhash();
 
     // Step 4: Burn all 100 tokens using the permanent delegate (payer)
@@ -128,7 +139,13 @@ fn test_create_mint_with_permanent_delegate_and_burn() {
         100,
         2, // decimals
     );
-    send_transaction_from_instructions(&mut svm, vec![burn_ix], &[&payer], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(&mut svm, vec![burn_ix], &[&payer], &payer.pubkey())
+        .unwrap();
 
-    assert_token_account_balance(&svm, &token_account.pubkey(), 0, "Token account balance should be 0 after burn");
+    assert_token_account_balance(
+        &svm,
+        &token_account.pubkey(),
+        0,
+        "Token account balance should be 0 after burn",
+    );
 }

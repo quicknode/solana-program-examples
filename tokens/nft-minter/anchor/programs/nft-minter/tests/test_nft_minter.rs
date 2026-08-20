@@ -1,60 +1,58 @@
 use {
     anchor_lang::{
-        solana_program::{instruction::Instruction, pubkey::Pubkey, system_program},
-        InstructionData, ToAccountMetas,
+        solana_program::instruction::Instruction, system_program, Address, InstructionData,
+        ToAccountMetas,
     },
     litesvm::LiteSVM,
     solana_keypair::Keypair,
-    solana_kite::{
-        create_wallet, get_token_account_balance, send_transaction_from_instructions,
-    },
+    solana_kite::{create_wallet, get_token_account_balance, send_transaction_from_instructions},
     solana_signer::Signer,
 };
 
-fn token_program_id() -> Pubkey {
+fn token_program_id() -> Address {
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         .parse()
         .unwrap()
 }
 
-fn ata_program_id() -> Pubkey {
+fn ata_program_id() -> Address {
     "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
         .parse()
         .unwrap()
 }
 
-fn metadata_program_id() -> Pubkey {
+fn metadata_program_id() -> Address {
     "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
         .parse()
         .unwrap()
 }
 
-fn rent_sysvar_id() -> Pubkey {
+fn rent_sysvar_id() -> Address {
     "SysvarRent111111111111111111111111111111111"
         .parse()
         .unwrap()
 }
 
-fn derive_ata(wallet: &Pubkey, mint: &Pubkey) -> Pubkey {
-    let (ata, _bump) = Pubkey::find_program_address(
+fn derive_ata(wallet: &Address, mint: &Address) -> Address {
+    let (ata, _bump) = Address::find_program_address(
         &[wallet.as_ref(), token_program_id().as_ref(), mint.as_ref()],
         &ata_program_id(),
     );
     ata
 }
 
-fn derive_metadata_pda(mint: &Pubkey) -> Pubkey {
+fn derive_metadata_pda(mint: &Address) -> Address {
     let metadata_pid = metadata_program_id();
-    let (pda, _bump) = Pubkey::find_program_address(
+    let (pda, _bump) = Address::find_program_address(
         &[b"metadata", metadata_pid.as_ref(), mint.as_ref()],
         &metadata_pid,
     );
     pda
 }
 
-fn derive_edition_pda(mint: &Pubkey) -> Pubkey {
+fn derive_edition_pda(mint: &Address) -> Address {
     let metadata_pid = metadata_program_id();
-    let (pda, _bump) = Pubkey::find_program_address(
+    let (pda, _bump) = Address::find_program_address(
         &[
             b"metadata",
             metadata_pid.as_ref(),
@@ -66,7 +64,7 @@ fn derive_edition_pda(mint: &Pubkey) -> Pubkey {
     pda
 }
 
-fn setup() -> (LiteSVM, Pubkey, Keypair) {
+fn setup() -> (LiteSVM, Address, Keypair) {
     let program_id = nft_minter::id();
     let mut svm = LiteSVM::new();
 
@@ -107,7 +105,7 @@ fn test_mint_nft() {
             token_program: token_program_id(),
             token_metadata_program: metadata_program_id(),
             associated_token_program: ata_program_id(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
             rent: rent_sysvar_id(),
         }
         .to_account_metas(None),

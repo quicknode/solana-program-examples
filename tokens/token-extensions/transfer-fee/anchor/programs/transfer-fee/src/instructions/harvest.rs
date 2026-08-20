@@ -4,34 +4,47 @@ use anchor_spl::token_interface::{
 };
 
 #[derive(Accounts)]
-pub struct HarvestAccountConstraints<'info> {
+pub struct HarvestAccountConstraints {
     #[account(mut)]
-    pub mint_account: InterfaceAccount<'info, Mint>,
-    pub token_program: Program<'info, Token2022>,
+    pub mint_account: InterfaceAccount<Mint>,
+    pub token_program: Program<Token2022>,
 }
 
 // transfer fees are stored directly on the recipient token account and must be "harvested"
 // "harvesting" transfers fees accumulated on token accounts to the mint account
-pub fn process_harvest<'info>(context: Context<'info, HarvestAccountConstraints<'info>>) -> Result<()> {
+pub fn process_harvest(context: &mut Context<HarvestAccountConstraints>) -> Result<()> {
     // Using remaining accounts to allow for passing in an unknown number of token accounts to harvest from
     // Check that remaining accounts are token accounts for the mint to harvest to
-    let sources = context
-        .remaining_accounts
+    // `remaining_accounts()` takes `&mut context` and hands back an owned vec,
+    // so collect it before anything borrows `context.accounts`.
+    let mut candidates = context.remaining_accounts()?;
+    let mint_address = *context.accounts.mint_account.address();
+
+    // v2 has no `InterfaceAccount::try_from`; `AnchorAccount::load` is the
+    // equivalent for an account reached through remaining_accounts. The
+    // wrapper is dropped at the end of each iteration, so it holds no borrow
+    // across the CPI: only the verdict escapes.
+    let keep: Vec<bool> = candidates
         .iter()
-        .filter_map(|account| {
-            InterfaceAccount::<TokenAccount>::try_from(account)
-                .ok()
-                .filter(|token_account| token_account.mint == context.accounts.mint_account.key())
-                .map(|_| account.to_account_info())
+        .map(|account| {
+            InterfaceAccount::<TokenAccount>::load(*account)
+                .map(|token_account| *token_account.mint() == mint_address)
+                .unwrap_or(false)
         })
-        .collect::<Vec<_>>();
+        .collect();
+
+    let sources: Vec<CpiHandleMut> = candidates
+        .iter_mut()
+        .zip(keep)
+        .filter(|(_, keep)| *keep)
+        .map(|(account, _)| CpiHandleMut::writable(account))
+        .collect();
 
     harvest_withheld_tokens_to_mint(
         CpiContext::new(
-            context.accounts.token_program.key(),
+            context.accounts.token_program.address(),
             HarvestWithheldTokensToMint {
-                token_program_id: context.accounts.token_program.to_account_info(),
-                mint: context.accounts.mint_account.to_account_info(),
+                mint: context.accounts.mint_account.cpi_handle_mut(),
             },
         ),
         sources, // token accounts to harvest from

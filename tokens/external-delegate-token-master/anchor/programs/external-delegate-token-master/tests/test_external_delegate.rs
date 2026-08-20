@@ -1,7 +1,7 @@
 use {
     anchor_lang::{
-        solana_program::{instruction::Instruction, pubkey::Pubkey, system_program},
-        InstructionData, ToAccountMetas,
+        solana_program::instruction::Instruction, system_program, Address, InstructionData,
+        ToAccountMetas,
     },
     borsh::BorshDeserialize,
     litesvm::LiteSVM,
@@ -9,7 +9,8 @@ use {
     solana_keypair::Keypair,
     solana_kite::{
         create_associated_token_account, create_token_mint, create_wallet,
-        get_token_account_balance, mint_tokens_to_token_account, send_transaction_from_instructions,
+        get_token_account_balance, mint_tokens_to_token_account,
+        send_transaction_from_instructions,
     },
     solana_signer::Signer,
 };
@@ -23,7 +24,7 @@ const TRANSFER_AMOUNT: u64 = 500_000_000;
 /// the secp256k1 curve order works.
 const DELEGATE_SECP256K1_PRIVATE_KEY: [u8; 32] = [0x42; 32];
 
-fn token_program_id() -> Pubkey {
+fn token_program_id() -> Address {
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         .parse()
         .unwrap()
@@ -38,7 +39,7 @@ struct UserAccountState {
     nonce: u64,
 }
 
-fn read_user_account(svm: &LiteSVM, address: &Pubkey) -> UserAccountState {
+fn read_user_account(svm: &LiteSVM, address: &Address) -> UserAccountState {
     let account = svm.get_account(address).expect("user account should exist");
     let anchor_discriminator_len = 8;
     UserAccountState::try_from_slice(&account.data[anchor_discriminator_len..]).unwrap()
@@ -62,10 +63,10 @@ fn ethereum_address_of(secret_key: &libsecp256k1::SecretKey) -> [u8; 20] {
 /// Builds the exact preimage the program reconstructs onchain:
 /// keccak256(program id || user account || amount LE || recipient token account || nonce LE).
 fn build_transfer_authorization_message(
-    program_id: &Pubkey,
-    user_account: &Pubkey,
+    program_id: &Address,
+    user_account: &Address,
     amount: u64,
-    recipient_token_account: &Pubkey,
+    recipient_token_account: &Address,
     nonce: u64,
 ) -> [u8; 32] {
     let mut hasher = Keccak256::new();
@@ -90,7 +91,7 @@ fn sign_transfer_authorization(
     bytes
 }
 
-fn setup() -> (LiteSVM, Pubkey, Keypair) {
+fn setup() -> (LiteSVM, Address, Keypair) {
     let program_id = external_delegate_token_master::id();
     let mut svm = LiteSVM::new();
 
@@ -103,7 +104,7 @@ fn setup() -> (LiteSVM, Pubkey, Keypair) {
 
 fn initialize_user_account(
     svm: &mut LiteSVM,
-    program_id: &Pubkey,
+    program_id: &Address,
     authority: &Keypair,
     user_account: &Keypair,
 ) {
@@ -113,7 +114,7 @@ fn initialize_user_account(
         external_delegate_token_master::accounts::InitializeAccountConstraints {
             user_account: user_account.pubkey(),
             authority: authority.pubkey(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
@@ -128,9 +129,9 @@ fn initialize_user_account(
 
 fn set_ethereum_address(
     svm: &mut LiteSVM,
-    program_id: &Pubkey,
+    program_id: &Address,
     authority: &Keypair,
-    user_account: &Pubkey,
+    user_account: &Address,
     ethereum_address: [u8; 20],
 ) {
     let set_address_instruction = Instruction::new_with_bytes(
@@ -157,13 +158,13 @@ fn set_ethereum_address(
 /// recipient token account.
 struct TransferFixture {
     svm: LiteSVM,
-    program_id: Pubkey,
+    program_id: Address,
     authority: Keypair,
-    user_account: Pubkey,
-    user_pda: Pubkey,
-    mint: Pubkey,
-    user_pda_token_account: Pubkey,
-    recipient_token_account: Pubkey,
+    user_account: Address,
+    user_pda: Address,
+    mint: Address,
+    user_pda_token_account: Address,
+    recipient_token_account: Address,
 }
 
 fn setup_transfer_fixture() -> TransferFixture {
@@ -180,13 +181,19 @@ fn setup_transfer_fixture() -> TransferFixture {
         ethereum_address_of(&delegate_secret_key()),
     );
 
-    let (user_pda, _bump) = Pubkey::find_program_address(&[user_account.as_ref()], &program_id);
+    let (user_pda, _bump) = Address::find_program_address(&[user_account.as_ref()], &program_id);
 
     let mint = create_token_mint(&mut svm, &authority, MINT_DECIMALS, None).unwrap();
     let user_pda_token_account =
         create_associated_token_account(&mut svm, &user_pda, &mint, &authority).unwrap();
-    mint_tokens_to_token_account(&mut svm, &mint, &user_pda_token_account, MINT_AMOUNT, &authority)
-        .unwrap();
+    mint_tokens_to_token_account(
+        &mut svm,
+        &mint,
+        &user_pda_token_account,
+        MINT_AMOUNT,
+        &authority,
+    )
+    .unwrap();
 
     let recipient = Keypair::new();
     let recipient_token_account =
@@ -206,8 +213,8 @@ fn setup_transfer_fixture() -> TransferFixture {
 
 fn build_transfer_tokens_instruction(
     fixture: &TransferFixture,
-    authority: &Pubkey,
-    recipient_token_account: &Pubkey,
+    authority: &Address,
+    recipient_token_account: &Address,
     amount: u64,
     signature: [u8; 65],
 ) -> Instruction {
@@ -295,7 +302,10 @@ fn test_transfer_tokens_with_valid_signature_moves_tokens_and_increments_nonce()
         get_token_account_balance(&fixture.svm, &fixture.user_pda_token_account).unwrap(),
         MINT_AMOUNT - TRANSFER_AMOUNT
     );
-    assert_eq!(read_user_account(&fixture.svm, &fixture.user_account).nonce, 1);
+    assert_eq!(
+        read_user_account(&fixture.svm, &fixture.user_account).nonce,
+        1
+    );
 }
 
 #[test]
@@ -336,14 +346,20 @@ fn test_transfer_tokens_replayed_signature_fails() {
         &[&fixture.authority],
         &authority_pubkey,
     );
-    assert!(replay_result.is_err(), "replayed signature must be rejected");
+    assert!(
+        replay_result.is_err(),
+        "replayed signature must be rejected"
+    );
 
     // Exactly one transfer happened.
     assert_eq!(
         get_token_account_balance(&fixture.svm, &fixture.recipient_token_account).unwrap(),
         TRANSFER_AMOUNT
     );
-    assert_eq!(read_user_account(&fixture.svm, &fixture.user_account).nonce, 1);
+    assert_eq!(
+        read_user_account(&fixture.svm, &fixture.user_account).nonce,
+        1
+    );
 }
 
 #[test]
@@ -383,7 +399,10 @@ fn test_transfer_tokens_signature_over_different_amount_fails() {
         get_token_account_balance(&fixture.svm, &fixture.recipient_token_account).unwrap(),
         0
     );
-    assert_eq!(read_user_account(&fixture.svm, &fixture.user_account).nonce, 0);
+    assert_eq!(
+        read_user_account(&fixture.svm, &fixture.user_account).nonce,
+        0
+    );
 }
 
 #[test]

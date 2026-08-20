@@ -1,7 +1,6 @@
 use {
     anchor_lang::{
-        solana_program::{instruction::Instruction, system_program},
-        InstructionData, ToAccountMetas,
+        solana_program::instruction::Instruction, system_program, InstructionData, ToAccountMetas,
     },
     litesvm::LiteSVM,
     solana_keypair::Keypair,
@@ -11,7 +10,7 @@ use {
 
 /// PowerStatus account layout: 8-byte discriminator + 1-byte bool + 7 bytes padding.
 /// Account space is 8 + 8 = 16 bytes, so read raw bytes to avoid "Not all bytes read" errors.
-fn read_power_is_on(svm: &LiteSVM, pubkey: &anchor_lang::prelude::Pubkey) -> bool {
+fn read_power_is_on(svm: &LiteSVM, pubkey: &anchor_lang::prelude::Address) -> bool {
     let account = svm.get_account(pubkey).unwrap();
     account.data[8] != 0
 }
@@ -32,7 +31,7 @@ fn test_initialize_lever() {
         lever::accounts::InitializeLeverAccountConstraints {
             power: power_keypair.pubkey(),
             user: payer.pubkey(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
@@ -68,7 +67,7 @@ fn test_switch_power() {
         lever::accounts::InitializeLeverAccountConstraints {
             power: power_keypair.pubkey(),
             user: payer.pubkey(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );

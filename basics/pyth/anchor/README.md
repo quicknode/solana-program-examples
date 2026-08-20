@@ -5,17 +5,11 @@ Read a [Pyth](https://pyth.network/) price feed account and log price, confidenc
 See also: [Pyth overview](../README.md) and the [repository catalog](../../../README.md).
 
 > [!NOTE]
-> **The official `pyth-solana-receiver-sdk` is not Anchor 1.0 compatible (as of June 2026), so this example vendors the `PriceUpdateV2` account type instead of importing it.**
+> **This example vendors the `PriceUpdateV2` account type rather than importing `pyth-solana-receiver-sdk`.**
 >
-> The latest `pyth-solana-receiver-sdk` (1.2.0) builds against `anchor-lang` 0.32 and pulls `pythnet-sdk` (2.3.1), which still derives **borsh 0.10** on `PriceFeedMessage`. Anchor 0.32's `AnchorSerialize`/`AnchorDeserialize` derives require **borsh 1.x**, so `pyth-solana-receiver-sdk`'s own `PriceUpdateV2` fails to compile:
+> The SDK's current release (2.0.0, checked August 2026) builds against `anchor-lang` 1.0.2, and this repository is on 2.0.0-rc.1, whose account wrappers are a different set of types. Importing the SDK's `PriceUpdateV2` would pull a second `anchor-lang` into the graph.
 >
-> ```
-> error[E0277]: the trait bound `pythnet_sdk::messages::PriceFeedMessage: BorshSerialize` is not satisfied
-> ```
->
-> No published `pyth-solana-receiver-sdk` targets `anchor-lang` 1.0 (which this repo standardizes on), and no `pythnet-sdk` release has migrated to borsh 1.x - so the dependency can't simply be upgraded. Tracked upstream at [pyth-network/pyth-crosschain#3756](https://github.com/pyth-network/pyth-crosschain/issues/3756).
->
-> As a workaround, `programs/pythexample/src/lib.rs` mirrors the onchain `PriceUpdateV2` layout locally (same fields, same 8-byte discriminator, owned by the Pyth Receiver program) so accounts written by Pyth deserialize unchanged. Replace the vendored type with the SDK import once an Anchor 1.0 / borsh 1.x compatible release ships.
+> `programs/pythexample/src/lib.rs` mirrors the onchain layout instead: same fields in the same order, same 8-byte discriminator, owned by the Pyth Receiver program, so accounts written by Pyth deserialize unchanged. Import the SDK type once a release targeting `anchor-lang` 2.x ships.
 
 ## Major concepts
 

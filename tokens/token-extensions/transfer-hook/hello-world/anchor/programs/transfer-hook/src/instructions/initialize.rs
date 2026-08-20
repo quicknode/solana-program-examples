@@ -1,62 +1,104 @@
 use anchor_lang::prelude::*;
-use anchor_spl::token_interface::{
-    spl_pod::optional_keys::OptionalNonZeroPubkey,
-    spl_token_2022::{
-        extension::{
-            transfer_hook::TransferHook as TransferHookExtension, BaseStateWithExtensions,
-            StateWithExtensions,
-        },
-        state::Mint as MintState,
+use anchor_lang::system_program::{create_account, CreateAccount};
+use anchor_spl::{
+    token_2022::{
+        initialize_mint2,
+        spl_token_2022::{extension::ExtensionType, pod::PodMint},
+        InitializeMint2,
     },
-    Mint, Token2022,
+    token_2022_extensions::transfer_hook::{transfer_hook_initialize, TransferHookInitialize},
+    token_interface::{
+        spl_pod::optional_keys::OptionalNonZeroPubkey,
+        spl_token_2022::{
+            extension::{
+                transfer_hook::TransferHook as TransferHookExtension, BaseStateWithExtensions,
+                StateWithExtensions,
+            },
+            state::Mint as MintState,
+        },
+        Token2022,
+    },
 };
 
 #[derive(Accounts)]
-#[instruction(_decimals: u8)]
-pub struct InitializeAccountConstraints<'info> {
+pub struct InitializeAccountConstraints {
     #[account(mut)]
-    pub payer: Signer<'info>,
+    pub payer: Signer,
 
-    #[account(
-        init,
-        payer = payer,
-        mint::decimals = _decimals,
-        mint::authority = payer,
-        extensions::transfer_hook::authority = payer,
-        extensions::transfer_hook::program_id = crate::ID
-    )]
-    pub mint_account: InterfaceAccount<'info, Mint>,
-    pub token_program: Program<'info, Token2022>,
-    pub system_program: Program<'info, System>,
+    #[account(mut)]
+    pub mint_account: Signer,
+
+    pub token_program: Program<Token2022>,
+    pub system_program: Program<System>,
 }
 
 // create a mint account that specifies this program as the transfer hook program
-pub fn handler(mut context: Context<InitializeAccountConstraints>, _decimals: u8) -> Result<()> {
-    handle_check_mint_data(&mut context.accounts)?;
+//
+// There is currently not an anchor constraint to automatically initialize the
+// TransferHook extension. We can manually create and initialize the mint
+// account via CPIs in the instruction handler.
+pub fn handler(context: &mut Context<InitializeAccountConstraints>, decimals: u8) -> Result<()> {
+    // Calculate space required for mint and extension data
+    let mint_size =
+        ExtensionType::try_calculate_account_len::<PodMint>(&[ExtensionType::TransferHook])?;
+
+    // Calculate minimum lamports required for size of mint account with extensions
+    let lamports = Rent::get()?.try_minimum_balance(mint_size)?;
+
+    // Invoke System Program to create new account with space for mint and extension data
+    create_account(
+        CpiContext::new(
+            context.accounts.system_program.address(),
+            CreateAccount {
+                from: context.accounts.payer.cpi_handle_mut(),
+                to: context.accounts.mint_account.cpi_handle_mut(),
+            },
+        ),
+        lamports,                                 // Lamports
+        mint_size as u64,                         // Space
+        context.accounts.token_program.address(), // Owner Program
+    )?;
+
+    // Initialize the TransferHook extension, pointing at this program
+    // This instruction must come before the instruction to initialize the mint data
+    transfer_hook_initialize(
+        CpiContext::new(
+            context.accounts.token_program.address(),
+            TransferHookInitialize {
+                mint: context.accounts.mint_account.cpi_handle_mut(),
+            },
+        ),
+        Some(context.accounts.payer.address()),
+        Some(&crate::ID),
+    )?;
+
+    // Initialize the standard mint account data
+    initialize_mint2(
+        CpiContext::new(
+            context.accounts.token_program.address(),
+            InitializeMint2 {
+                mint: context.accounts.mint_account.cpi_handle_mut(),
+            },
+        ),
+        decimals,                         // decimals
+        context.accounts.payer.address(), // mint authority
+        None,                             // freeze authority
+    )?;
+
+    handle_check_mint_data(context)?;
     Ok(())
 }
 
 // helper to check mint data, and demonstrate how to read mint extension data within a program
-fn handle_check_mint_data(accounts: &mut InitializeAccountConstraints) -> Result<()> {
-    let mint = &accounts.mint_account.to_account_info();
-    let mint_data = mint.data.borrow();
-    // .map_err() needed because spl-token-2022 uses solana-program-error 2.x
-    // while anchor-lang 1.0 uses 3.x - structurally identical but different semver types
-    let mint_with_extension = StateWithExtensions::<MintState>::unpack(&mint_data)
-        .map_err(|_| ProgramError::InvalidAccountData)?;
-    let extension_data = mint_with_extension.get_extension::<TransferHookExtension>()
-        .map_err(|_| ProgramError::InvalidAccountData)?;
-
-    assert_eq!(
-        extension_data.authority,
-        OptionalNonZeroPubkey::try_from(Some(accounts.payer.key()))
-            .map_err(|_| ProgramError::InvalidArgument)?
-    );
+fn handle_check_mint_data(context: &Context<InitializeAccountConstraints>) -> Result<()> {
+    let mint = context.accounts.mint_account.account();
+    let mint_data = mint.try_borrow()?;
+    let mint_with_extension = StateWithExtensions::<MintState>::unpack(&mint_data)?;
+    let extension_data = mint_with_extension.get_extension::<TransferHookExtension>()?;
 
     assert_eq!(
         extension_data.program_id,
-        OptionalNonZeroPubkey::try_from(Some(crate::ID))
-            .map_err(|_| ProgramError::InvalidArgument)?
+        OptionalNonZeroPubkey::try_from(Some(crate::ID))?
     );
 
     msg!("{:?}", extension_data);

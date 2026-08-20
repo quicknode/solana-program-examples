@@ -1,4 +1,5 @@
 use anchor_lang::prelude::*;
+use anchor_spl::token;
 use anchor_spl::token_interface::{
     transfer_checked, Mint, TokenAccount, TokenInterface, TransferChecked,
 };
@@ -13,7 +14,7 @@ use crate::state::{Obligation, PriceFeed, Reserve};
 /// value is simulated and the withdraw is rejected if the existing debt would
 /// exceed it.
 pub fn handle_withdraw_obligation_collateral(
-    context: Context<WithdrawObligationCollateral>,
+    context: &mut Context<WithdrawObligationCollateral>,
     share_amount: u64,
 ) -> Result<()> {
     require!(share_amount > 0, LendingError::ZeroAmount);
@@ -25,7 +26,7 @@ pub fn handle_withdraw_obligation_collateral(
     let price_scaled = context.accounts.price_feed.price_scaled(slot)?;
 
     let obligation = &mut context.accounts.obligation;
-    let index = obligation.find_collateral(reserve.key())?;
+    let index = obligation.find_collateral(*reserve.address())?;
     require!(
         obligation.deposits[index].deposited_shares >= share_amount,
         LendingError::WithdrawTooLarge
@@ -41,7 +42,8 @@ pub fn handle_withdraw_obligation_collateral(
         reserve.total_liquidity()?,
         (reserve.share_mint_supply as u128).max(1),
     )?;
-    let removed_liquidity = u64::try_from(removed_liquidity).map_err(|_| LendingError::MathOverflow)?;
+    let removed_liquidity =
+        u64::try_from(removed_liquidity).map_err(|_| LendingError::MathOverflow)?;
     let removed_value = market_value(
         removed_liquidity,
         reserve.liquidity_decimals,
@@ -83,53 +85,60 @@ pub fn handle_withdraw_obligation_collateral(
         owner.as_ref(),
         &bump,
     ];
+    // `obligation` signs this CPI. It is a data account holding a live borrow on
+    // its buffer, which the runtime would reject when the CPI borrows the same
+    // account, so hand the borrow back across the call. `release_borrow`
+    // flushes the pending writes, and `reacquire_borrow_mut` re-reads them.
+    context.accounts.obligation.release_borrow()?;
     transfer_checked(
         CpiContext::new_with_signer(
-            context.accounts.token_program.key(),
+            context.accounts.token_program.address(),
             TransferChecked {
-                from: context.accounts.obligation_share_vault.to_account_info(),
-                mint: context.accounts.share_mint.to_account_info(),
-                to: context.accounts.user_share.to_account_info(),
-                authority: obligation.to_account_info(),
+                from: context.accounts.obligation_share_vault.cpi_handle_mut(),
+                mint: context.accounts.share_mint.cpi_handle(),
+                to: context.accounts.user_share.cpi_handle_mut(),
+                authority: context.accounts.obligation.cpi_handle(),
             },
             &[&seeds],
         ),
         share_amount,
-        context.accounts.share_mint.decimals,
+        context.accounts.share_mint.decimals(),
     )?;
+    context.accounts.obligation.reacquire_borrow_mut()?;
 
     Ok(())
 }
 
 #[derive(Accounts)]
-pub struct WithdrawObligationCollateral<'info> {
-    #[account(mut, has_one = owner)]
-    pub obligation: Account<'info, Obligation>,
+pub struct WithdrawObligationCollateral {
+    #[account(mut)]
+    pub obligation: BorshAccount<Obligation>,
 
-    pub owner: Signer<'info>,
+    #[account(address = obligation.owner)]
+    pub owner: Signer,
 
     #[account(
-        has_one = share_mint,
-        has_one = price_feed,
         constraint = reserve.lending_market == obligation.lending_market @ LendingError::MarketMismatch,
     )]
-    pub reserve: Account<'info, Reserve>,
+    pub reserve: BorshAccount<Reserve>,
 
-    pub price_feed: Account<'info, PriceFeed>,
+    #[account(address = reserve.price_feed)]
+    pub price_feed: BorshAccount<PriceFeed>,
 
-    pub share_mint: InterfaceAccount<'info, Mint>,
+    #[account(address = reserve.share_mint)]
+    pub share_mint: InterfaceAccount<Mint>,
 
     #[account(
         mut,
-        seeds = [OBLIGATION_SHARE_VAULT_SEED, reserve.key().as_ref(), obligation.key().as_ref()],
+        seeds = [OBLIGATION_SHARE_VAULT_SEED, reserve.address().as_ref(), obligation.address().as_ref()],
         bump,
         token::mint = share_mint,
         token::authority = obligation,
     )]
-    pub obligation_share_vault: InterfaceAccount<'info, TokenAccount>,
+    pub obligation_share_vault: InterfaceAccount<TokenAccount>,
 
     #[account(mut)]
-    pub user_share: InterfaceAccount<'info, TokenAccount>,
+    pub user_share: InterfaceAccount<TokenAccount>,
 
-    pub token_program: Interface<'info, TokenInterface>,
+    pub token_program: Interface<'static, TokenInterface>,
 }

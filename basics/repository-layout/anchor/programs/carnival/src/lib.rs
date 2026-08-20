@@ -15,7 +15,7 @@ pub mod carnival {
     use super::*;
 
     pub fn go_on_ride(
-        _context: Context<CarnivalAccountConstraints>,
+        _context: &mut Context<CarnivalAccountConstraints>,
         name: String,
         height: u32,
         ticket_count: u32,
@@ -30,7 +30,7 @@ pub mod carnival {
     }
 
     pub fn play_game(
-        _context: Context<CarnivalAccountConstraints>,
+        _context: &mut Context<CarnivalAccountConstraints>,
         name: String,
         ticket_count: u32,
         game_name: String,
@@ -43,7 +43,7 @@ pub mod carnival {
     }
 
     pub fn eat_food(
-        _context: Context<CarnivalAccountConstraints>,
+        _context: &mut Context<CarnivalAccountConstraints>,
         name: String,
         ticket_count: u32,
         food_stand_name: String,
@@ -57,7 +57,7 @@ pub mod carnival {
 }
 
 #[derive(Accounts)]
-pub struct CarnivalAccountConstraints<'info> {
+pub struct CarnivalAccountConstraints {
     #[account(mut)]
-    pub payer: Signer<'info>,
+    pub payer: Signer,
 }

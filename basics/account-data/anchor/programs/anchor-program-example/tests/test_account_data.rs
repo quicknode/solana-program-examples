@@ -1,7 +1,6 @@
 use {
     anchor_lang::{
-        solana_program::{instruction::Instruction, system_program},
-        AnchorSerialize, InstructionData, ToAccountMetas,
+        solana_program::instruction::Instruction, system_program, InstructionData, ToAccountMetas,
     },
     borsh::BorshDeserialize,
     litesvm::LiteSVM,
@@ -42,7 +41,7 @@ fn test_create_address_info() {
         account_data_anchor_program::accounts::CreateAddressInfoAccountConstraints {
             payer: payer.pubkey(),
             address_info: address_info_keypair.pubkey(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );

@@ -1,7 +1,7 @@
 use {
     anchor_lang::{
-        solana_program::{instruction::Instruction, pubkey::Pubkey, system_program},
-        AccountDeserialize, InstructionData, ToAccountMetas,
+        solana_program::instruction::Instruction, system_program, AccountDeserialize, Address,
+        InstructionData, ToAccountMetas,
     },
     litesvm::LiteSVM,
     prop_amm::{
@@ -29,20 +29,20 @@ const ORACLE_SCALE: u32 = 8;
 const SPREAD_BPS: u16 = 10;
 const MAX_CONFIDENCE_BPS: u16 = 100;
 
-fn token_program_id() -> Pubkey {
+fn token_program_id() -> Address {
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         .parse()
         .unwrap()
 }
 
-fn ata_program_id() -> Pubkey {
+fn ata_program_id() -> Address {
     "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
         .parse()
         .unwrap()
 }
 
-fn derive_ata(wallet: &Pubkey, mint: &Pubkey) -> Pubkey {
-    Pubkey::find_program_address(
+fn derive_ata(wallet: &Address, mint: &Address) -> Address {
+    Address::find_program_address(
         &[wallet.as_ref(), token_program_id().as_ref(), mint.as_ref()],
         &ata_program_id(),
     )
@@ -59,15 +59,15 @@ struct Market {
     svm: LiteSVM,
     payer: Keypair,
     operator: Keypair,
-    operator_base: Pubkey,
-    operator_quote: Pubkey,
-    base_mint: Pubkey,
-    quote_mint: Pubkey,
-    feed: Pubkey,
-    market: Pubkey,
-    market_authority: Pubkey,
-    base_vault: Pubkey,
-    quote_vault: Pubkey,
+    operator_base: Address,
+    operator_quote: Address,
+    base_mint: Address,
+    quote_mint: Address,
+    feed: Address,
+    market: Address,
+    market_authority: Address,
+    base_vault: Address,
+    quote_vault: Address,
 }
 
 impl Market {
@@ -123,7 +123,7 @@ impl Market {
             mock_switchboard::accounts::InitializeFeedAccountConstraints {
                 feed: feed_keypair.pubkey(),
                 authority: operator.pubkey(),
-                system_program: system_program::id(),
+                system_program: system_program::ID,
             }
             .to_account_metas(None),
         );
@@ -136,17 +136,17 @@ impl Market {
         .unwrap();
         let feed = feed_keypair.pubkey();
 
-        let market = Pubkey::find_program_address(
+        let market = Address::find_program_address(
             &[b"market", base_mint.as_ref(), quote_mint.as_ref()],
             &prop_amm::id(),
         )
         .0;
         let market_authority =
-            Pubkey::find_program_address(&[b"authority", market.as_ref()], &prop_amm::id()).0;
+            Address::find_program_address(&[b"authority", market.as_ref()], &prop_amm::id()).0;
         let base_vault =
-            Pubkey::find_program_address(&[b"base_vault", market.as_ref()], &prop_amm::id()).0;
+            Address::find_program_address(&[b"base_vault", market.as_ref()], &prop_amm::id()).0;
         let quote_vault =
-            Pubkey::find_program_address(&[b"quote_vault", market.as_ref()], &prop_amm::id()).0;
+            Address::find_program_address(&[b"quote_vault", market.as_ref()], &prop_amm::id()).0;
 
         let initialize_market = Instruction::new_with_bytes(
             prop_amm::id(),
@@ -162,7 +162,7 @@ impl Market {
                 quote_vault,
                 token_program: token_program_id(),
                 associated_token_program: ata_program_id(),
-                system_program: system_program::id(),
+                system_program: system_program::ID,
             }
             .to_account_metas(None),
         );
@@ -175,20 +175,12 @@ impl Market {
         .map_err(|_| ())?;
 
         // Fund the operator's inventory accounts.
-        let operator_base = create_associated_token_account(
-            &mut svm,
-            &operator.pubkey(),
-            &base_mint,
-            &payer,
-        )
-        .unwrap();
-        let operator_quote = create_associated_token_account(
-            &mut svm,
-            &operator.pubkey(),
-            &quote_mint,
-            &payer,
-        )
-        .unwrap();
+        let operator_base =
+            create_associated_token_account(&mut svm, &operator.pubkey(), &base_mint, &payer)
+                .unwrap();
+        let operator_quote =
+            create_associated_token_account(&mut svm, &operator.pubkey(), &quote_mint, &payer)
+                .unwrap();
         mint_tokens_to_token_account(
             &mut svm,
             &base_mint,
@@ -265,20 +257,21 @@ impl Market {
     }
 
     fn current_slot(&self) -> u64 {
-        self.svm.get_sysvar::<anchor_lang::prelude::Clock>().slot
+        self.svm.get_sysvar::<solana_clock::Clock>().slot
     }
 
     /// Simulate a cluster restart at `slot`: prices stamped at or before it
     /// must be rejected until the publisher posts again.
     fn set_last_restart_slot(&mut self, slot: u64) {
-        self.svm.set_sysvar(&solana_sysvar::last_restart_slot::LastRestartSlot {
-            last_restart_slot: slot,
-        });
+        self.svm
+            .set_sysvar(&solana_sysvar::last_restart_slot::LastRestartSlot {
+                last_restart_slot: slot,
+            });
     }
 
     /// Create a wallet holding `base` and `quote` minor units in associated
     /// token accounts.
-    fn funded_trader(&mut self, base: u64, quote: u64) -> (Keypair, Pubkey, Pubkey) {
+    fn funded_trader(&mut self, base: u64, quote: u64) -> (Keypair, Address, Address) {
         let trader = create_wallet(&mut self.svm, 100_000_000_000).unwrap();
         let base_account = create_associated_token_account(
             &mut self.svm,
@@ -372,9 +365,14 @@ impl Market {
                 .to_account_metas(None),
             )
         };
-        send_transaction_from_instructions(&mut self.svm, vec![instruction], &[signer], &signer.pubkey())
-            .map(|_| ())
-            .map_err(|_| ())
+        send_transaction_from_instructions(
+            &mut self.svm,
+            vec![instruction],
+            &[signer],
+            &signer.pubkey(),
+        )
+        .map(|_| ())
+        .map_err(|_| ())
     }
 
     fn deposit_inventory(&mut self, base_amount: u64, quote_amount: u64) -> Result<(), ()> {
@@ -397,9 +395,14 @@ impl Market {
             }
             .to_account_metas(None),
         );
-        send_transaction_from_instructions(&mut self.svm, vec![instruction], &[signer], &signer.pubkey())
-            .map(|_| ())
-            .map_err(|_| ())
+        send_transaction_from_instructions(
+            &mut self.svm,
+            vec![instruction],
+            &[signer],
+            &signer.pubkey(),
+        )
+        .map(|_| ())
+        .map_err(|_| ())
     }
 
     fn set_quote(&mut self, spread_bps: u16, paused: bool) -> Result<(), ()> {
@@ -437,16 +440,21 @@ impl Market {
                 trader_quote,
                 token_program: token_program_id(),
                 associated_token_program: ata_program_id(),
-                system_program: system_program::id(),
+                system_program: system_program::ID,
             }
             .to_account_metas(None),
         );
-        send_transaction_from_instructions(&mut self.svm, vec![instruction], &[trader], &trader.pubkey())
-            .map(|_| ())
-            .map_err(|_| ())
+        send_transaction_from_instructions(
+            &mut self.svm,
+            vec![instruction],
+            &[trader],
+            &trader.pubkey(),
+        )
+        .map(|_| ())
+        .map_err(|_| ())
     }
 
-    fn balance(&self, token_account: &Pubkey) -> u64 {
+    fn balance(&self, token_account: &Address) -> u64 {
         get_token_account_balance(&self.svm, token_account).unwrap()
     }
 }
@@ -587,9 +595,7 @@ fn test_operator_can_withdraw_everything_and_swaps_then_fail() {
 #[test]
 fn test_withdraw_more_than_inventory_fails() {
     let mut market = Market::default_market();
-    assert!(market
-        .withdraw_inventory(1_001 * ONE_TOKEN, 0)
-        .is_err());
+    assert!(market.withdraw_inventory(1_001 * ONE_TOKEN, 0).is_err());
 }
 
 #[test]
@@ -723,7 +729,9 @@ fn test_swap_rejects_insufficient_inventory() {
     // but the vault only holds 1,000 NVDAx.
     let quote_in = 181_681_500_000;
     let (whale, _, _) = market.funded_trader(0, quote_in);
-    assert!(market.swap(&whale, Direction::BuyBase, quote_in, 0).is_err());
+    assert!(market
+        .swap(&whale, Direction::BuyBase, quote_in, 0)
+        .is_err());
 }
 
 // ===========================================================================

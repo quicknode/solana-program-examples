@@ -40,5 +40,5 @@ pub fn play_game(ix: PlayGameInstructionData) -> Result<()> {
         }
     }
 
-    Err(ProgramError::InvalidInstructionData.into())
+    Err(ProgramError::InvalidInstructionData)
 }

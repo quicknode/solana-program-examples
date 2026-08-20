@@ -10,20 +10,20 @@ use anchor_spl::{
 use crate::{state::Fundraiser, FundraiserError, SECONDS_TO_DAYS};
 
 #[derive(Accounts)]
-pub struct CloseFundraiserAccountConstraints<'info> {
+pub struct CloseFundraiserAccountConstraints {
     #[account(mut)]
-    pub maker: Signer<'info>,
+    pub maker: Signer,
 
-    pub mint_to_raise: InterfaceAccount<'info, Mint>,
+    #[account(address = fundraiser.mint_to_raise)]
+    pub mint_to_raise: InterfaceAccount<Mint>,
 
     #[account(
         mut,
-        has_one = mint_to_raise,
-        seeds = [b"fundraiser".as_ref(), maker.key().as_ref()],
+        seeds = [b"fundraiser".as_ref(), maker.address().as_ref()],
         bump = fundraiser.bump,
         close = maker,
     )]
-    pub fundraiser: Account<'info, Fundraiser>,
+    pub fundraiser: BorshAccount<Fundraiser>,
 
     #[account(
         mut,
@@ -31,7 +31,7 @@ pub struct CloseFundraiserAccountConstraints<'info> {
         associated_token::authority = fundraiser,
         associated_token::token_program = token_program,
     )]
-    pub vault: InterfaceAccount<'info, TokenAccount>,
+    pub vault: InterfaceAccount<TokenAccount>,
 
     #[account(
         init_if_needed,
@@ -40,13 +40,13 @@ pub struct CloseFundraiserAccountConstraints<'info> {
         associated_token::authority = maker,
         associated_token::token_program = token_program,
     )]
-    pub maker_ata: InterfaceAccount<'info, TokenAccount>,
+    pub maker_ata: InterfaceAccount<TokenAccount>,
 
-    pub token_program: Interface<'info, TokenInterface>,
+    pub token_program: Interface<'static, TokenInterface>,
 
-    pub system_program: Program<'info, System>,
+    pub system_program: Program<System>,
 
-    pub associated_token_program: Program<'info, AssociatedToken>,
+    pub associated_token_program: Program<AssociatedToken>,
 }
 
 /// Retires a failed fundraiser so the maker can raise again.
@@ -83,49 +83,60 @@ pub fn handle_close_fundraiser(accounts: &mut CloseFundraiserAccountConstraints)
         FundraiserError::RefundsOutstanding
     );
 
+    // Read these before any of the CPI handles below take their borrows.
+    let maker_address = *accounts.maker.address();
+    let vault_amount = accounts.vault.amount();
+    let mint_decimals = accounts.mint_to_raise.decimals();
+
+    // `fundraiser` signs both CPIs below. It is a data account holding a live
+    // borrow on its buffer, so release it across the CPIs. The runtime rejects
+    // a CPI that borrows an account we still hold. Take it back after.
+    let fundraiser_bump = accounts.fundraiser.bump;
+    accounts.fundraiser.release_borrow()?;
+    let fundraiser_view = *accounts.fundraiser.account();
+
     // The vault is owned by the fundraiser PDA, so both CPIs are signed with
     // its seeds.
     let signer_seeds: [&[&[u8]]; 1] = [&[
         b"fundraiser".as_ref(),
-        accounts.maker.to_account_info().key.as_ref(),
-        &[accounts.fundraiser.bump],
+        maker_address.as_ref(),
+        &[fundraiser_bump],
     ]];
 
     // Refunds have already drained every tracked contribution, so anything
     // left in the vault is a direct donation; sweep it to the maker rather
     // than burn it with the account.
-    if accounts.vault.amount > 0 {
+    if accounts.vault.amount() > 0 {
         let transfer_accounts = TransferChecked {
-            from: accounts.vault.to_account_info(),
-            mint: accounts.mint_to_raise.to_account_info(),
-            to: accounts.maker_ata.to_account_info(),
-            authority: accounts.fundraiser.to_account_info(),
+            from: accounts.vault.cpi_handle_mut(),
+            mint: accounts.mint_to_raise.cpi_handle(),
+            to: accounts.maker_ata.cpi_handle_mut(),
+            authority: CpiHandle::readonly(&fundraiser_view),
         };
         let transfer_context = CpiContext::new_with_signer(
-            accounts.token_program.key(),
+            accounts.token_program.address(),
             transfer_accounts,
             &signer_seeds,
         );
-        transfer_checked(
-            transfer_context,
-            accounts.vault.amount,
-            accounts.mint_to_raise.decimals,
-        )?;
+        transfer_checked(transfer_context, vault_amount, mint_decimals)?;
     }
 
     // Close the empty vault so its rent goes back to the maker. The
     // fundraiser account itself is closed by its close = maker constraint.
     let close_accounts = CloseAccount {
-        account: accounts.vault.to_account_info(),
-        destination: accounts.maker.to_account_info(),
-        authority: accounts.fundraiser.to_account_info(),
+        account: accounts.vault.cpi_handle_mut(),
+        destination: accounts.maker.cpi_handle_mut(),
+        authority: CpiHandle::readonly(&fundraiser_view),
     };
     let close_context = CpiContext::new_with_signer(
-        accounts.token_program.key(),
+        accounts.token_program.address(),
         close_accounts,
         &signer_seeds,
     );
     close_account(close_context)?;
+
+    // Take the borrow back before the derive's exit path touches it again.
+    accounts.fundraiser.reacquire_borrow_mut()?;
 
     Ok(())
 }

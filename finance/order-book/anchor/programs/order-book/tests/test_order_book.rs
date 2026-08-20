@@ -13,10 +13,11 @@ use {
     anchor_lang::{
         solana_program::{
             instruction::{AccountMeta, Instruction},
-            pubkey::Pubkey,
-            system_instruction, system_program,
+            system_instruction,
         },
-        Discriminator, InstructionData, ToAccountMetas,
+        // `system_program` moved to the crate root in v2, and `Pubkey` is
+        // compat-only: `Address` is the same 32-byte type.
+        system_program, Address, Discriminator, InstructionData, ToAccountMetas,
     },
     litesvm::LiteSVM,
     solana_keypair::Keypair,
@@ -77,7 +78,7 @@ const BID_QUANTITY: u64 = 10;
 const ASK_PRICE: u64 = 100;
 const ASK_QUANTITY: u64 = 5;
 
-fn token_program_id() -> Pubkey {
+fn token_program_id() -> Address {
     // The program accepts either the Classic Token Program or the Token
     // Extensions Program via `TokenInterface`; we use the Classic Token
     // Program for tests because solana-kite's helpers create classic mints.
@@ -86,24 +87,24 @@ fn token_program_id() -> Pubkey {
         .unwrap()
 }
 
-fn market_pda(program_id: &Pubkey, base_mint: &Pubkey, quote_mint: &Pubkey) -> Pubkey {
-    let (market, _) = Pubkey::find_program_address(
+fn market_pda(program_id: &Address, base_mint: &Address, quote_mint: &Address) -> Address {
+    let (market, _) = Address::find_program_address(
         &[MARKET_SEED, base_mint.as_ref(), quote_mint.as_ref()],
         program_id,
     );
     market
 }
 
-fn market_user_pda(program_id: &Pubkey, market: &Pubkey, owner: &Pubkey) -> Pubkey {
-    let (market_user, _) = Pubkey::find_program_address(
+fn market_user_pda(program_id: &Address, market: &Address, owner: &Address) -> Address {
+    let (market_user, _) = Address::find_program_address(
         &[MARKET_USER_SEED, market.as_ref(), owner.as_ref()],
         program_id,
     );
     market_user
 }
 
-fn order_pda(program_id: &Pubkey, market: &Pubkey, order_id: u64) -> Pubkey {
-    let (order, _) = Pubkey::find_program_address(
+fn order_pda(program_id: &Address, market: &Address, order_id: u64) -> Address {
+    let (order, _) = Address::find_program_address(
         &[ORDER_SEED, market.as_ref(), &order_id.to_le_bytes()],
         program_id,
     );
@@ -116,7 +117,7 @@ fn order_pda(program_id: &Pubkey, market: &Pubkey, order_id: u64) -> Pubkey {
 
 struct Scenario {
     svm: LiteSVM,
-    program_id: Pubkey,
+    program_id: Address,
     // `payer` funds the mint authority + ATA creations during setup but is
     // not used directly by the tests afterwards.
     #[allow(dead_code)]
@@ -124,26 +125,26 @@ struct Scenario {
     authority: Keypair,
     buyer: Keypair,
     seller: Keypair,
-    base_mint: Pubkey,
-    quote_mint: Pubkey,
+    base_mint: Address,
+    quote_mint: Address,
     base_vault: Keypair,
     quote_vault: Keypair,
     // Fees accumulate here (quote mint). Created fresh per Scenario; the
     // market PDA is the signer, same as the other two vaults.
     fee_vault: Keypair,
-    market: Pubkey,
+    market: Address,
     // The order book is a ~180 KB zero-copy account owned by the program.
     // It's NOT a PDA - the BPF runtime caps inner-CPI allocations at 10 KB,
     // so the client must allocate it directly via system_program::CreateAccount
     // and pass it in as a signer. See `build_initialize_market_tx` for the
     // full setup.
     order_book: Keypair,
-    buyer_base_ata: Pubkey,
-    buyer_quote_ata: Pubkey,
-    seller_base_ata: Pubkey,
-    seller_quote_ata: Pubkey,
-    buyer_market_user: Pubkey,
-    seller_market_user: Pubkey,
+    buyer_base_ata: Address,
+    buyer_quote_ata: Address,
+    seller_base_ata: Address,
+    seller_quote_ata: Address,
+    buyer_market_user: Address,
+    seller_market_user: Address,
 }
 
 fn full_setup() -> Scenario {
@@ -236,10 +237,7 @@ fn full_setup() -> Scenario {
 ///
 /// Rent is whatever LiteSVM's bank quotes for that size at the current
 /// rent rate; we use `minimum_balance` so the account is rent-exempt.
-fn build_create_order_book_account_ix(
-    sc: &Scenario,
-    payer: &Pubkey,
-) -> Instruction {
+fn build_create_order_book_account_ix(sc: &Scenario, payer: &Address) -> Instruction {
     // LiteSVM uses the default rent schedule; minimum_balance() on the
     // 180 KB account is around 1.25 SOL - well within the 100 SOL we fund
     // the test payer with in `full_setup`.
@@ -283,13 +281,13 @@ fn build_initialize_market_ix(
             fee_vault: sc.fee_vault.pubkey(),
             authority: sc.authority.pubkey(),
             token_program: token_program_id(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     )
 }
 
-fn build_initialize_market_user_ix(sc: &Scenario, owner: &Pubkey) -> Instruction {
+fn build_initialize_market_user_ix(sc: &Scenario, owner: &Address) -> Instruction {
     let market_user = market_user_pda(&sc.program_id, &sc.market, owner);
     Instruction::new_with_bytes(
         sc.program_id,
@@ -298,7 +296,7 @@ fn build_initialize_market_user_ix(sc: &Scenario, owner: &Pubkey) -> Instruction
             market_user,
             market: sc.market,
             owner: *owner,
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     )
@@ -308,9 +306,9 @@ fn build_initialize_market_user_ix(sc: &Scenario, owner: &Pubkey) -> Instruction
 fn build_place_order_ix(
     sc: &Scenario,
     owner: &Keypair,
-    market_user: Pubkey,
-    user_base_account: Pubkey,
-    user_quote_account: Pubkey,
+    market_user: Address,
+    user_base_account: Address,
+    user_quote_account: Address,
     side: order_book::state::OrderSide,
     order_id: u64,
     price: u64,
@@ -339,7 +337,7 @@ fn build_place_order_ix(
             quote_mint: sc.quote_mint,
             owner: owner.pubkey(),
             token_program: token_program_id(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     )
@@ -356,14 +354,14 @@ fn build_place_order_ix(
 fn build_place_order_with_makers_ix(
     sc: &Scenario,
     owner: &Keypair,
-    market_user: Pubkey,
-    user_base_account: Pubkey,
-    user_quote_account: Pubkey,
+    market_user: Address,
+    user_base_account: Address,
+    user_quote_account: Address,
     side: order_book::state::OrderSide,
     order_id: u64,
     price: u64,
     quantity: u64,
-    maker_pairs: &[(u64, Pubkey)],
+    maker_pairs: &[(u64, Address)],
 ) -> Instruction {
     let mut ix = build_place_order_ix(
         sc,
@@ -379,8 +377,7 @@ fn build_place_order_with_makers_ix(
 
     for (maker_order_id, maker_market_user) in maker_pairs {
         let maker_order = order_pda(&sc.program_id, &sc.market, *maker_order_id);
-        ix.accounts
-            .push(AccountMeta::new(maker_order, false));
+        ix.accounts.push(AccountMeta::new(maker_order, false));
         ix.accounts
             .push(AccountMeta::new(*maker_market_user, false));
     }
@@ -388,10 +385,7 @@ fn build_place_order_with_makers_ix(
     ix
 }
 
-fn build_withdraw_fees_ix(
-    sc: &Scenario,
-    authority_quote_account: Pubkey,
-) -> Instruction {
+fn build_withdraw_fees_ix(sc: &Scenario, authority_quote_account: Address) -> Instruction {
     Instruction::new_with_bytes(
         sc.program_id,
         &order_book::instruction::WithdrawFees {}.data(),
@@ -409,8 +403,8 @@ fn build_withdraw_fees_ix(
 
 fn build_cancel_order_ix(
     sc: &Scenario,
-    owner: &Pubkey,
-    market_user: Pubkey,
+    owner: &Address,
+    market_user: Address,
     order_id: u64,
 ) -> Instruction {
     let order = order_pda(&sc.program_id, &sc.market, order_id);
@@ -430,10 +424,10 @@ fn build_cancel_order_ix(
 
 fn build_settle_funds_ix(
     sc: &Scenario,
-    owner: &Pubkey,
-    market_user: Pubkey,
-    user_base_account: Pubkey,
-    user_quote_account: Pubkey,
+    owner: &Address,
+    market_user: Address,
+    user_base_account: Address,
+    user_quote_account: Address,
 ) -> Instruction {
     Instruction::new_with_bytes(
         sc.program_id,
@@ -462,7 +456,14 @@ fn initialize_market_and_users(sc: &mut Scenario) {
     // program, zero-initialized) before initialize_market's `#[account(zero)]`
     // check passes.
     let create_ix = build_create_order_book_account_ix(sc, &sc.authority.pubkey());
-    let init_ix = build_initialize_market_ix(sc, FEE_BASIS_POINTS, TICK_SIZE, BASE_LOT_SIZE, QUOTE_LOT_SIZE, MIN_ORDER_SIZE);
+    let init_ix = build_initialize_market_ix(
+        sc,
+        FEE_BASIS_POINTS,
+        TICK_SIZE,
+        BASE_LOT_SIZE,
+        QUOTE_LOT_SIZE,
+        MIN_ORDER_SIZE,
+    );
     send_transaction_from_instructions(
         &mut sc.svm,
         vec![create_ix, init_ix],
@@ -505,7 +506,14 @@ fn initialize_market_sets_market_and_order_book() {
     let mut sc = full_setup();
 
     let create_ix = build_create_order_book_account_ix(&sc, &sc.authority.pubkey());
-    let ix = build_initialize_market_ix(&sc, FEE_BASIS_POINTS, TICK_SIZE, BASE_LOT_SIZE, QUOTE_LOT_SIZE, MIN_ORDER_SIZE);
+    let ix = build_initialize_market_ix(
+        &sc,
+        FEE_BASIS_POINTS,
+        TICK_SIZE,
+        BASE_LOT_SIZE,
+        QUOTE_LOT_SIZE,
+        MIN_ORDER_SIZE,
+    );
     send_transaction_from_instructions(
         &mut sc.svm,
         vec![create_ix, ix],
@@ -553,7 +561,14 @@ fn initialize_market_user_tracks_market_and_owner() {
     let mut sc = full_setup();
 
     let create_ix = build_create_order_book_account_ix(&sc, &sc.authority.pubkey());
-    let init_ix = build_initialize_market_ix(&sc, FEE_BASIS_POINTS, TICK_SIZE, BASE_LOT_SIZE, QUOTE_LOT_SIZE, MIN_ORDER_SIZE);
+    let init_ix = build_initialize_market_ix(
+        &sc,
+        FEE_BASIS_POINTS,
+        TICK_SIZE,
+        BASE_LOT_SIZE,
+        QUOTE_LOT_SIZE,
+        MIN_ORDER_SIZE,
+    );
     send_transaction_from_instructions(
         &mut sc.svm,
         vec![create_ix, init_ix],
@@ -683,12 +698,8 @@ fn place_order_rejects_zero_price() {
         0,
         BID_QUANTITY,
     );
-    let result = send_transaction_from_instructions(
-        &mut sc.svm,
-        vec![ix],
-        &[&sc.buyer],
-        &sc.buyer.pubkey(),
-    );
+    let result =
+        send_transaction_from_instructions(&mut sc.svm, vec![ix], &[&sc.buyer], &sc.buyer.pubkey());
     assert!(result.is_err(), "order at price 0 must be rejected");
 }
 
@@ -700,8 +711,14 @@ fn place_order_rejects_unaligned_tick() {
     // price and see the tick check fire.
     let unusual_tick_size: u64 = 50;
     let create_ix = build_create_order_book_account_ix(&sc, &sc.authority.pubkey());
-    let init_ix =
-        build_initialize_market_ix(&sc, FEE_BASIS_POINTS, unusual_tick_size, BASE_LOT_SIZE, QUOTE_LOT_SIZE, MIN_ORDER_SIZE);
+    let init_ix = build_initialize_market_ix(
+        &sc,
+        FEE_BASIS_POINTS,
+        unusual_tick_size,
+        BASE_LOT_SIZE,
+        QUOTE_LOT_SIZE,
+        MIN_ORDER_SIZE,
+    );
     send_transaction_from_instructions(
         &mut sc.svm,
         vec![create_ix, init_ix],
@@ -738,12 +755,8 @@ fn place_order_rejects_unaligned_tick() {
         unaligned_price,
         BID_QUANTITY,
     );
-    let result = send_transaction_from_instructions(
-        &mut sc.svm,
-        vec![ix],
-        &[&sc.buyer],
-        &sc.buyer.pubkey(),
-    );
+    let result =
+        send_transaction_from_instructions(&mut sc.svm, vec![ix], &[&sc.buyer], &sc.buyer.pubkey());
     assert!(
         result.is_err(),
         "unaligned price must be rejected by tick check"
@@ -757,8 +770,14 @@ fn place_order_rejects_below_min_order_size() {
     // Force a higher min_order_size so we can place an order below it.
     let elevated_min_order_size: u64 = 10;
     let create_ix = build_create_order_book_account_ix(&sc, &sc.authority.pubkey());
-    let init_ix =
-        build_initialize_market_ix(&sc, FEE_BASIS_POINTS, TICK_SIZE, BASE_LOT_SIZE, QUOTE_LOT_SIZE, elevated_min_order_size);
+    let init_ix = build_initialize_market_ix(
+        &sc,
+        FEE_BASIS_POINTS,
+        TICK_SIZE,
+        BASE_LOT_SIZE,
+        QUOTE_LOT_SIZE,
+        elevated_min_order_size,
+    );
     send_transaction_from_instructions(
         &mut sc.svm,
         vec![create_ix, init_ix],
@@ -980,12 +999,8 @@ fn cancel_and_settle_bid_refunds_full_quote() {
         BID_PRICE,
         BID_QUANTITY,
     );
-    let cancel_ix = build_cancel_order_ix(
-        &sc,
-        &sc.buyer.pubkey(),
-        sc.buyer_market_user,
-        bid_order_id,
-    );
+    let cancel_ix =
+        build_cancel_order_ix(&sc, &sc.buyer.pubkey(), sc.buyer_market_user, bid_order_id);
     let settle_ix = build_settle_funds_ix(
         &sc,
         &sc.buyer.pubkey(),
@@ -1014,10 +1029,10 @@ fn cancel_and_settle_bid_refunds_full_quote() {
 
 // Regression test for the fee-drain attack on settle_funds. Pre-fix,
 // `SettleFundsAccountConstraints` did not bind `quote_vault` to `market.quote_vault` via
-// `has_one`, so a caller could pass `market.fee_vault` (same mint and
+// an address constraint, so a caller could pass `market.fee_vault` (same mint and
 // same authority) where `quote_vault` was expected and drain accumulated
 // taker fees while spending their own unsettled_quote credit. The
-// has_one constraint now bound on the `market` field must surface this
+// address constraint now bound on the vault field must surface this
 // as `ConstraintHasOne` (anchor error 2001) before any transfer runs.
 #[test]
 fn settle_funds_rejects_fee_vault_substituted_for_quote_vault() {
@@ -1040,12 +1055,8 @@ fn settle_funds_rejects_fee_vault_substituted_for_quote_vault() {
         BID_PRICE,
         BID_QUANTITY,
     );
-    let cancel_ix = build_cancel_order_ix(
-        &sc,
-        &sc.buyer.pubkey(),
-        sc.buyer_market_user,
-        bid_order_id,
-    );
+    let cancel_ix =
+        build_cancel_order_ix(&sc, &sc.buyer.pubkey(), sc.buyer_market_user, bid_order_id);
     send_transaction_from_instructions(
         &mut sc.svm,
         vec![place_ix, cancel_ix],
@@ -1057,7 +1068,7 @@ fn settle_funds_rejects_fee_vault_substituted_for_quote_vault() {
     // Build a settle_funds ix but swap fee_vault in for quote_vault.
     // Everything else (base_vault, mints, user accounts, owner) stays
     // correct, so the only thing that should reject this is the new
-    // has_one constraint on the market PDA.
+    // address constraint tying the vault to the market PDA.
     let attack_ix = Instruction::new_with_bytes(
         sc.program_id,
         &order_book::instruction::SettleFunds {}.data(),
@@ -1095,7 +1106,14 @@ fn initialize_market_rejects_zero_tick_size() {
 
     let zero_tick_size: u64 = 0;
     let create_ix = build_create_order_book_account_ix(&sc, &sc.authority.pubkey());
-    let ix = build_initialize_market_ix(&sc, FEE_BASIS_POINTS, zero_tick_size, BASE_LOT_SIZE, QUOTE_LOT_SIZE, MIN_ORDER_SIZE);
+    let ix = build_initialize_market_ix(
+        &sc,
+        FEE_BASIS_POINTS,
+        zero_tick_size,
+        BASE_LOT_SIZE,
+        QUOTE_LOT_SIZE,
+        MIN_ORDER_SIZE,
+    );
     let result = send_transaction_from_instructions(
         &mut sc.svm,
         vec![create_ix, ix],
@@ -1116,7 +1134,14 @@ fn initialize_market_rejects_zero_base_lot_size() {
     let mut sc = full_setup();
 
     let create_ix = build_create_order_book_account_ix(&sc, &sc.authority.pubkey());
-    let ix = build_initialize_market_ix(&sc, FEE_BASIS_POINTS, TICK_SIZE, 0, QUOTE_LOT_SIZE, MIN_ORDER_SIZE);
+    let ix = build_initialize_market_ix(
+        &sc,
+        FEE_BASIS_POINTS,
+        TICK_SIZE,
+        0,
+        QUOTE_LOT_SIZE,
+        MIN_ORDER_SIZE,
+    );
     let result = send_transaction_from_instructions(
         &mut sc.svm,
         vec![create_ix, ix],
@@ -1137,7 +1162,14 @@ fn initialize_market_rejects_zero_quote_lot_size() {
     let mut sc = full_setup();
 
     let create_ix = build_create_order_book_account_ix(&sc, &sc.authority.pubkey());
-    let ix = build_initialize_market_ix(&sc, FEE_BASIS_POINTS, TICK_SIZE, BASE_LOT_SIZE, 0, MIN_ORDER_SIZE);
+    let ix = build_initialize_market_ix(
+        &sc,
+        FEE_BASIS_POINTS,
+        TICK_SIZE,
+        BASE_LOT_SIZE,
+        0,
+        MIN_ORDER_SIZE,
+    );
     let result = send_transaction_from_instructions(
         &mut sc.svm,
         vec![create_ix, ix],
@@ -1196,8 +1228,8 @@ fn initialize_market_rejects_oversized_fee() {
 
 // MarketUser field offsets after the 8-byte Anchor discriminator. Layout
 // (see programs/order_book/src/state/market_user.rs):
-//   market: Pubkey         (32)
-//   owner:  Pubkey         (32)
+//   market: Address         (32)
+//   owner:  Address         (32)
 //   unsettled_base: u64    (8)
 //   unsettled_quote: u64   (8)
 //   ...
@@ -1207,8 +1239,8 @@ const USER_ACCOUNT_UNSETTLED_BASE_OFFSET: usize = 8 + 32 + 32;
 const USER_ACCOUNT_UNSETTLED_QUOTE_OFFSET: usize = USER_ACCOUNT_UNSETTLED_BASE_OFFSET + 8;
 
 // Order layout after 8-byte discriminator (see state/order.rs):
-//   market: Pubkey                      (32)
-//   owner:  Pubkey                      (32)
+//   market: Address                      (32)
+//   owner:  Address                      (32)
 //   order_id: u64                       (8)
 //   side: u8 (Borsh-encoded enum tag)   (1)
 //   price: u64                          (8)
@@ -1220,7 +1252,7 @@ const ORDER_STATUS_OPEN: u8 = 0;
 const ORDER_STATUS_PARTIALLY_FILLED: u8 = 1;
 const ORDER_STATUS_FILLED: u8 = 2;
 
-fn read_user_unsettled(svm: &LiteSVM, market_user: &Pubkey) -> (u64, u64) {
+fn read_user_unsettled(svm: &LiteSVM, market_user: &Address) -> (u64, u64) {
     let data = svm
         .get_account(market_user)
         .expect("user account missing")
@@ -1239,7 +1271,7 @@ fn read_user_unsettled(svm: &LiteSVM, market_user: &Pubkey) -> (u64, u64) {
     (base, quote)
 }
 
-fn read_order_fill_and_status(svm: &LiteSVM, order: &Pubkey) -> (u64, u8) {
+fn read_order_fill_and_status(svm: &LiteSVM, order: &Address) -> (u64, u8) {
     let data = svm
         .get_account(order)
         .expect("order account missing")
@@ -1448,13 +1480,8 @@ fn taker_partially_fills_resting_order_rest_stays_on_book() {
         TAKER_BID_QUANTITY,
         &[(MAKER_ASK_ID, sc.seller_market_user)],
     );
-    send_transaction_from_instructions(
-        &mut sc.svm,
-        vec![bid_ix],
-        &[&sc.buyer],
-        &sc.buyer.pubkey(),
-    )
-    .unwrap();
+    send_transaction_from_instructions(&mut sc.svm, vec![bid_ix], &[&sc.buyer], &sc.buyer.pubkey())
+        .unwrap();
 
     // Maker order: still PartiallyFilled, filled_quantity == TAKER_BID_QUANTITY.
     let maker_order = order_pda(&sc.program_id, &sc.market, MAKER_ASK_ID);
@@ -1523,13 +1550,8 @@ fn taker_partially_filled_remainder_rests_on_book() {
         TAKER_BID_QUANTITY,
         &[(MAKER_ASK_ID, sc.seller_market_user)],
     );
-    send_transaction_from_instructions(
-        &mut sc.svm,
-        vec![bid_ix],
-        &[&sc.buyer],
-        &sc.buyer.pubkey(),
-    )
-    .unwrap();
+    send_transaction_from_instructions(&mut sc.svm, vec![bid_ix], &[&sc.buyer], &sc.buyer.pubkey())
+        .unwrap();
 
     // Maker ask is fully filled.
     let maker_order = order_pda(&sc.program_id, &sc.market, MAKER_ASK_ID);
@@ -1640,8 +1662,14 @@ fn taker_crosses_multiple_resting_orders_best_price_first() {
     // Both resting asks are fully filled.
     let order_one = order_pda(&sc.program_id, &sc.market, BEST_ASK_ID);
     let order_two = order_pda(&sc.program_id, &sc.market, SECOND_ASK_ID);
-    assert_eq!(read_order_fill_and_status(&sc.svm, &order_one).1, ORDER_STATUS_FILLED);
-    assert_eq!(read_order_fill_and_status(&sc.svm, &order_two).1, ORDER_STATUS_FILLED);
+    assert_eq!(
+        read_order_fill_and_status(&sc.svm, &order_one).1,
+        ORDER_STATUS_FILLED
+    );
+    assert_eq!(
+        read_order_fill_and_status(&sc.svm, &order_two).1,
+        ORDER_STATUS_FILLED
+    );
 
     // Taker got TAKER_BID_QUANTITY lots = TAKER_BID_QUANTITY * BASE_LOT_SIZE raw base tokens.
     let (buyer_base, buyer_quote_rebate) = read_user_unsettled(&sc.svm, &sc.buyer_market_user);
@@ -1649,7 +1677,8 @@ fn taker_crosses_multiple_resting_orders_best_price_first() {
 
     // Price-improvement rebate: taker locked at 1000/unit but 30 units
     // filled at 900. Rebate = (1000 - 900) * 30 * quote_lot_size.
-    const PRICE_IMPROVEMENT_REBATE: u64 = (TAKER_BID_PRICE - BEST_ASK_PRICE) * BEST_ASK_QUANTITY * QUOTE_LOT_SIZE;
+    const PRICE_IMPROVEMENT_REBATE: u64 =
+        (TAKER_BID_PRICE - BEST_ASK_PRICE) * BEST_ASK_QUANTITY * QUOTE_LOT_SIZE;
     assert_eq!(buyer_quote_rebate, PRICE_IMPROVEMENT_REBATE);
 
     // Seller's net unsettled_quote = sum of (fill_price * fill_qty * quote_lot_size - fee).
@@ -1694,10 +1723,16 @@ fn resting_orders_at_same_price_fill_by_time_priority() {
         &sc.authority,
     )
     .unwrap();
-    let second_seller_market_user = market_user_pda(&sc.program_id, &sc.market, &second_seller.pubkey());
+    let second_seller_market_user =
+        market_user_pda(&sc.program_id, &sc.market, &second_seller.pubkey());
     let __ix1 = build_initialize_market_user_ix(&sc, &second_seller.pubkey());
-    send_transaction_from_instructions(&mut sc.svm, vec![__ix1], &[&second_seller],
-        &second_seller.pubkey()).unwrap();
+    send_transaction_from_instructions(
+        &mut sc.svm,
+        vec![__ix1],
+        &[&second_seller],
+        &second_seller.pubkey(),
+    )
+    .unwrap();
 
     const FIRST_ASK_ID: u64 = 1;
     const SECOND_ASK_ID: u64 = 2;
@@ -1706,32 +1741,42 @@ fn resting_orders_at_same_price_fill_by_time_priority() {
 
     // Seller 1 first in.
     let __ix2 = build_place_order_ix(
-            &sc,
-            &sc.seller,
-            sc.seller_market_user,
-            sc.seller_base_ata,
-            sc.seller_quote_ata,
-            order_book::state::OrderSide::Ask,
-            FIRST_ASK_ID,
-            ASK_PRICE_SHARED,
-            ASK_QUANTITY_EACH,
-        );
-    send_transaction_from_instructions(&mut sc.svm, vec![__ix2], &[&sc.seller],
-        &sc.seller.pubkey()).unwrap();
+        &sc,
+        &sc.seller,
+        sc.seller_market_user,
+        sc.seller_base_ata,
+        sc.seller_quote_ata,
+        order_book::state::OrderSide::Ask,
+        FIRST_ASK_ID,
+        ASK_PRICE_SHARED,
+        ASK_QUANTITY_EACH,
+    );
+    send_transaction_from_instructions(
+        &mut sc.svm,
+        vec![__ix2],
+        &[&sc.seller],
+        &sc.seller.pubkey(),
+    )
+    .unwrap();
     // Seller 2 second in at the same price.
     let __ix3 = build_place_order_ix(
-            &sc,
-            &second_seller,
-            second_seller_market_user,
-            second_seller_base_ata,
-            second_seller_quote_ata,
-            order_book::state::OrderSide::Ask,
-            SECOND_ASK_ID,
-            ASK_PRICE_SHARED,
-            ASK_QUANTITY_EACH,
-        );
-    send_transaction_from_instructions(&mut sc.svm, vec![__ix3], &[&second_seller],
-        &second_seller.pubkey()).unwrap();
+        &sc,
+        &second_seller,
+        second_seller_market_user,
+        second_seller_base_ata,
+        second_seller_quote_ata,
+        order_book::state::OrderSide::Ask,
+        SECOND_ASK_ID,
+        ASK_PRICE_SHARED,
+        ASK_QUANTITY_EACH,
+    );
+    send_transaction_from_instructions(
+        &mut sc.svm,
+        vec![__ix3],
+        &[&second_seller],
+        &second_seller.pubkey(),
+    )
+    .unwrap();
 
     // Taker bid buys only enough to cross seller 1's ask.
     const TAKER_BID_ID: u64 = 3;
@@ -1758,8 +1803,14 @@ fn resting_orders_at_same_price_fill_by_time_priority() {
     // Time priority: seller 1 filled, seller 2 still open.
     let order_one = order_pda(&sc.program_id, &sc.market, FIRST_ASK_ID);
     let order_two = order_pda(&sc.program_id, &sc.market, SECOND_ASK_ID);
-    assert_eq!(read_order_fill_and_status(&sc.svm, &order_one).1, ORDER_STATUS_FILLED);
-    assert_eq!(read_order_fill_and_status(&sc.svm, &order_two).1, ORDER_STATUS_OPEN);
+    assert_eq!(
+        read_order_fill_and_status(&sc.svm, &order_one).1,
+        ORDER_STATUS_FILLED
+    );
+    assert_eq!(
+        read_order_fill_and_status(&sc.svm, &order_two).1,
+        ORDER_STATUS_OPEN
+    );
 }
 
 #[test]
@@ -1776,18 +1827,23 @@ fn taker_bid_gets_price_improvement_from_resting_ask() {
 
     // Maker ask.
     let __ix4 = build_place_order_ix(
-            &sc,
-            &sc.seller,
-            sc.seller_market_user,
-            sc.seller_base_ata,
-            sc.seller_quote_ata,
-            order_book::state::OrderSide::Ask,
-            MAKER_ASK_ID,
-            MAKER_ASK_PRICE,
-            QUANTITY,
-        );
-    send_transaction_from_instructions(&mut sc.svm, vec![__ix4], &[&sc.seller],
-        &sc.seller.pubkey()).unwrap();
+        &sc,
+        &sc.seller,
+        sc.seller_market_user,
+        sc.seller_base_ata,
+        sc.seller_quote_ata,
+        order_book::state::OrderSide::Ask,
+        MAKER_ASK_ID,
+        MAKER_ASK_PRICE,
+        QUANTITY,
+    );
+    send_transaction_from_instructions(
+        &mut sc.svm,
+        vec![__ix4],
+        &[&sc.seller],
+        &sc.seller.pubkey(),
+    )
+    .unwrap();
 
     // Taker bid - limit 1000.
     const TAKER_BID_ID: u64 = 2;
@@ -1855,8 +1911,13 @@ fn fee_rounds_up_when_gross_is_not_a_bps_multiple() {
         PRICE,
         QUANTITY,
     );
-    send_transaction_from_instructions(&mut sc.svm, vec![maker_ix], &[&sc.seller],
-        &sc.seller.pubkey()).unwrap();
+    send_transaction_from_instructions(
+        &mut sc.svm,
+        vec![maker_ix],
+        &[&sc.seller],
+        &sc.seller.pubkey(),
+    )
+    .unwrap();
 
     const TAKER_BID_ID: u64 = 2;
     let taker_ix = build_place_order_with_makers_ix(
@@ -1871,8 +1932,13 @@ fn fee_rounds_up_when_gross_is_not_a_bps_multiple() {
         QUANTITY,
         &[(MAKER_ASK_ID, sc.seller_market_user)],
     );
-    send_transaction_from_instructions(&mut sc.svm, vec![taker_ix], &[&sc.buyer],
-        &sc.buyer.pubkey()).unwrap();
+    send_transaction_from_instructions(
+        &mut sc.svm,
+        vec![taker_ix],
+        &[&sc.buyer],
+        &sc.buyer.pubkey(),
+    )
+    .unwrap();
 
     assert_eq!(
         get_token_account_balance(&sc.svm, &sc.fee_vault.pubkey()).unwrap(),
@@ -1897,34 +1963,39 @@ fn fee_vault_receives_exactly_bps_of_taker_gross() {
     const EXPECTED_FEE: u64 = fee_ceil(GROSS);
 
     let __ix5 = build_place_order_ix(
-            &sc,
-            &sc.seller,
-            sc.seller_market_user,
-            sc.seller_base_ata,
-            sc.seller_quote_ata,
-            order_book::state::OrderSide::Ask,
-            MAKER_ASK_ID,
-            PRICE,
-            QUANTITY,
-        );
-    send_transaction_from_instructions(&mut sc.svm, vec![__ix5], &[&sc.seller],
-        &sc.seller.pubkey()).unwrap();
+        &sc,
+        &sc.seller,
+        sc.seller_market_user,
+        sc.seller_base_ata,
+        sc.seller_quote_ata,
+        order_book::state::OrderSide::Ask,
+        MAKER_ASK_ID,
+        PRICE,
+        QUANTITY,
+    );
+    send_transaction_from_instructions(
+        &mut sc.svm,
+        vec![__ix5],
+        &[&sc.seller],
+        &sc.seller.pubkey(),
+    )
+    .unwrap();
 
     const TAKER_BID_ID: u64 = 2;
     let __ix6 = build_place_order_with_makers_ix(
-            &sc,
-            &sc.buyer,
-            sc.buyer_market_user,
-            sc.buyer_base_ata,
-            sc.buyer_quote_ata,
-            order_book::state::OrderSide::Bid,
-            TAKER_BID_ID,
-            PRICE,
-            QUANTITY,
-            &[(MAKER_ASK_ID, sc.seller_market_user)],
+        &sc,
+        &sc.buyer,
+        sc.buyer_market_user,
+        sc.buyer_base_ata,
+        sc.buyer_quote_ata,
+        order_book::state::OrderSide::Bid,
+        TAKER_BID_ID,
+        PRICE,
+        QUANTITY,
+        &[(MAKER_ASK_ID, sc.seller_market_user)],
     );
-    send_transaction_from_instructions(&mut sc.svm, vec![__ix6], &[&sc.buyer], &sc.buyer.pubkey()).unwrap();
-
+    send_transaction_from_instructions(&mut sc.svm, vec![__ix6], &[&sc.buyer], &sc.buyer.pubkey())
+        .unwrap();
 
     assert_eq!(
         get_token_account_balance(&sc.svm, &sc.fee_vault.pubkey()).unwrap(),
@@ -1954,34 +2025,39 @@ fn authority_can_withdraw_fees_after_match() {
     const EXPECTED_FEE: u64 = fee_ceil(GROSS);
 
     let __ix7 = build_place_order_ix(
-            &sc,
-            &sc.seller,
-            sc.seller_market_user,
-            sc.seller_base_ata,
-            sc.seller_quote_ata,
-            order_book::state::OrderSide::Ask,
-            MAKER_ASK_ID,
-            PRICE,
-            QUANTITY,
-        );
-    send_transaction_from_instructions(&mut sc.svm, vec![__ix7], &[&sc.seller],
-        &sc.seller.pubkey()).unwrap();
+        &sc,
+        &sc.seller,
+        sc.seller_market_user,
+        sc.seller_base_ata,
+        sc.seller_quote_ata,
+        order_book::state::OrderSide::Ask,
+        MAKER_ASK_ID,
+        PRICE,
+        QUANTITY,
+    );
+    send_transaction_from_instructions(
+        &mut sc.svm,
+        vec![__ix7],
+        &[&sc.seller],
+        &sc.seller.pubkey(),
+    )
+    .unwrap();
 
     const TAKER_BID_ID: u64 = 2;
     let __ix8 = build_place_order_with_makers_ix(
-            &sc,
-            &sc.buyer,
-            sc.buyer_market_user,
-            sc.buyer_base_ata,
-            sc.buyer_quote_ata,
-            order_book::state::OrderSide::Bid,
-            TAKER_BID_ID,
-            PRICE,
-            QUANTITY,
-            &[(MAKER_ASK_ID, sc.seller_market_user)],
+        &sc,
+        &sc.buyer,
+        sc.buyer_market_user,
+        sc.buyer_base_ata,
+        sc.buyer_quote_ata,
+        order_book::state::OrderSide::Bid,
+        TAKER_BID_ID,
+        PRICE,
+        QUANTITY,
+        &[(MAKER_ASK_ID, sc.seller_market_user)],
     );
-    send_transaction_from_instructions(&mut sc.svm, vec![__ix8], &[&sc.buyer], &sc.buyer.pubkey()).unwrap();
-
+    send_transaction_from_instructions(&mut sc.svm, vec![__ix8], &[&sc.buyer], &sc.buyer.pubkey())
+        .unwrap();
 
     assert_eq!(
         get_token_account_balance(&sc.svm, &sc.fee_vault.pubkey()).unwrap(),
@@ -2025,53 +2101,63 @@ fn settle_funds_after_match_pays_out_both_unsettled_balances() {
 
     // Maker posts and taker crosses.
     let __ix9 = build_place_order_ix(
-            &sc,
-            &sc.seller,
-            sc.seller_market_user,
-            sc.seller_base_ata,
-            sc.seller_quote_ata,
-            order_book::state::OrderSide::Ask,
-            MAKER_ASK_ID,
-            PRICE,
-            QUANTITY,
-        );
-    send_transaction_from_instructions(&mut sc.svm, vec![__ix9], &[&sc.seller],
-        &sc.seller.pubkey()).unwrap();
+        &sc,
+        &sc.seller,
+        sc.seller_market_user,
+        sc.seller_base_ata,
+        sc.seller_quote_ata,
+        order_book::state::OrderSide::Ask,
+        MAKER_ASK_ID,
+        PRICE,
+        QUANTITY,
+    );
+    send_transaction_from_instructions(
+        &mut sc.svm,
+        vec![__ix9],
+        &[&sc.seller],
+        &sc.seller.pubkey(),
+    )
+    .unwrap();
     const TAKER_BID_ID: u64 = 2;
     let __ix10 = build_place_order_with_makers_ix(
-            &sc,
-            &sc.buyer,
-            sc.buyer_market_user,
-            sc.buyer_base_ata,
-            sc.buyer_quote_ata,
-            order_book::state::OrderSide::Bid,
-            TAKER_BID_ID,
-            PRICE,
-            QUANTITY,
-            &[(MAKER_ASK_ID, sc.seller_market_user)],
+        &sc,
+        &sc.buyer,
+        sc.buyer_market_user,
+        sc.buyer_base_ata,
+        sc.buyer_quote_ata,
+        order_book::state::OrderSide::Bid,
+        TAKER_BID_ID,
+        PRICE,
+        QUANTITY,
+        &[(MAKER_ASK_ID, sc.seller_market_user)],
     );
-    send_transaction_from_instructions(&mut sc.svm, vec![__ix10], &[&sc.buyer], &sc.buyer.pubkey()).unwrap();
-
+    send_transaction_from_instructions(&mut sc.svm, vec![__ix10], &[&sc.buyer], &sc.buyer.pubkey())
+        .unwrap();
 
     // Settle both sides.
     let __ix11 = build_settle_funds_ix(
-            &sc,
-            &sc.buyer.pubkey(),
-            sc.buyer_market_user,
-            sc.buyer_base_ata,
-            sc.buyer_quote_ata,
-        );
-    send_transaction_from_instructions(&mut sc.svm, vec![__ix11], &[&sc.buyer],
-        &sc.buyer.pubkey()).unwrap();
+        &sc,
+        &sc.buyer.pubkey(),
+        sc.buyer_market_user,
+        sc.buyer_base_ata,
+        sc.buyer_quote_ata,
+    );
+    send_transaction_from_instructions(&mut sc.svm, vec![__ix11], &[&sc.buyer], &sc.buyer.pubkey())
+        .unwrap();
     let __ix12 = build_settle_funds_ix(
-            &sc,
-            &sc.seller.pubkey(),
-            sc.seller_market_user,
-            sc.seller_base_ata,
-            sc.seller_quote_ata,
-        );
-    send_transaction_from_instructions(&mut sc.svm, vec![__ix12], &[&sc.seller],
-        &sc.seller.pubkey()).unwrap();
+        &sc,
+        &sc.seller.pubkey(),
+        sc.seller_market_user,
+        sc.seller_base_ata,
+        sc.seller_quote_ata,
+    );
+    send_transaction_from_instructions(
+        &mut sc.svm,
+        vec![__ix12],
+        &[&sc.seller],
+        &sc.seller.pubkey(),
+    )
+    .unwrap();
 
     // Buyer should now hold `QUANTITY` lots of extra base tokens
     // (QUANTITY * BASE_LOT_SIZE raw minor units) and have paid the gross
@@ -2097,4 +2183,3 @@ fn settle_funds_after_match_pays_out_both_unsettled_balances() {
         EXPECTED_NET_QUOTE_TO_SELLER
     );
 }
-

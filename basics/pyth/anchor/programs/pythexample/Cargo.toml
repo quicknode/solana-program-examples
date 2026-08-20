@@ -21,7 +21,14 @@ custom-panic = []
 
 
 [dependencies]
-anchor-lang = "1.1.2"
+anchor-lang = "2.0.0-rc.1"
+# The `#[program]` macro expands to `wincode` paths for instruction-data
+# (de)serialization, so the crate has to be a direct dependency.
+wincode = { version = "0.5", features = ["derive"] }
+# anchor-lang 2.0.0-rc.1 is built against wincode 0.5, but solana-address 2.7
+# moved to wincode 0.6, which splits `Address`'s wincode impls across two
+# incompatible trait versions. 2.6.1 is the last release on the 0.5 line.
+solana-address = ">=2.6, <2.7"
 
 [dev-dependencies]
 # Self-dependency with no-entrypoint: host test builds otherwise export a
@@ -34,6 +41,7 @@ litesvm = "0.13.1"
 solana-signer = "3.0.0"
 solana-keypair = "3.0.1"
 solana-account = "3.0.0"
+solana-clock = "3.0.1"
 borsh = "1.6.1"
 sha2 = "0.10"
 solana-kite = "0.4.0"

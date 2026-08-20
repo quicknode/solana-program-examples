@@ -10,20 +10,31 @@ use anchor_spl::{
 use spl_token_metadata_interface::state::{Field, TokenMetadata};
 
 #[derive(Accounts)]
-pub struct UpdateFieldAccountConstraints<'info> {
+pub struct UpdateFieldAccountConstraints {
     #[account(mut)]
-    pub authority: Signer<'info>,
+    pub authority: Signer,
 
-    #[account(
-        mut,
-        extensions::metadata_pointer::metadata_address = mint_account,
-    )]
-    pub mint_account: InterfaceAccount<'info, Mint>,
-    pub token_program: Program<'info, Token2022>,
-    pub system_program: Program<'info, System>,
+    /// CHECK: loaded and validated as an `InterfaceAccount<Mint>` in the handler.
+    ///
+    /// It is declared unchecked here only so that the derive does not take the
+    /// account's exclusive borrow. This instruction has to read the
+    /// variable-length `TokenMetadata` extension out of the TLV, and a wrapper
+    /// loaded by `#[account(mut)]` holds an exclusive borrow that makes any
+    /// `try_borrow()` fail. Loading the same wrapper by hand registers a shared
+    /// borrow instead, which leaves room for the read.
+    #[account(mut)]
+    pub mint_account: UncheckedAccount,
+    pub token_program: Program<Token2022>,
+    pub system_program: Program<System>,
 }
 
-pub fn process_update_field(context: Context<UpdateFieldAccountConstraints>, args: UpdateFieldArgs) -> Result<()> {
+pub fn process_update_field(
+    context: &mut Context<UpdateFieldAccountConstraints>,
+    args: UpdateFieldArgs,
+) -> Result<()> {
+    // `AccountView` is Copy, and a copy still points at the same
+    // account. v2's typed handles make the aliasing a compile error.
+    let authority_view = *context.accounts.authority.account();
     let UpdateFieldArgs { field, value } = args;
 
     // Convert to Field type from spl_token_metadata_interface
@@ -31,9 +42,16 @@ pub fn process_update_field(context: Context<UpdateFieldAccountConstraints>, arg
     msg!("Field: {:?}, Value: {}", field, value);
 
     let (current_lamports, required_lamports) = {
-        // Get the current state of the mint account
-        let mint = &context.accounts.mint_account.to_account_info();
-        let buffer = mint.try_borrow_data()?;
+        // Validate the account as a mint. `load` runs the same owner and
+        // layout checks the derive would have run for an
+        // `InterfaceAccount<Mint>` field, and registers a *shared* borrow, so
+        // the TLV read below is an ordinary `try_borrow()`.
+        //
+        // anchor-spl's `TokenInterfaceAccountExtensions::get_extension` would
+        // be the shorter route, and is what the other extension examples use,
+        // but it is bounded on `Pod` and `TokenMetadata` is variable-length.
+        let mint = InterfaceAccount::<Mint>::load(*context.accounts.mint_account.account())?;
+        let buffer = mint.account().try_borrow()?;
         let state = PodStateWithExtensions::<PodMint>::unpack(&buffer)?;
 
         // Get and update the token metadata
@@ -46,9 +64,9 @@ pub fn process_update_field(context: Context<UpdateFieldAccountConstraints>, arg
             state.try_get_new_account_len_for_variable_len_extension(&token_metadata)?;
 
         // Calculate the required lamports for the new account length
-        let required_lamports = Rent::get()?.minimum_balance(new_account_len);
+        let required_lamports = Rent::get()?.try_minimum_balance(new_account_len)?;
         // Get the current lamports of the mint account
-        let current_lamports = mint.lamports();
+        let current_lamports = mint.account().lamports();
 
         msg!("Required lamports: {}", required_lamports);
         msg!("Current lamports: {}", current_lamports);
@@ -61,10 +79,10 @@ pub fn process_update_field(context: Context<UpdateFieldAccountConstraints>, arg
         let lamport_difference = required_lamports - current_lamports;
         transfer(
             CpiContext::new(
-                context.accounts.system_program.key(),
+                context.accounts.system_program.address(),
                 Transfer {
-                    from: context.accounts.authority.to_account_info(),
-                    to: context.accounts.mint_account.to_account_info(),
+                    from: context.accounts.authority.cpi_handle_mut(),
+                    to: context.accounts.mint_account.cpi_handle_mut(),
                 },
             ),
             lamport_difference,
@@ -78,11 +96,10 @@ pub fn process_update_field(context: Context<UpdateFieldAccountConstraints>, arg
     // Update token metadata
     token_metadata_update_field(
         CpiContext::new(
-            context.accounts.token_program.key(),
+            context.accounts.token_program.address(),
             TokenMetadataUpdateField {
-                program_id: context.accounts.token_program.to_account_info(),
-                metadata: context.accounts.mint_account.to_account_info(),
-                update_authority: context.accounts.authority.to_account_info(),
+                metadata: context.accounts.mint_account.cpi_handle_mut(),
+                update_authority: CpiHandle::readonly(&authority_view),
             },
         ),
         field,
@@ -93,7 +110,7 @@ pub fn process_update_field(context: Context<UpdateFieldAccountConstraints>, arg
 
 // Custom struct to implement AnchorSerialize and AnchorDeserialize
 // This is required to pass the struct as an argument to the instruction
-#[derive(AnchorSerialize, AnchorDeserialize)]
+#[derive(IdlType, wincode::SchemaRead, wincode::SchemaWrite)]
 pub struct UpdateFieldArgs {
     /// Field to update in the metadata
     pub field: AnchorField,
@@ -102,7 +119,7 @@ pub struct UpdateFieldArgs {
 }
 
 // Need to do this so the enum shows up in the IDL
-#[derive(AnchorSerialize, AnchorDeserialize, Debug)]
+#[derive(Debug, IdlType, wincode::SchemaRead, wincode::SchemaWrite)]
 pub enum AnchorField {
     /// The name field, corresponding to `TokenMetadata.name`
     Name,

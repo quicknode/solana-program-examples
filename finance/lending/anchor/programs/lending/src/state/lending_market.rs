@@ -2,7 +2,7 @@ use anchor_lang::prelude::*;
 
 /// Top-level configuration shared by every reserve and obligation under it.
 /// The owner is the only account that may create reserves and change their config.
-#[account]
+#[account(borsh)]
 #[derive(InitSpace)]
 pub struct LendingMarket {
     /// Index this market's PDA is derived from (`["lending_market", market_id]`).
@@ -11,12 +11,12 @@ pub struct LendingMarket {
     /// Distinct markets (0, 1, 2 …) give independent, risk-isolated pools.
     pub market_id: u64,
 
-    pub owner: Pubkey,
+    pub owner: Address,
 
     /// The mint that obligation values are denominated in (for example USDC).
     /// Stored for reference; valuations come from each reserve's own price feed,
     /// which must report prices in this currency.
-    pub quote_currency_mint: Pubkey,
+    pub quote_currency_mint: Address,
 
     pub bump: u8,
 }

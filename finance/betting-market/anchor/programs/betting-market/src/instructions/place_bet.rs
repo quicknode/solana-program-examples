@@ -1,44 +1,42 @@
 use anchor_lang::prelude::*;
+
+use crate::state::Event;
+use anchor_spl::mint;
 use anchor_spl::{
     associated_token::AssociatedToken,
     token_interface::{Mint, TokenAccount, TokenInterface},
 };
 
-use crate::{
-    error::BettingError, Bet, Config, Event, EventStatus, Outcome, User, MAX_BETS_PER_USER,
-};
+use crate::{error::BettingError, Bet, Config, EventStatus, Outcome, User, MAX_BETS_PER_USER};
 
 use super::transfer_tokens_to_vault;
 
 #[derive(Accounts)]
-pub struct PlaceBetAccountConstraints<'info> {
+pub struct PlaceBetAccountConstraints {
     #[account(mut)]
-    pub bettor: Signer<'info>,
+    pub bettor: Signer,
 
-    #[account(
-        seeds = [b"config"],
-        bump = config.bump,
-        has_one = token_mint,
-    )]
-    pub config: Account<'info, Config>,
+    #[account(seeds = [b"config"],
+        bump = config.bump)]
+    pub config: BorshAccount<Config>,
 
-    #[account(mint::token_program = token_program)]
-    pub token_mint: Box<InterfaceAccount<'info, Mint>>,
+    #[account(mint::token_program = token_program, address = config.token_mint)]
+    pub token_mint: Box<InterfaceAccount<Mint>>,
 
     #[account(
         mut,
-        seeds = [b"event", event.event_id.to_le_bytes().as_ref()],
+        seeds = [b"event", event.event_id.to_le_bytes()],
         bump = event.bump,
+        address = outcome.event,
     )]
-    pub event: Box<Account<'info, Event>>,
+    pub event: Box<BorshAccount<Event>>,
 
     #[account(
         mut,
-        has_one = event,
-        seeds = [b"outcome", event.key().as_ref(), &[outcome.index]],
+        seeds = [b"outcome", event.address().as_ref(), &[outcome.index]],
         bump = outcome.bump,
     )]
-    pub outcome: Box<Account<'info, Outcome>>,
+    pub outcome: Box<BorshAccount<Outcome>>,
 
     #[account(
         mut,
@@ -46,7 +44,7 @@ pub struct PlaceBetAccountConstraints<'info> {
         associated_token::authority = bettor,
         associated_token::token_program = token_program,
     )]
-    pub bettor_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub bettor_token_account: Box<InterfaceAccount<TokenAccount>>,
 
     #[account(
         mut,
@@ -54,32 +52,35 @@ pub struct PlaceBetAccountConstraints<'info> {
         associated_token::authority = event,
         associated_token::token_program = token_program,
     )]
-    pub vault: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub vault: Box<InterfaceAccount<TokenAccount>>,
 
     #[account(
         init_if_needed,
         payer = bettor,
         space = Bet::DISCRIMINATOR.len() + Bet::INIT_SPACE,
-        seeds = [b"bet", outcome.key().as_ref(), bettor.key().as_ref()],
+        seeds = [b"bet", outcome.address().as_ref(), bettor.address().as_ref()],
         bump
     )]
-    pub bet: Box<Account<'info, Bet>>,
+    pub bet: Box<BorshAccount<Bet>>,
 
     #[account(
         init_if_needed,
         payer = bettor,
         space = User::DISCRIMINATOR.len() + User::INIT_SPACE,
-        seeds = [b"user", bettor.key().as_ref()],
+        seeds = [b"user", bettor.address().as_ref()],
         bump
     )]
-    pub user: Box<Account<'info, User>>,
+    pub user: Box<BorshAccount<User>>,
 
-    pub associated_token_program: Program<'info, AssociatedToken>,
-    pub token_program: Interface<'info, TokenInterface>,
-    pub system_program: Program<'info, System>,
+    pub associated_token_program: Program<AssociatedToken>,
+    pub token_program: Interface<'static, TokenInterface>,
+    pub system_program: Program<System>,
 }
 
-pub fn handle_place_bet(context: Context<PlaceBetAccountConstraints>, amount: u64) -> Result<()> {
+pub fn handle_place_bet(
+    context: &mut Context<PlaceBetAccountConstraints>,
+    amount: u64,
+) -> Result<()> {
     require!(amount > 0, BettingError::ZeroAmount);
     require!(
         context.accounts.event.status == EventStatus::Open,
@@ -87,19 +88,19 @@ pub fn handle_place_bet(context: Context<PlaceBetAccountConstraints>, amount: u6
     );
 
     transfer_tokens_to_vault(
-        &context.accounts.bettor_token_account,
-        &context.accounts.vault,
+        &mut context.accounts.bettor_token_account,
+        &mut context.accounts.vault,
         amount,
         &context.accounts.token_mint,
         &context.accounts.bettor,
         &context.accounts.token_program,
     )?;
 
-    let bettor_key = context.accounts.bettor.key();
-    let event_key = context.accounts.event.key();
-    let outcome_key = context.accounts.outcome.key();
+    let bettor_key = *context.accounts.bettor.address();
+    let event_key = *context.accounts.event.address();
+    let outcome_key = *context.accounts.outcome.address();
     let outcome_index = context.accounts.outcome.index;
-    let bet_key = context.accounts.bet.key();
+    let bet_key = *context.accounts.bet.address();
     let bet_bump = context.bumps.bet;
     let user_bump = context.bumps.user;
 
@@ -138,7 +139,7 @@ pub fn handle_place_bet(context: Context<PlaceBetAccountConstraints>, amount: u6
         .ok_or(BettingError::MathOverflow)?;
 
     let user = &mut context.accounts.user;
-    if user.authority == Pubkey::default() {
+    if user.authority == Address::default() {
         user.authority = bettor_key;
         user.bump = user_bump;
     }

@@ -10,14 +10,14 @@ pub mod transfer_sol {
     use super::*;
 
     pub fn transfer_sol_with_cpi(
-        context: Context<TransferSolWithCpiAccountConstraints>,
+        context: &mut Context<TransferSolWithCpiAccountConstraints>,
         amount: u64,
     ) -> Result<()> {
         instructions::transfer_sol_with_cpi::handler(context, amount)
     }
 
     pub fn transfer_sol_with_program(
-        context: Context<TransferSolWithProgramAccountConstraints>,
+        context: &mut Context<TransferSolWithProgramAccountConstraints>,
         amount: u64,
     ) -> Result<()> {
         instructions::transfer_sol_with_program::handler(context, amount)

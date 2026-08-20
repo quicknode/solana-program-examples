@@ -2,13 +2,17 @@ use anchor_lang::prelude::*;
 
 pub const ORDER_SEED: &[u8] = b"order";
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, InitSpace)]
+#[derive(
+    Clone, Copy, PartialEq, Eq, InitSpace, IdlType, wincode::SchemaRead, wincode::SchemaWrite,
+)]
 pub enum OrderSide {
     Bid,
     Ask,
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, InitSpace)]
+#[derive(
+    Clone, Copy, PartialEq, Eq, InitSpace, IdlType, wincode::SchemaRead, wincode::SchemaWrite,
+)]
 pub enum OrderStatus {
     Open,
     PartiallyFilled,
@@ -17,11 +21,11 @@ pub enum OrderStatus {
 }
 
 #[derive(InitSpace)]
-#[account]
+#[account(borsh)]
 pub struct Order {
-    pub market: Pubkey,
+    pub market: Address,
 
-    pub owner: Pubkey,
+    pub owner: Address,
 
     pub order_id: u64,
 
@@ -41,5 +45,7 @@ pub struct Order {
 }
 
 pub fn remaining_quantity(order: &Order) -> u64 {
-    order.original_quantity.saturating_sub(order.filled_quantity)
+    order
+        .original_quantity
+        .saturating_sub(order.filled_quantity)
 }

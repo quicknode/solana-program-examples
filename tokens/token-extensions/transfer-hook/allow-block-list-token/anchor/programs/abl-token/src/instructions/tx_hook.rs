@@ -12,25 +12,24 @@ use anchor_spl::{
 use crate::{ABListError, ABWallet, Mode};
 
 #[derive(Accounts)]
-pub struct TxHookAccountConstraints<'info> {
+pub struct TxHookAccountConstraints {
     /// CHECK:
-    pub source_token_account: UncheckedAccount<'info>,
+    pub source_token_account: UncheckedAccount,
     /// CHECK:
-    pub mint: UncheckedAccount<'info>,
+    pub mint: UncheckedAccount,
     /// CHECK:
-    pub destination_token_account: UncheckedAccount<'info>,
+    pub destination_token_account: UncheckedAccount,
     /// CHECK:
-    pub owner_delegate: UncheckedAccount<'info>,
+    pub owner_delegate: UncheckedAccount,
     /// CHECK:
-    pub meta_list: UncheckedAccount<'info>,
+    pub meta_list: UncheckedAccount,
     /// CHECK:
-    pub ab_wallet: UncheckedAccount<'info>,
+    pub ab_wallet: UncheckedAccount,
 }
 
-impl TxHookAccountConstraints<'_> {
+impl TxHookAccountConstraints {
     pub fn tx_hook(&self, amount: u64) -> Result<()> {
-        let mint_info = self.mint.to_account_info();
-        let mint_data = mint_info.data.borrow();
+        let mint_data = self.mint.account().try_borrow()?;
         let mint = StateWithExtensions::<Mint>::unpack(&mint_data)?;
 
         let metadata = mint.get_variable_len_extension::<TokenMetadata>()?;
@@ -55,12 +54,23 @@ impl TxHookAccountConstraints<'_> {
     }
 
     fn decode_wallet_mode(&self) -> Result<DecodedWalletMode> {
-        if self.ab_wallet.data_is_empty() {
+        let wallet_data = self.ab_wallet.account().try_borrow()?;
+        if wallet_data.is_empty() {
             return Ok(DecodedWalletMode::None);
         }
 
-        let wallet_data = &mut self.ab_wallet.data.borrow();
-        let wallet = ABWallet::try_deserialize(&mut &wallet_data[..])?;
+        // v2 has no `Account::try_from`, so the discriminator is checked and
+        // the payload read by hand.
+        let disc_len = <ABWallet as anchor_lang::Discriminator>::DISCRIMINATOR.len();
+        require!(
+            wallet_data.len() > disc_len
+                && &wallet_data[..disc_len]
+                    == <ABWallet as anchor_lang::Discriminator>::DISCRIMINATOR,
+            ABListError::InvalidMetadata
+        );
+        let mut payload = &wallet_data[disc_len..];
+        let wallet = <ABWallet as wincode::SchemaRead<anchor_lang::BorshConfig>>::get(&mut payload)
+            .map_err(|_| ABListError::InvalidMetadata)?;
 
         if wallet.allowed {
             Ok(DecodedWalletMode::Allow)

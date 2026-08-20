@@ -28,7 +28,7 @@ fn integer_sqrt(n: u128) -> u128 {
 }
 
 pub fn handle_deposit_liquidity(
-    context: Context<DepositLiquidityAccountConstraints>,
+    context: &mut Context<DepositLiquidityAccountConstraints>,
     amount_a: u64,
     amount_b: u64,
     minimum_lp_tokens_out: u64,
@@ -37,8 +37,7 @@ pub fn handle_deposit_liquidity(
     // silently clamped to the available balance, which broke slippage protection
     // for callers building on top - they expected their input amount to be the
     // amount actually deposited.
-    if amount_a > context.accounts.token_a.amount
-        || amount_b > context.accounts.token_b.amount
+    if amount_a > context.accounts.token_a.amount() || amount_b > context.accounts.token_b.amount()
     {
         return err!(AmmError::InsufficientBalance);
     }
@@ -69,11 +68,11 @@ pub fn handle_deposit_liquidity(
     // checked_sub: admin_fees_owed is an invariant subset of the vault balance;
     // a raw `-` would wrap silently on a BPF release build if that ever broke.
     let effective_pool_a = pool_a
-        .amount
+        .amount()
         .checked_sub(pool_config.admin_fees_owed_a)
         .ok_or(AmmError::MathOverflow)?;
     let effective_pool_b = pool_b
-        .amount
+        .amount()
         .checked_sub(pool_config.admin_fees_owed_b)
         .ok_or(AmmError::MathOverflow)?;
     // Defining pool creation like this allows attackers to frontrun pool creation with bad ratios
@@ -150,8 +149,7 @@ pub fn handle_deposit_liquidity(
             .checked_mul(amount_b as u128)
             .ok_or(AmmError::MathOverflow)?;
         let sqrt_product = integer_sqrt(product);
-        let sqrt_product_u64 = u64::try_from(sqrt_product)
-            .map_err(|_| AmmError::MathOverflow)?;
+        let sqrt_product_u64 = u64::try_from(sqrt_product).map_err(|_| AmmError::MathOverflow)?;
         if sqrt_product_u64 < MINIMUM_LIQUIDITY {
             return err!(AmmError::DepositTooSmall);
         }
@@ -159,7 +157,7 @@ pub fn handle_deposit_liquidity(
             .checked_sub(MINIMUM_LIQUIDITY)
             .ok_or(AmmError::MathOverflow)?
     } else {
-        let total_supply = context.accounts.liquidity_provider_mint.supply as u128;
+        let total_supply = context.accounts.liquidity_provider_mint.supply() as u128;
         let liquidity_from_a = (amount_a as u128)
             .checked_mul(total_supply)
             .ok_or(AmmError::MathOverflow)?
@@ -198,48 +196,48 @@ pub fn handle_deposit_liquidity(
     // decimal-mismatch bugs (and is the modern recommended path).
     token_interface::transfer_checked(
         CpiContext::new(
-            context.accounts.token_program.key(),
+            context.accounts.token_program.address(),
             TransferChecked {
-                from: context.accounts.token_a.to_account_info(),
-                mint: context.accounts.mint_a.to_account_info(),
-                to: context.accounts.pool_a.to_account_info(),
-                authority: context.accounts.depositor.to_account_info(),
+                from: context.accounts.token_a.to_cpi_handle_mut(),
+                mint: context.accounts.mint_a.to_cpi_handle(),
+                to: context.accounts.pool_a.to_cpi_handle_mut(),
+                authority: context.accounts.depositor.cpi_handle(),
             },
         ),
         amount_a,
-        context.accounts.mint_a.decimals,
+        context.accounts.mint_a.decimals(),
     )?;
     token_interface::transfer_checked(
         CpiContext::new(
-            context.accounts.token_program.key(),
+            context.accounts.token_program.address(),
             TransferChecked {
-                from: context.accounts.token_b.to_account_info(),
-                mint: context.accounts.mint_b.to_account_info(),
-                to: context.accounts.pool_b.to_account_info(),
-                authority: context.accounts.depositor.to_account_info(),
+                from: context.accounts.token_b.to_cpi_handle_mut(),
+                mint: context.accounts.mint_b.to_cpi_handle(),
+                to: context.accounts.pool_b.to_cpi_handle_mut(),
+                authority: context.accounts.depositor.cpi_handle(),
             },
         ),
         amount_b,
-        context.accounts.mint_b.decimals,
+        context.accounts.mint_b.decimals(),
     )?;
 
     // Mint the liquidity to user
     let authority_bump = context.bumps.pool_authority;
     let authority_seeds = &[
         &context.accounts.pool_config.config.to_bytes(),
-        &context.accounts.mint_a.key().to_bytes(),
-        &context.accounts.mint_b.key().to_bytes(),
+        &context.accounts.mint_a.address().to_bytes(),
+        &context.accounts.mint_b.address().to_bytes(),
         AUTHORITY_SEED,
         &[authority_bump],
     ];
     let signer_seeds = &[&authority_seeds[..]];
     token_interface::mint_to(
         CpiContext::new_with_signer(
-            context.accounts.token_program.key(),
+            context.accounts.token_program.address(),
             MintTo {
-                mint: context.accounts.liquidity_provider_mint.to_account_info(),
-                to: context.accounts.liquidity_provider_token.to_account_info(),
-                authority: context.accounts.pool_authority.to_account_info(),
+                mint: context.accounts.liquidity_provider_mint.to_cpi_handle_mut(),
+                to: context.accounts.liquidity_provider_token.to_cpi_handle_mut(),
+                authority: context.accounts.pool_authority.cpi_handle(),
             },
             signer_seeds,
         ),
@@ -250,49 +248,49 @@ pub fn handle_deposit_liquidity(
 }
 
 #[derive(Accounts)]
-pub struct DepositLiquidityAccountConstraints<'info> {
+pub struct DepositLiquidityAccountConstraints {
     #[account(
         seeds = [
             pool_config.config.as_ref(),
-            pool_config.mint_a.key().as_ref(),
-            pool_config.mint_b.key().as_ref(),
+            pool_config.mint_a.as_ref(),
+            pool_config.mint_b.as_ref(),
         ],
         bump,
-        has_one = mint_a,
-        has_one = mint_b,
     )]
-    pub pool_config: Box<Account<'info, PoolConfig>>,
+    pub pool_config: Box<BorshAccount<PoolConfig>>,
 
     /// CHECK: Read only authority
     #[account(
         seeds = [
             pool_config.config.as_ref(),
-            mint_a.key().as_ref(),
-            mint_b.key().as_ref(),
+            mint_a.address().as_ref(),
+            mint_b.address().as_ref(),
             AUTHORITY_SEED,
         ],
         bump,
     )]
-    pub pool_authority: UncheckedAccount<'info>,
+    pub pool_authority: UncheckedAccount,
 
     /// The account paying for all rents
-    pub depositor: Signer<'info>,
+    pub depositor: Signer,
 
     #[account(
         mut,
         seeds = [
             pool_config.config.as_ref(),
-            mint_a.key().as_ref(),
-            mint_b.key().as_ref(),
+            mint_a.address().as_ref(),
+            mint_b.address().as_ref(),
             LIQUIDITY_SEED,
         ],
         bump,
     )]
-    pub liquidity_provider_mint: Box<InterfaceAccount<'info, Mint>>,
+    pub liquidity_provider_mint: Box<InterfaceAccount<Mint>>,
 
-    pub mint_a: Box<InterfaceAccount<'info, Mint>>,
+    #[account(address = pool_config.mint_a)]
+    pub mint_a: Box<InterfaceAccount<Mint>>,
 
-    pub mint_b: Box<InterfaceAccount<'info, Mint>>,
+    #[account(address = pool_config.mint_b)]
+    pub mint_b: Box<InterfaceAccount<Mint>>,
 
     #[account(
         mut,
@@ -300,7 +298,7 @@ pub struct DepositLiquidityAccountConstraints<'info> {
         associated_token::authority = pool_authority,
         associated_token::token_program = token_program,
     )]
-    pub pool_a: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub pool_a: Box<InterfaceAccount<TokenAccount>>,
 
     #[account(
         mut,
@@ -308,7 +306,7 @@ pub struct DepositLiquidityAccountConstraints<'info> {
         associated_token::authority = pool_authority,
         associated_token::token_program = token_program,
     )]
-    pub pool_b: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub pool_b: Box<InterfaceAccount<TokenAccount>>,
 
     #[account(
         init_if_needed,
@@ -317,7 +315,7 @@ pub struct DepositLiquidityAccountConstraints<'info> {
         associated_token::authority = depositor,
         associated_token::token_program = token_program,
     )]
-    pub liquidity_provider_token: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub liquidity_provider_token: Box<InterfaceAccount<TokenAccount>>,
 
     #[account(
         mut,
@@ -325,7 +323,7 @@ pub struct DepositLiquidityAccountConstraints<'info> {
         associated_token::authority = depositor,
         associated_token::token_program = token_program,
     )]
-    pub token_a: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub token_a: Box<InterfaceAccount<TokenAccount>>,
 
     #[account(
         mut,
@@ -333,14 +331,14 @@ pub struct DepositLiquidityAccountConstraints<'info> {
         associated_token::authority = depositor,
         associated_token::token_program = token_program,
     )]
-    pub token_b: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub token_b: Box<InterfaceAccount<TokenAccount>>,
 
     /// The account paying for all rents
     #[account(mut)]
-    pub payer: Signer<'info>,
+    pub payer: Signer,
 
     /// Solana ecosystem accounts
-    pub token_program: Interface<'info, TokenInterface>,
-    pub associated_token_program: Program<'info, AssociatedToken>,
-    pub system_program: Program<'info, System>,
+    pub token_program: Interface<'static, TokenInterface>,
+    pub associated_token_program: Program<AssociatedToken>,
+    pub system_program: Program<System>,
 }

@@ -18,7 +18,7 @@ use crate::state::{Direction, Market};
 /// you — a curve AMM's reserves are its pricing input, a prop AMM's inventory
 /// is just its ammunition.
 pub fn handle_swap(
-    context: Context<SwapAccountConstraints>,
+    context: &mut Context<SwapAccountConstraints>,
     direction: Direction,
     amount_in: u64,
     minimum_amount_out: u64,
@@ -98,12 +98,12 @@ pub fn handle_swap(
 
     let (vault_out_balance, out_mint_decimals) = match direction {
         Direction::BuyBase => (
-            context.accounts.base_vault.amount,
-            context.accounts.base_mint.decimals,
+            context.accounts.base_vault.amount(),
+            context.accounts.base_mint.decimals(),
         ),
         Direction::SellBase => (
-            context.accounts.quote_vault.amount,
-            context.accounts.quote_mint.decimals,
+            context.accounts.quote_vault.amount(),
+            context.accounts.quote_mint.decimals(),
         ),
     };
     require!(
@@ -111,7 +111,7 @@ pub fn handle_swap(
         PropAmmError::InsufficientInventory
     );
 
-    let market_key = market.key();
+    let market_key = market.address();
     let authority_seeds: &[&[u8]] = &[
         AUTHORITY_SEED,
         market_key.as_ref(),
@@ -123,25 +123,25 @@ pub fn handle_swap(
         Direction::BuyBase => {
             transfer_checked(
                 CpiContext::new(
-                    context.accounts.token_program.key(),
+                    context.accounts.token_program.address(),
                     TransferChecked {
-                        from: context.accounts.trader_quote.to_account_info(),
-                        mint: context.accounts.quote_mint.to_account_info(),
-                        to: context.accounts.quote_vault.to_account_info(),
-                        authority: context.accounts.trader.to_account_info(),
+                        from: context.accounts.trader_quote.to_cpi_handle_mut(),
+                        mint: context.accounts.quote_mint.to_cpi_handle(),
+                        to: context.accounts.quote_vault.to_cpi_handle_mut(),
+                        authority: context.accounts.trader.cpi_handle(),
                     },
                 ),
                 amount_in,
-                context.accounts.quote_mint.decimals,
+                context.accounts.quote_mint.decimals(),
             )?;
             transfer_checked(
                 CpiContext::new_with_signer(
-                    context.accounts.token_program.key(),
+                    context.accounts.token_program.address(),
                     TransferChecked {
-                        from: context.accounts.base_vault.to_account_info(),
-                        mint: context.accounts.base_mint.to_account_info(),
-                        to: context.accounts.trader_base.to_account_info(),
-                        authority: context.accounts.market_authority.to_account_info(),
+                        from: context.accounts.base_vault.to_cpi_handle_mut(),
+                        mint: context.accounts.base_mint.to_cpi_handle(),
+                        to: context.accounts.trader_base.to_cpi_handle_mut(),
+                        authority: context.accounts.market_authority.cpi_handle(),
                     },
                     &[authority_seeds],
                 ),
@@ -152,25 +152,25 @@ pub fn handle_swap(
         Direction::SellBase => {
             transfer_checked(
                 CpiContext::new(
-                    context.accounts.token_program.key(),
+                    context.accounts.token_program.address(),
                     TransferChecked {
-                        from: context.accounts.trader_base.to_account_info(),
-                        mint: context.accounts.base_mint.to_account_info(),
-                        to: context.accounts.base_vault.to_account_info(),
-                        authority: context.accounts.trader.to_account_info(),
+                        from: context.accounts.trader_base.to_cpi_handle_mut(),
+                        mint: context.accounts.base_mint.to_cpi_handle(),
+                        to: context.accounts.base_vault.to_cpi_handle_mut(),
+                        authority: context.accounts.trader.cpi_handle(),
                     },
                 ),
                 amount_in,
-                context.accounts.base_mint.decimals,
+                context.accounts.base_mint.decimals(),
             )?;
             transfer_checked(
                 CpiContext::new_with_signer(
-                    context.accounts.token_program.key(),
+                    context.accounts.token_program.address(),
                     TransferChecked {
-                        from: context.accounts.quote_vault.to_account_info(),
-                        mint: context.accounts.quote_mint.to_account_info(),
-                        to: context.accounts.trader_quote.to_account_info(),
-                        authority: context.accounts.market_authority.to_account_info(),
+                        from: context.accounts.quote_vault.to_cpi_handle_mut(),
+                        mint: context.accounts.quote_mint.to_cpi_handle(),
+                        to: context.accounts.trader_quote.to_cpi_handle_mut(),
+                        authority: context.accounts.market_authority.cpi_handle(),
                     },
                     &[authority_seeds],
                 ),
@@ -184,48 +184,48 @@ pub fn handle_swap(
 }
 
 #[derive(Accounts)]
-pub struct SwapAccountConstraints<'info> {
+pub struct SwapAccountConstraints {
     #[account(mut)]
-    pub trader: Signer<'info>,
+    pub trader: Signer,
 
     #[account(
         seeds = [MARKET_SEED, market.base_mint.as_ref(), market.quote_mint.as_ref()],
         bump = market.bump,
-        has_one = base_mint,
-        has_one = quote_mint,
-        has_one = oracle_feed,
-        has_one = base_vault,
-        has_one = quote_vault,
     )]
-    pub market: Box<Account<'info, Market>>,
+    pub market: Box<BorshAccount<Market>>,
 
     /// CHECK: PDA authority over both vaults; holds no data, only signs.
     #[account(
-        seeds = [AUTHORITY_SEED, market.key().as_ref()],
+        seeds = [AUTHORITY_SEED, market.address().as_ref()],
         bump = market.authority_bump,
     )]
-    pub market_authority: UncheckedAccount<'info>,
+    pub market_authority: UncheckedAccount,
 
-    /// CHECK: validated by the `has_one = oracle_feed` constraint on the market.
-    pub oracle_feed: UncheckedAccount<'info>,
+    /// CHECK: validated by the `address = market.oracle_feed` constraint below.
+    #[account(address = market.oracle_feed)]
+    pub oracle_feed: UncheckedAccount,
 
-    pub base_mint: Box<InterfaceAccount<'info, Mint>>,
+    #[account(address = market.base_mint)]
+    pub base_mint: Box<InterfaceAccount<Mint>>,
 
-    pub quote_mint: Box<InterfaceAccount<'info, Mint>>,
-
-    #[account(
-        mut,
-        seeds = [BASE_VAULT_SEED, market.key().as_ref()],
-        bump,
-    )]
-    pub base_vault: Box<InterfaceAccount<'info, TokenAccount>>,
+    #[account(address = market.quote_mint)]
+    pub quote_mint: Box<InterfaceAccount<Mint>>,
 
     #[account(
         mut,
-        seeds = [QUOTE_VAULT_SEED, market.key().as_ref()],
+        seeds = [BASE_VAULT_SEED, market.address().as_ref()],
         bump,
+        address = market.base_vault,
     )]
-    pub quote_vault: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub base_vault: Box<InterfaceAccount<TokenAccount>>,
+
+    #[account(
+        mut,
+        seeds = [QUOTE_VAULT_SEED, market.address().as_ref()],
+        bump,
+        address = market.quote_vault,
+    )]
+    pub quote_vault: Box<InterfaceAccount<TokenAccount>>,
 
     #[account(
         init_if_needed,
@@ -234,7 +234,7 @@ pub struct SwapAccountConstraints<'info> {
         associated_token::authority = trader,
         associated_token::token_program = token_program,
     )]
-    pub trader_base: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub trader_base: Box<InterfaceAccount<TokenAccount>>,
 
     #[account(
         init_if_needed,
@@ -243,9 +243,9 @@ pub struct SwapAccountConstraints<'info> {
         associated_token::authority = trader,
         associated_token::token_program = token_program,
     )]
-    pub trader_quote: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub trader_quote: Box<InterfaceAccount<TokenAccount>>,
 
-    pub token_program: Interface<'info, TokenInterface>,
-    pub associated_token_program: Program<'info, AssociatedToken>,
-    pub system_program: Program<'info, System>,
+    pub token_program: Interface<'static, TokenInterface>,
+    pub associated_token_program: Program<AssociatedToken>,
+    pub system_program: Program<System>,
 }

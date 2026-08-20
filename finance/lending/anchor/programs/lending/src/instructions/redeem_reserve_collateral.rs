@@ -12,7 +12,7 @@ use crate::state::{reserve_signer_seeds, Reserve};
 /// keeps any rounding dust. Capped by the reserve's available (un-borrowed)
 /// liquidity.
 pub fn handle_redeem_reserve_collateral(
-    context: Context<RedeemReserveCollateral>,
+    context: &mut Context<RedeemReserveCollateral>,
     share_amount: u64,
 ) -> Result<()> {
     require!(share_amount > 0, LendingError::ZeroAmount);
@@ -26,7 +26,8 @@ pub fn handle_redeem_reserve_collateral(
         reserve.total_liquidity()?,
         share_supply,
     )?;
-    let liquidity_amount = u64::try_from(liquidity_amount).map_err(|_| LendingError::MathOverflow)?;
+    let liquidity_amount =
+        u64::try_from(liquidity_amount).map_err(|_| LendingError::MathOverflow)?;
     require!(
         liquidity_amount <= reserve.available_liquidity,
         LendingError::InsufficientReserveLiquidity
@@ -43,61 +44,67 @@ pub fn handle_redeem_reserve_collateral(
 
     burn(
         CpiContext::new(
-            context.accounts.token_program.key(),
+            context.accounts.token_program.address(),
             Burn {
-                mint: context.accounts.share_mint.to_account_info(),
-                from: context.accounts.user_share.to_account_info(),
-                authority: context.accounts.owner.to_account_info(),
+                mint: context.accounts.share_mint.cpi_handle_mut(),
+                from: context.accounts.user_share.cpi_handle_mut(),
+                authority: context.accounts.owner.cpi_handle(),
             },
         ),
         share_amount,
     )?;
 
+    // Copy the seed inputs out: `release_borrow` below needs `&mut reserve`.
     let bump = [reserve.bump];
-    let seeds = reserve_signer_seeds(&reserve.lending_market, &reserve.liquidity_mint, &bump);
+    let lending_market = reserve.lending_market;
+    let liquidity_mint = reserve.liquidity_mint;
+    let decimals = reserve.liquidity_decimals;
+    let seeds = reserve_signer_seeds(&lending_market, &liquidity_mint, &bump);
+    // `reserve` signs this CPI. It is a data account holding a live borrow on
+    // its buffer, which the runtime would reject when the CPI borrows the same
+    // account, so hand the borrow back across the call. `release_borrow`
+    // flushes the pending writes, and `reacquire_borrow_mut` re-reads them.
+    context.accounts.reserve.release_borrow()?;
     transfer_checked(
         CpiContext::new_with_signer(
-            context.accounts.token_program.key(),
+            context.accounts.token_program.address(),
             TransferChecked {
-                from: context.accounts.liquidity_vault.to_account_info(),
-                mint: context.accounts.liquidity_mint.to_account_info(),
-                to: context.accounts.user_liquidity.to_account_info(),
-                authority: reserve.to_account_info(),
+                from: context.accounts.liquidity_vault.cpi_handle_mut(),
+                mint: context.accounts.liquidity_mint.cpi_handle(),
+                to: context.accounts.user_liquidity.cpi_handle_mut(),
+                authority: context.accounts.reserve.cpi_handle(),
             },
             &[&seeds],
         ),
         liquidity_amount,
-        reserve.liquidity_decimals,
+        decimals,
     )?;
+    context.accounts.reserve.reacquire_borrow_mut()?;
 
     Ok(())
 }
 
 #[derive(Accounts)]
-pub struct RedeemReserveCollateral<'info> {
-    #[account(
-        mut,
-        has_one = liquidity_mint,
-        has_one = liquidity_vault,
-        has_one = share_mint,
-    )]
-    pub reserve: Account<'info, Reserve>,
+pub struct RedeemReserveCollateral {
+    #[account(mut)]
+    pub reserve: BorshAccount<Reserve>,
 
-    pub liquidity_mint: InterfaceAccount<'info, Mint>,
+    #[account(address = reserve.liquidity_mint)]
+    pub liquidity_mint: InterfaceAccount<Mint>,
+
+    #[account(mut, address = reserve.liquidity_vault)]
+    pub liquidity_vault: InterfaceAccount<TokenAccount>,
+
+    #[account(mut, address = reserve.share_mint)]
+    pub share_mint: InterfaceAccount<Mint>,
 
     #[account(mut)]
-    pub liquidity_vault: InterfaceAccount<'info, TokenAccount>,
+    pub user_liquidity: InterfaceAccount<TokenAccount>,
 
     #[account(mut)]
-    pub share_mint: InterfaceAccount<'info, Mint>,
+    pub user_share: InterfaceAccount<TokenAccount>,
 
-    #[account(mut)]
-    pub user_liquidity: InterfaceAccount<'info, TokenAccount>,
+    pub owner: Signer,
 
-    #[account(mut)]
-    pub user_share: InterfaceAccount<'info, TokenAccount>,
-
-    pub owner: Signer<'info>,
-
-    pub token_program: Interface<'info, TokenInterface>,
+    pub token_program: Interface<'static, TokenInterface>,
 }

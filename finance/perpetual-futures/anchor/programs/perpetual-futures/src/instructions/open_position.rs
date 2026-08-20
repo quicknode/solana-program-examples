@@ -10,7 +10,7 @@ use crate::instructions::shared::{basis_points_of, refresh_price_and_funding, sc
 use crate::state::{Pool, Position, Side};
 
 pub fn handle_open_position(
-    context: Context<OpenPositionAccountConstraints>,
+    context: &mut Context<OpenPositionAccountConstraints>,
     side: Side,
     collateral_amount: u64,
     size: u64,
@@ -66,8 +66,8 @@ pub fn handle_open_position(
     // Effects: record the position and the pool's new aggregates before moving
     // any tokens.
     let position = &mut context.accounts.position;
-    position.owner = context.accounts.owner.key();
-    position.pool = pool.key();
+    position.owner = *context.accounts.owner.address();
+    position.pool = *pool.address();
     position.side = side;
     position.collateral = net_collateral;
     position.size = size;
@@ -110,16 +110,16 @@ pub fn handle_open_position(
 
     transfer_checked(
         CpiContext::new(
-            context.accounts.token_program.key(),
+            context.accounts.token_program.address(),
             TransferChecked {
-                from: context.accounts.trader_collateral.to_account_info(),
-                mint: context.accounts.collateral_mint.to_account_info(),
-                to: context.accounts.custody_vault.to_account_info(),
-                authority: context.accounts.owner.to_account_info(),
+                from: context.accounts.trader_collateral.to_cpi_handle_mut(),
+                mint: context.accounts.collateral_mint.to_cpi_handle(),
+                to: context.accounts.custody_vault.to_cpi_handle_mut(),
+                authority: context.accounts.owner.cpi_handle(),
             },
         ),
         collateral_amount,
-        context.accounts.collateral_mint.decimals,
+        context.accounts.collateral_mint.decimals(),
     )?;
 
     Ok(())
@@ -127,40 +127,40 @@ pub fn handle_open_position(
 
 #[derive(Accounts)]
 #[instruction(side: Side)]
-pub struct OpenPositionAccountConstraints<'info> {
+pub struct OpenPositionAccountConstraints {
     #[account(mut)]
-    pub owner: Signer<'info>,
+    pub owner: Signer,
 
     #[account(
         mut,
         seeds = [POOL_SEED, pool.collateral_mint.as_ref(), pool.oracle_feed.as_ref()],
         bump = pool.bump,
-        has_one = collateral_mint,
-        has_one = custody_vault,
-        has_one = oracle_feed,
     )]
-    pub pool: Box<Account<'info, Pool>>,
+    pub pool: Box<BorshAccount<Pool>>,
 
     #[account(
         init,
         payer = owner,
         space = Position::DISCRIMINATOR.len() + Position::INIT_SPACE,
-        seeds = [POSITION_SEED, pool.key().as_ref(), owner.key().as_ref(), side.as_seed()],
+        seeds = [POSITION_SEED, pool.address().as_ref(), owner.address().as_ref(), side.as_seed()],
         bump,
     )]
-    pub position: Box<Account<'info, Position>>,
+    pub position: Box<BorshAccount<Position>>,
 
-    /// CHECK: validated by the `has_one = oracle_feed` constraint on the pool.
-    pub oracle_feed: UncheckedAccount<'info>,
+    /// CHECK: validated by the `address = pool.oracle_feed` constraint below.
+    #[account(address = pool.oracle_feed)]
+    pub oracle_feed: UncheckedAccount,
 
-    pub collateral_mint: Box<InterfaceAccount<'info, Mint>>,
+    #[account(address = pool.collateral_mint)]
+    pub collateral_mint: Box<InterfaceAccount<Mint>>,
 
     #[account(
         mut,
-        seeds = [VAULT_SEED, pool.key().as_ref()],
+        seeds = [VAULT_SEED, pool.address().as_ref()],
         bump,
+        address = pool.custody_vault,
     )]
-    pub custody_vault: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub custody_vault: Box<InterfaceAccount<TokenAccount>>,
 
     #[account(
         mut,
@@ -168,9 +168,9 @@ pub struct OpenPositionAccountConstraints<'info> {
         associated_token::authority = owner,
         associated_token::token_program = token_program,
     )]
-    pub trader_collateral: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub trader_collateral: Box<InterfaceAccount<TokenAccount>>,
 
-    pub token_program: Interface<'info, TokenInterface>,
-    pub associated_token_program: Program<'info, AssociatedToken>,
-    pub system_program: Program<'info, System>,
+    pub token_program: Interface<'static, TokenInterface>,
+    pub associated_token_program: Program<AssociatedToken>,
+    pub system_program: Program<System>,
 }

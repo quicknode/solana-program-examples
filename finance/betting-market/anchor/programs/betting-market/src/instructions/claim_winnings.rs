@@ -1,42 +1,48 @@
 use anchor_lang::prelude::*;
+
+use crate::state::Event;
+use anchor_spl::mint;
 use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
 
-use crate::{error::BettingError, Bet, Event, EventStatus, User};
+use crate::{error::BettingError, Bet, EventStatus, User};
 
 use super::transfer_tokens_from_vault;
 
 #[derive(Accounts)]
-pub struct ClaimWinningsAccountConstraints<'info> {
-    #[account(mut)]
-    pub bettor: Signer<'info>,
+pub struct ClaimWinningsAccountConstraints {
+    #[account(mut, address = bet.bettor)]
+    pub bettor: Signer,
 
     #[account(mint::token_program = token_program)]
-    pub token_mint: InterfaceAccount<'info, Mint>,
+    pub token_mint: InterfaceAccount<Mint>,
 
+    // `mut` so the borrow released for the vault CPI below can be reacquired:
+    // v2 has no read-only reacquire, and the derive dereferences `event` again
+    // when it checks the constraints that name it.
     #[account(
-        seeds = [b"event", event.event_id.to_le_bytes().as_ref()],
+        mut,
+        seeds = [b"event", event.event_id.to_le_bytes()],
         bump = event.bump,
+        address = bet.event,
     )]
-    pub event: Account<'info, Event>,
+    pub event: BorshAccount<Event>,
 
     // Closing the Bet ends the position: the rent goes back to the bettor and
     // a second claim fails because the account no longer exists.
     #[account(
         mut,
         close = bettor,
-        has_one = bettor,
-        has_one = event,
-        seeds = [b"bet", bet.outcome.as_ref(), bettor.key().as_ref()],
+        seeds = [b"bet", bet.outcome.as_ref(), bettor.address().as_ref()],
         bump = bet.bump,
     )]
-    pub bet: Account<'info, Bet>,
+    pub bet: BorshAccount<Bet>,
 
     #[account(
         mut,
-        seeds = [b"user", bettor.key().as_ref()],
+        seeds = [b"user", bettor.address().as_ref()],
         bump = user.bump,
     )]
-    pub user: Account<'info, User>,
+    pub user: BorshAccount<User>,
 
     #[account(
         mut,
@@ -44,7 +50,7 @@ pub struct ClaimWinningsAccountConstraints<'info> {
         associated_token::authority = bettor,
         associated_token::token_program = token_program,
     )]
-    pub bettor_token_account: InterfaceAccount<'info, TokenAccount>,
+    pub bettor_token_account: InterfaceAccount<TokenAccount>,
 
     #[account(
         mut,
@@ -52,12 +58,12 @@ pub struct ClaimWinningsAccountConstraints<'info> {
         associated_token::authority = event,
         associated_token::token_program = token_program,
     )]
-    pub vault: InterfaceAccount<'info, TokenAccount>,
+    pub vault: InterfaceAccount<TokenAccount>,
 
-    pub token_program: Interface<'info, TokenInterface>,
+    pub token_program: Interface<'static, TokenInterface>,
 }
 
-pub fn handle_claim_winnings(context: Context<ClaimWinningsAccountConstraints>) -> Result<()> {
+pub fn handle_claim_winnings(context: &mut Context<ClaimWinningsAccountConstraints>) -> Result<()> {
     require!(
         context.accounts.event.status == EventStatus::Settled,
         BettingError::EventNotSettled
@@ -93,21 +99,29 @@ pub fn handle_claim_winnings(context: Context<ClaimWinningsAccountConstraints>) 
     // The position is over, so drop the Bet from the bettor's index before the
     // transfer (effects before interactions); the Bet account itself closes
     // when the instruction finishes.
-    let bet_key = context.accounts.bet.key();
+    let bet_key = context.accounts.bet.address();
     context.accounts.user.remove_bet(&bet_key)?;
 
     let event_id = context.accounts.event.event_id;
     let event_bump = context.accounts.event.bump;
+    // `event` signs the transfer below. Release its borrow across
+    // the CPI: the runtime rejects a CPI that borrows an account we hold.
+    context.accounts.event.release_borrow()?;
+    let event_view = *context.accounts.event.account();
+
     transfer_tokens_from_vault(
-        &context.accounts.vault,
-        &context.accounts.bettor_token_account,
+        &mut context.accounts.vault,
+        &mut context.accounts.bettor_token_account,
         payout,
         &context.accounts.token_mint,
-        &context.accounts.event.to_account_info(),
+        event_view,
         &context.accounts.token_program,
         event_id,
         event_bump,
     )?;
+
+    // Take the borrow back before the derive's exit path touches `event` again.
+    context.accounts.event.reacquire_borrow_mut()?;
 
     Ok(())
 }

@@ -5,23 +5,23 @@ use std::{
 
 use anchor_lang::prelude::*;
 
-#[account]
+#[account(borsh)]
 #[derive(InitSpace)]
 pub struct ABWallet {
-    pub wallet: Pubkey,
+    pub wallet: Address,
     pub allowed: bool,
     /// Canonical bump for this PDA.
     pub bump: u8,
 }
 
-#[account]
+#[account(borsh)]
 #[derive(InitSpace)]
 pub struct Config {
-    pub authority: Pubkey,
+    pub authority: Address,
     pub bump: u8,
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize, PartialEq)]
+#[derive(PartialEq, IdlType, wincode::SchemaRead, wincode::SchemaWrite)]
 pub enum Mode {
     Allow,
     Block,

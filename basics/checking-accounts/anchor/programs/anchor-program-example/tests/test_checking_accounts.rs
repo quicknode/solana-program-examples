@@ -1,7 +1,7 @@
 use {
     anchor_lang::{
-        solana_program::{instruction::Instruction, system_instruction, system_program},
-        InstructionData, ToAccountMetas,
+        solana_program::{instruction::Instruction, system_instruction},
+        system_program, InstructionData, ToAccountMetas,
     },
     litesvm::LiteSVM,
     solana_keypair::Keypair,
@@ -47,7 +47,7 @@ fn test_check_accounts() {
             payer: payer.pubkey(),
             account_to_create: account_to_create.pubkey(),
             account_to_change: account_to_change.pubkey(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );

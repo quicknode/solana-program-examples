@@ -1,7 +1,7 @@
 use {
     anchor_lang::{
-        solana_program::{instruction::Instruction, rent::Rent, system_program},
-        InstructionData, ToAccountMetas,
+        solana_program::{instruction::Instruction, rent::Rent},
+        system_program, InstructionData, ToAccountMetas,
     },
     litesvm::LiteSVM,
     solana_keypair::Keypair,
@@ -25,7 +25,7 @@ fn test_create_the_account() {
         create_system_account::accounts::CreateSystemAccountAccountConstraints {
             payer: payer.pubkey(),
             new_account: new_account.pubkey(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );

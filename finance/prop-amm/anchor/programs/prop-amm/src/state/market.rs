@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 
 /// Which side of the quote a swap takes.
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, IdlType, wincode::SchemaRead, wincode::SchemaWrite)]
 pub enum Direction {
     /// Spend the quote token, receive the base token, priced at the ask
     /// (oracle plus spread).
@@ -19,25 +19,25 @@ pub enum Direction {
 /// on. The price comes from the oracle; the vault balances only bound how much
 /// of a fill is possible. And because nobody but the operator has a claim on
 /// the vaults, the token balances themselves are the complete accounting.
-#[account]
+#[account(borsh)]
 #[derive(InitSpace)]
 pub struct Market {
     /// The market-making firm. Deposits and withdraws inventory, sets the
     /// spread, pauses quoting. Cannot touch anyone else's funds, because the
     /// market never holds anyone else's funds.
-    pub operator: Pubkey,
+    pub operator: Address,
 
-    pub base_mint: Pubkey,
+    pub base_mint: Address,
 
-    pub quote_mint: Pubkey,
+    pub quote_mint: Address,
 
     /// Oracle feed this market quotes from. Stored so handlers can reject any
     /// substituted feed account.
-    pub oracle_feed: Pubkey,
+    pub oracle_feed: Address,
 
-    pub base_vault: Pubkey,
+    pub base_vault: Address,
 
-    pub quote_vault: Pubkey,
+    pub quote_vault: Address,
 
     /// Decimal places the oracle price is quoted in. Pinned at creation so a
     /// feed that silently changes scale is rejected rather than mis-read.

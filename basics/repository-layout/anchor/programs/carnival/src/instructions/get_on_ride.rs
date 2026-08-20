@@ -50,5 +50,5 @@ pub fn get_on_ride(ix: GetOnRideInstructionData) -> Result<()> {
         }
     }
 
-    Err(ProgramError::InvalidInstructionData.into())
+    Err(ProgramError::InvalidInstructionData)
 }

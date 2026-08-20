@@ -1,6 +1,8 @@
 use anchor_lang::prelude::*;
 
-#[account]
+// `borsh` because the struct holds `String`s: v2's default `#[account]` backing
+// is zero-copy and needs a `Pod` (fixed-layout) type.
+#[account(borsh)]
 #[derive(InitSpace)] // automatically calculate the space required for the struct
 pub struct AddressInfo {
     #[max_len(50)] // set a max length for the string

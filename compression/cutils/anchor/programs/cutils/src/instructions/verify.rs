@@ -4,20 +4,20 @@ use anchor_lang::solana_program::instruction::{AccountMeta, Instruction};
 
 #[derive(Accounts)]
 #[instruction(params: VerifyParams)]
-pub struct VerifyAccountConstraints<'info> {
-    pub leaf_owner: Signer<'info>,
+pub struct VerifyAccountConstraints {
+    pub leaf_owner: Signer,
 
     /// CHECK: This account is neither written to nor read from.
-    pub leaf_delegate: UncheckedAccount<'info>,
+    pub leaf_delegate: UncheckedAccount,
 
     /// CHECK: Read by the SPL Account Compression verify_leaf CPI, which
     /// validates the proof against this tree's stored root.
-    pub merkle_tree: UncheckedAccount<'info>,
+    pub merkle_tree: UncheckedAccount,
 
-    pub compression_program: Program<'info, SPLCompression>,
+    pub compression_program: Program<SPLCompression>,
 }
 
-#[derive(Clone, AnchorSerialize, AnchorDeserialize)]
+#[derive(Clone, IdlType, wincode::SchemaRead, wincode::SchemaWrite)]
 pub struct VerifyParams {
     root: [u8; 32],
     data_hash: [u8; 32],
@@ -31,15 +31,20 @@ pub struct VerifyParams {
 /// at runtime burns compute for no benefit.
 const VERIFY_LEAF_DISCRIMINATOR: [u8; 8] = [124, 220, 22, 223, 104, 10, 250, 224];
 
-pub fn handle_verify<'info>(
-    context: Context<'info, VerifyAccountConstraints<'info>>,
+pub fn handle_verify(
+    context: &mut Context<VerifyAccountConstraints>,
     params: &VerifyParams,
 ) -> Result<()> {
-    let asset_id = get_asset_id(&context.accounts.merkle_tree.key(), params.nonce);
+    // `remaining_accounts()` walks the input cursor and hands back an owned
+    // vec, so take it once up front: the mutable borrow of `context` ends here
+    // and the proof accounts stay alive for the CPI below.
+    let proof_accounts = context.remaining_accounts()?;
+
+    let asset_id = get_asset_id(&context.accounts.merkle_tree.address(), params.nonce);
     let leaf_hash = leaf_schema_v1_hash(
         &asset_id,
-        &context.accounts.leaf_owner.key(),
-        &context.accounts.leaf_delegate.key(),
+        &context.accounts.leaf_owner.address(),
+        &context.accounts.leaf_delegate.address(),
         params.nonce,
         &params.data_hash,
         &params.creator_hash,
@@ -49,11 +54,11 @@ pub fn handle_verify<'info>(
     // depends on solana-program 2.x which is incompatible with Anchor 1.0's solana 3.x
     // types. Once a compatible version is available, replace this with the CPI wrapper.
     let mut accounts = vec![AccountMeta::new_readonly(
-        context.accounts.merkle_tree.key(),
+        *context.accounts.merkle_tree.address(),
         false,
     )];
-    for acc in context.remaining_accounts.iter() {
-        accounts.push(AccountMeta::new_readonly(acc.key(), false));
+    for acc in proof_accounts.iter() {
+        accounts.push(AccountMeta::new_readonly(*acc.address(), false));
     }
 
     let mut data = VERIFY_LEAF_DISCRIMINATOR.to_vec();
@@ -61,14 +66,16 @@ pub fn handle_verify<'info>(
     data.extend_from_slice(&leaf_hash);
     data.extend_from_slice(&params.index.to_le_bytes());
 
-    let mut account_infos = vec![context.accounts.merkle_tree.to_account_info()];
-    for acc in context.remaining_accounts.iter() {
-        account_infos.push(acc.to_account_info());
+    // `verify_leaf` only reads, so every handle is readonly; the proof nodes
+    // arrive as bare `AccountView`s and are wrapped directly.
+    let mut account_infos = vec![context.accounts.merkle_tree.cpi_handle()];
+    for acc in proof_accounts.iter() {
+        account_infos.push(CpiHandle::readonly(acc));
     }
 
     anchor_lang::solana_program::program::invoke(
         &Instruction {
-            program_id: context.accounts.compression_program.key(),
+            program_id: *context.accounts.compression_program.address(),
             accounts,
             data,
         },

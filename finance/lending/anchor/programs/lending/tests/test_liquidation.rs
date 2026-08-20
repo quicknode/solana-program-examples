@@ -1,5 +1,7 @@
 mod common;
 
+use lending::errors::LendingError;
+
 use common::{ata, cents, default_config, dollars, Env, ReserveHandle};
 use solana_keypair::Keypair;
 use solana_signer::Signer;
@@ -11,7 +13,7 @@ fn setup() -> (
     ReserveHandle,
     ReserveHandle,
     Keypair,
-    anchor_lang::prelude::Pubkey,
+    solana_pubkey::Pubkey,
     Keypair,
 ) {
     let mut env = Env::new();
@@ -28,8 +30,15 @@ fn setup() -> (
     env.supply(&borrower, &collateral, 1_000_000_000);
     let obligation = env.initialize_obligation(&borrower);
     env.post_collateral(&borrower, obligation, &collateral, 1_000_000_000);
-    env.try_borrow(&borrower, obligation, &[&collateral], &[], &borrow, 700_000_000)
-        .unwrap();
+    env.try_borrow(
+        &borrower,
+        obligation,
+        &[&collateral],
+        &[],
+        &borrow,
+        700_000_000,
+    )
+    .unwrap();
 
     let liquidator = env.create_user();
     env.fund(&liquidator, borrow.mint, 1_000_000_000);
@@ -49,7 +58,7 @@ fn healthy_obligation_cannot_be_liquidated() {
         &collateral,
         100_000_000,
     );
-    assert!(result.unwrap_err().contains("ObligationHealthy"));
+    common::assert_program_error!(result, LendingError::ObligationHealthy);
 }
 
 #[test]
@@ -96,7 +105,10 @@ fn unhealthy_obligation_liquidated_with_bonus_capped_by_close_factor() {
 
     // The borrower's debt and collateral both dropped.
     let obligation_state = env.obligation(obligation);
-    assert_eq!(obligation_state.deposits[0].deposited_shares, 1_000_000_000 - 459_375_000);
+    assert_eq!(
+        obligation_state.deposits[0].deposited_shares,
+        1_000_000_000 - 459_375_000
+    );
 }
 
 /// A repayment whose seizure would exceed the posted collateral is rejected
@@ -120,7 +132,7 @@ fn over_seizing_liquidation_rejected_smaller_succeeds() {
         &collateral,
         350_000_000,
     );
-    assert!(over_seize.unwrap_err().contains("LiquidationTooLarge"));
+    common::assert_program_error!(over_seize, LendingError::LiquidationTooLarge);
 
     // Repaying $50 seizes $52.50 of collateral = 525 units at $0.10 — fits.
     env.try_liquidate(
@@ -134,5 +146,8 @@ fn over_seizing_liquidation_rejected_smaller_succeeds() {
     )
     .unwrap();
     let liquidator_collateral_account = ata(&liquidator.pubkey(), &collateral.share_mint);
-    assert_eq!(env.token_balance(liquidator_collateral_account), 525_000_000);
+    assert_eq!(
+        env.token_balance(liquidator_collateral_account),
+        525_000_000
+    );
 }

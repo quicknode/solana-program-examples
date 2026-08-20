@@ -10,7 +10,7 @@ pub mod token_minter {
     use super::*;
 
     pub fn create_token(
-        context: Context<CreateTokenAccountConstraints>,
+        context: &mut Context<CreateTokenAccountConstraints>,
         token_name: String,
         token_symbol: String,
         token_uri: String,
@@ -20,7 +20,7 @@ pub mod token_minter {
 
     /// Mint `amount` minor units of the token to the recipient.
     pub fn mint_token(
-        context: Context<MintTokenAccountConstraints>,
+        context: &mut Context<MintTokenAccountConstraints>,
         amount: u64,
     ) -> Result<()> {
         mint::handle_mint_token(context, amount)

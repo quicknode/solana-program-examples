@@ -4,6 +4,90 @@ All notable changes to this repository are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-08-16] - Every Anchor example on Anchor v2.0.0-rc.1
+
+All 55 Anchor examples build and pass their tests on 2.0.0-rc.1 (304 tests),
+and `cargo fmt --check` and `cargo clippy -- -D warnings` are clean.
+
+### Changed
+
+- The remaining 39 Anchor examples, all of `tokens/`, `finance/` and
+  `compression/`, now build against `anchor-lang` 2.0.0-rc.1, joining the
+  `basics/` examples ported below. `.github/workflows/anchor.yml` installs
+  2.0.0-rc.1, since `anchor build` under a v2 CLI will not build v1 programs.
+- `docs/anchor-v2-migration.md` collects every difference the port ran into,
+  ordered by how often it bites. The rules the compiler will not catch for you
+  are called out: borrows held across CPIs, `Box`'s missing `cpi_handle_mut`
+  forwarding, and hand-built read-only handles over a live data account.
+- `has_one` is deprecated in v2 and this repository's `rust.yml` runs
+  `cargo clippy -- -D warnings`, so every one of the 161 uses across 66 files
+  in the Anchor programs moves to the `address` constraint on the sibling field
+  it named. The Quasar crates keep `has_one`, which is still current there.
+- The seven `transfer-hook` examples supply their own entrypoint. v2's
+  `#[program(interface, ...)]` generates a CPI client and no dispatch, so the
+  program declared that way builds to a ~900-byte object with no `entrypoint`
+  crate has no entrypoint symbol, while an executable `#[program]` limits
+  byte, which the transfer-hook interface's eight-byte values cannot use. Each
+  crate now builds with `no-entrypoint`, so anchor exports its dispatch as
+  `__anchor_dispatch`, and `src/entrypoint.rs` maps the interface
+  discriminators onto handlers before delegating.
+- `tokens/pda-mint-authority` and `tokens/token-extensions/cpi-guard` build
+  their PDA by hand (`create_account` plus `initialize_mint2` /
+  `initialize_account3`). Both examples exist to show an account that is its own
+  authority, and a v2 SPL `init` constraint cannot name the account being
+  initialized.
+- `finance/order-book` keeps its ~180 KB zero-copy critbit book zero-copy: v2's
+  `Account<T>` derefs straight to `T`, so `load_init` / `load_mut` simply go
+  away rather than the state converting to borsh.
+- Tests that asserted on an Anchor error *name* now assert on the numeric custom
+  code (the `#[error_code]` discriminant plus the default 6000 offset). v2 does
+  not log variant names, so the old assertions could never match.
+
+### Removed
+
+- `tokens/token-extensions/nft-meta-data-pointer` no longer depends on
+  `session-keys`. That crate is Anchor v1 only: its `Session` derive requires
+  `Option<Account<'info, SessionToken>>`, and `SessionToken` is not `Pod`, so
+  v2's zero-copy `Account<T>` cannot hold it either. The program reads the
+  session-token account layout itself (`src/session.rs`), checking owner,
+  discriminator and PDA, and spells out the `#[session_auth_or]` fallback in the
+  handler, so the gasless-session lesson and its security warning both survive.
+
+## [2026-08-13] - Anchor examples in `basics/` move to Anchor v2.0.0-rc.1
+
+### Changed
+
+- Every Anchor example under `basics/` now builds against `anchor-lang`
+  2.0.0-rc.1. v2 is a ground-up rewrite rather than a version bump: the crate is
+  `no_std` and built on pinocchio, so handlers take `&mut Context<T>`, the
+  `<'info>` lifetime disappears from `#[derive(Accounts)]` structs and account
+  wrappers, `Pubkey` becomes `Address`, `.to_account_info()` becomes
+  `.cpi_handle_mut()` / `.cpi_handle()`, and `.key()` becomes `.address()`.
+- `#[account]` is now zero-copy and requires a `Pod` layout. State holding
+  `String` or `Vec` moves to `#[account(borsh)]` plus `BorshAccount<T>`
+  (`account-data`, `close-account`, `favorites`, `realloc`, `pyth`); state that
+  is already fixed-layout keeps the zero-copy default but must carry explicit
+  padding (`program-derived-addresses`) and cannot use `bool`
+  (`cross-program-invocation` uses `PodBool`).
+- Instruction data is wincode-encoded rather than borsh. The `#[program]` macro
+  expands to `wincode` paths, so every program crate takes a direct `wincode`
+  dependency. `BorshConfig` keeps the wire format byte-identical to borsh, so
+  the checked-in account layouts and the tests that decode them with borsh are
+  unaffected.
+- The only edit most LiteSVM tests needed: v2's `solana_program` compat shim has
+  no `system_program` submodule (the real module is at the crate root and
+  exposes `ID`, not `id()`) and no `pubkey::Pubkey` unless the `compat` feature
+  is on (`anchor_lang::Address` is the same 32-byte type).
+
+### Fixed
+
+- Anchor programs that put an `Address` in serialized state pin
+  `solana-address = ">=2.6, <2.7"`. anchor-lang 2.0.0-rc.1 is built against
+  wincode 0.5, but solana-address 2.7 moved to wincode 0.6; with both in the
+  graph, `Address`'s wincode impls belong to the version the `#[account(borsh)]`
+  derive is not using, and every `SchemaRead` / `SchemaWrite` bound fails. This
+  is the same class of split that the zeropod/quasar-lang pin below addresses.
+
 ## [2026-08-04] - Oracle readers reject prices from before a cluster restart
 
 ### Added

@@ -2,15 +2,15 @@ use anchor_lang::prelude::*;
 
 use crate::errors::ErrorCode;
 use crate::state::{
-    remaining_quantity, remove_open_order, Market, Order, OrderBook, OrderSide, OrderStatus,
-    MarketUser, ORDER_SEED, MARKET_USER_SEED,
+    remaining_quantity, remove_open_order, Market, MarketUser, Order, OrderBook, OrderSide,
+    OrderStatus, MARKET_USER_SEED, ORDER_SEED,
 };
 
-pub fn handle_cancel_order(context: Context<CancelOrderAccountConstraints>) -> Result<()> {
+pub fn handle_cancel_order(context: &mut Context<CancelOrderAccountConstraints>) -> Result<()> {
     let order = &mut context.accounts.order;
 
     require!(
-        order.owner == context.accounts.owner.key(),
+        order.owner == *context.accounts.owner.address(),
         ErrorCode::Unauthorized
     );
 
@@ -35,7 +35,7 @@ pub fn handle_cancel_order(context: Context<CancelOrderAccountConstraints>) -> R
                     .checked_mul(context.accounts.market.quote_lot_size as u128)
                     .ok_or(ErrorCode::NumericalOverflow)?
                     .try_into()
-                    .map_err(|_| error!(ErrorCode::NumericalOverflow))?;
+                    .map_err(|_| ErrorCode::NumericalOverflow)?;
                 market_user.unsettled_quote = market_user
                     .unsettled_quote
                     .checked_add(quote_amount)
@@ -46,7 +46,7 @@ pub fn handle_cancel_order(context: Context<CancelOrderAccountConstraints>) -> R
                     .checked_mul(context.accounts.market.base_lot_size as u128)
                     .ok_or(ErrorCode::NumericalOverflow)?
                     .try_into()
-                    .map_err(|_| error!(ErrorCode::NumericalOverflow))?;
+                    .map_err(|_| ErrorCode::NumericalOverflow)?;
                 market_user.unsettled_base = market_user
                     .unsettled_base
                     .checked_add(base_amount)
@@ -58,7 +58,7 @@ pub fn handle_cancel_order(context: Context<CancelOrderAccountConstraints>) -> R
     // Remove the leaf from the slab. The current cancel API doesn't tell us
     // which side the order is on without reading the Order PDA - which we
     // already have, so use it.
-    let mut order_book = context.accounts.order_book.load_mut()?;
+    let mut order_book = (&mut *context.accounts.order_book);
     let removed = order_book.remove_from(order.side, order.order_id).is_some();
     require!(removed, ErrorCode::OrderNotFound);
     drop(order_book);
@@ -72,27 +72,26 @@ pub fn handle_cancel_order(context: Context<CancelOrderAccountConstraints>) -> R
 }
 
 #[derive(Accounts)]
-pub struct CancelOrderAccountConstraints<'info> {
-    #[account(has_one = order_book @ ErrorCode::InvalidOrderBook)]
-    pub market: Account<'info, Market>,
+pub struct CancelOrderAccountConstraints {
+    pub market: BorshAccount<Market>,
 
-    // Not a PDA (see initialize_market.rs); bound to `market` via has_one.
-    #[account(mut)]
-    pub order_book: AccountLoader<'info, OrderBook>,
+    // Not a PDA (see initialize_market.rs); bound to `market` via `address`.
+    #[account(mut, address = market.order_book @ ErrorCode::InvalidOrderBook)]
+    pub order_book: Account<OrderBook>,
 
     #[account(
         mut,
-        seeds = [ORDER_SEED, market.key().as_ref(), order.order_id.to_le_bytes().as_ref()],
+        seeds = [ORDER_SEED, market.address().as_ref(), order.order_id.to_le_bytes()],
         bump = order.bump
     )]
-    pub order: Account<'info, Order>,
+    pub order: BorshAccount<Order>,
 
     #[account(
         mut,
-        seeds = [MARKET_USER_SEED, market.key().as_ref(), owner.key().as_ref()],
+        seeds = [MARKET_USER_SEED, market.address().as_ref(), owner.address().as_ref()],
         bump = market_user.bump
     )]
-    pub market_user: Account<'info, MarketUser>,
+    pub market_user: BorshAccount<MarketUser>,
 
-    pub owner: Signer<'info>,
+    pub owner: Signer,
 }

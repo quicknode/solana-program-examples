@@ -14,22 +14,22 @@ pub mod mock_swap_router {
     use super::*;
 
     pub fn initialize_router(
-        context: Context<InitializeRouterAccountConstraints>,
-        usdc_mint: Pubkey,
+        context: &mut Context<InitializeRouterAccountConstraints>,
+        usdc_mint: Address,
     ) -> Result<()> {
         instructions::initialize_router::handle_initialize_router(context, usdc_mint)
     }
 
     pub fn set_rate(
-        context: Context<SetRateAccountConstraints>,
-        mint: Pubkey,
+        context: &mut Context<SetRateAccountConstraints>,
+        mint: Address,
         usdc_per_token: u64,
     ) -> Result<()> {
         instructions::set_rate::handle_set_rate(context, mint, usdc_per_token)
     }
 
     pub fn swap_usdc_for_asset(
-        context: Context<SwapUsdcForAssetAccountConstraints>,
+        context: &mut Context<SwapUsdcForAssetAccountConstraints>,
         usdc_amount_in: u64,
         minimum_asset_out: u64,
     ) -> Result<()> {
@@ -41,7 +41,7 @@ pub mod mock_swap_router {
     }
 
     pub fn swap_asset_for_usdc(
-        context: Context<SwapAssetForUsdcAccountConstraints>,
+        context: &mut Context<SwapAssetForUsdcAccountConstraints>,
         asset_amount_in: u64,
         minimum_usdc_out: u64,
     ) -> Result<()> {

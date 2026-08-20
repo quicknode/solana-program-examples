@@ -5,26 +5,25 @@ use anchor_spl::token_interface::{
 };
 
 #[derive(Accounts)]
-pub struct WithdrawAccountConstraints<'info> {
-    pub authority: Signer<'info>,
+pub struct WithdrawAccountConstraints {
+    pub authority: Signer,
 
     #[account(mut)]
-    pub mint_account: InterfaceAccount<'info, Mint>,
+    pub mint_account: InterfaceAccount<Mint>,
     #[account(mut)]
-    pub token_account: InterfaceAccount<'info, TokenAccount>,
-    pub token_program: Program<'info, Token2022>,
+    pub token_account: InterfaceAccount<TokenAccount>,
+    pub token_program: Program<Token2022>,
 }
 
 // transfer fees "harvested" to the mint account can then be withdraw by the withdraw authority
 // this transfers fees on the mint account to the specified token account
-pub fn handle_process_withdraw(context: Context<WithdrawAccountConstraints>) -> Result<()> {
+pub fn handle_process_withdraw(context: &mut Context<WithdrawAccountConstraints>) -> Result<()> {
     withdraw_withheld_tokens_from_mint(CpiContext::new(
-        context.accounts.token_program.key(),
+        context.accounts.token_program.address(),
         WithdrawWithheldTokensFromMint {
-            token_program_id: context.accounts.token_program.to_account_info(),
-            mint: context.accounts.mint_account.to_account_info(),
-            destination: context.accounts.token_account.to_account_info(),
-            authority: context.accounts.authority.to_account_info(),
+            mint: context.accounts.mint_account.cpi_handle_mut(),
+            destination: context.accounts.token_account.cpi_handle_mut(),
+            authority: context.accounts.authority.cpi_handle(),
         },
     ))?;
     Ok(())

@@ -1,13 +1,10 @@
 use {
     anchor_lang::{
-        solana_program::{
-            instruction::{AccountMeta, Instruction},
-            pubkey::Pubkey,
-            system_program,
-        },
-        InstructionData, ToAccountMetas,
+        solana_program::instruction::{AccountMeta, Instruction},
+        system_program, Address, InstructionData, ToAccountMetas,
     },
     litesvm::LiteSVM,
+    solana_keypair::Keypair,
     solana_kite::{
         create_wallet, send_transaction_from_instructions,
         token_extensions::{
@@ -15,17 +12,16 @@ use {
             mint_tokens_to_token_extensions_account, TOKEN_EXTENSIONS_PROGRAM_ID,
         },
     },
-    solana_keypair::Keypair,
     solana_signer::Signer,
 };
 
-fn associated_token_program_id() -> Pubkey {
+fn associated_token_program_id() -> Address {
     "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
         .parse()
         .unwrap()
 }
 
-fn setup() -> (LiteSVM, Pubkey, Keypair) {
+fn setup() -> (LiteSVM, Address, Keypair) {
     let program_id = transfer_fee::id();
     let mut svm = LiteSVM::new();
 
@@ -44,7 +40,8 @@ fn test_transfer_fee_full_flow() {
     let ata_program = associated_token_program_id();
 
     let sender_ata = get_token_extensions_account_address(&payer.pubkey(), &mint_keypair.pubkey());
-    let recipient_ata = get_token_extensions_account_address(&recipient.pubkey(), &mint_keypair.pubkey());
+    let recipient_ata =
+        get_token_extensions_account_address(&recipient.pubkey(), &mint_keypair.pubkey());
 
     // Step 1: Create mint with transfer fee (100 basis points = 1%, max fee = 1)
     let initialize_ix = Instruction::new_with_bytes(
@@ -58,20 +55,22 @@ fn test_transfer_fee_full_flow() {
             payer: payer.pubkey(),
             mint_account: mint_keypair.pubkey(),
             token_program: TOKEN_EXTENSIONS_PROGRAM_ID,
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![initialize_ix], &[&payer, &mint_keypair], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        vec![initialize_ix],
+        &[&payer, &mint_keypair],
+        &payer.pubkey(),
+    )
+    .unwrap();
     svm.expire_blockhash();
 
     // Step 2: Create sender ATA and mint 300 tokens
-    create_token_extensions_account(
-        &mut svm,
-        &payer.pubkey(),
-        &mint_keypair.pubkey(),
-        &payer,
-    ).unwrap();
+    create_token_extensions_account(&mut svm, &payer.pubkey(), &mint_keypair.pubkey(), &payer)
+        .unwrap();
     svm.expire_blockhash();
 
     mint_tokens_to_token_extensions_account(
@@ -80,7 +79,8 @@ fn test_transfer_fee_full_flow() {
         &sender_ata,
         300,
         &payer,
-    ).unwrap();
+    )
+    .unwrap();
     svm.expire_blockhash();
 
     // Step 3: Transfer 100 tokens (fee = min(1% * 100 = 1, max_fee = 1) = 1)
@@ -95,11 +95,12 @@ fn test_transfer_fee_full_flow() {
             recipient_token_account: recipient_ata,
             token_program: TOKEN_EXTENSIONS_PROGRAM_ID,
             associated_token_program: ata_program,
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![transfer_ix], &[&payer], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(&mut svm, vec![transfer_ix], &[&payer], &payer.pubkey())
+        .unwrap();
     svm.expire_blockhash();
 
     // Step 4: Transfer 200 tokens (fee = min(1% * 200 = 2, max_fee = 1) = 1, capped by maximumFee)
@@ -114,18 +115,17 @@ fn test_transfer_fee_full_flow() {
             recipient_token_account: recipient_ata,
             token_program: TOKEN_EXTENSIONS_PROGRAM_ID,
             associated_token_program: ata_program,
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![transfer_ix2], &[&payer], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(&mut svm, vec![transfer_ix2], &[&payer], &payer.pubkey())
+        .unwrap();
     svm.expire_blockhash();
 
     // Step 5: Harvest transfer fees from recipient token account to mint
-    let harvest_ix = Instruction::new_with_bytes(
-        program_id,
-        &transfer_fee::instruction::Harvest {}.data(),
-        {
+    let harvest_ix =
+        Instruction::new_with_bytes(program_id, &transfer_fee::instruction::Harvest {}.data(), {
             let mut metas = transfer_fee::accounts::HarvestAccountConstraints {
                 mint_account: mint_keypair.pubkey(),
                 token_program: TOKEN_EXTENSIONS_PROGRAM_ID,
@@ -133,9 +133,9 @@ fn test_transfer_fee_full_flow() {
             .to_account_metas(None);
             metas.push(AccountMeta::new(recipient_ata, false));
             metas
-        },
-    );
-    send_transaction_from_instructions(&mut svm, vec![harvest_ix], &[&payer], &payer.pubkey()).unwrap();
+        });
+    send_transaction_from_instructions(&mut svm, vec![harvest_ix], &[&payer], &payer.pubkey())
+        .unwrap();
     svm.expire_blockhash();
 
     // Step 6: Withdraw harvested fees from mint to sender's token account
@@ -150,7 +150,8 @@ fn test_transfer_fee_full_flow() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![withdraw_ix], &[&payer], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(&mut svm, vec![withdraw_ix], &[&payer], &payer.pubkey())
+        .unwrap();
     svm.expire_blockhash();
 
     // Step 7: Update transfer fee to 0
@@ -168,5 +169,6 @@ fn test_transfer_fee_full_flow() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![update_fee_ix], &[&payer], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(&mut svm, vec![update_fee_ix], &[&payer], &payer.pubkey())
+        .unwrap();
 }

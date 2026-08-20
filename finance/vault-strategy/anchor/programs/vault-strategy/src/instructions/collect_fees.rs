@@ -10,24 +10,24 @@ use crate::state::Strategy;
 const SECONDS_PER_YEAR: u64 = 31_536_000;
 
 #[derive(Accounts)]
-pub struct CollectFeesAccountConstraints<'info> {
+pub struct CollectFeesAccountConstraints {
     /// CHECK: manager is stored in strategy; we only read their pubkey for derivation
-    pub manager: UncheckedAccount<'info>,
+    #[account(address = strategy.manager)]
+    pub manager: UncheckedAccount,
 
     #[account(
         mut,
-        has_one = manager,
-        seeds = [b"strategy", strategy.index.to_le_bytes().as_ref()],
-        bump = strategy.bump
+        seeds = [b"strategy", strategy.index.to_le_bytes()],
+        bump = strategy.bump,
     )]
-    pub strategy: Account<'info, Strategy>,
+    pub strategy: BorshAccount<Strategy>,
 
     #[account(
         mut,
-        seeds = [b"share_mint", strategy.key().as_ref()],
+        seeds = [b"share_mint", strategy.address().as_ref()],
         bump
     )]
-    pub share_mint: InterfaceAccount<'info, Mint>,
+    pub share_mint: InterfaceAccount<Mint>,
 
     /// Manager's share token account - receives fee shares
     #[account(
@@ -37,17 +37,17 @@ pub struct CollectFeesAccountConstraints<'info> {
         associated_token::authority = manager,
         associated_token::token_program = token_program
     )]
-    pub manager_share_account: InterfaceAccount<'info, TokenAccount>,
+    pub manager_share_account: InterfaceAccount<TokenAccount>,
 
     #[account(mut)]
-    pub payer: Signer<'info>,
+    pub payer: Signer,
 
-    pub associated_token_program: Program<'info, AssociatedToken>,
-    pub token_program: Interface<'info, TokenInterface>,
-    pub system_program: Program<'info, System>,
+    pub associated_token_program: Program<AssociatedToken>,
+    pub token_program: Interface<'static, TokenInterface>,
+    pub system_program: Program<System>,
 }
 
-pub fn handle_collect_fees(context: Context<CollectFeesAccountConstraints>) -> Result<()> {
+pub fn handle_collect_fees(context: &mut Context<CollectFeesAccountConstraints>) -> Result<()> {
     let clock = Clock::get()?;
     let current_ts = clock.unix_timestamp;
     let last_ts = context.accounts.strategy.last_fee_accrual_timestamp;
@@ -89,17 +89,24 @@ pub fn handle_collect_fees(context: Context<CollectFeesAccountConstraints>) -> R
     let index_bytes = strategy_index.to_le_bytes();
     let signer_seeds: &[&[&[u8]]] = &[&[b"strategy", index_bytes.as_ref(), &[strategy_bump]]];
 
+    // `strategy` signs the CPI(s) below. It is a data account holding a live
+    // borrow on its buffer, which the runtime would reject when the CPI borrows
+    // the same account, so hand the borrow back for the duration.
+    context.accounts.strategy.release_borrow()?;
+
     let mint_accounts = MintTo {
-        mint: context.accounts.share_mint.to_account_info(),
-        to: context.accounts.manager_share_account.to_account_info(),
-        authority: context.accounts.strategy.to_account_info(),
+        mint: context.accounts.share_mint.to_cpi_handle_mut(),
+        to: context.accounts.manager_share_account.cpi_handle_mut(),
+        authority: context.accounts.strategy.to_cpi_handle(),
     };
     let cpi_ctx = CpiContext::new_with_signer(
-        context.accounts.token_program.key(),
+        context.accounts.token_program.address(),
         mint_accounts,
         signer_seeds,
     );
     mint_to(cpi_ctx, fee_shares)?;
+
+    context.accounts.strategy.reacquire_borrow_mut()?;
 
     Ok(())
 }

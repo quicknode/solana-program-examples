@@ -1,6 +1,8 @@
 use anchor_lang::prelude::*;
 
-#[derive(AnchorSerialize, AnchorDeserialize, InitSpace, Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(
+    InitSpace, Clone, Copy, PartialEq, Eq, Debug, IdlType, wincode::SchemaRead, wincode::SchemaWrite,
+)]
 pub enum Side {
     Long,
     Short,
@@ -19,12 +21,12 @@ impl Side {
 }
 
 /// A single trader's leveraged position. One PDA per (pool, owner, side).
-#[account]
+#[account(borsh)]
 #[derive(InitSpace)]
 pub struct Position {
-    pub owner: Pubkey,
+    pub owner: Address,
 
-    pub pool: Pubkey,
+    pub pool: Address,
 
     pub side: Side,
 

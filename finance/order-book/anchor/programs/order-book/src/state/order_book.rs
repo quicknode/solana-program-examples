@@ -19,16 +19,16 @@ pub const MAX_ORDERS_PER_SIDE: usize = MAX_TREE_NODES;
 /// counter that gives every order a unique tie-break and acts as the public
 /// `order_id`.
 ///
-/// Stored as one `AccountLoader<OrderBook>` (zero-copy). The account is far
+/// Stored as one `Account<OrderBook>` (zero-copy). The account is far
 /// larger than Anchor's borsh `Account<T>` would happily deserialize on every
 /// instruction - zero-copy gives us per-field memory access without paying
 /// the (de)serialization cost.
-#[account(zero_copy(unsafe))]
+#[account]
 #[repr(C)]
 pub struct OrderBook {
     /// Market PDA this book belongs to. Constrained onchain via the
-    /// `market` `has_one = order_book` (and vice-versa) bindings.
-    pub market: Pubkey,
+    /// `market` / `order_book` address bindings.
+    pub market: Address,
 
     /// Tree roots for the two sides. Kept on this struct (rather than inside
     /// the OrderTreeNodes blobs) so each side's `leaf_count` is cheap to read
@@ -59,7 +59,10 @@ pub const ORDER_BOOK_ACCOUNT_SIZE: usize = 8 + std::mem::size_of::<OrderBook>();
 // + 8 (next_order_id) + 1 (bump) + 7 (pad) + 2 * (12 + 88*1024)
 // = 64 + 2 * 90124 = 180312 bytes for the struct itself.
 const _: () = {
-    assert!(std::mem::size_of::<OrderBook>() == 32 + 8 + 8 + 8 + 1 + 7 + 2 * (1 + 3 + 4 + 4 + 4 + NODE_SIZE * MAX_TREE_NODES));
+    assert!(
+        std::mem::size_of::<OrderBook>()
+            == 32 + 8 + 8 + 8 + 1 + 7 + 2 * (1 + 3 + 4 + 4 + 4 + NODE_SIZE * MAX_TREE_NODES)
+    );
 };
 
 /// A compact view of one resting order for the matching engine. Returned
@@ -68,14 +71,14 @@ pub struct RestingOrderView {
     pub order_id: u64,
     pub price: u64,
     pub quantity: u64,
-    pub owner: Pubkey,
+    pub owner: Address,
 }
 
 impl OrderBook {
     /// First-time initialization. Sets the market binding, the order-id
     /// counter, and stamps each slab with its side tag so the iterator knows
     /// which way to walk.
-    pub fn initialize(&mut self, market: Pubkey, bump: u8) {
+    pub fn initialize(&mut self, market: Address, bump: u8) {
         self.market = market;
         self.bids_root = OrderTreeRoot::default();
         self.asks_root = OrderTreeRoot::default();
@@ -99,7 +102,7 @@ impl OrderBook {
         self.next_order_id = self
             .next_order_id
             .checked_add(1)
-            .ok_or_else(|| error!(ErrorCode::NumericalOverflow))?;
+            .ok_or_else(|| ErrorCode::NumericalOverflow)?;
         Ok(id)
     }
 
@@ -112,7 +115,7 @@ impl OrderBook {
         side: OrderSide,
         price: u64,
         quantity: u64,
-        owner: Pubkey,
+        owner: Address,
         order_id: u64,
         timestamp: i64,
     ) -> Result<()> {
@@ -218,11 +221,11 @@ impl OrderBook {
         let (handle, remaining_after) = {
             let (handle, leaf) = nodes
                 .find_by_key(root, key)
-                .ok_or_else(|| error!(ErrorCode::OrderNotFound))?;
+                .ok_or_else(|| ErrorCode::OrderNotFound)?;
             let remaining = leaf
                 .quantity
                 .checked_sub(fill_quantity)
-                .ok_or_else(|| error!(ErrorCode::NumericalOverflow))?;
+                .ok_or_else(|| ErrorCode::NumericalOverflow)?;
             (handle, remaining)
         };
         if remaining_after == 0 {
@@ -234,7 +237,7 @@ impl OrderBook {
             let leaf = nodes
                 .node_mut(handle)
                 .and_then(AnyNode::as_leaf_mut)
-                .ok_or_else(|| error!(ErrorCode::OrderNotFound))?;
+                .ok_or_else(|| ErrorCode::OrderNotFound)?;
             leaf.quantity = remaining_after;
         }
         Ok(())

@@ -4,7 +4,7 @@
 
 _Solana program examples ('smart contracts') in Anchor, Quasar, Pinocchio, native Rust, and sBPF assembly. Focused on financial software ('DeFi'), plus the basics, tokens, Token Extensions, state compression, and more._
 
-Working, tested, up-to-date examples of common Solana programs (what other chains call smart contracts), maintained by [Quicknode](https://www.quicknode.com/chains/solana). Current as of July 2026 (see [CHANGELOG.md](./CHANGELOG.md)): every example builds and passes CI on **Anchor 1.1**, the current multi-file program layout (one file per instruction handler, account type, etc), and [LiteSVM](https://github.com/LiteSVM/litesvm) tests rather than the older `solana-test-validator` / web3.js stack.
+Working, tested, up-to-date examples of common Solana programs (what other chains call smart contracts), maintained by [Quicknode](https://www.quicknode.com/chains/solana). Current as of August 2026 (see [CHANGELOG.md](./CHANGELOG.md)): every example builds and passes CI on **Anchor 2.0.0-rc.1**, the current multi-file program layout (one file per instruction handler, account type, etc), and [LiteSVM](https://github.com/LiteSVM/litesvm) tests rather than the older `solana-test-validator` / web3.js stack.
 
 [![Anchor](../../actions/workflows/anchor.yml/badge.svg)](../../actions/workflows/anchor.yml) [![Quasar](../../actions/workflows/quasar.yml/badge.svg)](../../actions/workflows/quasar.yml) [![Pinocchio](../../actions/workflows/pinocchio.yml/badge.svg)](../../actions/workflows/pinocchio.yml) [![Native](../../actions/workflows/native.yml/badge.svg)](../../actions/workflows/native.yml) [![ASM](../../actions/workflows/solana-asm.yml/badge.svg)](../../actions/workflows/solana-asm.yml)
 

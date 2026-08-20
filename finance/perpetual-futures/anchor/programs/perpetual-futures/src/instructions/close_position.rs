@@ -10,7 +10,7 @@ use crate::instructions::shared::{basis_points_of, refresh_price_and_funding, se
 use crate::state::{Pool, Position};
 
 pub fn handle_close_position(
-    context: Context<ClosePositionAccountConstraints>,
+    context: &mut Context<ClosePositionAccountConstraints>,
     minimum_payout: u64,
 ) -> Result<()> {
     let pool = &mut context.accounts.pool;
@@ -66,69 +66,68 @@ pub fn handle_close_position(
         .checked_add(close_fee)
         .ok_or(PerpError::MathOverflow)?;
 
-    let pool_key = pool.key();
+    let pool_key = pool.address();
     let authority_seeds: &[&[u8]] = &[AUTHORITY_SEED, pool_key.as_ref(), &[pool.authority_bump]];
     transfer_checked(
         CpiContext::new_with_signer(
-            context.accounts.token_program.key(),
+            context.accounts.token_program.address(),
             TransferChecked {
-                from: context.accounts.custody_vault.to_account_info(),
-                mint: context.accounts.collateral_mint.to_account_info(),
-                to: context.accounts.trader_collateral.to_account_info(),
-                authority: context.accounts.pool_authority.to_account_info(),
+                from: context.accounts.custody_vault.to_cpi_handle_mut(),
+                mint: context.accounts.collateral_mint.to_cpi_handle(),
+                to: context.accounts.trader_collateral.to_cpi_handle_mut(),
+                authority: context.accounts.pool_authority.cpi_handle(),
             },
             &[authority_seeds],
         ),
         payout,
-        context.accounts.collateral_mint.decimals,
+        context.accounts.collateral_mint.decimals(),
     )?;
 
     Ok(())
 }
 
 #[derive(Accounts)]
-pub struct ClosePositionAccountConstraints<'info> {
-    #[account(mut)]
-    pub owner: Signer<'info>,
+pub struct ClosePositionAccountConstraints {
+    #[account(mut, address = position.owner)]
+    pub owner: Signer,
 
     #[account(
         mut,
         seeds = [POOL_SEED, pool.collateral_mint.as_ref(), pool.oracle_feed.as_ref()],
         bump = pool.bump,
-        has_one = collateral_mint,
-        has_one = custody_vault,
-        has_one = oracle_feed,
+        address = position.pool,
     )]
-    pub pool: Box<Account<'info, Pool>>,
+    pub pool: Box<BorshAccount<Pool>>,
 
     #[account(
         mut,
         close = owner,
-        seeds = [POSITION_SEED, pool.key().as_ref(), owner.key().as_ref(), position.side.as_seed()],
+        seeds = [POSITION_SEED, pool.address().as_ref(), owner.address().as_ref(), position.side.as_seed()],
         bump = position.bump,
-        has_one = owner,
-        has_one = pool,
     )]
-    pub position: Box<Account<'info, Position>>,
+    pub position: Box<BorshAccount<Position>>,
 
     /// CHECK: PDA authority over the vault.
     #[account(
-        seeds = [AUTHORITY_SEED, pool.key().as_ref()],
+        seeds = [AUTHORITY_SEED, pool.address().as_ref()],
         bump = pool.authority_bump,
     )]
-    pub pool_authority: UncheckedAccount<'info>,
+    pub pool_authority: UncheckedAccount,
 
-    /// CHECK: validated by the `has_one = oracle_feed` constraint on the pool.
-    pub oracle_feed: UncheckedAccount<'info>,
+    /// CHECK: validated by the `address = pool.oracle_feed` constraint below.
+    #[account(address = pool.oracle_feed)]
+    pub oracle_feed: UncheckedAccount,
 
-    pub collateral_mint: Box<InterfaceAccount<'info, Mint>>,
+    #[account(address = pool.collateral_mint)]
+    pub collateral_mint: Box<InterfaceAccount<Mint>>,
 
     #[account(
         mut,
-        seeds = [VAULT_SEED, pool.key().as_ref()],
+        seeds = [VAULT_SEED, pool.address().as_ref()],
         bump,
+        address = pool.custody_vault,
     )]
-    pub custody_vault: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub custody_vault: Box<InterfaceAccount<TokenAccount>>,
 
     #[account(
         mut,
@@ -136,9 +135,9 @@ pub struct ClosePositionAccountConstraints<'info> {
         associated_token::authority = owner,
         associated_token::token_program = token_program,
     )]
-    pub trader_collateral: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub trader_collateral: Box<InterfaceAccount<TokenAccount>>,
 
-    pub token_program: Interface<'info, TokenInterface>,
-    pub associated_token_program: Program<'info, AssociatedToken>,
-    pub system_program: Program<'info, System>,
+    pub token_program: Interface<'static, TokenInterface>,
+    pub associated_token_program: Program<AssociatedToken>,
+    pub system_program: Program<System>,
 }

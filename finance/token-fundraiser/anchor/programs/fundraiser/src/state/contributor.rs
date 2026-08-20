@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-#[account]
+#[account(borsh)]
 #[derive(InitSpace)]
 pub struct Contributor {
     pub amount: u64,

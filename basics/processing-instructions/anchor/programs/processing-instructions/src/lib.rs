@@ -9,7 +9,7 @@ pub mod processing_instructions {
     // With Anchor, we just put instruction data in the function signature!
     //
     pub fn go_to_park(
-        _context: Context<ParkAccountConstraints>,
+        _context: &mut Context<ParkAccountConstraints>,
         name: String,
         height: u32,
     ) -> Result<()> {

@@ -11,30 +11,42 @@ use spl_transfer_hook_interface::instruction::{
 
 declare_id!("FjcHckEgXcBhFmSGai3FRpDLiT6hbpV893n8iTxVd81g");
 
+pub mod entrypoint;
+
+// v2's `#[program(interface, ...)]` declares an interface for other programs to
+// CPI into and emits no entrypoint, and an executable `#[program]` only accepts
+// one-byte custom discriminators, so the transfer-hook interface's eight-byte
+// discriminators have no direct spelling. `entrypoint` bridges the gap: it maps
+// each of them onto a handler before anchor's dispatch runs.
 #[program]
 pub mod transfer_switch {
     use super::*;
 
-    pub fn configure_admin(mut context: Context<ConfigureAdminAccountConstraints>) -> Result<()> {
+    pub fn configure_admin(
+        mut context: &mut Context<ConfigureAdminAccountConstraints>,
+    ) -> Result<()> {
         let bump = context.bumps.admin_config;
         handle_is_admin(&mut context.accounts)?;
         handle_configure_admin(&mut context.accounts, bump)
     }
 
-    #[instruction(discriminator = InitializeExtraAccountMetaListInstruction::SPL_DISCRIMINATOR_SLICE)]
+    // sha256("spl-transfer-hook-interface:initialize-extra-account-metas")[..8]
     pub fn initialize_extra_account_metas_list(
-        mut context: Context<InitializeExtraAccountMetasAccountConstraints>,
+        mut context: &mut Context<InitializeExtraAccountMetasAccountConstraints>,
     ) -> Result<()> {
-        handle_initialize_extra_account_metas_list(&mut context.accounts, context.bumps)
+        handle_initialize_extra_account_metas_list(&mut context.accounts, &context.bumps)
     }
 
-    pub fn switch(mut context: Context<SwitchAccountConstraints>, on: bool) -> Result<()> {
+    pub fn switch(mut context: &mut Context<SwitchAccountConstraints>, on: bool) -> Result<()> {
         let bump = context.bumps.wallet_switch;
         handle_switch(&mut context.accounts, on, bump)
     }
 
-    #[instruction(discriminator = ExecuteInstruction::SPL_DISCRIMINATOR_SLICE)]
-    pub fn transfer_hook(mut context: Context<TransferHookAccountConstraints>, _amount: u64) -> Result<()> {
+    // sha256("spl-transfer-hook-interface:execute")[..8]
+    pub fn transfer_hook(
+        mut context: &mut Context<TransferHookAccountConstraints>,
+        _amount: u64,
+    ) -> Result<()> {
         handle_assert_is_transferring(&mut context.accounts)?;
         handle_assert_switch_is_on(&mut context.accounts)
     }

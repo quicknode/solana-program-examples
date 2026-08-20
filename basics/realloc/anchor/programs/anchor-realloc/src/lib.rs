@@ -9,11 +9,14 @@ declare_id!("Fod47xKXjdHVQDzkFPBvfdWLm8gEAV4iMSXkfUzCHiSD");
 pub mod anchor_realloc {
     use super::*;
 
-    pub fn initialize(context: Context<InitializeAccountConstraints>, input: String) -> Result<()> {
+    pub fn initialize(
+        context: &mut Context<InitializeAccountConstraints>,
+        input: String,
+    ) -> Result<()> {
         instructions::initialize::handler(context, input)
     }
 
-    pub fn update(context: Context<UpdateAccountConstraints>, input: String) -> Result<()> {
+    pub fn update(context: &mut Context<UpdateAccountConstraints>, input: String) -> Result<()> {
         instructions::update::handler(context, input)
     }
 }
@@ -24,7 +27,7 @@ pub mod anchor_realloc {
 // `InitSpace` + `#[max_len(N)]` would force a fixed upper bound, defeating
 // the point of the example. Instead, `required_space` computes the exact
 // layout (discriminator + length prefix + bytes) for init/realloc.
-#[account]
+#[account(borsh)]
 pub struct Message {
     pub message: String,
 }

@@ -1,26 +1,22 @@
 use {
     anchor_lang::{
-        solana_program::{
-            instruction::{AccountMeta, Instruction},
-            pubkey::Pubkey,
-            system_program,
-        },
-        InstructionData, ToAccountMetas,
+        solana_program::instruction::{AccountMeta, Instruction},
+        system_program, Address, InstructionData, ToAccountMetas,
     },
     litesvm::LiteSVM,
+    solana_keypair::Keypair,
     solana_kite::{
         create_wallet, send_transaction_from_instructions,
         token_extensions::{create_token_extensions_mint, TOKEN_EXTENSIONS_PROGRAM_ID},
     },
-    solana_keypair::Keypair,
     solana_signer::Signer,
 };
 
 /// SetAuthority instruction for Token Extensions (instruction 6).
 fn set_authority_instruction(
-    account: &Pubkey,
-    current_authority: &Pubkey,
-    new_authority: Option<&Pubkey>,
+    account: &Address,
+    current_authority: &Address,
+    new_authority: Option<&Address>,
     authority_type: u8,
 ) -> Instruction {
     let mut data = vec![6u8, authority_type];
@@ -44,7 +40,7 @@ fn set_authority_instruction(
     }
 }
 
-fn setup() -> (LiteSVM, Pubkey, Keypair) {
+fn setup() -> (LiteSVM, Address, Keypair) {
     let program_id = immutable_owner::id();
     let mut svm = LiteSVM::new();
 
@@ -73,11 +69,17 @@ fn test_create_token_account_with_immutable_owner() {
             token_account: token_keypair.pubkey(),
             mint_account: mint,
             token_program: TOKEN_EXTENSIONS_PROGRAM_ID,
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![initialize_ix], &[&payer, &token_keypair], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        vec![initialize_ix],
+        &[&payer, &token_keypair],
+        &payer.pubkey(),
+    )
+    .unwrap();
     svm.expire_blockhash();
 
     // Verify token account was created
@@ -98,7 +100,12 @@ fn test_create_token_account_with_immutable_owner() {
         Some(&new_owner.pubkey()),
         2, // AuthorityType::AccountOwner
     );
-    let result = send_transaction_from_instructions(&mut svm, vec![set_authority_ix], &[&payer], &payer.pubkey());
+    let result = send_transaction_from_instructions(
+        &mut svm,
+        vec![set_authority_ix],
+        &[&payer],
+        &payer.pubkey(),
+    );
     assert!(
         result.is_err(),
         "Setting a new owner should fail due to ImmutableOwner extension"

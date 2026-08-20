@@ -1,15 +1,18 @@
 use {
     anchor_lang::{
-        solana_program::{clock::Clock, instruction::Instruction, pubkey::Pubkey, system_program},
-        InstructionData, ToAccountMetas,
+        solana_program::instruction::Instruction, system_program, Address, InstructionData,
+        ToAccountMetas,
     },
     borsh::BorshDeserialize,
     fundraiser::SECONDS_TO_DAYS,
     litesvm::LiteSVM,
+    // LiteSVM's get_sysvar wants the host-side Clock, not pinocchio's.
+    solana_clock::Clock,
     solana_keypair::Keypair,
     solana_kite::{
         create_associated_token_account, create_token_mint, create_wallet,
-        get_token_account_balance, mint_tokens_to_token_account, send_transaction_from_instructions,
+        get_token_account_balance, mint_tokens_to_token_account,
+        send_transaction_from_instructions,
     },
     solana_signer::Signer,
 };
@@ -24,20 +27,20 @@ const MAX_CONTRIBUTION: u64 = AMOUNT_TO_RAISE / 10;
 const DURATION_DAYS: u16 = 7;
 const CONTRIBUTOR_STARTING_BALANCE: u64 = 10 * ONE_TOKEN;
 
-fn token_program_id() -> Pubkey {
+fn token_program_id() -> Address {
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         .parse()
         .unwrap()
 }
 
-fn ata_program_id() -> Pubkey {
+fn ata_program_id() -> Address {
     "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
         .parse()
         .unwrap()
 }
 
-fn derive_ata(wallet: &Pubkey, mint: &Pubkey) -> Pubkey {
-    let (ata, _bump) = Pubkey::find_program_address(
+fn derive_ata(wallet: &Address, mint: &Address) -> Address {
+    let (ata, _bump) = Address::find_program_address(
         &[wallet.as_ref(), token_program_id().as_ref(), mint.as_ref()],
         &ata_program_id(),
     );
@@ -66,12 +69,12 @@ struct ContributorState {
 
 const ANCHOR_DISCRIMINATOR_LENGTH: usize = 8;
 
-fn read_fundraiser_state(svm: &LiteSVM, fundraiser_pda: &Pubkey) -> FundraiserState {
+fn read_fundraiser_state(svm: &LiteSVM, fundraiser_pda: &Address) -> FundraiserState {
     let account = svm.get_account(fundraiser_pda).unwrap();
     FundraiserState::try_from_slice(&account.data[ANCHOR_DISCRIMINATOR_LENGTH..]).unwrap()
 }
 
-fn read_contributor_state(svm: &LiteSVM, contributor_pda: &Pubkey) -> ContributorState {
+fn read_contributor_state(svm: &LiteSVM, contributor_pda: &Address) -> ContributorState {
     let account = svm.get_account(contributor_pda).unwrap();
     ContributorState::try_from_slice(&account.data[ANCHOR_DISCRIMINATOR_LENGTH..]).unwrap()
 }
@@ -85,12 +88,12 @@ fn warp_days_forward(svm: &mut LiteSVM, days: i64) {
 
 struct FundraiserSetup {
     svm: LiteSVM,
-    program_id: Pubkey,
+    program_id: Address,
     payer: Keypair,
     maker: Keypair,
-    mint: Pubkey,
-    fundraiser_pda: Pubkey,
-    vault: Pubkey,
+    mint: Address,
+    fundraiser_pda: Address,
+    vault: Address,
 }
 
 fn full_setup() -> FundraiserSetup {
@@ -107,7 +110,7 @@ fn full_setup() -> FundraiserSetup {
     let mint = create_token_mint(&mut svm, &payer, MINT_DECIMALS, None).unwrap();
 
     let (fundraiser_pda, _bump) =
-        Pubkey::find_program_address(&[b"fundraiser", maker.pubkey().as_ref()], &program_id);
+        Address::find_program_address(&[b"fundraiser", maker.pubkey().as_ref()], &program_id);
 
     // The vault is the ATA of the fundraiser PDA for the mint.
     let vault = derive_ata(&fundraiser_pda, &mint);
@@ -132,7 +135,7 @@ fn initialize_fundraiser(setup: &mut FundraiserSetup, amount: u64, duration: u16
             mint_to_raise: setup.mint,
             fundraiser: setup.fundraiser_pda,
             vault: setup.vault,
-            system_program: system_program::id(),
+            system_program: system_program::ID,
             token_program: token_program_id(),
             associated_token_program: ata_program_id(),
         }
@@ -149,7 +152,7 @@ fn initialize_fundraiser(setup: &mut FundraiserSetup, amount: u64, duration: u16
 
 /// Creates a contributor wallet with a funded ATA and returns
 /// (contributor keypair, contributor ATA, contributor account PDA).
-fn create_funded_contributor(setup: &mut FundraiserSetup) -> (Keypair, Pubkey, Pubkey) {
+fn create_funded_contributor(setup: &mut FundraiserSetup) -> (Keypair, Address, Address) {
     let contributor = create_wallet(&mut setup.svm, 10_000_000_000).unwrap();
 
     let contributor_ata = create_associated_token_account(
@@ -169,7 +172,7 @@ fn create_funded_contributor(setup: &mut FundraiserSetup) -> (Keypair, Pubkey, P
     )
     .unwrap();
 
-    let (contributor_account_pda, _bump) = Pubkey::find_program_address(
+    let (contributor_account_pda, _bump) = Address::find_program_address(
         &[
             b"contributor",
             setup.fundraiser_pda.as_ref(),
@@ -183,9 +186,9 @@ fn create_funded_contributor(setup: &mut FundraiserSetup) -> (Keypair, Pubkey, P
 
 fn build_contribute_instruction(
     setup: &FundraiserSetup,
-    contributor: &Pubkey,
-    contributor_ata: &Pubkey,
-    contributor_account_pda: &Pubkey,
+    contributor: &Address,
+    contributor_ata: &Address,
+    contributor_account_pda: &Address,
     amount: u64,
 ) -> Instruction {
     Instruction::new_with_bytes(
@@ -199,7 +202,7 @@ fn build_contribute_instruction(
             contributor_ata: *contributor_ata,
             vault: setup.vault,
             token_program: token_program_id(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     )
@@ -207,9 +210,9 @@ fn build_contribute_instruction(
 
 fn build_refund_instruction(
     setup: &FundraiserSetup,
-    contributor: &Pubkey,
-    contributor_ata: &Pubkey,
-    contributor_account_pda: &Pubkey,
+    contributor: &Address,
+    contributor_ata: &Address,
+    contributor_account_pda: &Address,
 ) -> Instruction {
     Instruction::new_with_bytes(
         setup.program_id,
@@ -223,7 +226,7 @@ fn build_refund_instruction(
             contributor_ata: *contributor_ata,
             vault: setup.vault,
             token_program: token_program_id(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     )
@@ -231,7 +234,7 @@ fn build_refund_instruction(
 
 fn build_check_contributions_instruction(
     setup: &FundraiserSetup,
-    maker_ata: &Pubkey,
+    maker_ata: &Address,
 ) -> Instruction {
     Instruction::new_with_bytes(
         setup.program_id,
@@ -243,14 +246,14 @@ fn build_check_contributions_instruction(
             vault: setup.vault,
             maker_ata: *maker_ata,
             token_program: token_program_id(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
             associated_token_program: ata_program_id(),
         }
         .to_account_metas(None),
     )
 }
 
-fn build_close_fundraiser_instruction(setup: &FundraiserSetup, maker_ata: &Pubkey) -> Instruction {
+fn build_close_fundraiser_instruction(setup: &FundraiserSetup, maker_ata: &Address) -> Instruction {
     Instruction::new_with_bytes(
         setup.program_id,
         &fundraiser::instruction::CloseFundraiser {}.data(),
@@ -261,7 +264,7 @@ fn build_close_fundraiser_instruction(setup: &FundraiserSetup, maker_ata: &Pubke
             vault: setup.vault,
             maker_ata: *maker_ata,
             token_program: token_program_id(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
             associated_token_program: ata_program_id(),
         }
         .to_account_metas(None),
@@ -279,7 +282,10 @@ fn test_initialize_fundraiser() {
     assert_eq!(fundraiser_state.current_amount, 0);
     assert_eq!(fundraiser_state.duration, DURATION_DAYS);
 
-    assert_eq!(get_token_account_balance(&setup.svm, &setup.vault).unwrap(), 0);
+    assert_eq!(
+        get_token_account_balance(&setup.svm, &setup.vault).unwrap(),
+        0
+    );
 }
 
 #[test]
@@ -300,7 +306,7 @@ fn test_initialize_below_minimum_target_fails() {
             mint_to_raise: setup.mint,
             fundraiser: setup.fundraiser_pda,
             vault: setup.vault,
-            system_program: system_program::id(),
+            system_program: system_program::ID,
             token_program: token_program_id(),
             associated_token_program: ata_program_id(),
         }
@@ -312,7 +318,10 @@ fn test_initialize_below_minimum_target_fails() {
         &[&setup.maker],
         &setup.maker.pubkey(),
     );
-    assert!(result.is_err(), "Target below 3 major units must be rejected");
+    assert!(
+        result.is_err(),
+        "Target below 3 major units must be rejected"
+    );
     assert!(
         setup.svm.get_account(&setup.fundraiser_pda).is_none(),
         "Fundraiser account must not exist after a failed initialize"
@@ -387,7 +396,10 @@ fn test_contribute_after_deadline_fails() {
     );
     assert!(result.is_err(), "Contributing after the deadline must fail");
 
-    assert_eq!(get_token_account_balance(&setup.svm, &setup.vault).unwrap(), 0);
+    assert_eq!(
+        get_token_account_balance(&setup.svm, &setup.vault).unwrap(),
+        0
+    );
     assert_eq!(
         get_token_account_balance(&setup.svm, &contributor_ata).unwrap(),
         CONTRIBUTOR_STARTING_BALANCE
@@ -419,7 +431,10 @@ fn test_contribute_below_one_major_unit_fails() {
         result.is_err(),
         "Contributions below one major unit must fail"
     );
-    assert_eq!(get_token_account_balance(&setup.svm, &setup.vault).unwrap(), 0);
+    assert_eq!(
+        get_token_account_balance(&setup.svm, &setup.vault).unwrap(),
+        0
+    );
 }
 
 #[test]
@@ -508,7 +523,10 @@ fn test_refund_after_deadline_target_not_met_succeeds() {
     )
     .unwrap();
 
-    assert_eq!(get_token_account_balance(&setup.svm, &setup.vault).unwrap(), 0);
+    assert_eq!(
+        get_token_account_balance(&setup.svm, &setup.vault).unwrap(),
+        0
+    );
     assert_eq!(
         get_token_account_balance(&setup.svm, &contributor_ata).unwrap(),
         CONTRIBUTOR_STARTING_BALANCE
@@ -655,7 +673,10 @@ fn test_contribute_above_cap_fails() {
         result.is_err(),
         "A single contribution above the 10% cap must fail"
     );
-    assert_eq!(get_token_account_balance(&setup.svm, &setup.vault).unwrap(), 0);
+    assert_eq!(
+        get_token_account_balance(&setup.svm, &setup.vault).unwrap(),
+        0
+    );
 }
 
 #[test]
@@ -780,7 +801,10 @@ fn test_close_fundraiser_after_failed_raise_allows_a_new_raise() {
     let fundraiser_state = read_fundraiser_state(&setup.svm, &setup.fundraiser_pda);
     assert_eq!(fundraiser_state.current_amount, 0);
     assert_eq!(fundraiser_state.amount_to_raise, AMOUNT_TO_RAISE);
-    assert_eq!(get_token_account_balance(&setup.svm, &setup.vault).unwrap(), 0);
+    assert_eq!(
+        get_token_account_balance(&setup.svm, &setup.vault).unwrap(),
+        0
+    );
 }
 
 #[test]
@@ -905,8 +929,14 @@ fn test_close_fundraiser_sweeps_direct_donations_to_maker() {
     // accounting; on close they go to the maker instead of being burned
     // with the account.
     let donation = 5 * ONE_TOKEN;
-    mint_tokens_to_token_account(&mut setup.svm, &setup.mint, &setup.vault, donation, &setup.payer)
-        .unwrap();
+    mint_tokens_to_token_account(
+        &mut setup.svm,
+        &setup.mint,
+        &setup.vault,
+        donation,
+        &setup.payer,
+    )
+    .unwrap();
 
     warp_days_forward(&mut setup.svm, DURATION_DAYS as i64 + 1);
 

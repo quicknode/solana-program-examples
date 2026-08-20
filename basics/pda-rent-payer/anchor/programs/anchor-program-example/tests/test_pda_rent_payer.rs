@@ -1,7 +1,7 @@
 use {
     anchor_lang::{
-        solana_program::{instruction::Instruction, pubkey::Pubkey, system_program},
-        InstructionData, ToAccountMetas,
+        solana_program::instruction::Instruction, system_program, Address, InstructionData,
+        ToAccountMetas,
     },
     litesvm::LiteSVM,
     solana_keypair::Keypair,
@@ -23,7 +23,7 @@ fn test_init_rent_vault() {
     let (mut svm, payer) = setup();
     let program_id = pda_rent_payer::id();
 
-    let (rent_vault_pda, _bump) = Pubkey::find_program_address(&[b"rent_vault"], &program_id);
+    let (rent_vault_pda, _bump) = Address::find_program_address(&[b"rent_vault"], &program_id);
 
     // Fund the rent vault with 1 SOL
     let fund_amount: u64 = 1_000_000_000;
@@ -36,7 +36,7 @@ fn test_init_rent_vault() {
         pda_rent_payer::accounts::InitRentVaultAccountConstraints {
             payer: payer.pubkey(),
             rent_vault: rent_vault_pda,
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
@@ -58,7 +58,7 @@ fn test_create_new_account_from_rent_vault() {
     let (mut svm, payer) = setup();
     let program_id = pda_rent_payer::id();
 
-    let (rent_vault_pda, _bump) = Pubkey::find_program_address(&[b"rent_vault"], &program_id);
+    let (rent_vault_pda, _bump) = Address::find_program_address(&[b"rent_vault"], &program_id);
 
     // Fund the rent vault with 1 SOL
     let fund_amount: u64 = 1_000_000_000;
@@ -71,7 +71,7 @@ fn test_create_new_account_from_rent_vault() {
         pda_rent_payer::accounts::InitRentVaultAccountConstraints {
             payer: payer.pubkey(),
             rent_vault: rent_vault_pda,
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
@@ -88,7 +88,7 @@ fn test_create_new_account_from_rent_vault() {
         pda_rent_payer::accounts::CreateNewAccountAccountConstraints {
             new_account: new_account.pubkey(),
             rent_vault: rent_vault_pda,
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );

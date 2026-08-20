@@ -1,5 +1,7 @@
 mod common;
 
+use lending::errors::LendingError;
+
 use common::{ata, default_config, dollars, Env};
 use solana_signer::Signer;
 
@@ -22,21 +24,27 @@ fn deposit_that_would_mint_zero_shares_is_rejected() {
     env.supply(&borrower, &collateral, 1_000_000_000);
     let obligation = env.initialize_obligation(&borrower);
     env.post_collateral(&borrower, obligation, &collateral, 1_000_000_000);
-    env.try_borrow(&borrower, obligation, &[&collateral], &[], &borrow, 500_000_000)
-        .unwrap();
+    env.try_borrow(
+        &borrower,
+        obligation,
+        &[&collateral],
+        &[],
+        &borrow,
+        500_000_000,
+    )
+    .unwrap();
 
     // Accrue enough interest that total liquidity exceeds the share supply.
     env.warp_slots(7_884_000);
     env.refresh_reserve_only(&borrower, &borrow);
-    assert!(env.reserve(&borrow).borrow_accumulation_factor > lending::constants::FIXED_POINT_SCALE);
+    assert!(
+        env.reserve(&borrow).borrow_accumulation_factor > lending::constants::FIXED_POINT_SCALE
+    );
 
     let dust_depositor = env.create_user();
     env.fund(&dust_depositor, borrow.mint, 1);
     let result = env.try_supply(&dust_depositor, &borrow, 1);
-    assert!(
-        result.unwrap_err().contains("DepositTooSmall"),
-        "a 1-unit deposit into an appreciated pool mints zero shares and must be rejected"
-    );
+    common::assert_program_error!(result, LendingError::DepositTooSmall);
 }
 
 #[test]
@@ -74,8 +82,15 @@ fn withdraw_at_health_boundary_then_one_more_unit_fails() {
     env.post_collateral(&borrower, obligation, &collateral, 1_000_000_000);
 
     // Borrow $600 against $1000 collateral (75% LTV => $750 power).
-    env.try_borrow(&borrower, obligation, &[&collateral], &[], &borrow, 600_000_000)
-        .unwrap();
+    env.try_borrow(
+        &borrower,
+        obligation,
+        &[&collateral],
+        &[],
+        &borrow,
+        600_000_000,
+    )
+    .unwrap();
 
     // Withdrawing $200 of collateral lands exactly on the limit: new power
     // $750 - 0.75*$200 = $600 == debt. This must pass.
@@ -102,5 +117,5 @@ fn withdraw_at_health_boundary_then_one_more_unit_fails() {
         &collateral,
         1,
     );
-    assert!(result.unwrap_err().contains("WithdrawTooLarge"));
+    common::assert_program_error!(result, LendingError::WithdrawTooLarge);
 }

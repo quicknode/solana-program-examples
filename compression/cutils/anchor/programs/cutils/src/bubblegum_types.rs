@@ -1,4 +1,4 @@
-/// Re-implementation of mpl-bubblegum types using borsh 1.x and Anchor 1.0's Pubkey.
+/// Re-implementation of mpl-bubblegum types using borsh 1.x and Anchor 1.0's Address.
 ///
 /// mpl-bubblegum 2.1.1 depends on solana-program 2.x which is incompatible with
 /// Anchor 1.0's solana 3.x types. These types are borsh-compatible reproductions
@@ -9,7 +9,7 @@ use borsh::BorshSerialize;
 /// Mirrors mpl_bubblegum::types::Creator
 #[derive(BorshSerialize, Clone, Debug)]
 pub struct Creator {
-    pub address: Pubkey,
+    pub address: Address,
     pub verified: bool,
     pub share: u8,
 }
@@ -18,7 +18,7 @@ pub struct Creator {
 #[derive(BorshSerialize, Clone, Debug)]
 pub struct Collection {
     pub verified: bool,
-    pub key: Pubkey,
+    pub key: Address,
 }
 
 /// Mirrors mpl_bubblegum::types::TokenProgramVersion
@@ -82,9 +82,9 @@ pub struct MintToCollectionV1InstructionArgs {
 /// Compute the leaf hash for a V1 LeafSchema, matching mpl_bubblegum::types::LeafSchema::hash().
 /// Uses keccak256 over the version byte and all fields.
 pub fn leaf_schema_v1_hash(
-    id: &Pubkey,
-    owner: &Pubkey,
-    delegate: &Pubkey,
+    id: &Address,
+    owner: &Address,
+    delegate: &Address,
     nonce: u64,
     data_hash: &[u8; 32],
     creator_hash: &[u8; 32],
@@ -102,14 +102,14 @@ pub fn leaf_schema_v1_hash(
 }
 
 /// Compute the asset id from tree and nonce, matching mpl_bubblegum::utils::get_asset_id().
-pub fn get_asset_id(tree: &Pubkey, nonce: u64) -> Pubkey {
+pub fn get_asset_id(tree: &Address, nonce: u64) -> Address {
     // mpl-bubblegum program ID
-    let bubblegum_id = Pubkey::new_from_array([
+    let bubblegum_id = Address::new_from_array([
         0x98, 0x8b, 0x80, 0xeb, 0x79, 0x35, 0x28, 0x69, 0xb2, 0x24, 0x74, 0x5f, 0x59, 0xdd, 0xbf,
         0x8a, 0x26, 0x58, 0xca, 0x13, 0xdc, 0x68, 0x81, 0x21, 0x26, 0x35, 0x1c, 0xae, 0x07, 0xc1,
         0xa5, 0xa5,
     ]);
-    Pubkey::find_program_address(
+    Address::find_program_address(
         &[b"asset", tree.as_ref(), &nonce.to_le_bytes()],
         &bubblegum_id,
     )

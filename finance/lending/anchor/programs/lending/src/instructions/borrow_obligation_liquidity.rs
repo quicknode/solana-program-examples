@@ -13,12 +13,12 @@ use crate::state::{reserve_signer_seeds, Obligation, PriceFeed, Reserve};
 /// allowed-borrow value. The borrowed amount is recorded as scaled principal at
 /// the reserve's current index (rounded up) so it accrues interest going forward.
 pub fn handle_borrow_obligation_liquidity(
-    context: Context<BorrowObligationLiquidity>,
+    context: &mut Context<BorrowObligationLiquidity>,
     liquidity_amount: u64,
 ) -> Result<()> {
     require!(liquidity_amount > 0, LendingError::ZeroAmount);
     let slot = Clock::get()?.slot;
-    let reserve_key = context.accounts.reserve.key();
+    let reserve_key = *context.accounts.reserve.address();
 
     context.accounts.obligation.require_refreshed()?;
     context.accounts.reserve.require_refreshed()?;
@@ -70,52 +70,61 @@ pub fn handle_borrow_obligation_liquidity(
         obligation.stale = true;
     }
 
+    // Copy the seed inputs out: `release_borrow` below needs `&mut reserve`.
     let reserve = &context.accounts.reserve;
     let bump = [reserve.bump];
-    let seeds = reserve_signer_seeds(&reserve.lending_market, &reserve.liquidity_mint, &bump);
+    let lending_market = reserve.lending_market;
+    let liquidity_mint = reserve.liquidity_mint;
+    let seeds = reserve_signer_seeds(&lending_market, &liquidity_mint, &bump);
+    // `reserve` signs this CPI. It is a data account holding a live borrow on
+    // its buffer, which the runtime would reject when the CPI borrows the same
+    // account, so hand the borrow back across the call. `release_borrow`
+    // flushes the pending writes, and `reacquire_borrow_mut` re-reads them.
+    context.accounts.reserve.release_borrow()?;
     transfer_checked(
         CpiContext::new_with_signer(
-            context.accounts.token_program.key(),
+            context.accounts.token_program.address(),
             TransferChecked {
-                from: context.accounts.liquidity_vault.to_account_info(),
-                mint: context.accounts.liquidity_mint.to_account_info(),
-                to: context.accounts.user_liquidity.to_account_info(),
-                authority: reserve.to_account_info(),
+                from: context.accounts.liquidity_vault.cpi_handle_mut(),
+                mint: context.accounts.liquidity_mint.cpi_handle(),
+                to: context.accounts.user_liquidity.cpi_handle_mut(),
+                authority: context.accounts.reserve.cpi_handle(),
             },
             &[&seeds],
         ),
         liquidity_amount,
         decimals,
     )?;
+    context.accounts.reserve.reacquire_borrow_mut()?;
 
     Ok(())
 }
 
 #[derive(Accounts)]
-pub struct BorrowObligationLiquidity<'info> {
-    #[account(mut, has_one = owner)]
-    pub obligation: Account<'info, Obligation>,
+pub struct BorrowObligationLiquidity {
+    #[account(mut)]
+    pub obligation: BorshAccount<Obligation>,
 
-    pub owner: Signer<'info>,
+    #[account(address = obligation.owner)]
+    pub owner: Signer,
 
     #[account(
         mut,
-        has_one = liquidity_mint,
-        has_one = liquidity_vault,
-        has_one = price_feed,
         constraint = reserve.lending_market == obligation.lending_market @ LendingError::MarketMismatch,
     )]
-    pub reserve: Account<'info, Reserve>,
+    pub reserve: BorshAccount<Reserve>,
 
-    pub price_feed: Account<'info, PriceFeed>,
+    #[account(address = reserve.price_feed)]
+    pub price_feed: BorshAccount<PriceFeed>,
 
-    pub liquidity_mint: InterfaceAccount<'info, Mint>,
+    #[account(address = reserve.liquidity_mint)]
+    pub liquidity_mint: InterfaceAccount<Mint>,
+
+    #[account(mut, address = reserve.liquidity_vault)]
+    pub liquidity_vault: InterfaceAccount<TokenAccount>,
 
     #[account(mut)]
-    pub liquidity_vault: InterfaceAccount<'info, TokenAccount>,
+    pub user_liquidity: InterfaceAccount<TokenAccount>,
 
-    #[account(mut)]
-    pub user_liquidity: InterfaceAccount<'info, TokenAccount>,
-
-    pub token_program: Interface<'info, TokenInterface>,
+    pub token_program: Interface<'static, TokenInterface>,
 }

@@ -1,7 +1,6 @@
 use {
     anchor_lang::{
-        solana_program::{instruction::Instruction, system_program},
-        InstructionData, ToAccountMetas,
+        solana_program::instruction::Instruction, system_program, InstructionData, ToAccountMetas,
     },
     borsh::BorshDeserialize,
     litesvm::LiteSVM,
@@ -16,7 +15,7 @@ struct MessageAccount {
     message: String,
 }
 
-fn fetch_message(svm: &LiteSVM, pubkey: &anchor_lang::prelude::Pubkey) -> String {
+fn fetch_message(svm: &LiteSVM, pubkey: &anchor_lang::prelude::Address) -> String {
     let account = svm.get_account(pubkey).unwrap();
     let data = MessageAccount::try_from_slice(&account.data).unwrap();
     data.message
@@ -41,7 +40,7 @@ fn test_initialize() {
         anchor_realloc::accounts::InitializeAccountConstraints {
             payer: payer.pubkey(),
             message_account: message_keypair.pubkey(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
@@ -82,7 +81,7 @@ fn test_update_grows() {
         anchor_realloc::accounts::InitializeAccountConstraints {
             payer: payer.pubkey(),
             message_account: message_keypair.pubkey(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
@@ -105,7 +104,7 @@ fn test_update_grows() {
         anchor_realloc::accounts::UpdateAccountConstraints {
             payer: payer.pubkey(),
             message_account: message_keypair.pubkey(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
@@ -139,7 +138,7 @@ fn test_update_shrinks() {
         anchor_realloc::accounts::InitializeAccountConstraints {
             payer: payer.pubkey(),
             message_account: message_keypair.pubkey(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
@@ -162,7 +161,7 @@ fn test_update_shrinks() {
         anchor_realloc::accounts::UpdateAccountConstraints {
             payer: payer.pubkey(),
             message_account: message_keypair.pubkey(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );

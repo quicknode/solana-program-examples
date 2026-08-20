@@ -3,35 +3,41 @@ use anchor_spl::token_interface::{
     interest_bearing_mint_update_rate, InterestBearingMintUpdateRate, Mint, Token2022,
 };
 
-use crate::check_mint_data;
+use anchor_spl::token_interface::TokenInterfaceAccountExtensions;
+
+use crate::check_rate_authority;
 
 #[derive(Accounts)]
-pub struct UpdateRateAccountConstraints<'info> {
+pub struct UpdateRateAccountConstraints {
     #[account(mut)]
-    pub authority: Signer<'info>,
+    pub authority: Signer,
     #[account(mut)]
-    pub mint_account: InterfaceAccount<'info, Mint>,
+    pub mint_account: InterfaceAccount<Mint>,
 
-    pub token_program: Program<'info, Token2022>,
-    pub system_program: Program<'info, System>,
+    pub token_program: Program<Token2022>,
+    pub system_program: Program<System>,
 }
 
-pub fn handler(context: Context<UpdateRateAccountConstraints>, rate: i16) -> Result<()> {
+pub fn handler(context: &mut Context<UpdateRateAccountConstraints>, rate: i16) -> Result<()> {
     interest_bearing_mint_update_rate(
         CpiContext::new(
-            context.accounts.token_program.key(),
+            context.accounts.token_program.address(),
             InterestBearingMintUpdateRate {
-                token_program_id: context.accounts.token_program.to_account_info(),
-                mint: context.accounts.mint_account.to_account_info(),
-                rate_authority: context.accounts.authority.to_account_info(),
+                mint: context.accounts.mint_account.cpi_handle_mut(),
+                rate_authority: context.accounts.authority.cpi_handle(),
             },
         ),
         rate,
     )?;
 
-    check_mint_data(
-        &context.accounts.mint_account.to_account_info(),
-        &context.accounts.authority.key(),
+    // `mint_account` is an `InterfaceAccount<Mint>` declared `mut`, so it holds
+    // the account's exclusive borrow and the program cannot take a second one.
+    // anchor-spl's accessor parses the TLV through that same borrow, and checks
+    // the mint is owned by Token-2022 on the way.
+    let authority_address = *context.accounts.authority.address();
+    check_rate_authority(
+        context.accounts.mint_account.get_extension()?,
+        &authority_address,
     )?;
     Ok(())
 }

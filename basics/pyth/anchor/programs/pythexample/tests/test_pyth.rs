@@ -1,10 +1,11 @@
 use {
     anchor_lang::{
-        solana_program::{clock::Clock, instruction::Instruction},
-        InstructionData, ToAccountMetas,
+        solana_program::instruction::Instruction, Address, InstructionData, ToAccountMetas,
     },
     litesvm::LiteSVM,
     pythexample::MAXIMUM_PRICE_AGE_SECONDS,
+    // LiteSVM's get_sysvar wants the host-side Clock, not pinocchio's.
+    solana_clock::Clock,
     solana_keypair::Keypair,
     solana_kite::{create_wallet, send_transaction_from_instructions},
     solana_signer::Signer,
@@ -14,14 +15,12 @@ use {
 const MOCK_PUBLISH_TIME: i64 = 1_700_000_000;
 
 /// Pyth Receiver program ID (rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ)
-fn pyth_receiver_program_id() -> anchor_lang::solana_program::pubkey::Pubkey {
+fn pyth_receiver_program_id() -> anchor_lang::Address {
     pythexample::PYTH_RECEIVER_PROGRAM_ID
 }
 
 /// Build mock PriceUpdateV2 account data with Anchor discriminator.
-fn build_mock_price_update_account(
-    write_authority: &anchor_lang::solana_program::pubkey::Pubkey,
-) -> Vec<u8> {
+fn build_mock_price_update_account(write_authority: &anchor_lang::Address) -> Vec<u8> {
     // Discriminator: sha256("account:PriceUpdateV2")[..8]
     let discriminator: [u8; 8] = [34, 241, 35, 99, 157, 126, 244, 205];
 
@@ -83,7 +82,7 @@ fn set_clock_to_price_age(svm: &mut LiteSVM, age_seconds: i64) {
 }
 
 fn setup_with_price_account(
-    owner: anchor_lang::solana_program::pubkey::Pubkey,
+    owner: anchor_lang::Address,
 ) -> (LiteSVM, solana_keypair::Keypair, Keypair) {
     let program_id = pythexample::id();
     let mut svm = LiteSVM::new();
@@ -111,9 +110,10 @@ fn setup_with_price_account(
     (svm, payer, price_update_key)
 }
 
-fn read_price_instruction(price_update: anchor_lang::solana_program::pubkey::Pubkey) -> Instruction {
+fn read_price_instruction(price_update: anchor_lang::Address) -> Instruction {
     let ix_data = pythexample::instruction::ReadPrice {}.data();
-    let accounts = pythexample::accounts::ReadPriceAccountConstraints { price_update }.to_account_metas(None);
+    let accounts =
+        pythexample::accounts::ReadPriceAccountConstraints { price_update }.to_account_metas(None);
     Instruction::new_with_bytes(pythexample::id(), &ix_data, accounts)
 }
 

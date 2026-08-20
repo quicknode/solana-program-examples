@@ -17,9 +17,9 @@ const MAX_PRICE_AGE_SECONDS: i64 = 60;
 /// shared by the Classic Token Program and the Token Extensions Program, so this
 /// reads either.
 const TOKEN_AMOUNT_OFFSET: usize = 64;
-/// `owner` Pubkey is at bytes 32..64.
+/// `owner` Address is at bytes 32..64.
 const TOKEN_OWNER_OFFSET: usize = 32;
-/// `mint` Pubkey is at bytes 0..32.
+/// `mint` Address is at bytes 0..32.
 const TOKEN_MINT_OFFSET: usize = 0;
 
 fn read_pyth_raw(account_data: &[u8]) -> Result<(i64, i64)> {
@@ -41,9 +41,9 @@ fn read_pyth_raw(account_data: &[u8]) -> Result<(i64, i64)> {
 
 /// Validate a price feed account against the one the strategy registered, then
 /// return its positive, fresh price as u128. `now` is the current unix timestamp.
-pub fn load_price(price_feed: &AccountInfo, expected_key: &Pubkey, now: i64) -> Result<u128> {
+pub fn load_price(price_feed: &AccountView, expected_key: &Address, now: i64) -> Result<u128> {
     require_keys_eq!(
-        price_feed.key(),
+        *price_feed.address(),
         *expected_key,
         VaultError::InvalidPriceFeed
     );
@@ -63,7 +63,7 @@ pub fn load_price(price_feed: &AccountInfo, expected_key: &Pubkey, now: i64) -> 
 }
 
 /// Read the `amount` field of a token account from its raw data.
-pub fn read_token_amount(account: &AccountInfo) -> Result<u64> {
+pub fn read_token_amount(account: &AccountView) -> Result<u64> {
     let data = account.try_borrow_data()?;
     if data.len() < TOKEN_AMOUNT_OFFSET + 8 {
         return err!(VaultError::InvalidVaultAccount);
@@ -77,7 +77,7 @@ pub fn read_token_amount(account: &AccountInfo) -> Result<u64> {
 
 /// Read the `decimals` byte of a mint account. Offset 44 in the Mint layout
 /// (mint_authority option 36 + supply 8), shared by both token programs.
-pub fn read_mint_decimals(account: &AccountInfo) -> Result<u8> {
+pub fn read_mint_decimals(account: &AccountView) -> Result<u8> {
     let data = account.try_borrow_data()?;
     const MINT_DECIMALS_OFFSET: usize = 44;
     if data.len() <= MINT_DECIMALS_OFFSET {
@@ -87,14 +87,14 @@ pub fn read_mint_decimals(account: &AccountInfo) -> Result<u8> {
 }
 
 /// Read the `mint` and `owner` Pubkeys of a token account from its raw data.
-pub fn read_token_mint_and_owner(account: &AccountInfo) -> Result<(Pubkey, Pubkey)> {
+pub fn read_token_mint_and_owner(account: &AccountView) -> Result<(Address, Address)> {
     let data = account.try_borrow_data()?;
     if data.len() < TOKEN_OWNER_OFFSET + 32 {
         return err!(VaultError::InvalidVaultAccount);
     }
-    let mint = Pubkey::try_from(&data[TOKEN_MINT_OFFSET..TOKEN_MINT_OFFSET + 32])
+    let mint = Address::try_from(&data[TOKEN_MINT_OFFSET..TOKEN_MINT_OFFSET + 32])
         .map_err(|_| VaultError::InvalidVaultAccount)?;
-    let owner = Pubkey::try_from(&data[TOKEN_OWNER_OFFSET..TOKEN_OWNER_OFFSET + 32])
+    let owner = Address::try_from(&data[TOKEN_OWNER_OFFSET..TOKEN_OWNER_OFFSET + 32])
         .map_err(|_| VaultError::InvalidVaultAccount)?;
     Ok((mint, owner))
 }

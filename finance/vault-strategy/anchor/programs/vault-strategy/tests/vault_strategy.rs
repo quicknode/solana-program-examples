@@ -1,14 +1,13 @@
 use {
     anchor_lang::{
-        solana_program::{
-            clock::Clock, instruction::AccountMeta, instruction::Instruction, pubkey::Pubkey,
-            system_program,
-        },
-        AccountDeserialize, InstructionData, ToAccountMetas,
+        solana_program::{instruction::AccountMeta, instruction::Instruction},
+        system_program, AccountDeserialize, Address, InstructionData, ToAccountMetas,
     },
     anchor_spl::token::spl_token,
     litesvm::LiteSVM,
     solana_account::Account as SolanaAccount,
+    // LiteSVM's get_sysvar / set_sysvar want the host-side Clock, not pinocchio's.
+    solana_clock::Clock,
     solana_keypair::Keypair,
     solana_kite::{
         create_associated_token_account, create_token_mint, create_wallet,
@@ -18,26 +17,26 @@ use {
     solana_signer::Signer,
 };
 
-fn token_program_id() -> Pubkey {
+fn token_program_id() -> Address {
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         .parse()
         .unwrap()
 }
 
-fn ata_program_id() -> Pubkey {
+fn ata_program_id() -> Address {
     "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
         .parse()
         .unwrap()
 }
 
-fn pyth_receiver_program_id() -> Pubkey {
+fn pyth_receiver_program_id() -> Address {
     "rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ"
         .parse()
         .unwrap()
 }
 
-fn derive_ata(wallet: &Pubkey, mint: &Pubkey) -> Pubkey {
-    let (ata, _bump) = Pubkey::find_program_address(
+fn derive_ata(wallet: &Address, mint: &Address) -> Address {
+    let (ata, _bump) = Address::find_program_address(
         &[wallet.as_ref(), token_program_id().as_ref(), mint.as_ref()],
         &ata_program_id(),
     );
@@ -64,7 +63,7 @@ fn build_mock_price_update_account(price: i64, exponent: i32, publish_time: i64)
     data
 }
 
-fn set_price_feed(svm: &mut LiteSVM, key: Pubkey, price: i64) {
+fn set_price_feed(svm: &mut LiteSVM, key: Address, price: i64) {
     let data = build_mock_price_update_account(price, -8, PUBLISH_TIME);
     let rent = svm.minimum_balance_for_rent_exemption(data.len());
     svm.set_account(
@@ -95,33 +94,33 @@ const STRATEGY_INDEX: u64 = 0; // strategy PDA seed: "strategy" + 0
 
 struct TestContext {
     svm: LiteSVM,
-    vault_program_id: Pubkey,
-    router_program_id: Pubkey,
+    vault_program_id: Address,
+    router_program_id: Address,
     manager: Keypair,
     payer: Keypair,
-    usdc_mint: Pubkey,
-    tsla_mint: Pubkey,
-    nvda_mint: Pubkey,
-    strategy_pda: Pubkey,
-    share_mint_pda: Pubkey,
-    registry_pda: Pubkey,
-    approved_tsla: Pubkey,
-    approved_nvda: Pubkey,
-    router_config_pda: Pubkey,
-    router_authority_pda: Pubkey,
-    tsla_rate_pda: Pubkey,
-    nvda_rate_pda: Pubkey,
-    vault_usdc: Pubkey,
-    vault_tsla: Pubkey,
-    vault_nvda: Pubkey,
-    router_usdc_treasury: Pubkey,
-    price_feed_tsla: Pubkey,
-    price_feed_nvda: Pubkey,
+    usdc_mint: Address,
+    tsla_mint: Address,
+    nvda_mint: Address,
+    strategy_pda: Address,
+    share_mint_pda: Address,
+    registry_pda: Address,
+    approved_tsla: Address,
+    approved_nvda: Address,
+    router_config_pda: Address,
+    router_authority_pda: Address,
+    tsla_rate_pda: Address,
+    nvda_rate_pda: Address,
+    vault_usdc: Address,
+    vault_tsla: Address,
+    vault_nvda: Address,
+    router_usdc_treasury: Address,
+    price_feed_tsla: Address,
+    price_feed_nvda: Address,
 }
 
 impl TestContext {
-    fn asset_config(&self, index: u8) -> Pubkey {
-        Pubkey::find_program_address(
+    fn asset_config(&self, index: u8) -> Address {
+        Address::find_program_address(
             &[b"asset", self.strategy_pda.as_ref(), &[index]],
             &self.vault_program_id,
         )
@@ -168,7 +167,7 @@ fn setup_full() -> TestContext {
     let nvda_mint = create_token_mint(&mut svm, &payer, TOKEN_DECIMALS, None).unwrap();
 
     let (router_authority_pda, _) =
-        Pubkey::find_program_address(&[b"router_authority"], &router_program_id);
+        Address::find_program_address(&[b"router_authority"], &router_program_id);
 
     // The router mints basket assets on swap, so it must hold their mint authority.
     for basket_mint in [&tsla_mint, &nvda_mint] {
@@ -184,28 +183,28 @@ fn setup_full() -> TestContext {
         send_transaction_from_instructions(&mut svm, vec![ix], &[&payer], &payer.pubkey()).unwrap();
     }
 
-    let (strategy_pda, _) = Pubkey::find_program_address(
+    let (strategy_pda, _) = Address::find_program_address(
         &[b"strategy", STRATEGY_INDEX.to_le_bytes().as_ref()],
         &vault_program_id,
     );
     let (share_mint_pda, _) =
-        Pubkey::find_program_address(&[b"share_mint", strategy_pda.as_ref()], &vault_program_id);
+        Address::find_program_address(&[b"share_mint", strategy_pda.as_ref()], &vault_program_id);
     let (registry_pda, _) =
-        Pubkey::find_program_address(&[b"registry", payer.pubkey().as_ref()], &vault_program_id);
-    let (approved_tsla, _) = Pubkey::find_program_address(
+        Address::find_program_address(&[b"registry", payer.pubkey().as_ref()], &vault_program_id);
+    let (approved_tsla, _) = Address::find_program_address(
         &[b"approved_asset", registry_pda.as_ref(), tsla_mint.as_ref()],
         &vault_program_id,
     );
-    let (approved_nvda, _) = Pubkey::find_program_address(
+    let (approved_nvda, _) = Address::find_program_address(
         &[b"approved_asset", registry_pda.as_ref(), nvda_mint.as_ref()],
         &vault_program_id,
     );
     let (router_config_pda, _) =
-        Pubkey::find_program_address(&[b"router_config"], &router_program_id);
+        Address::find_program_address(&[b"router_config"], &router_program_id);
     let (tsla_rate_pda, _) =
-        Pubkey::find_program_address(&[b"rate", tsla_mint.as_ref()], &router_program_id);
+        Address::find_program_address(&[b"rate", tsla_mint.as_ref()], &router_program_id);
     let (nvda_rate_pda, _) =
-        Pubkey::find_program_address(&[b"rate", nvda_mint.as_ref()], &router_program_id);
+        Address::find_program_address(&[b"rate", nvda_mint.as_ref()], &router_program_id);
 
     let vault_usdc = derive_ata(&strategy_pda, &usdc_mint);
     let vault_tsla = derive_ata(&strategy_pda, &tsla_mint);
@@ -227,7 +226,7 @@ fn setup_full() -> TestContext {
             router_config: router_config_pda,
             router_authority: router_authority_pda,
             token_program: token_program_id(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
@@ -255,7 +254,7 @@ fn setup_full() -> TestContext {
                 router_usdc_treasury,
                 associated_token_program: ata_program_id(),
                 token_program: token_program_id(),
-                system_program: system_program::id(),
+                system_program: system_program::ID,
             }
             .to_account_metas(None),
         );
@@ -278,7 +277,7 @@ fn setup_full() -> TestContext {
         vault_strategy::accounts::InitializeRegistryAccountConstraints {
             authority: payer.pubkey(),
             registry: registry_pda,
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
@@ -302,7 +301,7 @@ fn setup_full() -> TestContext {
                 registry: registry_pda,
                 asset_mint: mint,
                 approved_asset: entry,
-                system_program: system_program::id(),
+                system_program: system_program::ID,
             }
             .to_account_metas(None),
         );
@@ -336,7 +335,7 @@ fn setup_full() -> TestContext {
     }
 }
 
-fn init_strategy(ctx: &mut TestContext, fee_bps: u16, slippage_bps: u16, router: Pubkey) {
+fn init_strategy(ctx: &mut TestContext, fee_bps: u16, slippage_bps: u16, router: Address) {
     let ix = Instruction::new_with_bytes(
         ctx.vault_program_id,
         &vault_strategy::instruction::InitializeStrategy {
@@ -355,7 +354,7 @@ fn init_strategy(ctx: &mut TestContext, fee_bps: u16, slippage_bps: u16, router:
             vault_usdc: ctx.vault_usdc,
             associated_token_program: ata_program_id(),
             token_program: token_program_id(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
@@ -371,9 +370,9 @@ fn init_strategy(ctx: &mut TestContext, fee_bps: u16, slippage_bps: u16, router:
 fn add_asset(
     ctx: &mut TestContext,
     index: u8,
-    mint: Pubkey,
-    approved_asset: Pubkey,
-    vault: Pubkey,
+    mint: Address,
+    approved_asset: Address,
+    vault: Address,
     weight_bps: u16,
 ) -> Result<(), solana_kite::SolanaKiteError> {
     let asset_config = ctx.asset_config(index);
@@ -390,7 +389,7 @@ fn add_asset(
             vault_asset: vault,
             associated_token_program: ata_program_id(),
             token_program: token_program_id(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
@@ -416,11 +415,11 @@ fn standard_strategy(ctx: &mut TestContext) {
 /// [asset_config, vault, mint, rate, price_feed]. Deposit deploys into the asset,
 /// so vault and mint must be writable.
 fn asset_deposit_metas(
-    config: Pubkey,
-    vault: Pubkey,
-    mint: Pubkey,
-    rate: Pubkey,
-    feed: Pubkey,
+    config: Address,
+    vault: Address,
+    mint: Address,
+    rate: Address,
+    feed: Address,
 ) -> Vec<AccountMeta> {
     vec![
         AccountMeta::new_readonly(config, false),
@@ -470,7 +469,7 @@ fn deposit_named_metas(ctx: &TestContext, user: &Keypair) -> Vec<AccountMeta> {
         swap_router_program: ctx.router_program_id,
         associated_token_program: ata_program_id(),
         token_program: token_program_id(),
-        system_program: system_program::id(),
+        system_program: system_program::ID,
     }
     .to_account_metas(None)
 }
@@ -501,7 +500,7 @@ fn do_deposit(
     user: &Keypair,
     usdc_amount: u64,
     minimum_shares: u64,
-) -> Pubkey {
+) -> Address {
     let remaining = deposit_remaining(ctx);
     let ix = deposit_instruction(ctx, user, usdc_amount, minimum_shares, remaining);
     send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[user], &user.pubkey()).unwrap();
@@ -514,7 +513,7 @@ fn do_deposit_tsla_only(
     user: &Keypair,
     usdc_amount: u64,
     minimum_shares: u64,
-) -> Pubkey {
+) -> Address {
     let remaining = deposit_remaining_tsla(ctx);
     let ix = deposit_instruction(ctx, user, usdc_amount, minimum_shares, remaining);
     send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[user], &user.pubkey()).unwrap();
@@ -523,7 +522,7 @@ fn do_deposit_tsla_only(
 
 /// Update the router's exchange rate for a mint (and its Pyth feed stays the caller's
 /// job). Used to keep the router quote in step with a price move.
-fn set_router_rate(ctx: &mut TestContext, mint: Pubkey, rate: u64, rate_pda: Pubkey) {
+fn set_router_rate(ctx: &mut TestContext, mint: Address, rate: u64, rate_pda: Address) {
     let ix = Instruction::new_with_bytes(
         ctx.router_program_id,
         &mock_swap_router::instruction::SetRate {
@@ -541,7 +540,7 @@ fn set_router_rate(ctx: &mut TestContext, mint: Pubkey, rate: u64, rate_pda: Pub
             router_usdc_treasury: ctx.router_usdc_treasury,
             associated_token_program: ata_program_id(),
             token_program: token_program_id(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
@@ -601,7 +600,7 @@ fn read_asset_config(ctx: &TestContext, index: u8) -> vault_strategy::state::Ass
 
 /// (mint, asset_config, price_feed, vault, rate_pda) for an asset in the two-asset
 /// standard strategy: index 0 is TSLAx, index 1 is NVDAx.
-fn asset_accounts(ctx: &TestContext, index: u8) -> (Pubkey, Pubkey, Pubkey, Pubkey, Pubkey) {
+fn asset_accounts(ctx: &TestContext, index: u8) -> (Address, Address, Address, Address, Address) {
     match index {
         0 => (
             ctx.tsla_mint,
@@ -659,7 +658,7 @@ fn do_rebalance(
             swap_router_program: ctx.router_program_id,
             associated_token_program: ata_program_id(),
             token_program: token_program_id(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
@@ -683,7 +682,7 @@ fn advance_one_year(ctx: &mut TestContext) {
     });
 }
 
-fn do_collect_fees(ctx: &mut TestContext) -> Pubkey {
+fn do_collect_fees(ctx: &mut TestContext) -> Address {
     let manager_share = derive_ata(&ctx.manager.pubkey(), &ctx.share_mint_pda);
     let ix = Instruction::new_with_bytes(
         ctx.vault_program_id,
@@ -696,7 +695,7 @@ fn do_collect_fees(ctx: &mut TestContext) -> Pubkey {
             payer: ctx.payer.pubkey(),
             associated_token_program: ata_program_id(),
             token_program: token_program_id(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
@@ -753,7 +752,7 @@ fn test_add_asset_rejects_unapproved() {
 
     // A mint that was never approved: its approved_asset PDA does not exist.
     let rogue_mint = create_token_mint(&mut ctx.svm, &ctx.payer, TOKEN_DECIMALS, None).unwrap();
-    let (rogue_entry, _) = Pubkey::find_program_address(
+    let (rogue_entry, _) = Address::find_program_address(
         &[
             b"approved_asset",
             ctx.registry_pda.as_ref(),
@@ -782,9 +781,9 @@ fn test_add_asset_rejects_weight_overflow() {
 /// Create a fresh mint and approve it in the registry. The bound price feed is an
 /// arbitrary pubkey: callers that never value this asset (e.g. the cap boundary test)
 /// do not need a real feed account.
-fn create_and_approve_mint(ctx: &mut TestContext) -> (Pubkey, Pubkey) {
+fn create_and_approve_mint(ctx: &mut TestContext) -> (Address, Address) {
     let mint = create_token_mint(&mut ctx.svm, &ctx.payer, TOKEN_DECIMALS, None).unwrap();
-    let (entry, _) = Pubkey::find_program_address(
+    let (entry, _) = Address::find_program_address(
         &[b"approved_asset", ctx.registry_pda.as_ref(), mint.as_ref()],
         &ctx.vault_program_id,
     );
@@ -799,7 +798,7 @@ fn create_and_approve_mint(ctx: &mut TestContext) -> (Pubkey, Pubkey) {
             registry: ctx.registry_pda,
             asset_mint: mint,
             approved_asset: entry,
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
@@ -853,7 +852,7 @@ fn test_initialize_rejects_excessive_fee() {
             vault_usdc: ctx.vault_usdc,
             associated_token_program: ata_program_id(),
             token_program: token_program_id(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
@@ -888,7 +887,7 @@ fn test_initialize_rejects_excessive_slippage() {
             vault_usdc: ctx.vault_usdc,
             associated_token_program: ata_program_id(),
             token_program: token_program_id(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
     );
@@ -988,7 +987,7 @@ fn test_deposit_rejects_slippage() {
 fn test_deposit_rejects_unregistered_router() {
     let mut ctx = setup_full();
     // Register a different router than the deployed mock, then fully allocate 40/60.
-    let bogus_router = Pubkey::new_unique();
+    let bogus_router = Address::new_unique();
     init_strategy(&mut ctx, FEE_BPS, SLIPPAGE_BPS, bogus_router);
     let (tm, wt, vt) = (ctx.tsla_mint, ctx.approved_tsla, ctx.vault_tsla);
     add_asset(&mut ctx, 0, tm, wt, vt, 4000).unwrap();
@@ -1088,7 +1087,7 @@ fn test_collect_fees() {
     );
 }
 
-fn withdraw_remaining(ctx: &TestContext, user: &Pubkey) -> Vec<AccountMeta> {
+fn withdraw_remaining(ctx: &TestContext, user: &Address) -> Vec<AccountMeta> {
     vec![
         AccountMeta::new_readonly(ctx.asset_config(0), false),
         AccountMeta::new(ctx.vault_tsla, false),
@@ -1128,7 +1127,7 @@ fn test_withdraw() {
         vault_usdc: ctx.vault_usdc,
         associated_token_program: ata_program_id(),
         token_program: token_program_id(),
-        system_program: system_program::id(),
+        system_program: system_program::ID,
     }
     .to_account_metas(None);
     metas.extend(withdraw_remaining(&ctx, &user.pubkey()));
@@ -1181,7 +1180,7 @@ fn test_withdraw_rejects_slippage() {
         vault_usdc: ctx.vault_usdc,
         associated_token_program: ata_program_id(),
         token_program: token_program_id(),
-        system_program: system_program::id(),
+        system_program: system_program::ID,
     }
     .to_account_metas(None);
     metas.extend(withdraw_remaining(&ctx, &user.pubkey()));
@@ -1232,7 +1231,7 @@ fn do_withdraw(ctx: &mut TestContext, user: &Keypair, shares: u64, min_usdc_out:
         vault_usdc: ctx.vault_usdc,
         associated_token_program: ata_program_id(),
         token_program: token_program_id(),
-        system_program: system_program::id(),
+        system_program: system_program::ID,
     }
     .to_account_metas(None);
     metas.extend(withdraw_remaining(ctx, &user.pubkey()));

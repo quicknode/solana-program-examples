@@ -10,25 +10,36 @@ pub mod anchor {
 
     use super::*;
 
-    pub fn create_token(context: Context<CreateTokenAccountConstraints>, token_name: String) -> Result<()> {
+    pub fn create_token(
+        context: &mut Context<CreateTokenAccountConstraints>,
+        token_name: String,
+    ) -> Result<()> {
         instructions::create_token::handler(context, token_name)
     }
 
-    pub fn create_token_account(context: Context<CreateTokenAccountAccountConstraints>) -> Result<()> {
+    pub fn create_token_account(
+        context: &mut Context<CreateTokenAccountAccountConstraints>,
+    ) -> Result<()> {
         instructions::create_token_account::handler(context)
     }
 
     pub fn create_associated_token_account(
-        context: Context<CreateAssociatedTokenAccountAccountConstraints>,
+        context: &mut Context<CreateAssociatedTokenAccountAccountConstraints>,
     ) -> Result<()> {
         instructions::create_associated_token_account::handler(context)
     }
 
-    pub fn transfer_token(context: Context<TransferTokenAccountConstraints>, amount: u64) -> Result<()> {
+    pub fn transfer_token(
+        context: &mut Context<TransferTokenAccountConstraints>,
+        amount: u64,
+    ) -> Result<()> {
         instructions::transfer_token::handler(context, amount)
     }
 
-    pub fn mint_token(context: Context<MintTokenAccountConstraints>, amount: u64) -> Result<()> {
+    pub fn mint_token(
+        context: &mut Context<MintTokenAccountConstraints>,
+        amount: u64,
+    ) -> Result<()> {
         instructions::mint_token::handler(context, amount)
     }
 }

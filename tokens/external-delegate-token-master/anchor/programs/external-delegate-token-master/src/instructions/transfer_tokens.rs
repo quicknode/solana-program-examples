@@ -3,46 +3,51 @@ use anchor_spl::token_interface::{
     transfer_checked, Mint, TokenAccount, TokenInterface, TransferChecked,
 };
 
-use crate::{build_transfer_authorization_message, verify_ethereum_signature, ErrorCode, UserAccount};
+use crate::{
+    build_transfer_authorization_message, verify_ethereum_signature, ErrorCode, UserAccount,
+};
 
 #[derive(Accounts)]
-pub struct TransferTokensAccountConstraints<'info> {
-    #[account(mut, has_one = authority)]
-    pub user_account: Account<'info, UserAccount>,
+pub struct TransferTokensAccountConstraints {
+    #[account(mut)]
+    pub user_account: BorshAccount<UserAccount>,
 
-    pub authority: Signer<'info>,
+    #[account(address = user_account.authority)]
+    pub authority: Signer,
 
-    pub mint: InterfaceAccount<'info, Mint>,
+    pub mint: InterfaceAccount<Mint>,
 
     #[account(mut)]
-    pub user_token_account: InterfaceAccount<'info, TokenAccount>,
+    pub user_token_account: InterfaceAccount<TokenAccount>,
 
     #[account(mut)]
-    pub recipient_token_account: InterfaceAccount<'info, TokenAccount>,
+    pub recipient_token_account: InterfaceAccount<TokenAccount>,
 
     #[account(
-        seeds = [user_account.key().as_ref()],
+        seeds = [user_account.address().as_ref()],
         bump,
     )]
-    pub user_pda: SystemAccount<'info>,
+    pub user_pda: SystemAccount,
 
-    pub token_program: Interface<'info, TokenInterface>,
+    pub token_program: Interface<'static, TokenInterface>,
 }
 
 pub fn handler(
-    context: Context<TransferTokensAccountConstraints>,
+    context: &mut Context<TransferTokensAccountConstraints>,
     amount: u64,
     signature: [u8; 65],
 ) -> Result<()> {
+    // Copy out what the message needs, so the shared borrow ends before the
+    // nonce bump below takes a mutable one.
+    let user_account_key = *context.accounts.user_account.address();
     let user_account = &context.accounts.user_account;
-    let user_account_key = user_account.key();
 
     // Rebuild the authorized message onchain so the signature commits to
     // this exact transfer (amount, recipient, and the current nonce).
     let message = build_transfer_authorization_message(
         &user_account_key,
         amount,
-        &context.accounts.recipient_token_account.key(),
+        &context.accounts.recipient_token_account.address(),
         user_account.nonce,
     );
 
@@ -60,20 +65,20 @@ pub fn handler(
         .ok_or(ErrorCode::NonceOverflow)?;
 
     let transfer_accounts = TransferChecked {
-        from: context.accounts.user_token_account.to_account_info(),
-        mint: context.accounts.mint.to_account_info(),
-        to: context.accounts.recipient_token_account.to_account_info(),
-        authority: context.accounts.user_pda.to_account_info(),
+        from: context.accounts.user_token_account.cpi_handle_mut(),
+        mint: context.accounts.mint.cpi_handle(),
+        to: context.accounts.recipient_token_account.cpi_handle_mut(),
+        authority: context.accounts.user_pda.cpi_handle(),
     };
 
     transfer_checked(
         CpiContext::new_with_signer(
-            context.accounts.token_program.key(),
+            context.accounts.token_program.address(),
             transfer_accounts,
             &[&[user_account_key.as_ref(), &[context.bumps.user_pda]]],
         ),
         amount,
-        context.accounts.mint.decimals,
+        context.accounts.mint.decimals(),
     )?;
 
     Ok(())

@@ -20,11 +20,21 @@ custom-heap = []
 custom-panic = []
 
 [dependencies]
-anchor-lang = "1.1.2"
+anchor-lang = { version = "2.0.0-rc.1", features = ["compat"] }
+# The `#[program]` macro expands to `wincode` paths for instruction-data
+# (de)serialization, so the crate has to be a direct dependency.
+wincode = { version = "0.5", features = ["derive"] }
+# anchor-lang 2.0.0-rc.1 is built against wincode 0.5, but solana-address 2.7
+# moved to wincode 0.6. With both in the graph, `Address`'s wincode impls
+# belong to the version the account derives are not using and every
+# `SchemaRead`/`SchemaWrite` bound fails. 2.6.1 is the last 0.5-line release.
+# `borsh` adds the BorshSerialize/BorshDeserialize impls for `Address` that the
+# vendored Bubblegum types need; pinocchio re-exports this same type.
+solana-address = { version = ">=2.6, <2.7", features = ["borsh"] }
 # mpl-bubblegum and spl-account-compression removed: they depend on solana-program 2.x
 # which is incompatible with Anchor 1.0's solana 3.x types. CPI calls are built manually
 # using raw invoke() with hardcoded program IDs and discriminators.
-borsh = "1"
+borsh = { version = "1", features = ["derive"] }
 
 [dev-dependencies]
 litesvm = "0.13.1"

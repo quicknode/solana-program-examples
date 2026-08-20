@@ -1,7 +1,7 @@
 use {
     anchor_lang::{
-        solana_program::{instruction::Instruction, pubkey::Pubkey, system_program},
-        InstructionData, ToAccountMetas,
+        solana_program::instruction::Instruction, system_program, Address, InstructionData,
+        ToAccountMetas,
     },
     litesvm::LiteSVM,
     solana_keypair::Keypair,
@@ -9,25 +9,25 @@ use {
     solana_signer::Signer,
 };
 
-fn metadata_program_id() -> Pubkey {
+fn metadata_program_id() -> Address {
     "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
         .parse()
         .unwrap()
 }
 
-fn token_program_id() -> Pubkey {
+fn token_program_id() -> Address {
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         .parse()
         .unwrap()
 }
 
-fn rent_sysvar_id() -> Pubkey {
+fn rent_sysvar_id() -> Address {
     "SysvarRent111111111111111111111111111111111"
         .parse()
         .unwrap()
 }
 
-fn setup() -> (LiteSVM, Pubkey, Keypair) {
+fn setup() -> (LiteSVM, Address, Keypair) {
     let program_id = create_token::id();
     let mut svm = LiteSVM::new();
 
@@ -42,9 +42,9 @@ fn setup() -> (LiteSVM, Pubkey, Keypair) {
     (svm, program_id, payer)
 }
 
-fn derive_metadata_pda(mint: &Pubkey) -> Pubkey {
+fn derive_metadata_pda(mint: &Address) -> Address {
     let metadata_pid = metadata_program_id();
-    let (pda, _bump) = Pubkey::find_program_address(
+    let (pda, _bump) = Address::find_program_address(
         &[b"metadata", metadata_pid.as_ref(), mint.as_ref()],
         &metadata_pid,
     );
@@ -72,7 +72,7 @@ fn test_create_spl_token() {
             mint_account: mint_keypair.pubkey(),
             token_metadata_program: metadata_program_id(),
             token_program: token_program_id(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
             rent: rent_sysvar_id(),
         }
         .to_account_metas(None),
@@ -90,7 +90,10 @@ fn test_create_spl_token() {
     let mint_account = svm
         .get_account(&mint_keypair.pubkey())
         .expect("Mint account should exist");
-    assert!(!mint_account.data.is_empty(), "Mint account should have data");
+    assert!(
+        !mint_account.data.is_empty(),
+        "Mint account should have data"
+    );
 
     // Verify the metadata account was created
     let meta_account = svm
@@ -123,7 +126,7 @@ fn test_create_nft() {
             mint_account: mint_keypair.pubkey(),
             token_metadata_program: metadata_program_id(),
             token_program: token_program_id(),
-            system_program: system_program::id(),
+            system_program: system_program::ID,
             rent: rent_sysvar_id(),
         }
         .to_account_metas(None),
@@ -141,5 +144,8 @@ fn test_create_nft() {
     let mint_account = svm
         .get_account(&mint_keypair.pubkey())
         .expect("Mint account should exist");
-    assert!(!mint_account.data.is_empty(), "Mint account should have data");
+    assert!(
+        !mint_account.data.is_empty(),
+        "Mint account should have data"
+    );
 }

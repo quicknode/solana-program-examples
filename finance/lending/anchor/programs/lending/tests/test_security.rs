@@ -1,8 +1,9 @@
 mod common;
 
+use lending::errors::LendingError;
+
 use anchor_lang::{
-    solana_program::{instruction::Instruction, system_program},
-    InstructionData, ToAccountMetas,
+    solana_program::instruction::Instruction, system_program, InstructionData, ToAccountMetas,
 };
 use common::{default_config, dollars, Env};
 use solana_signer::Signer;
@@ -30,10 +31,7 @@ fn cross_market_reserve_is_rejected() {
     // token movement.
     env.fund(&borrower, foreign_reserve.share_mint, 0); // create the share ATA
     let result = env.try_post_collateral(&borrower, obligation, &foreign_reserve, 1);
-    assert!(
-        result.unwrap_err().contains("MarketMismatch"),
-        "a reserve from another lending market must be rejected"
-    );
+    common::assert_program_error!(result, LendingError::MarketMismatch);
 }
 
 /// A market's price feed can only be written by that market's owner: an
@@ -47,7 +45,7 @@ fn non_owner_cannot_write_market_price_feed() {
     // The market's feed for this mint (seeds ["price_feed", market, mint]).
     let market_feed = env.price_feed_address(env.market, usdc.mint);
 
-    // The attacker passes the real market but signs as themself; `has_one = owner`
+    // The attacker passes the real market but signs as themself; `address = lending_market.owner`
     // on the market rejects them before any write.
     let instruction = Instruction {
         program_id: lending::id(),
@@ -56,7 +54,7 @@ fn non_owner_cannot_write_market_price_feed() {
             owner: attacker.pubkey(),
             price_feed: market_feed,
             mint: usdc.mint,
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
         data: lending::instruction::SetPrice {

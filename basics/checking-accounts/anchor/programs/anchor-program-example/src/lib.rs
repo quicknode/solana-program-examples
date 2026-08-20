@@ -6,7 +6,9 @@ declare_id!("ECWPhR3rJbaPfyNFgphnjxSEexbTArc7vxD8fnW6tgKw");
 pub mod checking_account_program {
     use super::*;
 
-    pub fn check_accounts(_context: Context<CheckingAccountsAccountConstraints>) -> Result<()> {
+    pub fn check_accounts(
+        _context: &mut Context<CheckingAccountsAccountConstraints>,
+    ) -> Result<()> {
         Ok(())
     }
 }
@@ -14,17 +16,17 @@ pub mod checking_account_program {
 // Account validation in Anchor is done using the types and constraints specified in the #[derive(Accounts)] structs
 // This is a simple example and does not include all possible constraints and types
 #[derive(Accounts)]
-pub struct CheckingAccountsAccountConstraints<'info> {
-    payer: Signer<'info>, // checks account is signer
+pub struct CheckingAccountsAccountConstraints {
+    pub payer: Signer, // checks account is signer
 
     /// CHECK: No checks performed, example of an unchecked account
     #[account(mut)]
-    account_to_create: UncheckedAccount<'info>,
+    pub account_to_create: UncheckedAccount,
     /// CHECK: Perform owner check using constraint
     #[account(
         mut,
         owner = id()
     )]
-    account_to_change: UncheckedAccount<'info>,
-    system_program: Program<'info, System>, // checks account is executable, and is the system program
+    pub account_to_change: UncheckedAccount,
+    pub system_program: Program<System>, // checks account is executable, and is the system program
 }

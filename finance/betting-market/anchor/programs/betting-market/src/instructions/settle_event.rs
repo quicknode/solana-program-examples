@@ -1,10 +1,13 @@
 use anchor_lang::prelude::*;
+
+use crate::state::Event;
+use anchor_spl::mint;
 use anchor_spl::{
     associated_token::AssociatedToken,
     token_interface::{Mint, TokenAccount, TokenInterface},
 };
 
-use crate::{error::BettingError, Config, Event, EventStatus, Outcome};
+use crate::{error::BettingError, Config, EventStatus, Outcome};
 
 use super::transfer_tokens_from_vault;
 
@@ -12,35 +15,30 @@ const BPS_DENOMINATOR: u128 = 10_000;
 
 #[derive(Accounts)]
 #[instruction(winning_outcome_index: u8)]
-pub struct SettleEventAccountConstraints<'info> {
-    #[account(mut)]
-    pub admin: Signer<'info>,
+pub struct SettleEventAccountConstraints {
+    #[account(mut, address = config.admin @ BettingError::Unauthorized)]
+    pub admin: Signer,
 
-    #[account(
-        seeds = [b"config"],
-        bump = config.bump,
-        has_one = admin @ BettingError::Unauthorized,
-        has_one = token_mint,
-        has_one = fee_recipient,
-    )]
-    pub config: Account<'info, Config>,
+    #[account(seeds = [b"config"],
+        bump = config.bump)]
+    pub config: BorshAccount<Config>,
 
-    #[account(mint::token_program = token_program)]
-    pub token_mint: InterfaceAccount<'info, Mint>,
+    #[account(mint::token_program = token_program, address = config.token_mint)]
+    pub token_mint: InterfaceAccount<Mint>,
 
     #[account(
         mut,
-        seeds = [b"event", event.event_id.to_le_bytes().as_ref()],
+        seeds = [b"event", event.event_id.to_le_bytes()],
         bump = event.bump,
+        address = winning_outcome.event,
     )]
-    pub event: Account<'info, Event>,
+    pub event: BorshAccount<Event>,
 
     #[account(
-        has_one = event,
-        seeds = [b"outcome", event.key().as_ref(), &[winning_outcome_index]],
+        seeds = [b"outcome", event.address().as_ref(), &[winning_outcome_index]],
         bump = winning_outcome.bump,
     )]
-    pub winning_outcome: Account<'info, Outcome>,
+    pub winning_outcome: BorshAccount<Outcome>,
 
     #[account(
         mut,
@@ -48,10 +46,11 @@ pub struct SettleEventAccountConstraints<'info> {
         associated_token::authority = event,
         associated_token::token_program = token_program,
     )]
-    pub vault: InterfaceAccount<'info, TokenAccount>,
+    pub vault: InterfaceAccount<TokenAccount>,
 
-    /// CHECK: validated against config.fee_recipient by the `has_one` above.
-    pub fee_recipient: UncheckedAccount<'info>,
+    /// CHECK: validated against config.fee_recipient by the `address` constraint.
+    #[account(address = config.fee_recipient)]
+    pub fee_recipient: UncheckedAccount,
 
     #[account(
         init_if_needed,
@@ -60,15 +59,15 @@ pub struct SettleEventAccountConstraints<'info> {
         associated_token::authority = fee_recipient,
         associated_token::token_program = token_program,
     )]
-    pub fee_recipient_token_account: InterfaceAccount<'info, TokenAccount>,
+    pub fee_recipient_token_account: InterfaceAccount<TokenAccount>,
 
-    pub associated_token_program: Program<'info, AssociatedToken>,
-    pub token_program: Interface<'info, TokenInterface>,
-    pub system_program: Program<'info, System>,
+    pub associated_token_program: Program<AssociatedToken>,
+    pub token_program: Interface<'static, TokenInterface>,
+    pub system_program: Program<System>,
 }
 
 pub fn handle_settle_event(
-    context: Context<SettleEventAccountConstraints>,
+    context: &mut Context<SettleEventAccountConstraints>,
     winning_outcome_index: u8,
 ) -> Result<()> {
     require!(
@@ -86,22 +85,32 @@ pub fn handle_settle_event(
 
     // Winners always get their own stake back; the fee is only ever charged on
     // the losing side, so a winner can never receive less than they staked.
-    let fee = (losing_pool as u128 * context.accounts.event.fee_bps as u128 / BPS_DENOMINATOR) as u64;
+    let fee =
+        (losing_pool as u128 * context.accounts.event.fee_bps as u128 / BPS_DENOMINATOR) as u64;
     let distributable_losing_pool = losing_pool - fee;
 
     if fee > 0 {
         let event_id = context.accounts.event.event_id;
         let event_bump = context.accounts.event.bump;
+        // `event` signs the transfer below. Release its borrow across the CPI:
+        // the runtime rejects a CPI that borrows an account we still hold.
+        context.accounts.event.release_borrow()?;
+        let event_view = *context.accounts.event.account();
+
         transfer_tokens_from_vault(
-            &context.accounts.vault,
-            &context.accounts.fee_recipient_token_account,
+            &mut context.accounts.vault,
+            &mut context.accounts.fee_recipient_token_account,
             fee,
             &context.accounts.token_mint,
-            &context.accounts.event.to_account_info(),
+            event_view,
             &context.accounts.token_program,
             event_id,
             event_bump,
         )?;
+
+        // Take the borrow back before writing the settled state through it.
+        // Only released on this branch, so only reacquired here.
+        context.accounts.event.reacquire_borrow_mut()?;
     }
 
     let event = &mut context.accounts.event;

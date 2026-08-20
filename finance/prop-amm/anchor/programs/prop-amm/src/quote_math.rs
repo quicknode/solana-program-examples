@@ -67,8 +67,9 @@ pub fn quote_out_for_base_in(
     let numerator = (base_in as u128)
         .checked_mul(bid)?
         .checked_mul(10u128.checked_pow(quote_decimals as u32)?)?;
-    let denominator =
-        10u128.checked_pow(oracle_scale)?.checked_mul(10u128.checked_pow(base_decimals as u32)?)?;
+    let denominator = 10u128
+        .checked_pow(oracle_scale)?
+        .checked_mul(10u128.checked_pow(base_decimals as u32)?)?;
     if denominator == 0 {
         return None;
     }

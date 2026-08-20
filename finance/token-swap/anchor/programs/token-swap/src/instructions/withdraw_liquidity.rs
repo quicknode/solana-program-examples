@@ -11,7 +11,7 @@ use crate::{
 };
 
 pub fn handle_withdraw_liquidity(
-    context: Context<WithdrawLiquidityAccountConstraints>,
+    context: &mut Context<WithdrawLiquidityAccountConstraints>,
     amount: u64,
     minimum_token_a_out: u64,
     minimum_token_b_out: u64,
@@ -19,8 +19,8 @@ pub fn handle_withdraw_liquidity(
     let authority_bump = context.bumps.pool_authority;
     let authority_seeds = &[
         &context.accounts.pool_config.config.to_bytes(),
-        &context.accounts.mint_a.key().to_bytes(),
-        &context.accounts.mint_b.key().to_bytes(),
+        &context.accounts.mint_a.address().to_bytes(),
+        &context.accounts.mint_b.address().to_bytes(),
         AUTHORITY_SEED,
         &[authority_bump],
     ];
@@ -36,13 +36,13 @@ pub fn handle_withdraw_liquidity(
     let effective_pool_a = context
         .accounts
         .pool_a
-        .amount
+        .amount()
         .checked_sub(pool_config.admin_fees_owed_a)
         .ok_or(AmmError::MathOverflow)?;
     let effective_pool_b = context
         .accounts
         .pool_b
-        .amount
+        .amount()
         .checked_sub(pool_config.admin_fees_owed_b)
         .ok_or(AmmError::MathOverflow)?;
 
@@ -62,7 +62,7 @@ pub fn handle_withdraw_liquidity(
     // Both amounts are computed up-front (before the slippage checks) so
     // the LP gets a consistent error regardless of which side trips first,
     // and so we don't transfer one side then revert.
-    let divisor = (context.accounts.liquidity_provider_mint.supply as u128)
+    let divisor = (context.accounts.liquidity_provider_mint.supply() as u128)
         .checked_add(MINIMUM_LIQUIDITY as u128)
         .ok_or(AmmError::MathOverflow)?;
     let amount_a_u128 = (amount as u128)
@@ -94,43 +94,43 @@ pub fn handle_withdraw_liquidity(
     // transfer_checked verifies the mint + decimals at the token program.
     token_interface::transfer_checked(
         CpiContext::new_with_signer(
-            context.accounts.token_program.key(),
+            context.accounts.token_program.address(),
             TransferChecked {
-                from: context.accounts.pool_a.to_account_info(),
-                mint: context.accounts.mint_a.to_account_info(),
-                to: context.accounts.token_a.to_account_info(),
-                authority: context.accounts.pool_authority.to_account_info(),
+                from: context.accounts.pool_a.to_cpi_handle_mut(),
+                mint: context.accounts.mint_a.to_cpi_handle(),
+                to: context.accounts.token_a.to_cpi_handle_mut(),
+                authority: context.accounts.pool_authority.cpi_handle(),
             },
             signer_seeds,
         ),
         amount_a,
-        context.accounts.mint_a.decimals,
+        context.accounts.mint_a.decimals(),
     )?;
 
     token_interface::transfer_checked(
         CpiContext::new_with_signer(
-            context.accounts.token_program.key(),
+            context.accounts.token_program.address(),
             TransferChecked {
-                from: context.accounts.pool_b.to_account_info(),
-                mint: context.accounts.mint_b.to_account_info(),
-                to: context.accounts.token_b.to_account_info(),
-                authority: context.accounts.pool_authority.to_account_info(),
+                from: context.accounts.pool_b.to_cpi_handle_mut(),
+                mint: context.accounts.mint_b.to_cpi_handle(),
+                to: context.accounts.token_b.to_cpi_handle_mut(),
+                authority: context.accounts.pool_authority.cpi_handle(),
             },
             signer_seeds,
         ),
         amount_b,
-        context.accounts.mint_b.decimals,
+        context.accounts.mint_b.decimals(),
     )?;
 
     // Burn the liquidity tokens
     // It will fail if the amount is invalid
     token_interface::burn(
         CpiContext::new(
-            context.accounts.token_program.key(),
+            context.accounts.token_program.address(),
             Burn {
-                mint: context.accounts.liquidity_provider_mint.to_account_info(),
-                from: context.accounts.liquidity_provider_token.to_account_info(),
-                authority: context.accounts.withdrawer.to_account_info(),
+                mint: context.accounts.liquidity_provider_mint.to_cpi_handle_mut(),
+                from: context.accounts.liquidity_provider_token.to_cpi_handle_mut(),
+                authority: context.accounts.withdrawer.cpi_handle(),
             },
         ),
         amount,
@@ -140,56 +140,54 @@ pub fn handle_withdraw_liquidity(
 }
 
 #[derive(Accounts)]
-pub struct WithdrawLiquidityAccountConstraints<'info> {
+pub struct WithdrawLiquidityAccountConstraints {
     #[account(
         seeds = [CONFIG_SEED],
         bump,
     )]
-    pub config: Account<'info, Config>,
+    pub config: BorshAccount<Config>,
 
     #[account(
         seeds = [
             pool_config.config.as_ref(),
-            pool_config.mint_a.key().as_ref(),
-            pool_config.mint_b.key().as_ref(),
+            pool_config.mint_a.as_ref(),
+            pool_config.mint_b.as_ref(),
         ],
         bump,
-        has_one = mint_a,
-        has_one = mint_b,
     )]
-    pub pool_config: Account<'info, PoolConfig>,
+    pub pool_config: BorshAccount<PoolConfig>,
 
     /// CHECK: Read only authority
     #[account(
         seeds = [
             pool_config.config.as_ref(),
-            mint_a.key().as_ref(),
-            mint_b.key().as_ref(),
+            mint_a.address().as_ref(),
+            mint_b.address().as_ref(),
             AUTHORITY_SEED,
         ],
         bump,
     )]
-    pub pool_authority: UncheckedAccount<'info>,
+    pub pool_authority: UncheckedAccount,
 
-    pub withdrawer: Signer<'info>,
+    pub withdrawer: Signer,
 
     #[account(
         mut,
         seeds = [
             pool_config.config.as_ref(),
-            mint_a.key().as_ref(),
-            mint_b.key().as_ref(),
+            mint_a.address().as_ref(),
+            mint_b.address().as_ref(),
             LIQUIDITY_SEED,
         ],
         bump,
     )]
-    pub liquidity_provider_mint: Box<InterfaceAccount<'info, Mint>>,
+    pub liquidity_provider_mint: Box<InterfaceAccount<Mint>>,
 
-    #[account(mut)]
-    pub mint_a: Box<InterfaceAccount<'info, Mint>>,
+    #[account(mut, address = pool_config.mint_a)]
+    pub mint_a: Box<InterfaceAccount<Mint>>,
 
-    #[account(mut)]
-    pub mint_b: Box<InterfaceAccount<'info, Mint>>,
+    #[account(mut, address = pool_config.mint_b)]
+    pub mint_b: Box<InterfaceAccount<Mint>>,
 
     #[account(
         mut,
@@ -197,7 +195,7 @@ pub struct WithdrawLiquidityAccountConstraints<'info> {
         associated_token::authority = pool_authority,
         associated_token::token_program = token_program,
     )]
-    pub pool_a: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub pool_a: Box<InterfaceAccount<TokenAccount>>,
 
     #[account(
         mut,
@@ -205,7 +203,7 @@ pub struct WithdrawLiquidityAccountConstraints<'info> {
         associated_token::authority = pool_authority,
         associated_token::token_program = token_program,
     )]
-    pub pool_b: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub pool_b: Box<InterfaceAccount<TokenAccount>>,
 
     #[account(
         mut,
@@ -213,7 +211,7 @@ pub struct WithdrawLiquidityAccountConstraints<'info> {
         associated_token::authority = withdrawer,
         associated_token::token_program = token_program,
     )]
-    pub liquidity_provider_token: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub liquidity_provider_token: Box<InterfaceAccount<TokenAccount>>,
 
     #[account(
         init_if_needed,
@@ -222,7 +220,7 @@ pub struct WithdrawLiquidityAccountConstraints<'info> {
         associated_token::authority = withdrawer,
         associated_token::token_program = token_program,
     )]
-    pub token_a: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub token_a: Box<InterfaceAccount<TokenAccount>>,
 
     #[account(
         init_if_needed,
@@ -231,14 +229,14 @@ pub struct WithdrawLiquidityAccountConstraints<'info> {
         associated_token::authority = withdrawer,
         associated_token::token_program = token_program,
     )]
-    pub token_b: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub token_b: Box<InterfaceAccount<TokenAccount>>,
 
     /// The account paying for all rents
     #[account(mut)]
-    pub payer: Signer<'info>,
+    pub payer: Signer,
 
     /// Solana ecosystem accounts
-    pub token_program: Interface<'info, TokenInterface>,
-    pub associated_token_program: Program<'info, AssociatedToken>,
-    pub system_program: Program<'info, System>,
+    pub token_program: Interface<'static, TokenInterface>,
+    pub associated_token_program: Program<AssociatedToken>,
+    pub system_program: Program<System>,
 }

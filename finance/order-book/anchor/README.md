@@ -366,7 +366,7 @@ Alice's remaining 2-NVDAx [bid](https://www.investopedia.com/terms/b/bid.asp) st
 ### State / data accounts
 
 - `Market`: PDA yes, seeds `["market", base_mint, quote_mint]`, authority program, holds fee rate, tick size, min order size, base/quote mint pubkeys, vault pubkeys, order book pubkey, `authority` wallet (allowed to withdraw fees)
-- `OrderBook`: PDA no (client-allocated keypair), seeds n/a: too large (~180 KB) for an `init`/CPI PDA, so created via `create_account` (which needs a signing key a PDA lacks); tied to its market via `has_one`; authority program, holds two critbit trees (bids highest-first, asks lowest-first, 1024 leaves each), `next_order_id`
+- `OrderBook`: PDA no (client-allocated keypair), seeds n/a: too large (~180 KB) for an `init`/CPI PDA, so created via `create_account` (which needs a signing key a PDA lacks); tied to its market via `address = market.order_book`; authority program, holds two critbit trees (bids highest-first, asks lowest-first, 1024 leaves each), `next_order_id`
 - `Order`: PDA yes, seeds `["order", market, order_id.to_le_bytes()]`, authority program, holds owner, side, price, original_quantity, filled_quantity, status, timestamp
 - `MarketUser`: PDA yes, seeds `["market_user", market, owner]`, authority program, holds `unsettled_base`, `unsettled_quote`, `open_orders: Vec<u64>` (max 20)
 
@@ -382,7 +382,7 @@ accounts created with `init` in `initialize_market.rs`; their
 Their addresses are computed by the caller (e.g. generated Keypairs in
 the tests) and then written to `market.base_vault` / `quote_vault` /
 `fee_vault` for the program to validate them on later calls via
-`has_one = fee_vault` etc.
+`address = market.fee_vault` etc.
 
 ### Leaf layout in the `OrderBook` slab
 
@@ -596,7 +596,7 @@ pub fn place_order<'info>(
 
 **Accounts in (named):**
 
-- `market` (mut, `has_one = fee_vault`)
+- `market` (mut, with `fee_vault` bound by `address = market.fee_vault`)
 - `order_book` (mut, PDA seeds-checked)
 - `order` (PDA, **init**, seeds
   `["order", market, next_order_id.to_le_bytes()]`)
@@ -821,7 +821,7 @@ double-withdraw.
 
 **Accounts in:**
 
-- `market` (mut, `has_one = fee_vault`)
+- `market` (mut, with `fee_vault` bound by `address = market.fee_vault`)
 - `fee_vault` (mut, boxed)
 - `authority_quote_account` (mut, boxed - destination)
 - `quote_mint` (boxed)
@@ -1283,7 +1283,7 @@ From [`errors.rs`](programs/order-book/src/errors.rs):
 - `OrderNotCancellable`: `cancel_order` on a Filled or Cancelled order
 - `NumericalOverflow`: Any checked arithmetic returned `None`
 - `InvalidFeeBasisPoints`: `fee_basis_points > 10_000` at init
-- `InvalidFeeVault`: `market.fee_vault` on the struct does not match the passed `fee_vault` (Anchor `has_one`)
+- `InvalidFeeVault`: `market.fee_vault` on the struct does not match the passed `fee_vault` (the `address` constraint on `fee_vault`)
 - `MakerAccountMismatch`: Wrong number of maker accounts, wrong order, wrong market, or caller walked the book out of order
 - `MissingMakerAccounts`: `remaining_accounts.len()` not a multiple of 2
 - `MakerOwnerMismatch`: Maker Order and MarketUser have different owners
@@ -1342,10 +1342,10 @@ From [`errors.rs`](programs/order-book/src/errors.rs):
   stack and the Solana VM gives handlers a tight budget. Don't
   unbox these without testing the compute output size.
 
-- **Discriminator + `has_one`.** Every state account carries an 8-
-  byte discriminator that Anchor checks. `Market` has
-  `has_one = fee_vault`, so the `place_order` handler can trust the
-  `fee_vault` account without re-checking its mint or authority.
+- **Discriminator + `address`.** Every state account carries an 8-
+  byte discriminator that Anchor checks, and `fee_vault` carries
+  `address = market.fee_vault`, so the `place_order` handler can trust
+  the `fee_vault` account without re-checking its mint or authority.
 
 - **Book capacity check after matching.** The taker's remainder
   check happens at the end. A bid that clears enough asks to free
@@ -1393,7 +1393,7 @@ run first.
 
 ### Prerequisites
 
-- Anchor 1.0.0
+- Anchor 2.0.0-rc.1
 - Solana CLI (`solana -V`)
 - Rust stable (pinned at the repo root)
 

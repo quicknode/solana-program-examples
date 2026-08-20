@@ -14,19 +14,19 @@ pub const MAX_BETS_PER_USER: usize = 32;
 // authoritative stake state lives in the Bet accounts; this is a convenience
 // index. Entries are added by place_bet and removed whenever the Bet account
 // closes.
-#[account]
+#[account(borsh)]
 #[derive(InitSpace)]
 pub struct User {
-    pub authority: Pubkey,
+    pub authority: Address,
     #[max_len(MAX_BETS_PER_USER)]
-    pub bets: Vec<Pubkey>,
+    pub bets: Vec<Address>,
     pub bump: u8,
 }
 
 impl User {
     // Drop a closed Bet's entry from the index. Order is not meaningful, so a
     // swap_remove (move the last entry into the gap) is the cheapest removal.
-    pub fn remove_bet(&mut self, bet_key: &Pubkey) -> Result<()> {
+    pub fn remove_bet(&mut self, bet_key: &Address) -> Result<()> {
         let index = self
             .bets
             .iter()

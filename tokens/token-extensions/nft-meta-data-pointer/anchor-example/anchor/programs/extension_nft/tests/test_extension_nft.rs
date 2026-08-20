@@ -20,9 +20,9 @@
 //! working after the id is regenerated.
 
 use {
-    anchor_lang::{
-        prelude::Pubkey, solana_program::system_program, InstructionData, ToAccountMetas,
-    },
+    // `system_program` moved to the crate root in v2, and `Pubkey` is
+    // compat-only: `Address` is the same 32-byte type.
+    anchor_lang::{system_program, Address as Pubkey, InstructionData, ToAccountMetas},
     litesvm::LiteSVM,
     solana_instruction::Instruction,
     solana_keypair::Keypair,
@@ -83,7 +83,7 @@ fn init_player_ix(program_id: &Pubkey, signer: &Pubkey) -> Instruction {
             player: player_pda(program_id, signer),
             game_data: game_data_pda(program_id, LEVEL_SEED),
             signer: *signer,
-            system_program: system_program::id(),
+            system_program: system_program::ID,
         }
         .to_account_metas(None),
         data: extension_nft::instruction::InitPlayer {
@@ -98,7 +98,7 @@ fn mint_nft_ix(program_id: &Pubkey, signer: &Pubkey, mint: &Pubkey) -> Instructi
         program_id: *program_id,
         accounts: extension_nft::accounts::MintNftAccountConstraints {
             signer: *signer,
-            system_program: system_program::id(),
+            system_program: system_program::ID,
             token_program: TOKEN_2022_ID,
             token_account: associated_token_address(signer, mint),
             mint: *mint,
@@ -121,7 +121,7 @@ fn chop_tree_ix(program_id: &Pubkey, signer: &Pubkey, mint: &Pubkey, counter: u1
             player: player_pda(program_id, signer),
             game_data: game_data_pda(program_id, LEVEL_SEED),
             signer: *signer,
-            system_program: system_program::id(),
+            system_program: system_program::ID,
             mint: *mint,
             nft_authority: nft_authority_pda(program_id),
             token_program: TOKEN_2022_ID,
@@ -142,7 +142,7 @@ struct Player {
 }
 
 fn fetch_player(svm: &LiteSVM, player: &Pubkey) -> Player {
-    use anchor_lang::AnchorDeserialize;
+    use borsh::BorshDeserialize;
     let account = svm.get_account(player).expect("player account exists");
     // Skip the 8-byte Anchor discriminator.
     let mut data = &account.data[8..];
@@ -207,7 +207,10 @@ fn test_init_player_mint_and_chop() {
     // The associated token account should exist and hold the single NFT.
     let ata = associated_token_address(&signer, &mint.pubkey());
     let ata_account = svm.get_account(&ata).expect("ATA created");
-    assert_eq!(ata_account.owner, TOKEN_2022_ID, "ATA owned by Token Extensions");
+    assert_eq!(
+        ata_account.owner, TOKEN_2022_ID,
+        "ATA owned by Token Extensions"
+    );
 
     // 3. chop_tree - needs the existing mint so it can push the new wood total
     //    into the NFT metadata. Signed by the player's main wallet (no session).

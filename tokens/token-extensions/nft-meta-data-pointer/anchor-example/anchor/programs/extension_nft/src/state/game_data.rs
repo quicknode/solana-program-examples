@@ -2,7 +2,7 @@ use anchor_lang::prelude::*;
 
 use crate::constants::MAX_WOOD_PER_TREE;
 
-#[account]
+#[account(borsh)]
 #[derive(InitSpace)]
 pub struct GameData {
     pub total_wood_collected: u64,
