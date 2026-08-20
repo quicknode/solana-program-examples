@@ -14,7 +14,12 @@ cpi = ["no-entrypoint"]
 no-entrypoint = []
 no-idl = []
 no-log-ix-name = []
-idl-build = ["anchor-lang/idl-build"]
+# `mock-swap-router/idl-build` is required, not optional: this program has
+# `BorshAccount<AssetRate>` fields whose type is declared in that crate, and
+# `#[account]` only generates the IDL glue when the declaring crate has its own
+# `idl-build` feature on. Without the forward, `anchor idl build` fails with
+# "`mock_swap_router::AssetRate` has no IDL type information".
+idl-build = ["anchor-lang/idl-build", "mock-swap-router/idl-build"]
 anchor-debug = []
 custom-heap = []
 custom-panic = []

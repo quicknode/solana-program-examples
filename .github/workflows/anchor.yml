@@ -261,8 +261,47 @@ jobs:
               done
             fi
 
+            # TEMPORARY WORKAROUND - delete this block and the `$idl_flag`
+            # below once an Anchor release after 2.0.0-rc.1 is out.
+            #
+            # anchor-derive-accounts 2.0.0-rc.1 emits enum type definitions with
+            # the JSON key "fields" where the IDL spec requires "variants", so
+            # `anchor build` cannot parse the IDL it just generated and dies
+            # with `Error: missing field variants`. Every project below has
+            # an enum reachable from its IDL and hits it. Reproduce with any
+            # program containing `#[derive(IdlType)] pub enum E { A, B }`.
+            #
+            # Fixed upstream, unreleased at time of writing:
+            # https://github.com/otter-sec/anchor/pull/4947
+            #
+            # Patching just the derive crate to that fix is not an option: it
+            # requires solana-address 2.7, and these programs pin
+            # `>=2.6, <2.7` because anchor-lang 2.0.0-rc.1 is built against
+            # wincode 0.5 while solana-address 2.7 moved to 0.6.
+            #
+            # Skipping IDL generation costs nothing today: none of these
+            # projects consumes a generated IDL (no `idls/` directory, no
+            # `declare_program!`). The program is still compiled and its tests
+            # still run.
+            case "$project" in
+              ./basics/pyth/anchor \
+              |./finance/betting-market/anchor \
+              |./finance/order-book/anchor \
+              |./finance/perpetual-futures/anchor \
+              |./finance/prop-amm/anchor \
+              |./tokens/token-extensions/default-account-state/anchor \
+              |./tokens/token-extensions/metadata/anchor \
+              |./tokens/token-extensions/transfer-hook/allow-block-list-token/anchor)
+                echo "::notice::skipping IDL generation for $project (anchor#4947)"
+                idl_flag="--no-idl"
+                ;;
+              *)
+                idl_flag=""
+                ;;
+            esac
+
             # Run anchor build
-            if ! anchor build; then
+            if ! anchor build $idl_flag; then
               echo "::error::anchor build failed for $project"
               echo "$project: anchor build failed" >> $GITHUB_WORKSPACE/failed_projects.txt
               rm -rf target node_modules
