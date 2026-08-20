@@ -202,8 +202,12 @@ jobs:
           current="$(anchor --version 2>/dev/null | head -n1 | awk '{print $2}' || true)"
           if [ "$current" != "2.0.0-rc.1" ]; then
             cargo install --git https://github.com/solana-foundation/anchor avm --force
-            # 2.0.0-rc.1 is a pre-release, so avm needs it named explicitly.
-            avm install 2.0.0-rc.1
+            # 2.0.0-rc.1 is a pre-release, so avm needs it named explicitly, and
+            # --from-source because there is no prebuilt binary published for it:
+            # a plain `avm install` 404s and takes the whole job down before any
+            # project is built. The cache above is what keeps the source build
+            # off the critical path on later runs.
+            avm install 2.0.0-rc.1 --from-source
             avm use 2.0.0-rc.1
           fi
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
