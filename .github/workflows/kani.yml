@@ -64,6 +64,17 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      # Each proof crate declares its own `[workspace]`, so the repository-wide
+      # `cargo fmt` and `cargo clippy` jobs in rust.yml never see it. Lint here
+      # instead, or these crates drift.
+      - name: Enforce formatting
+        working-directory: finance/${{ matrix.program }}/kani-proofs
+        run: cargo fmt --check
+      - name: Linting
+        working-directory: finance/${{ matrix.program }}/kani-proofs
+        run: cargo clippy --all-targets -- -D warnings
       - name: Run unit tests
         working-directory: finance/${{ matrix.program }}/kani-proofs
         run: cargo test

@@ -37,7 +37,7 @@ pub fn handler(
 
     // initialize ExtraAccountMetaList account with extra accounts
     // .map_err() needed because spl-tlv-account-resolution uses solana-program-error 2.x
-    // while anchor-lang 1.0 uses 3.x - structurally identical but different semver types
+    // while anchor-lang v2 uses 3.x - structurally identical but different semver types
     // `AccountView` is Copy, and a copy still points at the same backing
     // buffer, so the borrow writes through to the real account.
     let mut meta_list_view = *context.accounts.extra_account_meta_list.account();

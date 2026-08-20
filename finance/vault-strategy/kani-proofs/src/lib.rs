@@ -132,8 +132,8 @@ fn proof_fee_shares_bounded_by_supply() {
     // fee_bps <= 10_000 and elapsed <= SECONDS_PER_YEAR together give:
     kani::assume(numerator_factor <= denominator);
 
-    let fee_shares = mul_div_floor(total_shares as u128, numerator_factor, denominator)
-        .expect("computes");
+    let fee_shares =
+        mul_div_floor(total_shares as u128, numerator_factor, denominator).expect("computes");
     assert!(fee_shares <= total_shares as u128); // <= 100%/year dilution
 }
 
@@ -161,7 +161,8 @@ mod tests {
     #[test]
     fn round_trip_not_profitable() {
         let minted = deposit_shares(100, 200, 150).unwrap();
-        let back = mul_div_floor((150 + 100) as u128, minted as u128, (200 + minted) as u128).unwrap();
+        let back =
+            mul_div_floor((150 + 100) as u128, minted as u128, (200 + minted) as u128).unwrap();
         assert!(back <= 100);
     }
 }

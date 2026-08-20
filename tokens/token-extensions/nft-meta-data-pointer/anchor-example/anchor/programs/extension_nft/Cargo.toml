@@ -34,8 +34,8 @@ anchor-spl = { version = "2.0.0-rc.1" }
 # session-keys is Anchor v1 only: its `Session` derive requires
 # `Option<Account<'info, SessionToken>>`, which v2 has no equivalent for. The
 # account layout is read directly in src/session.rs instead.
-# (so it builds against Anchor 1.0). Earlier 2.x releases pin Anchor <=0.30
-# and fail to compile against the Anchor 1.0 / Solana 3.x API. Provides the
+# (so it builds against Anchor v2). Earlier 2.x releases pin Anchor <=0.30
+# and fail to compile against the Anchor v2 / Solana 3.x API. Provides the
 # gasless session-token lesson via `#[session_auth_or]` / `SessionToken`.
 # Token-2022 + token-metadata access goes through anchor-spl's bundled
 # re-exports (`anchor_spl::token_interface::spl_token_2022`, which is

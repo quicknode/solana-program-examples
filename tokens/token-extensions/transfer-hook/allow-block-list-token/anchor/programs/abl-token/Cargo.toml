@@ -25,7 +25,7 @@ custom-panic = []
 
 
 [dependencies]
-# interface-instructions feature removed in Anchor 1.0
+# interface-instructions feature was removed in Anchor 1.0 and does not exist in v2
 anchor-lang = "2.0.0-rc.1"
 # The `#[program]` macro expands to `wincode` paths for instruction-data
 # (de)serialization, so the crate has to be a direct dependency.

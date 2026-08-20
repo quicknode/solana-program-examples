@@ -177,7 +177,7 @@ fn proof_fee_is_ceiling_and_bounded() {
     let fee = ceil_fee(gross, fee_bps).expect("no overflow for bounded gross");
 
     let exact = gross as u128 * fee_bps as u128; // the un-rounded numerator
-    // Ceiling: fee*DENOM is the least multiple of DENOM >= exact.
+                                                 // Ceiling: fee*DENOM is the least multiple of DENOM >= exact.
     assert!((fee as u128) * BASIS_POINTS_DENOMINATOR >= exact);
     assert!(fee == 0 || (fee as u128 - 1) * BASIS_POINTS_DENOMINATOR < exact);
 

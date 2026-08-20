@@ -28,3 +28,24 @@ jobs:
       # --ignore-workspace: only install root deps, not all 94 subprojects
       - run: pnpm install --frozen-lockfile --ignore-workspace
       - run: pnpm run check
+
+  # The only TypeScript application in the repository. Biome above formats and
+  # lints it, but nothing was compiling it, so a client that no longer matched
+  # the program's IDL would have gone unnoticed. `verify` runs the client's
+  # instruction encoding, account decoding and PDA derivation against the
+  # committed IDL, offline, with no validator.
+  vault-strategy-app:
+    name: Vault strategy app
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: finance/vault-strategy/anchor/app
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run typecheck
+      - run: pnpm run verify

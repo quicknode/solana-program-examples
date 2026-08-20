@@ -9,10 +9,13 @@ Two [instruction handlers](https://solana.com/docs/terminology#instruction-handl
        init,
        payer = user,
        space = User::DISCRIMINATOR.len() + User::INIT_SPACE,
-       seeds = [b"USER", user.key().as_ref()],
-       bump,
+       seeds = [
+           b"USER",
+           user.address().as_ref(),
+       ],
+       bump
    )]
-   pub user_account: Account<'info, User>,
+   pub user_account: BorshAccount<User>,
    ```
 
    See [`programs/close-account/src/instructions/create_user.rs`](programs/close-account/src/instructions/create_user.rs).
@@ -22,11 +25,14 @@ Two [instruction handlers](https://solana.com/docs/terminology#instruction-handl
    ```rust
    #[account(
        mut,
-       seeds = [b"USER", user.key().as_ref()],
+       seeds = [
+           b"USER",
+           user.address().as_ref(),
+       ],
        bump = user_account.bump,
        close = user, // close account and return lamports to user
    )]
-   pub user_account: Account<'info, User>,
+   pub user_account: BorshAccount<User>,
    ```
 
    See [`programs/close-account/src/instructions/close_user.rs`](programs/close-account/src/instructions/close_user.rs).

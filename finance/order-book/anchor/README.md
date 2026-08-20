@@ -170,7 +170,9 @@ Market PDA. Every taker fee - `ceil(gross * fee_bps / 10_000)` per fill -
 moves here in one batched CPI at the end of `place_order`.
 
 **Remaining accounts.** Solana lets the caller pass a tail of extra
-`AccountInfo`s beyond the ones named in `#[derive(Accounts)]`. The
+accounts beyond the ones named in `#[derive(Accounts)]`. The handler
+reaches them through `context.remaining_accounts()`, which hands back
+an owned `Vec<AccountView>`. The
 `place_order` handler uses them for the resting orders the taker
 wants to cross: for each one, the caller supplies
 `(maker_order_pda, maker_user_account_pda)` in the book's price-time
@@ -200,7 +202,7 @@ A price of **960** means "960 USDC per NVDAx". The same program logic - identica
 
 ### Step 1 - Maria creates the market
 
-**Instruction: `initialize_market(fee_basis_points=25, tick_size=1, min_order_size=1)`**
+**Instruction: `initialize_market(fee_basis_points=25, tick_size=1, base_lot_size=1, quote_lot_size=1, min_order_size=1)`**
 **Key accounts: `base_mint = NVDAx`, `quote_mint = USDC`**
 
 Maria's wallet signs. Five accounts are created:
@@ -390,9 +392,12 @@ Each side of the book is a critbit tree whose leaves are 88-byte
 `LeafNode`s:
 
 ```rust
+#[repr(C, packed(8))]
 pub struct LeafNode {
+    pub tag: u8,            // NodeTag::LeafNode
+    pub padding: [u8; 7],
     pub key: u128,          // high 64 bits = price; low 64 = seq_num (time priority)
-    pub owner: Pubkey,
+    pub owner: Address,
     pub quantity: u64,      // remaining quantity on this resting order
     pub order_id: u64,      // links to the full Order PDA
     pub timestamp: i64,
@@ -410,8 +415,8 @@ From [`state/order.rs`](programs/order-book/src/state/order.rs):
 
 ```rust
 pub struct Order {
-    pub market: Pubkey,
-    pub owner: Pubkey,
+    pub market: Address,
+    pub owner: Address,
     pub order_id: u64,
     pub side: OrderSide,           // Bid | Ask
     pub price: u64,
@@ -430,8 +435,8 @@ by `cancel_order` to decide how much to credit back to the user.
 
 ```rust
 pub struct MarketUser {
-    pub market: Pubkey,
-    pub owner: Pubkey,
+    pub market: Address,
+    pub owner: Address,
     pub unsettled_base: u64,
     pub unsettled_quote: u64,
     pub open_orders: Vec<u64>,   // capped at 20 via Anchor max_len
@@ -520,9 +525,11 @@ Token flow shorthand:
 
 ```rust
 pub fn initialize_market(
-    context: Context<InitializeMarket>,
+    context: &mut Context<InitializeMarketAccountConstraints>,
     fee_basis_points: u16,
     tick_size: u64,
+    base_lot_size: u64,
+    quote_lot_size: u64,
     min_order_size: u64,
 ) -> Result<()>
 ```
@@ -543,6 +550,8 @@ pub fn initialize_market(
 **Checks:**
 
 - `tick_size > 0` → `InvalidTickSize`
+- `base_lot_size > 0` → `InvalidBaseLotSize`
+- `quote_lot_size > 0` → `InvalidQuoteLotSize`
 - `min_order_size > 0` → `BelowMinOrderSize`
 - `fee_basis_points <= 10_000` → `InvalidFeeBasisPoints`
 
@@ -586,8 +595,8 @@ open orders.
 **Parameters:**
 
 ```rust
-pub fn place_order<'info>(
-    context: Context<'info, PlaceOrder<'info>>,
+pub fn place_order(
+    context: &mut Context<PlaceOrderAccountConstraints>,
     side: OrderSide,   // Bid | Ask
     price: u64,
     quantity: u64,
@@ -607,8 +616,8 @@ pub fn place_order<'info>(
 - `owner` (signer, mut)
 - `token_program`, `system_program`
 
-**Accounts in (remaining):** a list of `AccountInfo`s passed via the
-transaction's remaining accounts, grouped in pairs. For each resting
+**Accounts in (remaining):** a list of `AccountView`s read from
+`context.remaining_accounts()`, grouped in pairs. For each resting
 order the caller wants the taker to cross, in the book's price-time
 order:
 

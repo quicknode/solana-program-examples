@@ -46,7 +46,9 @@ pub enum TokenError {
 /// only if it holds enough, credits `to` only if the sum fits in `u64`, and the
 /// two operations together conserve the total. This models exactly that.
 pub fn token_transfer(from: &mut u64, to: &mut u64, amount: u64) -> Result<(), TokenError> {
-    let new_from = from.checked_sub(amount).ok_or(TokenError::InsufficientFunds)?;
+    let new_from = from
+        .checked_sub(amount)
+        .ok_or(TokenError::InsufficientFunds)?;
     let new_to = to.checked_add(amount).ok_or(TokenError::Overflow)?;
     *from = new_from;
     *to = new_to;
@@ -236,7 +238,12 @@ fn proof_take_offer_conserves_value() {
     let vault_a: u64 = kani::any();
     let wanted_b: u64 = kani::any();
 
-    let mut b = TakeBalances { taker_a, taker_b, maker_b, vault_a };
+    let mut b = TakeBalances {
+        taker_a,
+        taker_b,
+        maker_b,
+        vault_a,
+    };
     let total_a_before = taker_a as u128 + vault_a as u128;
     let total_b_before = taker_b as u128 + maker_b as u128;
 
@@ -272,8 +279,16 @@ fn proof_take_offer_guard_never_overflows() {
     let vault_a: u64 = kani::any();
     let wanted_b: u64 = kani::any();
 
-    let mut b = TakeBalances { taker_a, taker_b, maker_b, vault_a };
-    assert_ne!(take_offer(&mut b, wanted_b), Err(TakeError::ConservationOverflow));
+    let mut b = TakeBalances {
+        taker_a,
+        taker_b,
+        maker_b,
+        vault_a,
+    };
+    assert_ne!(
+        take_offer(&mut b, wanted_b),
+        Err(TakeError::ConservationOverflow)
+    );
 }
 
 /// Companion to the finding above: once we assume the SPL invariant that a
@@ -295,8 +310,16 @@ fn proof_take_offer_guard_dead_under_spl_invariant() {
     kani::assume((taker_a as u128 + vault_a as u128) <= u64::MAX as u128);
     kani::assume((maker_b as u128 + wanted_b as u128) <= u64::MAX as u128);
 
-    let mut b = TakeBalances { taker_a, taker_b, maker_b, vault_a };
-    assert_ne!(take_offer(&mut b, wanted_b), Err(TakeError::ConservationOverflow));
+    let mut b = TakeBalances {
+        taker_a,
+        taker_b,
+        maker_b,
+        vault_a,
+    };
+    assert_ne!(
+        take_offer(&mut b, wanted_b),
+        Err(TakeError::ConservationOverflow)
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -438,7 +461,12 @@ mod tests {
 
     #[test]
     fn take_offer_swaps() {
-        let mut b = TakeBalances { taker_a: 0, taker_b: 50, maker_b: 0, vault_a: 10 };
+        let mut b = TakeBalances {
+            taker_a: 0,
+            taker_b: 50,
+            maker_b: 0,
+            vault_a: 10,
+        };
         take_offer(&mut b, 7).unwrap();
         assert_eq!(b.vault_a, 0);
         assert_eq!(b.taker_a, 10);

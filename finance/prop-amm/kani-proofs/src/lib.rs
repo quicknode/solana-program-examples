@@ -114,8 +114,9 @@ pub fn quote_out_for_base_in(
     let numerator = (base_in as u128)
         .checked_mul(bid)?
         .checked_mul(10u128.checked_pow(quote_decimals as u32)?)?;
-    let denominator =
-        10u128.checked_pow(oracle_scale)?.checked_mul(10u128.checked_pow(base_decimals as u32)?)?;
+    let denominator = 10u128
+        .checked_pow(oracle_scale)?
+        .checked_mul(10u128.checked_pow(base_decimals as u32)?)?;
     if denominator == 0 {
         return None;
     }
@@ -193,7 +194,10 @@ fn proof_sell_never_exceeds_oracle_value() {
     let base_value = (base_in as u128) * (price as u128) * 10u128.pow(quote_decimals as u32);
     let quote_value =
         (quote_out as u128) * 10u128.pow(oracle_scale) * 10u128.pow(base_decimals as u32);
-    assert!(quote_value <= base_value, "sell paid out above oracle value");
+    assert!(
+        quote_value <= base_value,
+        "sell paid out above oracle value"
+    );
 }
 
 // ===========================================================================
@@ -232,7 +236,10 @@ fn proof_round_trip_never_profits_the_trader() {
         quote_out_for_base_in(base_out, bid, oracle_scale, base_decimals, quote_decimals)
             .expect("sell computes");
 
-    assert!(quote_back <= quote_in, "round trip must not profit the trader");
+    assert!(
+        quote_back <= quote_in,
+        "round trip must not profit the trader"
+    );
 }
 
 // ===========================================================================

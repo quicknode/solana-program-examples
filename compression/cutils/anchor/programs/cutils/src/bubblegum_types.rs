@@ -1,7 +1,7 @@
-/// Re-implementation of mpl-bubblegum types using borsh 1.x and Anchor 1.0's Address.
+/// Re-implementation of mpl-bubblegum types using borsh 1.x and Anchor v2's Address.
 ///
 /// mpl-bubblegum 2.1.1 depends on solana-program 2.x which is incompatible with
-/// Anchor 1.0's solana 3.x types. These types are borsh-compatible reproductions
+/// Anchor v2's solana 3.x types. These types are borsh-compatible reproductions
 /// that produce identical binary serialization.
 use anchor_lang::prelude::*;
 use borsh::BorshSerialize;

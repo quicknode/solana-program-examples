@@ -34,7 +34,7 @@ pub fn handle_initialize_extra_account_metas_list(
     bumps: &InitializeExtraAccountMetasAccountConstraintsBumps,
 ) -> Result<()> {
     // .map_err() needed because spl-tlv-account-resolution uses solana-program-error 2.x
-    // while anchor-lang 1.0 uses 3.x - structurally identical but different semver types
+    // while anchor-lang v2 uses 3.x - structurally identical but different semver types
     let account_metas = vec![
         // 5 - wallet (sender) config account
         ExtraAccountMeta::new_with_seeds(
