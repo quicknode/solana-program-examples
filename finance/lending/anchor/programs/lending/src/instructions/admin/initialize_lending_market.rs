@@ -17,7 +17,10 @@ pub fn handle_initialize_lending_market(
 }
 
 #[derive(Accounts)]
-#[instruction(market_id: u64)]
+// The leading underscore is for rustc: `#[derive(Accounts)]` expands
+// `_market_id` into a path that never reads it, so the plain name warns as
+// unused. The `seeds` expression below is the real use.
+#[instruction(_market_id: u64)]
 pub struct InitializeLendingMarket {
     // Seeded by `market_id` alone — the market is not identified by any
     // individual's address. `owner` is stored as a field and used only for
@@ -26,7 +29,7 @@ pub struct InitializeLendingMarket {
         init,
         payer = owner,
         space = LendingMarket::DISCRIMINATOR.len() + LendingMarket::INIT_SPACE,
-        seeds = [LENDING_MARKET_SEED, &market_id.to_le_bytes()],
+        seeds = [LENDING_MARKET_SEED, &_market_id.to_le_bytes()],
         bump,
     )]
     pub lending_market: BorshAccount<LendingMarket>,

@@ -12,7 +12,10 @@ use super::transfer_tokens;
 
 // See https://www.anchor-lang.com/docs/references/account-constraints#instruction-attribute
 #[derive(Accounts)]
-#[instruction(id: u64)]
+// The leading underscore is for rustc: `#[derive(Accounts)]` expands
+// `_id` into a path that never reads it, so the plain name warns as
+// unused. The `seeds` expression below is the real use.
+#[instruction(_id: u64)]
 pub struct MakeOfferAccountConstraints {
     #[account(mut)]
     pub maker: Signer,
@@ -47,7 +50,7 @@ pub struct MakeOfferAccountConstraints {
         init,
         payer = maker,
         space = Offer::DISCRIMINATOR.len() + Offer::INIT_SPACE,
-        seeds = [b"offer", maker.address().as_ref(), id.to_le_bytes()],
+        seeds = [b"offer", maker.address().as_ref(), _id.to_le_bytes()],
         bump
     )]
     pub offer: BorshAccount<Offer>,

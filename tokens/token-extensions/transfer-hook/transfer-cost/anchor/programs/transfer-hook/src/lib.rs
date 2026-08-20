@@ -4,21 +4,13 @@ use anchor_spl::{
     token::Token,
     token_2022::spl_token_2022::{
         extension::{
-            transfer_hook::TransferHookAccount, BaseStateWithExtensions,
-            PodStateWithExtensions,
+            transfer_hook::TransferHookAccount, BaseStateWithExtensions, PodStateWithExtensions,
         },
         pod::PodAccount,
     },
-    token_interface::Mint,
 };
-use spl_discriminator::SplDiscriminate;
-use spl_tlv_account_resolution::{
-    account::ExtraAccountMeta, seeds::Seed, state::ExtraAccountMetaList,
-};
-use spl_transfer_hook_interface::instruction::{
-    ExecuteInstruction, InitializeExtraAccountMetaListInstruction,
-};
-use std::{cell::RefMut, str::FromStr};
+use spl_tlv_account_resolution::{account::ExtraAccountMeta, seeds::Seed};
+use std::str::FromStr;
 
 // transfer-hook program that charges a SOL fee on token transfer
 // use a delegate and wrapped SOL because signers from initial transfer are not accessible

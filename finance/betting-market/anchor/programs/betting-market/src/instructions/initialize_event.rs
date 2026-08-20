@@ -12,7 +12,10 @@ use crate::{error::BettingError, Config, EventStatus};
 pub const MAX_DESCRIPTION_LEN: usize = 200;
 
 #[derive(Accounts)]
-#[instruction(event_id: u64)]
+// The leading underscore is for rustc: `#[derive(Accounts)]` expands
+// `_event_id` into a path that never reads it, so the plain name warns as
+// unused. The `seeds` expression below is the real use.
+#[instruction(_event_id: u64)]
 pub struct InitializeEventAccountConstraints {
     #[account(mut, address = config.admin @ BettingError::Unauthorized)]
     pub admin: Signer,
@@ -29,7 +32,7 @@ pub struct InitializeEventAccountConstraints {
         init,
         payer = admin,
         space = Event::DISCRIMINATOR.len() + Event::INIT_SPACE,
-        seeds = [b"event", event_id.to_le_bytes()],
+        seeds = [b"event", _event_id.to_le_bytes()],
         bump
     )]
     pub event: BorshAccount<Event>,

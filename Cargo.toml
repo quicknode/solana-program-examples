@@ -1,4 +1,8 @@
 [workspace]
+# Every anchor program is listed twice: here, and in its own project's
+# `anchor/Cargo.toml` workspace. `anchor build` uses the project workspace; this
+# one is what the repository-wide `cargo fmt` and `cargo clippy` jobs see, and
+# they only ever look at members. A crate missing here is a crate CI never lints.
 members = [
     #basics
     "basics/account-data/native/program",
@@ -42,6 +46,8 @@ members = [
     "basics/rent/anchor/programs/*",
     "basics/favorites/native/program",
     "basics/favorites/pinocchio/program",
+    "basics/favorites/anchor/programs/favorites",
+    "basics/pyth/anchor/programs/pythexample",
     "basics/repository-layout/native/program",
     "basics/repository-layout/pinocchio/program",
     "basics/repository-layout/anchor/programs/*",
@@ -50,7 +56,24 @@ members = [
     "basics/transfer-sol/anchor/programs/*",
     "basics/transfer-sol/asm",
 
+    # compression
+    "compression/cnft-burn/anchor/programs/cnft-burn",
+    "compression/cnft-vault/anchor/programs/cnft-vault",
+    "compression/cutils/anchor/programs/cutils",
+
     # finance
+    #
+    # The two `mock-switchboard` crates are excluded below: they share a package
+    # name, and one workspace cannot hold two packages called the same thing.
+    # They stay path dependencies of the programs that test against them.
+    "finance/betting-market/anchor/programs/betting-market",
+    "finance/escrow/anchor/programs/escrow",
+    "finance/lending/anchor/programs/lending",
+    "finance/order-book/anchor/programs/order-book",
+    "finance/perpetual-futures/anchor/programs/perpetual-futures",
+    "finance/prop-amm/anchor/programs/prop-amm",
+    "finance/token-fundraiser/anchor/programs/fundraiser",
+    "finance/token-swap/anchor/programs/token-swap",
     "finance/vault-strategy/anchor/programs/vault-strategy",
     "finance/vault-strategy/anchor/programs/mock-swap-router",
 
@@ -65,6 +88,40 @@ members = [
     "tokens/transfer-tokens/native/program",
     "tokens/nft-minter/native/program",
     "tokens/pda-mint-authority/native/program",
+    "tokens/create-token/anchor/programs/create-token",
+    "tokens/external-delegate-token-master/anchor/programs/external-delegate-token-master",
+    "tokens/nft-minter/anchor/programs/nft-minter",
+    "tokens/nft-operations/anchor/programs/mint-nft",
+    "tokens/pda-mint-authority/anchor/programs/token-minter",
+    "tokens/token-minter/anchor/programs/token-minter",
+    "tokens/transfer-tokens/anchor/programs/transfer-tokens",
+    "tokens/token-extensions/basics/anchor/programs/basics",
+    "tokens/token-extensions/cpi-guard/anchor/programs/cpi-guard",
+    "tokens/token-extensions/default-account-state/anchor/programs/default-account-state",
+    "tokens/token-extensions/group/anchor/programs/group",
+    "tokens/token-extensions/immutable-owner/anchor/programs/immutable-owner",
+    "tokens/token-extensions/interest-bearing/anchor/programs/interest-bearing",
+    "tokens/token-extensions/memo-transfer/anchor/programs/memo-transfer",
+    "tokens/token-extensions/metadata/anchor/programs/metadata",
+    "tokens/token-extensions/mint-close-authority/anchor/programs/mint-close-authority",
+    "tokens/token-extensions/nft-meta-data-pointer/anchor-example/anchor/programs/extension_nft",
+    "tokens/token-extensions/non-transferable/anchor/programs/non-transferable",
+    "tokens/token-extensions/permanent-delegate/anchor/programs/permanent-delegate",
+    "tokens/token-extensions/transfer-fee/anchor/programs/transfer-fee",
+    "tokens/token-extensions/transfer-hook/account-data-as-seed/anchor/programs/transfer-hook",
+    "tokens/token-extensions/transfer-hook/allow-block-list-token/anchor/programs/abl-token",
+    "tokens/token-extensions/transfer-hook/counter/anchor/programs/transfer-hook",
+    "tokens/token-extensions/transfer-hook/hello-world/anchor/programs/transfer-hook",
+    "tokens/token-extensions/transfer-hook/transfer-cost/anchor/programs/transfer-hook",
+    "tokens/token-extensions/transfer-hook/transfer-switch/anchor/programs/transfer-switch",
+    "tokens/token-extensions/transfer-hook/whitelist/anchor/programs/transfer-hook",
+]
+# A path dependency inside the workspace directory joins the workspace unless it
+# is excluded. Both of these are named `mock_switchboard`, so leaving them in
+# fails with "two packages named `mock_switchboard` in this workspace".
+exclude = [
+    "finance/perpetual-futures/anchor/programs/mock-switchboard",
+    "finance/prop-amm/anchor/programs/mock-switchboard",
 ]
 resolver = "2"
 
@@ -76,7 +133,7 @@ overflow-checks = true
 # misc
 borsh = "1.6.1"
 borsh-derive = "1.5.7"
-mpl-token-metadata = { version = "5.1.1", features = [ "no-entrypoint" ] }
+mpl-token-metadata = { version = "=5.1.2-alpha.2", features = [ "no-entrypoint" ] }
 
 
 # spl

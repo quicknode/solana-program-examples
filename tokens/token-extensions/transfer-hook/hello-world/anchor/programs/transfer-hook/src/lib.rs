@@ -1,5 +1,3 @@
-use std::cell::RefMut;
-
 use anchor_lang::prelude::*;
 use anchor_spl::token_2022::spl_token_2022::{
     extension::{
@@ -7,11 +5,7 @@ use anchor_spl::token_2022::spl_token_2022::{
     },
     pod::PodAccount,
 };
-use spl_discriminator::SplDiscriminate;
 use spl_tlv_account_resolution::account::ExtraAccountMeta;
-use spl_transfer_hook_interface::instruction::{
-    ExecuteInstruction, InitializeExtraAccountMetaListInstruction,
-};
 
 mod instructions;
 use instructions::*;

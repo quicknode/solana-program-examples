@@ -19,7 +19,10 @@ pub fn handle_init_player(context: &mut Context<InitPlayerAccountConstraints>) -
 }
 
 #[derive(Accounts)]
-#[instruction(level_seed: String)]
+// The leading underscore is for rustc: `#[derive(Accounts)]` expands `_level_seed`
+// into a path that never reads it, so the plain name warns as unused. The
+// `seeds` expression below is the real use.
+#[instruction(_level_seed: String)]
 pub struct InitPlayerAccountConstraints {
     #[account(
         init,
@@ -34,7 +37,7 @@ pub struct InitPlayerAccountConstraints {
         init_if_needed,
         payer = signer,
         space = GameData::DISCRIMINATOR.len() + GameData::INIT_SPACE,
-        seeds = [level_seed.as_bytes()],
+        seeds = [_level_seed.as_bytes()],
         bump,
     )]
     pub game_data: BorshAccount<GameData>,

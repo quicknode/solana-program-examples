@@ -2,8 +2,6 @@
 // This is to demonstrate that the same PDA can be used for both the address of an account and CPI signing
 use {
     anchor_lang::prelude::*,
-    // `Mint::LEN` comes from `Pack`, which anchor-spl does not re-export.
-    solana_program_pack::Pack,
     anchor_lang::system_program::{create_account, CreateAccount},
     anchor_spl::{
         metadata::{
@@ -12,6 +10,8 @@ use {
         },
         token::{initialize_mint2, spl_token::state::Mint as MintState, InitializeMint2, Token},
     },
+    // `Mint::LEN` comes from `Pack`, which anchor-spl does not re-export.
+    solana_program_pack::Pack,
 };
 
 #[derive(Accounts)]

@@ -20,11 +20,19 @@ pinocchio::default_allocator!();
 pinocchio::default_panic_handler!();
 
 /// Interface discriminator paired with the handler's own, in declaration order.
+// Read only by `entrypoint` below, which the host build cfgs out.
+#[cfg(target_os = "solana")]
 const DISCRIMINATOR_MAP: [([u8; 8], [u8; 8]); 2] = [
     // initialize_extra_account_meta_list
-    ([43, 34, 13, 49, 167, 88, 235, 235], [92, 197, 174, 197, 41, 124, 19, 3]),
+    (
+        [43, 34, 13, 49, 167, 88, 235, 235],
+        [92, 197, 174, 197, 41, 124, 19, 3],
+    ),
     // transfer_hook
-    ([105, 37, 101, 197, 75, 251, 102, 26], [220, 57, 220, 152, 126, 125, 97, 168]),
+    (
+        [105, 37, 101, 197, 75, 251, 102, 26],
+        [220, 57, 220, 152, 126, 125, 97, 168],
+    ),
 ];
 
 /// # Safety
