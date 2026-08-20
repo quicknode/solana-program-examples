@@ -1,11 +1,11 @@
 use {
-    quasar_lang::cpi::Seed,
     crate::{
         constants::{DIRECTION_BUY_BASE, DIRECTION_SELL_BASE},
         instructions::shared::{self, err, error},
         state::Market,
         MarketAuthorityPda,
     },
+    quasar_lang::cpi::Seed,
     quasar_lang::{prelude::*, sysvars::clock::Clock},
     quasar_spl::prelude::*,
 };

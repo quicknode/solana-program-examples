@@ -6,8 +6,8 @@ use {
     crate::{
         cpi::{
             AddOutcomeInstruction, CancelEventInstruction, ClaimRefundInstruction,
-            ClaimWinningsInstruction, CloseLosingBetInstruction, InitializeEventInstruction,
-            InitializeConfigInstruction, PlaceBetInstruction, SettleEventInstruction,
+            ClaimWinningsInstruction, CloseLosingBetInstruction, InitializeConfigInstruction,
+            InitializeEventInstruction, PlaceBetInstruction, SettleEventInstruction,
         },
         state::{Bet, Config, Event, EventStatus, EventVaultPda, Outcome, User},
     },
@@ -160,7 +160,11 @@ fn full_lifecycle_settles_and_pays_the_winner(test: &mut Test) {
 
     // Event settled with the recorded figures.
     let event_state = test.read::<Event>(event);
-    assert_eq!(event_state.status, EventStatus::Settled as u8, "status settled");
+    assert_eq!(
+        event_state.status,
+        EventStatus::Settled as u8,
+        "status settled"
+    );
     assert_eq!(event_state.winning_outcome_index, 1, "winning index");
     assert_eq!(u64::from(event_state.winning_pool), STAKE_B, "winning pool");
     assert_eq!(

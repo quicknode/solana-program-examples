@@ -66,7 +66,9 @@ pub struct InitializePoolAccountConstraints {
 }
 
 #[inline(always)]
-pub fn handle_initialize_pool(accounts: &mut InitializePoolAccountConstraints) -> Result<(), ProgramError> {
+pub fn handle_initialize_pool(
+    accounts: &mut InitializePoolAccountConstraints,
+) -> Result<(), ProgramError> {
     accounts.pool_config.set_inner(PoolConfigInner {
         config: *accounts.config.address(),
         mint_a: *accounts.mint_a.address(),

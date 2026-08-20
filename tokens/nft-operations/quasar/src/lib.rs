@@ -2,7 +2,7 @@
 
 use quasar_lang::prelude::*;
 
-mod instructions;
+pub mod instructions;
 use instructions::*;
 #[cfg(test)]
 mod tests;
@@ -37,7 +37,7 @@ mod quasar_nft_operations {
         symbol: String<10>,
         uri: String<200>,
     ) -> Result<(), ProgramError> {
-        instructions::handle_create_collection(&mut ctx.accounts, &ctx.bumps, &name, &symbol, &uri)
+        instructions::handle_create_collection(&mut ctx.accounts, &ctx.bumps, name, symbol, uri)
     }
 
     /// Mint an individual NFT with an unverified reference to the collection.
@@ -48,7 +48,7 @@ mod quasar_nft_operations {
         symbol: String<10>,
         uri: String<200>,
     ) -> Result<(), ProgramError> {
-        instructions::handle_mint_nft(&mut ctx.accounts, &ctx.bumps, &name, &symbol, &uri)
+        instructions::handle_mint_nft(&mut ctx.accounts, &ctx.bumps, name, symbol, uri)
     }
 
     /// Verify the NFT as a member of the collection.

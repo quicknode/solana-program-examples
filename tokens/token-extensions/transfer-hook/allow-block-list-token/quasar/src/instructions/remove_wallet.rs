@@ -14,7 +14,9 @@ pub struct RemoveWalletAccountConstraints {
 }
 
 #[inline(always)]
-pub fn handle_remove_wallet(accounts: &mut RemoveWalletAccountConstraints) -> Result<(), ProgramError> {
+pub fn handle_remove_wallet(
+    accounts: &mut RemoveWalletAccountConstraints,
+) -> Result<(), ProgramError> {
     // Verify config PDA
     let (config_pda, _) = quasar_lang::pda::try_find_program_address(&[CONFIG_SEED], &crate::ID)?;
     if accounts.config.to_account_view().address() != &config_pda {
@@ -43,10 +45,8 @@ pub fn handle_remove_wallet(accounts: &mut RemoveWalletAccountConstraints) -> Re
     set_lamports(authority_view, authority_view.lamports() + wallet_lamports);
 
     // Zero the account data
-    let mview = unsafe {
-        &mut *(&mut accounts.ab_wallet as *mut UncheckedAccount
-            as *mut AccountView)
-    };
+    let mview =
+        unsafe { &mut *(&mut accounts.ab_wallet as *mut UncheckedAccount as *mut AccountView) };
     let mut data = mview.try_borrow_mut()?;
     for byte in data.iter_mut() {
         *byte = 0;

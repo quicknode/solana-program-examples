@@ -2,7 +2,7 @@
 
 use quasar_lang::prelude::*;
 
-mod instructions;
+pub mod instructions;
 use instructions::*;
 #[cfg(test)]
 mod tests;
@@ -15,7 +15,9 @@ mod quasar_create_account {
 
     /// Create a new system-owned account via CPI to the system program.
     #[instruction(discriminator = 0)]
-    pub fn create_system_account(ctx: Ctx<CreateSystemAccountAccountConstraints>) -> Result<(), ProgramError> {
+    pub fn create_system_account(
+        ctx: Ctx<CreateSystemAccountAccountConstraints>,
+    ) -> Result<(), ProgramError> {
         instructions::handle_create_system_account(&mut ctx.accounts)
     }
 }

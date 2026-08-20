@@ -2,9 +2,9 @@
 
 use quasar_lang::prelude::*;
 
-mod instructions;
+pub mod instructions;
 use instructions::*;
-mod state;
+pub mod state;
 #[cfg(test)]
 mod tests;
 
@@ -22,7 +22,10 @@ mod quasar_lever {
 
     /// Toggle the power switch. Logs who is pulling the lever.
     #[instruction(discriminator = 1)]
-    pub fn switch_power(ctx: Ctx<SwitchPowerAccountConstraints>, name: String<50>) -> Result<(), ProgramError> {
+    pub fn switch_power(
+        ctx: Ctx<SwitchPowerAccountConstraints>,
+        name: String<50>,
+    ) -> Result<(), ProgramError> {
         instructions::handle_switch_power(&mut ctx.accounts, name)
     }
 }

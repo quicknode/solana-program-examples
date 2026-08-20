@@ -63,7 +63,11 @@ fn live_offer(test: &mut Test) -> Pubkey {
             bump,
         },
     );
-    test.add(TokenAccount::new(TOKEN_MINT_A, offer).at(VAULT).amount(DEPOSIT_AMOUNT));
+    test.add(
+        TokenAccount::new(TOKEN_MINT_A, offer)
+            .at(VAULT)
+            .amount(DEPOSIT_AMOUNT),
+    );
     offer
 }
 
@@ -171,7 +175,12 @@ fn take_offer_rejects_a_mint_that_does_not_match_the_offer(test: &mut Test) {
 
     // The attacker substitutes a different mint for token_mint_a. The
     // has_one(token_mint_a) binding to the offer state must reject it.
-    test.add(Mint::new(MAKER).at(WRONG_MINT).supply(1_000_000_000).decimals(9));
+    test.add(
+        Mint::new(MAKER)
+            .at(WRONG_MINT)
+            .supply(1_000_000_000)
+            .decimals(9),
+    );
 
     let result = test.send(TakeOfferInstruction {
         taker: TAKER,

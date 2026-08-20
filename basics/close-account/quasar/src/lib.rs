@@ -2,9 +2,9 @@
 
 use quasar_lang::prelude::*;
 
-mod instructions;
+pub mod instructions;
 use instructions::*;
-mod state;
+pub mod state;
 #[cfg(test)]
 mod tests;
 
@@ -16,7 +16,10 @@ mod quasar_close_account {
 
     /// Create a user account with a name.
     #[instruction(discriminator = 0)]
-    pub fn create_user(ctx: Ctx<CreateUserAccountConstraints>, name: String<50>) -> Result<(), ProgramError> {
+    pub fn create_user(
+        ctx: Ctx<CreateUserAccountConstraints>,
+        name: String<50>,
+    ) -> Result<(), ProgramError> {
         let bump = ctx.bumps.user_account;
         instructions::handle_create_user(&mut ctx.accounts, name, bump)
     }

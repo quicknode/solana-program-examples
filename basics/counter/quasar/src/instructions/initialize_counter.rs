@@ -13,7 +13,9 @@ pub struct InitializeCounterAccountConstraints {
 }
 
 #[inline(always)]
-pub fn handle_initialize_counter(accounts: &mut InitializeCounterAccountConstraints) -> Result<(), ProgramError> {
+pub fn handle_initialize_counter(
+    accounts: &mut InitializeCounterAccountConstraints,
+) -> Result<(), ProgramError> {
     accounts.counter.set_inner(CounterInner { count: 0 });
     Ok(())
 }

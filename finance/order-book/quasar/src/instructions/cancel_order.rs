@@ -30,7 +30,11 @@ pub fn handle_cancel_order(
 ) -> Result<(), ProgramError> {
     let mut order = snapshot_order(&accounts.order);
 
-    require_keys_eq!(order.owner, *accounts.owner.address(), OrderBookError::Unauthorized);
+    require_keys_eq!(
+        order.owner,
+        *accounts.owner.address(),
+        OrderBookError::Unauthorized
+    );
 
     require!(
         order.status == OrderStatus::Open as u8

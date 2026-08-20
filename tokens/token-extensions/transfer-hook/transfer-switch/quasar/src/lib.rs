@@ -1,10 +1,7 @@
 #![cfg_attr(not(test), no_std)]
 
 use quasar_lang::sysvars::Sysvar;
-use quasar_lang::{
-    cpi::Seed,
-    prelude::*,
-};
+use quasar_lang::{cpi::Seed, prelude::*};
 
 #[cfg(test)]
 mod tests;
@@ -46,7 +43,10 @@ mod quasar_transfer_hook_switch {
     /// Transfer hook handler - checks the sender's switch is on.
     /// Discriminator = sha256("spl-transfer-hook-interface:execute")[:8]
     #[instruction(discriminator = [105, 37, 101, 197, 75, 251, 102, 26])]
-    pub fn transfer_hook(ctx: Ctx<TransferHookAccountConstraints>, _amount: u64) -> Result<(), ProgramError> {
+    pub fn transfer_hook(
+        ctx: Ctx<TransferHookAccountConstraints>,
+        _amount: u64,
+    ) -> Result<(), ProgramError> {
         handle_transfer_hook(&mut ctx.accounts)
     }
 }
@@ -71,7 +71,9 @@ pub struct ConfigureAdminAccountConstraints {
 }
 
 #[inline(always)]
-fn handle_configure_admin(accounts: &mut ConfigureAdminAccountConstraints) -> Result<(), ProgramError> {
+fn handle_configure_admin(
+    accounts: &mut ConfigureAdminAccountConstraints,
+) -> Result<(), ProgramError> {
     let view = accounts.admin_config.to_account_view();
     let data = view.try_borrow()?;
 
@@ -103,15 +105,19 @@ fn handle_configure_admin(accounts: &mut ConfigureAdminAccountConstraints) -> Re
         ];
         accounts
             .system_program
-            .create_account(&accounts.admin, &accounts.admin_config, lamports, size, &crate::ID)
+            .create_account(
+                &accounts.admin,
+                &accounts.admin_config,
+                lamports,
+                size,
+                &crate::ID,
+            )
             .invoke_signed(&seeds)?;
     }
 
     // Write new admin
-    let mview = unsafe {
-        &mut *(&mut accounts.admin_config as *mut UncheckedAccount
-            as *mut AccountView)
-    };
+    let mview =
+        unsafe { &mut *(&mut accounts.admin_config as *mut UncheckedAccount as *mut AccountView) };
     let mut data = mview.try_borrow_mut()?;
     let new_admin_address = accounts.new_admin.to_account_view().address();
     data[0..32].copy_from_slice(new_admin_address.as_ref());
@@ -139,50 +145,62 @@ pub struct InitializeExtraAccountMetasAccountConstraints {
 fn handle_initialize_extra_account_metas_list(
     accounts: &mut InitializeExtraAccountMetasAccountConstraints,
 ) -> Result<(), ProgramError> {
-        // 1 extra account: wallet switch PDA seeded by [AccountKey(index=3)] (sender/owner)
-        let meta_list_size: u64 = 51; // 8 + 4 + 4 + 35
-        let lamports = Rent::get()?.try_minimum_balance(meta_list_size as usize)?;
+    // 1 extra account: wallet switch PDA seeded by [AccountKey(index=3)] (sender/owner)
+    let meta_list_size: u64 = 51; // 8 + 4 + 4 + 35
+    let lamports = Rent::get()?.try_minimum_balance(meta_list_size as usize)?;
 
-        let mint_address = accounts.token_mint.to_account_view().address();
-        let (expected_pda, bump) = quasar_lang::pda::try_find_program_address(
-            &[b"extra-account-metas", mint_address.as_ref()],
+    let mint_address = accounts.token_mint.to_account_view().address();
+    let (expected_pda, bump) = quasar_lang::pda::try_find_program_address(
+        &[b"extra-account-metas", mint_address.as_ref()],
+        &crate::ID,
+    )?;
+    if accounts
+        .extra_account_metas_list
+        .to_account_view()
+        .address()
+        != &expected_pda
+    {
+        return Err(ProgramError::InvalidSeeds);
+    }
+
+    let bump_bytes = [bump];
+    let seeds = [
+        Seed::from(b"extra-account-metas" as &[u8]),
+        Seed::from(mint_address.as_ref()),
+        Seed::from(&bump_bytes as &[u8]),
+    ];
+
+    accounts
+        .system_program
+        .create_account(
+            &accounts.payer,
+            &accounts.extra_account_metas_list,
+            lamports,
+            meta_list_size,
             &crate::ID,
-        )?;
-        if accounts.extra_account_metas_list.to_account_view().address() != &expected_pda {
-            return Err(ProgramError::InvalidSeeds);
-        }
+        )
+        .invoke_signed(&seeds)?;
 
-        let bump_bytes = [bump];
-        let seeds = [
-            Seed::from(b"extra-account-metas" as &[u8]),
-            Seed::from(mint_address.as_ref()),
-            Seed::from(&bump_bytes as &[u8]),
-        ];
+    let view = unsafe {
+        &mut *(&mut accounts.extra_account_metas_list as *mut UncheckedAccount as *mut AccountView)
+    };
+    let mut data = view.try_borrow_mut()?;
+    data[0..8].copy_from_slice(&EXECUTE_DISCRIMINATOR);
+    data[8..12].copy_from_slice(&39u32.to_le_bytes());
+    data[12..16].copy_from_slice(&1u32.to_le_bytes());
 
-        accounts.system_program
-            .create_account(&accounts.payer, &accounts.extra_account_metas_list, lamports, meta_list_size, &crate::ID)
-            .invoke_signed(&seeds)?;
+    // ExtraAccountMeta: PDA seeded by [AccountKey(index=3)] - the sender/owner
+    data[16] = 1; // PDA from seeds
+    let mut config = [0u8; 32];
+    config[0] = 1; // 1 seed
+    config[1] = 2; // seed type: account key
+    config[2] = 3; // account index 3 (owner/sender)
+    data[17..49].copy_from_slice(&config);
+    data[49] = 0; // not signer
+    data[50] = 0; // not writable (just reading switch state)
 
-        let view = unsafe {
-            &mut *(&mut accounts.extra_account_metas_list as *mut UncheckedAccount as *mut AccountView)
-        };
-        let mut data = view.try_borrow_mut()?;
-        data[0..8].copy_from_slice(&EXECUTE_DISCRIMINATOR);
-        data[8..12].copy_from_slice(&39u32.to_le_bytes());
-        data[12..16].copy_from_slice(&1u32.to_le_bytes());
-
-        // ExtraAccountMeta: PDA seeded by [AccountKey(index=3)] - the sender/owner
-        data[16] = 1; // PDA from seeds
-        let mut config = [0u8; 32];
-        config[0] = 1; // 1 seed
-        config[1] = 2; // seed type: account key
-        config[2] = 3; // account index 3 (owner/sender)
-        data[17..49].copy_from_slice(&config);
-        data[49] = 0; // not signer
-        data[50] = 0; // not writable (just reading switch state)
-
-        log("Extra account metas list initialized");
-        Ok(())
+    log("Extra account metas list initialized");
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -233,14 +251,18 @@ fn handle_switch(accounts: &mut SwitchAccountConstraints, on: bool) -> Result<()
         ];
         accounts
             .system_program
-            .create_account(&accounts.admin, &accounts.wallet_switch, lamports, size, &crate::ID)
+            .create_account(
+                &accounts.admin,
+                &accounts.wallet_switch,
+                lamports,
+                size,
+                &crate::ID,
+            )
             .invoke_signed(&switch_seeds)?;
     }
 
-    let mview = unsafe {
-        &mut *(&mut accounts.wallet_switch as *mut UncheckedAccount
-            as *mut AccountView)
-    };
+    let mview =
+        unsafe { &mut *(&mut accounts.wallet_switch as *mut UncheckedAccount as *mut AccountView) };
     let mut data = mview.try_borrow_mut()?;
     data[0..32].copy_from_slice(wallet_address.as_ref());
     data[32] = if on { 1 } else { 0 };

@@ -47,12 +47,7 @@ fn framework_error(error: QuasarError) -> ProgramError {
 /// Register the maker, the mint, and warp to the fixed start time.
 fn base_world(test: &mut Test) {
     test.add(Wallet::new().at(MAKER));
-    test.add(
-        Mint::new(MAKER)
-            .at(MINT)
-            .supply(1_000_000_000)
-            .decimals(9),
-    );
+    test.add(Mint::new(MAKER).at(MINT).supply(1_000_000_000).decimals(9));
     test.warp_to_timestamp(START_TIME);
 }
 
@@ -153,7 +148,10 @@ fn contribute_creates_contributor_account_and_moves_tokens(test: &mut Test) {
         );
 
     let fundraiser_state = test.read::<Fundraiser>(fundraiser);
-    assert_eq!(u64::from(fundraiser_state.current_amount), PARTIAL_CONTRIBUTION);
+    assert_eq!(
+        u64::from(fundraiser_state.current_amount),
+        PARTIAL_CONTRIBUTION
+    );
 
     let (contributor_account, expected_bump) =
         test.derive_pda_with_bump(Contributor::seeds(&fundraiser, &CONTRIBUTOR));
@@ -240,7 +238,10 @@ fn refund_returns_tokens_after_failed_fundraiser(test: &mut Test) {
         // The contributor account was closed and its rent returned.
         .is_closed(contributor_account);
 
-    assert_eq!(u64::from(test.read::<Fundraiser>(fundraiser).current_amount), 0);
+    assert_eq!(
+        u64::from(test.read::<Fundraiser>(fundraiser).current_amount),
+        0
+    );
 }
 
 #[quasar_test]

@@ -15,7 +15,10 @@ pub struct InitializeAccountConstraints {
 }
 
 #[inline(always)]
-pub fn handle_initialize(accounts: &mut InitializeAccountConstraints, message: &str) -> Result<(), ProgramError> {
+pub fn handle_initialize(
+    accounts: &mut InitializeAccountConstraints,
+    message: &str,
+) -> Result<(), ProgramError> {
     let rent = Rent::get()?;
     accounts.message_account.set_inner(
         MessageAccountInner { message },

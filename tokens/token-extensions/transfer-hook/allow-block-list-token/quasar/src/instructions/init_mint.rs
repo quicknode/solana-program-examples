@@ -9,8 +9,8 @@ use crate::state::mode_to_metadata_value;
 pub struct Token2022;
 impl Id for Token2022 {
     const ID: Address = Address::new_from_array([
-        6, 221, 246, 225, 238, 117, 143, 222, 24, 66, 93, 188, 228, 108, 205, 218,
-        182, 26, 252, 77, 131, 185, 13, 39, 254, 189, 249, 40, 216, 161, 139, 252,
+        6, 221, 246, 225, 238, 117, 143, 222, 24, 66, 93, 188, 228, 108, 205, 218, 182, 26, 252,
+        77, 131, 185, 13, 39, 254, 189, 249, 40, 216, 161, 139, 252,
     ]);
 }
 
@@ -28,18 +28,35 @@ pub struct InitMintAccountConstraints {
     pub token_program: Program<Token2022>,
 }
 
+/// The authorities stamped onto the new mint's extensions.
+pub struct MintAuthorities<'a> {
+    pub freeze: &'a Address,
+    pub permanent_delegate: &'a Address,
+    pub transfer_hook: &'a Address,
+}
+
+/// The token metadata written into the mint's own metadata extension.
+pub struct MintMetadata<'a> {
+    pub name: &'a [u8],
+    pub symbol: &'a [u8],
+    pub uri: &'a [u8],
+}
+
 #[inline(always)]
 pub fn handle_init_mint(
-    accounts: &mut InitMintAccountConstraints, decimals: u8,
-    freeze_authority: &Address,
-    permanent_delegate: &Address,
-    transfer_hook_authority: &Address,
+    accounts: &mut InitMintAccountConstraints,
+    decimals: u8,
+    authorities: &MintAuthorities,
+    metadata: &MintMetadata,
     mode: u8,
     threshold: u64,
-    name: &[u8],
-    symbol: &[u8],
-    uri: &[u8],
 ) -> Result<(), ProgramError> {
+    let MintAuthorities {
+        freeze: freeze_authority,
+        permanent_delegate,
+        transfer_hook: transfer_hook_authority,
+    } = *authorities;
+    let MintMetadata { name, symbol, uri } = *metadata;
     let payer_key = accounts.payer.to_account_view().address();
     let mint_key = accounts.mint.to_account_view().address();
     let token_prog = accounts.token_program.to_account_view().address();
@@ -62,16 +79,31 @@ pub fn handle_init_mint(
     } else {
         0
     };
-    let metadata_data_len = 32 + 32 + 4 + name.len() + 4 + symbol.len() + 4 + uri.len()
-        + 4 + additional_len + threshold_additional;
+    let metadata_data_len = 32
+        + 32
+        + 4
+        + name.len()
+        + 4
+        + symbol.len()
+        + 4
+        + uri.len()
+        + 4
+        + additional_len
+        + threshold_additional;
     let total_ext_data = 4 + metadata_data_len;
     let mint_size = 82 + 82 + 1 + 68 + 36 + 68 + total_ext_data;
     let lamports = Rent::get()?.try_minimum_balance(mint_size)?;
 
     // Create the mint account owned by Token2022.
-    accounts.system_program
+    accounts
+        .system_program
         .create_account(
-            &accounts.payer, &accounts.mint, lamports, mint_size as u64, token_prog)
+            &accounts.payer,
+            &accounts.mint,
+            lamports,
+            mint_size as u64,
+            token_prog,
+        )
         .invoke()?;
 
     // Initialize PermanentDelegate extension: opcode 35
@@ -191,7 +223,11 @@ pub fn handle_init_mint(
 /// Emit a Token Extensions TokenMetadataUpdateField CPI.
 /// Opcode 44, sub-opcode 1, followed by Field::Key (discriminator 2, then borsh
 /// string for key, then borsh string for value).
-fn emit_update_field_cpi(ctx: &InitMintAccountConstraints, key: &[u8], value: &[u8]) -> Result<(), ProgramError> {
+fn emit_update_field_cpi(
+    ctx: &InitMintAccountConstraints,
+    key: &[u8],
+    value: &[u8],
+) -> Result<(), ProgramError> {
     let token_prog = ctx.token_program.to_account_view().address();
     let mint_key = ctx.mint.to_account_view().address();
     let payer_key = ctx.payer.to_account_view().address();
@@ -266,12 +302,16 @@ fn init_extra_metas(ctx: &mut InitMintAccountConstraints) -> Result<(), ProgramE
 
     ctx.system_program
         .create_account(
-            &ctx.payer, &ctx.extra_metas_account, lamports, meta_list_size, &crate::ID)
+            &ctx.payer,
+            &ctx.extra_metas_account,
+            lamports,
+            meta_list_size,
+            &crate::ID,
+        )
         .invoke_signed(&seeds)?;
 
     let view = unsafe {
-        &mut *(&mut ctx.extra_metas_account as *mut UncheckedAccount
-            as *mut AccountView)
+        &mut *(&mut ctx.extra_metas_account as *mut UncheckedAccount as *mut AccountView)
     };
     let mut data = view.try_borrow_mut()?;
 
@@ -285,11 +325,11 @@ fn init_extra_metas(ctx: &mut InitMintAccountConstraints) -> Result<(), ProgramE
     //   Account index 2 = destination token account; data_index 32 = owner field.
     data[16] = 1; // discriminator: PDA from seeds
     let mut config = [0u8; 32];
-    config[0] = 2;  // number of seeds
+    config[0] = 2; // number of seeds
 
     // Seed 0: Literal "ab_wallet"
-    config[1] = 0;  // seed type: literal
-    config[2] = 9;  // seed length
+    config[1] = 0; // seed type: literal
+    config[2] = 9; // seed length
     config[3..12].copy_from_slice(AB_WALLET_SEED);
 
     // Seed 1: AccountData(account_index=2, data_index=32, length=32)

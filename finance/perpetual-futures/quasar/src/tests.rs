@@ -420,7 +420,10 @@ fn set_funding_rate_settles_at_the_old_rate_first(test: &mut Test) {
     close_position(test, &env).succeeds();
     let doubled = (before_doubled - test.tokens(TRADER_COLLATERAL)) - fees;
 
-    assert!(doubled > 0, "the doubled-rate window must charge some funding");
+    assert!(
+        doubled > 0,
+        "the doubled-rate window must charge some funding"
+    );
     assert_eq!(
         spanning * 2,
         doubled * 3,

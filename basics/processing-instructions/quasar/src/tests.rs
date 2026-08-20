@@ -16,7 +16,10 @@ fn tall_visitor_is_allowed_on_the_ride(test: &mut Test) {
 
     let logs = outcome.logs().join("\n");
     assert!(logs.contains("Welcome to the park!"), "should welcome");
-    assert!(logs.contains("tall enough to ride"), "should say tall enough");
+    assert!(
+        logs.contains("tall enough to ride"),
+        "should say tall enough"
+    );
 }
 
 #[quasar_test]
@@ -32,5 +35,8 @@ fn short_visitor_is_turned_away(test: &mut Test) {
 
     let logs = outcome.logs().join("\n");
     assert!(logs.contains("Welcome to the park!"), "should welcome");
-    assert!(logs.contains("NOT tall enough"), "should say not tall enough");
+    assert!(
+        logs.contains("NOT tall enough"),
+        "should say not tall enough"
+    );
 }

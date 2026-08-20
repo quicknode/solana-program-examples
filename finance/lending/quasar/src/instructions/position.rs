@@ -4,7 +4,10 @@ use {
         error::LendingError,
         instructions::supply::reserve_seeds,
         logic::{accrue, now, price_scaled, snapshot_obligation, snapshot_reserve, SCALE},
-        math::{current_debt, market_value, mul_div_ceil, mul_div_floor, net_total_liquidity, value_to_amount, Rounding},
+        math::{
+            current_debt, market_value, mul_div_ceil, mul_div_floor, net_total_liquidity,
+            value_to_amount, Rounding,
+        },
         state::{
             LendingMarket, Obligation, ObligationInner, ObligationVaultPda, PriceFeed, Reserve,
         },
@@ -94,7 +97,11 @@ impl DepositObligationCollateral {
         if obligation.collateral_reserve == Address::default() {
             obligation.collateral_reserve = reserve_address;
         } else {
-            require_keys_eq!(obligation.collateral_reserve, reserve_address, LendingError::WrongReserve);
+            require_keys_eq!(
+                obligation.collateral_reserve,
+                reserve_address,
+                LendingError::WrongReserve
+            );
         }
         obligation.deposited_shares = obligation
             .deposited_shares
@@ -130,7 +137,12 @@ pub struct BorrowObligationLiquidity {
     #[account(mut, has_one(lending_market))]
     pub collateral_reserve: Account<Reserve>,
     pub collateral_price: Account<PriceFeed>,
-    #[account(mut, has_one(lending_market), has_one(liquidity_mint), has_one(liquidity_vault))]
+    #[account(
+        mut,
+        has_one(lending_market),
+        has_one(liquidity_mint),
+        has_one(liquidity_vault)
+    )]
     pub borrow_reserve: Account<Reserve>,
     pub borrow_price: Account<PriceFeed>,
     pub liquidity_mint: Account<Mint>,
@@ -194,16 +206,38 @@ impl BorrowObligationLiquidity {
             price_scaled(&self.collateral_price, slot)?,
             Rounding::Down,
         )?;
-        let allowed = mul_div_floor(collateral_value, collateral.loan_to_value_bps as u128, BPS_DENOMINATOR)?;
+        let allowed = mul_div_floor(
+            collateral_value,
+            collateral.loan_to_value_bps as u128,
+            BPS_DENOMINATOR,
+        )?;
 
         // Existing debt value + the new borrow, both rounded up.
         let borrow_price = price_scaled(&self.borrow_price, slot)?;
-        let existing_debt = current_debt(obligation.borrowed_principal, borrow.borrow_accumulation_factor)?;
-        let existing_value = market_value(existing_debt, borrow.liquidity_decimals, borrow_price, Rounding::Up)?;
-        let new_value = market_value(amount, borrow.liquidity_decimals, borrow_price, Rounding::Up)?;
-        let projected = existing_value.checked_add(new_value).ok_or(LendingError::MathOverflow)?;
+        let existing_debt = current_debt(
+            obligation.borrowed_principal,
+            borrow.borrow_accumulation_factor,
+        )?;
+        let existing_value = market_value(
+            existing_debt,
+            borrow.liquidity_decimals,
+            borrow_price,
+            Rounding::Up,
+        )?;
+        let new_value = market_value(
+            amount,
+            borrow.liquidity_decimals,
+            borrow_price,
+            Rounding::Up,
+        )?;
+        let projected = existing_value
+            .checked_add(new_value)
+            .ok_or(LendingError::MathOverflow)?;
         require!(projected <= allowed, LendingError::BorrowTooLarge);
-        require!(amount <= borrow.available_liquidity, LendingError::InsufficientLiquidity);
+        require!(
+            amount <= borrow.available_liquidity,
+            LendingError::InsufficientLiquidity
+        );
 
         let scaled_added = mul_div_ceil(amount as u128, SCALE, borrow.borrow_accumulation_factor)?;
         borrow.borrowed_principal = borrow
@@ -278,11 +312,15 @@ impl RepayObligationLiquidity {
         accrue(&mut borrow, slot)?;
         let mut obligation = snapshot_obligation(&self.obligation);
 
-        let debt = current_debt(obligation.borrowed_principal, borrow.borrow_accumulation_factor)?;
+        let debt = current_debt(
+            obligation.borrowed_principal,
+            borrow.borrow_accumulation_factor,
+        )?;
         let repay = amount.min(debt);
         require!(repay > 0, LendingError::ZeroAmount);
-        let scaled_removed = mul_div_floor(repay as u128, SCALE, borrow.borrow_accumulation_factor)?
-            .min(obligation.borrowed_principal);
+        let scaled_removed =
+            mul_div_floor(repay as u128, SCALE, borrow.borrow_accumulation_factor)?
+                .min(obligation.borrowed_principal);
 
         borrow.borrowed_principal = borrow
             .borrowed_principal
@@ -360,7 +398,10 @@ impl WithdrawObligationCollateral {
         let mut collateral = snapshot_reserve(&self.collateral_reserve);
         accrue(&mut collateral, slot)?;
         let mut obligation = snapshot_obligation(&self.obligation);
-        require!(obligation.deposited_shares >= shares, LendingError::WithdrawTooLarge);
+        require!(
+            obligation.deposited_shares >= shares,
+            LendingError::WithdrawTooLarge
+        );
 
         // Remaining collateral value after withdrawing `shares`.
         let remaining_shares = obligation.deposited_shares - shares;
@@ -381,7 +422,11 @@ impl WithdrawObligationCollateral {
             price_scaled(&self.collateral_price, slot)?,
             Rounding::Down,
         )?;
-        let allowed = mul_div_floor(remaining_value, collateral.loan_to_value_bps as u128, BPS_DENOMINATOR)?;
+        let allowed = mul_div_floor(
+            remaining_value,
+            collateral.loan_to_value_bps as u128,
+            BPS_DENOMINATOR,
+        )?;
 
         // Debt value (zero when the obligation has no borrow).
         let debt_value = if obligation.borrowed_principal > 0 {
@@ -397,8 +442,16 @@ impl WithdrawObligationCollateral {
             );
             let mut borrow = snapshot_reserve(&self.borrow_reserve);
             accrue(&mut borrow, slot)?;
-            let debt = current_debt(obligation.borrowed_principal, borrow.borrow_accumulation_factor)?;
-            market_value(debt, borrow.liquidity_decimals, price_scaled(&self.borrow_price, slot)?, Rounding::Up)?
+            let debt = current_debt(
+                obligation.borrowed_principal,
+                borrow.borrow_accumulation_factor,
+            )?;
+            market_value(
+                debt,
+                borrow.liquidity_decimals,
+                price_scaled(&self.borrow_price, slot)?,
+                Rounding::Up,
+            )?
         } else {
             0
         };
@@ -446,7 +499,12 @@ pub struct LiquidateObligation {
     pub obligation_vault: InterfaceAccount<Token>,
     #[account(mut)]
     pub liquidator_collateral: Account<Token>,
-    #[account(mut, has_one(lending_market), has_one(liquidity_mint), has_one(liquidity_vault))]
+    #[account(
+        mut,
+        has_one(lending_market),
+        has_one(liquidity_mint),
+        has_one(liquidity_vault)
+    )]
     pub borrow_reserve: Account<Reserve>,
     pub borrow_price: Account<PriceFeed>,
     pub liquidity_mint: Account<Mint>,
@@ -463,10 +521,26 @@ impl LiquidateObligation {
         require!(amount > 0, LendingError::ZeroAmount);
         let slot = now()?;
 
-        require_keys_eq!(self.obligation.collateral_reserve, *self.collateral_reserve.address(), LendingError::WrongReserve);
-        require_keys_eq!(self.obligation.borrow_reserve, *self.borrow_reserve.address(), LendingError::WrongReserve);
-        require_keys_eq!(self.collateral_reserve.price_feed, *self.collateral_price.address(), LendingError::WrongReserve);
-        require_keys_eq!(self.borrow_reserve.price_feed, *self.borrow_price.address(), LendingError::WrongReserve);
+        require_keys_eq!(
+            self.obligation.collateral_reserve,
+            *self.collateral_reserve.address(),
+            LendingError::WrongReserve
+        );
+        require_keys_eq!(
+            self.obligation.borrow_reserve,
+            *self.borrow_reserve.address(),
+            LendingError::WrongReserve
+        );
+        require_keys_eq!(
+            self.collateral_reserve.price_feed,
+            *self.collateral_price.address(),
+            LendingError::WrongReserve
+        );
+        require_keys_eq!(
+            self.borrow_reserve.price_feed,
+            *self.borrow_price.address(),
+            LendingError::WrongReserve
+        );
 
         let mut collateral = snapshot_reserve(&self.collateral_reserve);
         accrue(&mut collateral, slot)?;
@@ -495,22 +569,52 @@ impl LiquidateObligation {
             collateral_price,
             Rounding::Down,
         )?;
-        let unhealthy_threshold = mul_div_floor(collateral_value, collateral.liquidation_threshold_bps as u128, BPS_DENOMINATOR)?;
-        let debt = current_debt(obligation.borrowed_principal, borrow.borrow_accumulation_factor)?;
+        let unhealthy_threshold = mul_div_floor(
+            collateral_value,
+            collateral.liquidation_threshold_bps as u128,
+            BPS_DENOMINATOR,
+        )?;
+        let debt = current_debt(
+            obligation.borrowed_principal,
+            borrow.borrow_accumulation_factor,
+        )?;
         let debt_value = market_value(debt, borrow.liquidity_decimals, borrow_price, Rounding::Up)?;
-        require!(debt_value > unhealthy_threshold, LendingError::ObligationHealthy);
+        require!(
+            debt_value > unhealthy_threshold,
+            LendingError::ObligationHealthy
+        );
 
         // Repay capped by the close factor — taken from the borrow reserve
         // because it is a property of the debt being closed.
-        let max_repay = mul_div_floor(debt as u128, borrow.close_factor_bps as u128, BPS_DENOMINATOR)?;
+        let max_repay = mul_div_floor(
+            debt as u128,
+            borrow.close_factor_bps as u128,
+            BPS_DENOMINATOR,
+        )?;
         let repay = amount.min(u64::try_from(max_repay).map_err(|_| LendingError::MathOverflow)?);
         require!(repay > 0, LendingError::ZeroAmount);
 
         // Seize collateral worth repay value + bonus, converted to share tokens.
-        let repay_value = market_value(repay, borrow.liquidity_decimals, borrow_price, Rounding::Down)?;
-        let bonus = mul_div_floor(repay_value, collateral.liquidation_bonus_bps as u128, BPS_DENOMINATOR)?;
-        let seize_value = repay_value.checked_add(bonus).ok_or(LendingError::MathOverflow)?;
-        let seize_liquidity = value_to_amount(seize_value, collateral.liquidity_decimals, collateral_price, Rounding::Down)?;
+        let repay_value = market_value(
+            repay,
+            borrow.liquidity_decimals,
+            borrow_price,
+            Rounding::Down,
+        )?;
+        let bonus = mul_div_floor(
+            repay_value,
+            collateral.liquidation_bonus_bps as u128,
+            BPS_DENOMINATOR,
+        )?;
+        let seize_value = repay_value
+            .checked_add(bonus)
+            .ok_or(LendingError::MathOverflow)?;
+        let seize_liquidity = value_to_amount(
+            seize_value,
+            collateral.liquidity_decimals,
+            collateral_price,
+            Rounding::Down,
+        )?;
         let seize_shares = mul_div_floor(
             seize_liquidity as u128,
             collateral.share_mint_supply as u128,
@@ -525,13 +629,26 @@ impl LiquidateObligation {
             LendingError::LiquidationTooLarge
         );
 
-        let scaled_removed = mul_div_floor(repay as u128, SCALE, borrow.borrow_accumulation_factor)?
-            .min(obligation.borrowed_principal);
+        let scaled_removed =
+            mul_div_floor(repay as u128, SCALE, borrow.borrow_accumulation_factor)?
+                .min(obligation.borrowed_principal);
 
-        borrow.borrowed_principal = borrow.borrowed_principal.checked_sub(scaled_removed).ok_or(LendingError::MathOverflow)?;
-        borrow.available_liquidity = borrow.available_liquidity.checked_add(repay).ok_or(LendingError::MathOverflow)?;
-        obligation.borrowed_principal = obligation.borrowed_principal.checked_sub(scaled_removed).ok_or(LendingError::MathOverflow)?;
-        obligation.deposited_shares = obligation.deposited_shares.checked_sub(seize_shares).ok_or(LendingError::MathOverflow)?;
+        borrow.borrowed_principal = borrow
+            .borrowed_principal
+            .checked_sub(scaled_removed)
+            .ok_or(LendingError::MathOverflow)?;
+        borrow.available_liquidity = borrow
+            .available_liquidity
+            .checked_add(repay)
+            .ok_or(LendingError::MathOverflow)?;
+        obligation.borrowed_principal = obligation
+            .borrowed_principal
+            .checked_sub(scaled_removed)
+            .ok_or(LendingError::MathOverflow)?;
+        obligation.deposited_shares = obligation
+            .deposited_shares
+            .checked_sub(seize_shares)
+            .ok_or(LendingError::MathOverflow)?;
 
         let share_decimals = self.share_mint.decimals;
         let borrow_decimals = borrow.liquidity_decimals;

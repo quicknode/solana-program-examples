@@ -15,8 +15,8 @@ declare_id!("5LdYbHiUsFxVG8bfqoeBkhBYMRmWZb3BoLuABgYW7coB");
 pub struct Token2022Program;
 impl Id for Token2022Program {
     const ID: Address = Address::new_from_array([
-        6, 221, 246, 225, 238, 117, 143, 222, 24, 66, 93, 188, 228, 108, 205, 218,
-        182, 26, 252, 77, 131, 185, 13, 39, 254, 189, 249, 40, 216, 161, 139, 252,
+        6, 221, 246, 225, 238, 117, 143, 222, 24, 66, 93, 188, 228, 108, 205, 218, 182, 26, 252,
+        77, 131, 185, 13, 39, 254, 189, 249, 40, 216, 161, 139, 252,
     ]);
 }
 
@@ -126,7 +126,9 @@ fn handle_update_default_state(
         accounts.token_program.to_account_view().address(),
         [
             InstructionAccount::writable(accounts.mint_account.to_account_view().address()),
-            InstructionAccount::readonly_signer(accounts.freeze_authority.to_account_view().address()),
+            InstructionAccount::readonly_signer(
+                accounts.freeze_authority.to_account_view().address(),
+            ),
         ],
         [
             accounts.mint_account.to_account_view(),

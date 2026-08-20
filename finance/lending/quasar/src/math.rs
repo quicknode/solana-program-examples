@@ -16,19 +16,25 @@ pub enum Rounding {
 }
 
 pub fn ten_pow(exponent: u32) -> Result<u128, ProgramError> {
-    10u128.checked_pow(exponent).ok_or(LendingError::MathOverflow.into())
+    10u128
+        .checked_pow(exponent)
+        .ok_or(LendingError::MathOverflow.into())
 }
 
 pub fn mul_div_floor(a: u128, b: u128, denominator: u128) -> Result<u128, ProgramError> {
     require!(denominator > 0, LendingError::MathOverflow);
     let product = a.checked_mul(b).ok_or(LendingError::MathOverflow)?;
-    Ok(product.checked_div(denominator).ok_or(LendingError::MathOverflow)?)
+    Ok(product
+        .checked_div(denominator)
+        .ok_or(LendingError::MathOverflow)?)
 }
 
 pub fn mul_div_ceil(a: u128, b: u128, denominator: u128) -> Result<u128, ProgramError> {
     require!(denominator > 0, LendingError::MathOverflow);
     let product = a.checked_mul(b).ok_or(LendingError::MathOverflow)?;
-    let rounding = denominator.checked_sub(1).ok_or(LendingError::MathOverflow)?;
+    let rounding = denominator
+        .checked_sub(1)
+        .ok_or(LendingError::MathOverflow)?;
     Ok(product
         .checked_add(rounding)
         .ok_or(LendingError::MathOverflow)?
@@ -69,7 +75,12 @@ pub fn market_value(
     price_scaled: u128,
     rounding: Rounding,
 ) -> Result<u128, ProgramError> {
-    mul_div(amount as u128, price_scaled, ten_pow(decimals as u32)?, rounding)
+    mul_div(
+        amount as u128,
+        price_scaled,
+        ten_pow(decimals as u32)?,
+        rounding,
+    )
 }
 
 /// Inverse of [`market_value`]: base units of a token worth `value_scaled`.
@@ -79,7 +90,12 @@ pub fn value_to_amount(
     price_scaled: u128,
     rounding: Rounding,
 ) -> Result<u64, ProgramError> {
-    let amount = mul_div(value_scaled, ten_pow(decimals as u32)?, price_scaled, rounding)?;
+    let amount = mul_div(
+        value_scaled,
+        ten_pow(decimals as u32)?,
+        price_scaled,
+        rounding,
+    )?;
     u64::try_from(amount).map_err(|_| LendingError::MathOverflow.into())
 }
 
@@ -126,7 +142,11 @@ pub fn utilization_bps(
     if total == 0 {
         return Ok(0);
     }
-    mul_div_floor(current_debt(borrowed_principal, factor)? as u128, BPS_DENOMINATOR, total)
+    mul_div_floor(
+        current_debt(borrowed_principal, factor)? as u128,
+        BPS_DENOMINATOR,
+        total,
+    )
 }
 
 /// Per-slot borrow rate (FIXED_POINT_SCALE-scaled) from the kinked curve.
@@ -145,7 +165,11 @@ pub fn borrow_rate_per_slot(
             .checked_sub(min_rate_bps as u128)
             .ok_or(LendingError::MathOverflow)?;
         (min_rate_bps as u128)
-            .checked_add(mul_div_floor(range, utilization, optimal_utilization.max(1))?)
+            .checked_add(mul_div_floor(
+                range,
+                utilization,
+                optimal_utilization.max(1),
+            )?)
             .ok_or(LendingError::MathOverflow)?
     } else {
         let range = (max_rate_bps as u128)
@@ -198,7 +222,10 @@ pub fn accrue_factor(
         slots_per_year,
     )?;
     let growth = FIXED_POINT_SCALE
-        .checked_add(rate.checked_mul(elapsed as u128).ok_or(LendingError::MathOverflow)?)
+        .checked_add(
+            rate.checked_mul(elapsed as u128)
+                .ok_or(LendingError::MathOverflow)?,
+        )
         .ok_or(LendingError::MathOverflow)?;
     mul_div_floor(factor, growth, FIXED_POINT_SCALE)
 }

@@ -14,8 +14,8 @@ declare_id!("4XCDGMD8fsdjUzmYj6d9if8twFt1f23Ym52iDmWK8fFs");
 pub struct Token2022Program;
 impl Id for Token2022Program {
     const ID: Address = Address::new_from_array([
-        6, 221, 246, 225, 238, 117, 143, 222, 24, 66, 93, 188, 228, 108, 205, 218,
-        182, 26, 252, 77, 131, 185, 13, 39, 254, 189, 249, 40, 216, 161, 139, 252,
+        6, 221, 246, 225, 238, 117, 143, 222, 24, 66, 93, 188, 228, 108, 205, 218, 182, 26, 252,
+        77, 131, 185, 13, 39, 254, 189, 249, 40, 216, 161, 139, 252,
     ]);
 }
 
@@ -30,7 +30,9 @@ mod quasar_group {
     use super::*;
 
     #[instruction(discriminator = 0)]
-    pub fn initialize_group(ctx: Ctx<InitializeGroupAccountConstraints>) -> Result<(), ProgramError> {
+    pub fn initialize_group(
+        ctx: Ctx<InitializeGroupAccountConstraints>,
+    ) -> Result<(), ProgramError> {
         handle_initialize_group(&mut ctx.accounts)
     }
 }
@@ -46,7 +48,9 @@ pub struct InitializeGroupAccountConstraints {
 }
 
 #[inline(always)]
-fn handle_initialize_group(accounts: &mut InitializeGroupAccountConstraints) -> Result<(), ProgramError> {
+fn handle_initialize_group(
+    accounts: &mut InitializeGroupAccountConstraints,
+) -> Result<(), ProgramError> {
     // Mint + GroupPointer extension = 234 bytes
     // (base mint padded to 165 + account_type byte + GroupPointer TLV [2 type + 2 len + 64 data])
     let mint_size: u64 = 234;

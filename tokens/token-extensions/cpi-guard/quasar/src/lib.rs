@@ -14,8 +14,8 @@ declare_id!("6tU3MEowU6oxxeDZLSxEwzcEZsZrhBJsfUR6xECvShid");
 pub struct Token2022Program;
 impl Id for Token2022Program {
     const ID: Address = Address::new_from_array([
-        6, 221, 246, 225, 238, 117, 143, 222, 24, 66, 93, 188, 228, 108, 205, 218,
-        182, 26, 252, 77, 131, 185, 13, 39, 254, 189, 249, 40, 216, 161, 139, 252,
+        6, 221, 246, 225, 238, 117, 143, 222, 24, 66, 93, 188, 228, 108, 205, 218, 182, 26, 252,
+        77, 131, 185, 13, 39, 254, 189, 249, 40, 216, 161, 139, 252,
     ]);
 }
 
@@ -59,7 +59,9 @@ fn handle_cpi_transfer(accounts: &mut CpiTransferAccountConstraints) -> Result<(
         [
             InstructionAccount::writable(accounts.sender_token_account.to_account_view().address()),
             InstructionAccount::readonly(accounts.mint_account.to_account_view().address()),
-            InstructionAccount::writable(accounts.recipient_token_account.to_account_view().address()),
+            InstructionAccount::writable(
+                accounts.recipient_token_account.to_account_view().address(),
+            ),
             InstructionAccount::readonly_signer(accounts.sender.to_account_view().address()),
         ],
         [

@@ -98,7 +98,7 @@ pub fn handle_open_position(
         .reserved_liquidity
         .get()
         .checked_add(size)
-        .ok_or_else(|| ProgramError::ArithmeticOverflow)?;
+        .ok_or(ProgramError::ArithmeticOverflow)?;
     if new_reserved > accounts.pool.liquidity.get() {
         return Err(err(error::INSUFFICIENT_LIQUIDITY));
     }

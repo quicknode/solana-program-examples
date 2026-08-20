@@ -2,7 +2,7 @@
 
 use quasar_lang::prelude::*;
 
-mod instructions;
+pub mod instructions;
 use instructions::*;
 #[cfg(test)]
 mod tests;
@@ -28,12 +28,7 @@ mod quasar_token_minter {
         token_symbol: String<10>,
         token_uri: String<200>,
     ) -> Result<(), ProgramError> {
-        instructions::handle_create_token(
-            &mut ctx.accounts,
-            &token_name,
-            &token_symbol,
-            &token_uri,
-        )
+        instructions::handle_create_token(&mut ctx.accounts, token_name, token_symbol, token_uri)
     }
 
     /// Mint `amount` minor units of the token to the recipient.

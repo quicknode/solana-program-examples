@@ -51,7 +51,10 @@ mod quasar_order_book {
     pub fn initialize_market_user(
         ctx: Ctx<InitializeMarketUserAccountConstraints>,
     ) -> Result<(), ProgramError> {
-        instructions::initialize_market_user::handle_initialize_market_user(&mut ctx.accounts, &ctx.bumps)
+        instructions::initialize_market_user::handle_initialize_market_user(
+            &mut ctx.accounts,
+            &ctx.bumps,
+        )
     }
 
     /// Place a bid or ask (`side`: 0 = Bid, 1 = Ask). Locks the required funds,

@@ -22,7 +22,9 @@ pub struct CheckAccountsAccountConstraints {
 }
 
 #[inline(always)]
-pub fn handle_check_accounts(_accounts: &mut CheckAccountsAccountConstraints) -> Result<(), ProgramError> {
+pub fn handle_check_accounts(
+    _accounts: &mut CheckAccountsAccountConstraints,
+) -> Result<(), ProgramError> {
     // All validation happens declaratively via the account types above.
     // If any check fails, the runtime rejects the transaction before this runs.
     Ok(())

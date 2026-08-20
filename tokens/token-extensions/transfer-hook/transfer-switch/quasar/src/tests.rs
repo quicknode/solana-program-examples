@@ -70,7 +70,8 @@ fn transfer_switch_gates_transfers_per_wallet(test: &mut Test) {
     .succeeds();
 
     // 4. Transfer hook with the switch ON succeeds.
-    test.send(hook_instruction(meta_list, wallet_switch)).succeeds();
+    test.send(hook_instruction(meta_list, wallet_switch))
+        .succeeds();
 
     // 5. Turn the switch OFF.
     test.send(SwitchInstruction {

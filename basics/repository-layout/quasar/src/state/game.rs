@@ -15,8 +15,23 @@ pub fn game_name_matches(game: &Game, other: &str) -> bool {
 /// Static list of carnival games.
 pub fn get_games() -> &'static [Game] {
     &[
-        Game { name: "Ring Toss", tickets: DEFAULT_TICKETS_TO_PLAY, tries: 5, prize: "teddy bear" },
-        Game { name: "I Got It!", tickets: DEFAULT_TICKETS_TO_PLAY, tries: 12, prize: "goldfish" },
-        Game { name: "Ladder Climb", tickets: DEFAULT_TICKETS_TO_PLAY, tries: 1, prize: "popcorn bucket" },
+        Game {
+            name: "Ring Toss",
+            tickets: DEFAULT_TICKETS_TO_PLAY,
+            tries: 5,
+            prize: "teddy bear",
+        },
+        Game {
+            name: "I Got It!",
+            tickets: DEFAULT_TICKETS_TO_PLAY,
+            tries: 12,
+            prize: "goldfish",
+        },
+        Game {
+            name: "Ladder Climb",
+            tickets: DEFAULT_TICKETS_TO_PLAY,
+            tries: 1,
+            prize: "popcorn bucket",
+        },
     ]
 }

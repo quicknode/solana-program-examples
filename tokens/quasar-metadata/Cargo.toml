@@ -26,4 +26,9 @@ debug = []
 # Pinned to the same 0.1.0-release rev as every Quasar example in this
 # repository. See README.md for why this crate is vendored here.
 quasar-lang = { git = "https://github.com/blueshift-gg/quasar", rev = "be60fca" }
+# Pinned: quasar-lang asks for zeropod "0.3.3" and wincode 0.4, but zeropod
+# 0.3.4 moved to wincode 0.5, so a fresh resolve (no lockfile is committed)
+# splits the graph across two wincode versions and every Pod* trait bound
+# fails. Unpin when quasar-lang's pinned rev accepts zeropod 0.3.4+.
+zeropod = "=0.3.3"
 solana-address = { version = ">=2.2, <2.6", features = ["copy"] }

@@ -13,9 +13,7 @@ pub struct IncrementAccountConstraints {
 #[inline(always)]
 pub fn handle_increment(accounts: &mut IncrementAccountConstraints) -> Result<(), ProgramError> {
     let current: u64 = accounts.counter.count.into();
-    let next = current
-        .checked_add(1)
-        .ok_or(CounterError::MathOverflow)?;
+    let next = current.checked_add(1).ok_or(CounterError::MathOverflow)?;
     accounts.counter.count = PodU64::from(next);
     Ok(())
 }

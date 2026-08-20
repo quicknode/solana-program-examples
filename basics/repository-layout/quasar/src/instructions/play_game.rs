@@ -3,11 +3,7 @@ use quasar_lang::prelude::*;
 use crate::state::game;
 
 /// Validate game ticket requirements and log the result.
-pub fn play_game(
-    _name: &str,
-    ticket_count: u32,
-    game_name: &str,
-) -> Result<(), ProgramError> {
+pub fn play_game(_name: &str, ticket_count: u32, game_name: &str) -> Result<(), ProgramError> {
     let games = game::get_games();
 
     let mut i = 0;

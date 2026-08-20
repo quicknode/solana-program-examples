@@ -6,7 +6,7 @@
 use {
     crate::{
         cpi::{
-            CancelOrderInstruction, InitializeMarketUserInstruction, InitializeMarketInstruction,
+            CancelOrderInstruction, InitializeMarketInstruction, InitializeMarketUserInstruction,
             PlaceOrderInstruction, SettleFundsInstruction, WithdrawFeesInstruction,
         },
         errors::OrderBookError,
@@ -92,7 +92,8 @@ fn init_market(test: &mut Test) -> Pubkey {
 
 fn initialize_market_user(test: &mut Test, market: Pubkey, owner: Pubkey) -> Pubkey {
     test.add(Wallet::new().at(owner));
-    test.send(InitializeMarketUserInstruction { owner, market }).succeeds();
+    test.send(InitializeMarketUserInstruction { owner, market })
+        .succeeds();
     test.derive_pda(MarketUser::seeds(&market, &owner))
 }
 
@@ -173,7 +174,11 @@ fn initialize_market_stamps_market_and_order_book(test: &mut Test) {
     // point here (hand-rolled zero-copy slab): disc(8) then market(32),
     // bids_root(8), asks_root(8), next_order_id(8)...
     let order_book = test.account(ORDER_BOOK).unwrap();
-    assert_eq!(&order_book.data[0..8], b"ORDRBOOK", "order-book discriminator");
+    assert_eq!(
+        &order_book.data[0..8],
+        b"ORDRBOOK",
+        "order-book discriminator"
+    );
     let next_order_id_offset = 8 + 32 + 8 + 8;
     let mut id_bytes = [0u8; 8];
     id_bytes.copy_from_slice(&order_book.data[next_order_id_offset..next_order_id_offset + 8]);
@@ -232,8 +237,19 @@ fn place_match_settle_withdraw_moves_tokens_and_fees(test: &mut Test) {
     let taker_order = test.derive_pda(Order::seeds(&market, 2));
 
     // Maker ask (id 1) rests on the book.
-    place_order(test, market, MAKER, MAKER_BASE, MAKER_QUOTE, 1, PRICE, QUANTITY, 1, &[])
-        .succeeds();
+    place_order(
+        test,
+        market,
+        MAKER,
+        MAKER_BASE,
+        MAKER_QUOTE,
+        1,
+        PRICE,
+        QUANTITY,
+        1,
+        &[],
+    )
+    .succeeds();
     // Taker bid (id 2) crosses the maker ask; maker accounts supplied as
     // remaining accounts.
     place_order(
@@ -270,7 +286,10 @@ fn place_match_settle_withdraw_moves_tokens_and_fees(test: &mut Test) {
     assert_eq!(u64::from(taker_state.filled_quantity), QUANTITY);
 
     // Maker's open-orders list emptied when its resting order fully filled.
-    assert_eq!(test.read::<MarketUser>(maker_market_user).open_orders_len, 0);
+    assert_eq!(
+        test.read::<MarketUser>(maker_market_user).open_orders_len,
+        0
+    );
     let _ = taker_market_user;
 
     // Settlement moved tokens: maker received net quote, taker received base.
@@ -305,8 +324,19 @@ fn cancel_order_credits_the_locked_base_back(test: &mut Test) {
     test.add(TokenAccount::new(QUOTE_MINT, MAKER).at(MAKER_QUOTE));
 
     let maker_order = test.derive_pda(Order::seeds(&market, 1));
-    place_order(test, market, MAKER, MAKER_BASE, MAKER_QUOTE, 1, PRICE, QUANTITY, 1, &[])
-        .succeeds();
+    place_order(
+        test,
+        market,
+        MAKER,
+        MAKER_BASE,
+        MAKER_QUOTE,
+        1,
+        PRICE,
+        QUANTITY,
+        1,
+        &[],
+    )
+    .succeeds();
 
     test.send(CancelOrderInstruction {
         market,

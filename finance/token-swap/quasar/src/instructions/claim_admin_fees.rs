@@ -1,10 +1,10 @@
 use {
-    quasar_lang::cpi::Seed,
     crate::{
         error::AmmError,
         state::{Config, PoolConfig, PoolConfigInner},
         ConfigPda, PoolAuthorityPda, PoolPda,
     },
+    quasar_lang::cpi::Seed,
     quasar_lang::prelude::*,
     quasar_spl::prelude::*,
 };

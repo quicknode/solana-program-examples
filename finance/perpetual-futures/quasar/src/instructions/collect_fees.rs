@@ -1,10 +1,10 @@
 use {
-    quasar_lang::cpi::Seed,
     crate::{
         instructions::shared::{err, error},
         state::Pool,
         PoolAuthorityPda,
     },
+    quasar_lang::cpi::Seed,
     quasar_lang::prelude::*,
     quasar_spl::prelude::*,
 };

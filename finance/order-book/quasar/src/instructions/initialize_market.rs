@@ -93,7 +93,10 @@ pub fn handle_initialize_market(
     // program-owned, zeroed account; verify ownership before casting.
     {
         let view = accounts.order_book.to_account_view();
-        require!(view.owned_by(&crate::ID), OrderBookError::InvalidOrderBookOwner);
+        require!(
+            view.owned_by(&crate::ID),
+            OrderBookError::InvalidOrderBookOwner
+        );
         // SAFETY: `order_book` is writable and not aliased elsewhere in this
         // instruction. The cast mirrors the read-only raw-slice pattern used
         // in the pyth example, extended to a mutable slice for initialization.

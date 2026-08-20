@@ -55,8 +55,14 @@ fn handle_mint_tokens(
     accounts: &mut MintTokensAccountConstraints,
     amount: u64,
 ) -> Result<(), ProgramError> {
-    accounts.token_program
-        .mint_to(&accounts.mint, &accounts.recipient_token_account, &accounts.mint_authority, amount)
+    accounts
+        .token_program
+        .mint_to(
+            &accounts.mint,
+            &accounts.recipient_token_account,
+            &accounts.mint_authority,
+            amount,
+        )
         .invoke()
 }
 
@@ -77,7 +83,13 @@ fn handle_transfer_tokens(
     accounts: &mut TransferTokensAccountConstraints,
     amount: u64,
 ) -> Result<(), ProgramError> {
-    accounts.token_program
-        .transfer(&accounts.sender_token_account, &accounts.recipient_token_account, &accounts.sender, amount)
+    accounts
+        .token_program
+        .transfer(
+            &accounts.sender_token_account,
+            &accounts.recipient_token_account,
+            &accounts.sender,
+            amount,
+        )
         .invoke()
 }

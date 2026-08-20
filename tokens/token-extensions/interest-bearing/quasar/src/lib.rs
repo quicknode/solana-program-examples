@@ -14,8 +14,8 @@ declare_id!("DMQdkzRJz8uQSN8Kx2QYmQJn6xLKhsu3LcPYxs314MgC");
 pub struct Token2022Program;
 impl Id for Token2022Program {
     const ID: Address = Address::new_from_array([
-        6, 221, 246, 225, 238, 117, 143, 222, 24, 66, 93, 188, 228, 108, 205, 218,
-        182, 26, 252, 77, 131, 185, 13, 39, 254, 189, 249, 40, 216, 161, 139, 252,
+        6, 221, 246, 225, 238, 117, 143, 222, 24, 66, 93, 188, 228, 108, 205, 218, 182, 26, 252,
+        77, 131, 185, 13, 39, 254, 189, 249, 40, 216, 161, 139, 252,
     ]);
 }
 
@@ -26,12 +26,18 @@ mod quasar_interest_bearing {
     use super::*;
 
     #[instruction(discriminator = 0)]
-    pub fn initialize(ctx: Ctx<InitializeAccountConstraints>, rate: i16) -> Result<(), ProgramError> {
+    pub fn initialize(
+        ctx: Ctx<InitializeAccountConstraints>,
+        rate: i16,
+    ) -> Result<(), ProgramError> {
         handle_initialize(&mut ctx.accounts, rate)
     }
 
     #[instruction(discriminator = 1)]
-    pub fn update_rate(ctx: Ctx<UpdateRateAccountConstraints>, rate: i16) -> Result<(), ProgramError> {
+    pub fn update_rate(
+        ctx: Ctx<UpdateRateAccountConstraints>,
+        rate: i16,
+    ) -> Result<(), ProgramError> {
         handle_update_rate(&mut ctx.accounts, rate)
     }
 }
@@ -47,7 +53,10 @@ pub struct InitializeAccountConstraints {
 }
 
 #[inline(always)]
-fn handle_initialize(accounts: &mut InitializeAccountConstraints, rate: i16) -> Result<(), ProgramError> {
+fn handle_initialize(
+    accounts: &mut InitializeAccountConstraints,
+    rate: i16,
+) -> Result<(), ProgramError> {
     // 165 (base) + 1 (account type) + 4 (TLV header) + 52 (InterestBearingConfig data) = 222 bytes
     let mint_size: u64 = 222;
     let lamports = Rent::get()?.try_minimum_balance(mint_size as usize)?;
@@ -110,7 +119,10 @@ pub struct UpdateRateAccountConstraints {
 }
 
 #[inline(always)]
-fn handle_update_rate(accounts: &mut UpdateRateAccountConstraints, rate: i16) -> Result<(), ProgramError> {
+fn handle_update_rate(
+    accounts: &mut UpdateRateAccountConstraints,
+    rate: i16,
+) -> Result<(), ProgramError> {
     // InterestBearingMintUpdateRate: opcode 33, sub-opcode 1, rate (i16 LE)
     let mut data = [0u8; 4];
     data[0] = 33;

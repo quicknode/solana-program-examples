@@ -22,7 +22,11 @@ pub fn handle_create_user(
     let user_address = *accounts.user.to_account_view().address();
     let rent = Rent::get()?;
     accounts.user_account.set_inner(
-        UserInner { bump, user: user_address, name },
+        UserInner {
+            bump,
+            user: user_address,
+            name,
+        },
         accounts.user.to_account_view(),
         rent.lamports_per_byte(),
         rent.exemption_threshold_raw(),

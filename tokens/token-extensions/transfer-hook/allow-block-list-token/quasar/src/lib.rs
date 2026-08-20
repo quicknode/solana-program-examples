@@ -61,15 +61,22 @@ mod quasar_abl_token {
         let freeze_addr = Address::new_from_array(freeze_authority);
         let delegate_addr = Address::new_from_array(permanent_delegate);
         let hook_auth_addr = Address::new_from_array(transfer_hook_authority);
-        instructions::handle_init_mint(&mut ctx.accounts, decimals,
-            &freeze_addr,
-            &delegate_addr,
-            &hook_auth_addr,
+        instructions::handle_init_mint(
+            &mut ctx.accounts,
+            decimals,
+            &instructions::MintAuthorities {
+                freeze: &freeze_addr,
+                permanent_delegate: &delegate_addr,
+                transfer_hook: &hook_auth_addr,
+            },
+            &instructions::MintMetadata {
+                name: &name[..nl],
+                symbol: &symbol[..sl],
+                uri: &uri[..ul],
+            },
             mode,
             threshold,
-            &name[..nl],
-            &symbol[..sl],
-            &uri[..ul],)
+        )
     }
 
     /// Create the Config PDA with the payer as authority.
@@ -95,7 +102,10 @@ mod quasar_abl_token {
 
     /// Create a per-wallet allow/block entry.
     #[instruction(discriminator = [0, 0, 0, 0, 0, 0, 0, 4])]
-    pub fn init_wallet(ctx: Ctx<InitWalletAccountConstraints>, allowed: bool) -> Result<(), ProgramError> {
+    pub fn init_wallet(
+        ctx: Ctx<InitWalletAccountConstraints>,
+        allowed: bool,
+    ) -> Result<(), ProgramError> {
         instructions::handle_init_wallet(&mut ctx.accounts, allowed)
     }
 
@@ -107,7 +117,11 @@ mod quasar_abl_token {
 
     /// Change the allow/block mode on the mint's metadata.
     #[instruction(discriminator = [0, 0, 0, 0, 0, 0, 0, 6])]
-    pub fn change_mode(ctx: Ctx<ChangeModeAccountConstraints>, mode: u8, threshold: u64) -> Result<(), ProgramError> {
+    pub fn change_mode(
+        ctx: Ctx<ChangeModeAccountConstraints>,
+        mode: u8,
+        threshold: u64,
+    ) -> Result<(), ProgramError> {
         instructions::handle_change_mode(&mut ctx.accounts, mode, threshold)
     }
 }

@@ -16,7 +16,7 @@ pub mod instructions;
 pub mod pda;
 pub mod prelude;
 mod program;
-mod state;
+pub mod state;
 pub mod validate;
 
 pub use {

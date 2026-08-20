@@ -20,6 +20,12 @@ pub fn handle_create_system_account(
     let lamports = rent.minimum_balance_unchecked(0);
     accounts
         .system_program
-        .create_account(&accounts.payer, &accounts.new_account, lamports, 0u64, &system_program_address)
+        .create_account(
+            &accounts.payer,
+            &accounts.new_account,
+            lamports,
+            0u64,
+            &system_program_address,
+        )
         .invoke()
 }

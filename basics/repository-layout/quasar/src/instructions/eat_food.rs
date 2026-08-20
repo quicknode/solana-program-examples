@@ -3,11 +3,7 @@ use quasar_lang::prelude::*;
 use crate::state::food;
 
 /// Validate food stand ticket requirements and log the result.
-pub fn eat_food(
-    _name: &str,
-    ticket_count: u32,
-    food_stand_name: &str,
-) -> Result<(), ProgramError> {
+pub fn eat_food(_name: &str, ticket_count: u32, food_stand_name: &str) -> Result<(), ProgramError> {
     let stands = food::get_food_stands();
 
     let mut i = 0;

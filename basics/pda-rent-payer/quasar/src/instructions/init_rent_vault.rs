@@ -21,8 +21,12 @@ pub struct InitRentVaultAccountConstraints {
 }
 
 #[inline(always)]
-pub fn handle_init_rent_vault(accounts: &mut InitRentVaultAccountConstraints, fund_lamports: u64) -> Result<(), ProgramError> {
-    accounts.system_program
+pub fn handle_init_rent_vault(
+    accounts: &mut InitRentVaultAccountConstraints,
+    fund_lamports: u64,
+) -> Result<(), ProgramError> {
+    accounts
+        .system_program
         .transfer(&accounts.payer, &accounts.rent_vault, fund_lamports)
         .invoke()
 }

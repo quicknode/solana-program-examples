@@ -2,9 +2,7 @@ use quasar_lang::prelude::*;
 use quasar_spl::prelude::*;
 
 use crate::errors::BettingError;
-use crate::state::{
-    snapshot_event, Config, Event, EventStatus, EventVaultPda, Outcome,
-};
+use crate::state::{snapshot_event, Config, Event, EventStatus, EventVaultPda, Outcome};
 
 use super::transfer_from_vault;
 

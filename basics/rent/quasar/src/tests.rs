@@ -29,9 +29,18 @@ fn create_system_account_sized_for_address_data(test: &mut Test) {
         expected_space,
         "account data should be sized for the address data"
     );
-    assert!(account.lamports > 0, "account should have rent-exempt lamports");
+    assert!(
+        account.lamports > 0,
+        "account should have rent-exempt lamports"
+    );
 
     let logs = outcome.logs().join("\n");
-    assert!(logs.contains("Creating a system account"), "should log creation");
-    assert!(logs.contains("Account created successfully"), "should log success");
+    assert!(
+        logs.contains("Creating a system account"),
+        "should log creation"
+    );
+    assert!(
+        logs.contains("Account created successfully"),
+        "should log success"
+    );
 }

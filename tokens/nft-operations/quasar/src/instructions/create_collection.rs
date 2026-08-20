@@ -67,7 +67,12 @@ pub fn handle_create_collection(
     // Mint 1 token (the collection NFT) to the destination.
     accounts
         .token_program
-        .mint_to(&accounts.mint, &accounts.destination, &accounts.mint_authority, 1u64)
+        .mint_to(
+            &accounts.mint,
+            &accounts.destination,
+            &accounts.mint_authority,
+            1u64,
+        )
         .invoke_signed(seeds)?;
     log("Collection NFT minted!");
 

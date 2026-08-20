@@ -5,8 +5,8 @@
 use {
     crate::{
         cpi::{
-            ClaimAdminFeesInstruction, InitializeConfigInstruction, InitializePoolInstruction,
-            DepositLiquidityInstruction, SwapTokensInstruction, WithdrawLiquidityInstruction,
+            ClaimAdminFeesInstruction, DepositLiquidityInstruction, InitializeConfigInstruction,
+            InitializePoolInstruction, SwapTokensInstruction, WithdrawLiquidityInstruction,
         },
         error::AmmError,
         state::Config,
@@ -117,10 +117,25 @@ fn setup_pool(test: &mut Test) -> PoolEnv {
 }
 
 /// Fund a depositor wallet with token A/B accounts holding the given amounts.
-fn fund(test: &mut Test, wallet: Pubkey, token_a: Pubkey, token_b: Pubkey, amount_a: u64, amount_b: u64) {
+fn fund(
+    test: &mut Test,
+    wallet: Pubkey,
+    token_a: Pubkey,
+    token_b: Pubkey,
+    amount_a: u64,
+    amount_b: u64,
+) {
     test.add(Wallet::new().at(wallet));
-    test.add(TokenAccount::new(MINT_A, wallet).at(token_a).amount(amount_a));
-    test.add(TokenAccount::new(MINT_B, wallet).at(token_b).amount(amount_b));
+    test.add(
+        TokenAccount::new(MINT_A, wallet)
+            .at(token_a)
+            .amount(amount_a),
+    );
+    test.add(
+        TokenAccount::new(MINT_B, wallet)
+            .at(token_b)
+            .amount(amount_b),
+    );
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -153,9 +168,25 @@ fn deposit(
 /// Fund the seeding depositor and deposit `amount_a` / `amount_b`, with no LP
 /// floor (pool-setup helper, not a slippage test). Returns the LP balance.
 fn seed_pool(test: &mut Test, amount_a: u64, amount_b: u64) -> u64 {
-    fund(test, SEEDER, SEEDER_TOKEN_A, SEEDER_TOKEN_B, amount_a, amount_b);
-    deposit(test, SEEDER, SEEDER_TOKEN_A, SEEDER_TOKEN_B, SEEDER_LP, amount_a, amount_b, 0)
-        .succeeds();
+    fund(
+        test,
+        SEEDER,
+        SEEDER_TOKEN_A,
+        SEEDER_TOKEN_B,
+        amount_a,
+        amount_b,
+    );
+    deposit(
+        test,
+        SEEDER,
+        SEEDER_TOKEN_A,
+        SEEDER_TOKEN_B,
+        SEEDER_LP,
+        amount_a,
+        amount_b,
+        0,
+    )
+    .succeeds();
     test.tokens(SEEDER_LP)
 }
 
@@ -183,7 +214,12 @@ fn swap(
     })
 }
 
-fn claim_fees(test: &mut Test, admin: Pubkey, admin_token_a: Pubkey, admin_token_b: Pubkey) -> Outcome {
+fn claim_fees(
+    test: &mut Test,
+    admin: Pubkey,
+    admin_token_a: Pubkey,
+    admin_token_b: Pubkey,
+) -> Outcome {
     test.send(ClaimAdminFeesInstruction {
         mint_a: MINT_A,
         mint_b: MINT_B,
@@ -234,7 +270,9 @@ fn initialize_config_rejects_invalid_admin_share(test: &mut Test) {
 fn initialize_pool_creates_pool_config_and_lp_mint(test: &mut Test) {
     let env = setup_pool(test);
     // The pool_config PDA must now exist and be owned by our program.
-    let pc = test.account(env.pool_config).expect("pool_config missing after initialize_pool");
+    let pc = test
+        .account(env.pool_config)
+        .expect("pool_config missing after initialize_pool");
     assert_eq!(pc.owner, test.program_id());
     // LP mint PDA must be a valid SPL mint (82 bytes, owned by token program).
     let lp = test.account(env.lp_mint).expect("lp_mint missing");
@@ -266,10 +304,23 @@ fn deposit_liquidity_subsequent_proportional(test: &mut Test) {
     let lp1_bal = seed_pool(test, 1_000_000, 4_000_000);
 
     // Second depositor with the same 1:4 ratio gets proportional LP tokens.
-    fund(test, DEPOSITOR, DEPOSITOR_TOKEN_A, DEPOSITOR_TOKEN_B, 500_000, 2_000_000);
+    fund(
+        test,
+        DEPOSITOR,
+        DEPOSITOR_TOKEN_A,
+        DEPOSITOR_TOKEN_B,
+        500_000,
+        2_000_000,
+    );
     deposit(
-        test, DEPOSITOR, DEPOSITOR_TOKEN_A, DEPOSITOR_TOKEN_B, DEPOSITOR_LP,
-        500_000, 2_000_000, 0,
+        test,
+        DEPOSITOR,
+        DEPOSITOR_TOKEN_A,
+        DEPOSITOR_TOKEN_B,
+        DEPOSITOR_LP,
+        500_000,
+        2_000_000,
+        0,
     )
     .succeeds();
     let lp2_bal = test.tokens(DEPOSITOR_LP);
@@ -288,10 +339,23 @@ fn deposit_insufficient_funds_rejected(test: &mut Test) {
     setup_pool(test);
 
     // Fund with only 100 of each but request 1_000_000.
-    fund(test, DEPOSITOR, DEPOSITOR_TOKEN_A, DEPOSITOR_TOKEN_B, 100, 100);
+    fund(
+        test,
+        DEPOSITOR,
+        DEPOSITOR_TOKEN_A,
+        DEPOSITOR_TOKEN_B,
+        100,
+        100,
+    );
     deposit(
-        test, DEPOSITOR, DEPOSITOR_TOKEN_A, DEPOSITOR_TOKEN_B, DEPOSITOR_LP,
-        1_000_000, 1_000_000, 0,
+        test,
+        DEPOSITOR,
+        DEPOSITOR_TOKEN_A,
+        DEPOSITOR_TOKEN_B,
+        DEPOSITOR_LP,
+        1_000_000,
+        1_000_000,
+        0,
     )
     .fails_with(AmmError::InsufficientBalance);
 }
@@ -313,14 +377,27 @@ fn deposit_clamps_down_never_up(test: &mut Test) {
     // old logic would try to pull 4_000_000 token A (scaling A UP); the
     // correct clamp uses all 1_000_000 A and scales B down to 250_000.
     let (stated_a, stated_b) = (1_000_000u64, 1_000_000u64);
-    fund(test, DEPOSITOR, DEPOSITOR_TOKEN_A, DEPOSITOR_TOKEN_B, stated_a, stated_b);
+    fund(
+        test,
+        DEPOSITOR,
+        DEPOSITOR_TOKEN_A,
+        DEPOSITOR_TOKEN_B,
+        stated_a,
+        stated_b,
+    );
 
     let expected_b_pulled = mul_div(stated_a, pool_seed_b, pool_seed_a);
     let expected_lp = mul_div(stated_a, lp_supply, pool_seed_a);
 
     deposit(
-        test, DEPOSITOR, DEPOSITOR_TOKEN_A, DEPOSITOR_TOKEN_B, DEPOSITOR_LP,
-        stated_a, stated_b, expected_lp,
+        test,
+        DEPOSITOR,
+        DEPOSITOR_TOKEN_A,
+        DEPOSITOR_TOKEN_B,
+        DEPOSITOR_LP,
+        stated_a,
+        stated_b,
+        expected_lp,
     )
     .succeeds()
     // Exact amounts pulled: all of A, ratio-clamped B, nothing more.
@@ -344,7 +421,14 @@ fn deposit_clamps_down_other_side(test: &mut Test) {
     let lp_supply = seed_pool(test, pool_seed_a, pool_seed_b);
 
     let (stated_a, stated_b) = (1_000_000u64, 1_000_000u64);
-    fund(test, DEPOSITOR, DEPOSITOR_TOKEN_A, DEPOSITOR_TOKEN_B, stated_a, stated_b);
+    fund(
+        test,
+        DEPOSITOR,
+        DEPOSITOR_TOKEN_A,
+        DEPOSITOR_TOKEN_B,
+        stated_a,
+        stated_b,
+    );
 
     // amount_b_required for the full stated_a would be 4_000_000 > stated_b,
     // so amount_b binds: all of B is used and A is clamped down.
@@ -352,8 +436,14 @@ fn deposit_clamps_down_other_side(test: &mut Test) {
     let expected_lp = mul_div(stated_b, lp_supply, pool_seed_b);
 
     deposit(
-        test, DEPOSITOR, DEPOSITOR_TOKEN_A, DEPOSITOR_TOKEN_B, DEPOSITOR_LP,
-        stated_a, stated_b, expected_lp,
+        test,
+        DEPOSITOR,
+        DEPOSITOR_TOKEN_A,
+        DEPOSITOR_TOKEN_B,
+        DEPOSITOR_LP,
+        stated_a,
+        stated_b,
+        expected_lp,
     )
     .succeeds()
     .has_tokens(DEPOSITOR_TOKEN_A, stated_a - expected_a_pulled)
@@ -372,21 +462,50 @@ fn deposit_slippage_rejected(test: &mut Test) {
     let lp_supply = seed_pool(test, pool_seed_a, pool_seed_b);
 
     let (stated_a, stated_b) = (500_000u64, 500_000u64);
-    fund(test, DEPOSITOR, DEPOSITOR_TOKEN_A, DEPOSITOR_TOKEN_B, stated_a, stated_b);
+    fund(
+        test,
+        DEPOSITOR,
+        DEPOSITOR_TOKEN_A,
+        DEPOSITOR_TOKEN_B,
+        stated_a,
+        stated_b,
+    );
 
     // The pool will mint exactly this much; ask for one more.
     let exact_lp = mul_div(stated_a, lp_supply, pool_seed_a);
     deposit(
-        test, DEPOSITOR, DEPOSITOR_TOKEN_A, DEPOSITOR_TOKEN_B, DEPOSITOR_LP,
-        stated_a, stated_b, exact_lp + 1,
+        test,
+        DEPOSITOR,
+        DEPOSITOR_TOKEN_A,
+        DEPOSITOR_TOKEN_B,
+        DEPOSITOR_LP,
+        stated_a,
+        stated_b,
+        exact_lp + 1,
     )
     .fails_with(AmmError::DepositBelowMinimum);
 
     // Nothing moved: depositor balances and pool reserves are unchanged.
-    assert_eq!(test.tokens(DEPOSITOR_TOKEN_A), stated_a, "token A must be untouched after revert");
-    assert_eq!(test.tokens(DEPOSITOR_TOKEN_B), stated_b, "token B must be untouched after revert");
-    assert_eq!(test.tokens(POOL_A), pool_seed_a, "pool_a must be untouched after revert");
-    assert_eq!(test.tokens(POOL_B), pool_seed_b, "pool_b must be untouched after revert");
+    assert_eq!(
+        test.tokens(DEPOSITOR_TOKEN_A),
+        stated_a,
+        "token A must be untouched after revert"
+    );
+    assert_eq!(
+        test.tokens(DEPOSITOR_TOKEN_B),
+        stated_b,
+        "token B must be untouched after revert"
+    );
+    assert_eq!(
+        test.tokens(POOL_A),
+        pool_seed_a,
+        "pool_a must be untouched after revert"
+    );
+    assert_eq!(
+        test.tokens(POOL_B),
+        pool_seed_b,
+        "pool_b must be untouched after revert"
+    );
 }
 
 // ─── withdraw_liquidity ──────────────────────────────────────────────────────
@@ -442,8 +561,14 @@ fn withdraw_liquidity_pays_the_proportional_share(test: &mut Test) {
     // expected amounts as the slippage floors: the pool hasn't moved since
     // the quote, so the floors must be met.
     withdraw(
-        test, SEEDER, SEEDER_LP, RECV_A, RECV_B,
-        withdraw_amount, expected_a, expected_b,
+        test,
+        SEEDER,
+        SEEDER_LP,
+        RECV_A,
+        RECV_B,
+        withdraw_amount,
+        expected_a,
+        expected_b,
     )
     .succeeds()
     // The depositor received exactly the proportional share.
@@ -466,15 +591,33 @@ fn withdraw_slippage_rejected(test: &mut Test) {
 
     // Floor on token A set just above what the pool will pay out.
     withdraw(
-        test, SEEDER, SEEDER_LP, RECV_A, RECV_B,
-        withdraw_amount, expected_a + 1, 0,
+        test,
+        SEEDER,
+        SEEDER_LP,
+        RECV_A,
+        RECV_B,
+        withdraw_amount,
+        expected_a + 1,
+        0,
     )
     .fails_with(AmmError::WithdrawalBelowMinimum);
 
     // Nothing moved: pool reserves and the LP balance are unchanged.
-    assert_eq!(test.tokens(POOL_A), 2_000_000, "pool_a must be untouched after revert");
-    assert_eq!(test.tokens(POOL_B), 2_000_000, "pool_b must be untouched after revert");
-    assert_eq!(test.tokens(SEEDER_LP), lp_balance, "LP balance must be untouched after revert");
+    assert_eq!(
+        test.tokens(POOL_A),
+        2_000_000,
+        "pool_a must be untouched after revert"
+    );
+    assert_eq!(
+        test.tokens(POOL_B),
+        2_000_000,
+        "pool_b must be untouched after revert"
+    );
+    assert_eq!(
+        test.tokens(SEEDER_LP),
+        lp_balance,
+        "LP balance must be untouched after revert"
+    );
 }
 
 // ─── swap_tokens ─────────────────────────────────────────────────────────────
@@ -491,19 +634,31 @@ fn swap_a_to_b_conserves_balances(test: &mut Test) {
     // by init(idempotent)).
     let trader_funding = 1_000_000u64;
     test.add(Wallet::new().at(TRADER));
-    test.add(TokenAccount::new(MINT_A, TRADER).at(TRADER_TOKEN_A).amount(trader_funding));
+    test.add(
+        TokenAccount::new(MINT_A, TRADER)
+            .at(TRADER_TOKEN_A)
+            .amount(trader_funding),
+    );
 
     let input = 100_000u64;
     let expected_output = expected_swap_output(input, POOL_FEE_BPS, pool_seed_a, pool_seed_b);
     // floor = exact quote; the pool hasn't moved.
-    swap(test, TRADER, TRADER_TOKEN_A, TRADER_TOKEN_B, true, input, expected_output)
-        .succeeds()
-        // Conservation: the trader pays exactly `input` and receives exactly
-        // what the pool sent; nothing is minted or lost in transit.
-        .has_tokens(TRADER_TOKEN_A, trader_funding - input)
-        .has_tokens(TRADER_TOKEN_B, expected_output)
-        .has_tokens(POOL_A, pool_seed_a + input)
-        .has_tokens(POOL_B, pool_seed_b - expected_output);
+    swap(
+        test,
+        TRADER,
+        TRADER_TOKEN_A,
+        TRADER_TOKEN_B,
+        true,
+        input,
+        expected_output,
+    )
+    .succeeds()
+    // Conservation: the trader pays exactly `input` and receives exactly
+    // what the pool sent; nothing is minted or lost in transit.
+    .has_tokens(TRADER_TOKEN_A, trader_funding - input)
+    .has_tokens(TRADER_TOKEN_B, expected_output)
+    .has_tokens(POOL_A, pool_seed_a + input)
+    .has_tokens(POOL_B, pool_seed_b - expected_output);
 }
 
 #[quasar_test]
@@ -514,17 +669,29 @@ fn swap_b_to_a_conserves_balances(test: &mut Test) {
 
     let trader_funding = 1_000_000u64;
     test.add(Wallet::new().at(TRADER));
-    test.add(TokenAccount::new(MINT_B, TRADER).at(TRADER_TOKEN_B).amount(trader_funding));
+    test.add(
+        TokenAccount::new(MINT_B, TRADER)
+            .at(TRADER_TOKEN_B)
+            .amount(trader_funding),
+    );
 
     let input = 100_000u64;
     let expected_output = expected_swap_output(input, POOL_FEE_BPS, pool_seed_b, pool_seed_a);
     // input_is_token_a = false.
-    swap(test, TRADER, TRADER_TOKEN_A, TRADER_TOKEN_B, false, input, expected_output)
-        .succeeds()
-        .has_tokens(TRADER_TOKEN_B, trader_funding - input)
-        .has_tokens(TRADER_TOKEN_A, expected_output)
-        .has_tokens(POOL_B, pool_seed_b + input)
-        .has_tokens(POOL_A, pool_seed_a - expected_output);
+    swap(
+        test,
+        TRADER,
+        TRADER_TOKEN_A,
+        TRADER_TOKEN_B,
+        false,
+        input,
+        expected_output,
+    )
+    .succeeds()
+    .has_tokens(TRADER_TOKEN_B, trader_funding - input)
+    .has_tokens(TRADER_TOKEN_A, expected_output)
+    .has_tokens(POOL_B, pool_seed_b + input)
+    .has_tokens(POOL_A, pool_seed_a - expected_output);
 }
 
 #[quasar_test]
@@ -533,18 +700,42 @@ fn swap_slippage_rejected(test: &mut Test) {
     seed_pool(test, 10_000_000, 10_000_000);
 
     test.add(Wallet::new().at(TRADER));
-    test.add(TokenAccount::new(MINT_A, TRADER).at(TRADER_TOKEN_A).amount(1_000_000));
+    test.add(
+        TokenAccount::new(MINT_A, TRADER)
+            .at(TRADER_TOKEN_A)
+            .amount(1_000_000),
+    );
 
     // min_output set one above the exact quote, so the floor cannot be met.
     let input = 100_000u64;
     let quote = expected_swap_output(input, POOL_FEE_BPS, 10_000_000, 10_000_000);
-    swap(test, TRADER, TRADER_TOKEN_A, TRADER_TOKEN_B, true, input, quote + 1)
-        .fails_with(AmmError::SlippageExceeded);
+    swap(
+        test,
+        TRADER,
+        TRADER_TOKEN_A,
+        TRADER_TOKEN_B,
+        true,
+        input,
+        quote + 1,
+    )
+    .fails_with(AmmError::SlippageExceeded);
 
     // Nothing moved: the trader keeps their input and the pool is untouched.
-    assert_eq!(test.tokens(TRADER_TOKEN_A), 1_000_000, "trader balance must be untouched after revert");
-    assert_eq!(test.tokens(POOL_A), 10_000_000, "pool_a must be untouched after revert");
-    assert_eq!(test.tokens(POOL_B), 10_000_000, "pool_b must be untouched after revert");
+    assert_eq!(
+        test.tokens(TRADER_TOKEN_A),
+        1_000_000,
+        "trader balance must be untouched after revert"
+    );
+    assert_eq!(
+        test.tokens(POOL_A),
+        10_000_000,
+        "pool_a must be untouched after revert"
+    );
+    assert_eq!(
+        test.tokens(POOL_B),
+        10_000_000,
+        "pool_b must be untouched after revert"
+    );
 }
 
 // ─── claim_admin_fees ────────────────────────────────────────────────────────
@@ -556,8 +747,21 @@ fn claim_admin_fees_pays_the_admin(test: &mut Test) {
     // Seed pool and do a swap so fees accumulate.
     seed_pool(test, 10_000_000, 10_000_000);
     test.add(Wallet::new().at(TRADER));
-    test.add(TokenAccount::new(MINT_A, TRADER).at(TRADER_TOKEN_A).amount(1_000_000));
-    swap(test, TRADER, TRADER_TOKEN_A, TRADER_TOKEN_B, true, 500_000, 1).succeeds();
+    test.add(
+        TokenAccount::new(MINT_A, TRADER)
+            .at(TRADER_TOKEN_A)
+            .amount(1_000_000),
+    );
+    swap(
+        test,
+        TRADER,
+        TRADER_TOKEN_A,
+        TRADER_TOKEN_B,
+        true,
+        500_000,
+        1,
+    )
+    .succeeds();
 
     // Admin claims accumulated fees.
     test.add(Wallet::new().at(ADMIN));
@@ -581,8 +785,21 @@ fn claim_admin_fees_rejects_non_admin(test: &mut Test) {
 
     // Swap to accumulate some fees.
     test.add(Wallet::new().at(TRADER));
-    test.add(TokenAccount::new(MINT_A, TRADER).at(TRADER_TOKEN_A).amount(1_000_000));
-    swap(test, TRADER, TRADER_TOKEN_A, TRADER_TOKEN_B, true, 100_000, 1).succeeds();
+    test.add(
+        TokenAccount::new(MINT_A, TRADER)
+            .at(TRADER_TOKEN_A)
+            .amount(1_000_000),
+    );
+    swap(
+        test,
+        TRADER,
+        TRADER_TOKEN_A,
+        TRADER_TOKEN_B,
+        true,
+        100_000,
+        1,
+    )
+    .succeeds();
 
     // Impersonator tries to claim with a wrong signer.
     test.add(Wallet::new().at(BAD_ACTOR));
@@ -590,5 +807,8 @@ fn claim_admin_fees_rejects_non_admin(test: &mut Test) {
     test.add(TokenAccount::new(MINT_B, BAD_ACTOR).at(BAD_TOKEN_B));
 
     let outcome = claim_fees(test, BAD_ACTOR, BAD_TOKEN_A, BAD_TOKEN_B);
-    assert!(outcome.is_err(), "unauthorized claim_admin_fees should fail");
+    assert!(
+        outcome.is_err(),
+        "unauthorized claim_admin_fees should fail"
+    );
 }

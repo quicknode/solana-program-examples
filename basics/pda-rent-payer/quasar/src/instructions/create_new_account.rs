@@ -15,7 +15,10 @@ pub struct CreateNewAccountAccountConstraints {
 }
 
 #[inline(always)]
-pub fn handle_create_new_account(accounts: &mut CreateNewAccountAccountConstraints, rent_vault_bump: u8) -> Result<(), ProgramError> {
+pub fn handle_create_new_account(
+    accounts: &mut CreateNewAccountAccountConstraints,
+    rent_vault_bump: u8,
+) -> Result<(), ProgramError> {
     // Build PDA signer seeds: ["rent_vault", bump].
     let bump_bytes = [rent_vault_bump];
     let seeds: &[Seed] = &[
@@ -27,7 +30,14 @@ pub fn handle_create_new_account(accounts: &mut CreateNewAccountAccountConstrain
     let rent = Rent::get()?;
     let lamports = rent.minimum_balance_unchecked(0);
 
-    accounts.system_program
-        .create_account(&accounts.rent_vault, &accounts.new_account, lamports, 0u64, &system_program_address)
+    accounts
+        .system_program
+        .create_account(
+            &accounts.rent_vault,
+            &accounts.new_account,
+            lamports,
+            0u64,
+            &system_program_address,
+        )
         .invoke_signed(seeds)
 }

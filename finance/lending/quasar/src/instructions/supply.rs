@@ -30,7 +30,12 @@ pub(crate) use reserve_seeds;
 pub struct DepositReserveLiquidity {
     #[account(mut)]
     pub supplier: Signer,
-    #[account(mut, has_one(liquidity_mint), has_one(liquidity_vault), has_one(share_mint))]
+    #[account(
+        mut,
+        has_one(liquidity_mint),
+        has_one(liquidity_vault),
+        has_one(share_mint)
+    )]
     pub reserve: Account<Reserve>,
     pub liquidity_mint: Account<Mint>,
     #[account(mut)]
@@ -95,7 +100,12 @@ impl DepositReserveLiquidity {
 
         let seeds = reserve_seeds!(lending_market, liquidity_mint, bump);
         self.token_program
-            .mint_to(&self.share_mint, &self.supplier_share, &self.reserve, shares)
+            .mint_to(
+                &self.share_mint,
+                &self.supplier_share,
+                &self.reserve,
+                shares,
+            )
             .invoke_signed(&seeds)
     }
 }
@@ -108,7 +118,12 @@ impl DepositReserveLiquidity {
 pub struct RedeemReserveCollateral {
     #[account(mut)]
     pub supplier: Signer,
-    #[account(mut, has_one(liquidity_mint), has_one(liquidity_vault), has_one(share_mint))]
+    #[account(
+        mut,
+        has_one(liquidity_mint),
+        has_one(liquidity_vault),
+        has_one(share_mint)
+    )]
     pub reserve: Account<Reserve>,
     pub liquidity_mint: Account<Mint>,
     #[account(mut)]
@@ -130,7 +145,10 @@ impl RedeemReserveCollateral {
 
         let mut reserve = snapshot_reserve(&self.reserve);
         accrue(&mut reserve, slot)?;
-        require!(reserve.share_mint_supply > 0, LendingError::InsufficientLiquidity);
+        require!(
+            reserve.share_mint_supply > 0,
+            LendingError::InsufficientLiquidity
+        );
 
         let total = net_total_liquidity(
             reserve.available_liquidity,
@@ -161,7 +179,12 @@ impl RedeemReserveCollateral {
         self.reserve.set_inner(reserve);
 
         self.token_program
-            .burn(&self.supplier_share, &self.share_mint, &self.supplier, shares)
+            .burn(
+                &self.supplier_share,
+                &self.share_mint,
+                &self.supplier,
+                shares,
+            )
             .invoke()?;
 
         let seeds = reserve_seeds!(lending_market, liquidity_mint, bump);

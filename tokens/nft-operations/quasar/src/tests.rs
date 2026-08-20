@@ -105,9 +105,7 @@ fn create_collection_mints_the_collection_nft(test: &mut Test) {
 
     // The metadata account carries the caller-supplied name, and the master
     // edition exists.
-    let metadata_account = test
-        .account(derive_metadata_pda(&COLLECTION_MINT))
-        .unwrap();
+    let metadata_account = test.account(derive_metadata_pda(&COLLECTION_MINT)).unwrap();
     assert!(
         contains_bytes(&metadata_account.data, COLLECTION_NAME.as_bytes()),
         "Metadata should contain the caller-supplied collection name"

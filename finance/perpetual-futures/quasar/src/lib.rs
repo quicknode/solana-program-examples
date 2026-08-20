@@ -8,7 +8,7 @@
 use quasar_lang::prelude::*;
 
 mod constants;
-mod instructions;
+pub mod instructions;
 mod last_restart;
 pub mod state;
 #[cfg(test)]

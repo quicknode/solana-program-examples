@@ -16,7 +16,8 @@ fn initialize_counter_creates_the_pda(test: &mut Test) {
 
     // The counter PDA and system program are canonical derivations, so the
     // generated instruction only asks for the payer.
-    test.send(InitializeCounterInstruction { payer: PAYER }).succeeds();
+    test.send(InitializeCounterInstruction { payer: PAYER })
+        .succeeds();
 
     let state = test.read::<Counter>(counter);
     assert_eq!(u64::from(state.count), 0);
@@ -26,7 +27,8 @@ fn initialize_counter_creates_the_pda(test: &mut Test) {
 fn increment_advances_the_count(test: &mut Test) {
     test.add(Wallet::new().at(PAYER));
     let counter = test.derive_pda(Counter::seeds(&PAYER));
-    test.send(InitializeCounterInstruction { payer: PAYER }).succeeds();
+    test.send(InitializeCounterInstruction { payer: PAYER })
+        .succeeds();
 
     test.send(IncrementInstruction { counter }).succeeds();
 

@@ -15,7 +15,11 @@ pub struct CreatePageVisitsAccountConstraints {
 }
 
 #[inline(always)]
-pub fn handle_create_page_visits(accounts: &mut CreatePageVisitsAccountConstraints) -> Result<(), ProgramError> {
-    accounts.page_visits.set_inner(PageVisitsInner { page_visits: 0 });
+pub fn handle_create_page_visits(
+    accounts: &mut CreatePageVisitsAccountConstraints,
+) -> Result<(), ProgramError> {
+    accounts
+        .page_visits
+        .set_inner(PageVisitsInner { page_visits: 0 });
     Ok(())
 }

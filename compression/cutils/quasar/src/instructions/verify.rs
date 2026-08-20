@@ -1,6 +1,9 @@
 use crate::bubblegum_types::{get_asset_id, leaf_schema_v1_hash};
 use crate::*;
-use quasar_lang::{cpi::{InstructionAccount, InstructionView}, remaining::RemainingAccounts};
+use quasar_lang::{
+    cpi::{InstructionAccount, InstructionView},
+    remaining::RemainingAccounts,
+};
 
 /// Maximum proof nodes for the merkle tree.
 const MAX_PROOF_NODES: usize = 24;
@@ -34,7 +37,6 @@ pub fn handle_verify(
     index: u32,
     remaining: RemainingAccounts<'_>,
 ) -> Result<(), ProgramError> {
-
     // Compute asset ID and leaf hash
     let asset_id = get_asset_id(accounts.merkle_tree.address(), nonce);
     let leaf_hash = leaf_schema_v1_hash(
@@ -87,13 +89,10 @@ pub fn handle_verify(
 
     // Build account views
     let tree_view = accounts.merkle_tree.to_account_view().clone();
-    let mut views: [AccountView; MAX_CPI_ACCOUNTS] =
-        core::array::from_fn(|_| tree_view.clone());
+    let mut views: [AccountView; MAX_CPI_ACCOUNTS] = core::array::from_fn(|_| tree_view.clone());
 
     views[0] = accounts.merkle_tree.to_account_view().clone();
-    for i in 0..proof_count {
-        views[1 + i] = proof_views[i].clone();
-    }
+    views[1..1 + proof_count].clone_from_slice(&proof_views[..proof_count]);
 
     let instruction = InstructionView {
         program_id: accounts.compression_program.address(),

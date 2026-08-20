@@ -72,7 +72,8 @@ fn close_user_rejects_a_non_owner(test: &mut Test) {
 
     test.send(instruction).fails_with(QuasarError::InvalidPda);
     assert!(
-        test.account(victim_account).is_some_and(|account| !account.data.is_empty()),
+        test.account(victim_account)
+            .is_some_and(|account| !account.data.is_empty()),
         "the victim's account must survive the failed close"
     );
 }

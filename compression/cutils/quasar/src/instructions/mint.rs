@@ -5,9 +5,6 @@ use quasar_lang::cpi::{InstructionAccount, InstructionView};
 /// Maximum CPI accounts for MintToCollectionV1: 16 fixed accounts.
 const MINT_CPI_ACCOUNTS: usize = 16;
 
-/// Maximum URI length for the instruction data buffer.
-const MAX_URI_LEN: usize = 256;
-
 /// Maximum instruction data buffer: discriminator(8) + metadata overhead(~120) + URI.
 const MAX_IX_DATA: usize = 400;
 
@@ -54,7 +51,7 @@ pub struct MintAccountConstraints {
 }
 
 pub fn handle_mint(accounts: &mut MintAccountConstraints, uri: &str) -> Result<(), ProgramError> {
-    // The bounded String<256, 2> argument already enforces MAX_URI_LEN and
+    // The bounded String<256, 2> argument already caps the URI length and
     // UTF-8 at the decode boundary; the CPI encoder consumes the raw bytes.
     let uri = uri.as_bytes();
 
@@ -95,7 +92,10 @@ pub fn handle_mint(accounts: &mut MintAccountConstraints, uri: &str) -> Result<(
         accounts.payer.to_account_view().clone(),
         accounts.tree_delegate.to_account_view().clone(),
         accounts.collection_authority.to_account_view().clone(),
-        accounts.collection_authority_record_pda.to_account_view().clone(),
+        accounts
+            .collection_authority_record_pda
+            .to_account_view()
+            .clone(),
         accounts.collection_mint.to_account_view().clone(),
         accounts.collection_metadata.to_account_view().clone(),
         accounts.edition_account.to_account_view().clone(),
@@ -112,8 +112,5 @@ pub fn handle_mint(accounts: &mut MintAccountConstraints, uri: &str) -> Result<(
         accounts: &ix_accounts,
     };
 
-    solana_instruction_view::cpi::invoke::<MINT_CPI_ACCOUNTS, AccountView>(
-        &instruction,
-        &views,
-    )
+    solana_instruction_view::cpi::invoke::<MINT_CPI_ACCOUNTS, AccountView>(&instruction, &views)
 }
