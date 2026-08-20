@@ -31,10 +31,9 @@ use {
     solana_instruction::{account_meta::AccountMeta, Instruction},
     solana_keccak_hasher::hashv,
     solana_keypair::Keypair,
-    solana_message::Message,
+    solana_kite::{create_wallet, send_transaction_from_instructions},
     solana_pubkey::{pubkey, Pubkey},
     solana_signer::Signer,
-    solana_transaction::Transaction,
 };
 
 // ---- Program IDs ----------------------------------------------------------
@@ -278,19 +277,6 @@ fn get_asset_id(tree: &Pubkey, nonce: u64) -> Pubkey {
 
 // ---- Helpers ---------------------------------------------------------------
 
-fn send(
-    svm: &mut LiteSVM,
-    ixs: Vec<Instruction>,
-    payer: &Keypair,
-    signers: &[&Keypair],
-) -> Result<(), Box<litesvm::types::FailedTransactionMetadata>> {
-    let msg = Message::new(&ixs, Some(&payer.pubkey()));
-    let blockhash = svm.latest_blockhash();
-    let mut tx = Transaction::new_unsigned(msg);
-    tx.sign(signers, blockhash);
-    svm.send_transaction(tx).map(|_| ()).map_err(Box::new)
-}
-
 fn metadata_pda(mint: &Pubkey) -> Pubkey {
     Pubkey::find_program_address(
         &[b"metadata", TOKEN_METADATA_ID.as_ref(), mint.as_ref()],
@@ -397,7 +383,7 @@ fn create_collection_nft(
         },
     };
 
-    send(
+    send_transaction_from_instructions(
         svm,
         vec![
             create_mint,
@@ -406,8 +392,8 @@ fn create_collection_nft(
             init_token_acct,
             mint_to,
         ],
-        payer,
         &[payer, &mint, &token_account, authority],
+        &payer.pubkey(),
     )
     .expect("collection mint setup should succeed");
 
@@ -465,11 +451,11 @@ fn create_collection_nft(
         },
     };
 
-    send(
+    send_transaction_from_instructions(
         svm,
         vec![create_metadata, create_master_edition],
-        payer,
         &[payer, authority],
+        &payer.pubkey(),
     )
     .expect("collection metadata + master edition should succeed");
 
@@ -508,11 +494,8 @@ fn test_cutils_mint_and_verify() {
     .unwrap();
 
     // Fund payer (also the collection authority / tree delegate / leaf owner).
-    let payer = Keypair::new();
-    let leaf_owner = Keypair::new();
-    svm.airdrop(&payer.pubkey(), 1_000 * 1_000_000_000).unwrap();
-    svm.airdrop(&leaf_owner.pubkey(), 10 * 1_000_000_000)
-        .unwrap();
+    let payer = create_wallet(&mut svm, 1_000 * 1_000_000_000).unwrap();
+    let leaf_owner = create_wallet(&mut svm, 10 * 1_000_000_000).unwrap();
 
     // Build the verified collection NFT (payer is the collection authority).
     let (collection_mint, collection_metadata, collection_master_edition) =
@@ -560,11 +543,11 @@ fn test_cutils_mint_and_verify() {
         },
     };
 
-    send(
+    send_transaction_from_instructions(
         &mut svm,
         vec![create_acc, create_tree_ix],
-        &payer,
         &[&payer, &merkle_tree],
+        &payer.pubkey(),
     )
     .expect("create_tree_config should succeed");
 
@@ -611,7 +594,8 @@ fn test_cutils_mint_and_verify() {
         },
     };
 
-    send(&mut svm, vec![mint_ix], &payer, &[&payer]).expect("cutils mint should succeed");
+    send_transaction_from_instructions(&mut svm, vec![mint_ix], &[&payer], &payer.pubkey())
+        .expect("cutils mint should succeed");
 
     // ---- Recompute the stored leaf's data_hash / creator_hash ---------------
     //
@@ -709,22 +693,22 @@ fn test_cutils_mint_and_verify() {
         }
     };
 
-    send(
+    send_transaction_from_instructions(
         &mut svm,
         vec![build_verify(data_hash)],
-        &leaf_owner,
         &[&leaf_owner],
+        &leaf_owner.pubkey(),
     )
     .expect("cutils verify should succeed for the minted leaf");
 
     // A tampered data_hash must fail verification.
     let mut bad = data_hash;
     bad[0] ^= 0xff;
-    let bad_result = send(
+    let bad_result = send_transaction_from_instructions(
         &mut svm,
         vec![build_verify(bad)],
-        &leaf_owner,
         &[&leaf_owner],
+        &leaf_owner.pubkey(),
     );
     assert!(
         bad_result.is_err(),
