@@ -24,11 +24,16 @@ pub mod cpi_guard {
         // (`token::authority` has to name a sibling field), so the account is
         // created here instead: the `init_if_needed` semantics become an
         // explicit "create when empty".
-        if context.accounts.recipient_token_account.account().data_len() == 0 {
+        if context
+            .accounts
+            .recipient_token_account
+            .account()
+            .data_len()
+            == 0
+        {
             let space = ExtensionType::try_calculate_account_len::<PodAccount>(&[])?;
             let lamports = Rent::get()?.try_minimum_balance(space)?;
-            let signer_seeds: &[&[&[u8]]] =
-                &[&[b"pda", &[context.bumps.recipient_token_account]]];
+            let signer_seeds: &[&[&[u8]]] = &[&[b"pda", &[context.bumps.recipient_token_account]]];
 
             create_account(
                 CpiContext::new(
@@ -45,17 +50,15 @@ pub mod cpi_guard {
             )?;
 
             let recipient_handle = context.accounts.recipient_token_account.cpi_handle_mut();
-            initialize_account3(
-                CpiContext::new(
-                    context.accounts.token_program.address(),
-                    InitializeAccount3 {
-                        account: recipient_handle,
-                        mint: context.accounts.mint_account.cpi_handle(),
-                        // The account is its own authority.
-                        authority: recipient_handle.into_readonly(),
-                    },
-                ),
-            )?;
+            initialize_account3(CpiContext::new(
+                context.accounts.token_program.address(),
+                InitializeAccount3 {
+                    account: recipient_handle,
+                    mint: context.accounts.mint_account.cpi_handle(),
+                    // The account is its own authority.
+                    authority: recipient_handle.into_readonly(),
+                },
+            ))?;
         }
 
         transfer_checked(

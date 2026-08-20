@@ -14,7 +14,7 @@ pub mod mint_nft {
 
     /// Create a collection NFT with the given metadata.
     pub fn create_collection(
-        mut context: &mut Context<CreateCollectionAccountConstraints>,
+        context: &mut Context<CreateCollectionAccountConstraints>,
         name: String,
         symbol: String,
         uri: String,
@@ -30,7 +30,7 @@ pub mod mint_nft {
 
     /// Mint an NFT into the collection with the given metadata.
     pub fn mint_nft(
-        mut context: &mut Context<MintNftAccountConstraints>,
+        context: &mut Context<MintNftAccountConstraints>,
         name: String,
         symbol: String,
         uri: String,
@@ -46,7 +46,7 @@ pub mod mint_nft {
 
     /// Verify an NFT as a member of the collection.
     pub fn verify_collection(
-        mut context: &mut Context<VerifyCollectionMintAccountConstraints>,
+        context: &mut Context<VerifyCollectionMintAccountConstraints>,
     ) -> Result<()> {
         instructions::verify_collection::handle_verify_collection(
             &mut context.accounts,

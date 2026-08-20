@@ -53,9 +53,9 @@ pub fn handle_process_initialize(
                 to: context.accounts.mint_account.cpi_handle_mut(),
             },
         ),
-        lamports,                                  // Lamports
-        mint_size as u64,                          // Space
-        &context.accounts.token_program.address(), // Owner Program
+        lamports,                                 // Lamports
+        mint_size as u64,                         // Space
+        context.accounts.token_program.address(), // Owner Program
     )?;
 
     // Initialize the transfer fee extension data
@@ -67,10 +67,10 @@ pub fn handle_process_initialize(
                 mint: context.accounts.mint_account.cpi_handle_mut(),
             },
         ),
-        Some(&context.accounts.payer.address()), // transfer fee config authority (update fee)
-        Some(&context.accounts.payer.address()), // withdraw authority (withdraw fees)
-        transfer_fee_basis_points,               // transfer fee basis points (% fee per transfer)
-        maximum_fee, // maximum fee (maximum units of token per transfer)
+        Some(context.accounts.payer.address()), // transfer fee config authority (update fee)
+        Some(context.accounts.payer.address()), // withdraw authority (withdraw fees)
+        transfer_fee_basis_points,              // transfer fee basis points (% fee per transfer)
+        maximum_fee,                            // maximum fee (maximum units of token per transfer)
     )?;
 
     // Initialize the standard mint account data
@@ -81,9 +81,9 @@ pub fn handle_process_initialize(
                 mint: context.accounts.mint_account.cpi_handle_mut(),
             },
         ),
-        2,                                       // decimals
-        &context.accounts.payer.address(),       // mint authority
-        Some(&context.accounts.payer.address()), // freeze authority
+        2,                                      // decimals
+        context.accounts.payer.address(),       // mint authority
+        Some(context.accounts.payer.address()), // freeze authority
     )?;
 
     handle_check_mint_data(&context.accounts)?;

@@ -47,9 +47,9 @@ pub fn handler(context: &mut Context<InitializeAccountConstraints>, rate: i16) -
                 to: context.accounts.mint_account.cpi_handle_mut(),
             },
         ),
-        lamports,                                  // Lamports
-        mint_size as u64,                          // Space
-        &context.accounts.token_program.address(), // Owner Program
+        lamports,                                 // Lamports
+        mint_size as u64,                         // Space
+        context.accounts.token_program.address(), // Owner Program
     )?;
 
     // Initialize the InterestBearingConfig extension
@@ -73,9 +73,9 @@ pub fn handler(context: &mut Context<InitializeAccountConstraints>, rate: i16) -
                 mint: context.accounts.mint_account.cpi_handle_mut(),
             },
         ),
-        2,                                       // decimals
-        &context.accounts.payer.address(),       // mint authority
-        Some(&context.accounts.payer.address()), // freeze authority
+        2,                                      // decimals
+        context.accounts.payer.address(),       // mint authority
+        Some(context.accounts.payer.address()), // freeze authority
     )?;
 
     // The mint is a `Signer` here, which holds no borrow on the account's data,

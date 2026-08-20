@@ -1,5 +1,9 @@
 [package]
-name = "transfer-hook"
+# Five transfer-hook examples ship a crate in `programs/transfer-hook`, and a
+# workspace cannot hold two packages with one name. The package name carries the
+# variant; `[lib] name` stays `transfer_hook`, which is what Anchor.toml, the IDL
+# and the .so are keyed on.
+name = "transfer-hook-transfer-cost"
 version = "0.1.0"
 description = "Created with Anchor"
 edition = "2021"

@@ -22,7 +22,7 @@ pub const MAX_TREE_NODES: usize = 1024;
 ///
 /// `maybe_node` is only meaningful when `leaf_count > 0` - a freshly-zeroed
 /// root represents an empty tree.
-#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Copy, Clone, Default, bytemuck::Pod, bytemuck::Zeroable)]
 #[repr(C)]
 pub struct OrderTreeRoot {
     pub maybe_node: NodeHandle,
@@ -279,9 +279,7 @@ impl OrderTreeNodes {
         let mut stack: Vec<(NodeHandle, bool)> = vec![];
 
         loop {
-            let parent_contents = *self
-                .node(parent_handle)
-                .ok_or_else(|| ErrorCode::OrderBookFull)?;
+            let parent_contents = *self.node(parent_handle).ok_or(ErrorCode::OrderBookFull)?;
             let parent_key = parent_contents.key().unwrap();
 
             // Exact-key collision: only possible if the existing slot is a

@@ -23,7 +23,9 @@ use spl_transfer_hook_interface::instruction::ExecuteInstruction;
 use crate::{get_extra_account_metas, get_meta_list_size, Mode, META_LIST_ACCOUNT_SEED};
 
 #[derive(Accounts)]
-#[instruction(args: InitMintArgs)]
+// The leading underscore is for rustc: `#[derive(Accounts)]` expands `_args`
+// into a path that never reads it, so the plain name warns as unused.
+#[instruction(_args: InitMintArgs)]
 pub struct InitMintAccountConstraints {
     #[account(mut)]
     pub payer: Signer,

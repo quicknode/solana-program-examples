@@ -14,8 +14,8 @@ pub struct MintTokenAccountConstraints {
 
 pub fn handler(context: &mut Context<MintTokenAccountConstraints>, amount: u64) -> Result<()> {
     let cpi_accounts = MintTo {
-        mint: context.accounts.mint.cpi_handle_mut().clone(),
-        to: context.accounts.receiver.cpi_handle_mut().clone(),
+        mint: context.accounts.mint.cpi_handle_mut(),
+        to: context.accounts.receiver.cpi_handle_mut(),
         authority: context.accounts.signer.cpi_handle(),
     };
     let cpi_program = context.accounts.token_program.address();

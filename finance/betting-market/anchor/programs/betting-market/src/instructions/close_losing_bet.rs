@@ -49,6 +49,6 @@ pub fn handle_close_losing_bet(
     );
 
     let bet_key = context.accounts.bet.address();
-    context.accounts.user.remove_bet(&bet_key)?;
+    context.accounts.user.remove_bet(bet_key)?;
     Ok(())
 }

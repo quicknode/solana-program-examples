@@ -1,5 +1,10 @@
 [package]
-name = "mock_switchboard"
+# The perpetual-futures project has a mock of the same feed. Two path packages
+# with one name cannot both appear in a lockfile, and the repository-root
+# workspace pulls both in, so the package names differ. `[lib] name` stays
+# `mock_switchboard`, which is what Anchor.toml, the IDL and the .so are keyed
+# on, and the dependent renames it back with `package = `.
+name = "mock_switchboard_prop_amm"
 version = "0.1.0"
 description = "Mock Switchboard On-Demand feed for testing the prop-amm program"
 edition = "2021"

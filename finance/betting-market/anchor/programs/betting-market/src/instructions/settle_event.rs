@@ -9,12 +9,15 @@ use anchor_spl::{
 
 use crate::{error::BettingError, Config, EventStatus, Outcome};
 
-use super::transfer_tokens_from_vault;
+use super::{transfer_tokens_from_vault, EventSigner};
 
 const BPS_DENOMINATOR: u128 = 10_000;
 
 #[derive(Accounts)]
-#[instruction(winning_outcome_index: u8)]
+// The leading underscore is for rustc: `#[derive(Accounts)]` expands
+// `_winning_outcome_index` into a path that never reads it, so the plain name warns as
+// unused. The `seeds` expression below is the real use.
+#[instruction(_winning_outcome_index: u8)]
 pub struct SettleEventAccountConstraints {
     #[account(mut, address = config.admin @ BettingError::Unauthorized)]
     pub admin: Signer,
@@ -35,7 +38,7 @@ pub struct SettleEventAccountConstraints {
     pub event: BorshAccount<Event>,
 
     #[account(
-        seeds = [b"outcome", event.address().as_ref(), &[winning_outcome_index]],
+        seeds = [b"outcome", event.address().as_ref(), &[_winning_outcome_index]],
         bump = winning_outcome.bump,
     )]
     pub winning_outcome: BorshAccount<Outcome>,
@@ -90,22 +93,19 @@ pub fn handle_settle_event(
     let distributable_losing_pool = losing_pool - fee;
 
     if fee > 0 {
-        let event_id = context.accounts.event.event_id;
-        let event_bump = context.accounts.event.bump;
+        // Gather the signing material before the borrow goes away.
+        let event_signer = EventSigner::new(&context.accounts.event);
         // `event` signs the transfer below. Release its borrow across the CPI:
         // the runtime rejects a CPI that borrows an account we still hold.
         context.accounts.event.release_borrow()?;
-        let event_view = *context.accounts.event.account();
 
         transfer_tokens_from_vault(
             &mut context.accounts.vault,
             &mut context.accounts.fee_recipient_token_account,
             fee,
             &context.accounts.token_mint,
-            event_view,
+            &event_signer,
             &context.accounts.token_program,
-            event_id,
-            event_bump,
         )?;
 
         // Take the borrow back before writing the settled state through it.

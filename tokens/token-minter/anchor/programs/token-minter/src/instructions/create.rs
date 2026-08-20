@@ -6,7 +6,7 @@ use {
             CreateMetadataAccountsV3, Metadata,
         },
         mint::{self, Mint},
-        token::{self, Token},
+        token::Token,
     },
 };
 

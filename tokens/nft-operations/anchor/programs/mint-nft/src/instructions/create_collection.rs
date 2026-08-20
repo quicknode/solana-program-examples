@@ -20,7 +20,7 @@ use super::validate_metadata_strings;
 #[derive(Accounts)]
 pub struct CreateCollectionAccountConstraints {
     #[account(mut)]
-    user: Signer,
+    pub user: Signer,
 
     #[account(
         init,
@@ -29,7 +29,7 @@ pub struct CreateCollectionAccountConstraints {
         mint::authority = mint_authority,
         mint::freeze_authority = mint_authority,
     )]
-    mint: Account<Mint>,
+    pub mint: Account<Mint>,
 
     #[account(
         seeds = [b"authority"],
@@ -40,11 +40,11 @@ pub struct CreateCollectionAccountConstraints {
 
     #[account(mut)]
     /// CHECK: This account will be initialized by the metaplex program
-    metadata: UncheckedAccount,
+    pub metadata: UncheckedAccount,
 
     #[account(mut)]
     /// CHECK: This account will be initialized by the metaplex program
-    master_edition: UncheckedAccount,
+    pub master_edition: UncheckedAccount,
 
     #[account(
         init,
@@ -52,12 +52,12 @@ pub struct CreateCollectionAccountConstraints {
         associated_token::mint = mint,
         associated_token::authority = user
     )]
-    destination: Account<TokenAccount>,
+    pub destination: Account<TokenAccount>,
 
-    system_program: Program<System>,
-    token_program: Program<Token>,
-    associated_token_program: Program<AssociatedToken>,
-    token_metadata_program: Program<Metadata>,
+    pub system_program: Program<System>,
+    pub token_program: Program<Token>,
+    pub associated_token_program: Program<AssociatedToken>,
+    pub token_metadata_program: Program<Metadata>,
 }
 
 /// Creates a collection NFT with caller-supplied metadata.

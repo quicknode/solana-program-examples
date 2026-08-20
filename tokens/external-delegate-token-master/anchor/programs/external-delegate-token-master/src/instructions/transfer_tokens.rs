@@ -47,7 +47,7 @@ pub fn handler(
     let message = build_transfer_authorization_message(
         &user_account_key,
         amount,
-        &context.accounts.recipient_token_account.address(),
+        context.accounts.recipient_token_account.address(),
         user_account.nonce,
     );
 
