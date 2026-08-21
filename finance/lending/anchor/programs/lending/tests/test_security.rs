@@ -1,6 +1,6 @@
 mod common;
 
-use anchor_v2_testing::{Signer};
+use anchor_v2_testing::Signer;
 use lending::errors::LendingError;
 
 use anchor_lang::{

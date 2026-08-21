@@ -1,6 +1,6 @@
 mod common;
 
-use anchor_v2_testing::{Signer};
+use anchor_v2_testing::Signer;
 use common::{ata, default_config, dollars, Env, SLOTS_PER_YEAR};
 use lending::constants::FIXED_POINT_SCALE;
 
