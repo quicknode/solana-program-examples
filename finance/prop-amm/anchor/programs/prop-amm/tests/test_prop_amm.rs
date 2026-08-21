@@ -1,9 +1,9 @@
 use {
     anchor_lang::{
-    anchor_v2_testing::{Keypair, LiteSVM, Signer},
         solana_program::instruction::Instruction, system_program, AccountDeserialize, Address,
         InstructionData, ToAccountMetas,
     },
+    anchor_v2_testing::{Keypair, LiteSVM, Signer},
     prop_amm::{
         instructions::initialize_market::MarketParameters,
         state::{Direction, Market as MarketState},

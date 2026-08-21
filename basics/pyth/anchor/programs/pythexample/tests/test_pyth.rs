@@ -1,8 +1,8 @@
 use {
     anchor_lang::{
-    anchor_v2_testing::{Keypair, LiteSVM, Signer},
         solana_program::instruction::Instruction, Address, InstructionData, ToAccountMetas,
     },
+    anchor_v2_testing::{Keypair, LiteSVM, Signer},
     pythexample::MAXIMUM_PRICE_AGE_SECONDS,
     // LiteSVM's get_sysvar wants the host-side Clock, not pinocchio's.
     solana_clock::Clock,
@@ -81,7 +81,7 @@ fn set_clock_to_price_age(svm: &mut LiteSVM, age_seconds: i64) {
 
 fn setup_with_price_account(
     owner: anchor_lang::Address,
-) -> (LiteSVM, solana_keypair::Keypair, Keypair) {
+) -> (LiteSVM, anchor_v2_testing::Keypair, Keypair) {
     let program_id = pythexample::id();
     let mut svm = anchor_v2_testing::svm();
     let bytes = include_bytes!("../../../target/deploy/pythexample.so");

@@ -4,7 +4,7 @@ use {
     solana_kite::{create_wallet, send_transaction_from_instructions},
 };
 
-fn setup() -> (LiteSVM, solana_keypair::Keypair) {
+fn setup() -> (LiteSVM, anchor_v2_testing::Keypair) {
     let program_id = processing_instructions::id();
     let mut svm = anchor_v2_testing::svm();
     let bytes = include_bytes!("../../../target/deploy/processing_instructions.so");

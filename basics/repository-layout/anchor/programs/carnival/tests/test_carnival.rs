@@ -4,7 +4,7 @@ use {
     solana_kite::{create_wallet, send_transaction_from_instructions},
 };
 
-fn setup() -> (LiteSVM, solana_keypair::Keypair) {
+fn setup() -> (LiteSVM, anchor_v2_testing::Keypair) {
     let program_id = carnival::id();
     let mut svm = anchor_v2_testing::svm();
     let bytes = include_bytes!("../../../target/deploy/carnival.so");
@@ -14,7 +14,7 @@ fn setup() -> (LiteSVM, solana_keypair::Keypair) {
 }
 
 fn go_on_ride_ix(
-    payer: &solana_keypair::Keypair,
+    payer: &anchor_v2_testing::Keypair,
     name: &str,
     height: u32,
     ticket_count: u32,
@@ -38,7 +38,7 @@ fn go_on_ride_ix(
 }
 
 fn play_game_ix(
-    payer: &solana_keypair::Keypair,
+    payer: &anchor_v2_testing::Keypair,
     name: &str,
     ticket_count: u32,
     game_name: &str,
@@ -60,7 +60,7 @@ fn play_game_ix(
 }
 
 fn eat_food_ix(
-    payer: &solana_keypair::Keypair,
+    payer: &anchor_v2_testing::Keypair,
     name: &str,
     ticket_count: u32,
     food_stand_name: &str,

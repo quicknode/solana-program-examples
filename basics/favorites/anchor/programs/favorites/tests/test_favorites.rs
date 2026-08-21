@@ -1,9 +1,9 @@
 use {
     anchor_lang::{
-    anchor_v2_testing::{LiteSVM, Signer},
         solana_program::instruction::Instruction, system_program, Address, InstructionData,
         ToAccountMetas,
     },
+    anchor_v2_testing::{LiteSVM, Signer},
     solana_kite::{create_wallet, send_transaction_from_instructions},
 };
 
@@ -50,7 +50,7 @@ fn read_favorites(svm: &LiteSVM, pda: &Address) -> FavoritesData {
     }
 }
 
-fn setup() -> (LiteSVM, Address, solana_keypair::Keypair) {
+fn setup() -> (LiteSVM, Address, anchor_v2_testing::Keypair) {
     let program_id = favorites::id();
     let mut svm = anchor_v2_testing::svm();
     let bytes = include_bytes!("../../../target/deploy/favorites.so");
