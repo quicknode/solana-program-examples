@@ -1,0 +1,26 @@
+[toolchain]
+# Match the repo package manager (pnpm-lock.yaml at root); avoids Anchor's yarn default.
+package_manager = "pnpm"
+solana_version = "3.1.8"
+
+[features]
+resolution = true
+skip-lint = false
+
+[programs.localnet]
+prop_amm = "9ZMtJFtn5n4wwpEeXXG5paFQakcDtrd3ova5ptJL4VT1"
+mock_switchboard = "BdFYarCfgMJhC26dFN6JXKVx4kUEM3k2wYaNjyjFrvAD"
+
+[provider]
+cluster = "localnet"
+wallet = "~/.config/solana/id.json"
+
+[scripts]
+test = "cargo test"
+
+# Non-default: the LiteSVM Rust tests load both programs' .so files, so they
+# must be built before `cargo test` runs. CI calls `anchor build` first; these
+# waits only matter for the legacy validator path.
+[test]
+startup_wait = 5000
+shutdown_wait = 2000

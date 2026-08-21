@@ -1,0 +1,22 @@
+[toolchain]
+# Match the repo package manager (pnpm-lock.yaml at root); avoids Anchor's yarn default.
+package_manager = "pnpm"
+solana_version = "3.1.8"
+
+[features]
+resolution = true
+skip-lint = false
+seeds = true
+
+[programs.localnet]
+nft_minter = "52quezNUzc1Ej6Jh6L4bvtxPW8j6TEFHuLVAWiFvdnsc"
+
+[provider]
+cluster = "localnet"
+wallet = "~/.config/solana/id.json"
+
+[scripts]
+# The LiteSVM test loads Metaplex Token Metadata from a local fixture
+# (tests/fixtures/mpl_token_metadata.so) instead of cloning it from mainnet,
+# which is too slow and unreliable in CI.
+test = "cargo test"

@@ -1,0 +1,44 @@
+use anchor_lang::prelude::*;
+use anchor_lang::system_program::{create_account, CreateAccount};
+
+#[derive(Accounts)]
+pub struct CreateNewAccountAccountConstraints<'info> {
+    #[account(mut)]
+    new_account: Signer<'info>,
+
+    #[account(
+        mut,
+        seeds = [
+            b"rent_vault",
+        ],
+        bump,
+    )]
+    rent_vault: SystemAccount<'info>,
+    system_program: Program<'info, System>,
+}
+
+pub fn handle_create_new_account(
+    context: Context<CreateNewAccountAccountConstraints>,
+) -> Result<()> {
+    // PDA signer seeds
+    let signer_seeds: &[&[&[u8]]] = &[&[b"rent_vault", &[context.bumps.rent_vault]]];
+
+    // The minimum lamports for rent exemption
+    let lamports = (Rent::get()?).minimum_balance(0);
+
+    // Create the new account, transferring lamports from the rent vault to the new account
+    create_account(
+        CpiContext::new(
+            context.accounts.system_program.key(),
+            CreateAccount {
+                from: context.accounts.rent_vault.to_account_info(), // From pubkey
+                to: context.accounts.new_account.to_account_info(),  // To pubkey
+            },
+        )
+        .with_signer(signer_seeds),
+        lamports,                               // Lamports
+        0,                                      // Space
+        &context.accounts.system_program.key(), // Owner Program
+    )?;
+    Ok(())
+}

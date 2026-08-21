@@ -12,7 +12,10 @@ See [CHANGELOG.md](./CHANGELOG.md) for release history. This file had no changel
 ## Project structure
 
 - Each example lives at `category/example-name/<framework>/`, e.g. `basics/counter/anchor/`.
-- Supported frameworks: `anchor`, `quasar`, `pinocchio`, `native`, `asm`. Use the existing layout as a reference.
+- Supported frameworks: `anchor`, `anchor-v1`, `quasar`, `pinocchio`, `native`, `asm`. Use the existing layout as a reference.
+- `anchor/` is Anchor v2 (2.0.0-rc.1) and is where new Anchor work goes. `anchor-v1/` is the
+  same example on Anchor v1 (1.1.2), kept for the v1 LTS line: it is a frozen snapshot and
+  changes only to keep the v1 build green, not to gain new features.
 - Anchor and Quasar programs usually keep Rust tests under `programs/<name>/tests/`.
 - Native and Pinocchio tests are Rust + LiteSVM, kept under `program/tests/`.
 
@@ -25,7 +28,8 @@ See [CHANGELOG.md](./CHANGELOG.md) for release history. This file had no changel
 
 Run an example's tests with the command for its framework, from the framework directory (e.g. `basics/counter/anchor/`):
 
-- **Anchor:** `anchor test` (runs `cargo test`, per the `[scripts]` table in `Anchor.toml`).
+- **Anchor v2** (in `anchor/`): `anchor test` (runs `cargo test`, per the `[scripts]` table in `Anchor.toml`), with the v2 CLI: `cargo install anchor-cli --version 2.0.0-rc.1 --locked`.
+- **Anchor v1** (in `anchor-v1/`): the same `anchor test`, with the v1 CLI: `avm install 1.1.2 && avm use 1.1.2`. Selecting the wrong CLI is the usual cause of a confusing build failure in these directories.
 - **Quasar:** `quasar test`.
 - **Native / Pinocchio:** `cargo test --manifest-path=./program/Cargo.toml` (build first with `cargo build-sbf --manifest-path=./program/Cargo.toml`).
 

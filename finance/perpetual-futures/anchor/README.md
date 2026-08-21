@@ -1,5 +1,11 @@
 # Solana Perpetual Futures (Anchor)
 
+> [!NOTE]
+> This is the **Anchor v2** copy of this example. Every `anchor` command on this page
+> needs the v2 CLI: `cargo install anchor-cli --version 2.0.0-rc.1 --locked` (avm has
+> no prebuilt binary for this pre-release). The Anchor v1 version of this example is in
+> [`../anchor-v1`](../anchor-v1/).
+
 A perpetual futures exchange on Solana: a venue for making leveraged bets on an asset's price without ever owning the asset. It is modelled on the oracle-priced, pool-collateralized design used by [Jupiter Perpetuals](https://station.jup.ag/guides/perpetual-exchange/overview) and GMX (and the open-source [`solana-labs/perpetuals`](https://github.com/solana-labs/perpetuals) reference that [Adrena](https://github.com/AdrenaFoundation/adrena-program) and [Flash Trade](https://github.com/flash-trade/flash-perpetuals) fork), rather than the order-book design used by [Drift](https://docs.drift.trade/).
 
 The collateral is **USDC** (a dollar stablecoin), and the market tracks the price of **NVDAx**, a tokenised Nvidia share whose [oracle](#oracle) price follows the real stock. A second market could track **TSLAx** (Tesla); each market is one collateral token plus one price feed. In the tests these are mock [SPL tokens](https://solana.com/docs/terminology#token).

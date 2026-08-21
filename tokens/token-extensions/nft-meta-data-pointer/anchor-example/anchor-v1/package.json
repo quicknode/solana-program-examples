@@ -1,0 +1,12 @@
+{
+  "name": "extension-nft-anchor",
+  "version": "1.0.0",
+  "description": "Anchor 'chop tree' game minting Token-2022 NFTs with the metadata-pointer extension. Tested with a Rust LiteSVM integration test (anchor test -> cargo test).",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "build": "anchor build",
+    "test": "anchor test",
+    "build-and-test": "anchor build && anchor test"
+  }
+}

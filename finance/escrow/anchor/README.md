@@ -1,5 +1,11 @@
 # Solana Escrow (Anchor)
 
+> [!NOTE]
+> This is the **Anchor v2** copy of this example. Every `anchor` command on this page
+> needs the v2 CLI: `cargo install anchor-cli --version 2.0.0-rc.1 --locked` (avm has
+> no prebuilt binary for this pre-release). The Anchor v1 version of this example is in
+> [`../anchor-v1`](../anchor-v1/).
+
 This Solana [program](https://solana.com/docs/terminology#program) is an **escrow** - it lets a **maker** swap a specific amount of one token for a desired amount of another token with a **taker**, atomically and without either party having to trust the other.
 
 For example: Alice offers 10 USDC and wants 100 WIF in return. The program holds Alice's USDC in a vault until someone delivers the WIF, then releases both sides in a single transaction. Neither party can take the other's tokens and run, and there is no spread or middleman fee on the swap.
@@ -23,7 +29,7 @@ A maker abandons an offer with `cancel_offer`. Only the maker can call it; witho
 
 ## Setup
 
-Prerequisites: Rust, the [Agave](https://docs.anza.xyz/) toolchain, and the Anchor CLI. Build the program with:
+Prerequisites: Rust, the [Agave](https://docs.anza.xyz/) toolchain, and the Anchor v2 CLI. Build the program with:
 
 ```bash
 anchor build

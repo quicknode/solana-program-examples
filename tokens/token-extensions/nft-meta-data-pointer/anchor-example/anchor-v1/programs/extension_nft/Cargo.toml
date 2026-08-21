@@ -1,0 +1,49 @@
+[package]
+name = "extension_nft"
+version = "0.1.0"
+description = "Created with Anchor"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "extension_nft"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
+
+anchor-debug = []
+custom-heap = []
+custom-panic = []
+
+[dependencies]
+anchor-lang = { version = "1.1.2", features = ["init-if-needed"] }
+anchor-spl = { version = "1.1.2" }
+# session-keys 3.1.1 is the first release that supports Anchor >=0.28,<2.0
+# (so it builds against Anchor 1.0). Earlier 2.x releases pin Anchor <=0.30
+# and fail to compile against the Anchor 1.0 / Solana 3.x API. Provides the
+# gasless session-token lesson via `#[session_auth_or]` / `SessionToken`.
+session-keys = { version = "3.1.1", features = ["no-entrypoint"] }
+# Token-2022 + token-metadata access goes through anchor-spl's bundled
+# re-exports (`anchor_spl::token_interface::spl_token_2022`, which is
+# `spl-token-2022-interface`, and `anchor_spl::token_2022_extensions::
+# spl_token_metadata_interface`). Pinning standalone `spl-token-2022` /
+# `spl-token-metadata-interface` here pulls a second copy on a different
+# `solana-pubkey` major than anchor-lang/anchor-spl use, which breaks the
+# CPI builders with `Pubkey` type mismatches. Relying on anchor-spl's
+# re-exports keeps a single, consistent type universe.
+
+[dev-dependencies]
+litesvm = "0.13.1"
+solana-keypair = "3.0.1"
+solana-signer = "3.0.0"
+solana-instruction = "3.0.0"
+solana-pubkey = "3.0.0"
+solana-kite = "0.4.0"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }

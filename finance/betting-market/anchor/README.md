@@ -1,5 +1,11 @@
 # Solana Betting Market (Anchor)
 
+> [!NOTE]
+> This is the **Anchor v2** copy of this example. Every `anchor` command on this page
+> needs the v2 CLI: `cargo install anchor-cli --version 2.0.0-rc.1 --locked` (avm has
+> no prebuilt binary for this pre-release). The Anchor v1 version of this example is in
+> [`../anchor-v1`](../anchor-v1/).
+
 A parimutuel (pooled) betting market on Solana. An admin opens an **event**, adds the possible
 **outcomes**, and bettors stake a token on the outcome they think will win. Every stake across
 every outcome goes into one pool. When the admin settles the event to the winning outcome, the

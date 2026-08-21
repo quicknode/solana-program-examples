@@ -3,6 +3,15 @@
 # `anchor/Cargo.toml` workspace. `anchor build` uses the project workspace; this
 # one is what the repository-wide `cargo fmt` and `cargo clippy` jobs see, and
 # they only ever look at members. A crate missing here is a crate CI never lints.
+#
+# The `anchor-v1/` crates are deliberately absent, and must stay absent. Each is a
+# copy of its `anchor/` sibling carrying the same `[package] name`, and one
+# workspace cannot hold two packages called the same thing - adding them fails with
+# "two packages named `favorites` in this workspace". They do not need an `exclude`
+# entry either: nothing here depends on them by path, and each `anchor-v1/Cargo.toml`
+# declares its own `[workspace]`, so `anchor build` inside one resolves there. The
+# cost is that `cargo fmt` and `cargo clippy` never see them; the Anchor v1 workflow
+# compiles and tests them instead.
 members = [
     #basics
     "basics/account-data/native/program",

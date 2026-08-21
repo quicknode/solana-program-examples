@@ -1,5 +1,11 @@
 # Solana Order Book Exchange (Anchor)
 
+> [!NOTE]
+> This is the **Anchor v2** copy of this example. Every `anchor` command on this page
+> needs the v2 CLI: `cargo install anchor-cli --version 2.0.0-rc.1 --locked` (avm has
+> no prebuilt binary for this pre-release). The Anchor v1 version of this example is in
+> [`../anchor-v1`](../anchor-v1/).
+
 This Solana program is an **[order book](https://www.investopedia.com/terms/o/order-book.asp)** exchange: specifically, a **[central limit order
 book (CLOB)](https://www.investopedia.com/terms/l/limitorderbook.asp)**, the standard piece of market infrastructure used by
 NYSE, NASDAQ, LSE, CME, and crypto venues like Phoenix, Cube, and OpenBook. Written with Anchor, it runs an onchain order book for a single pair of token mints:

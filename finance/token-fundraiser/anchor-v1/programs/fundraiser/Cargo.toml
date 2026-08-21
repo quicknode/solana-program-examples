@@ -1,0 +1,40 @@
+[package]
+name = "fundraiser"
+version = "0.1.0"
+description = "Created with Anchor"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "fundraiser"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
+anchor-debug = []
+custom-heap = []
+custom-panic = []
+
+[dependencies]
+anchor-lang = { version = "1.1.2", features = ["init-if-needed"] }
+anchor-spl = "1.1.2"
+
+[dev-dependencies]
+litesvm = "0.13.1"
+solana-signer = "3.0.0"
+solana-keypair = "3.0.1"
+solana-kite = "0.4.0"
+borsh = "1.6.1"
+# solana-kite depends on these SPL program crates without "no-entrypoint",
+# so the host test binary would link their `entrypoint` symbols alongside
+# this program's and fail with a duplicate-symbol error. Enabling
+# "no-entrypoint" here removes theirs via feature unification.
+spl-token = { version = "9.0.0", features = ["no-entrypoint"] }
+spl-associated-token-account = { version = "8.0.0", features = ["no-entrypoint"] }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }

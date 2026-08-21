@@ -1,0 +1,43 @@
+[package]
+name = "abl-token"
+version = "0.1.0"
+description = "Created with Anchor"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "abl_token"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
+anchor-debug = []
+custom-heap = []
+custom-panic = []
+
+
+[dependencies]
+# interface-instructions feature removed in Anchor 1.0
+anchor-lang = "1.1.2"
+anchor-spl = { version = "1.1.2", features = [
+    "token_2022_extensions",
+    "token_2022",
+] }
+
+spl-tlv-account-resolution = "0.11.1"
+spl-transfer-hook-interface = { version = "2.1.0" }
+spl-discriminator = "0.5.1"
+
+[dev-dependencies]
+litesvm = "0.13.1"
+solana-kite = "0.4.0"
+solana-signer = "3.0.0"
+solana-keypair = "3.0.1"
+borsh = "1.6.1"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }

@@ -1,4 +1,4 @@
-name: Anchor
+name: Anchor v2
 
 on:
   push:
@@ -50,11 +50,15 @@ jobs:
           ignore_pattern=$(grep -v '^#' .github/.ghaignore | grep -v '^$' | tr '\n' '|' | sed 's/|$//')
           echo "Ignore pattern: $ignore_pattern"
 
-          # Single source of truth for "what is a framework project": a directory
+          # Single source of truth for "what is an Anchor v2 project": a directory
           # whose name is exactly "anchor". `find -type d -name anchor` gives us
           # that by construction — no substring matching, no path-segment trickery,
           # so siblings like "anchor-example/" or nested files such as
           # "anchor-example/app/pages/api/foo.ts" can never enter the build list.
+          # It is also what keeps the two Anchor workflows disjoint: the Anchor v1
+          # projects live in "anchor-v1" directories, built by
+          # .github/workflows/anchor-v1.yml, and an exact-name match on "anchor"
+          # never sees them.
           function get_projects() {
             # An empty .ghaignore makes ignore_pattern empty, and `grep -vE ""`
             # matches everything, silently emptying the project list - only
@@ -376,7 +380,7 @@ jobs:
       - uses: actions/checkout@v5
       - name: Create job summary
         run: |
-          echo "## Anchor Workflow Summary" >> $GITHUB_STEP_SUMMARY
+          echo "## Anchor v2 Workflow Summary" >> $GITHUB_STEP_SUMMARY
           echo "- Total projects: ${{ needs.changes.outputs.total_projects }}" >> $GITHUB_STEP_SUMMARY
 
           # List all processed projects

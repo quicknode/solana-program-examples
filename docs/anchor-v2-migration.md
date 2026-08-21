@@ -9,6 +9,12 @@ of how often it bites.
 The single most important one is **[borrows held across CPIs](#borrows-held-across-cpis-are-what-tests-catch)**:
 it is the only rule here that the compiler will not catch for you.
 
+Every difference below has a worked example in this repository. Each Anchor example keeps
+both versions side by side: `<example>/anchor-v1/` is the program on 1.1.2 and
+`<example>/anchor/` is the same program on 2.0.0-rc.1, so diffing the two directories shows
+any rule here applied to real code. Both are built and tested in CI, by the Anchor v1 and
+Anchor v2 workflows respectively.
+
 ## Manifest Changes Every Crate Needs
 
 - `anchor-lang` and `anchor-spl` both move from `1.1.2` to `2.0.0-rc.1`.
