@@ -11,6 +11,7 @@
 
 use {
     anchor_lang::{
+    anchor_v2_testing::{Keypair, LiteSVM, Signer},
         solana_program::{
             instruction::{AccountMeta, Instruction},
             system_instruction,
@@ -23,14 +24,11 @@ use {
         InstructionData,
         ToAccountMetas,
     },
-    litesvm::LiteSVM,
-    solana_keypair::Keypair,
     solana_kite::{
         create_associated_token_account, create_token_mint, create_wallet,
         get_token_account_balance, mint_tokens_to_token_account,
         send_transaction_from_instructions,
     },
-    solana_signer::Signer,
 };
 
 // Keep test-side seeds in sync with `programs/order_book/src/state/*`. Duplicated
@@ -153,7 +151,7 @@ struct Scenario {
 
 fn full_setup() -> Scenario {
     let program_id = order_book::id();
-    let mut svm = LiteSVM::new();
+    let mut svm = anchor_v2_testing::svm();
     let program_bytes = include_bytes!("../../../target/deploy/order_book.so");
     svm.add_program(program_id, program_bytes).unwrap();
 

@@ -1,10 +1,9 @@
 mod common;
 
+use anchor_v2_testing::{Keypair, Signer};
 use lending::errors::LendingError;
 
 use common::{ata, default_config, dollars, Env, ReserveHandle};
-use solana_keypair::Keypair;
-use solana_signer::Signer;
 
 /// One market with a collateral reserve and a separately-supplied borrow
 /// reserve, plus a borrower who has posted 1000 units of collateral (value

@@ -1,20 +1,19 @@
 use {
     anchor_lang::{
+    anchor_v2_testing::{LiteSVM, Signer},
         solana_program::instruction::Instruction, system_program, Address, InstructionData,
         ToAccountMetas,
     },
-    litesvm::LiteSVM,
     solana_kite::{
         create_wallet, send_transaction_from_instructions,
         token_extensions::TOKEN_EXTENSIONS_PROGRAM_ID,
     },
-    solana_signer::Signer,
 };
 
 #[test]
 fn test_initialize_group() {
     let program_id = group::id();
-    let mut svm = LiteSVM::new();
+    let mut svm = anchor_v2_testing::svm();
 
     let program_bytes = include_bytes!("../../../target/deploy/group.so");
     svm.add_program(program_id, program_bytes).unwrap();

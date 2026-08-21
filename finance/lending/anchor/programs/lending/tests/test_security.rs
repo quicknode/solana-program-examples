@@ -1,12 +1,12 @@
 mod common;
 
+use anchor_v2_testing::{Signer};
 use lending::errors::LendingError;
 
 use anchor_lang::{
     solana_program::instruction::Instruction, system_program, InstructionData, ToAccountMetas,
 };
 use common::{default_config, dollars, Env};
-use solana_signer::Signer;
 
 /// A reserve from one lending market cannot be used with an obligation from
 /// another: lending markets are isolation boundaries.

@@ -1,10 +1,9 @@
 use {
     anchor_lang::{
+    anchor_v2_testing::{Keypair, LiteSVM, Signer},
         solana_program::instruction::{AccountMeta, Instruction},
         system_program, Address, InstructionData, ToAccountMetas,
     },
-    litesvm::LiteSVM,
-    solana_keypair::Keypair,
     solana_kite::{
         assert_token_account_balance, create_wallet, send_transaction_from_instructions,
         token_extensions::{
@@ -12,12 +11,11 @@ use {
             TOKEN_EXTENSIONS_PROGRAM_ID,
         },
     },
-    solana_signer::Signer,
 };
 
 fn setup() -> (LiteSVM, Address, Keypair) {
     let program_id = cpi_guard::id();
-    let mut svm = LiteSVM::new();
+    let mut svm = anchor_v2_testing::svm();
 
     let program_bytes = include_bytes!("../../../target/deploy/cpi_guard.so");
     svm.add_program(program_id, program_bytes).unwrap();

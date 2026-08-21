@@ -1,8 +1,8 @@
 mod common;
 
+use anchor_v2_testing::{Signer};
 use common::{ata, default_config, dollars, Env, SLOTS_PER_YEAR};
 use lending::constants::FIXED_POINT_SCALE;
-use solana_signer::Signer;
 
 /// Borrowing at non-zero utilization, then letting slots pass, must grow the
 /// reserve's accumulation factor, the borrower's debt, and the share exchange rate.

@@ -1,14 +1,12 @@
 use {
     anchor_lang::{
+    anchor_v2_testing::{Keypair, LiteSVM, Signer},
         solana_program::instruction::Instruction, Address, InstructionData, ToAccountMetas,
     },
-    litesvm::LiteSVM,
     pythexample::MAXIMUM_PRICE_AGE_SECONDS,
     // LiteSVM's get_sysvar wants the host-side Clock, not pinocchio's.
     solana_clock::Clock,
-    solana_keypair::Keypair,
     solana_kite::{create_wallet, send_transaction_from_instructions},
-    solana_signer::Signer,
 };
 
 /// The `publish_time` baked into the mock price update below.
@@ -85,7 +83,7 @@ fn setup_with_price_account(
     owner: anchor_lang::Address,
 ) -> (LiteSVM, solana_keypair::Keypair, Keypair) {
     let program_id = pythexample::id();
-    let mut svm = LiteSVM::new();
+    let mut svm = anchor_v2_testing::svm();
     let bytes = include_bytes!("../../../target/deploy/pythexample.so");
     svm.add_program(program_id, bytes).unwrap();
     let payer = create_wallet(&mut svm, 10_000_000_000).unwrap();

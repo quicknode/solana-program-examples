@@ -23,11 +23,9 @@ use {
     // `system_program` moved to the crate root in v2, and `Pubkey` is
     // compat-only: `Address` is the same 32-byte type.
     anchor_lang::{system_program, Address as Pubkey, InstructionData, ToAccountMetas},
-    litesvm::LiteSVM,
+    anchor_v2_testing::{Keypair, LiteSVM, Signer},
     solana_instruction::Instruction,
-    solana_keypair::Keypair,
     solana_kite::{create_wallet, get_pda_and_bump, send_transaction_from_instructions, Seed},
-    solana_signer::Signer,
 };
 
 // Token Extensions and Associated-Token-Account program ids (the modern, fixed
@@ -42,7 +40,7 @@ const LEVEL_SEED: &str = "level1";
 
 fn setup() -> (LiteSVM, Pubkey) {
     let program_id = extension_nft::ID;
-    let mut svm = LiteSVM::new();
+    let mut svm = anchor_v2_testing::svm();
     let bytes = include_bytes!("../../../target/deploy/extension_nft.so");
     svm.add_program(program_id, bytes).unwrap();
     (svm, program_id)

@@ -1,18 +1,16 @@
 use {
     anchor_lang::{
+    anchor_v2_testing::{Keypair, LiteSVM, Signer},
         solana_program::instruction::Instruction, system_program, Address, InstructionData,
         ToAccountMetas,
     },
     borsh::BorshDeserialize,
-    litesvm::LiteSVM,
     sha3::{Digest, Keccak256},
-    solana_keypair::Keypair,
     solana_kite::{
         create_associated_token_account, create_token_mint, create_wallet,
         get_token_account_balance, mint_tokens_to_token_account,
         send_transaction_from_instructions,
     },
-    solana_signer::Signer,
 };
 
 const WALLET_LAMPORTS: u64 = 10_000_000_000;
@@ -93,7 +91,7 @@ fn sign_transfer_authorization(
 
 fn setup() -> (LiteSVM, Address, Keypair) {
     let program_id = external_delegate_token_master::id();
-    let mut svm = LiteSVM::new();
+    let mut svm = anchor_v2_testing::svm();
 
     let program_bytes = include_bytes!("../../../target/deploy/external_delegate_token_master.so");
     svm.add_program(program_id, program_bytes).unwrap();

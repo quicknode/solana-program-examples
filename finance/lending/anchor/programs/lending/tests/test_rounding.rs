@@ -1,9 +1,9 @@
 mod common;
 
+use anchor_v2_testing::{Signer};
 use lending::errors::LendingError;
 
 use common::{ata, default_config, dollars, Env};
-use solana_signer::Signer;
 
 /// After interest makes the pool worth more than its share supply, a deposit so
 /// small it would mint zero shares is rejected rather than silently giving the

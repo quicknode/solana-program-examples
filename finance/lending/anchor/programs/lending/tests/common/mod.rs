@@ -11,13 +11,11 @@ use anchor_lang::{
     system_program, AccountDeserialize, InstructionData, ToAccountMetas,
 };
 use anchor_spl::token::ID as TOKEN_PROGRAM_ID;
-use litesvm::LiteSVM;
-use solana_keypair::Keypair;
+use anchor_v2_testing::{Keypair, LiteSVM, Signer};
 use solana_kite::{
     create_associated_token_account, create_token_mint, create_wallet, get_token_account_balance,
     mint_tokens_to_token_account, send_transaction_from_instructions,
 };
-use solana_signer::Signer;
 
 use lending::constants::{
     LENDING_MARKET_SEED, LIQUIDITY_VAULT_SEED, OBLIGATION_SEED, OBLIGATION_SHARE_VAULT_SEED,
@@ -107,7 +105,7 @@ pub struct Env {
 
 impl Env {
     pub fn new() -> Self {
-        let mut svm = LiteSVM::new();
+        let mut svm = anchor_v2_testing::svm();
         let program_bytes = include_bytes!("../../../../target/deploy/lending.so");
         svm.add_program(lending::id(), program_bytes).unwrap();
 

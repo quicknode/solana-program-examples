@@ -2,17 +2,15 @@ use swap_example::errors::AmmError;
 
 use {
     anchor_lang::{
+    anchor_v2_testing::{Keypair, LiteSVM, Signer},
         solana_program::instruction::Instruction, system_program, Address, InstructionData,
         ToAccountMetas,
     },
-    litesvm::LiteSVM,
-    solana_keypair::Keypair,
     solana_kite::{
         create_associated_token_account, create_token_mint, create_wallet,
         get_token_account_balance, mint_tokens_to_token_account,
         send_transaction_from_instructions,
     },
-    solana_signer::Signer,
 };
 
 fn token_program_id() -> Address {
@@ -37,7 +35,7 @@ fn derive_ata(wallet: &Address, mint: &Address) -> Address {
 
 fn setup() -> (LiteSVM, Address, Keypair) {
     let program_id = swap_example::id();
-    let mut svm = LiteSVM::new();
+    let mut svm = anchor_v2_testing::svm();
 
     let program_bytes = include_bytes!("../../../target/deploy/swap_example.so");
     svm.add_program(program_id, program_bytes).unwrap();

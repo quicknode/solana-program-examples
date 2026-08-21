@@ -13,14 +13,12 @@
 //!      transaction succeeds and a second burn fails (leaf already zeroed).
 
 use {
+    anchor_v2_testing::{Keypair, LiteSVM, Signer},
     borsh::BorshSerialize,
-    litesvm::LiteSVM,
     solana_instruction::{account_meta::AccountMeta, Instruction},
     solana_keccak_hasher::hashv,
-    solana_keypair::Keypair,
     solana_kite::{create_wallet, send_transaction_from_instructions},
     solana_pubkey::{pubkey, Pubkey},
-    solana_signer::Signer,
 };
 
 // ---- Program IDs ----------------------------------------------------------
@@ -240,7 +238,7 @@ fn read_current_root(data: &[u8]) -> [u8; 32] {
 
 #[test]
 fn test_burn_cnft() {
-    let mut svm = LiteSVM::new();
+    let mut svm = anchor_v2_testing::svm();
 
     // Load the cnft-burn program and the three mainnet fixtures.
     svm.add_program(

@@ -1,12 +1,10 @@
 use {
     anchor_lang::{
+    anchor_v2_testing::{Keypair, LiteSVM, Signer},
         solana_program::instruction::{AccountMeta, Instruction},
         system_program, Address, InstructionData, ToAccountMetas,
     },
-    litesvm::LiteSVM,
-    solana_keypair::Keypair,
     solana_kite::{create_wallet, send_transaction_from_instructions},
-    solana_signer::Signer,
 };
 
 /// PowerStatus account layout: 8-byte discriminator + 1-byte bool + 7 bytes padding.
@@ -43,7 +41,7 @@ fn test_pull_lever_cpi() {
     // The lever program ID from declare_program!(lever) inside hand crate
     let lever_program_id = hand::lever::ID;
 
-    let mut svm = LiteSVM::new();
+    let mut svm = anchor_v2_testing::svm();
 
     // Load both programs
     let hand_bytes = include_bytes!("../../../target/deploy/hand.so");

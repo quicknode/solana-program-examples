@@ -1,20 +1,18 @@
 use {
     anchor_lang::{
+    anchor_v2_testing::{Keypair, LiteSVM, Signer},
         solana_program::instruction::Instruction, system_program, Address, InstructionData,
         ToAccountMetas,
     },
     borsh::BorshDeserialize,
     fundraiser::SECONDS_TO_DAYS,
-    litesvm::LiteSVM,
     // LiteSVM's get_sysvar wants the host-side Clock, not pinocchio's.
     solana_clock::Clock,
-    solana_keypair::Keypair,
     solana_kite::{
         create_associated_token_account, create_token_mint, create_wallet,
         get_token_account_balance, mint_tokens_to_token_account,
         send_transaction_from_instructions,
     },
-    solana_signer::Signer,
 };
 
 const MINT_DECIMALS: u8 = 6;
@@ -98,7 +96,7 @@ struct FundraiserSetup {
 
 fn full_setup() -> FundraiserSetup {
     let program_id = fundraiser::id();
-    let mut svm = LiteSVM::new();
+    let mut svm = anchor_v2_testing::svm();
 
     let program_bytes = include_bytes!("../../../target/deploy/fundraiser.so");
     svm.add_program(program_id, program_bytes).unwrap();

@@ -1,10 +1,9 @@
 mod common;
 
+use anchor_v2_testing::{Keypair, Signer};
 use lending::errors::LendingError;
 
 use common::{ata, cents, default_config, dollars, Env, ReserveHandle};
-use solana_keypair::Keypair;
-use solana_signer::Signer;
 
 /// A borrower with $1000 of collateral who has borrowed $700 (healthy at 80%
 /// liquidation threshold), plus a liquidator funded with the borrow token.

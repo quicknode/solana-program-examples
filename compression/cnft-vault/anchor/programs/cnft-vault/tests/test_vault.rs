@@ -26,15 +26,13 @@
 //!     of panicking inside `split_at`
 
 use {
+    anchor_v2_testing::{Keypair, LiteSVM, Signer},
     borsh::BorshSerialize,
     cnft_vault::error::VaultError,
-    litesvm::LiteSVM,
     solana_instruction::{account_meta::AccountMeta, Instruction},
     solana_keccak_hasher::hashv,
-    solana_keypair::Keypair,
     solana_kite::{create_wallet, send_transaction_from_instructions, SolanaKiteError},
     solana_pubkey::{pubkey, Pubkey},
-    solana_signer::Signer,
 };
 
 // ---- Program IDs ----------------------------------------------------------
@@ -284,7 +282,7 @@ struct VaultTestContext {
 }
 
 fn setup_vault() -> VaultTestContext {
-    let mut svm = LiteSVM::new();
+    let mut svm = anchor_v2_testing::svm();
 
     // Load the cnft-vault program and the three mainnet fixtures.
     svm.add_program(

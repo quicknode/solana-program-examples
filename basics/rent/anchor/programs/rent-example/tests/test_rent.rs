@@ -1,17 +1,15 @@
 use {
     anchor_lang::{
+    anchor_v2_testing::{Keypair, LiteSVM, Signer},
         solana_program::instruction::Instruction, system_program, InstructionData, ToAccountMetas,
     },
-    litesvm::LiteSVM,
-    solana_keypair::Keypair,
     solana_kite::{create_wallet, send_transaction_from_instructions},
-    solana_signer::Signer,
 };
 
 #[test]
 fn test_create_system_account() {
     let program_id = rent_example::id();
-    let mut svm = LiteSVM::new();
+    let mut svm = anchor_v2_testing::svm();
     let bytes = include_bytes!("../../../target/deploy/rent_example.so");
     svm.add_program(program_id, bytes).unwrap();
     let payer = create_wallet(&mut svm, 10_000_000_000).unwrap();

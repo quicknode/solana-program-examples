@@ -1,17 +1,15 @@
 use {
     anchor_lang::{
+    anchor_v2_testing::{Keypair, LiteSVM, Signer},
         solana_program::instruction::Instruction, system_program, AccountDeserialize, Address,
         InstructionData, ToAccountMetas,
     },
-    litesvm::LiteSVM,
     perpetual_futures::{instructions::initialize_pool::PoolParameters, state::Pool, state::Side},
-    solana_keypair::Keypair,
     solana_kite::{
         create_associated_token_account, create_token_mint, create_wallet,
         get_token_account_balance, mint_tokens_to_token_account,
         send_transaction_from_instructions,
     },
-    solana_signer::Signer,
 };
 
 // Collateral token has 6 decimals (like USDC), so one whole unit is 1_000_000
@@ -82,7 +80,7 @@ impl Market {
     /// `initialize_pool` rejection instead of panicking, so tests can probe the
     /// parameter validation.
     fn try_new(initial_price: i128, parameters: PoolParameters) -> Result<Market, ()> {
-        let mut svm = LiteSVM::new();
+        let mut svm = anchor_v2_testing::svm();
         svm.add_program(
             perpetual_futures::id(),
             include_bytes!("../../../target/deploy/perpetual_futures.so"),
