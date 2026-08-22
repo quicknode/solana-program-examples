@@ -55,6 +55,11 @@ spl-transfer-hook-interface = "2.1.0"
 # Published only from git: crates.io has no `anchor-v2-testing`. Pinned to a
 # revision rather than tracking `anchor-next`, so a CI run cannot change
 # behaviour because upstream moved between builds.
+#
+# Bump the rev deliberately, never automatically: `anchor-next` is where v2
+# development happens, so a later revision can carry breakage as easily as
+# fixes. When `anchor-v2-testing` reaches crates.io, drop the git source for
+# an ordinary version.
 anchor-v2-testing = { git = "https://github.com/otter-sec/anchor.git", rev = "3e38a121b969d1a77230baeb0056baf5cc9b3c1a" }
 solana-kite = "0.4.0"
 borsh = "1.6.1"
