@@ -8,7 +8,7 @@
 
 Increment a global counter stored in a [PDA](https://solana.com/docs/terminology#program-derived-address-pda). [Anchor](https://solana.com/docs/terminology#anchor) adds an explicit `initialize_counter` handler that the native variant handles differently.
 
-See also: the [repository catalog](../../README.md).
+See also: the [repository catalog](../../../README.md).
 
 ## Major concepts
 

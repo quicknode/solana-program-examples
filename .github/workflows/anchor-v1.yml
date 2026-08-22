@@ -22,6 +22,7 @@ env:
 
 jobs:
   changes:
+    name: changes (Anchor v1)
     runs-on: ubuntu-latest
     permissions:
       pull-requests: read
@@ -151,7 +152,7 @@ jobs:
       fail-fast: false
       matrix:
         index: ${{ fromJson(needs.changes.outputs.matrix) }}
-    name: build-and-test-group-${{ matrix.index }}
+    name: anchor-v1-group-${{ matrix.index }}
     outputs:
       failed_projects: ${{ steps.set-failed.outputs.failed_projects }}
     steps:
@@ -328,6 +329,7 @@ jobs:
         run: sccache --show-stats
 
   summary:
+    name: summary (Anchor v1)
     needs: [changes, build-and-test]
     if: always()
     runs-on: ubuntu-latest

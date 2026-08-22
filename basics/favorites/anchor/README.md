@@ -8,7 +8,7 @@
 
 Store per-user favorites in a [PDA](https://solana.com/docs/terminology#program-derived-address-pda). [Account](https://solana.com/docs/terminology#account) constraints ensure each user can only modify their own data.
 
-See also: the [repository catalog](../../README.md).
+See also: the [repository catalog](../../../README.md).
 
 ## Major concepts
 

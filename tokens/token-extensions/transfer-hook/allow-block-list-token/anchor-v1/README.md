@@ -8,7 +8,7 @@
 
 Restrict transfers using an onchain allow/block list enforced by a transfer hook program.
 
-See also: [Allow Block List Token overview](../README.md) and the [repository catalog](../../../README.md).
+See also: [Allow Block List Token overview](../README.md) and the [repository catalog](../../../../../README.md).
 
 ## Major concepts
 
