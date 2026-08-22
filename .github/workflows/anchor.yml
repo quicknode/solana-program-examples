@@ -8,6 +8,16 @@ on:
     types: [opened, synchronize, reopened]
     branches:
       - main
+  # These projects have no committed Cargo.lock (.gitignore ignores **/*/Cargo.lock),
+  # so their transitive dependencies resolve fresh on every run and can break with
+  # nobody touching the code. Dependabot does not cover them either: it is configured
+  # for directory "/", which is the root workspace, and the per-project anchor/ workspaces are
+  # what `anchor build` actually resolves. A weekly
+  # build catches that drift on a cadence instead of at whatever unrelated pull request
+  # happens to touch these files next. The analyze step already treats a scheduled run
+  # as "build everything".
+  schedule:
+    - cron: '0 3 * * 1'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -177,11 +187,11 @@ jobs:
       # runs `anchor --version | awk '{print $2}'` and writes the result straight to
       # $GITHUB_OUTPUT. `anchor --version` now prints more than one line, so the value
       # becomes multi-line and the step dies with "Invalid format", aborting the whole
-      # job before any project is built. These steps install the same toolchain (Solana
-      # via the Anza installer, Anchor via avm) and read the version from the first line
-      # only. The other workflows that use setup-anchor (native, quasar, pinocchio,
-      # solana-asm) hit the same latent bug once their matrices run; migrate them the
-      # same way once this is confirmed green.
+      # job before any project is built. These steps install the toolchain directly
+      # (Solana via the Anza installer, the Anchor CLI from crates.io) and read the
+      # version from the first line only. The other workflows that use setup-anchor
+      # (native, quasar, pinocchio, solana-asm) hit the same latent bug once their
+      # matrices run; migrate them the same way once this is confirmed green.
       - uses: actions/setup-node@v4
         with:
           node-version: lts/*

@@ -29,6 +29,20 @@ tested by its own CI job.
   filename, triggers and `find -type d -name "anchor"` discovery are unchanged.
   Both workflows match a directory name exactly, so neither can ever see the
   other's projects.
+- Both Anchor workflows install the CLI from crates.io (`cargo install anchor-cli
+  --version <v> --locked`). The v1 job started out installing avm from the tip of
+  anchor's `main` branch, which meant what CI installed drifted with whatever landed
+  there; 1.1.2 is an ordinary published release, so it comes from the registry like
+  2.0.0-rc.1 does.
+- Both Anchor workflows now run weekly (v2 Mondays 03:00 UTC, v1 05:00 UTC). The
+  analyze step has always treated a scheduled run as "build everything", but nothing
+  declared a schedule, so that path had never executed. It is worth having because no
+  Anchor project commits a `Cargo.lock` and Dependabot only covers the root workspace,
+  so dependency drift in either tree is otherwise invisible until an unrelated pull
+  request happens to touch it.
+- The two workflows no longer report colliding check names. Both declared jobs called
+  `changes`, `summary` and `build-and-test-group-N`; the v1 job names are now
+  `changes (Anchor v1)`, `anchor-v1-group-N` and `summary (Anchor v1)`.
 - Every Anchor example README now names the CLI its commands need, on both sides:
   `anchor/` pages say Anchor v2 and `anchor-v1/` pages say Anchor v1. A bare
   `anchor build` was unambiguous while the repository had one Anchor and is not
