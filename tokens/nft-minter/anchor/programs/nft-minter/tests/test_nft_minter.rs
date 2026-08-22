@@ -3,10 +3,8 @@ use {
         solana_program::instruction::Instruction, system_program, Address, InstructionData,
         ToAccountMetas,
     },
-    litesvm::LiteSVM,
-    solana_keypair::Keypair,
+    anchor_v2_testing::{Keypair, LiteSVM, Signer},
     solana_kite::{create_wallet, get_token_account_balance, send_transaction_from_instructions},
-    solana_signer::Signer,
 };
 
 fn token_program_id() -> Address {
@@ -66,7 +64,7 @@ fn derive_edition_pda(mint: &Address) -> Address {
 
 fn setup() -> (LiteSVM, Address, Keypair) {
     let program_id = nft_minter::id();
-    let mut svm = LiteSVM::new();
+    let mut svm = anchor_v2_testing::svm();
 
     let program_bytes = include_bytes!("../../../target/deploy/nft_minter.so");
     svm.add_program(program_id, program_bytes).unwrap();

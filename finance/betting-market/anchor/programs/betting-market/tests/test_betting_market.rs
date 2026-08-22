@@ -3,15 +3,13 @@ use {
         solana_program::instruction::Instruction, system_program, AccountDeserialize, Address,
         InstructionData, ToAccountMetas,
     },
+    anchor_v2_testing::{Keypair, LiteSVM, Signer},
     betting_market::{User, MAX_BETS_PER_USER},
-    litesvm::LiteSVM,
-    solana_keypair::Keypair,
     solana_kite::{
         create_associated_token_account, create_token_mint, create_wallet,
         get_token_account_balance, mint_tokens_to_token_account,
         send_transaction_from_instructions,
     },
-    solana_signer::Signer,
 };
 
 const DECIMALS: u8 = 6;
@@ -76,7 +74,7 @@ struct Market {
 // Spin up the SVM with the program loaded, an admin wallet, the stake-token mint
 // (admin is the mint authority), and a fee-recipient wallet with an ATA.
 fn setup() -> Market {
-    let mut svm = LiteSVM::new();
+    let mut svm = anchor_v2_testing::svm();
     let program_bytes = include_bytes!("../../../target/deploy/betting_market.so");
     svm.add_program(betting_market::id(), program_bytes)
         .unwrap();

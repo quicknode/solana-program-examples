@@ -309,8 +309,10 @@ jobs:
               return 1
             fi
 
-            # Run anchor test
-            if ! anchor test; then
+            # Run anchor test. It regenerates the IDL too, so the skip above
+            # has to apply here as well or the projects it exempts fail at the
+            # test step instead of the build step.
+            if ! anchor test $idl_flag; then
               echo "::error::anchor test failed for $project"
               echo "$project: anchor test failed" >> $GITHUB_WORKSPACE/failed_projects.txt
               rm -rf target node_modules

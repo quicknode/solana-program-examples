@@ -3,13 +3,11 @@ use {
         solana_program::instruction::Instruction, system_program, Address, InstructionData,
         ToAccountMetas,
     },
-    litesvm::LiteSVM,
-    solana_keypair::Keypair,
+    anchor_v2_testing::{Keypair, LiteSVM, Signer},
     solana_kite::{
         assert_token_account_balance, create_wallet, send_transaction_from_instructions,
         token_extensions::{get_token_extensions_account_address, TOKEN_EXTENSIONS_PROGRAM_ID},
     },
-    solana_signer::Signer,
 };
 
 fn associated_token_program_id() -> Address {
@@ -20,7 +18,7 @@ fn associated_token_program_id() -> Address {
 
 fn setup() -> (LiteSVM, Address, Keypair) {
     let program_id = anchor::id();
-    let mut svm = LiteSVM::new();
+    let mut svm = anchor_v2_testing::svm();
 
     let program_bytes = include_bytes!("../../../target/deploy/anchor.so");
     svm.add_program(program_id, program_bytes).unwrap();

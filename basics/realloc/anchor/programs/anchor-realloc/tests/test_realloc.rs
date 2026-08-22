@@ -2,11 +2,9 @@ use {
     anchor_lang::{
         solana_program::instruction::Instruction, system_program, InstructionData, ToAccountMetas,
     },
+    anchor_v2_testing::{Keypair, LiteSVM, Signer},
     borsh::BorshDeserialize,
-    litesvm::LiteSVM,
-    solana_keypair::Keypair,
     solana_kite::{create_wallet, send_transaction_from_instructions},
-    solana_signer::Signer,
 };
 
 #[derive(BorshDeserialize)]
@@ -24,7 +22,7 @@ fn fetch_message(svm: &LiteSVM, pubkey: &anchor_lang::prelude::Address) -> Strin
 #[test]
 fn test_initialize() {
     let program_id = anchor_realloc::id();
-    let mut svm = LiteSVM::new();
+    let mut svm = anchor_v2_testing::svm();
     let bytes = include_bytes!("../../../target/deploy/anchor_realloc.so");
     svm.add_program(program_id, bytes).unwrap();
     let payer = create_wallet(&mut svm, 10_000_000_000).unwrap();
@@ -64,7 +62,7 @@ fn test_initialize() {
 #[test]
 fn test_update_grows() {
     let program_id = anchor_realloc::id();
-    let mut svm = LiteSVM::new();
+    let mut svm = anchor_v2_testing::svm();
     let bytes = include_bytes!("../../../target/deploy/anchor_realloc.so");
     svm.add_program(program_id, bytes).unwrap();
     let payer = create_wallet(&mut svm, 10_000_000_000).unwrap();
@@ -121,7 +119,7 @@ fn test_update_grows() {
 #[test]
 fn test_update_shrinks() {
     let program_id = anchor_realloc::id();
-    let mut svm = LiteSVM::new();
+    let mut svm = anchor_v2_testing::svm();
     let bytes = include_bytes!("../../../target/deploy/anchor_realloc.so");
     svm.add_program(program_id, bytes).unwrap();
     let payer = create_wallet(&mut svm, 10_000_000_000).unwrap();

@@ -3,13 +3,11 @@ use {
         solana_program::instruction::{AccountMeta, Instruction},
         system_program, Address, InstructionData, ToAccountMetas,
     },
-    litesvm::LiteSVM,
-    solana_keypair::Keypair,
+    anchor_v2_testing::{Keypair, LiteSVM, Signer},
     solana_kite::{
         create_wallet, send_transaction_from_instructions,
         token_extensions::{create_token_extensions_mint, TOKEN_EXTENSIONS_PROGRAM_ID},
     },
-    solana_signer::Signer,
 };
 
 /// SetAuthority instruction for Token Extensions (instruction 6).
@@ -42,7 +40,7 @@ fn set_authority_instruction(
 
 fn setup() -> (LiteSVM, Address, Keypair) {
     let program_id = immutable_owner::id();
-    let mut svm = LiteSVM::new();
+    let mut svm = anchor_v2_testing::svm();
 
     let program_bytes = include_bytes!("../../../target/deploy/immutable_owner.so");
     svm.add_program(program_id, program_bytes).unwrap();

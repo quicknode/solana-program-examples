@@ -1,15 +1,14 @@
 use {
     anchor_lang::{solana_program::instruction::Instruction, InstructionData, ToAccountMetas},
-    litesvm::LiteSVM,
+    anchor_v2_testing::{LiteSVM, Signer},
     solana_kite::create_wallet,
-    solana_signer::Signer,
     solana_transaction::Transaction,
 };
 
 #[test]
 fn test_say_hello() {
     let program_id = hello_solana::id();
-    let mut svm = LiteSVM::new();
+    let mut svm = anchor_v2_testing::svm();
     let bytes = include_bytes!("../../../target/deploy/hello_solana.so");
     svm.add_program(program_id, bytes).unwrap();
     let payer = create_wallet(&mut svm, 1_000_000_000).unwrap();

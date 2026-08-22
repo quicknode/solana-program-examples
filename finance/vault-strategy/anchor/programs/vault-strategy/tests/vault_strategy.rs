@@ -4,17 +4,15 @@ use {
         system_program, AccountDeserialize, Address, InstructionData, ToAccountMetas,
     },
     anchor_spl::token::spl_token,
-    litesvm::LiteSVM,
+    anchor_v2_testing::{Keypair, LiteSVM, Signer},
     solana_account::Account as SolanaAccount,
     // LiteSVM's get_sysvar / set_sysvar want the host-side Clock, not pinocchio's.
     solana_clock::Clock,
-    solana_keypair::Keypair,
     solana_kite::{
         create_associated_token_account, create_token_mint, create_wallet,
         get_token_account_balance, mint_tokens_to_token_account,
         send_transaction_from_instructions,
     },
-    solana_signer::Signer,
 };
 
 fn token_program_id() -> Address {
@@ -134,7 +132,7 @@ fn setup_full() -> TestContext {
     let vault_program_id = vault_strategy::id();
     let router_program_id = mock_swap_router::id();
 
-    let mut svm = LiteSVM::new();
+    let mut svm = anchor_v2_testing::svm();
     svm.add_program(
         vault_program_id,
         include_bytes!("../../../target/deploy/vault_strategy.so"),

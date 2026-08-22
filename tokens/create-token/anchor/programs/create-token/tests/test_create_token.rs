@@ -3,10 +3,8 @@ use {
         solana_program::instruction::Instruction, system_program, Address, InstructionData,
         ToAccountMetas,
     },
-    litesvm::LiteSVM,
-    solana_keypair::Keypair,
+    anchor_v2_testing::{Keypair, LiteSVM, Signer},
     solana_kite::{create_wallet, send_transaction_from_instructions},
-    solana_signer::Signer,
 };
 
 fn metadata_program_id() -> Address {
@@ -29,7 +27,7 @@ fn rent_sysvar_id() -> Address {
 
 fn setup() -> (LiteSVM, Address, Keypair) {
     let program_id = create_token::id();
-    let mut svm = LiteSVM::new();
+    let mut svm = anchor_v2_testing::svm();
 
     let program_bytes = include_bytes!("../../../target/deploy/create_token.so");
     svm.add_program(program_id, program_bytes).unwrap();

@@ -3,15 +3,13 @@ use {
         solana_program::instruction::Instruction, system_program, Address, InstructionData,
         ToAccountMetas,
     },
-    litesvm::LiteSVM,
-    solana_keypair::Keypair,
+    anchor_v2_testing::{Keypair, LiteSVM, Signer},
     solana_kite::{create_wallet, send_transaction_from_instructions},
-    solana_signer::Signer,
 };
 
 fn setup() -> (LiteSVM, Keypair) {
     let program_id = close_account_program::id();
-    let mut svm = LiteSVM::new();
+    let mut svm = anchor_v2_testing::svm();
     let bytes = include_bytes!("../../../target/deploy/close_account_program.so");
     svm.add_program(program_id, bytes).unwrap();
     let payer = create_wallet(&mut svm, 10_000_000_000).unwrap();

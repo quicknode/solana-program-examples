@@ -18,6 +18,8 @@ idl-build = ["anchor-lang/idl-build"]
 anchor-debug = []
 custom-heap = []
 custom-panic = []
+# Forwards to the harness so `anchor test --profile` can turn tracing on.
+profile = ["anchor-v2-testing/profile"]
 
 [dependencies]
 anchor-lang = { version = "2.0.0-rc.1", features = ["compat"] }
@@ -38,11 +40,18 @@ bytemuck = { version = "1.18", features = ["derive", "min_const_generics"] }
 static_assertions = "1.1"
 
 [dev-dependencies]
+# Anchor v2's own LiteSVM harness. `svm()` is `LiteSVM::new()` until the
+# `profile` feature is on, when it also records the SBF register traces that
+# `anchor test --profile`, `anchor debugger` and `anchor coverage` read. Tests
+# that call `LiteSVM::new()` directly still pass but produce no traces, so
+# those three tools see nothing.
+#
+# Published only from git: crates.io has no `anchor-v2-testing`. Pinned to a
+# revision rather than tracking `anchor-next`, so a CI run cannot change
+# behaviour because upstream moved between builds.
+anchor-v2-testing = { git = "https://github.com/otter-sec/anchor.git", rev = "3e38a121b969d1a77230baeb0056baf5cc9b3c1a" }
 # Match the test stack used by finance/escrow and the other LiteSVM-based
 # Anchor examples so contributors can move between them without version drift.
-litesvm = "0.13.1"
-solana-signer = "3.0.0"
-solana-keypair = "3.0.1"
 solana-kite = "0.4.0"
 
 [lints.rust]

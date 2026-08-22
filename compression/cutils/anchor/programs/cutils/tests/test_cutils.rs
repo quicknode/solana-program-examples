@@ -26,14 +26,12 @@
 //!      fail.
 
 use {
+    anchor_v2_testing::{Keypair, LiteSVM, Signer},
     borsh::BorshSerialize,
-    litesvm::LiteSVM,
     solana_instruction::{account_meta::AccountMeta, Instruction},
     solana_keccak_hasher::hashv,
-    solana_keypair::Keypair,
     solana_kite::{create_wallet, send_transaction_from_instructions},
     solana_pubkey::{pubkey, Pubkey},
-    solana_signer::Signer,
 };
 
 // ---- Program IDs ----------------------------------------------------------
@@ -464,7 +462,7 @@ fn create_collection_nft(
 
 #[test]
 fn test_cutils_mint_and_verify() {
-    let mut svm = LiteSVM::new();
+    let mut svm = anchor_v2_testing::svm();
 
     // Load the cutils program and the mainnet fixtures.
     svm.add_program(
