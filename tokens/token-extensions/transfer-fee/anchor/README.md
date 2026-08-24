@@ -1,5 +1,11 @@
 # Token Extensions - Transfer Fee (Anchor)
 
+> [!NOTE]
+> This is the **Anchor v2** copy of this example. Every `anchor` command on this page
+> needs the v2 CLI: `cargo install anchor-cli --version 2.0.0-rc.1 --locked` (avm has
+> no prebuilt binary for this pre-release). The Anchor v1 version of this example is in
+> [`../anchor-v1`](../anchor-v1/).
+
 Charge a fee on each transfer configured at the mint level.
 
 See also: the [repository catalog](../../../../README.md).

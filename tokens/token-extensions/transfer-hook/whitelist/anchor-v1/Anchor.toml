@@ -1,0 +1,23 @@
+[toolchain]
+# Match the repo package manager (pnpm-lock.yaml at root); avoids Anchor's yarn default.
+package_manager = "pnpm"
+solana_version = "3.1.8"
+
+[features]
+seeds = false
+skip-lint = false
+
+[programs.localnet]
+transfer_hook = "DrWbQtYJGtsoRwzKqAbHKHKsCJJfpysudF39GBVFSxub"
+
+[provider]
+cluster = "Localnet"
+wallet = "~/.config/solana/id.json"
+
+[scripts]
+test = "cargo test"
+
+# Transfer-hook tests use the real local validator (not bankrun).
+# No external program clones needed - this project doesn't use Metaplex.
+# The previous [[test.validator.clone]] of metaplex was unnecessary and
+# caused 5-minute timeouts in CI trying to fetch from devnet.

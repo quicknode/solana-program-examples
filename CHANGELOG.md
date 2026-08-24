@@ -4,6 +4,59 @@ All notable changes to this repository are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-08-21] - Anchor v1 kept alongside Anchor v2
+
+Anchor v1 is expected to stay on long-term support, and many deployed programs
+will stay with it. Both versions of every Anchor example now ship, each built and
+tested by its own CI job.
+
+### Added
+
+- Every one of the 55 Anchor examples gains a sibling `anchor-v1/` directory
+  holding the example exactly as it stood before the v2 port, restored from
+  `94abbea`, the last commit on `main` before that merge. 864 files. The 17
+  third-party `.so` test fixtures are byte-identical to the ones already tracked
+  under `anchor/`, so git stores one copy and the tree grows by ~2.3 MB of text.
+- `.github/workflows/anchor-v1.yml` builds and tests them on Anchor 1.1.2,
+  installed through avm. It is the workflow as it stood at `94abbea`, with
+  project discovery changed to `find -type d -name "anchor-v1"`. The v2-only IDL
+  workaround (`anchor#4947`, enum variants) is not carried over: that bug does not
+  exist in 1.1.2, so v1 builds generate IDLs normally.
+
+### Changed
+
+- The `Anchor` workflow is now `Anchor v2`, so the two checks read as a pair. Its
+  filename, triggers and `find -type d -name "anchor"` discovery are unchanged.
+  Both workflows match a directory name exactly, so neither can ever see the
+  other's projects.
+- Both Anchor workflows install the CLI from crates.io (`cargo install anchor-cli
+  --version <v> --locked`). The v1 job started out installing avm from the tip of
+  anchor's `main` branch, which meant what CI installed drifted with whatever landed
+  there; 1.1.2 is an ordinary published release, so it comes from the registry like
+  2.0.0-rc.1 does.
+- Both Anchor workflows now run weekly (v2 Mondays 03:00 UTC, v1 05:00 UTC). The
+  analyze step has always treated a scheduled run as "build everything", but nothing
+  declared a schedule, so that path had never executed. It is worth having because no
+  Anchor project commits a `Cargo.lock` and Dependabot only covers the root workspace,
+  so dependency drift in either tree is otherwise invisible until an unrelated pull
+  request happens to touch it.
+- The two workflows no longer report colliding check names. Both declared jobs called
+  `changes`, `summary` and `build-and-test-group-N`; the v1 job names are now
+  `changes (Anchor v1)`, `anchor-v1-group-N` and `summary (Anchor v1)`.
+- Every Anchor example README now names the CLI its commands need, on both sides:
+  `anchor/` pages say Anchor v2 and `anchor-v1/` pages say Anchor v1. A bare
+  `anchor build` was unambiguous while the repository had one Anchor and is not
+  any more. `README.md` and `CONTRIBUTING.md`, which sit above both, show both.
+
+### Note
+
+- The `anchor-v1/` crates are not members of the root Cargo workspace and cannot
+  be: they carry the same package names as their `anchor/` siblings. `cargo fmt`
+  and `cargo clippy` therefore do not see them, and the Anchor v1 workflow is what
+  keeps them honest. They also have no committed `Cargo.lock` (`.gitignore` ignores
+  `**/*/Cargo.lock`), so their transitive dependencies resolve fresh on each run and
+  can break without anyone touching the directory.
+
 ## [2026-08-16] - Every Anchor example on Anchor v2.0.0-rc.1
 
 All 55 Anchor examples build and pass their tests on 2.0.0-rc.1 (304 tests),

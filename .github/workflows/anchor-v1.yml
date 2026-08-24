@@ -1,0 +1,387 @@
+name: Anchor v1
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches:
+      - main
+  # These projects have no committed Cargo.lock (.gitignore ignores **/*/Cargo.lock),
+  # so their transitive dependencies resolve fresh on every run and can break with
+  # nobody touching the code. Dependabot does not cover them either: it is configured
+  # for directory "/", which is the root workspace, and the anchor-v1 crates are not members of it. A weekly
+  # build catches that drift on a cadence instead of at whatever unrelated pull request
+  # happens to touch these files next. The analyze step already treats a scheduled run
+  # as "build everything".
+  schedule:
+    - cron: '0 5 * * 1'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  MAX_JOBS: 64
+  MIN_PROJECTS_PER_JOB: 4
+  MIN_PROJECTS_FOR_MATRIX: 4
+  # See https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  changes:
+    name: changes (Anchor v1)
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      changed_projects: ${{ steps.analyze.outputs.changed_projects }}
+      total_projects: ${{ steps.analyze.outputs.total_projects }}
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 2
+      - uses: dorny/paths-filter@v4
+        id: changes
+        if: github.event_name == 'pull_request'
+        with:
+          list-files: shell
+          filters: |
+            anchor:
+              - added|modified: '**/anchor-v1/**'
+            workflow:
+              - added|modified: '.github/workflows/anchor-v1.yml'
+      - name: Analyze Changes
+        id: analyze
+        run: |
+          # Generate ignore pattern, excluding comments
+          ignore_pattern=$(grep -v '^#' .github/.ghaignore | grep -v '^$' | tr '\n' '|' | sed 's/|$//')
+          echo "Ignore pattern: $ignore_pattern"
+
+          # Single source of truth for "what is an Anchor v1 project": a directory
+          # whose name is exactly "anchor-v1". `find -type d -name anchor-v1` gives
+          # us that by construction — no substring matching, no path-segment
+          # trickery, so siblings like "anchor-example/" or nested files such as
+          # "anchor-example/app/pages/api/foo.ts" can never enter the build list.
+          # It is also what keeps the two Anchor workflows disjoint: an exact-name
+          # match on "anchor-v1" never sees "anchor", and the Anchor v2 workflow's
+          # match on "anchor" never sees this one.
+          function get_projects() {
+            # An empty .ghaignore makes ignore_pattern empty, and `grep -vE ""`
+            # matches everything, silently emptying the project list - only
+            # filter when there is actually a pattern.
+            if [[ -n "$ignore_pattern" ]]; then
+              find . -type d -name "anchor-v1" | grep -vE "$ignore_pattern" | sort
+            else
+              find . -type d -name "anchor-v1" | sort
+            fi
+          }
+
+          # Filter the full project list down to projects touched by the given
+          # changed files. A file "touches" a project iff it lives inside that
+          # project directory (prefix match on "<project>/"). This is an
+          # intersection against get_projects(), so the result is always a subset
+          # of the authoritative project list.
+          function filter_by_changes() {
+            local all_projects="$1"
+            shift
+            local changed_files=("$@")
+            echo "$all_projects" | while read -r project; do
+              [ -z "$project" ] && continue
+              # Strip leading ./ so prefix comparison matches git's output
+              local project_prefix="${project#./}/"
+              for file in "${changed_files[@]}"; do
+                if [[ "$file" == "$project_prefix"* ]]; then
+                  echo "$project"
+                  break
+                fi
+              done
+            done | sort -u
+          }
+
+          # Determine which projects to build and test
+          if [[ "${{ github.event_name }}" == "schedule" || "${{ steps.changes.outputs.workflow }}" == "true" ]]; then
+            # Workflow file changed or schedule — build everything
+            projects=$(get_projects)
+          elif [[ "${{ github.event_name }}" == "push" ]]; then
+            # On push, only build projects with changes since parent commit
+            mapfile -t changed_files < <(git diff --name-only HEAD~1 HEAD 2>/dev/null || true)
+            if [ ${#changed_files[@]} -eq 0 ]; then
+              projects=$(get_projects)
+            else
+              projects=$(filter_by_changes "$(get_projects)" "${changed_files[@]}")
+            fi
+          elif [[ "${{ steps.changes.outputs.anchor }}" == "true" ]]; then
+            changed_files=(${{ steps.changes.outputs.anchor_files }})
+            projects=$(filter_by_changes "$(get_projects)" "${changed_files[@]}")
+          else
+            projects=""
+          fi
+
+          # Output project information
+          if [[ -n "$projects" ]]; then
+            echo "Projects to build and test"
+            echo "$projects"
+            total_projects=$(echo "$projects" | wc -l)
+            echo "Total projects: $total_projects"
+            echo "total_projects=$total_projects" >> $GITHUB_OUTPUT
+            echo "changed_projects=$(echo "$projects" | jq -R -s -c 'split("\n")[:-1]')" >> $GITHUB_OUTPUT
+          else
+            echo "No projects to build and test."
+            echo "total_projects=0" >> $GITHUB_OUTPUT
+            echo "changed_projects=[]" >> $GITHUB_OUTPUT
+          fi
+      - name: Generate matrix
+        id: matrix
+        run: |
+          total_projects=${{ steps.analyze.outputs.total_projects }}
+          max_jobs=${{ env.MAX_JOBS }}
+          min_projects_per_job=${{ env.MIN_PROJECTS_PER_JOB }}
+          min_projects_for_matrix=${{ env.MIN_PROJECTS_FOR_MATRIX }}
+
+          # Generate matrix based on number of projects
+          if [ "$total_projects" -lt "$min_projects_for_matrix" ]; then
+            echo "matrix=[0]" >> $GITHUB_OUTPUT
+          else
+            projects_per_job=$(( (total_projects + max_jobs - 1) / max_jobs ))
+            projects_per_job=$(( projects_per_job > min_projects_per_job ? projects_per_job : min_projects_per_job ))
+            num_jobs=$(( (total_projects + projects_per_job - 1) / projects_per_job ))
+
+            indices=$(seq 0 $(( num_jobs - 1 )))
+            echo "matrix=[$(echo $indices | tr ' ' ',')]" >> $GITHUB_OUTPUT
+          fi
+
+  build-and-test:
+    needs: changes
+    if: needs.changes.outputs.total_projects != '0'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        index: ${{ fromJson(needs.changes.outputs.matrix) }}
+    name: anchor-v1-group-${{ matrix.index }}
+    outputs:
+      failed_projects: ${{ steps.set-failed.outputs.failed_projects }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+      - name: Configure sccache
+        run: |
+          echo "SCCACHE_GHA_ENABLED=true" >> $GITHUB_ENV
+          echo "RUSTC_WRAPPER=sccache" >> $GITHUB_ENV
+      - name: Cache Cargo registry and git
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.toml', '**/Cargo.lock') }}
+          restore-keys: |
+            cargo-${{ runner.os }}-
+      - uses: pnpm/action-setup@v4
+      # Replaces heyAyushh/setup-anchor@v4.999. That action's version-detection step
+      # runs `anchor --version | awk '{print $2}'` and writes the result straight to
+      # $GITHUB_OUTPUT. `anchor --version` now prints more than one line, so the value
+      # becomes multi-line and the step dies with "Invalid format", aborting the whole
+      # job before any project is built. These steps install the toolchain directly
+      # (Solana via the Anza installer, the Anchor CLI from crates.io) and read the
+      # version from the first line only. The other workflows that use setup-anchor
+      # (native, quasar, pinocchio, solana-asm) hit the same latent bug once their
+      # matrices run; migrate them the same way once this is confirmed green.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+      - name: Install Solana CLI
+        run: |
+          sh -c "$(curl -sSfL https://release.anza.xyz/v3.1.14/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+      - name: Cache Anchor toolchain
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/anchor
+          # Pinned to match the anchor-lang/anchor-spl crate version the programs depend on.
+          # The key deliberately differs from the old avm-based one so a cache entry
+          # holding an avm-built binary is never restored over this.
+          key: anchor-cli-crates-io-${{ runner.os }}-1.1.2
+      - name: Install Anchor 1.1.2
+        run: |
+          export PATH="$HOME/.cargo/bin:$PATH"
+          # `anchor --version` can emit more than one line; read the first line only so
+          # a multi-line value never reaches downstream parsing.
+          current="$(anchor --version 2>/dev/null | head -n1 | awk '{print $2}' || true)"
+          if [ "$current" != "1.1.2" ]; then
+            # Install the CLI from crates.io rather than through avm, matching the
+            # Anchor v2 job. `cargo install --git ... avm` builds avm from the tip of
+            # anchor's main branch, so what CI installs drifts with whatever landed
+            # there. 1.1.2 is an ordinary published release — unlike the 2.0.0-rc.1
+            # pre-release that forced the v2 job off avm — so the CLI comes straight
+            # from the registry. --locked builds it against its own published lockfile
+            # so the result does not drift with the registry either.
+            cargo install anchor-cli --version 1.1.2 --locked --force
+          fi
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+      - name: Install Surfpool
+        run: curl -sL https://run.surfpool.run/ | bash
+      - name: Display Versions
+        run: |
+          solana -V
+          # it's okay to use --force in github action since all programs are tested in isolation
+          solana-keygen new --no-bip39-passphrase --force
+          rustc -V
+          anchor -V
+          surfpool --version
+      - name: Build and Test
+        env:
+          TOTAL_PROJECTS: ${{ needs.changes.outputs.total_projects }}
+          PROJECTS_PER_JOB: ${{ env.MIN_PROJECTS_PER_JOB }}
+        run: |
+          function build_and_test() {
+            local project=$1
+            echo "Building and Testing $project"
+            cd "$project" || return 1
+
+            # Install dependencies first
+            if ! pnpm install --frozen-lockfile; then
+              echo "::error::pnpm install failed for $project"
+              echo "$project: pnpm install failed" >> $GITHUB_WORKSPACE/failed_projects.txt
+              cd - > /dev/null
+              return 1
+            fi
+
+            # Sync program IDs (Anchor 1.0+ requires keypair and declare_id! to match)
+            anchor keys sync
+
+            # Update IDL address fields to match the synced keys.
+            # declare_program!(name) reads the address from idls/<name>.json, so
+            # after keys sync changes the program IDs, the IDLs must match too —
+            # otherwise LiteSVM tests load the .so at the old IDL address while
+            # the compiled program expects the new declare_id!() address.
+            if [ -d "idls" ]; then
+              for idl_file in idls/*.json; do
+                program_name=$(basename "$idl_file" .json)
+                # Look up the new address from Anchor.toml [programs.localnet]
+                new_address=$(grep "^${program_name} " Anchor.toml | head -1 | sed 's/.*= *"\(.*\)"/\1/')
+                if [ -n "$new_address" ]; then
+                  # Update the "address" field in the IDL JSON
+                  tmp=$(mktemp)
+                  jq --arg addr "$new_address" '.address = $addr' "$idl_file" > "$tmp" && mv "$tmp" "$idl_file"
+                fi
+              done
+            fi
+
+            # Run anchor build
+            if ! anchor build; then
+              echo "::error::anchor build failed for $project"
+              echo "$project: anchor build failed" >> $GITHUB_WORKSPACE/failed_projects.txt
+              rm -rf target node_modules
+              cd - > /dev/null
+              return 1
+            fi
+
+            # Run anchor test
+            if ! anchor test; then
+              echo "::error::anchor test failed for $project"
+              echo "$project: anchor test failed" >> $GITHUB_WORKSPACE/failed_projects.txt
+              rm -rf target node_modules
+              cd - > /dev/null
+              return 1
+            fi
+
+            echo "Build and tests succeeded for $project."
+            rm -rf target node_modules
+            cd - > /dev/null
+            return 0
+          }
+
+          # Determine which projects to build in this job
+          readarray -t all_projects < <(echo '${{ needs.changes.outputs.changed_projects }}' | jq -r '.[]?')
+          start_index=$(( ${{ matrix.index }} * PROJECTS_PER_JOB ))
+          end_index=$(( start_index + PROJECTS_PER_JOB ))
+          end_index=$(( end_index > TOTAL_PROJECTS ? TOTAL_PROJECTS : end_index ))
+
+          echo "Projects to build and test in this job"
+          for i in $(seq $start_index $(( end_index - 1 ))); do
+            echo "${all_projects[$i]}"
+          done
+
+          # Build and test projects
+          failed=false
+          failed_projects=()
+          for i in $(seq $start_index $(( end_index - 1 ))); do
+            echo "::group::Building and testing ${all_projects[$i]}"
+            if ! build_and_test "${all_projects[$i]}"; then
+              failed=true
+              failed_projects+=("${all_projects[$i]}")
+            fi
+            echo "::endgroup::"
+          done
+
+          if [[ "$failed" == "true" ]]; then
+            echo "::group::Failed projects"
+            cat $GITHUB_WORKSPACE/failed_projects.txt
+            echo "::endgroup::"
+            echo "failed_projects=${failed_projects[@]}" >> $GITHUB_OUTPUT
+            exit 1
+          else
+            echo "failed_projects=" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set failed projects output
+        id: set-failed
+        if: failure()
+        run: |
+          # Prepare failed projects list for output
+          failed_projects=$(cat $GITHUB_WORKSPACE/failed_projects.txt | jq -R -s -c 'split("\n")[:-1]')
+          echo "failed_projects=$failed_projects" >> $GITHUB_OUTPUT
+      - name: Show sccache stats
+        if: always()
+        run: sccache --show-stats
+
+  summary:
+    name: summary (Anchor v1)
+    needs: [changes, build-and-test]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Create job summary
+        run: |
+          echo "## Anchor v1 Workflow Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- Total projects: ${{ needs.changes.outputs.total_projects }}" >> $GITHUB_STEP_SUMMARY
+
+          # List all processed projects
+          echo "<details>" >> $GITHUB_STEP_SUMMARY
+          echo "<summary>Projects processed (click to expand)</summary>" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '${{ needs.changes.outputs.changed_projects }}' | jq -r '.[]' | while read project; do
+            echo "- $project" >> $GITHUB_STEP_SUMMARY
+          done
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "</details>" >> $GITHUB_STEP_SUMMARY
+
+          # Report build and test results
+          if [[ "${{ needs.build-and-test.result }}" == "failure" ]]; then
+            echo "## :x: Build or tests failed" >> $GITHUB_STEP_SUMMARY
+            echo "<details>" >> $GITHUB_STEP_SUMMARY
+            echo "<summary>Failed projects (click to expand)</summary>" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            failed_projects='${{ needs.build-and-test.outputs.failed_projects }}'
+            if [[ -n "$failed_projects" ]]; then
+              echo "$failed_projects" | jq -r '.[]' | while IFS=: read -r project failure_reason; do
+                echo "- **$project**" >> $GITHUB_STEP_SUMMARY
+                echo "  - Failure reason: $failure_reason" >> $GITHUB_STEP_SUMMARY
+              done
+            else
+              echo "No failed projects reported. This might indicate an unexpected error in the workflow." >> $GITHUB_STEP_SUMMARY
+            fi
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "</details>" >> $GITHUB_STEP_SUMMARY
+          elif [[ "${{ needs.build-and-test.result }}" == "success" ]]; then
+            echo "## :white_check_mark: All builds and tests passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "## :warning: Build and test job was skipped or canceled" >> $GITHUB_STEP_SUMMARY
+          fi

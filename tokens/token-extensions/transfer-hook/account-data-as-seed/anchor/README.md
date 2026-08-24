@@ -1,5 +1,11 @@
 # Using Token Account Data as a Seed in a Transfer Hook
 
+> [!NOTE]
+> This is the **Anchor v2** copy of this example. Every `anchor` command on this page
+> needs the v2 CLI: `cargo install anchor-cli --version 2.0.0-rc.1 --locked` (avm has
+> no prebuilt binary for this pre-release). The Anchor v1 version of this example is in
+> [`../anchor-v1`](../anchor-v1/).
+
 Sometimes you want to use [account](https://solana.com/docs/terminology#account) data to derive additional accounts in the extra-account-metas. For example, you might want to use the [token account](https://solana.com/docs/terminology#token-account)'s owner as a seed for a [PDA](https://solana.com/docs/terminology#program-derived-address-pda).
 
 When creating an `ExtraAccountMeta`, the data of any account can be used as an extra seed. In this example we derive a counter account from the token account owner and the literal `"counter"`. The counter records how many times that owner has transferred tokens.

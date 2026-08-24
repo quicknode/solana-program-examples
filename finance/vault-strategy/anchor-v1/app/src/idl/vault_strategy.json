@@ -1,0 +1,1316 @@
+{
+  "address": "VLT5W7bqhRN4nCdRpXm8UfHRxZd9EuZGqiSAkGHQfGh",
+  "metadata": {
+    "name": "vault_strategy",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Manager-run investment vault with NAV-based shares"
+  },
+  "instructions": [
+    {
+      "name": "add_asset",
+      "docs": ["Add a curator-approved asset to the strategy at the next index. Manager only."],
+      "discriminator": [81, 53, 134, 142, 243, 73, 42, 179],
+      "accounts": [
+        {
+          "name": "manager",
+          "writable": true,
+          "signer": true,
+          "relations": ["strategy"]
+        },
+        {
+          "name": "strategy",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [115, 116, 114, 97, 116, 101, 103, 121]
+              },
+              {
+                "kind": "account",
+                "path": "strategy.index",
+                "account": "Strategy"
+              }
+            ]
+          }
+        },
+        {
+          "name": "registry",
+          "relations": ["strategy"]
+        },
+        {
+          "name": "asset_mint"
+        },
+        {
+          "name": "approved_asset",
+          "docs": [
+            "Proof the mint is approved, and the source of its official price feed.",
+            "Seeds tie it to this registry and this mint; existence means approved."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [97, 112, 112, 114, 111, 118, 101, 100, 95, 97, 115, 115, 101, 116]
+              },
+              {
+                "kind": "account",
+                "path": "registry"
+              },
+              {
+                "kind": "account",
+                "path": "asset_mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "asset_config",
+          "writable": true
+        },
+        {
+          "name": "vault_asset",
+          "docs": ["Strategy-owned vault for this asset."],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "strategy"
+              },
+              {
+                "kind": "account",
+                "path": "token_program"
+              },
+              {
+                "kind": "account",
+                "path": "asset_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140, 151, 37, 143, 78, 36, 137, 241, 187, 61, 16, 41, 20, 142, 13, 131, 11, 90, 19, 153, 218, 255, 16,
+                132, 4, 142, 123, 216, 219, 233, 248, 89
+              ]
+            }
+          }
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "token_program"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "weight_bps",
+          "type": "u16"
+        }
+      ]
+    },
+    {
+      "name": "approve_asset",
+      "docs": ["Approve a mint and bind it to its official price feed. Registry authority only."],
+      "discriminator": [127, 15, 21, 247, 23, 22, 189, 238],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true,
+          "relations": ["registry"]
+        },
+        {
+          "name": "registry",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [114, 101, 103, 105, 115, 116, 114, 121]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              }
+            ]
+          }
+        },
+        {
+          "name": "asset_mint"
+        },
+        {
+          "name": "approved_asset",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [97, 112, 112, 114, 111, 118, 101, 100, 95, 97, 115, 115, 101, 116]
+              },
+              {
+                "kind": "account",
+                "path": "registry"
+              },
+              {
+                "kind": "account",
+                "path": "asset_mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "price_feed",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "collect_fees",
+      "discriminator": [164, 152, 207, 99, 30, 186, 19, 182],
+      "accounts": [
+        {
+          "name": "manager",
+          "relations": ["strategy"]
+        },
+        {
+          "name": "strategy",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [115, 116, 114, 97, 116, 101, 103, 121]
+              },
+              {
+                "kind": "account",
+                "path": "strategy.index",
+                "account": "Strategy"
+              }
+            ]
+          }
+        },
+        {
+          "name": "share_mint",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [115, 104, 97, 114, 101, 95, 109, 105, 110, 116]
+              },
+              {
+                "kind": "account",
+                "path": "strategy"
+              }
+            ]
+          }
+        },
+        {
+          "name": "manager_share_account",
+          "docs": ["Manager's share token account - receives fee shares"],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "manager"
+              },
+              {
+                "kind": "account",
+                "path": "token_program"
+              },
+              {
+                "kind": "account",
+                "path": "share_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140, 151, 37, 143, 78, 36, 137, 241, 187, 61, 16, 41, 20, 142, 13, 131, 11, 90, 19, 153, 218, 255, 16,
+                132, 4, 142, 123, 216, 219, 233, 248, 89
+              ]
+            }
+          }
+        },
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "token_program"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "deposit",
+      "discriminator": [242, 35, 198, 137, 82, 225, 242, 182],
+      "accounts": [
+        {
+          "name": "depositor",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "strategy",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [115, 116, 114, 97, 116, 101, 103, 121]
+              },
+              {
+                "kind": "account",
+                "path": "strategy.index",
+                "account": "Strategy"
+              }
+            ]
+          }
+        },
+        {
+          "name": "share_mint",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [115, 104, 97, 114, 101, 95, 109, 105, 110, 116]
+              },
+              {
+                "kind": "account",
+                "path": "strategy"
+              }
+            ]
+          }
+        },
+        {
+          "name": "usdc_mint",
+          "relations": ["strategy"]
+        },
+        {
+          "name": "depositor_usdc_account",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "depositor"
+              },
+              {
+                "kind": "account",
+                "path": "token_program"
+              },
+              {
+                "kind": "account",
+                "path": "usdc_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140, 151, 37, 143, 78, 36, 137, 241, 187, 61, 16, 41, 20, 142, 13, 131, 11, 90, 19, 153, 218, 255, 16,
+                132, 4, 142, 123, 216, 219, 233, 248, 89
+              ]
+            }
+          }
+        },
+        {
+          "name": "depositor_share_account",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "depositor"
+              },
+              {
+                "kind": "account",
+                "path": "token_program"
+              },
+              {
+                "kind": "account",
+                "path": "share_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140, 151, 37, 143, 78, 36, 137, 241, 187, 61, 16, 41, 20, 142, 13, 131, 11, 90, 19, 153, 218, 255, 16,
+                132, 4, 142, 123, 216, 219, 233, 248, 89
+              ]
+            }
+          }
+        },
+        {
+          "name": "vault_usdc",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "strategy"
+              },
+              {
+                "kind": "account",
+                "path": "token_program"
+              },
+              {
+                "kind": "account",
+                "path": "usdc_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140, 151, 37, 143, 78, 36, 137, 241, 187, 61, 16, 41, 20, 142, 13, 131, 11, 90, 19, 153, 218, 255, 16,
+                132, 4, 142, 123, 216, 219, 233, 248, 89
+              ]
+            }
+          }
+        },
+        {
+          "name": "router_config",
+          "writable": true
+        },
+        {
+          "name": "router_usdc_treasury",
+          "writable": true
+        },
+        {
+          "name": "router_authority",
+          "writable": true
+        },
+        {
+          "name": "swap_router_program",
+          "address": "SWPR8Rk3aq3DrDGLdaANq7xCMnXoUFUJWJJmCWxc8Jm"
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "token_program"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "usdc_amount",
+          "type": "u64"
+        },
+        {
+          "name": "minimum_shares",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "initialize_registry",
+      "docs": [
+        "Create the curator record for an approved-asset set, owned by `authority`",
+        "(not a manager). The set itself lives in per-asset ApprovedAsset accounts."
+      ],
+      "discriminator": [189, 181, 20, 17, 174, 57, 249, 59],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "registry",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [114, 101, 103, 105, 115, 116, 114, 121]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "initialize_strategy",
+      "docs": [
+        "Open a strategy at a caller-chosen index, e.g. index 0 derives the PDA",
+        "from seeds `\"strategy\" + 0`. Manager pays and becomes the strategy's manager."
+      ],
+      "discriminator": [208, 119, 144, 145, 178, 57, 105, 252],
+      "accounts": [
+        {
+          "name": "manager",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "usdc_mint"
+        },
+        {
+          "name": "registry",
+          "docs": ["Registry whose approved assets this strategy may hold."]
+        },
+        {
+          "name": "strategy",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [115, 116, 114, 97, 116, 101, 103, 121]
+              },
+              {
+                "kind": "arg",
+                "path": "index"
+              }
+            ]
+          }
+        },
+        {
+          "name": "share_mint",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [115, 104, 97, 114, 101, 95, 109, 105, 110, 116]
+              },
+              {
+                "kind": "account",
+                "path": "strategy"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_usdc",
+          "docs": ["Vault's USDC token account - strategy PDA is the authority"],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "strategy"
+              },
+              {
+                "kind": "account",
+                "path": "token_program"
+              },
+              {
+                "kind": "account",
+                "path": "usdc_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140, 151, 37, 143, 78, 36, 137, 241, 187, 61, 16, 41, 20, 142, 13, 131, 11, 90, 19, 153, 218, 255, 16,
+                132, 4, 142, 123, 216, 219, 233, 248, 89
+              ]
+            }
+          }
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "token_program"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "index",
+          "type": "u64"
+        },
+        {
+          "name": "fee_bps",
+          "type": "u16"
+        },
+        {
+          "name": "max_slippage_bps",
+          "type": "u16"
+        },
+        {
+          "name": "swap_router",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "rebalance",
+      "discriminator": [108, 158, 77, 9, 210, 52, 88, 62],
+      "accounts": [
+        {
+          "name": "manager",
+          "signer": true,
+          "relations": ["strategy"]
+        },
+        {
+          "name": "strategy",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [115, 116, 114, 97, 116, 101, 103, 121]
+              },
+              {
+                "kind": "account",
+                "path": "strategy.index",
+                "account": "Strategy"
+              }
+            ]
+          }
+        },
+        {
+          "name": "usdc_mint",
+          "relations": ["strategy"]
+        },
+        {
+          "name": "sell_mint",
+          "writable": true
+        },
+        {
+          "name": "buy_mint",
+          "writable": true
+        },
+        {
+          "name": "sell_config"
+        },
+        {
+          "name": "buy_config"
+        },
+        {
+          "name": "sell_price_feed"
+        },
+        {
+          "name": "buy_price_feed"
+        },
+        {
+          "name": "vault_sell",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "strategy"
+              },
+              {
+                "kind": "account",
+                "path": "token_program"
+              },
+              {
+                "kind": "account",
+                "path": "sell_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140, 151, 37, 143, 78, 36, 137, 241, 187, 61, 16, 41, 20, 142, 13, 131, 11, 90, 19, 153, 218, 255, 16,
+                132, 4, 142, 123, 216, 219, 233, 248, 89
+              ]
+            }
+          }
+        },
+        {
+          "name": "vault_buy",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "strategy"
+              },
+              {
+                "kind": "account",
+                "path": "token_program"
+              },
+              {
+                "kind": "account",
+                "path": "buy_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140, 151, 37, 143, 78, 36, 137, 241, 187, 61, 16, 41, 20, 142, 13, 131, 11, 90, 19, 153, 218, 255, 16,
+                132, 4, 142, 123, 216, 219, 233, 248, 89
+              ]
+            }
+          }
+        },
+        {
+          "name": "vault_usdc",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "strategy"
+              },
+              {
+                "kind": "account",
+                "path": "token_program"
+              },
+              {
+                "kind": "account",
+                "path": "usdc_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140, 151, 37, 143, 78, 36, 137, 241, 187, 61, 16, 41, 20, 142, 13, 131, 11, 90, 19, 153, 218, 255, 16,
+                132, 4, 142, 123, 216, 219, 233, 248, 89
+              ]
+            }
+          }
+        },
+        {
+          "name": "sell_rate"
+        },
+        {
+          "name": "buy_rate"
+        },
+        {
+          "name": "router_config",
+          "writable": true
+        },
+        {
+          "name": "router_usdc_treasury",
+          "writable": true
+        },
+        {
+          "name": "router_authority",
+          "writable": true
+        },
+        {
+          "name": "swap_router_program",
+          "address": "SWPR8Rk3aq3DrDGLdaANq7xCMnXoUFUJWJJmCWxc8Jm"
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "token_program"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "sell_amount",
+          "type": "u64"
+        },
+        {
+          "name": "usdc_to_invest",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "set_weight",
+      "docs": ["Change an asset's target weight, or set it to zero to retire it. Manager only."],
+      "discriminator": [41, 228, 200, 244, 87, 125, 173, 36],
+      "accounts": [
+        {
+          "name": "manager",
+          "signer": true,
+          "relations": ["strategy"]
+        },
+        {
+          "name": "strategy",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [115, 116, 114, 97, 116, 101, 103, 121]
+              },
+              {
+                "kind": "account",
+                "path": "strategy.index",
+                "account": "Strategy"
+              }
+            ]
+          }
+        },
+        {
+          "name": "asset_config",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "weight_bps",
+          "type": "u16"
+        }
+      ]
+    },
+    {
+      "name": "withdraw",
+      "discriminator": [183, 18, 70, 156, 148, 109, 161, 34],
+      "accounts": [
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "strategy",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [115, 116, 114, 97, 116, 101, 103, 121]
+              },
+              {
+                "kind": "account",
+                "path": "strategy.index",
+                "account": "Strategy"
+              }
+            ]
+          }
+        },
+        {
+          "name": "share_mint",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [115, 104, 97, 114, 101, 95, 109, 105, 110, 116]
+              },
+              {
+                "kind": "account",
+                "path": "strategy"
+              }
+            ]
+          }
+        },
+        {
+          "name": "usdc_mint",
+          "relations": ["strategy"]
+        },
+        {
+          "name": "user_share_account",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "user"
+              },
+              {
+                "kind": "account",
+                "path": "token_program"
+              },
+              {
+                "kind": "account",
+                "path": "share_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140, 151, 37, 143, 78, 36, 137, 241, 187, 61, 16, 41, 20, 142, 13, 131, 11, 90, 19, 153, 218, 255, 16,
+                132, 4, 142, 123, 216, 219, 233, 248, 89
+              ]
+            }
+          }
+        },
+        {
+          "name": "user_usdc_account",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "user"
+              },
+              {
+                "kind": "account",
+                "path": "token_program"
+              },
+              {
+                "kind": "account",
+                "path": "usdc_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140, 151, 37, 143, 78, 36, 137, 241, 187, 61, 16, 41, 20, 142, 13, 131, 11, 90, 19, 153, 218, 255, 16,
+                132, 4, 142, 123, 216, 219, 233, 248, 89
+              ]
+            }
+          }
+        },
+        {
+          "name": "vault_usdc",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "strategy"
+              },
+              {
+                "kind": "account",
+                "path": "token_program"
+              },
+              {
+                "kind": "account",
+                "path": "usdc_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140, 151, 37, 143, 78, 36, 137, 241, 187, 61, 16, 41, 20, 142, 13, 131, 11, 90, 19, 153, 218, 255, 16,
+                132, 4, 142, 123, 216, 219, 233, 248, 89
+              ]
+            }
+          }
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "token_program"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "shares_to_burn",
+          "type": "u64"
+        },
+        {
+          "name": "min_usdc_out",
+          "type": "u64"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "ApprovedAsset",
+      "discriminator": [187, 133, 252, 71, 239, 199, 204, 13]
+    },
+    {
+      "name": "AssetConfig",
+      "discriminator": [57, 112, 247, 166, 247, 64, 140, 23]
+    },
+    {
+      "name": "Registry",
+      "discriminator": [47, 174, 110, 246, 184, 182, 252, 218]
+    },
+    {
+      "name": "Strategy",
+      "discriminator": [174, 110, 39, 119, 82, 106, 169, 102]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "SlippageTooHigh",
+      "msg": "Shares minted are below the minimum - slippage exceeded"
+    },
+    {
+      "code": 6001,
+      "name": "UsdcSlippage",
+      "msg": "USDC out is below minimum - slippage exceeded"
+    },
+    {
+      "code": 6002,
+      "name": "SwapSlippageExceeded",
+      "msg": "Swap output deviates from the oracle price by more than the allowed slippage"
+    },
+    {
+      "code": 6003,
+      "name": "SlippageConfigTooHigh",
+      "msg": "Max slippage exceeds the maximum allowed configuration"
+    },
+    {
+      "code": 6004,
+      "name": "AssetNotFound",
+      "msg": "Asset mint is not part of this strategy"
+    },
+    {
+      "code": 6005,
+      "name": "TooManyAssets",
+      "msg": "Strategy already holds the maximum number of assets"
+    },
+    {
+      "code": 6006,
+      "name": "DuplicateAsset",
+      "msg": "Asset is already part of this strategy"
+    },
+    {
+      "code": 6007,
+      "name": "WeightOverflow",
+      "msg": "Total target weight would exceed 10000 basis points"
+    },
+    {
+      "code": 6008,
+      "name": "StrategyNotFullyAllocated",
+      "msg": "Strategy weights must sum to 100% before it can accept deposits"
+    },
+    {
+      "code": 6009,
+      "name": "IncompleteAssetAccounts",
+      "msg": "Wrong number of asset accounts supplied for the strategy's assets"
+    },
+    {
+      "code": 6010,
+      "name": "InvalidAssetAccount",
+      "msg": "An asset account does not match the strategy's registered asset"
+    },
+    {
+      "code": 6011,
+      "name": "InvalidVaultAccount",
+      "msg": "Token account could not be read"
+    },
+    {
+      "code": 6012,
+      "name": "InvalidRecipient",
+      "msg": "Recipient token account is not owned by the withdrawing user"
+    },
+    {
+      "code": 6013,
+      "name": "InvalidRegistry",
+      "msg": "Registry does not match the strategy's registered registry"
+    },
+    {
+      "code": 6014,
+      "name": "NoTimeElapsed",
+      "msg": "No time has elapsed since last fee accrual"
+    },
+    {
+      "code": 6015,
+      "name": "MathOverflow",
+      "msg": "Arithmetic overflow"
+    },
+    {
+      "code": 6016,
+      "name": "ZeroShares",
+      "msg": "Cannot withdraw zero shares"
+    },
+    {
+      "code": 6017,
+      "name": "ZeroDeposit",
+      "msg": "Cannot deposit zero USDC"
+    },
+    {
+      "code": 6018,
+      "name": "ZeroTotalShares",
+      "msg": "Total shares are zero - cannot compute proportional withdraw"
+    },
+    {
+      "code": 6019,
+      "name": "InvalidPriceFeed",
+      "msg": "Price feed account does not match the registered feed"
+    },
+    {
+      "code": 6020,
+      "name": "NegativePrice",
+      "msg": "Pyth price is zero or negative"
+    },
+    {
+      "code": 6021,
+      "name": "StalePriceFeed",
+      "msg": "Pyth price feed is stale"
+    },
+    {
+      "code": 6022,
+      "name": "SameMint",
+      "msg": "Sell and buy mints must be different"
+    },
+    {
+      "code": 6023,
+      "name": "InvalidUsdcMint",
+      "msg": "USDC mint does not match the strategy's registered USDC mint"
+    },
+    {
+      "code": 6024,
+      "name": "InvalidSwapRouter",
+      "msg": "Swap router program does not match the strategy's registered swap router"
+    },
+    {
+      "code": 6025,
+      "name": "FeeTooHigh",
+      "msg": "Management fee exceeds the maximum allowed"
+    }
+  ],
+  "types": [
+    {
+      "name": "ApprovedAsset",
+      "docs": [
+        "One curator-approved asset, binding its mint to its official Pyth",
+        "PriceUpdateV2 feed. Its address is a PDA seeded by the registry and the mint,",
+        "so existence of this account is the approval check: add_asset derives the",
+        "address and fails if no account is there. Created only by the registry",
+        "authority; add_asset copies `price_feed` from here so the manager never",
+        "supplies the feed."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "registry",
+            "type": "pubkey"
+          },
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "price_feed",
+            "type": "pubkey"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "AssetConfig",
+      "docs": [
+        "One basket asset. Its address is a PDA seeded by the strategy and the asset's",
+        "index, so the full set is the contiguous range 0..asset_count: any handler",
+        "computing net asset value re-derives every index and refuses to proceed if an",
+        "asset account is missing."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "strategy",
+            "type": "pubkey"
+          },
+          {
+            "name": "index",
+            "type": "u8"
+          },
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "price_feed",
+            "docs": [
+              "Pyth PriceUpdateV2 account, copied from the registry's ApprovedAsset at",
+              "add time so the manager cannot substitute a feed they control."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "vault",
+            "docs": ["Strategy-owned associated token account holding this asset."],
+            "type": "pubkey"
+          },
+          {
+            "name": "weight_bps",
+            "docs": [
+              "Target share of the strategy's value in basis points. deposit deploys at these",
+              "weights (the sum across assets must reach 10000 before deposits open), and the",
+              "manager maintains them against price drift with rebalance."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "AssetRate",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "usdc_per_token",
+            "docs": [
+              "USDC base units per token base unit.",
+              "e.g. 250 means 1 token base unit = 250 USDC base units",
+              "(so 1.0 TSLAx = $250 when both have 6 decimals)"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Registry",
+      "docs": [
+        "The curator record at the root of an approved-asset set. This account holds no",
+        "list: it only names the authority allowed to approve assets under it. The set",
+        "itself is the collection of `ApprovedAsset` accounts derived from this registry,",
+        "and an asset counts as approved exactly when its `ApprovedAsset` account exists.",
+        "",
+        "The authority is deliberately not a strategy manager: the curator vets which",
+        "real assets (and which official price feed) are safe, and a manager only",
+        "chooses among them. This is what stops a manager from listing a token they",
+        "mint themselves, or pairing a real mint with a feed they control."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Strategy",
+      "docs": [
+        "One strategy (basket). Its address is a PDA seeded by a caller-chosen index,",
+        "e.g. seeds `\"strategy\" + 0`, so strategies are addressed by a simple counter",
+        "rather than by the manager's key. The index is stored here so every handler",
+        "can re-derive the PDA to sign for the vaults and share mint."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "index",
+            "docs": ["Index used as the PDA seed, e.g. 0 for the first strategy."],
+            "type": "u64"
+          },
+          {
+            "name": "manager",
+            "type": "pubkey"
+          },
+          {
+            "name": "registry",
+            "docs": [
+              "Registry whose curator approves assets. add_asset only accepts mints",
+              "approved in this registry."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "share_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "usdc_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "swap_router",
+            "type": "pubkey"
+          },
+          {
+            "name": "fee_bps",
+            "docs": ["Annual management fee in basis points (e.g. 100 = 1%)."],
+            "type": "u16"
+          },
+          {
+            "name": "max_slippage_bps",
+            "docs": [
+              "Maximum tolerated deviation, in basis points, between a swap's output and",
+              "the Pyth-implied amount on deposit/rebalance. Bounded by MAX_SLIPPAGE_BPS."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "total_shares",
+            "type": "u64"
+          },
+          {
+            "name": "last_fee_accrual_timestamp",
+            "type": "i64"
+          },
+          {
+            "name": "asset_count",
+            "docs": [
+              "Assets live at PDAs indexed 0..asset_count, so callers can re-derive the",
+              "complete set and no asset can be silently omitted from a NAV calculation."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "total_weight_bps",
+            "docs": ["Running sum of every asset's target weight, kept <= 10000."],
+            "type": "u16"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    }
+  ]
+}

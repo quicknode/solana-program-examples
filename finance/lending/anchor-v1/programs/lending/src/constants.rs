@@ -1,0 +1,43 @@
+// These are plain `pub const`s rather than Anchor `#[constant]`s: `#[constant]`
+// only re-exports a value into the IDL, and anchor's idl-build mis-evaluates a
+// u128 literal this large as i32 ("literal out of range for i32"). None of these
+// need to appear in the IDL, so plain consts both compile and keep the IDL clean.
+
+/// Fixed-point scale for every ratio in the program: interest rates, the
+/// cumulative borrow-rate index, the share-token exchange rate, and obligation
+/// values. A ratio `r` is stored as the integer `r * FIXED_POINT_SCALE`.
+///
+/// All money math is integer-only (no floats, no fixed-point crates). 10^18
+/// keeps a single slot's interest — which can be a tiny fraction of the index —
+/// from truncating to zero, while u128's ~3.4e38 ceiling leaves headroom for the
+/// index to grow and for intermediate products before the final narrowing cast.
+pub const FIXED_POINT_SCALE: u128 = 1_000_000_000_000_000_000;
+
+/// log10(FIXED_POINT_SCALE). Used to fold the price exponent and the fixed-point
+/// scale into one power of ten so price conversions never form a needless 10^18
+/// intermediate that would overflow for high-priced assets.
+pub const FIXED_POINT_SCALE_DECIMALS: i32 = 18;
+
+/// Denominator for every basis-point config value. 100% == 10_000 bps.
+pub const BPS_DENOMINATOR: u128 = 10_000;
+
+/// Maximum distinct reserves an obligation may use as collateral, and
+/// separately as borrows. Bounds the account size and the compute cost of
+/// refresh_obligation (which iterates every entry).
+pub const MAX_OBLIGATION_RESERVES: usize = 4;
+
+/// A price feed older than this many slots is rejected as stale. Freshness is
+/// measured in slots, not unix time, because the runtime guarantees slot
+/// progression while the timestamp is validator-influenced. How long the window
+/// is in seconds follows the cluster's slot time, which the protocol lowers over
+/// time, so the window tightens on its own and never loosens.
+pub const MAX_PRICE_STALENESS_SLOTS: u64 = 25;
+
+// PDA seeds.
+pub const LENDING_MARKET_SEED: &[u8] = b"lending_market";
+pub const RESERVE_SEED: &[u8] = b"reserve";
+pub const LIQUIDITY_VAULT_SEED: &[u8] = b"liquidity_vault";
+pub const SHARE_MINT_SEED: &[u8] = b"share_mint";
+pub const OBLIGATION_SEED: &[u8] = b"obligation";
+pub const OBLIGATION_SHARE_VAULT_SEED: &[u8] = b"obligation_share_vault";
+pub const PRICE_FEED_SEED: &[u8] = b"price_feed";

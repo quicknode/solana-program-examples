@@ -1,5 +1,11 @@
 # Realloc (Anchor)
 
+> [!NOTE]
+> This is the **Anchor v2** copy of this example. Every `anchor` command on this page
+> needs the v2 CLI: `cargo install anchor-cli --version 2.0.0-rc.1 --locked` (avm has
+> no prebuilt binary for this pre-release). The Anchor v1 version of this example is in
+> [`../anchor-v1`](../anchor-v1/).
+
 Grow or shrink account data when variable-length storage is required.
 
 See also: [Realloc overview](../README.md) and the [repository catalog](../../../README.md).

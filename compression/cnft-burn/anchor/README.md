@@ -1,5 +1,11 @@
 # cnft-burn
 
+> [!NOTE]
+> This is the **Anchor v2** copy of this example. Every `anchor` command on this page
+> needs the v2 CLI: `cargo install anchor-cli --version 2.0.0-rc.1 --locked` (avm has
+> no prebuilt binary for this pre-release). The Anchor v1 version of this example is in
+> [`../anchor-v1`](../anchor-v1/).
+
 An [Anchor](https://solana.com/docs/terminology#anchor) [program](https://solana.com/docs/terminology#program) that burns compressed NFTs (cNFTs) in your collection. The program performs a [CPI](https://solana.com/docs/terminology#cross-program-invocation-cpi) into the Metaplex Bubblegum program to do the burn.
 
 ## Components

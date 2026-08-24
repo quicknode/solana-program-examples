@@ -1,5 +1,11 @@
 # Solana Token Fundraiser (Anchor)
 
+> [!NOTE]
+> This is the **Anchor v2** copy of this example. Every `anchor` command on this page
+> needs the v2 CLI: `cargo install anchor-cli --version 2.0.0-rc.1 --locked` (avm has
+> no prebuilt binary for this pre-release). The Anchor v1 version of this example is in
+> [`../anchor-v1`](../anchor-v1/).
+
 Onchain crowdfunding on Solana: a program that collects tokens toward a target amount, like Kickstarter without a payment processor. A **maker** creates a fundraiser [account](https://solana.com/docs/terminology#account), specifies the [mint](https://solana.com/docs/terminology#token-mint) they want to receive, the target amount, and a duration in days. **Contributors** contribute while the window is open. If the target is reached, the maker claims the funds; if it is not reached by the deadline, contributors can refund, and once refunds are complete the maker can retire the fundraiser and open a new one.
 
 ## Architecture

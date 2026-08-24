@@ -1,5 +1,11 @@
 # Solana Vault Strategy (Anchor)
 
+> [!NOTE]
+> This is the **Anchor v2** copy of this example. Every `anchor` command on this page
+> needs the v2 CLI: `cargo install anchor-cli --version 2.0.0-rc.1 --locked` (avm has
+> no prebuilt binary for this pre-release). The Anchor v1 version of this example is in
+> [`../anchor-v1`](../anchor-v1/).
+
 A manager-run investment vault on Solana. Users deposit [USDC](https://www.investopedia.com/terms/u/usd-coin-usdc.asp) and receive shares representing proportional ownership of a portfolio of assets. The manager adds assets a curator has approved and sets their target weights; each deposit is deployed across those assets at its weights in the same transaction. The manager rebalances as prices drift, earns a fee, and depositors withdraw their proportional slice in kind when they choose.
 
 The example uses two stocks as the portfolio assets: **TSLAx** (Tesla) and **NVDAx** (NVIDIA) - [xStocks](https://backed.fi/xstocks) issued on Solana by Backed Finance. In tests these are mock [tokens](https://solana.com/docs/terminology#token).

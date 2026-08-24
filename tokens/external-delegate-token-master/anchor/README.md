@@ -1,5 +1,11 @@
 # External Delegate Token Master (Anchor)
 
+> [!NOTE]
+> This is the **Anchor v2** copy of this example. Every `anchor` command on this page
+> needs the v2 CLI: `cargo install anchor-cli --version 2.0.0-rc.1 --locked` (avm has
+> no prebuilt binary for this pre-release). The Anchor v1 version of this example is in
+> [`../anchor-v1`](../anchor-v1/).
+
 Authorize token transfers using an external secp256k1 delegate signature.
 
 See the [example overview](../README.md) for the signed-message format and nonce semantics shared with the [Quasar variant](../quasar/), and the [repository catalog](../../../README.md).

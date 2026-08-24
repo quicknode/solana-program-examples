@@ -1,0 +1,18 @@
+[toolchain]
+# Match the repo package manager (pnpm-lock.yaml at root); avoids Anchor's yarn default.
+package_manager = "pnpm"
+solana_version = "3.1.8"
+
+[features]
+seeds = false
+skip-lint = false
+
+[programs.localnet]
+counter_anchor = "BmDHboaj1kBUoinJKKSRqKfMeRKJqQqEbUj1VgzeQe4A"
+
+[provider]
+cluster = "Localnet"
+wallet = "~/.config/solana/id.json"
+
+[scripts]
+test = "cargo test"

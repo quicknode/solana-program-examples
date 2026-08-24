@@ -1,0 +1,28 @@
+[package]
+name = "non-transferable"
+version = "0.1.0"
+description = "Created with Anchor"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "non_transferable"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
+
+[dependencies]
+anchor-lang = "1.1.2"
+anchor-spl = "1.1.2"
+
+[dev-dependencies]
+litesvm = "0.13.1"
+solana-kite = "0.4.0"
+solana-signer = "3.0.0"
+solana-keypair = "3.0.1"
+borsh = "1.6.1"

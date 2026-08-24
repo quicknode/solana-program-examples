@@ -1,5 +1,11 @@
 # Close Account
 
+> [!NOTE]
+> This is the **Anchor v2** copy of this example. Every `anchor` command on this page
+> needs the v2 CLI: `cargo install anchor-cli --version 2.0.0-rc.1 --locked` (avm has
+> no prebuilt binary for this pre-release). The Anchor v1 version of this example is in
+> [`../anchor-v1`](../anchor-v1/).
+
 Two [instruction handlers](https://solana.com/docs/terminology#instruction-handler): `create_user` initializes a [PDA](https://solana.com/docs/terminology#program-derived-address-pda) `User` [account](https://solana.com/docs/terminology#account), and `close_user` closes it and returns the [rent](https://solana.com/docs/terminology#rent) to the user.
 
 1. `create_user` initializes the PDA with [Anchor](https://solana.com/docs/terminology#anchor)'s `init` constraint:

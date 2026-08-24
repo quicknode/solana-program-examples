@@ -1,0 +1,131 @@
+use anchor_lang::prelude::*;
+use anchor_spl::{
+    associated_token::AssociatedToken,
+    token_interface::{
+        close_account, transfer_checked, CloseAccount, Mint, TokenAccount, TokenInterface,
+        TransferChecked,
+    },
+};
+
+use crate::{state::Fundraiser, FundraiserError, SECONDS_TO_DAYS};
+
+#[derive(Accounts)]
+pub struct CloseFundraiserAccountConstraints<'info> {
+    #[account(mut)]
+    pub maker: Signer<'info>,
+
+    pub mint_to_raise: InterfaceAccount<'info, Mint>,
+
+    #[account(
+        mut,
+        has_one = mint_to_raise,
+        seeds = [b"fundraiser".as_ref(), maker.key().as_ref()],
+        bump = fundraiser.bump,
+        close = maker,
+    )]
+    pub fundraiser: Account<'info, Fundraiser>,
+
+    #[account(
+        mut,
+        associated_token::mint = mint_to_raise,
+        associated_token::authority = fundraiser,
+        associated_token::token_program = token_program,
+    )]
+    pub vault: InterfaceAccount<'info, TokenAccount>,
+
+    #[account(
+        init_if_needed,
+        payer = maker,
+        associated_token::mint = mint_to_raise,
+        associated_token::authority = maker,
+        associated_token::token_program = token_program,
+    )]
+    pub maker_ata: InterfaceAccount<'info, TokenAccount>,
+
+    pub token_program: Interface<'info, TokenInterface>,
+
+    pub system_program: Program<'info, System>,
+
+    pub associated_token_program: Program<'info, AssociatedToken>,
+}
+
+/// Retires a failed fundraiser so the maker can raise again.
+///
+/// The fundraiser PDA is derived from the maker's key alone, so while a
+/// failed fundraiser's account exists the maker can never initialize
+/// another one. This handler closes it once the deadline has passed, the
+/// target was missed, and every contribution has been refunded.
+pub fn handle_close_fundraiser(accounts: &mut CloseFundraiserAccountConstraints) -> Result<()> {
+    // Closing is allowed only after the fundraiser has ended:
+    // elapsed_days >= duration.
+    let current_time = Clock::get()?.unix_timestamp;
+    let elapsed_days = current_time
+        .checked_sub(accounts.fundraiser.time_started)
+        .ok_or(FundraiserError::MathOverflow)?
+        .checked_div(SECONDS_TO_DAYS)
+        .ok_or(FundraiserError::MathOverflow)?;
+    require!(
+        elapsed_days >= accounts.fundraiser.duration as i64,
+        FundraiserError::FundraiserNotEnded
+    );
+
+    // A successful fundraiser exits through check_contributions, which
+    // already closes these accounts.
+    require!(
+        accounts.fundraiser.current_amount < accounts.fundraiser.amount_to_raise,
+        FundraiserError::TargetMet
+    );
+
+    // Closing the vault while contributions remain would strand the
+    // refunds, so every contributor must have taken theirs first.
+    require!(
+        accounts.fundraiser.current_amount == 0,
+        FundraiserError::RefundsOutstanding
+    );
+
+    // The vault is owned by the fundraiser PDA, so both CPIs are signed with
+    // its seeds.
+    let signer_seeds: [&[&[u8]]; 1] = [&[
+        b"fundraiser".as_ref(),
+        accounts.maker.to_account_info().key.as_ref(),
+        &[accounts.fundraiser.bump],
+    ]];
+
+    // Refunds have already drained every tracked contribution, so anything
+    // left in the vault is a direct donation; sweep it to the maker rather
+    // than burn it with the account.
+    if accounts.vault.amount > 0 {
+        let transfer_accounts = TransferChecked {
+            from: accounts.vault.to_account_info(),
+            mint: accounts.mint_to_raise.to_account_info(),
+            to: accounts.maker_ata.to_account_info(),
+            authority: accounts.fundraiser.to_account_info(),
+        };
+        let transfer_context = CpiContext::new_with_signer(
+            accounts.token_program.key(),
+            transfer_accounts,
+            &signer_seeds,
+        );
+        transfer_checked(
+            transfer_context,
+            accounts.vault.amount,
+            accounts.mint_to_raise.decimals,
+        )?;
+    }
+
+    // Close the empty vault so its rent goes back to the maker. The
+    // fundraiser account itself is closed by its close = maker constraint.
+    let close_accounts = CloseAccount {
+        account: accounts.vault.to_account_info(),
+        destination: accounts.maker.to_account_info(),
+        authority: accounts.fundraiser.to_account_info(),
+    };
+    let close_context = CpiContext::new_with_signer(
+        accounts.token_program.key(),
+        close_accounts,
+        &signer_seeds,
+    );
+    close_account(close_context)?;
+
+    Ok(())
+}

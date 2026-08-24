@@ -1,5 +1,11 @@
 # Solana Prop AMM (Anchor)
 
+> [!NOTE]
+> This is the **Anchor v2** copy of this example. Every `anchor` command on this page
+> needs the v2 CLI: `cargo install anchor-cli --version 2.0.0-rc.1 --locked` (avm has
+> no prebuilt binary for this pre-release). The Anchor v1 version of this example is in
+> [`../anchor-v1`](../anchor-v1/).
+
 An oracle-quoted **proprietary AMM** on Solana: a market-making firm funds a
 trading venue with its own capital and quotes both sides of it. Anyone can buy
 the base token at the oracle price plus a spread, or sell at the oracle price

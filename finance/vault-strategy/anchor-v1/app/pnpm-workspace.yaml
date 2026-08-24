@@ -1,0 +1,15 @@
+# These transitive dependencies ship postinstall build scripts. They are all optional
+# native accelerators (or, for esbuild, a binary that its Node API resolves from the
+# platform package without a build step) and have pure-JS fallbacks, so we decline to
+# build them. `pnpm build` / `pnpm dev` are verified to work with these off.
+# Flip any to `true` if you want the native path on your machine.
+allowBuilds:
+  '@stellar/stellar-sdk': false
+  bigint-buffer: false
+  blake-hash: false
+  bufferutil: false
+  esbuild: false
+  protobufjs: false
+  tiny-secp256k1: false
+  usb: false
+  utf-8-validate: false
