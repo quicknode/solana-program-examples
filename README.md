@@ -2,7 +2,7 @@
 
 ![Quicknode Solana Program Examples](assets/banner.png?v=1)
 
-_Solana program examples ('smart contracts') in Anchor, Quasar, Pinocchio, native Rust, and sBPF assembly. Focused on financial software ('DeFi'), plus the basics, tokens, Token Extensions, state compression, and more._
+_Solana program examples ('smart contracts') in Anchor 2, Anchor 1, Quasar, Pinocchio, native Rust, and sBPF assembly. Focused on financial software, plus the basics, tokens, Token Extensions, state compression, and more._
 
 Working, tested, up-to-date examples of common Solana programs (what other chains call smart contracts), maintained by [Quicknode](https://www.quicknode.com/chains/solana). Current as of August 2026 (see [CHANGELOG.md](./CHANGELOG.md)): every example builds and passes CI on **Anchor 2.0.0-rc.1**, the current multi-file program layout (one file per instruction handler, account type, etc), and [LiteSVM](https://github.com/LiteSVM/litesvm) tests rather than the older `solana-test-validator` / web3.js stack. Every Anchor example also keeps its last **Anchor 1.1.2** version in a sibling `anchor-v1/` directory, built and tested by its own CI job, for programs staying on the Anchor v1 LTS line.
 
