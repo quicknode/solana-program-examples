@@ -49,7 +49,7 @@ pub struct TransferHookAccountConstraints {
         token::authority = owner,
     )]
     pub sender_wsol_token_account: Box<InterfaceAccount<TokenAccount>>,
-    #[account(seeds = [b"counter"], bump)]
+    #[account(seeds = [b"counter"], bump = counter_account.bump)]
     pub counter_account: BorshAccount<CounterAccount>,
 }
 

@@ -10,7 +10,7 @@ pub struct AddToWhiteListAccountConstraints {
     #[account(
         mut,
         seeds = [b"white_list"],
-        bump
+        bump = white_list.bump
     )]
     pub white_list: BorshAccount<WhiteList>,
     #[account(mut)]

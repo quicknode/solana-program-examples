@@ -10,7 +10,7 @@ pub struct AddToWhiteListAccountConstraints<'info> {
     #[account(
         mut,
         seeds = [b"white_list"],
-        bump
+        bump = white_list.bump
     )]
     pub white_list: Account<'info, WhiteList>,
     #[account(mut)]

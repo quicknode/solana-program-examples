@@ -257,7 +257,7 @@ pub struct DepositLiquidityAccountConstraints<'info> {
             pool_config.mint_a.key().as_ref(),
             pool_config.mint_b.key().as_ref(),
         ],
-        bump,
+        bump = pool_config.bump,
         has_one = mint_a,
         has_one = mint_b,
     )]

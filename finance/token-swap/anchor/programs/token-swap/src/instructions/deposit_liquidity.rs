@@ -258,7 +258,7 @@ pub struct DepositLiquidityAccountConstraints {
             pool_config.mint_a.as_ref(),
             pool_config.mint_b.as_ref(),
         ],
-        bump,
+        bump = pool_config.bump,
     )]
     pub pool_config: Box<BorshAccount<PoolConfig>>,
 

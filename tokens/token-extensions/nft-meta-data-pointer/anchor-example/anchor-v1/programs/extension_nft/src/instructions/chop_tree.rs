@@ -73,7 +73,7 @@ pub struct ChopTreeAccountConstraints<'info> {
     #[account(
         mut,
         seeds = [b"player".as_ref(), player.authority.key().as_ref()],
-        bump,
+        bump = player.bump,
     )]
     pub player: Account<'info, PlayerData>,
 

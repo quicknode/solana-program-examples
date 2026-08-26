@@ -101,7 +101,7 @@ pub fn handle_claim_admin_fees(context: Context<ClaimAdminFeesAccountConstraints
 pub struct ClaimAdminFeesAccountConstraints<'info> {
     #[account(
         seeds = [CONFIG_SEED],
-        bump,
+        bump = config.bump,
         has_one = admin,
     )]
     pub config: Account<'info, Config>,
@@ -113,7 +113,7 @@ pub struct ClaimAdminFeesAccountConstraints<'info> {
             pool_config.mint_a.key().as_ref(),
             pool_config.mint_b.key().as_ref(),
         ],
-        bump,
+        bump = pool_config.bump,
         has_one = config,
         has_one = mint_a,
         has_one = mint_b,

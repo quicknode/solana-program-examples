@@ -28,7 +28,7 @@ pub fn handle_initialize_pool(
 pub struct InitializePoolAccountConstraints {
     #[account(
         seeds = [CONFIG_SEED],
-        bump,
+        bump = config.bump,
     )]
     pub config: Box<BorshAccount<Config>>,
 

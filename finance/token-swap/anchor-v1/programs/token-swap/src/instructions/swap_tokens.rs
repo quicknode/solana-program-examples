@@ -278,7 +278,7 @@ pub fn handle_swap_tokens(
 pub struct SwapTokensAccountConstraints<'info> {
     #[account(
         seeds = [CONFIG_SEED],
-        bump,
+        bump = config.bump,
     )]
     pub config: Account<'info, Config>,
 
@@ -289,7 +289,7 @@ pub struct SwapTokensAccountConstraints<'info> {
             pool_config.mint_a.key().as_ref(),
             pool_config.mint_b.key().as_ref(),
         ],
-        bump,
+        bump = pool_config.bump,
         has_one = config,
         has_one = mint_a,
         has_one = mint_b,
