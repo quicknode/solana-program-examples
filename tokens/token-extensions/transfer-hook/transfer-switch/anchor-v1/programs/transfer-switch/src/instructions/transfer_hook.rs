@@ -41,7 +41,7 @@ pub struct TransferHookAccountConstraints<'info> {
     /// sender transfer switch
     #[account(
         seeds=[wallet.key().as_ref()],
-        bump,
+        bump = wallet_switch.bump,
     )]
     pub wallet_switch: Account<'info, TransferSwitch>,
 }

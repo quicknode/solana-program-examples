@@ -288,7 +288,7 @@ pub fn handle_swap_tokens(
 #[derive(Accounts)]
 pub struct SwapTokensAccountConstraints {
     #[account(seeds = [CONFIG_SEED],
-        bump, address = pool_config.config)]
+        bump = config.bump, address = pool_config.config)]
     pub config: BorshAccount<Config>,
 
     #[account(

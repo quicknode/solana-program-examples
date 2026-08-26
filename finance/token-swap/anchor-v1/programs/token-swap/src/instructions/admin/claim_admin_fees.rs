@@ -104,7 +104,7 @@ pub fn handle_claim_admin_fees(context: Context<ClaimAdminFeesAccountConstraints
 pub struct ClaimAdminFeesAccountConstraints<'info> {
     #[account(
         seeds = [CONFIG_SEED],
-        bump,
+        bump = config.bump,
         has_one = admin,
     )]
     pub config: Account<'info, Config>,
