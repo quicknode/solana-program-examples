@@ -276,7 +276,7 @@ pub fn handle_swap_tokens(
 pub struct SwapTokensAccountConstraints<'info> {
     #[account(
         seeds = [CONFIG_SEED],
-        bump,
+        bump = config.bump,
     )]
     pub config: Account<'info, Config>,
 

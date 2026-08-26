@@ -115,7 +115,7 @@ pub fn handle_claim_admin_fees(
 #[derive(Accounts)]
 pub struct ClaimAdminFeesAccountConstraints {
     #[account(seeds = [CONFIG_SEED],
-        bump, address = pool_config.config)]
+        bump = config.bump, address = pool_config.config)]
     pub config: BorshAccount<Config>,
 
     #[account(

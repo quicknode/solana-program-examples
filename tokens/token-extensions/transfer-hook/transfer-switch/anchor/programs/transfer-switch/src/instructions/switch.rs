@@ -15,7 +15,7 @@ pub struct SwitchAccountConstraints {
 
     /// admin config
     #[account(seeds=[b"admin-config"],
-        bump)]
+        bump = admin_config.bump)]
     pub admin_config: BorshAccount<AdminConfig>,
 
     /// the wallet (sender) transfer switch
@@ -42,9 +42,7 @@ pub fn handle_switch(accounts: &mut SwitchAccountConstraints, on: bool, bump: u8
     Ok(())
 }
 
-// admin_config is validated via `seeds=[b"admin-config"], bump` - Anchor
-// re-derives it and fails if it doesn't match, so storing AdminConfig.bump
-// isn't strictly needed to validate `admin_config` inside `Switch` (the
-// bump field on AdminConfig is still populated on creation to satisfy the
-// 'every PDA struct stores its bump' rule and save derivation cost in any
-// future call sites).
+// admin_config is validated via `seeds=[b"admin-config"], bump =
+// admin_config.bump`. `configure_admin` stores the canonical bump at creation
+// (from `context.bumps`), so reusing it here turns the check into a single
+// `create_program_address` instead of the search a bare `bump` would run.

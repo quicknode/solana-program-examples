@@ -62,7 +62,7 @@ pub fn handle_initialize_pool(
 pub struct InitializePoolAccountConstraints<'info> {
     #[account(
         seeds = [CONFIG_SEED],
-        bump,
+        bump = config.bump,
     )]
     pub config: Box<Account<'info, Config>>,
 

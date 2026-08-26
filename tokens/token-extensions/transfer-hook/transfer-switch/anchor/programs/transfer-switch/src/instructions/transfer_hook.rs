@@ -40,7 +40,7 @@ pub struct TransferHookAccountConstraints {
     /// sender transfer switch
     #[account(
         seeds=[wallet.address().as_ref()],
-        bump,
+        bump = wallet_switch.bump,
     )]
     pub wallet_switch: BorshAccount<TransferSwitch>,
 }

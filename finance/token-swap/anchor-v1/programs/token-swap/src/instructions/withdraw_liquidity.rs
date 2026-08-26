@@ -146,7 +146,7 @@ pub fn handle_withdraw_liquidity(
 pub struct WithdrawLiquidityAccountConstraints<'info> {
     #[account(
         seeds = [CONFIG_SEED],
-        bump,
+        bump = config.bump,
     )]
     pub config: Account<'info, Config>,
 

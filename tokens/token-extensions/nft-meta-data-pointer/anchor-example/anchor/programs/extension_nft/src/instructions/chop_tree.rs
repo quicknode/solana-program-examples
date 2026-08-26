@@ -89,7 +89,7 @@ pub struct ChopTreeAccountConstraints {
     #[account(
         mut,
         seeds = [b"player".as_ref(), player.authority.as_ref()],
-        bump,
+        bump = player.bump,
     )]
     pub player: BorshAccount<PlayerData>,
 
