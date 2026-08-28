@@ -1,0 +1,44 @@
+[package]
+name = "stop-loss-vault"
+version = "0.1.0"
+description = "Onchain stop-loss vault: permissionlessly converts a volatile SPL token into a stable SPL token when a Switchboard On-Demand price feed drops below a user-set threshold."
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "stop_loss_vault"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+# anchor-spl's `idl-build` is required so anchor-spl account types resolve in the IDL.
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
+anchor-debug = []
+custom-heap = []
+custom-panic = []
+
+
+[dependencies]
+anchor-lang = "1.0.0"
+anchor-spl = "1.0.0"
+
+[dev-dependencies]
+litesvm = "0.10.0"
+solana-message = "3.0.1"
+solana-transaction = "3.0.2"
+solana-signer = "3.0.0"
+solana-keypair = "3.0.1"
+borsh = "1.5.1"
+# Test-only stand-ins for the Switchboard feed and the Jupiter swap aggregator.
+# These MUST stay out of [dependencies]: a normal dependency on mock-jupiter
+# with `no-entrypoint` makes Cargo unify that feature across the workspace and
+# strip mock-jupiter's own entrypoint, leaving a stub `.so` that can't execute.
+# The program builds its swap CPI by hand and needs neither crate at runtime.
+mock-switchboard = { path = "../mock-switchboard", features = ["no-entrypoint"] }
+mock-jupiter = { path = "../mock-jupiter", features = ["no-entrypoint"] }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }
