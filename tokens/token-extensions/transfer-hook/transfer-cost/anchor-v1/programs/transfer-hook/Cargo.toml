@@ -24,7 +24,11 @@ anchor-lang = "1.1.2"
 anchor-spl = "1.1.2"
 # SPL crates v3.x-compatible - uses solana-program-error 3.x matching anchor-lang 1.0
 spl-discriminator = "0.5.2"
-spl-tlv-account-resolution = "0.11.1"
+# 0.11.3 or later. 0.11.2 pulled in spl-list-view 0.1.0, which was written
+# against spl-pod 0.7.2's `PodLength` and stopped compiling once spl-pod 0.7.3
+# relaxed that trait's error type. Upstream fixed it in 0.11.3 the same day, but a
+# lockfile made in that window still holds the broken pair; this floor forces it past.
+spl-tlv-account-resolution = "0.11.3"
 spl-transfer-hook-interface = "2.1.0"
 
 [dev-dependencies]
