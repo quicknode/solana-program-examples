@@ -12,6 +12,12 @@
 # declares its own `[workspace]`, so `anchor build` inside one resolves there. The
 # cost is that `cargo fmt` and `cargo clippy` never see them; the Anchor v1 workflow
 # compiles and tests them instead.
+#
+# `basics/transaction-v1/` is absent for a different reason. Its tests need LiteSVM
+# 0.16, the first release that executes v1 transactions, while `anchor-v2-testing`
+# and `solana-kite` pin 0.13.1, and the two cannot share this lockfile (each pins a
+# different `solana-instruction` 3.x patch release). All four of its framework
+# directories are standalone workspaces; the framework workflows build and test them.
 members = [
     #basics
     "basics/account-data/native/program",

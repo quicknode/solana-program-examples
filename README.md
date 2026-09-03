@@ -4,7 +4,7 @@
 
 _Solana program examples ('smart contracts') in Anchor 2, Anchor 1, Quasar, Pinocchio, native Rust, and sBPF assembly. Focused on financial software, plus the basics, tokens, Token Extensions, state compression, and more._
 
-Working, tested, up-to-date examples of common Solana programs (what other chains call smart contracts), maintained by [Quicknode](https://www.quicknode.com/chains/solana). Current as of August 2026 (see [CHANGELOG.md](./CHANGELOG.md)): every example builds and passes CI on **Anchor 2.0.0-rc.1**, the current multi-file program layout (one file per instruction handler, account type, etc), and [LiteSVM](https://github.com/LiteSVM/litesvm) tests rather than the older `solana-test-validator` / web3.js stack. Every Anchor example also keeps its last **Anchor 1.1.2** version in a sibling `anchor-v1/` directory, built and tested by its own CI job, for programs staying on the Anchor v1 LTS line.
+Working, tested, up-to-date examples of common Solana programs (what other chains call smart contracts), maintained by [Quicknode](https://www.quicknode.com/chains/solana). Current as of September 2026 (see [CHANGELOG.md](./CHANGELOG.md)): every example builds and passes CI on **Anchor 2.0.0-rc.1**, the current multi-file program layout (one file per instruction handler, account type, etc), and [LiteSVM](https://github.com/LiteSVM/litesvm) tests rather than the older `solana-test-validator` / web3.js stack. Every Anchor example also keeps its last **Anchor 1.1.2** version in a sibling `anchor-v1/` directory, built and tested by its own CI job, for programs staying on the Anchor v1 LTS line.
 
 [![Anchor v2](../../actions/workflows/anchor.yml/badge.svg)](../../actions/workflows/anchor.yml) [![Anchor v1](../../actions/workflows/anchor-v1.yml/badge.svg)](../../actions/workflows/anchor-v1.yml) [![Quasar](../../actions/workflows/quasar.yml/badge.svg)](../../actions/workflows/quasar.yml) [![Pinocchio](../../actions/workflows/pinocchio.yml/badge.svg)](../../actions/workflows/pinocchio.yml) [![Native](../../actions/workflows/native.yml/badge.svg)](../../actions/workflows/native.yml) [![ASM](../../actions/workflows/solana-asm.yml/badge.svg)](../../actions/workflows/solana-asm.yml)
 
@@ -182,6 +182,12 @@ Structure a larger Solana program across multiple files and modules.
 Send SOL between two accounts.
 
 [⚓ Anchor v2](./basics/transfer-sol/anchor) [⚓ Anchor v1](./basics/transfer-sol/anchor-v1) [💫 Quasar](./basics/transfer-sol/quasar) [🤥 Pinocchio](./basics/transfer-sol/pinocchio) [🦀 Native](./basics/transfer-sol/native) [🧬 ASM](./basics/transfer-sol/asm)
+
+### Transaction v1
+
+Store a 3,000 byte document in one instruction using Solana's v1 transaction format: 4,096 bytes instead of 1,232, and a transaction config in the message in place of ComputeBudget instructions. The program needs no change for v1; the LiteSVM tests are what build the v1 transactions. See [docs/transaction-v1.md](./docs/transaction-v1.md) for what v1 changes, where it is live, and which tools support it.
+
+[⚓ Anchor v2](./basics/transaction-v1/anchor) [⚓ Anchor v1](./basics/transaction-v1/anchor-v1) [🤥 Pinocchio](./basics/transaction-v1/pinocchio) [🦀 Native](./basics/transaction-v1/native)
 
 ### Pyth Price Feeds
 
@@ -398,6 +404,10 @@ Yes. "Program" is Solana's term for what other chains call a smart contract: cod
 ### How do I build an escrow on Solana?
 
 Start with the [escrow example](./finance/escrow/anchor/), the best first finance program to learn: one state PDA, one vault, and three instruction handlers that swap two tokens atomically. There is also a [30-minute video walkthrough](https://www.youtube.com/watch?v=B5eBWWQfQuM) building it from scratch.
+
+### Do these examples work with Solana transaction v1?
+
+Yes. The v1 format (4,096 byte transactions, live on testnet and targeted for mainnet on 9 September 2026) changes how a client builds a transaction, not what a program sees, so every program here can be called through v1 as is. The [transaction v1 example](./basics/transaction-v1/anchor/) sends v1 transactions from its LiteSVM tests and shows the config fields that replace ComputeBudget instructions. The other examples' tests still send legacy transactions, because the test helpers they share (`solana-kite` and Anchor's `anchor-v2-testing`) are pinned to a LiteSVM release that predates v1. [docs/transaction-v1.md](./docs/transaction-v1.md) tracks the status of each tool.
 
 ### How do I test a Solana program without running a validator?
 

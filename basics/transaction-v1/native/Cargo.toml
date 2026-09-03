@@ -1,0 +1,13 @@
+# Standalone workspace, deliberately outside the repository root workspace.
+#
+# The root workspace pins LiteSVM 0.13.1 through `anchor-v2-testing` and
+# `solana-kite`, and 0.13.1 predates transaction v1. LiteSVM 0.16.0 is the first
+# release that executes v1 transactions, and the two cannot share a lockfile:
+# each pins a different `solana-instruction` 3.x patch release. Until the root
+# workspace moves to LiteSVM 0.16+, this example resolves on its own.
+[workspace]
+members = ["program"]
+resolver = "2"
+
+[profile.release]
+overflow-checks = true

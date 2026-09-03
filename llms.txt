@@ -26,3 +26,4 @@ A Solana program is what other chains call a smart contract. These examples are 
 
 - Tests are Rust integration tests against [LiteSVM](https://www.anchor-lang.com/docs/testing/litesvm), run with `cargo test`; no local validator is needed.
 - Every finance example has a `kani-proofs/` directory with [Kani](https://github.com/model-checking/kani) harnesses proving money-math invariants over all inputs, for example [escrow's proofs](https://github.com/quicknode/solana-program-examples/tree/main/finance/escrow/kani-proofs).
+- [Transaction v1](https://github.com/quicknode/solana-program-examples/blob/main/docs/transaction-v1.md): what the 4,096 byte v1 transaction format changes for programs (nothing) and for tests and clients, which tools support it, and the [transaction v1 example](https://github.com/quicknode/solana-program-examples/tree/main/basics/transaction-v1/anchor) whose LiteSVM tests send v1 transactions.

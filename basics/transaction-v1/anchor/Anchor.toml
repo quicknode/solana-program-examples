@@ -1,0 +1,21 @@
+[toolchain]
+# Match the repo package manager (pnpm-lock.yaml at root); avoids Anchor's yarn default.
+package_manager = "pnpm"
+# Agave 4.2 is the first release with the v1 transaction format. Its
+# `solana-test-validator` activates the feature at genesis, so a v1
+# transaction that passes these LiteSVM tests can be sent to it as is.
+solana_version = "4.2.2"
+
+[features]
+seeds = false
+skip-lint = false
+
+[programs.localnet]
+transaction_v1_anchor_program = "F1dMqenFVwcp3SmX9Sq9e22nmcxcact5No12pmb5rL5F"
+
+[provider]
+cluster = "Localnet"
+wallet = "~/.config/solana/id.json"
+
+[scripts]
+test = "cargo test"

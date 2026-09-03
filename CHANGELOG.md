@@ -4,6 +4,34 @@ All notable changes to this repository are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-09-03] - Transaction v1 example
+
+Solana's v1 transaction format (SIMD-0385) raises the transaction size limit from
+1,232 to 4,096 bytes and moves the compute budget out of ComputeBudget instructions
+and into the message. It is live on testnet, pending on devnet, and targeted for
+mainnet on 9 September 2026. Programs need no change for it; tests and clients do.
+
+### Added
+
+- `basics/transaction-v1/`, in Anchor v2, Anchor v1, Pinocchio and native Rust: a
+  program that stores a 3,000 byte document in one instruction, which only fits in a
+  v1 transaction. Its LiteSVM tests build the v1 transactions by hand, measure them
+  against both size limits, and show the config fields that replace ComputeBudget
+  instructions, including that an unset field means zero rather than the default.
+  The four directories are standalone Cargo workspaces on LiteSVM 0.16.0, the first
+  release that executes v1 transactions.
+- `docs/transaction-v1.md`: what v1 changes, where it is live, and which of the
+  tools the examples build on can send it, checked against the pinned versions.
+
+### Note
+
+- Every other example's tests still send legacy transactions, and keep passing.
+  Moving them is blocked on `solana-kite` 0.4.0 and `anchor-v2-testing`, which pin
+  LiteSVM 0.13.1, and on `quasar-svm`, which is on a `solana-message` without the
+  `v1` module. The root workspace cannot take LiteSVM 0.16 until the first two move:
+  0.13.1 and 0.16.0 pin different `solana-instruction` 3.x patch releases and so
+  cannot share a lockfile. The root `Cargo.toml` says why the example is not a member.
+
 ## [2026-08-21] - Anchor v1 kept alongside Anchor v2
 
 Anchor v1 is expected to stay on long-term support, and many deployed programs

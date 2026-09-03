@@ -1,0 +1,58 @@
+[package]
+name = "transaction-v1-anchor-program"
+version = "0.1.0"
+description = "Created with Anchor"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "transaction_v1_anchor_program"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build"]
+anchor-debug = []
+custom-heap = []
+custom-panic = []
+
+[dependencies]
+anchor-lang = "2.0.0-rc.1"
+# The `#[program]` macro expands to `wincode` paths for instruction-data
+# (de)serialization, so the crate has to be a direct dependency.
+wincode = { version = "0.5", features = ["derive"] }
+# anchor-lang 2.0.0-rc.1 is built against wincode 0.5, but solana-address 2.7
+# moved to wincode 0.6. With both in the graph, `Address`'s wincode impls
+# belong to the version the account derives are not using and every
+# `SchemaRead`/`SchemaWrite` bound fails. 2.6.1 is the last 0.5-line release.
+solana-address = ">=2.6, <2.7"
+
+[dev-dependencies]
+# 0.16.0 is the first LiteSVM that understands v1 transactions: it reads the
+# compute unit limit, priority fee, loaded-accounts data size limit and heap
+# size from the message's transaction config rather than from ComputeBudget
+# instructions.
+#
+# The other Anchor v2 examples get their LiteSVM through `anchor-v2-testing`,
+# whose `svm()` also records the traces behind `anchor test --profile`,
+# `anchor debugger` and `anchor coverage`. That harness pins LiteSVM to
+# exactly 0.13.1, which cannot execute a v1 transaction, so this example uses
+# LiteSVM directly and those three tools see nothing for it. Switch back to
+# the harness once it moves to LiteSVM 0.16 or later.
+litesvm = "0.16.0"
+borsh = "1.6.1"
+solana-keypair = "3.1"
+# `solana_message::v1` (the v1 message, `TransactionConfig` and the 4,096
+# byte `MAX_TRANSACTION_SIZE`) first shipped in solana-message 4.2.
+solana-message = "4.2"
+solana-native-token = "3.0"
+# `PACKET_DATA_SIZE`, the 1,232 byte limit legacy and v0 transactions keep.
+solana-packet = "4.2"
+solana-transaction = "4.1"
+solana-transaction-error = "3.3"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }

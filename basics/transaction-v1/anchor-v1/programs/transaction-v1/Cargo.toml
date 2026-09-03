@@ -1,0 +1,52 @@
+[package]
+name = "transaction-v1-anchor-program"
+version = "0.1.0"
+description = "Created with Anchor"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "transaction_v1_anchor_program"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build"]
+anchor-debug = []
+custom-heap = []
+custom-panic = []
+
+[dependencies]
+anchor-lang = "1.1.2"
+
+[dev-dependencies]
+# 0.16.0 is the first LiteSVM that understands v1 transactions: it reads the
+# compute unit limit, priority fee, loaded-accounts data size limit and heap
+# size from the message's transaction config rather than from ComputeBudget
+# instructions.
+#
+# The other Anchor v1 examples build their transactions with `solana-kite`,
+# which pins LiteSVM 0.13.1 and so cannot send a v1 transaction yet. This
+# example builds them by hand. Move back to kite once it is on LiteSVM 0.16
+# or later.
+litesvm = "0.16.0"
+borsh = "1.6.1"
+solana-keypair = "3.1"
+# `solana_message::v1` (the v1 message, `TransactionConfig` and the 4,096
+# byte `MAX_TRANSACTION_SIZE`) first shipped in solana-message 4.2.
+solana-message = "4.2"
+solana-native-token = "3.0"
+# `PACKET_DATA_SIZE`, the 1,232 byte limit legacy and v0 transactions keep.
+solana-packet = "4.2"
+solana-transaction = "4.1"
+solana-transaction-error = "3.3"
+# The SDK's serializer. `wincode::serialize` on a `VersionedTransaction` gives
+# the exact bytes that would go over the wire, which is how the tests measure
+# transaction size.
+wincode = "0.5"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }
