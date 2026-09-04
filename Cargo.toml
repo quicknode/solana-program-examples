@@ -78,6 +78,7 @@ members = [
     "finance/betting-market/anchor/programs/betting-market",
     "finance/escrow/anchor/programs/escrow",
     "finance/lending/anchor/programs/lending",
+    "finance/options/anchor/programs/options",
     "finance/order-book/anchor/programs/order-book",
     "finance/perpetual-futures/anchor/programs/perpetual-futures",
     "finance/prop-amm/anchor/programs/prop-amm",
