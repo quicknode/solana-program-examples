@@ -14,11 +14,9 @@ the whole of the strike in the quote token, a buyer pays a premium for the
 right, and if the holder exercises before expiry the tokens themselves change
 hands at the strike. Because everything a holder could ever claim is in the
 vault from the moment the option exists, no position can be under water, so
-there is no margin, no liquidator, and no oracle. This is the design
-[PsyOptions](https://github.com/mithraiclabs/psyoptions) shipped for American
-options on Solana, and the one the covered-call vaults built on it (Katana,
-Friktion) used to earn premiums; the venue that took the other road, cash
-settlement with margin and an oracle, is Zeta Markets.
+there is no margin, no liquidator, and no oracle. The venue that took the
+other road on Solana, cash settlement with margin and an oracle, is Zeta
+Markets.
 
 [⚓ Anchor v2](.) · [⚓ Anchor v1](../anchor-v1) · [💫 Quasar](../quasar) · [Kani proofs](../kani-proofs)
 
@@ -175,12 +173,12 @@ life and show the ledger returns to zero.
 
 ## Design notes and further reading
 
-- PsyOptions represents each option as two SPL tokens, an option token and a
+- Some venues represent each option as two SPL tokens, an option token and a
   writer token, so options can trade on any exchange and one writer's lot can
   be exercised in parts by many holders. This example keeps one account per
   lot, bought and exercised as a whole, which keeps the custody legible and
   the state machine three states long. Adding secondary trading means
-  reintroducing those tokens.
+  introducing those tokens.
 - Cash-settled venues (Zeta Markets) let a writer post less than the full
   obligation, which is what makes them capital-efficient and also what makes
   them need margin, liquidation, and an oracle. The perpetual-futures example

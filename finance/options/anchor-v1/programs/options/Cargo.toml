@@ -1,7 +1,7 @@
 [package]
 name = "options"
 version = "0.1.0"
-description = "Fully collateralized, physically settled options venue example (PsyOptions-style)"
+description = "Fully collateralized, physically settled options venue example"
 edition = "2021"
 
 [lib]

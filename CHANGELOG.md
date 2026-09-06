@@ -22,8 +22,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the vault balances after every transfer, and the proof crate walks every path
   through a lot's life and shows the ledger returns to zero. No oracle: physical
   settlement moves the tokens themselves, so the program never has to know the
-  price. The design follows PsyOptions' American options, with one account per
-  lot in place of its option and writer tokens.
+  price. Each option lot is one account, bought and exercised as a whole.
 - The Anchor v2 copy joins the `--no-idl` list in `.github/workflows/anchor.yml`
   (anchor#4947: its `OptionKind` and `OptionStatus` enums reach the IDL) and the
   root Cargo workspace; the proof crate joins both matrices in

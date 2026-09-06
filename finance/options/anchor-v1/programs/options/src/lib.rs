@@ -22,8 +22,7 @@ declare_id!("2gmMGMmipfYypLxWsvQ5GQJT5AGnMWmk4Rb9vQMRo6ig");
 /// taking the collateral; after expiry the writer reclaims whatever was not
 /// exercised. Because the collateral is always in the vault, no position can
 /// ever be under water, so there is no margin, no liquidator, and no oracle.
-/// This is the design PsyOptions shipped for American options on Solana, with
-/// one account per option lot in place of its option and writer tokens.
+/// Each option lot is one account, bought and exercised as a whole.
 #[program]
 pub mod options {
     use super::*;
