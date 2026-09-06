@@ -79,6 +79,12 @@ Parimutuel (pooled) prediction market - an admin opens an event with multiple ou
 🎬 Video: [How to build a PolyMarket/Kalshi style betting market on Solana](https://www.youtube.com/watch?v=jE3-IA1FBs0)
 
 
+### Options
+
+A fully collateralized, physically settled **options** venue. A writer posts the whole of what a holder could ever claim (the underlying for a **call**, the strike in USDC for a **put**) and lists the option at a premium; a buyer pays the premium and becomes the holder; the holder may **exercise** at any time before expiry, paying the strike for the underlying (or delivering the underlying for the strike); after expiry the writer reclaims whatever was not exercised. Because the collateral is always in the vault, no position can be under water, so there is no margin, no liquidator, and no oracle. The venue earns a fee on every premium.
+
+[⚓ Anchor v2](./finance/options/anchor) [⚓ Anchor v1](./finance/options/anchor-v1) [💫 Quasar](./finance/options/quasar)
+
 ### Perpetual Futures
 
 A perpetual futures exchange: a venue for making leveraged bets on an asset's price without ever owning the asset. Traders post collateral and open a **long** (betting the price rises) or **short** (betting it falls) sized up to several times their collateral; their profit or loss tracks the price move and is paid in the collateral token. Rather than matching buyers to sellers, every trade is against a shared **liquidity pool** that other users fund and that is the counterparty to all of it: the pool pays winners and keeps losers' collateral, and its providers earn the trading and funding fees in return. The price comes from an oracle, positions accrue a funding fee over time, and anyone can **liquidate** a position whose collateral can no longer cover its loss. This is the design behind venues like Jupiter Perpetuals and GMX.

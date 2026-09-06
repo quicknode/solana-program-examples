@@ -300,6 +300,7 @@ jobs:
             case "$project" in
               ./basics/pyth/anchor \
               |./finance/betting-market/anchor \
+              |./finance/options/anchor \
               |./finance/order-book/anchor \
               |./finance/perpetual-futures/anchor \
               |./finance/prop-amm/anchor \

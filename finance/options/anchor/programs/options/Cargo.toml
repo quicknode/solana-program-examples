@@ -1,0 +1,67 @@
+[package]
+name = "options"
+version = "0.1.0"
+description = "Fully collateralized, physically settled options venue example"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "options"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build"]
+anchor-debug = []
+custom-heap = []
+custom-panic = []
+# Forwards to the harness so `anchor test --profile` can turn tracing on.
+profile = ["anchor-v2-testing/profile"]
+
+[dependencies]
+# init-if-needed: exercise_option and collect_proceeds create the receiving
+# party's token account for the asset they are about to be paid in, so a call
+# holder who has never held the underlying needs no separate setup transaction.
+# The receiving party is always the payer, so nobody funds another's rent.
+anchor-lang = "2.0.0-rc.1"
+# The `#[program]` macro expands to `wincode` paths for instruction-data
+# (de)serialization, so the crate has to be a direct dependency.
+wincode = { version = "0.5", features = ["derive"] }
+# anchor-lang 2.0.0-rc.1 is built against wincode 0.5, but solana-address 2.7
+# moved to wincode 0.6. With both in the graph, `Address`'s wincode impls
+# belong to the version the account derives are not using and every
+# `SchemaRead`/`SchemaWrite` bound fails. 2.6.1 is the last 0.5-line release.
+solana-address = ">=2.6, <2.7"
+anchor-spl = "2.0.0-rc.1"
+# Declared only so Cargo feature-unification turns on `no-entrypoint`; without
+# these the test binary links two `entrypoint` symbols and fails to build.
+spl-token = { version = "9.0.0", features = ["no-entrypoint"] }
+spl-associated-token-account = { version = "8.0.0", features = ["no-entrypoint"] }
+
+[dev-dependencies]
+# Anchor v2's own LiteSVM harness. `svm()` is `LiteSVM::new()` until the
+# `profile` feature is on, when it also records the SBF register traces that
+# `anchor test --profile`, `anchor debugger` and `anchor coverage` read. Tests
+# that call `LiteSVM::new()` directly still pass but produce no traces, so
+# those three tools see nothing.
+#
+# Published only from git: crates.io has no `anchor-v2-testing`. Pinned to a
+# revision rather than tracking `anchor-next`, so a CI run cannot change
+# behaviour because upstream moved between builds.
+#
+# Bump the rev deliberately, never automatically: `anchor-next` is where v2
+# development happens, so a later revision can carry breakage as easily as
+# fixes. When `anchor-v2-testing` reaches crates.io, drop the git source for
+# an ordinary version.
+anchor-v2-testing = { git = "https://github.com/otter-sec/anchor.git", rev = "3e38a121b969d1a77230baeb0056baf5cc9b3c1a" }
+# LiteSVM's `get_sysvar` / `set_sysvar` want the host-side Clock type, not
+# pinocchio's on-chain one; the tests move `unix_timestamp` past an expiry.
+solana-clock = "3.0.1"
+solana-kite = "0.4.0"
+borsh = "1.6.1"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }
