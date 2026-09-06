@@ -10,13 +10,13 @@ use crate::errors::OptionsError;
 use crate::instructions::shared::{check_custody, transfer_from_signer};
 use crate::state::{Market, OptionContract, OptionKind, OptionStatus};
 
-/// The terms of a lot, chosen by the writer. Bundled into one struct so the
+/// The terms of an option, chosen by the writer. Bundled into one struct so the
 /// instruction signature stays readable.
 #[derive(Clone, Copy, AnchorSerialize, AnchorDeserialize)]
 pub struct OptionTerms {
     pub kind: OptionKind,
 
-    /// How many contracts the lot holds. Bought and exercised as a whole.
+    /// How many contracts the option holds. Bought and exercised as a whole.
     pub contracts: u64,
 
     /// Underlying minor units each contract is on (1 NVDAx = 1_000_000).
@@ -26,14 +26,14 @@ pub struct OptionTerms {
     /// per contract rather than a price, so exercise needs no decimals math.
     pub strike_per_contract: u64,
 
-    /// Quote minor units the buyer pays the writer for the whole lot.
+    /// Quote minor units the buyer pays the writer for the whole option.
     pub premium: u64,
 
     /// Unix timestamp after which the holder can no longer exercise.
     pub expiry: i64,
 }
 
-/// Write a lot of options. The writer posts the entire collateral up front:
+/// Write an option. The writer posts the entire collateral up front:
 /// the underlying for a call, the strike in the quote token for a put. From
 /// this moment the vault holds everything a future holder could claim, which
 /// is why nothing in this program ever has to be liquidated.
@@ -51,7 +51,7 @@ pub fn handle_write_option(
         expiry,
     } = terms;
     // Every quantity is a multiplier in the settlement math, so a zero in any
-    // of them is a lot that delivers nothing or costs nothing to exercise. A
+    // of them is an option that delivers nothing or costs nothing to exercise. A
     // zero premium is a gift rather than a sale, and is refused as a mistake.
     require!(
         contracts > 0 && underlying_per_contract > 0 && strike_per_contract > 0 && premium > 0,
@@ -62,7 +62,7 @@ pub fn handle_write_option(
     let now = Clock::get()?.unix_timestamp;
     require!(expiry > now, OptionsError::ExpiryInPast);
 
-    // Both settlement amounts are computed here, at write time, so a lot
+    // Both settlement amounts are computed here, at write time, so an option
     // whose exercise would overflow is refused before anyone pays for it.
     let underlying_total = contract_math::underlying_total(contracts, underlying_per_contract)
         .ok_or(OptionsError::MathOverflow)?;
@@ -73,7 +73,7 @@ pub fn handle_write_option(
         OptionKind::Put => strike_total,
     };
 
-    // Effects before the transfer: record the lot and what the vault now owes.
+    // Effects before the transfer: record the option and what the vault now owes.
     let option = &mut context.accounts.option;
     option.id = id;
     option.market = context.accounts.market.key();

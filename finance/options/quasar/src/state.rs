@@ -26,10 +26,10 @@ pub struct Market {
     pub authority_bump: u8,
 }
 
-/// One option lot. Mirrors the Anchor `OptionContract`; `kind` and `status`
+/// One option. Mirrors the Anchor `OptionContract`; `kind` and `status`
 /// are `u8` (see `constants.rs`) because the account layout is zero-copy.
 ///
-/// Every amount the lot ever moves is a product of two of its integers:
+/// Every amount the option ever moves is a product of two of its integers:
 /// `contracts * underlying_per_contract` of the underlying, and
 /// `contracts * strike_per_contract` of the quote token.
 #[account(discriminator = 2, set_inner)]

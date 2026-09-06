@@ -13,7 +13,7 @@ use crate::instructions::shared::{check_custody, transfer_from_vault};
 use crate::state::{Market, OptionContract, OptionKind, OptionStatus};
 
 /// The writer collects what the holder paid at exercise: the strike for a
-/// call, the underlying for a put. The option account closes, rent back to
+/// call, the underlying for a put. The option closes, rent back to
 /// the writer who paid it.
 pub fn handle_collect_proceeds(
     context: &mut Context<CollectProceedsAccountConstraints>,
@@ -80,7 +80,7 @@ pub fn handle_collect_proceeds(
             proceeds,
         ),
     }
-    // The option account closes to the writer through `close = writer`.
+    // The option closes to the writer through `close = writer`.
 }
 
 #[derive(Accounts)]

@@ -23,7 +23,7 @@ Markets.
 ## Programs
 
 - **`options`**: the venue. One admin, one underlying/quote pair, two vaults,
-  one account per option lot, eight instruction handlers.
+  one account per option, eight instruction handlers.
 
 There is no mock oracle program, because nothing in the venue reads a price.
 
@@ -115,7 +115,7 @@ out)` moves her 5 NVDAx into the underlying vault and creates the
 status `Listed`. Nobody has paid anything yet; Alice can `cancel_option` at
 any time until someone does.
 
-### Step 3: Bob buys the lot
+### Step 3: Bob buys the option
 
 `buy_option` takes 25 USDC from Bob: 0.25 USDC (the 1% fee) into the quote
 vault, owed to Maria, and 24.75 USDC straight to Alice. The 5 NVDAx do not
@@ -131,7 +131,7 @@ holds 5 NVDAx worth about $1,000, having spent 925 USDC in total. The status is
 
 ### Step 5: Alice collects the strike
 
-`collect_proceeds` pays Alice the 900 USDC and closes the option account, rent
+`collect_proceeds` pays Alice the 900 USDC and closes the option, rent
 back to her. She sold her 5 NVDAx for 900 USDC plus the 24.75 USDC premium she
 already had, and gave up everything above $180.
 
@@ -146,7 +146,7 @@ and 0.20 USDC to the vault for Maria.
 
 Dave never exercises: selling at 150 when the market pays more would be a
 gift. After the expiry, Carol's `reclaim_collateral` returns her 750 USDC and
-closes the option account. Her return is the 19.80 USDC premium; Dave's
+closes the option. Her return is the 19.80 USDC premium; Dave's
 insurance cost him 20 USDC and paid nothing, which is what insurance against a
 fall that never came should do.
 
@@ -168,15 +168,15 @@ holders' deliveries awaiting collection), `quote_locked` (put collateral, plus
 call holders' strike payments awaiting collection) and `fees_owed`. Every
 handler that moves tokens updates the ledger before any transfer and then
 asserts that each vault still covers what it owes (`CustodyInvariantViolated`
-otherwise). The [Kani proofs](../kani-proofs) walk every path through a lot's
+otherwise). The [Kani proofs](../kani-proofs) walk every path through an option's
 life and show the ledger returns to zero.
 
 ## Design notes and further reading
 
 - Some venues represent each option as two SPL tokens, an option token and a
-  writer token, so options can trade on any exchange and one writer's lot can
+  writer token, so options can trade on any exchange and one writer's option can
   be exercised in parts by many holders. This example keeps one account per
-  lot, bought and exercised as a whole, which keeps the custody legible and
+  option, bought and exercised as a whole, which keeps the custody legible and
   the state machine three states long. Adding secondary trading means
   introducing those tokens.
 - Cash-settled venues (Zeta Markets) let a writer post less than the full
@@ -186,11 +186,11 @@ life and show the ledger returns to zero.
 
 ## Limitations
 
-- A lot is bought and exercised as a whole; there is no partial exercise and
+- An option is bought and exercised as a whole; there is no partial exercise and
   no secondary sale of a held option.
 - The writer sets the premium and a buyer takes it or leaves it. There is no
   order book and no pricing model; a market maker would quote premiums from
-  a model offchain and write lots at those prices.
+  a model offchain and write options at those prices.
 - American exercise only. A European option, exercisable only at expiry,
   would add an exercise window after `expiry` and a gap before it.
 

@@ -10,7 +10,7 @@
 //! integers, the only rounding is the floor in the fee split, and the expiry
 //! window is one comparison and its complement. The harnesses prove the
 //! invariants the program's custody accounting depends on, plus a bounded
-//! model of the vault ledger across a lot's whole life.
+//! model of the vault ledger across an option's whole life.
 
 #![cfg_attr(kani, allow(dead_code))]
 
@@ -65,7 +65,7 @@ pub fn exercise_payment(
 }
 
 /// Physical settlement moves exactly the posted collateral to the holder and
-/// exactly the mirrored payment to the writer, for every lot the program
+/// exactly the mirrored payment to the writer, for every option the program
 /// would accept: the holder's payment for a call is a put's collateral on the
 /// same terms, and the other way round. There is no division in either
 /// formula, so no rounding can open a gap between what was posted and what
@@ -111,7 +111,7 @@ fn proof_exercise_moves_exactly_the_posted_terms() {
         };
         assert_eq!(collateral, expected_collateral);
         assert_eq!(payment, expected_payment);
-        // Both legs are positive: a lot that delivers nothing or costs
+        // Both legs are positive: an option that delivers nothing or costs
         // nothing to exercise cannot exist.
         assert!(collateral > 0 && payment > 0);
         // The two kinds are mirror images: a call's payment is a put's
@@ -197,7 +197,7 @@ pub fn may_reclaim(now: i64, expiry: i64) -> bool {
     now >= expiry
 }
 
-/// At every instant exactly one of the two parties can claim a held lot's
+/// At every instant exactly one of the two parties can claim a held option's
 /// collateral: the holder by exercising, or the writer by reclaiming. Never
 /// both (a double claim), never neither (collateral stranded).
 #[cfg(kani)]
@@ -209,7 +209,7 @@ fn proof_exercise_and_reclaim_windows_partition_time() {
 }
 
 // ===========================================================================
-// 4. The vault ledger across a lot's life  (the handlers' custody accounting)
+// 4. The vault ledger across an option's life  (the handlers' custody accounting)
 // ===========================================================================
 
 /// The market's ledger: what each vault owes, plus the venue's fees. Mirrors
@@ -315,9 +315,9 @@ impl Ledger {
     }
 }
 
-/// Every path through a lot's life leaves the ledger consistent and, once the
-/// lot is closed and the fees swept, back at zero: cancel; buy then reclaim;
-/// buy then exercise then collect. Two lots of either kind run through the
+/// Every path through an option's life leaves the ledger consistent and, once the
+/// option is closed and the fees swept, back at zero: cancel; buy then reclaim;
+/// buy then exercise then collect. Two options of either kind run through the
 /// model at once so the paths interleave over a shared vault, and every step
 /// of every path is checked, not just the end state.
 #[cfg(kani)]
@@ -326,11 +326,11 @@ impl Ledger {
 fn proof_vault_ledger_stays_consistent_across_every_lifecycle() {
     let mut ledger = Ledger::default();
 
-    // Two lots with symbolic terms. Bounded so the multiplications stay
+    // Two options with symbolic terms. Bounded so the multiplications stay
     // tractable; the ledger arithmetic is additions and subtractions whose
     // behaviour does not depend on the magnitudes.
-    let mut lots = [(OptionKind::Call, 0u64, 0u64, 0u64); 2];
-    for lot in lots.iter_mut() {
+    let mut options = [(OptionKind::Call, 0u64, 0u64, 0u64); 2];
+    for option in options.iter_mut() {
         let kind: bool = kani::any();
         let contracts: u64 = kani::any();
         let underlying_per_contract: u64 = kani::any();
@@ -362,17 +362,17 @@ fn proof_vault_ledger_stays_consistent_across_every_lifecycle() {
         )
         .unwrap();
         let (fee, _) = split_premium(premium, fee_bps).unwrap();
-        *lot = (kind, collateral, payment, fee);
+        *option = (kind, collateral, payment, fee);
     }
 
-    // Both lots are written first, so their collateral shares the vaults.
-    for (kind, collateral, _, _) in lots {
+    // Both options are written first, so their collateral shares the vaults.
+    for (kind, collateral, _, _) in options {
         ledger.write(kind, collateral).unwrap();
         assert!(ledger.is_consistent());
     }
 
-    // Each lot then takes one of the three exits, chosen symbolically.
-    for (kind, collateral, payment, fee) in lots {
+    // Each option then takes one of the three exits, chosen symbolically.
+    for (kind, collateral, payment, fee) in options {
         let path: u8 = kani::any();
         kani::assume(path < 3);
         match path {
@@ -398,7 +398,7 @@ fn proof_vault_ledger_stays_consistent_across_every_lifecycle() {
         assert!(ledger.is_consistent());
     }
 
-    // With every lot closed, nothing is owed to any writer or holder ...
+    // With every option closed, nothing is owed to any writer or holder ...
     assert_eq!(ledger.underlying_locked, 0);
     assert_eq!(ledger.quote_locked, 0);
     // ... and once the admin sweeps the fees, both vaults are empty: no token

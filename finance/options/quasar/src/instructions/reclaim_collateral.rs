@@ -111,5 +111,5 @@ pub fn handle_reclaim_collateral(
             collateral,
         )
     }
-    // The option account closes to the writer through `close(dest = writer)`.
+    // The option closes to the writer through `close(dest = writer)`.
 }

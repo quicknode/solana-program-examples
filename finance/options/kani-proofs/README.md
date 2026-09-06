@@ -16,7 +16,7 @@ This crate reproduces those formulas (mirroring `options::contract_math`) and
 the handlers' custody accounting (mirroring the `underlying_locked`,
 `quote_locked` and `fees_owed` counters on the `Market` account) and proves:
 
-- `proof_exercise_moves_exactly_the_posted_terms`: for every lot the program
+- `proof_exercise_moves_exactly_the_posted_terms`: for every option the program
   would accept, physical settlement hands the holder exactly the collateral
   the writer posted and hands the writer exactly the mirrored payment, both
   positive, with a call's payment equal to a put's collateral on the same
@@ -27,12 +27,12 @@ the handlers' custody accounting (mirroring the `underlying_locked`,
   `premium * fee_bps / 10_000`.
 - `proof_exercise_and_reclaim_windows_partition_time`: at every instant
   exactly one of the holder (exercise) and the writer (reclaim) can claim a
-  held lot's collateral. Never both, never neither.
+  held option's collateral. Never both, never neither.
 - `proof_vault_ledger_stays_consistent_across_every_lifecycle`: **the core
-  custody property.** Two lots of either kind are written into the shared
+  custody property.** Two options of either kind are written into the shared
   vaults and each takes one of its three exits (cancel; buy then reclaim; buy,
   exercise, collect), and after every step each vault holds exactly what the
-  market owes. With every lot closed and the fees swept, both vaults are
+  market owes. With every option closed and the fees swept, both vaults are
   empty: no token is created or lost on any path.
 
 ## Bounded model checking
@@ -56,7 +56,7 @@ argued to be independent of the bound:
   99.99% ceiling is pinned by a unit test.
 - `proof_exercise_and_reclaim_windows_partition_time`: fully symbolic; it is
   one comparison.
-- `proof_vault_ledger_stays_consistent_across_every_lifecycle`: each lot's
+- `proof_vault_ledger_stays_consistent_across_every_lifecycle`: each option's
   terms at most 15, premiums and fee rates at most 255. The ledger arithmetic
   it exercises is additions and subtractions whose behavior does not depend on
   the magnitudes.

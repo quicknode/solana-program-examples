@@ -28,7 +28,7 @@ const DECIMALS: u8 = 6;
 const FEE_BPS: u16 = 100;
 
 // The walkthrough's call: 5 contracts, each on 1 NVDAx, strike 180 USDC,
-// asking 25 USDC for the lot, expiring a week out.
+// asking 25 USDC for the option, expiring a week out.
 const CONTRACTS: u64 = 5;
 const ONE_NVDAX_PER_CONTRACT: u64 = ONE_TOKEN;
 const CALL_STRIKE: u64 = 180 * ONE_TOKEN;
@@ -503,7 +503,7 @@ impl Venue {
 // ===========================================================================
 
 /// Alice writes 5 covered calls on her 5 NVDAx. The whole 5 NVDAx moves into
-/// the vault at once; the lot is listed for a 25 USDC premium.
+/// the vault at once; the option is listed for a 25 USDC premium.
 #[test]
 fn test_write_call_locks_the_underlying() {
     let mut venue = Venue::new();
@@ -525,7 +525,7 @@ fn test_write_call_locks_the_underlying() {
     venue.assert_vaults_match_ledger();
 }
 
-/// Bob buys the lot. He pays 25 USDC: 1% (0.25 USDC) to the venue, the rest
+/// Bob buys the option. He pays 25 USDC: 1% (0.25 USDC) to the venue, the rest
 /// straight to Alice. The 5 NVDAx do not move.
 #[test]
 fn test_buy_option_pays_the_premium_minus_the_fee() {
@@ -581,7 +581,7 @@ fn test_exercise_call_swaps_the_strike_for_the_underlying() {
     venue.assert_vaults_match_ledger();
 }
 
-/// Alice collects the 900 USDC Bob paid, and the option account closes with
+/// Alice collects the 900 USDC Bob paid, and the option closes with
 /// its rent back to her. She sold 5 NVDAx for 900 USDC plus the 24.75 USDC
 /// premium she already had.
 #[test]
@@ -606,7 +606,7 @@ fn test_collect_proceeds_pays_the_writer_and_closes_the_option() {
     assert!(!venue.option_exists(&option));
     assert!(
         venue.svm.get_balance(&alice.pubkey()).unwrap() > alice_lamports_before,
-        "the option account's rent must return to the writer"
+        "the option's rent must return to the writer"
     );
     let market = venue.market_state();
     assert_eq!(market.quote_locked, 0);
@@ -762,7 +762,7 @@ fn test_reclaim_is_refused_before_expiry() {
         .expect("reclaim at expiry must succeed");
 }
 
-/// An expired lot cannot be bought: nobody can pay for a right that can no
+/// An expired option cannot be bought: nobody can pay for a right that can no
 /// longer be exercised.
 #[test]
 fn test_buy_is_refused_after_expiry() {
@@ -777,11 +777,11 @@ fn test_buy_is_refused_after_expiry() {
 }
 
 // ===========================================================================
-// Cancel: the writer's exit from an unsold lot
+// Cancel: the writer's exit from an unsold option
 // ===========================================================================
 
-/// An unsold lot can be withdrawn at any time, collateral back, account
-/// closed. Without this, a lot nobody buys would lock the writer's tokens
+/// An unsold option can be withdrawn at any time, collateral back, account
+/// closed. Without this, an option nobody buys would lock the writer's tokens
 /// forever.
 #[test]
 fn test_cancel_unsold_option_returns_the_collateral() {
@@ -797,7 +797,7 @@ fn test_cancel_unsold_option_returns_the_collateral() {
     venue.assert_vaults_match_ledger();
 }
 
-/// An unsold lot that expired is still the writer's to cancel: there is no
+/// An unsold option that expired is still the writer's to cancel: there is no
 /// holder whose rights the cancel would cut short.
 #[test]
 fn test_cancel_unsold_option_works_after_expiry() {
@@ -845,7 +845,7 @@ fn test_buy_is_refused_once_sold() {
     assert_eq!(venue.option_state(&option).holder, bob.pubkey());
 }
 
-/// A writer cannot buy their own lot: the premium's source and destination
+/// A writer cannot buy their own option: the premium's source and destination
 /// would be the same token account in two mutable slots, which the loader
 /// rejects before the handler runs.
 #[test]
@@ -858,7 +858,7 @@ fn test_writer_cannot_buy_their_own_option() {
     assert_eq!(venue.option_state(&option).status, OptionStatus::Listed);
 }
 
-/// Only the holder can exercise: an unsold lot has no holder, and a stranger
+/// Only the holder can exercise: an unsold option has no holder, and a stranger
 /// is not the holder of a sold one.
 #[test]
 fn test_exercise_is_refused_for_anyone_but_the_holder() {
@@ -878,7 +878,7 @@ fn test_exercise_is_refused_for_anyone_but_the_holder() {
     assert_eq!(venue.balance(&venue.underlying_vault), FIVE_NVDAX);
 }
 
-/// A sold, unexercised, unexpired lot has no proceeds to collect, and after
+/// A sold, unexercised, unexpired option has no proceeds to collect, and after
 /// exercise only the writer may collect them.
 #[test]
 fn test_collect_proceeds_needs_an_exercised_option_and_the_writer() {
@@ -899,7 +899,7 @@ fn test_collect_proceeds_needs_an_exercised_option_and_the_writer() {
     assert_eq!(venue.balance(&venue.quote_vault), 900 * ONE_TOKEN + 250_000);
 }
 
-/// An exercised lot has no collateral left to reclaim, whatever the clock
+/// An exercised option has no collateral left to reclaim, whatever the clock
 /// says: the holder took it.
 #[test]
 fn test_reclaim_is_refused_after_exercise() {
@@ -966,7 +966,7 @@ fn test_write_option_rejects_zero_quantities_and_a_free_premium() {
 }
 
 /// The holder may exercise while now < expiry, so an expiry at or before now
-/// would be a lot nobody could ever exercise.
+/// would be an option nobody could ever exercise.
 #[test]
 fn test_write_option_rejects_an_expiry_that_has_passed() {
     let mut venue = Venue::new();
@@ -978,7 +978,7 @@ fn test_write_option_rejects_an_expiry_that_has_passed() {
     }
 }
 
-/// A lot whose collateral would overflow is refused before anyone pays for
+/// An option whose collateral would overflow is refused before anyone pays for
 /// it, rather than failing at exercise.
 #[test]
 fn test_write_option_rejects_a_lot_whose_collateral_overflows() {

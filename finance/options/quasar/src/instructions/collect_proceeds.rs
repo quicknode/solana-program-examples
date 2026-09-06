@@ -46,7 +46,7 @@ pub struct CollectProceedsAccountConstraints {
 }
 
 /// The writer collects what the holder paid at exercise: the strike for a
-/// call, the underlying for a put. The option account closes.
+/// call, the underlying for a put. The option closes.
 #[inline(always)]
 pub fn handle_collect_proceeds(
     accounts: &mut CollectProceedsAccountConstraints,
@@ -103,5 +103,5 @@ pub fn handle_collect_proceeds(
             proceeds,
         )
     }
-    // The option account closes to the writer through `close(dest = writer)`.
+    // The option closes to the writer through `close(dest = writer)`.
 }

@@ -60,7 +60,7 @@ pub struct WriteOptionAccountConstraints {
     pub rent: Sysvar<Rent>,
 }
 
-/// Write a lot of options. The writer posts the entire collateral up front:
+/// Write an option. The writer posts the entire collateral up front:
 /// the underlying for a call, the strike in the quote token for a put. From
 /// this moment the vault holds everything a future holder could claim, which
 /// is why nothing in this program ever has to be liquidated.
@@ -72,7 +72,7 @@ pub fn handle_write_option(
 ) -> Result<(), ProgramError> {
     require_valid_kind(arguments.kind)?;
     // Every quantity is a multiplier in the settlement math, so a zero in any
-    // of them is a lot that delivers nothing or costs nothing to exercise. A
+    // of them is an option that delivers nothing or costs nothing to exercise. A
     // zero premium is a gift rather than a sale, and is refused as a mistake.
     require!(
         arguments.contracts > 0
@@ -92,13 +92,13 @@ pub fn handle_write_option(
         underlying_per_contract: arguments.underlying_per_contract,
         strike_per_contract: arguments.strike_per_contract,
     };
-    // Both settlement amounts are computed here, at write time, so a lot
+    // Both settlement amounts are computed here, at write time, so an option
     // whose exercise would overflow is refused before anyone pays for it.
     terms.underlying_total()?;
     terms.strike_total()?;
     let collateral = terms.collateral_amount()?;
 
-    // Effects before the transfer: record the lot and what the vault now owes.
+    // Effects before the transfer: record the option and what the vault now owes.
     accounts.option.set_inner(OptionContractInner {
         id: arguments.id,
         market: *accounts.market.address(),

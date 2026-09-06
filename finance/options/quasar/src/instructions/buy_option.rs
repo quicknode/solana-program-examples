@@ -44,7 +44,7 @@ pub struct BuyOptionAccountConstraints {
     pub token_program: Program<TokenProgram>,
 }
 
-/// Buy a listed lot. The premium is the only money that changes hands: the
+/// Buy a listed option. The premium is the only money that changes hands: the
 /// venue's fee comes out of it into the quote vault, and the rest goes
 /// straight to the writer. The collateral does not move.
 #[inline(always)]
@@ -53,7 +53,7 @@ pub fn handle_buy_option(accounts: &mut BuyOptionAccountConstraints) -> Result<(
         accounts.option.status == STATUS_LISTED,
         OptionsError::OptionNotListed
     );
-    // A lot nobody can exercise any more is not for sale.
+    // An option nobody can exercise any more is not for sale.
     let now: i64 = Clock::get()?.unix_timestamp.into();
     require!(
         may_exercise(now, accounts.option.expiry.get()),
@@ -65,7 +65,7 @@ pub fn handle_buy_option(accounts: &mut BuyOptionAccountConstraints) -> Result<(
             && accounts.writer_quote.mint() == accounts.quote_mint.address(),
         OptionsError::InvalidParameter
     );
-    // A writer cannot buy their own lot: the same address would sit in the
+    // A writer cannot buy their own option: the same address would sit in the
     // `buyer` and `writer` slots at once, which the runtime refuses before
     // this handler runs.
 

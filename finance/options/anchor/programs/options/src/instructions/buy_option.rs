@@ -7,7 +7,7 @@ use crate::errors::OptionsError;
 use crate::instructions::shared::{check_custody, transfer_from_signer};
 use crate::state::{Market, OptionContract, OptionStatus};
 
-/// Buy a listed lot. The premium is the only money that changes hands: the
+/// Buy a listed option. The premium is the only money that changes hands: the
 /// venue's fee comes out of it into the quote vault, and the rest goes
 /// straight to the writer, whose money it is from this moment whatever the
 /// holder later does. The collateral does not move.
@@ -17,7 +17,7 @@ pub fn handle_buy_option(context: &mut Context<BuyOptionAccountConstraints>) -> 
         option.status == OptionStatus::Listed,
         OptionsError::OptionNotListed
     );
-    // A lot nobody can exercise any more is not for sale.
+    // An option nobody can exercise any more is not for sale.
     let now = Clock::get()?.unix_timestamp;
     require!(
         contract_math::may_exercise(now, option.expiry),
@@ -110,7 +110,7 @@ pub struct BuyOptionAccountConstraints {
     pub buyer_quote: Box<InterfaceAccount<TokenAccount>>,
 
     // Created by `write_option`, at the writer's expense, so the buyer never
-    // pays rent on the writer's behalf. A writer buying their own lot would
+    // pays rent on the writer's behalf. A writer buying their own option would
     // put this account and `buyer_quote` in two mutable slots at once, which
     // the loader rejects, so a writer cannot pay themselves a premium.
     #[account(

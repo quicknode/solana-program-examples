@@ -25,7 +25,7 @@ pub enum OptionStatus {
     Exercised,
 }
 
-/// One option: a lot of `contracts` identical contracts, written by one
+/// One option: `contracts` identical contracts, written by one
 /// writer, held by at most one holder. One PDA per (market, writer, id).
 ///
 /// Every amount the option ever moves is a product of two of its integers,
@@ -52,7 +52,7 @@ pub struct OptionContract {
 
     pub status: OptionStatus,
 
-    /// How many contracts the lot holds. Bought and exercised as a whole.
+    /// How many contracts the option holds. Bought and exercised as a whole.
     pub contracts: u64,
 
     /// Underlying minor units each contract is on (1 NVDAx = 1_000_000).
@@ -62,7 +62,7 @@ pub struct OptionContract {
     /// as an amount rather than a price, so exercise needs no decimals math.
     pub strike_per_contract: u64,
 
-    /// Quote minor units the buyer pays the writer for the whole lot.
+    /// Quote minor units the buyer pays the writer for the whole option.
     pub premium: u64,
 
     /// Unix timestamp after which the holder can no longer exercise and the

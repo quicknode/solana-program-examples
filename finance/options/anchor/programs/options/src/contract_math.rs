@@ -12,12 +12,12 @@ use crate::state::OptionKind;
 /// Basis-point denominator, mirroring `constants::BASIS_POINTS_DENOMINATOR`.
 const BASIS_POINTS: u128 = 10_000;
 
-/// The underlying side of a lot: `contracts * underlying_per_contract`.
+/// The underlying side of an option: `contracts * underlying_per_contract`.
 pub fn underlying_total(contracts: u64, underlying_per_contract: u64) -> Option<u64> {
     contracts.checked_mul(underlying_per_contract)
 }
 
-/// The quote side of a lot: `contracts * strike_per_contract`.
+/// The quote side of an option: `contracts * strike_per_contract`.
 pub fn strike_total(contracts: u64, strike_per_contract: u64) -> Option<u64> {
     contracts.checked_mul(strike_per_contract)
 }

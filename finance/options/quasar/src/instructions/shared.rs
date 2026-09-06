@@ -1,7 +1,7 @@
 //! The pure contract math and the custody check, ported from the Anchor
 //! sibling (`options::contract_math` and `instructions::shared`). There is no
 //! division anywhere in settlement: every amount is a product of two of the
-//! lot's integers, and the only rounding is the floor in the fee split.
+//! option's integers, and the only rounding is the floor in the fee split.
 
 use {
     crate::{
@@ -13,7 +13,7 @@ use {
     quasar_spl::prelude::*,
 };
 
-/// A lot's terms, as read from the account or the instruction arguments.
+/// An option's terms, as read from the account or the instruction arguments.
 #[derive(Clone, Copy)]
 pub struct Terms {
     pub kind: u8,

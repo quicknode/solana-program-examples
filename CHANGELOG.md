@@ -11,18 +11,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `finance/options`: a fully collateralized, physically settled options venue,
   in Anchor v2, Anchor v1, and Quasar, with a Kani proof crate. A writer posts
   the whole obligation (the underlying for a call, the strike in the quote token
-  for a put) and lists a lot at a premium; a buyer pays the premium and becomes
+  for a put) and lists an option at a premium; a buyer pays the premium and becomes
   the holder; the holder may exercise before expiry; after expiry the writer
   reclaims the collateral. Eight instruction handlers (`initialize_market`,
   `write_option`, `buy_option`, `cancel_option`, `exercise_option`,
   `collect_proceeds`, `reclaim_collateral`, `collect_fees`). Every settlement
-  amount is a product of two of the lot's integers, so there is no division and
+  amount is a product of two of the option's integers, so there is no division and
   no rounding in settlement; the venue's fee on each premium is the only floor.
   The market account keeps a ledger of what each vault owes, asserted against
   the vault balances after every transfer, and the proof crate walks every path
-  through a lot's life and shows the ledger returns to zero. No oracle: physical
+  through an option's life and shows the ledger returns to zero. No oracle: physical
   settlement moves the tokens themselves, so the program never has to know the
-  price. Each option lot is one account, bought and exercised as a whole.
+  price. Each option is one account, bought and exercised as a whole.
 - The Anchor v2 copy joins the `--no-idl` list in `.github/workflows/anchor.yml`
   (anchor#4947: its `OptionKind` and `OptionStatus` enums reach the IDL) and the
   root Cargo workspace; the proof crate joins both matrices in

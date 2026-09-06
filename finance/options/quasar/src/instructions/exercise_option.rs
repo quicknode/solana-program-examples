@@ -50,7 +50,7 @@ pub struct ExerciseOptionAccountConstraints {
     pub token_program: Program<TokenProgram>,
 }
 
-/// Exercise a held lot before expiry. A call holder pays the strike and takes
+/// Exercise a held option before expiry. A call holder pays the strike and takes
 /// the underlying; a put holder delivers the underlying and takes the strike.
 /// The payment stays in the vault, owed to the writer, until they call
 /// `collect_proceeds`. No price is read: whether exercising is worth it is
@@ -79,7 +79,7 @@ pub fn handle_exercise_option(
     let underlying_total = terms.underlying_total()?;
     let strike_total = terms.strike_total()?;
 
-    // Effects: the lot is exercised, and the vault now owes the writer the
+    // Effects: the option is exercised, and the vault now owes the writer the
     // payment instead of owing the holder the collateral.
     accounts.option.status = STATUS_EXERCISED;
     let mut underlying_after = accounts.underlying_vault.amount();

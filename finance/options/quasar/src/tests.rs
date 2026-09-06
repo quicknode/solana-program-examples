@@ -24,7 +24,7 @@ const ONE_TOKEN: u64 = 1_000_000;
 const FEE_BPS: u16 = 100;
 
 // The walkthrough's call: 5 contracts, each on 1 NVDAx, strike 180 USDC,
-// asking 25 USDC for the lot. And the put: strike 150 USDC, asking 20 USDC.
+// asking 25 USDC for the option. And the put: strike 150 USDC, asking 20 USDC.
 const CONTRACTS: u64 = 5;
 const ONE_NVDAX_PER_CONTRACT: u64 = ONE_TOKEN;
 const CALL_STRIKE: u64 = 180 * ONE_TOKEN;
@@ -318,7 +318,7 @@ fn assert_vaults_match_ledger(test: &Test, env: &Env) {
 // ===========================================================================
 
 /// Alice writes 5 covered calls on her 5 NVDAx. The whole 5 NVDAx moves into
-/// the vault at once; the lot is listed for a 25 USDC premium.
+/// the vault at once; the option is listed for a 25 USDC premium.
 #[quasar_test]
 fn write_call_locks_the_underlying(test: &mut Test) {
     let env = setup(test);
@@ -342,7 +342,7 @@ fn write_call_locks_the_underlying(test: &mut Test) {
     assert_vaults_match_ledger(test, &env);
 }
 
-/// Bob buys the lot. He pays 25 USDC: 1% (0.25 USDC) to the venue, the rest
+/// Bob buys the option. He pays 25 USDC: 1% (0.25 USDC) to the venue, the rest
 /// straight to Alice. The 5 NVDAx do not move.
 #[quasar_test]
 fn buy_option_pays_the_premium_minus_the_fee(test: &mut Test) {
@@ -388,7 +388,7 @@ fn exercise_call_swaps_the_strike_for_the_underlying(test: &mut Test) {
     assert_vaults_match_ledger(test, &env);
 }
 
-/// Alice collects the 900 USDC Bob paid, and the option account closes.
+/// Alice collects the 900 USDC Bob paid, and the option closes.
 #[quasar_test]
 fn collect_proceeds_pays_the_writer_and_closes_the_option(test: &mut Test) {
     let env = setup(test);
@@ -531,7 +531,7 @@ fn reclaim_is_refused_before_expiry(test: &mut Test) {
     reclaim_collateral(test, &env, &ALICE_P, CALL_ID).succeeds();
 }
 
-/// An expired lot cannot be bought.
+/// An expired option cannot be bought.
 #[quasar_test]
 fn buy_is_refused_after_expiry(test: &mut Test) {
     let env = setup(test);
@@ -541,7 +541,7 @@ fn buy_is_refused_after_expiry(test: &mut Test) {
 }
 
 // ===========================================================================
-// Cancel: the writer's exit from an unsold lot
+// Cancel: the writer's exit from an unsold option
 // ===========================================================================
 
 #[quasar_test]
@@ -557,7 +557,7 @@ fn cancel_unsold_option_returns_the_collateral(test: &mut Test) {
     assert_vaults_match_ledger(test, &env);
 }
 
-/// An unsold lot that expired is still the writer's to cancel.
+/// An unsold option that expired is still the writer's to cancel.
 #[quasar_test]
 fn cancel_unsold_option_works_after_expiry(test: &mut Test) {
     let env = setup(test);
@@ -593,7 +593,7 @@ fn buy_is_refused_once_sold(test: &mut Test) {
     assert_eq!(test.read::<OptionContract>(option).holder, BOB);
 }
 
-/// A writer cannot buy their own lot: their address would sit in the `buyer`
+/// A writer cannot buy their own option: their address would sit in the `buyer`
 /// and `writer` slots at once, which the runtime refuses before the handler
 /// runs, whichever of their token accounts the premium is paid from.
 #[quasar_test]
@@ -670,7 +670,7 @@ fn collect_proceeds_needs_an_exercised_option_and_the_writer(test: &mut Test) {
     assert_eq!(test.tokens(env.quote_vault), 900 * ONE_TOKEN + 250_000);
 }
 
-/// An exercised lot has no collateral left to reclaim, whatever the clock
+/// An exercised option has no collateral left to reclaim, whatever the clock
 /// says.
 #[quasar_test]
 fn reclaim_is_refused_after_exercise(test: &mut Test) {
@@ -743,7 +743,7 @@ fn write_option_rejects_an_unknown_kind(test: &mut Test) {
     .fails_with(OptionsError::InvalidParameter);
 }
 
-/// An expiry at or before now would be a lot nobody could ever exercise.
+/// An expiry at or before now would be an option nobody could ever exercise.
 #[quasar_test]
 fn write_option_rejects_an_expiry_that_has_passed(test: &mut Test) {
     let env = setup(test);
@@ -764,7 +764,7 @@ fn write_option_rejects_an_expiry_that_has_passed(test: &mut Test) {
     }
 }
 
-/// A lot whose collateral would overflow is refused before anyone pays for it.
+/// An option whose collateral would overflow is refused before anyone pays for it.
 #[quasar_test]
 fn write_option_rejects_a_lot_whose_collateral_overflows(test: &mut Test) {
     let env = setup(test);

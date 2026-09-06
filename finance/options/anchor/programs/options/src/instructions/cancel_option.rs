@@ -9,9 +9,9 @@ use crate::errors::OptionsError;
 use crate::instructions::shared::{check_custody, transfer_from_vault};
 use crate::state::{Market, OptionContract, OptionKind, OptionStatus};
 
-/// Withdraw an unsold lot. Without this, a lot nobody buys would hold the
+/// Withdraw an unsold option. Without this, an option nobody buys would hold the
 /// writer's collateral forever. Any time is fine, including after expiry: an
-/// unsold lot has no holder whose rights could be cut short.
+/// unsold option has no holder whose rights could be cut short.
 pub fn handle_cancel_option(context: &mut Context<CancelOptionAccountConstraints>) -> Result<()> {
     let option = &context.accounts.option;
     require!(
@@ -73,7 +73,7 @@ pub fn handle_cancel_option(context: &mut Context<CancelOptionAccountConstraints
             collateral,
         ),
     }
-    // The option account closes to the writer through `close = writer`.
+    // The option closes to the writer through `close = writer`.
 }
 
 #[derive(Accounts)]

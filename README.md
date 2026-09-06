@@ -81,7 +81,7 @@ Parimutuel (pooled) prediction market - an admin opens an event with multiple ou
 
 ### Options
 
-A fully collateralized, physically settled **options** venue. A writer posts the whole of what a holder could ever claim (the underlying for a **call**, the strike in USDC for a **put**) and lists the lot at a premium; a buyer pays the premium and becomes the holder; the holder may **exercise** at any time before expiry, paying the strike for the underlying (or delivering the underlying for the strike); after expiry the writer reclaims whatever was not exercised. Because the collateral is always in the vault, no position can be under water, so there is no margin, no liquidator, and no oracle. The venue earns a fee on every premium.
+A fully collateralized, physically settled **options** venue. A writer posts the whole of what a holder could ever claim (the underlying for a **call**, the strike in USDC for a **put**) and lists the option at a premium; a buyer pays the premium and becomes the holder; the holder may **exercise** at any time before expiry, paying the strike for the underlying (or delivering the underlying for the strike); after expiry the writer reclaims whatever was not exercised. Because the collateral is always in the vault, no position can be under water, so there is no margin, no liquidator, and no oracle. The venue earns a fee on every premium.
 
 [⚓ Anchor v2](./finance/options/anchor) [⚓ Anchor v1](./finance/options/anchor-v1) [💫 Quasar](./finance/options/quasar)
 

@@ -22,7 +22,7 @@ declare_id!("2gmMGMmipfYypLxWsvQ5GQJT5AGnMWmk4Rb9vQMRo6ig");
 /// taking the collateral; after expiry the writer reclaims whatever was not
 /// exercised. Because the collateral is always in the vault, no position can
 /// ever be under water, so there is no margin, no liquidator, and no oracle.
-/// Each option lot is one account, bought and exercised as a whole.
+/// Each option is one account, bought and exercised as a whole.
 #[program]
 pub mod options {
     use super::*;
@@ -37,7 +37,7 @@ pub mod options {
         instructions::handle_initialize_market(context, fee_bps)
     }
 
-    /// Write a lot of options: post the full collateral and list the lot at
+    /// Write an option: post the full collateral and list it at
     /// the premium in `terms`. `id` is chosen by the writer so they can have
     /// many open.
     pub fn write_option(
@@ -48,13 +48,13 @@ pub mod options {
         instructions::handle_write_option(context, id, terms)
     }
 
-    /// Buy a listed lot: pay the premium (the venue's fee comes out of it,
+    /// Buy a listed option: pay the premium (the venue's fee comes out of it,
     /// the rest goes to the writer) and become the holder.
     pub fn buy_option(context: &mut Context<BuyOptionAccountConstraints>) -> Result<()> {
         instructions::handle_buy_option(context)
     }
 
-    /// Writer withdraws an unsold lot: collateral back, account closed.
+    /// Writer withdraws an unsold option: collateral back, account closed.
     pub fn cancel_option(context: &mut Context<CancelOptionAccountConstraints>) -> Result<()> {
         instructions::handle_cancel_option(context)
     }
@@ -74,7 +74,7 @@ pub mod options {
         instructions::handle_collect_proceeds(context)
     }
 
-    /// Writer reclaims the collateral of a sold lot the holder let expire, and
+    /// Writer reclaims the collateral of a sold option the holder let expire, and
     /// the account closes. The premium was theirs the moment it was paid.
     pub fn reclaim_collateral(
         context: &mut Context<ReclaimCollateralAccountConstraints>,

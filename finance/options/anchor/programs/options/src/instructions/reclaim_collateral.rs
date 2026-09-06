@@ -11,7 +11,7 @@ use crate::state::{Market, OptionContract, OptionKind, OptionStatus};
 
 /// The holder let the option expire, so the writer takes the collateral
 /// back. The premium was the writer's the moment it was paid; this is the
-/// other half of a writer's return. The option account closes.
+/// other half of a writer's return. The option closes.
 pub fn handle_reclaim_collateral(
     context: &mut Context<ReclaimCollateralAccountConstraints>,
 ) -> Result<()> {
@@ -82,7 +82,7 @@ pub fn handle_reclaim_collateral(
             collateral,
         ),
     }
-    // The option account closes to the writer through `close = writer`.
+    // The option closes to the writer through `close = writer`.
 }
 
 #[derive(Accounts)]

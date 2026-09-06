@@ -44,8 +44,8 @@ pub struct CancelOptionAccountConstraints {
     pub token_program: Program<TokenProgram>,
 }
 
-/// Withdraw an unsold lot. Any time is fine, including after expiry: an
-/// unsold lot has no holder whose rights could be cut short.
+/// Withdraw an unsold option. Any time is fine, including after expiry: an
+/// unsold option has no holder whose rights could be cut short.
 #[inline(always)]
 pub fn handle_cancel_option(
     accounts: &mut CancelOptionAccountConstraints,
@@ -100,5 +100,5 @@ pub fn handle_cancel_option(
             collateral,
         )
     }
-    // The option account closes to the writer through `close(dest = writer)`.
+    // The option closes to the writer through `close(dest = writer)`.
 }

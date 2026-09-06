@@ -12,7 +12,7 @@ use crate::errors::OptionsError;
 use crate::instructions::shared::{check_custody, transfer_from_signer, transfer_from_vault};
 use crate::state::{Market, OptionContract, OptionKind, OptionStatus};
 
-/// Exercise a held lot before expiry. A call holder pays the strike in the
+/// Exercise a held option before expiry. A call holder pays the strike in the
 /// quote token and takes the underlying; a put holder delivers the underlying
 /// and takes the strike. The payment stays in the vault, owed to the writer,
 /// until they call `collect_proceeds`; paying the writer directly would let
@@ -43,7 +43,7 @@ pub fn handle_exercise_option(
     let strike_total = contract_math::strike_total(option.contracts, option.strike_per_contract)
         .ok_or(OptionsError::MathOverflow)?;
 
-    // Effects: the lot is exercised, and the vault now owes the writer the
+    // Effects: the option is exercised, and the vault now owes the writer the
     // payment instead of owing the holder the collateral.
     option.status = OptionStatus::Exercised;
 
