@@ -5,7 +5,7 @@ use anchor_spl::{
 };
 
 use crate::{
-    constants::{AUTHORITY_SEED, CONFIG_SEED, LIQUIDITY_SEED},
+    constants::{CONFIG_SEED, LIQUIDITY_SEED},
     errors::AmmError,
     state::{Config, PoolConfig},
 };
@@ -43,18 +43,8 @@ pub struct InitializePoolAccountConstraints<'info> {
     )]
     pub pool_config: Box<Account<'info, PoolConfig>>,
 
-    /// CHECK: Read only authority
-    #[account(
-        seeds = [
-            config.key().as_ref(),
-            mint_a.key().as_ref(),
-            mint_b.key().as_ref(),
-            AUTHORITY_SEED,
-        ],
-        bump,
-    )]
-    pub pool_authority: UncheckedAccount<'info>,
-
+    /// The LP mint. `pool_config` is its mint authority and signs every
+    /// mint_to with its own seeds.
     #[account(
         init,
         payer = payer,
@@ -66,7 +56,7 @@ pub struct InitializePoolAccountConstraints<'info> {
         ],
         bump,
         mint::decimals = 6,
-        mint::authority = pool_authority,
+        mint::authority = pool_config,
     )]
     pub liquidity_provider_mint: Box<InterfaceAccount<'info, Mint>>,
 
@@ -74,20 +64,23 @@ pub struct InitializePoolAccountConstraints<'info> {
 
     pub mint_b: Box<InterfaceAccount<'info, Mint>>,
 
+    /// The pool's token-A reserve: the associated token account of
+    /// `pool_config`, which signs every transfer out of it.
     #[account(
         init,
         payer = payer,
         associated_token::mint = mint_a,
-        associated_token::authority = pool_authority,
+        associated_token::authority = pool_config,
         associated_token::token_program = token_program,
     )]
     pub pool_a: Box<InterfaceAccount<'info, TokenAccount>>,
 
+    /// The pool's token-B reserve, likewise owned by `pool_config`.
     #[account(
         init,
         payer = payer,
         associated_token::mint = mint_b,
-        associated_token::authority = pool_authority,
+        associated_token::authority = pool_config,
         associated_token::token_program = token_program,
     )]
     pub pool_b: Box<InterfaceAccount<'info, TokenAccount>>,

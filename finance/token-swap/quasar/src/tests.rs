@@ -73,7 +73,6 @@ const BAD_TOKEN_A: Pubkey = Pubkey::new_from_array([23; 32]);
 const BAD_TOKEN_B: Pubkey = Pubkey::new_from_array([24; 32]);
 
 struct PoolEnv {
-    config: Pubkey,
     pool_config: Pubkey,
     lp_mint: Pubkey,
 }
@@ -96,9 +95,9 @@ fn setup_pool(test: &mut Test) -> PoolEnv {
     test.add(Mint::new(PAYER).at(MINT_A).decimals(6));
     test.add(Mint::new(PAYER).at(MINT_B).decimals(6));
 
-    // initialize_pool: the pool_config, pool authority, and LP-mint PDAs are
-    // derived by the builder; pool_a/pool_b are non-PDA token accounts the
-    // program creates at the given addresses.
+    // initialize_pool: the pool_config and LP-mint PDAs are derived by the
+    // builder; pool_a/pool_b are non-PDA token accounts the program creates
+    // at the given addresses, owned by pool_config.
     test.send(InitializePoolInstruction {
         mint_a: MINT_A,
         mint_b: MINT_B,
@@ -110,7 +109,6 @@ fn setup_pool(test: &mut Test) -> PoolEnv {
 
     let config = test.derive_pda(ConfigPda::seeds());
     PoolEnv {
-        config,
         pool_config: test.derive_pda(PoolPda::seeds(&config, &MINT_A, &MINT_B)),
         lp_mint: test.derive_pda(LiquidityMintPda::seeds(&config, &MINT_A, &MINT_B)),
     }
@@ -277,6 +275,30 @@ fn initialize_pool_creates_pool_config_and_lp_mint(test: &mut Test) {
     // LP mint PDA must be a valid SPL mint (82 bytes, owned by token program).
     let lp = test.account(env.lp_mint).expect("lp_mint missing");
     assert_eq!(lp.data.len(), 82, "LP mint should be 82 bytes");
+
+    // pool_config is the authority for everything the pool holds: the LP
+    // mint's mint authority (SPL mint layout: a 4-byte COption tag, 1 = Some,
+    // then the 32-byte pubkey) and the owner of both reserves (SPL token
+    // account layout: mint at 0..32, owner at 32..64).
+    let expected: &[u8] = env.pool_config.as_ref();
+    assert_eq!(
+        &lp.data[0..4],
+        &[1, 0, 0, 0],
+        "LP mint must have an authority"
+    );
+    assert_eq!(
+        &lp.data[4..36],
+        expected,
+        "LP mint authority must be pool_config"
+    );
+    for reserve in [POOL_A, POOL_B] {
+        let account = test.account(reserve).expect("reserve missing");
+        assert_eq!(
+            &account.data[32..64],
+            expected,
+            "reserve owner must be pool_config"
+        );
+    }
 }
 
 // ─── deposit_liquidity ───────────────────────────────────────────────────────

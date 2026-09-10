@@ -2,7 +2,7 @@ use {
     crate::{
         error::AmmError,
         state::{Config, PoolConfig, PoolConfigInner},
-        ConfigPda, PoolAuthorityPda, PoolPda, BASIS_POINTS_DIVISOR,
+        ConfigPda, PoolPda, BASIS_POINTS_DIVISOR,
     },
     quasar_lang::cpi::Seed,
     quasar_lang::prelude::*,
@@ -10,7 +10,8 @@ use {
 };
 
 /// `pool_config` is mutable because each swap accumulates the admin's slice
-/// of the trading fee into `admin_fees_owed_a` / `admin_fees_owed_b`.
+/// of the trading fee into `admin_fees_owed_a` / `admin_fees_owed_b`. It also
+/// owns both reserves and signs the outbound transfer with its own seeds.
 #[derive(Accounts)]
 pub struct SwapTokensAccountConstraints {
     #[account(address = ConfigPda::seeds())]
@@ -20,9 +21,6 @@ pub struct SwapTokensAccountConstraints {
         address = PoolPda::seeds(config.address(), mint_a.address(), mint_b.address()),
     )]
     pub pool_config: Account<PoolConfig>,
-    /// Pool authority PDA.
-    #[account(address = PoolAuthorityPda::seeds(config.address(), mint_a.address(), mint_b.address()))]
-    pub pool_authority: UncheckedAccount,
     pub trader: Signer,
     pub mint_a: Account<Mint>,
     pub mint_b: Account<Mint>,
@@ -181,11 +179,11 @@ pub fn handle_swap_tokens(
         admin_fees_owed_b: new_owed_b,
     });
 
-    // Interactions: the token transfers, after state is written.
-    // Seed order matches PoolAuthorityPda: [b"authority", config, mint_a, mint_b, bump].
-    let bump = [bumps.pool_authority];
+    // Interactions: the token transfers, after state is written. `pool_config`
+    // owns the reserves and signs the outbound transfer with its own seeds.
+    // Seed order matches PoolPda: [config, mint_a, mint_b, bump].
+    let bump = [bumps.pool_config];
     let seeds: &[Seed] = &[
-        Seed::from(crate::AUTHORITY_SEED),
         Seed::from(accounts.config.address().as_ref()),
         Seed::from(accounts.mint_a.address().as_ref()),
         Seed::from(accounts.mint_b.address().as_ref()),
@@ -212,7 +210,7 @@ pub fn handle_swap_tokens(
                 &accounts.pool_b,
                 &accounts.mint_b,
                 &accounts.token_b,
-                &accounts.pool_authority,
+                &accounts.pool_config,
                 output,
                 accounts.mint_b.decimals(),
             )
@@ -225,7 +223,7 @@ pub fn handle_swap_tokens(
                 &accounts.pool_a,
                 &accounts.mint_a,
                 &accounts.token_a,
-                &accounts.pool_authority,
+                &accounts.pool_config,
                 output,
                 accounts.mint_a.decimals(),
             )

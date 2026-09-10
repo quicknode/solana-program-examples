@@ -5,7 +5,7 @@ use anchor_spl::{
 };
 
 use crate::{
-    constants::{AUTHORITY_SEED, BASIS_POINTS_DIVISOR, CONFIG_SEED},
+    constants::{BASIS_POINTS_DIVISOR, CONFIG_SEED},
     errors::*,
     state::{Config, PoolConfig},
 };
@@ -54,12 +54,13 @@ pub fn handle_swap_tokens(
     // is u64), so the cast is safe - but use try_into anyway to make the
     // invariant explicit in the type system.
     let fee_amount: u64 = u64::try_from(fee_amount).map_err(|_| AmmError::MathOverflow)?;
-    let admin_portion: u64 =
-        u64::try_from(admin_portion).map_err(|_| AmmError::MathOverflow)?;
+    let admin_portion: u64 = u64::try_from(admin_portion).map_err(|_| AmmError::MathOverflow)?;
     // The LP portion stays in the pool reserves (as today - it's "less output
     // for the same input"), boosting the LP curve. The admin portion is
     // accounted for separately so it does *not* grow LP yield.
-    let taxed_input = input_amount.checked_sub(fee_amount).ok_or(AmmError::MathOverflow)?;
+    let taxed_input = input_amount
+        .checked_sub(fee_amount)
+        .ok_or(AmmError::MathOverflow)?;
 
     // Effective reserves = raw vault balance - admin's accumulated claim.
     // The constant-product curve runs on the LP-claimable portion only, so
@@ -124,10 +125,7 @@ pub fn handle_swap_tokens(
     // they're willing to accept (computed offchain at quote time). If the
     // pool shifted between quoting and landing, we revert rather than fill
     // at the worse rate.
-    require!(
-        output >= min_output_amount,
-        AmmError::SlippageExceeded
-    );
+    require!(output >= min_output_amount, AmmError::SlippageExceeded);
 
     // Compute the invariant on the *effective* reserves before the trade.
     // Using raw balances here would let the admin's accumulated fees count
@@ -142,7 +140,7 @@ pub fn handle_swap_tokens(
 
     // Pre-copy seed bytes before the mutable borrow of pool_config below.
     // to_bytes() returns an owned [u8; 32] copy so there are no borrow conflicts.
-    let authority_bump = context.bumps.pool_authority;
+    let pool_config_bump = [context.accounts.pool_config.bump];
     let config_bytes = context.accounts.pool_config.config.to_bytes();
     let mint_a_bytes = context.accounts.mint_a.key().to_bytes();
     let mint_b_bytes = context.accounts.mint_b.key().to_bytes();
@@ -165,15 +163,14 @@ pub fn handle_swap_tokens(
         }
     }
 
-    // Interactions: CPIs after state has been updated.
-    let authority_seeds = &[
+    // Interactions: CPIs after state has been updated. `pool_config` owns the
+    // reserves and signs the outbound transfer with its own seeds.
+    let signer_seeds: &[&[&[u8]]] = &[&[
         config_bytes.as_ref(),
         mint_a_bytes.as_ref(),
         mint_b_bytes.as_ref(),
-        AUTHORITY_SEED,
-        &[authority_bump],
-    ];
-    let signer_seeds = &[&authority_seeds[..]];
+        &pool_config_bump,
+    ]];
     if input_is_token_a {
         token_interface::transfer_checked(
             CpiContext::new(
@@ -195,7 +192,7 @@ pub fn handle_swap_tokens(
                     from: context.accounts.pool_b.to_account_info(),
                     mint: context.accounts.mint_b.to_account_info(),
                     to: context.accounts.token_b.to_account_info(),
-                    authority: context.accounts.pool_authority.to_account_info(),
+                    authority: context.accounts.pool_config.to_account_info(),
                 },
                 signer_seeds,
             ),
@@ -210,7 +207,7 @@ pub fn handle_swap_tokens(
                     from: context.accounts.pool_a.to_account_info(),
                     mint: context.accounts.mint_a.to_account_info(),
                     to: context.accounts.token_a.to_account_info(),
-                    authority: context.accounts.pool_authority.to_account_info(),
+                    authority: context.accounts.pool_config.to_account_info(),
                 },
                 signer_seeds,
             ),
@@ -289,24 +286,12 @@ pub struct SwapTokensAccountConstraints<'info> {
             pool_config.mint_a.key().as_ref(),
             pool_config.mint_b.key().as_ref(),
         ],
-        bump,
+        bump = pool_config.bump,
         has_one = config,
         has_one = mint_a,
         has_one = mint_b,
     )]
     pub pool_config: Account<'info, PoolConfig>,
-
-    /// CHECK: Read only authority
-    #[account(
-        seeds = [
-            pool_config.config.as_ref(),
-            mint_a.key().as_ref(),
-            mint_b.key().as_ref(),
-            AUTHORITY_SEED,
-        ],
-        bump,
-    )]
-    pub pool_authority: UncheckedAccount<'info>,
 
     /// The account doing the swap
     pub trader: Signer<'info>,
@@ -318,7 +303,7 @@ pub struct SwapTokensAccountConstraints<'info> {
     #[account(
         mut,
         associated_token::mint = mint_a,
-        associated_token::authority = pool_authority,
+        associated_token::authority = pool_config,
         associated_token::token_program = token_program,
     )]
     pub pool_a: Box<InterfaceAccount<'info, TokenAccount>>,
@@ -326,7 +311,7 @@ pub struct SwapTokensAccountConstraints<'info> {
     #[account(
         mut,
         associated_token::mint = mint_b,
-        associated_token::authority = pool_authority,
+        associated_token::authority = pool_config,
         associated_token::token_program = token_program,
     )]
     pub pool_b: Box<InterfaceAccount<'info, TokenAccount>>,

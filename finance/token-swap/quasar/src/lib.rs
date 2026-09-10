@@ -19,8 +19,6 @@ pub const MINIMUM_LIQUIDITY: u64 = 100;
 pub const BASIS_POINTS_DIVISOR: u64 = 10_000;
 /// Seed for the global Config PDA (singleton).
 pub const CONFIG_SEED: &[u8] = b"config";
-/// Seed for the pool authority PDA.
-pub const AUTHORITY_SEED: &[u8] = b"authority";
 /// Seed for the liquidity mint PDA.
 pub const LIQUIDITY_SEED: &[u8] = b"liquidity";
 
@@ -34,21 +32,13 @@ pub const LIQUIDITY_SEED: &[u8] = b"liquidity";
 pub struct ConfigPda;
 
 /// `PoolConfig` PDA at seeds = [config, mint_a, mint_b] - no string prefix.
+///
+/// This account is also the pool's signing authority: it owns both reserves,
+/// is the LP mint's mint authority, and signs the transfers out of the
+/// reserves and the LP mint with these seeds plus its bump.
 #[derive(Seeds)]
 #[seeds(b"", config: Address, mint_a: Address, mint_b: Address)]
 pub struct PoolPda;
-
-/// Pool-authority PDA at seeds = [config, mint_a, mint_b, b"authority"].
-/// Modelled with prefix b"authority" + the three Address args; the
-/// rendered slice list ends up [config, mint_a, mint_b, b"authority"] when
-/// you use `with_bump`. Note: the new \`#[seeds]\` puts the literal
-/// prefix first, so the onchain derivation order is
-/// [b"authority", config, mint_a, mint_b] - different from the original
-/// Anchor scheme. Programs are independent so this is consistent and
-/// correct on its own; the addresses just won't match the Anchor copy.
-#[derive(Seeds)]
-#[seeds(b"authority", config: Address, mint_a: Address, mint_b: Address)]
-pub struct PoolAuthorityPda;
 
 /// Liquidity-mint PDA at seeds = [b"liquidity", config, mint_a, mint_b].
 #[derive(Seeds)]

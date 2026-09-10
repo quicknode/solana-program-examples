@@ -64,7 +64,6 @@ struct TestSetup {
     mint_a: Address,
     mint_b: Address,
     pool_config_key: Address,
-    pool_authority: Address,
     liquidity_provider_mint: Address,
     pool_a: Address,
     pool_b: Address,
@@ -93,15 +92,6 @@ fn full_setup() -> TestSetup {
         &[config_key.as_ref(), mint_a.as_ref(), mint_b.as_ref()],
         &program_id,
     );
-    let (pool_authority, _) = Address::find_program_address(
-        &[
-            config_key.as_ref(),
-            mint_a.as_ref(),
-            mint_b.as_ref(),
-            b"authority",
-        ],
-        &program_id,
-    );
     let (liquidity_provider_mint, _) = Address::find_program_address(
         &[
             config_key.as_ref(),
@@ -112,8 +102,10 @@ fn full_setup() -> TestSetup {
         &program_id,
     );
 
-    let pool_a = derive_ata(&pool_authority, &mint_a);
-    let pool_b = derive_ata(&pool_authority, &mint_b);
+    // The reserves are the associated token accounts of `pool_config`, which
+    // owns them and signs every transfer out of them.
+    let pool_a = derive_ata(&pool_config_key, &mint_a);
+    let pool_b = derive_ata(&pool_config_key, &mint_b);
     let liquidity_account = derive_ata(&admin.pubkey(), &liquidity_provider_mint);
 
     // Create ATAs for admin and mint tokens
@@ -158,7 +150,6 @@ fn full_setup() -> TestSetup {
         swap_example::accounts::InitializePoolAccountConstraints {
             config: config_key,
             pool_config: pool_config_key,
-            pool_authority,
             liquidity_provider_mint,
             mint_a,
             mint_b,
@@ -188,7 +179,6 @@ fn full_setup() -> TestSetup {
         mint_a,
         mint_b,
         pool_config_key,
-        pool_authority,
         liquidity_provider_mint,
         pool_a,
         pool_b,
@@ -252,6 +242,42 @@ fn test_initialize_config() {
     assert!(!config_account.data.is_empty());
 }
 
+/// The pool config account is the authority for everything the pool holds:
+/// it owns both reserves and is the LP mint's mint authority, so it alone
+/// signs the transfers out of the reserves and the LP mint/burn CPIs.
+#[test]
+fn test_pool_config_owns_reserves_and_lp_mint() {
+    let ts = full_setup();
+    let expected: &[u8] = ts.pool_config_key.as_ref();
+
+    // SPL token account layout: mint (32 bytes), then owner (32 bytes).
+    for reserve in [&ts.pool_a, &ts.pool_b] {
+        let account = ts.svm.get_account(reserve).expect("reserve should exist");
+        assert_eq!(
+            &account.data[32..64],
+            expected,
+            "reserve owner should be pool_config"
+        );
+    }
+
+    // SPL mint layout: COption<Pubkey> mint_authority = 4-byte tag (1 = Some)
+    // followed by the 32-byte pubkey.
+    let mint = ts
+        .svm
+        .get_account(&ts.liquidity_provider_mint)
+        .expect("LP mint should exist");
+    assert_eq!(
+        &mint.data[0..4],
+        &[1, 0, 0, 0],
+        "LP mint should have a mint authority"
+    );
+    assert_eq!(
+        &mint.data[4..36],
+        expected,
+        "LP mint authority should be pool_config"
+    );
+}
+
 #[test]
 fn test_deposit_liquidity() {
     let mut ts = full_setup();
@@ -269,7 +295,6 @@ fn test_deposit_liquidity() {
         .data(),
         swap_example::accounts::DepositLiquidityAccountConstraints {
             pool_config: ts.pool_config_key,
-            pool_authority: ts.pool_authority,
             depositor: ts.admin.pubkey(),
             liquidity_provider_mint: ts.liquidity_provider_mint,
             mint_a: ts.mint_a,
@@ -316,7 +341,6 @@ fn test_swap_a_to_b() {
         .data(),
         swap_example::accounts::DepositLiquidityAccountConstraints {
             pool_config: ts.pool_config_key,
-            pool_authority: ts.pool_authority,
             depositor: ts.admin.pubkey(),
             liquidity_provider_mint: ts.liquidity_provider_mint,
             mint_a: ts.mint_a,
@@ -356,7 +380,6 @@ fn test_swap_a_to_b() {
         swap_example::accounts::SwapTokensAccountConstraints {
             config: ts.config_key,
             pool_config: ts.pool_config_key,
-            pool_authority: ts.pool_authority,
             trader: ts.admin.pubkey(),
             mint_a: ts.mint_a,
             mint_b: ts.mint_b,
@@ -403,7 +426,6 @@ fn test_withdraw_liquidity() {
         .data(),
         swap_example::accounts::DepositLiquidityAccountConstraints {
             pool_config: ts.pool_config_key,
-            pool_authority: ts.pool_authority,
             depositor: ts.admin.pubkey(),
             liquidity_provider_mint: ts.liquidity_provider_mint,
             mint_a: ts.mint_a,
@@ -445,7 +467,6 @@ fn test_withdraw_liquidity() {
         swap_example::accounts::WithdrawLiquidityAccountConstraints {
             config: ts.config_key,
             pool_config: ts.pool_config_key,
-            pool_authority: ts.pool_authority,
             withdrawer: ts.admin.pubkey(),
             liquidity_provider_mint: ts.liquidity_provider_mint,
             mint_a: ts.mint_a,
@@ -494,7 +515,6 @@ fn deposit_and_swap_a_to_b(
         .data(),
         swap_example::accounts::DepositLiquidityAccountConstraints {
             pool_config: ts.pool_config_key,
-            pool_authority: ts.pool_authority,
             depositor: ts.admin.pubkey(),
             liquidity_provider_mint: ts.liquidity_provider_mint,
             mint_a: ts.mint_a,
@@ -530,7 +550,6 @@ fn deposit_and_swap_a_to_b(
         swap_example::accounts::SwapTokensAccountConstraints {
             config: ts.config_key,
             pool_config: ts.pool_config_key,
-            pool_authority: ts.pool_authority,
             trader: ts.admin.pubkey(),
             mint_a: ts.mint_a,
             mint_b: ts.mint_b,
@@ -564,7 +583,6 @@ fn claim_admin_fees_ix(ts: &TestSetup) -> Instruction {
         swap_example::accounts::ClaimAdminFeesAccountConstraints {
             config: ts.config_key,
             pool_config: ts.pool_config_key,
-            pool_authority: ts.pool_authority,
             mint_a: ts.mint_a,
             mint_b: ts.mint_b,
             pool_a: ts.pool_a,
@@ -591,7 +609,6 @@ fn swap_a_to_b(ts: &mut TestSetup, input_amount: u64) {
         swap_example::accounts::SwapTokensAccountConstraints {
             config: ts.config_key,
             pool_config: ts.pool_config_key,
-            pool_authority: ts.pool_authority,
             trader: ts.admin.pubkey(),
             mint_a: ts.mint_a,
             mint_b: ts.mint_b,
@@ -699,7 +716,6 @@ fn test_claim_admin_fees() {
         swap_example::accounts::ClaimAdminFeesAccountConstraints {
             config: ts.config_key,
             pool_config: ts.pool_config_key,
-            pool_authority: ts.pool_authority,
             mint_a: ts.mint_a,
             mint_b: ts.mint_b,
             pool_a: ts.pool_a,
@@ -757,7 +773,6 @@ fn test_claim_admin_fees_rejects_non_admin() {
         swap_example::accounts::ClaimAdminFeesAccountConstraints {
             config: ts.config_key,
             pool_config: ts.pool_config_key,
-            pool_authority: ts.pool_authority,
             mint_a: ts.mint_a,
             mint_b: ts.mint_b,
             pool_a: ts.pool_a,
@@ -799,7 +814,6 @@ fn deposit_ix(ts: &TestSetup, amount_a: u64, amount_b: u64) -> Instruction {
         .data(),
         swap_example::accounts::DepositLiquidityAccountConstraints {
             pool_config: ts.pool_config_key,
-            pool_authority: ts.pool_authority,
             depositor: ts.admin.pubkey(),
             liquidity_provider_mint: ts.liquidity_provider_mint,
             mint_a: ts.mint_a,
@@ -977,7 +991,6 @@ fn test_deposit_after_swap_uses_shifted_effective_ratio() {
         swap_example::accounts::SwapTokensAccountConstraints {
             config: ts.config_key,
             pool_config: ts.pool_config_key,
-            pool_authority: ts.pool_authority,
             trader: ts.admin.pubkey(),
             mint_a: ts.mint_a,
             mint_b: ts.mint_b,
@@ -1191,7 +1204,6 @@ fn swap_a_to_b_ix(ts: &TestSetup, input_amount: u64, min_output_amount: u64) -> 
         swap_example::accounts::SwapTokensAccountConstraints {
             config: ts.config_key,
             pool_config: ts.pool_config_key,
-            pool_authority: ts.pool_authority,
             trader: ts.admin.pubkey(),
             mint_a: ts.mint_a,
             mint_b: ts.mint_b,
@@ -1225,7 +1237,6 @@ fn deposit_ix_with_min_lp(
         .data(),
         swap_example::accounts::DepositLiquidityAccountConstraints {
             pool_config: ts.pool_config_key,
-            pool_authority: ts.pool_authority,
             depositor: ts.admin.pubkey(),
             liquidity_provider_mint: ts.liquidity_provider_mint,
             mint_a: ts.mint_a,
@@ -1262,7 +1273,6 @@ fn withdraw_ix_with_min(
         swap_example::accounts::WithdrawLiquidityAccountConstraints {
             config: ts.config_key,
             pool_config: ts.pool_config_key,
-            pool_authority: ts.pool_authority,
             withdrawer: ts.admin.pubkey(),
             liquidity_provider_mint: ts.liquidity_provider_mint,
             mint_a: ts.mint_a,
@@ -1439,7 +1449,6 @@ fn swap_b_to_a_ix(ts: &TestSetup, input_amount: u64, min_output_amount: u64) -> 
         swap_example::accounts::SwapTokensAccountConstraints {
             config: ts.config_key,
             pool_config: ts.pool_config_key,
-            pool_authority: ts.pool_authority,
             trader: ts.admin.pubkey(),
             mint_a: ts.mint_a,
             mint_b: ts.mint_b,

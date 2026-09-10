@@ -1,7 +1,7 @@
 use {
     crate::{
         state::{Config, PoolConfig, PoolConfigInner},
-        ConfigPda, LiquidityMintPda, PoolAuthorityPda, PoolPda,
+        ConfigPda, LiquidityMintPda, PoolPda,
     },
     quasar_lang::prelude::*,
     quasar_spl::prelude::*,
@@ -9,12 +9,13 @@ use {
 
 /// Seeds:
 /// - `pool_config = [config, mint_a, mint_b]`
-/// - `pool_authority = [b"authority", config, mint_a, mint_b]`
 /// - `liquidity_provider_mint = [b"liquidity", config, mint_a, mint_b]`
 ///
-/// `pool_authority` and `liquidity_provider_mint` derive at different
-/// onchain addresses than the Anchor sibling because `#[derive(Seeds)]`
-/// emits the literal prefix first. Internally consistent within this program.
+/// `pool_config` owns both reserves and is the LP mint's mint authority; it
+/// signs for them with its own seeds. `liquidity_provider_mint` derives at a
+/// different onchain address than the Anchor sibling because
+/// `#[derive(Seeds)]` emits the literal prefix first. Internally consistent
+/// within this program.
 #[derive(Accounts)]
 pub struct InitializePoolAccountConstraints {
     #[account(address = ConfigPda::seeds())]
@@ -26,36 +27,32 @@ pub struct InitializePoolAccountConstraints {
         address = PoolPda::seeds(config.address(), mint_a.address(), mint_b.address()),
     )]
     pub pool_config: Account<PoolConfig>,
-    /// Pool authority PDA - signs for pool token operations.
-    #[account(
-        address = PoolAuthorityPda::seeds(config.address(), mint_a.address(), mint_b.address()),
-    )]
-    pub pool_authority: UncheckedAccount,
-    /// Liquidity token mint - created at a PDA.
+    /// Liquidity token mint - created at a PDA; `pool_config` is its mint
+    /// authority.
     #[account(
         mut,
         init,
         payer = payer,
         address = LiquidityMintPda::seeds(config.address(), mint_a.address(), mint_b.address()),
-        mint(decimals = 6, authority = pool_authority, freeze_authority = None, token_program = token_program),
+        mint(decimals = 6, authority = pool_config, freeze_authority = None, token_program = token_program),
     )]
     pub liquidity_provider_mint: Account<Mint>,
     pub mint_a: Account<Mint>,
     pub mint_b: Account<Mint>,
-    /// Pool's token A reserve.
+    /// Pool's token A reserve, owned by `pool_config`.
     #[account(
         mut,
         init(idempotent),
         payer = payer,
-        token(mint = mint_a, authority = pool_authority, token_program = token_program),
+        token(mint = mint_a, authority = pool_config, token_program = token_program),
     )]
     pub pool_a: Account<Token>,
-    /// Pool's token B reserve.
+    /// Pool's token B reserve, owned by `pool_config`.
     #[account(
         mut,
         init(idempotent),
         payer = payer,
-        token(mint = mint_b, authority = pool_authority, token_program = token_program),
+        token(mint = mint_b, authority = pool_config, token_program = token_program),
     )]
     pub pool_b: Account<Token>,
     #[account(mut)]

@@ -1,5 +1,18 @@
 # Changelog
 
+## [2026-09-10]
+
+### Changed
+
+- Removed the separate dataless signer PDA (seeds
+  `[b"authority", config, mint_a, mint_b]`, with its `#[derive(Seeds)]` marker
+  and seed constant) that owned the reserves and the LP mint. The `PoolConfig`
+  account now owns both reserves, is the LP mint's mint authority, and signs
+  the transfers out of the reserves and the LP mint with its own seeds
+  `[config, mint_a, mint_b, bump]`, the way the escrow example's `offer`
+  account signs for its vault. The extra signer account is gone from every
+  instruction.
+
 ## [2026-07-22]
 
 ### Changed
