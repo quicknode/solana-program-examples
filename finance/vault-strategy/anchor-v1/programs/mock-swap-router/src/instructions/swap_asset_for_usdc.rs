@@ -13,6 +13,8 @@ use crate::state::{AssetRate, RouterConfig};
 pub struct SwapAssetForUsdcAccountConstraints<'info> {
     pub caller: Signer<'info>,
 
+    /// Owns the USDC treasury and is the mint authority of every asset the
+    /// router mints; signs the treasury transfer below with its own seeds.
     #[account(
         seeds = [b"router_config"],
         bump = router_config.bump
@@ -52,17 +54,10 @@ pub struct SwapAssetForUsdcAccountConstraints<'info> {
     #[account(
         mut,
         associated_token::mint = usdc_mint,
-        associated_token::authority = router_authority,
+        associated_token::authority = router_config,
         associated_token::token_program = token_program
     )]
     pub router_usdc_treasury: Box<InterfaceAccount<'info, TokenAccount>>,
-
-    /// CHECK: PDA used as treasury authority - validated by seeds constraint
-    #[account(
-        seeds = [b"router_authority"],
-        bump
-    )]
-    pub router_authority: UncheckedAccount<'info>,
 
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub token_program: Interface<'info, TokenInterface>,
@@ -96,15 +91,15 @@ pub fn handle_swap_asset_for_usdc(
         asset_amount_in,
     )?;
 
-    // Transfer USDC from router treasury to caller - router_authority PDA signs
-    let router_authority_bump = context.bumps.router_authority;
-    let signer_seeds: &[&[&[u8]]] = &[&[b"router_authority", &[router_authority_bump]]];
+    // Transfer USDC from router treasury to caller - router_config owns the treasury and signs
+    let router_config_bump = context.accounts.router_config.bump;
+    let signer_seeds: &[&[&[u8]]] = &[&[b"router_config", &[router_config_bump]]];
 
     let transfer_accounts = TransferChecked {
         from: context.accounts.router_usdc_treasury.to_account_info(),
         mint: context.accounts.usdc_mint.to_account_info(),
         to: context.accounts.caller_usdc_account.to_account_info(),
-        authority: context.accounts.router_authority.to_account_info(),
+        authority: context.accounts.router_config.to_account_info(),
     };
     transfer_checked(
         CpiContext::new_with_signer(

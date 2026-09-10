@@ -401,10 +401,6 @@
           "writable": true
         },
         {
-          "name": "router_authority",
-          "writable": true
-        },
-        {
           "name": "swap_router_program",
           "address": "SWPR8Rk3aq3DrDGLdaANq7xCMnXoUFUJWJJmCWxc8Jm"
         },
@@ -721,10 +717,6 @@
         },
         {
           "name": "router_usdc_treasury",
-          "writable": true
-        },
-        {
-          "name": "router_authority",
           "writable": true
         },
         {

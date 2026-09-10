@@ -5,7 +5,7 @@
 use {
     crate::{
         cpi::{InitializeRouterInstruction, SetRateInstruction, SwapUsdcForAssetInstruction},
-        state::{AssetRate, RouterAuthorityPda, TreasuryPda},
+        state::{AssetRate, RouterConfig, TreasuryPda},
     },
     quasar_test::prelude::*,
 };
@@ -22,7 +22,7 @@ const CALLER_ASSET: Pubkey = Pubkey::new_from_array([5; 32]);
 
 #[quasar_test]
 fn initialize_and_swap_usdc_for_asset(test: &mut Test) {
-    let router_authority = test.derive_pda(RouterAuthorityPda::seeds());
+    let router_config = test.derive_pda(RouterConfig::seeds());
     let treasury = test.derive_pda(TreasuryPda::seeds());
     let rate = test.derive_pda(AssetRate::seeds(&ASSET_MINT));
 
@@ -31,13 +31,9 @@ fn initialize_and_swap_usdc_for_asset(test: &mut Test) {
 
     test.add(Wallet::new().at(AUTHORITY));
     test.add(Mint::new(AUTHORITY).at(USDC_MINT).decimals(DECIMALS));
-    // The asset mint's authority is the router-authority PDA, so the router
+    // The asset mint's authority is the router config account, so the router
     // can mint it.
-    test.add(
-        Mint::new(router_authority)
-            .at(ASSET_MINT)
-            .decimals(DECIMALS),
-    );
+    test.add(Mint::new(router_config).at(ASSET_MINT).decimals(DECIMALS));
     test.add(
         TokenAccount::new(USDC_MINT, AUTHORITY)
             .at(CALLER_USDC)

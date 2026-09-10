@@ -120,7 +120,7 @@ A price move pushes the basket off target. `rebalance(sell_amount, usdc_to_inves
 
 ## Mock Swap Router vs Production
 
-The `mock-swap-router` exists only for testing: it stores a `usdc_per_token` rate per asset, holds the basket mints' authority, and mints/burns to simulate swaps. The `Strategy` stores the router program pubkey at creation, and `deposit` and `rebalance` require the router account to match it (`InvalidSwapRouter`). In production, replace the router CPIs with [Jupiter](https://jup.ag); the strategy PDA still signs.
+The `mock-swap-router` exists only for testing: it stores a `usdc_per_token` rate per asset, holds the basket mints' authority, and mints/burns to simulate swaps. Its single `router_config` account (`["router_config"]`) is both its state and its signer: it owns the USDC treasury, is the mint authority of every basket mint, and signs the router's token CPIs with its own seeds, the same way the strategy PDA does for the vaults. The `Strategy` stores the router program pubkey at creation, and `deposit` and `rebalance` require the router account to match it (`InvalidSwapRouter`). In production, replace the router CPIs with [Jupiter](https://jup.ag); the strategy PDA still signs.
 
 ---
 

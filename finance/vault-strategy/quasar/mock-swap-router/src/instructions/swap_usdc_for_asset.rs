@@ -3,15 +3,15 @@ use quasar_lang::prelude::*;
 use quasar_spl::prelude::*;
 
 use crate::errors::RouterError;
-use crate::state::{
-    AssetRate, RouterAuthorityPda, RouterConfig, TreasuryPda, ROUTER_AUTHORITY_SEED,
-};
+use crate::state::{AssetRate, RouterConfig, TreasuryPda, ROUTER_CONFIG_SEED};
 
 #[derive(Accounts)]
 pub struct SwapUsdcForAssetAccountConstraints {
     // The caller - the vault-strategy PDA when invoked via CPI (a PDA signer).
     pub caller: Signer,
 
+    // Owns the USDC treasury and is the mint authority of every asset the
+    // router mints; signs the mint below with its own seeds.
     #[account(address = RouterConfig::seeds())]
     pub router_config: Account<RouterConfig>,
 
@@ -31,9 +31,6 @@ pub struct SwapUsdcForAssetAccountConstraints {
     #[account(mut, address = TreasuryPda::seeds())]
     pub router_usdc_treasury: InterfaceAccount<Token>,
 
-    #[account(address = RouterAuthorityPda::seeds())]
-    pub router_authority: UncheckedAccount,
-
     pub token_program: Program<TokenProgram>,
 }
 
@@ -42,7 +39,6 @@ pub fn handle_swap_usdc_for_asset(
     accounts: &mut SwapUsdcForAssetAccountConstraints,
     usdc_amount_in: u64,
     minimum_asset_out: u64,
-    bumps: &SwapUsdcForAssetAccountConstraintsBumps,
 ) -> Result<(), ProgramError> {
     require_keys_eq!(
         accounts.asset_rate.mint,
@@ -77,16 +73,16 @@ pub fn handle_swap_usdc_for_asset(
         )
         .invoke()?;
 
-    // Mint asset tokens to the caller; the router-authority PDA is the mint
+    // Mint asset tokens to the caller; the router config account is the mint
     // authority and signs.
-    let bump = [bumps.router_authority];
-    let seeds = [Seed::from(ROUTER_AUTHORITY_SEED), Seed::from(bump.as_ref())];
+    let bump = [accounts.router_config.bump];
+    let seeds = [Seed::from(ROUTER_CONFIG_SEED), Seed::from(bump.as_ref())];
     accounts
         .token_program
         .mint_to(
             &accounts.asset_mint,
             &accounts.caller_asset_account,
-            &accounts.router_authority,
+            &accounts.router_config,
             asset_out,
         )
         .invoke_signed(&seeds)?;

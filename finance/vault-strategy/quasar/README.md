@@ -14,7 +14,11 @@ Quasar project:
 - `vault-strategy/` - the vault itself (program ID
   `VLT5W7bqhRN4nCdRpXm8UfHRxZd9EuZGqiSAkGHQfGh`).
 - `mock-swap-router/` - a stand-in constant-rate swap venue the vault trades
-  through (program ID `SWPR8Rk3aq3DrDGLdaANq7xCMnXoUFUJWJJmCWxc8Jm`).
+  through (program ID `SWPR8Rk3aq3DrDGLdaANq7xCMnXoUFUJWJJmCWxc8Jm`). Its
+  `RouterConfig` account (`["router_config"]`) is both its state and its
+  signer: it owns the USDC treasury, is the mint authority of every asset it
+  mints, and signs the router's token CPIs with its own seeds, as the Strategy
+  PDA does for the vaults.
 
 Both share the same program IDs as the Anchor build. The mock router mints an
 asset against USDC at an admin-set fixed rate, standing in for a real AMM or

@@ -45,9 +45,6 @@ fn router_id() -> Pubkey {
 fn router_config_pda() -> Pubkey {
     Pubkey::find_program_address(&[b"router_config"], &router_id()).0
 }
-fn router_authority_pda() -> Pubkey {
-    Pubkey::find_program_address(&[b"router_authority"], &router_id()).0
-}
 fn router_treasury_pda() -> Pubkey {
     Pubkey::find_program_address(&[b"treasury"], &router_id()).0
 }
@@ -162,9 +159,9 @@ fn deposit_mints_shares_and_deploys_into_the_basket(test: &mut Test) {
     test.add(Program::new(router_id(), &router_elf));
     test.warp_to_timestamp(NOW);
 
-    let r_authority = router_authority_pda();
-    // The asset mint is minted by the router authority.
-    setup_strategy(test, r_authority);
+    // The router config account is the asset mint's mint authority, so the
+    // router can mint it on swap.
+    setup_strategy(test, router_config_pda());
     let w = pdas(test);
 
     test.add(Wallet::new().at(DEPOSITOR));
@@ -213,7 +210,6 @@ fn deposit_mints_shares_and_deploys_into_the_basket(test: &mut Test) {
             AccountMeta::new_readonly(ASSET_MINT, false),
             AccountMeta::new_readonly(USDC_MINT, false),
             AccountMeta::new(router_rate_pda(&ASSET_MINT), false),
-            AccountMeta::new_readonly(r_authority, false),
             AccountMeta::new(router_treasury_pda(), false),
             AccountMeta::new_readonly(rent_id, false),
             AccountMeta::new_readonly(SPL_TOKEN_PROGRAM_ID, false),
@@ -233,7 +229,6 @@ fn deposit_mints_shares_and_deploys_into_the_basket(test: &mut Test) {
         depositor_share_account: DEPOSITOR_SHARE,
         router_config: router_config_pda(),
         router_usdc_treasury: router_treasury_pda(),
-        router_authority: r_authority,
         swap_router_program: router_id(),
         usdc_amount: DEPOSIT,
         minimum_shares: DEPOSIT,

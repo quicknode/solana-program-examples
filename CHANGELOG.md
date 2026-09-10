@@ -4,6 +4,26 @@ All notable changes to this repository are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-09-10] - Market and pool accounts own their vaults
+
+Five finance examples kept a dataless "authority" PDA beside their state
+account, existing only to own the vaults and mints and to sign for them: the
+token swap, the prop AMM, the perpetual futures pool, the options venue, and the
+vault strategy's mock swap router. A program-owned data account signs with its
+own seeds just as well, as the escrow's offer account already does, and its
+seeds never change however its data does, so the extra account bought nothing
+but one more account per instruction and one more stored bump.
+
+- The pool config, market, pool, and router config now own their vaults and
+  mints directly and sign with their own seeds, in every port: Anchor v2,
+  Anchor v1, and Quasar. The token swap's reserves are now associated token
+  accounts of the pool config, so their addresses changed; the vault strategy's
+  web app derives the router treasury from the router config.
+- Each affected port's tests assert the new ownership, and its README and
+  changelog follow.
+- Pre-existing formatting drift and clippy findings in the prop AMM and token
+  swap v1 and Quasar ports were fixed so the gates pass.
+
 ## [2026-09-08] - Anchor v1 examples on Anchor 1.2.0
 
 Anchor 1.2.0 is the current release of the v1 line. Every `anchor-v1/` example now
