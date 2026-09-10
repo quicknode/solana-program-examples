@@ -2,7 +2,7 @@ use {
     crate::{
         errors::OptionsError,
         instructions::shared::{check_custody, transfer_from_vault},
-        state::{Market, MarketAuthorityPda},
+        state::Market,
     },
     quasar_lang::prelude::*,
     quasar_spl::prelude::*,
@@ -20,9 +20,6 @@ pub struct CollectFeesAccountConstraints {
         has_one(quote_vault),
     )]
     pub market: Account<Market>,
-    /// Authority PDA over both vaults; holds no data, only signs.
-    #[account(address = MarketAuthorityPda::seeds(market.address()))]
-    pub market_authority: UncheckedAccount,
     /// CHECK: seed input for the market PDA.
     pub underlying_mint: UncheckedAccount,
     pub quote_mint: Account<Mint>,
@@ -63,7 +60,6 @@ pub fn handle_collect_fees(
         &accounts.quote_vault,
         &accounts.quote_mint,
         &accounts.admin_quote,
-        &accounts.market_authority,
         &accounts.market,
         amount,
     )

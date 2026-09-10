@@ -298,6 +298,13 @@ fn collect_fees(test: &mut Test, env: &Env, admin: Pubkey, admin_quote: Pubkey) 
     })
 }
 
+/// The token authority of a token account: bytes 32..64 of the SPL Token
+/// account layout.
+fn token_authority(test: &Test, token_account: Pubkey) -> Pubkey {
+    let account = test.account(token_account).unwrap();
+    Pubkey::try_from(&account.data[32..64]).unwrap()
+}
+
 /// The custody invariant: each vault holds exactly what the market owes.
 fn assert_vaults_match_ledger(test: &Test, env: &Env) {
     let market = test.read::<Market>(env.market);
@@ -316,6 +323,16 @@ fn assert_vaults_match_ledger(test: &Test, env: &Env) {
 // ===========================================================================
 // The call: write, buy, exercise, collect
 // ===========================================================================
+
+/// The market account itself is the token authority of both vaults: there is
+/// no separate signer, so every transfer out of a vault is signed with the
+/// market's own seeds.
+#[quasar_test]
+fn market_owns_both_vaults(test: &mut Test) {
+    let env = setup(test);
+    assert_eq!(token_authority(test, env.underlying_vault), env.market);
+    assert_eq!(token_authority(test, env.quote_vault), env.market);
+}
 
 /// Alice writes 5 covered calls on her 5 NVDAx. The whole 5 NVDAx moves into
 /// the vault at once; the option is listed for a 25 USDC premium.

@@ -91,9 +91,9 @@ pub struct Pool {
     /// pool will trade against. A wider band is rejected as untrustworthy.
     pub max_confidence_bps: u16,
 
+    /// Bump of this account's own address. The pool owns the custody vault
+    /// and is the LP mint's authority, so it signs vault transfers and
+    /// mint/burn CPIs with `[POOL_SEED, collateral_mint, oracle_feed, bump]`;
+    /// there is no separate signing PDA.
     pub bump: u8,
-
-    /// Bump for the vault/LP-mint authority PDA, stored so CPIs can sign without
-    /// re-deriving it.
-    pub authority_bump: u8,
 }

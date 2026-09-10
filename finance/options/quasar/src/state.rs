@@ -22,8 +22,9 @@ pub struct Market {
     pub fees_owed: u64,
     /// Fee charged on each premium, in basis points.
     pub fee_bps: u16,
+    /// Bump of this account's own PDA. The market is the token authority of
+    /// both vaults and signs every transfer out of them with its seeds.
     pub bump: u8,
-    pub authority_bump: u8,
 }
 
 /// One option. Mirrors the Anchor `OptionContract`; `kind` and `status`
@@ -53,12 +54,6 @@ pub struct OptionContract {
     pub status: u8,
     pub bump: u8,
 }
-
-/// Authority PDA at seeds = [b"authority", market]. Holds no data; signs
-/// every transfer out of either vault.
-#[derive(Seeds)]
-#[seeds(b"authority", market: Address)]
-pub struct MarketAuthorityPda;
 
 /// Underlying-token vault PDA at seeds = [b"underlying_vault", market].
 #[derive(Seeds)]

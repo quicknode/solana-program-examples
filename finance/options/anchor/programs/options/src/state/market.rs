@@ -41,9 +41,8 @@ pub struct Market {
     /// Fee charged on each premium, in basis points. The venue's revenue.
     pub fee_bps: u16,
 
+    /// Bump of this account's own PDA. The market is the token authority of
+    /// both vaults and signs every transfer out of them with its seeds, so the
+    /// bump is stored to save re-deriving it on each CPI.
     pub bump: u8,
-
-    /// Bump for the vault authority PDA, stored so CPIs can sign without
-    /// re-deriving it.
-    pub authority_bump: u8,
 }

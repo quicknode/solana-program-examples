@@ -3,7 +3,6 @@ use {
         constants::{DIRECTION_BUY_BASE, DIRECTION_SELL_BASE},
         instructions::shared::{self, err, error},
         state::Market,
-        MarketAuthorityPda,
     },
     quasar_lang::cpi::Seed,
     quasar_lang::{prelude::*, sysvars::clock::Clock},
@@ -21,9 +20,6 @@ pub struct Swap {
         has_one(quote_vault),
     )]
     pub market: Account<Market>,
-    /// Authority PDA over both vaults; holds no data, only signs.
-    #[account(address = MarketAuthorityPda::seeds(market.address()))]
-    pub market_authority: UncheckedAccount,
     /// CHECK: bound to the market via `has_one(oracle_feed)`.
     pub oracle_feed: UncheckedAccount,
     pub base_mint: Account<Mint>,
@@ -141,11 +137,14 @@ pub fn handle_swap(
         return Err(err(error::INSUFFICIENT_INVENTORY));
     }
 
-    let bump = [accounts.market.authority_bump];
-    let market_address = *accounts.market.address();
+    // The market owns both vaults and signs the payout with its own seeds.
+    let bump = [accounts.market.bump];
+    let base_mint = *accounts.base_mint.address();
+    let quote_mint = *accounts.quote_mint.address();
     let seeds: &[Seed] = &[
-        Seed::from(b"authority".as_ref()),
-        Seed::from(market_address.as_ref()),
+        Seed::from(b"market".as_ref()),
+        Seed::from(base_mint.as_ref()),
+        Seed::from(quote_mint.as_ref()),
         Seed::from(&bump as &[u8]),
     ];
 
@@ -168,7 +167,7 @@ pub fn handle_swap(
                 &accounts.base_vault,
                 &accounts.base_mint,
                 &accounts.trader_base,
-                &accounts.market_authority,
+                &accounts.market,
                 amount_out,
                 accounts.base_mint.decimals(),
             )
@@ -191,7 +190,7 @@ pub fn handle_swap(
                 &accounts.quote_vault,
                 &accounts.quote_mint,
                 &accounts.trader_quote,
-                &accounts.market_authority,
+                &accounts.market,
                 amount_out,
                 accounts.quote_mint.decimals(),
             )

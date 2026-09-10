@@ -7,8 +7,7 @@ use anchor_spl::{
 };
 
 use crate::constants::{
-    AUTHORITY_SEED, BASIS_POINTS_DENOMINATOR, LP_MINT_SEED, MAX_LEVERAGE_CEILING, POOL_SEED,
-    VAULT_SEED,
+    BASIS_POINTS_DENOMINATOR, LP_MINT_SEED, MAX_LEVERAGE_CEILING, POOL_SEED, VAULT_SEED,
 };
 use crate::errors::PerpError;
 use crate::state::Pool;
@@ -102,7 +101,6 @@ pub fn handle_initialize_pool(
     pool.liquidation_fee_bps = parameters.liquidation_fee_bps;
     pool.max_confidence_bps = parameters.max_confidence_bps;
     pool.bump = context.bumps.pool;
-    pool.authority_bump = context.bumps.pool_authority;
 
     Ok(())
 }
@@ -128,32 +126,28 @@ pub struct InitializePoolAccountConstraints {
     /// type. Swap for a real Switchboard feed in production.
     pub oracle_feed: UncheckedAccount,
 
-    /// CHECK: PDA that owns the vault and the liquidity-provider mint. Holds no
-    /// data; used only to sign vault and mint CPIs.
-    #[account(
-        seeds = [AUTHORITY_SEED, pool.address().as_ref()],
-        bump,
-    )]
-    pub pool_authority: UncheckedAccount,
-
+    /// Liquidity-provider share mint. The pool account is its mint authority
+    /// and signs every mint and burn with its own seeds.
     #[account(
         init,
         payer = authority,
         seeds = [LP_MINT_SEED, pool.address().as_ref()],
         bump,
         mint::decimals = collateral_mint.decimals(),
-        mint::authority = pool_authority,
+        mint::authority = pool,
         mint::token_program = token_program,
     )]
     pub lp_mint: Box<InterfaceAccount<Mint>>,
 
+    /// Custody vault for all collateral. The pool account owns it and signs
+    /// every transfer out with its own seeds.
     #[account(
         init,
         payer = authority,
         seeds = [VAULT_SEED, pool.address().as_ref()],
         bump,
         token::mint = collateral_mint,
-        token::authority = pool_authority,
+        token::authority = pool,
         token::token_program = token_program,
     )]
     pub custody_vault: Box<InterfaceAccount<TokenAccount>>,

@@ -4,7 +4,7 @@ use anchor_spl::{
     token_interface::{transfer_checked, Mint, TokenAccount, TokenInterface, TransferChecked},
 };
 
-use crate::constants::{AUTHORITY_SEED, BASE_VAULT_SEED, MARKET_SEED, QUOTE_VAULT_SEED};
+use crate::constants::{BASE_VAULT_SEED, MARKET_SEED, QUOTE_VAULT_SEED};
 use crate::errors::PropAmmError;
 use crate::quote_math;
 use crate::state::oracle::read_oracle_price;
@@ -111,11 +111,13 @@ pub fn handle_swap(
         PropAmmError::InsufficientInventory
     );
 
-    let market_key = market.address();
-    let authority_seeds: &[&[u8]] = &[
-        AUTHORITY_SEED,
-        market_key.as_ref(),
-        &[market.authority_bump],
+    // The market owns both vaults and signs the payout with its own seeds.
+    let market_bump = [market.bump];
+    let market_seeds: &[&[u8]] = &[
+        MARKET_SEED,
+        market.base_mint.as_ref(),
+        market.quote_mint.as_ref(),
+        &market_bump,
     ];
 
     // The trader pays in, then the vault pays out, atomically or not at all.
@@ -141,9 +143,9 @@ pub fn handle_swap(
                         from: context.accounts.base_vault.to_cpi_handle_mut(),
                         mint: context.accounts.base_mint.to_cpi_handle(),
                         to: context.accounts.trader_base.to_cpi_handle_mut(),
-                        authority: context.accounts.market_authority.cpi_handle(),
+                        authority: context.accounts.market.cpi_handle(),
                     },
-                    &[authority_seeds],
+                    &[market_seeds],
                 ),
                 amount_out,
                 out_mint_decimals,
@@ -170,9 +172,9 @@ pub fn handle_swap(
                         from: context.accounts.quote_vault.to_cpi_handle_mut(),
                         mint: context.accounts.quote_mint.to_cpi_handle(),
                         to: context.accounts.trader_quote.to_cpi_handle_mut(),
-                        authority: context.accounts.market_authority.cpi_handle(),
+                        authority: context.accounts.market.cpi_handle(),
                     },
-                    &[authority_seeds],
+                    &[market_seeds],
                 ),
                 amount_out,
                 out_mint_decimals,
@@ -193,13 +195,6 @@ pub struct SwapAccountConstraints {
         bump = market.bump,
     )]
     pub market: Box<BorshAccount<Market>>,
-
-    /// CHECK: PDA authority over both vaults; holds no data, only signs.
-    #[account(
-        seeds = [AUTHORITY_SEED, market.address().as_ref()],
-        bump = market.authority_bump,
-    )]
-    pub market_authority: UncheckedAccount,
 
     /// CHECK: validated by the `address = market.oracle_feed` constraint below.
     #[account(address = market.oracle_feed)]

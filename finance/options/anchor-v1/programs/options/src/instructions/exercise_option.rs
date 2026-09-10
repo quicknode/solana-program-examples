@@ -4,9 +4,7 @@ use anchor_spl::{
     token_interface::{Mint, TokenAccount, TokenInterface},
 };
 
-use crate::constants::{
-    AUTHORITY_SEED, MARKET_SEED, OPTION_SEED, QUOTE_VAULT_SEED, UNDERLYING_VAULT_SEED,
-};
+use crate::constants::{MARKET_SEED, OPTION_SEED, QUOTE_VAULT_SEED, UNDERLYING_VAULT_SEED};
 use crate::contract_math;
 use crate::errors::OptionsError;
 use crate::instructions::shared::{check_custody, transfer_from_signer, transfer_from_vault};
@@ -104,7 +102,6 @@ pub fn handle_exercise_option(context: Context<ExerciseOptionAccountConstraints>
                 &mut context.accounts.underlying_vault,
                 &context.accounts.underlying_mint,
                 &mut context.accounts.holder_underlying,
-                &context.accounts.market_authority,
                 market,
                 underlying_total,
             )
@@ -123,7 +120,6 @@ pub fn handle_exercise_option(context: Context<ExerciseOptionAccountConstraints>
                 &mut context.accounts.quote_vault,
                 &context.accounts.quote_mint,
                 &mut context.accounts.holder_quote,
-                &context.accounts.market_authority,
                 market,
                 strike_total,
             )
@@ -155,13 +151,6 @@ pub struct ExerciseOptionAccountConstraints<'info> {
         bump = option.bump,
     )]
     pub option: Box<Account<'info, OptionContract>>,
-
-    /// CHECK: PDA authority over both vaults; holds no data, only signs.
-    #[account(
-        seeds = [AUTHORITY_SEED, market.key().as_ref()],
-        bump = market.authority_bump,
-    )]
-    pub market_authority: UncheckedAccount<'info>,
 
     #[account(address = market.underlying_mint)]
     pub underlying_mint: Box<InterfaceAccount<'info, Mint>>,

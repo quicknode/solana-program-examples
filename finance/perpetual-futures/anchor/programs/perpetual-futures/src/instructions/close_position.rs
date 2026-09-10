@@ -4,7 +4,7 @@ use anchor_spl::{
     token_interface::{transfer_checked, Mint, TokenAccount, TokenInterface, TransferChecked},
 };
 
-use crate::constants::{AUTHORITY_SEED, POOL_SEED, POSITION_SEED, VAULT_SEED};
+use crate::constants::{POOL_SEED, POSITION_SEED, VAULT_SEED};
 use crate::errors::PerpError;
 use crate::instructions::shared::{basis_points_of, refresh_price_and_funding, settle_position};
 use crate::state::{Pool, Position};
@@ -66,8 +66,21 @@ pub fn handle_close_position(
         .checked_add(close_fee)
         .ok_or(PerpError::MathOverflow)?;
 
-    let pool_key = pool.address();
-    let authority_seeds: &[&[u8]] = &[AUTHORITY_SEED, pool_key.as_ref(), &[pool.authority_bump]];
+    // The pool signs the CPI below with its own seeds. Copy them out first: a
+    // data account holds a live borrow on its buffer, which the runtime
+    // rejects when the CPI borrows the same account, so the borrow is
+    // released around the CPI and taken back after. Releasing commits the
+    // writes above; reacquiring re-reads the account.
+    let collateral_mint_key = pool.collateral_mint;
+    let oracle_feed_key = pool.oracle_feed;
+    let pool_bump = [pool.bump];
+    let pool_seeds: &[&[u8]] = &[
+        POOL_SEED,
+        collateral_mint_key.as_ref(),
+        oracle_feed_key.as_ref(),
+        &pool_bump,
+    ];
+    context.accounts.pool.release_borrow()?;
     transfer_checked(
         CpiContext::new_with_signer(
             context.accounts.token_program.address(),
@@ -75,13 +88,14 @@ pub fn handle_close_position(
                 from: context.accounts.custody_vault.to_cpi_handle_mut(),
                 mint: context.accounts.collateral_mint.to_cpi_handle(),
                 to: context.accounts.trader_collateral.to_cpi_handle_mut(),
-                authority: context.accounts.pool_authority.cpi_handle(),
+                authority: context.accounts.pool.to_cpi_handle(),
             },
-            &[authority_seeds],
+            &[pool_seeds],
         ),
         payout,
         context.accounts.collateral_mint.decimals(),
     )?;
+    context.accounts.pool.reacquire_borrow_mut()?;
 
     Ok(())
 }
@@ -106,13 +120,6 @@ pub struct ClosePositionAccountConstraints {
         bump = position.bump,
     )]
     pub position: Box<BorshAccount<Position>>,
-
-    /// CHECK: PDA authority over the vault.
-    #[account(
-        seeds = [AUTHORITY_SEED, pool.address().as_ref()],
-        bump = pool.authority_bump,
-    )]
-    pub pool_authority: UncheckedAccount,
 
     /// CHECK: validated by the `address = pool.oracle_feed` constraint below.
     #[account(address = pool.oracle_feed)]

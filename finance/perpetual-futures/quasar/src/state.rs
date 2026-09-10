@@ -3,6 +3,9 @@ use quasar_lang::prelude::*;
 /// One perpetual-futures market. Mirrors the Anchor `Pool` field-for-field; see
 /// the Anchor sibling's README for what each field means. Money fields are raw
 /// base units of the collateral token.
+/// The pool account owns the custody vault and is the liquidity-provider
+/// mint's authority; it signs vault transfers and mint/burn CPIs with its own
+/// seeds. There is no separate signing PDA.
 #[account(discriminator = 100, set_inner)]
 #[seeds(b"pool", collateral_mint: Address, oracle_feed: Address)]
 pub struct Pool {
@@ -36,7 +39,6 @@ pub struct Pool {
     /// will trade against. A wider band is rejected as untrustworthy.
     pub max_confidence_bps: u16,
     pub bump: u8,
-    pub authority_bump: u8,
 }
 
 /// One trader's leveraged position, one PDA per (pool, owner). Unlike the Anchor

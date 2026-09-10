@@ -1,8 +1,22 @@
 # Changelog
 
+## 2026-09-10
+
+Remove the separate dataless signing PDA (seeds `["authority", pool]`) that
+owned the vault and the LP mint, and the bump field on `Pool` that recorded it.
+The pool account is already a PDA, so it is now the custody vault's owner and
+the LP mint's authority itself, and signs vault transfers and mint/burn CPIs
+with its own seeds, `["pool", collateral_mint, oracle_feed, bump]`: the pattern
+the escrow example uses for its vault and the vault-strategy example uses for
+its share mint. `initialize_pool`, `add_liquidity`, `remove_liquidity`,
+`close_position`, `liquidate_position` and `collect_fees` each take one account
+fewer. The admin signer stored on `Pool` as `authority` (the pool operator) is
+unchanged. `test_initialize_pool` now also checks that the vault's owner and the
+mint's authority are the pool.
+
 ## 2026-08-14
 
-Add `set_funding_rate`, so the pool authority can retune `funding_rate_per_slot`
+Add `set_funding_rate`, so the pool operator can retune `funding_rate_per_slot`
 after the pool is created. The rate is quoted per slot, so what a position costs
 per hour depends on the cluster's slot time as well as on the rate; Solana lowers
 the slot time over time, and a pool created before a reduction charges the

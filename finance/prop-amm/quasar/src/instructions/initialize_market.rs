@@ -3,7 +3,7 @@ use {
         constants::BASIS_POINTS_DENOMINATOR,
         instructions::shared::{err, error},
         state::{Market, MarketInner},
-        BaseVaultPda, MarketAuthorityPda, QuoteVaultPda,
+        BaseVaultPda, QuoteVaultPda,
     },
     quasar_lang::prelude::*,
     quasar_spl::prelude::*,
@@ -27,15 +27,15 @@ pub struct InitializeMarket {
     /// CHECK: stored on the market; every read validates layout, scale,
     /// freshness, and confidence.
     pub oracle_feed: UncheckedAccount,
-    /// Authority PDA over both vaults. Holds no data; only signs.
-    #[account(address = MarketAuthorityPda::seeds(market.address()))]
-    pub market_authority: UncheckedAccount,
+    // The market account itself is the token authority of both vaults and
+    // signs their outgoing transfers with its own seeds, so no separate
+    // signing account is needed.
     #[account(
         mut,
         init(idempotent),
         payer = operator,
         address = BaseVaultPda::seeds(market.address()),
-        token(mint = base_mint, authority = market_authority, token_program = token_program),
+        token(mint = base_mint, authority = market, token_program = token_program),
     )]
     pub base_vault: Account<Token>,
     #[account(
@@ -43,7 +43,7 @@ pub struct InitializeMarket {
         init(idempotent),
         payer = operator,
         address = QuoteVaultPda::seeds(market.address()),
-        token(mint = quote_mint, authority = market_authority, token_program = token_program),
+        token(mint = quote_mint, authority = market, token_program = token_program),
     )]
     pub quote_vault: Account<Token>,
     pub token_program: Program<TokenProgram>,
@@ -90,7 +90,6 @@ pub fn handle_initialize_market(
         max_confidence_bps,
         paused: 0,
         bump: bumps.market,
-        authority_bump: bumps.market_authority,
     });
     Ok(())
 }

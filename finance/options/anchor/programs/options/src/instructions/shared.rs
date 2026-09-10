@@ -3,7 +3,7 @@ use anchor_spl::token_interface::{
     transfer_checked, Mint, TokenAccount, TokenInterface, TransferChecked,
 };
 
-use crate::constants::AUTHORITY_SEED;
+use crate::constants::MARKET_SEED;
 use crate::errors::OptionsError;
 use crate::state::Market;
 
@@ -52,21 +52,33 @@ pub fn transfer_from_signer(
     )
 }
 
-/// A transfer out of a vault, signed by the market's vault authority PDA.
-/// Takes the market by reference for its address and authority bump, so the
-/// caller must have finished mutating it (it has: effects come before CPIs).
+/// A transfer out of a vault, signed by the market account, which is the
+/// token authority of both vaults. Takes the market mutably: it is a data
+/// account, so it holds a live borrow on its buffer, and the runtime rejects
+/// a CPI that borrows it again. The borrow is released around the CPI and
+/// taken back afterwards so the derive's exit path can still serialize it.
+/// The caller must have finished mutating the market (it has: effects come
+/// before CPIs).
 pub fn transfer_from_vault(
     token_program: &Interface<'static, TokenInterface>,
     vault: &mut InterfaceAccount<TokenAccount>,
     mint: &InterfaceAccount<Mint>,
     to: &mut InterfaceAccount<TokenAccount>,
-    market_authority: &UncheckedAccount,
-    market: &BorshAccount<Market>,
+    market: &mut BorshAccount<Market>,
     amount: u64,
 ) -> Result<()> {
-    let market_key = market.address();
-    let bump = [market.authority_bump];
-    let authority_seeds: &[&[u8]] = &[AUTHORITY_SEED, market_key.as_ref(), &bump];
+    let underlying_mint = market.underlying_mint;
+    let quote_mint = market.quote_mint;
+    let bump = [market.bump];
+    let market_seeds: &[&[u8]] = &[
+        MARKET_SEED,
+        underlying_mint.as_ref(),
+        quote_mint.as_ref(),
+        &bump,
+    ];
+
+    market.release_borrow()?;
+    let market_view = *market.account();
     transfer_checked(
         CpiContext::new_with_signer(
             token_program.address(),
@@ -74,11 +86,12 @@ pub fn transfer_from_vault(
                 from: vault.to_cpi_handle_mut(),
                 mint: mint.to_cpi_handle(),
                 to: to.to_cpi_handle_mut(),
-                authority: market_authority.cpi_handle(),
+                authority: CpiHandle::readonly(&market_view),
             },
-            &[authority_seeds],
+            &[market_seeds],
         ),
         amount,
         mint.decimals(),
-    )
+    )?;
+    market.reacquire_borrow_mut()
 }

@@ -63,7 +63,6 @@ struct Market {
     quote_mint: Address,
     feed: Address,
     market: Address,
-    market_authority: Address,
     base_vault: Address,
     quote_vault: Address,
 }
@@ -139,8 +138,6 @@ impl Market {
             &prop_amm::id(),
         )
         .0;
-        let market_authority =
-            Address::find_program_address(&[b"authority", market.as_ref()], &prop_amm::id()).0;
         let base_vault =
             Address::find_program_address(&[b"base_vault", market.as_ref()], &prop_amm::id()).0;
         let quote_vault =
@@ -155,7 +152,6 @@ impl Market {
                 base_mint,
                 quote_mint,
                 oracle_feed: feed,
-                market_authority,
                 base_vault,
                 quote_vault,
                 token_program: token_program_id(),
@@ -206,7 +202,6 @@ impl Market {
             quote_mint,
             feed,
             market,
-            market_authority,
             base_vault,
             quote_vault,
         })
@@ -351,7 +346,6 @@ impl Market {
                 prop_amm::accounts::WithdrawInventoryAccountConstraints {
                     operator: signer.pubkey(),
                     market: self.market,
-                    market_authority: self.market_authority,
                     base_mint: self.base_mint,
                     quote_mint: self.quote_mint,
                     base_vault: self.base_vault,
@@ -428,7 +422,6 @@ impl Market {
             prop_amm::accounts::SwapAccountConstraints {
                 trader: trader.pubkey(),
                 market: self.market,
-                market_authority: self.market_authority,
                 oracle_feed: self.feed,
                 base_mint: self.base_mint,
                 quote_mint: self.quote_mint,
@@ -454,6 +447,13 @@ impl Market {
 
     fn balance(&self, token_account: &Address) -> u64 {
         get_token_account_balance(&self.svm, token_account).unwrap()
+    }
+
+    /// The owner field of a token account: bytes 32..64 of the SPL Token
+    /// account layout, after the mint.
+    fn token_account_owner(&self, token_account: &Address) -> Address {
+        let account = self.svm.get_account(token_account).unwrap();
+        Address::try_from(&account.data[32..64]).unwrap()
     }
 }
 
@@ -735,6 +735,21 @@ fn test_swap_rejects_insufficient_inventory() {
 // ===========================================================================
 // Parameter validation
 // ===========================================================================
+
+/// The market account is the token authority of both vaults, so it can sign
+/// their outgoing transfers with its own seeds.
+#[test]
+fn test_market_owns_both_vaults() {
+    let market = Market::default_market();
+    assert_eq!(
+        market.token_account_owner(&market.base_vault),
+        market.market
+    );
+    assert_eq!(
+        market.token_account_owner(&market.quote_vault),
+        market.market
+    );
+}
 
 #[test]
 fn test_initialize_market_rejects_zero_spread() {
