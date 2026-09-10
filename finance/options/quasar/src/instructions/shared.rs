@@ -155,24 +155,24 @@ pub fn sub_locked(
     Ok(())
 }
 
-/// A transfer out of a vault, signed by the market's vault authority PDA.
+/// A transfer out of a vault, signed by the market account, which is the
+/// token authority of both vaults.
 pub fn transfer_from_vault(
     token_program: &Program<TokenProgram>,
     vault: &Account<Token>,
     mint: &Account<Mint>,
     to: &Account<Token>,
-    market_authority: &UncheckedAccount,
     market: &Account<Market>,
     amount: u64,
 ) -> Result<(), ProgramError> {
-    let bump = [market.authority_bump];
-    let market_address = *market.address();
+    let bump = [market.bump];
     let seeds: &[Seed] = &[
-        Seed::from(b"authority".as_ref()),
-        Seed::from(market_address.as_ref()),
+        Seed::from(b"market".as_ref()),
+        Seed::from(market.underlying_mint.as_ref()),
+        Seed::from(market.quote_mint.as_ref()),
         Seed::from(&bump as &[u8]),
     ];
     token_program
-        .transfer_checked(vault, mint, to, market_authority, amount, mint.decimals())
+        .transfer_checked(vault, mint, to, market, amount, mint.decimals())
         .invoke_signed(seeds)
 }

@@ -82,7 +82,7 @@ Shared configuration for the AMM. **Singleton** - one per deployed program, at P
 
 ### `PoolConfig`
 
-Per-pool configuration / identity record. Identifies a single pool by which `Config` it belongs to and which two mints it trades, and tracks the admin's accumulated trading-fee claim for each side. The actual pool reserves live in separate token accounts (`pool_a`, `pool_b`) owned by `pool_authority` - they are *not* stored here.
+Per-pool configuration / identity record. Identifies a single pool by which `Config` it belongs to and which two mints it trades, and tracks the admin's accumulated trading-fee claim for each side. The actual pool reserves live in separate token accounts (`pool_a`, `pool_b`) owned by the `PoolConfig` account itself - they are *not* stored here. `PoolConfig` is also the LP mint's mint authority, and it signs the transfers out of the reserves and the LP mint/burn CPIs with its own seeds, the way the escrow example's `offer` account signs for its vault.
 
 - `config: Pubkey` - the parent `Config` account.
 - `mint_a: Pubkey` - mint of token A.
@@ -102,7 +102,7 @@ Initializes the singleton `Config` account with the supplied `admin`, `fee`, and
 
 ### `initialize_pool`
 
-Initializes a `PoolConfig` account, an LP mint (`liquidity_provider_mint`), and the two pool reserve token accounts (`pool_a`, `pool_b`) owned by `pool_authority`. Enforces `mint_a < mint_b` for canonical pool addressing.
+Initializes a `PoolConfig` account, an LP mint (`liquidity_provider_mint`) whose mint authority is `pool_config`, and the two pool reserve token accounts (`pool_a`, `pool_b`), the associated token accounts of `pool_config`. Enforces `mint_a < mint_b` for canonical pool addressing.
 
 ### `deposit_liquidity`
 
@@ -140,7 +140,7 @@ Burns LP tokens and returns a proportional share of the **effective reserves** (
 
 ### `claim_admin_fees`
 
-Lets the address stored in `Config.admin` sweep their accumulated trading-fee claim out of a pool. Transfers `admin_fees_owed_a` from `pool_a` to the admin's token-A account and `admin_fees_owed_b` from `pool_b` to the admin's token-B account, signed by `pool_authority`. Then resets both accumulators to zero.
+Lets the address stored in `Config.admin` sweep their accumulated trading-fee claim out of a pool. Transfers `admin_fees_owed_a` from `pool_a` to the admin's token-A account and `admin_fees_owed_b` from `pool_b` to the admin's token-B account, signed by `pool_config`. Then resets both accumulators to zero.
 
 - Authorisation: enforced by Anchor's `address = config.admin` constraint on `admin` plus the `Signer` constraint on the same field. Calls from any other signer are rejected.
 - The admin's token accounts (`admin_token_a`, `admin_token_b`) must already exist - this handler doesn't auto-create them (keeps the example small).
@@ -180,11 +180,10 @@ The singleton `Config` account is set once per deployed program. Every pool inhe
 - **Handler:** `initialize_pool`
 - **Accounts (`InitializePoolAccounts`):**
   - `config` - Alice's `Config`
-  - `pool_config` (PDA, created) - seeds `[config, mint_a, mint_b]`; stores `config`, `mint_a`, `mint_b`, `bump`
-  - `pool_authority` (PDA) - signs for the pool reserves
-  - `liquidity_provider_mint` (created) - the LP-token mint, authority = `pool_authority`
+  - `pool_config` (PDA, created) - seeds `[config, mint_a, mint_b]`; stores `config`, `mint_a`, `mint_b`, `bump`; owns the reserves and signs for them
+  - `liquidity_provider_mint` (created) - the LP-token mint, authority = `pool_config`
   - `mint_a` = NVDAx mint, `mint_b` = USDC mint (with `mint_a < mint_b`)
-  - `pool_a`, `pool_b` (created, ATAs owned by `pool_authority`) - the NVDAx and USDC reserves
+  - `pool_a`, `pool_b` (created, ATAs owned by `pool_config`) - the NVDAx and USDC reserves
   - `payer` = Alice
   - token, ATA, system programs
 - **Args:** none
@@ -198,11 +197,10 @@ Alice immediately creates a second pool for TSLAx (Tesla xStock, ~180 USDC each)
 - **Handler:** `initialize_pool`
 - **Accounts (`InitializePoolAccounts`):**
   - `config` - Alice's `Config` (same singleton)
-  - `pool_config` (PDA, created) - seeds `[config, mint_a, mint_b]`; stores `config`, `mint_a` = TSLAx mint, `mint_b` = USDC mint, `bump`
-  - `pool_authority` (PDA) - signs for this pool's reserves
-  - `liquidity_provider_mint` (created) - a separate LP-token mint for this pool
+  - `pool_config` (PDA, created) - seeds `[config, mint_a, mint_b]`; stores `config`, `mint_a` = TSLAx mint, `mint_b` = USDC mint, `bump`; owns this pool's reserves and signs for them
+  - `liquidity_provider_mint` (created) - a separate LP-token mint for this pool, authority = `pool_config`
   - `mint_a` = TSLAx mint, `mint_b` = USDC mint (with `mint_a < mint_b`)
-  - `pool_a`, `pool_b` (created, ATAs owned by `pool_authority`) - the TSLAx and USDC reserves
+  - `pool_a`, `pool_b` (created, ATAs owned by `pool_config`) - the TSLAx and USDC reserves
   - `payer` = Alice
   - token, ATA, system programs
 - **Args:** none
@@ -219,7 +217,7 @@ Alice picks a 1:5 ratio so the NVDAx/USDC pool launches at ~5 USDC per NVDAx. Sh
 
 - **Handler:** `deposit_liquidity`
 - **Accounts (`DepositLiquidityAccounts`):**
-  - `pool_config`, `pool_authority`, `liquidity_provider_mint`
+  - `pool_config`, `liquidity_provider_mint`
   - `depositor` = Alice (signer)
   - `mint_a`, `mint_b`
   - `pool_a`, `pool_b` (the pool's reserves)
@@ -254,7 +252,7 @@ NVDAx/USDC pool state: **120 NVDAx, 600 USDC**. LP supply ~268.32. Bob owns ~83%
 - **Handler:** `swap_tokens`
 - **Accounts (`SwapTokensAccounts`):**
   - `config` - for the fee
-  - `pool_config`, `pool_authority`
+  - `pool_config`
   - `trader` = Carol (signer)
   - `mint_a`, `mint_b`
   - `pool_a`, `pool_b` (the pool's reserves)
@@ -311,7 +309,6 @@ Separately, Carol decides to add TSLAx exposure on top of her NVDAx purchase. Sh
 - **Accounts (`SwapTokensAccounts`):**
   - `config` - the same singleton `Config` (fee and admin_share_bps apply to all pools)
   - `pool_config` - the TSLAx/USDC `PoolConfig` PDA
-  - `pool_authority` - the TSLAx/USDC pool authority PDA
   - `trader` = Carol (signer)
   - `mint_a` = TSLAx mint, `mint_b` = USDC mint
   - `pool_a`, `pool_b` - the TSLAx/USDC reserves (1 TSLAx, 180 USDC after Alice's seed deposit)
@@ -343,7 +340,7 @@ After trading activity on both pools, Alice sweeps her accumulated slice from th
 - **Handler:** `claim_admin_fees`
 - **Accounts (`ClaimAdminFeesAccounts`):**
   - `config` - Alice's `Config` (the `address = config.admin` constraint on `admin` enforces that only she can call this)
-  - `pool_config`, `pool_authority`
+  - `pool_config`
   - `mint_a`, `mint_b`
   - `pool_a`, `pool_b` (the pool's reserves - the source of the transfers)
   - `admin` = Alice (signer)

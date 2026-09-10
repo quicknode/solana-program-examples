@@ -4,7 +4,7 @@ use anchor_spl::{
     token_interface::{Mint, TokenAccount, TokenInterface},
 };
 
-use crate::constants::{AUTHORITY_SEED, MARKET_SEED, QUOTE_VAULT_SEED};
+use crate::constants::{MARKET_SEED, QUOTE_VAULT_SEED};
 use crate::errors::OptionsError;
 use crate::instructions::shared::{check_custody, transfer_from_vault};
 use crate::state::Market;
@@ -36,7 +36,6 @@ pub fn handle_collect_fees(context: Context<CollectFeesAccountConstraints>) -> R
         &mut context.accounts.quote_vault,
         &context.accounts.quote_mint,
         &mut context.accounts.admin_quote,
-        &context.accounts.market_authority,
         market,
         amount,
     )
@@ -53,13 +52,6 @@ pub struct CollectFeesAccountConstraints<'info> {
         bump = market.bump,
     )]
     pub market: Box<Account<'info, Market>>,
-
-    /// CHECK: PDA authority over both vaults; holds no data, only signs.
-    #[account(
-        seeds = [AUTHORITY_SEED, market.key().as_ref()],
-        bump = market.authority_bump,
-    )]
-    pub market_authority: UncheckedAccount<'info>,
 
     #[account(address = market.quote_mint)]
     pub quote_mint: Box<InterfaceAccount<'info, Mint>>,

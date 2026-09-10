@@ -85,7 +85,6 @@ struct Venue {
     underlying_mint: Address,
     quote_mint: Address,
     market: Address,
-    market_authority: Address,
     underlying_vault: Address,
     quote_vault: Address,
 }
@@ -133,8 +132,6 @@ impl Venue {
             &options::id(),
         )
         .0;
-        let market_authority =
-            Address::find_program_address(&[b"authority", market.as_ref()], &options::id()).0;
         let underlying_vault =
             Address::find_program_address(&[b"underlying_vault", market.as_ref()], &options::id())
                 .0;
@@ -149,7 +146,6 @@ impl Venue {
                 market,
                 underlying_mint,
                 quote_mint,
-                market_authority,
                 underlying_vault,
                 quote_vault,
                 token_program: token_program_id(),
@@ -172,7 +168,6 @@ impl Venue {
             underlying_mint,
             quote_mint,
             market,
-            market_authority,
             underlying_vault,
             quote_vault,
         })
@@ -271,6 +266,13 @@ impl Venue {
         get_token_account_balance(&self.svm, token_account).unwrap()
     }
 
+    /// The token authority of a token account: bytes 32..64 of the SPL Token
+    /// account layout.
+    fn token_authority(&self, token_account: &Address) -> Address {
+        let account = self.svm.get_account(token_account).unwrap();
+        Address::try_from(&account.data[32..64]).unwrap()
+    }
+
     fn send(&mut self, instruction: Instruction, signer: &Keypair) -> Result<(), ()> {
         send_transaction_from_instructions(
             &mut self.svm,
@@ -364,7 +366,6 @@ impl Venue {
                 writer: writer.pubkey(),
                 market: self.market,
                 option: *option,
-                market_authority: self.market_authority,
                 underlying_mint: self.underlying_mint,
                 quote_mint: self.quote_mint,
                 underlying_vault: self.underlying_vault,
@@ -392,7 +393,6 @@ impl Venue {
                 writer: *writer,
                 market: self.market,
                 option: *option,
-                market_authority: self.market_authority,
                 underlying_mint: self.underlying_mint,
                 quote_mint: self.quote_mint,
                 underlying_vault: self.underlying_vault,
@@ -416,7 +416,6 @@ impl Venue {
                 writer: writer.pubkey(),
                 market: self.market,
                 option: *option,
-                market_authority: self.market_authority,
                 underlying_mint: self.underlying_mint,
                 quote_mint: self.quote_mint,
                 underlying_vault: self.underlying_vault,
@@ -440,7 +439,6 @@ impl Venue {
                 writer: writer.pubkey(),
                 market: self.market,
                 option: *option,
-                market_authority: self.market_authority,
                 underlying_mint: self.underlying_mint,
                 quote_mint: self.quote_mint,
                 underlying_vault: self.underlying_vault,
@@ -461,7 +459,6 @@ impl Venue {
             options::accounts::CollectFeesAccountConstraints {
                 admin: signer.pubkey(),
                 market: self.market,
-                market_authority: self.market_authority,
                 quote_mint: self.quote_mint,
                 underlying_vault: self.underlying_vault,
                 quote_vault: self.quote_vault,
@@ -501,6 +498,16 @@ impl Venue {
 // ===========================================================================
 // The call: write, buy, exercise, collect
 // ===========================================================================
+
+/// The market account itself is the token authority of both vaults: there is
+/// no separate signer, so every transfer out of a vault is signed with the
+/// market's own seeds.
+#[test]
+fn test_market_owns_both_vaults() {
+    let venue = Venue::new();
+    assert_eq!(venue.token_authority(&venue.underlying_vault), venue.market);
+    assert_eq!(venue.token_authority(&venue.quote_vault), venue.market);
+}
 
 /// Alice writes 5 covered calls on her 5 NVDAx. The whole 5 NVDAx moves into
 /// the vault at once; the option is listed for a 25 USDC premium.

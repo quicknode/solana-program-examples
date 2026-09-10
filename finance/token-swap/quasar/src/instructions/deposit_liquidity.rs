@@ -2,7 +2,7 @@ use {
     crate::{
         error::AmmError,
         state::{Config, PoolConfig},
-        ConfigPda, LiquidityMintPda, PoolAuthorityPda, PoolPda,
+        ConfigPda, LiquidityMintPda, PoolPda,
     },
     quasar_lang::cpi::Seed,
     quasar_lang::prelude::*,
@@ -15,11 +15,9 @@ use {
 pub struct DepositLiquidityAccountConstraints {
     #[account(address = ConfigPda::seeds())]
     pub config: Account<Config>,
+    /// Owns both reserves and is the LP mint's authority; signs the mint_to.
     #[account(address = PoolPda::seeds(config.address(), mint_a.address(), mint_b.address()))]
     pub pool_config: Account<PoolConfig>,
-    /// Pool authority PDA.
-    #[account(address = PoolAuthorityPda::seeds(config.address(), mint_a.address(), mint_b.address()))]
-    pub pool_authority: UncheckedAccount,
     /// Depositor (must be signer to authorise transfers).
     pub depositor: Signer,
     /// LP mint at the LiquidityMintPda.
@@ -238,11 +236,10 @@ pub fn handle_deposit_liquidity(
         )
         .invoke()?;
 
-    // Mint LP tokens to the depositor (signed by pool authority).
-    // Seed order matches PoolAuthorityPda: [b"authority", config, mint_a, mint_b, bump].
-    let bump = [bumps.pool_authority];
+    // Mint LP tokens to the depositor, signed by `pool_config` as the LP
+    // mint's authority. Seed order matches PoolPda: [config, mint_a, mint_b, bump].
+    let bump = [bumps.pool_config];
     let seeds: &[Seed] = &[
-        Seed::from(crate::AUTHORITY_SEED),
         Seed::from(accounts.config.address().as_ref()),
         Seed::from(accounts.mint_a.address().as_ref()),
         Seed::from(accounts.mint_b.address().as_ref()),
@@ -254,7 +251,7 @@ pub fn handle_deposit_liquidity(
         .mint_to(
             &accounts.liquidity_provider_mint,
             &accounts.liquidity_provider_token,
-            &accounts.pool_authority,
+            &accounts.pool_config,
             liquidity,
         )
         .invoke_signed(seeds)?;

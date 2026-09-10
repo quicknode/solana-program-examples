@@ -25,9 +25,12 @@ pub struct Config {
 ///
 /// Holds the metadata that identifies a single pool: which `Config` it belongs
 /// to and which two mints it trades. The actual pool reserves live in separate
-/// token accounts (`pool_a`, `pool_b`) owned by the pool authority PDA - they
-/// are not stored here. This struct is the pool's *configuration*, not its
-/// state.
+/// token accounts (`pool_a`, `pool_b`) that this account owns - they are not
+/// stored here. This struct is the pool's *configuration*, not its state.
+///
+/// This account is also the pool's signing authority: it owns both reserves,
+/// is the mint authority of the LP mint, and signs the transfers out of the
+/// reserves and the LP mint with its own seeds `[config, mint_a, mint_b, bump]`.
 ///
 /// Also tracks the admin's accumulated trading-fee claim per side
 /// (`admin_fees_owed_a` / `admin_fees_owed_b`). Those amounts physically sit

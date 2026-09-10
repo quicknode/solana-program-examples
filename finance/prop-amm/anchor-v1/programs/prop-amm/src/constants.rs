@@ -17,9 +17,6 @@ pub const MAX_PRICE_STALENESS_SLOTS: u64 = 150;
 pub const MARKET_SEED: &[u8] = b"market";
 
 #[constant]
-pub const AUTHORITY_SEED: &[u8] = b"authority";
-
-#[constant]
 pub const BASE_VAULT_SEED: &[u8] = b"base_vault";
 
 #[constant]

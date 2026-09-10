@@ -38,13 +38,9 @@ export const approvedAssetPda = (registry: PublicKey, mint: PublicKey): PublicKe
 // The strategy stores which router it uses, so these accept the router program id
 // (defaulting to the configured one) to stay correct if a strategy points elsewhere.
 
-/** ["router_config"] */
+/** ["router_config"] — also owns the router's treasury and signs its token CPIs */
 export const routerConfigPda = (routerProgram: PublicKey = ROUTER_PROGRAM_ID): PublicKey =>
   pda([seed("router_config")], routerProgram);
-
-/** ["router_authority"] */
-export const routerAuthorityPda = (routerProgram: PublicKey = ROUTER_PROGRAM_ID): PublicKey =>
-  pda([seed("router_authority")], routerProgram);
 
 /** ["rate", mint] */
 export const assetRatePda = (mint: PublicKey, routerProgram: PublicKey = ROUTER_PROGRAM_ID): PublicKey =>
@@ -60,8 +56,8 @@ export const vaultAta = (mint: PublicKey, strategy: PublicKey): PublicKey =>
 export const userAta = (mint: PublicKey, owner: PublicKey): PublicKey =>
   getAssociatedTokenAddressSync(mint, owner, false);
 
-/** Router USDC treasury = ATA(usdc, router_authority). */
+/** Router USDC treasury = ATA(usdc, router_config). */
 export const routerUsdcTreasury = (usdcMint: PublicKey, routerProgram: PublicKey = ROUTER_PROGRAM_ID): PublicKey =>
-  getAssociatedTokenAddressSync(usdcMint, routerAuthorityPda(routerProgram), true);
+  getAssociatedTokenAddressSync(usdcMint, routerConfigPda(routerProgram), true);
 
 export { ASSOCIATED_TOKEN_PROGRAM_ID, TOKEN_PROGRAM_ID };

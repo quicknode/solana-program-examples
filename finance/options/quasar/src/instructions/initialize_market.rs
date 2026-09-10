@@ -2,7 +2,7 @@ use {
     crate::{
         constants::BASIS_POINTS_DENOMINATOR,
         errors::OptionsError,
-        state::{Market, MarketAuthorityPda, MarketInner, QuoteVaultPda, UnderlyingVaultPda},
+        state::{Market, MarketInner, QuoteVaultPda, UnderlyingVaultPda},
     },
     quasar_lang::prelude::*,
     quasar_spl::prelude::*,
@@ -23,15 +23,14 @@ pub struct InitializeMarketAccountConstraints {
     pub market: Account<Market>,
     pub underlying_mint: Account<Mint>,
     pub quote_mint: Account<Mint>,
-    /// Authority PDA over both vaults. Holds no data; only signs.
-    #[account(address = MarketAuthorityPda::seeds(market.address()))]
-    pub market_authority: UncheckedAccount,
+    // The market account is the token authority of both vaults: it signs
+    // every transfer out of them with its own PDA seeds.
     #[account(
         mut,
         init(idempotent),
         payer = admin,
         address = UnderlyingVaultPda::seeds(market.address()),
-        token(mint = underlying_mint, authority = market_authority, token_program = token_program),
+        token(mint = underlying_mint, authority = market, token_program = token_program),
     )]
     pub underlying_vault: Account<Token>,
     #[account(
@@ -39,7 +38,7 @@ pub struct InitializeMarketAccountConstraints {
         init(idempotent),
         payer = admin,
         address = QuoteVaultPda::seeds(market.address()),
-        token(mint = quote_mint, authority = market_authority, token_program = token_program),
+        token(mint = quote_mint, authority = market, token_program = token_program),
     )]
     pub quote_vault: Account<Token>,
     pub token_program: Program<TokenProgram>,
@@ -76,7 +75,6 @@ pub fn handle_initialize_market(
         fees_owed: 0,
         fee_bps,
         bump: bumps.market,
-        authority_bump: bumps.market_authority,
     });
     Ok(())
 }

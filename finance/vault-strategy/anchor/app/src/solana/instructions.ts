@@ -7,7 +7,6 @@ import {
   assetConfigPda,
   assetRatePda,
   registryPda,
-  routerAuthorityPda,
   routerConfigPda,
   routerUsdcTreasury,
   shareMintPda,
@@ -66,7 +65,6 @@ export function buildDepositIx(
       vaultUsdc: view.usdcVault,
       routerConfig: routerConfigPda(router),
       routerUsdcTreasury: routerUsdcTreasury(s.usdcMint, router),
-      routerAuthority: routerAuthorityPda(router),
       swapRouterProgram: router,
       ...TOKEN_PROGRAMS,
     })
@@ -153,7 +151,6 @@ export function buildRebalanceIx(
       buyRate: assetRatePda(buy.mint, router),
       routerConfig: routerConfigPda(router),
       routerUsdcTreasury: routerUsdcTreasury(s.usdcMint, router),
-      routerAuthority: routerAuthorityPda(router),
       swapRouterProgram: router,
       ...TOKEN_PROGRAMS,
     })

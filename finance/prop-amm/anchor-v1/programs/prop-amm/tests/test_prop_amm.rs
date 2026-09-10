@@ -65,7 +65,6 @@ struct Market {
     quote_mint: Pubkey,
     feed: Pubkey,
     market: Pubkey,
-    market_authority: Pubkey,
     base_vault: Pubkey,
     quote_vault: Pubkey,
 }
@@ -141,8 +140,6 @@ impl Market {
             &prop_amm::id(),
         )
         .0;
-        let market_authority =
-            Pubkey::find_program_address(&[b"authority", market.as_ref()], &prop_amm::id()).0;
         let base_vault =
             Pubkey::find_program_address(&[b"base_vault", market.as_ref()], &prop_amm::id()).0;
         let quote_vault =
@@ -157,7 +154,6 @@ impl Market {
                 base_mint,
                 quote_mint,
                 oracle_feed: feed,
-                market_authority,
                 base_vault,
                 quote_vault,
                 token_program: token_program_id(),
@@ -175,20 +171,12 @@ impl Market {
         .map_err(|_| ())?;
 
         // Fund the operator's inventory accounts.
-        let operator_base = create_associated_token_account(
-            &mut svm,
-            &operator.pubkey(),
-            &base_mint,
-            &payer,
-        )
-        .unwrap();
-        let operator_quote = create_associated_token_account(
-            &mut svm,
-            &operator.pubkey(),
-            &quote_mint,
-            &payer,
-        )
-        .unwrap();
+        let operator_base =
+            create_associated_token_account(&mut svm, &operator.pubkey(), &base_mint, &payer)
+                .unwrap();
+        let operator_quote =
+            create_associated_token_account(&mut svm, &operator.pubkey(), &quote_mint, &payer)
+                .unwrap();
         mint_tokens_to_token_account(
             &mut svm,
             &base_mint,
@@ -216,7 +204,6 @@ impl Market {
             quote_mint,
             feed,
             market,
-            market_authority,
             base_vault,
             quote_vault,
         })
@@ -271,9 +258,10 @@ impl Market {
     /// Simulate a cluster restart at `slot`: prices stamped at or before it
     /// must be rejected until the publisher posts again.
     fn set_last_restart_slot(&mut self, slot: u64) {
-        self.svm.set_sysvar(&solana_sysvar::last_restart_slot::LastRestartSlot {
-            last_restart_slot: slot,
-        });
+        self.svm
+            .set_sysvar(&solana_sysvar::last_restart_slot::LastRestartSlot {
+                last_restart_slot: slot,
+            });
     }
 
     /// Create a wallet holding `base` and `quote` minor units in associated
@@ -360,7 +348,6 @@ impl Market {
                 prop_amm::accounts::WithdrawInventoryAccountConstraints {
                     operator: signer.pubkey(),
                     market: self.market,
-                    market_authority: self.market_authority,
                     base_mint: self.base_mint,
                     quote_mint: self.quote_mint,
                     base_vault: self.base_vault,
@@ -372,9 +359,14 @@ impl Market {
                 .to_account_metas(None),
             )
         };
-        send_transaction_from_instructions(&mut self.svm, vec![instruction], &[signer], &signer.pubkey())
-            .map(|_| ())
-            .map_err(|_| ())
+        send_transaction_from_instructions(
+            &mut self.svm,
+            vec![instruction],
+            &[signer],
+            &signer.pubkey(),
+        )
+        .map(|_| ())
+        .map_err(|_| ())
     }
 
     fn deposit_inventory(&mut self, base_amount: u64, quote_amount: u64) -> Result<(), ()> {
@@ -397,9 +389,14 @@ impl Market {
             }
             .to_account_metas(None),
         );
-        send_transaction_from_instructions(&mut self.svm, vec![instruction], &[signer], &signer.pubkey())
-            .map(|_| ())
-            .map_err(|_| ())
+        send_transaction_from_instructions(
+            &mut self.svm,
+            vec![instruction],
+            &[signer],
+            &signer.pubkey(),
+        )
+        .map(|_| ())
+        .map_err(|_| ())
     }
 
     fn set_quote(&mut self, spread_bps: u16, paused: bool) -> Result<(), ()> {
@@ -427,7 +424,6 @@ impl Market {
             prop_amm::accounts::SwapAccountConstraints {
                 trader: trader.pubkey(),
                 market: self.market,
-                market_authority: self.market_authority,
                 oracle_feed: self.feed,
                 base_mint: self.base_mint,
                 quote_mint: self.quote_mint,
@@ -441,13 +437,25 @@ impl Market {
             }
             .to_account_metas(None),
         );
-        send_transaction_from_instructions(&mut self.svm, vec![instruction], &[trader], &trader.pubkey())
-            .map(|_| ())
-            .map_err(|_| ())
+        send_transaction_from_instructions(
+            &mut self.svm,
+            vec![instruction],
+            &[trader],
+            &trader.pubkey(),
+        )
+        .map(|_| ())
+        .map_err(|_| ())
     }
 
     fn balance(&self, token_account: &Pubkey) -> u64 {
         get_token_account_balance(&self.svm, token_account).unwrap()
+    }
+
+    /// The owner field of a token account: bytes 32..64 of the SPL Token
+    /// account layout, after the mint.
+    fn token_account_owner(&self, token_account: &Pubkey) -> Pubkey {
+        let account = self.svm.get_account(token_account).unwrap();
+        Pubkey::try_from(&account.data[32..64]).unwrap()
     }
 }
 
@@ -587,9 +595,7 @@ fn test_operator_can_withdraw_everything_and_swaps_then_fail() {
 #[test]
 fn test_withdraw_more_than_inventory_fails() {
     let mut market = Market::default_market();
-    assert!(market
-        .withdraw_inventory(1_001 * ONE_TOKEN, 0)
-        .is_err());
+    assert!(market.withdraw_inventory(1_001 * ONE_TOKEN, 0).is_err());
 }
 
 #[test]
@@ -725,12 +731,29 @@ fn test_swap_rejects_insufficient_inventory() {
     // but the vault only holds 1,000 NVDAx.
     let quote_in = 181_681_500_000;
     let (whale, _, _) = market.funded_trader(0, quote_in);
-    assert!(market.swap(&whale, Direction::BuyBase, quote_in, 0).is_err());
+    assert!(market
+        .swap(&whale, Direction::BuyBase, quote_in, 0)
+        .is_err());
 }
 
 // ===========================================================================
 // Parameter validation
 // ===========================================================================
+
+/// The market account is the token authority of both vaults, so it can sign
+/// their outgoing transfers with its own seeds.
+#[test]
+fn test_market_owns_both_vaults() {
+    let market = Market::default_market();
+    assert_eq!(
+        market.token_account_owner(&market.base_vault),
+        market.market
+    );
+    assert_eq!(
+        market.token_account_owner(&market.quote_vault),
+        market.market
+    );
+}
 
 #[test]
 fn test_initialize_market_rejects_zero_spread() {

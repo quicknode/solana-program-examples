@@ -1,5 +1,21 @@
 # Changelog
 
+## [2026-09-10]
+
+### Changed
+
+- The mock swap router signs as its config account. The router used a second,
+  dataless PDA as the owner of its USDC treasury and the mint authority of the
+  asset mints. That PDA, its `Seeds` struct, and its seed constant are removed:
+  the `RouterConfig` account (`["router_config"]`) now owns the treasury, is
+  the mint authority of the asset mints, and signs the router's `mint_to` and
+  `transfer_checked` CPIs with its own seeds and stored bump, the way the
+  Strategy PDA signs for the share mint and vaults. The extra account is
+  dropped from `set_rate`, both swap instructions, the vault's `deposit` and
+  `rebalance` contexts, and the hand-built router CPIs, which now pass nine
+  accounts instead of ten. Both test suites give the asset mint's mint
+  authority to the router config account.
+
 ## [2026-07-22]
 
 ### Changed

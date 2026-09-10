@@ -58,17 +58,14 @@ pub struct DepositAccountConstraints<'info> {
     )]
     pub vault_usdc: Box<InterfaceAccount<'info, TokenAccount>>,
 
-    /// CHECK: Router config PDA from the mock-swap-router program
+    /// CHECK: Router config PDA from the mock-swap-router program; it owns the
+    /// treasury and signs the router's token CPIs
     #[account(mut)]
     pub router_config: UncheckedAccount<'info>,
 
-    /// CHECK: Router USDC treasury ATA
+    /// CHECK: Router USDC treasury ATA, owned by the router config account
     #[account(mut)]
     pub router_usdc_treasury: UncheckedAccount<'info>,
-
-    /// CHECK: Router authority PDA from the mock-swap-router program
-    #[account(mut)]
-    pub router_authority: UncheckedAccount<'info>,
 
     #[account(
         constraint = swap_router_program.key() == strategy.swap_router @ VaultError::InvalidSwapRouter
@@ -241,7 +238,6 @@ pub fn handle_deposit<'info>(
             caller_usdc_account: context.accounts.vault_usdc.to_account_info(),
             caller_asset_account: vault_account.clone(),
             router_usdc_treasury: context.accounts.router_usdc_treasury.to_account_info(),
-            router_authority: context.accounts.router_authority.to_account_info(),
             associated_token_program: context.accounts.associated_token_program.to_account_info(),
             token_program: context.accounts.token_program.to_account_info(),
             system_program: context.accounts.system_program.to_account_info(),

@@ -2,7 +2,7 @@ use {
     crate::{
         instructions::shared::{err, error, refresh_price_and_funding, traders_unrealized_pnl},
         state::Pool,
-        LpMintPda, PoolAuthorityPda,
+        LpMintPda,
     },
     quasar_lang::cpi::Seed,
     quasar_lang::{prelude::*, sysvars::clock::Clock},
@@ -19,8 +19,6 @@ pub struct RemoveLiquidity {
         has_one(custody_vault),
     )]
     pub pool: Account<Pool>,
-    #[account(address = PoolAuthorityPda::seeds(pool.address()))]
-    pub pool_authority: UncheckedAccount,
     /// CHECK: bound to the pool via its seeds.
     pub oracle_feed: UncheckedAccount,
     pub collateral_mint: Account<Mint>,
@@ -113,10 +111,12 @@ pub fn handle_remove_liquidity(
         )
         .invoke()?;
 
-    let bump = [bumps.pool_authority];
+    // The pool signs the CPI below with its own seeds.
+    let bump = [bumps.pool];
     let seeds: &[Seed] = &[
-        Seed::from(b"authority".as_ref()),
-        Seed::from(accounts.pool.address().as_ref()),
+        Seed::from(b"pool".as_ref()),
+        Seed::from(accounts.collateral_mint.address().as_ref()),
+        Seed::from(accounts.oracle_feed.address().as_ref()),
         Seed::from(&bump as &[u8]),
     ];
     accounts
@@ -125,7 +125,7 @@ pub fn handle_remove_liquidity(
             &accounts.custody_vault,
             &accounts.collateral_mint,
             &accounts.provider_collateral,
-            &accounts.pool_authority,
+            &accounts.pool,
             amount_out,
             accounts.collateral_mint.decimals(),
         )

@@ -2,7 +2,7 @@ use anchor_lang::prelude::*;
 use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
 
 use crate::constants::{
-    AUTHORITY_SEED, BASIS_POINTS_DENOMINATOR, MARKET_SEED, QUOTE_VAULT_SEED, UNDERLYING_VAULT_SEED,
+    BASIS_POINTS_DENOMINATOR, MARKET_SEED, QUOTE_VAULT_SEED, UNDERLYING_VAULT_SEED,
 };
 use crate::errors::OptionsError;
 use crate::state::Market;
@@ -35,7 +35,6 @@ pub fn handle_initialize_market(
     market.fees_owed = 0;
     market.fee_bps = fee_bps;
     market.bump = context.bumps.market;
-    market.authority_bump = context.bumps.market_authority;
 
     Ok(())
 }
@@ -60,21 +59,15 @@ pub struct InitializeMarketAccountConstraints<'info> {
 
     pub quote_mint: Box<InterfaceAccount<'info, Mint>>,
 
-    /// CHECK: PDA that owns both vaults. Holds no data; used only to sign
-    /// vault CPIs.
-    #[account(
-        seeds = [AUTHORITY_SEED, market.key().as_ref()],
-        bump,
-    )]
-    pub market_authority: UncheckedAccount<'info>,
-
+    // The market account is the token authority of both vaults: it signs
+    // every transfer out of them with its own PDA seeds.
     #[account(
         init,
         payer = admin,
         seeds = [UNDERLYING_VAULT_SEED, market.key().as_ref()],
         bump,
         token::mint = underlying_mint,
-        token::authority = market_authority,
+        token::authority = market,
         token::token_program = token_program,
     )]
     pub underlying_vault: Box<InterfaceAccount<'info, TokenAccount>>,
@@ -85,7 +78,7 @@ pub struct InitializeMarketAccountConstraints<'info> {
         seeds = [QUOTE_VAULT_SEED, market.key().as_ref()],
         bump,
         token::mint = quote_mint,
-        token::authority = market_authority,
+        token::authority = market,
         token::token_program = token_program,
     )]
     pub quote_vault: Box<InterfaceAccount<'info, TokenAccount>>,

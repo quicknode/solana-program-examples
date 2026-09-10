@@ -5,7 +5,7 @@ use anchor_spl::{
 };
 
 use crate::{
-    constants::{AUTHORITY_SEED, LIQUIDITY_SEED, MINIMUM_LIQUIDITY},
+    constants::{LIQUIDITY_SEED, MINIMUM_LIQUIDITY},
     errors::AmmError,
     state::PoolConfig,
 };
@@ -221,16 +221,25 @@ pub fn handle_deposit_liquidity(
         context.accounts.mint_b.decimals(),
     )?;
 
-    // Mint the liquidity to user
-    let authority_bump = context.bumps.pool_authority;
-    let authority_seeds = &[
-        &context.accounts.pool_config.config.to_bytes(),
-        &context.accounts.mint_a.address().to_bytes(),
-        &context.accounts.mint_b.address().to_bytes(),
-        AUTHORITY_SEED,
-        &[authority_bump],
-    ];
-    let signer_seeds = &[&authority_seeds[..]];
+    // Mint the liquidity to the user. `pool_config` is the LP mint's
+    // authority and signs with its own seeds.
+    let config_bytes = context.accounts.pool_config.config.to_bytes();
+    let mint_a_bytes = context.accounts.mint_a.address().to_bytes();
+    let mint_b_bytes = context.accounts.mint_b.address().to_bytes();
+    let pool_config_bump = [context.accounts.pool_config.bump];
+    let signer_seeds: &[&[&[u8]]] = &[&[
+        config_bytes.as_ref(),
+        mint_a_bytes.as_ref(),
+        mint_b_bytes.as_ref(),
+        &pool_config_bump,
+    ]];
+
+    // `pool_config` signs the CPI below. It is a data account holding a live
+    // borrow on its buffer, which the runtime would reject when the CPI
+    // borrows the same account, so hand the borrow back for the duration. It
+    // is loaded read-only here, so there is nothing to take back afterwards.
+    context.accounts.pool_config.release_borrow()?;
+
     token_interface::mint_to(
         CpiContext::new_with_signer(
             context.accounts.token_program.address(),
@@ -240,7 +249,7 @@ pub fn handle_deposit_liquidity(
                     .accounts
                     .liquidity_provider_token
                     .to_cpi_handle_mut(),
-                authority: context.accounts.pool_authority.cpi_handle(),
+                authority: context.accounts.pool_config.to_cpi_handle(),
             },
             signer_seeds,
         ),
@@ -252,27 +261,16 @@ pub fn handle_deposit_liquidity(
 
 #[derive(Accounts)]
 pub struct DepositLiquidityAccountConstraints {
+    /// Owns both reserves and is the LP mint's authority; signs the mint_to.
     #[account(
         seeds = [
             pool_config.config.as_ref(),
             pool_config.mint_a.as_ref(),
             pool_config.mint_b.as_ref(),
         ],
-        bump,
+        bump = pool_config.bump,
     )]
     pub pool_config: Box<BorshAccount<PoolConfig>>,
-
-    /// CHECK: Read only authority
-    #[account(
-        seeds = [
-            pool_config.config.as_ref(),
-            mint_a.address().as_ref(),
-            mint_b.address().as_ref(),
-            AUTHORITY_SEED,
-        ],
-        bump,
-    )]
-    pub pool_authority: UncheckedAccount,
 
     /// The account paying for all rents
     pub depositor: Signer,
@@ -298,7 +296,7 @@ pub struct DepositLiquidityAccountConstraints {
     #[account(
         mut,
         associated_token::mint = mint_a,
-        associated_token::authority = pool_authority,
+        associated_token::authority = pool_config,
         associated_token::token_program = token_program,
     )]
     pub pool_a: Box<InterfaceAccount<TokenAccount>>,
@@ -306,7 +304,7 @@ pub struct DepositLiquidityAccountConstraints {
     #[account(
         mut,
         associated_token::mint = mint_b,
-        associated_token::authority = pool_authority,
+        associated_token::authority = pool_config,
         associated_token::token_program = token_program,
     )]
     pub pool_b: Box<InterfaceAccount<TokenAccount>>,

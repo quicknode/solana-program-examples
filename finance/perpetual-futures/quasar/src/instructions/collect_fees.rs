@@ -2,7 +2,6 @@ use {
     crate::{
         instructions::shared::{err, error},
         state::Pool,
-        PoolAuthorityPda,
     },
     quasar_lang::cpi::Seed,
     quasar_lang::prelude::*,
@@ -20,8 +19,6 @@ pub struct CollectFees {
         has_one(custody_vault),
     )]
     pub pool: Account<Pool>,
-    #[account(address = PoolAuthorityPda::seeds(pool.address()))]
-    pub pool_authority: UncheckedAccount,
     /// CHECK: bound to the pool via its seeds.
     pub oracle_feed: UncheckedAccount,
     pub collateral_mint: Account<Mint>,
@@ -49,10 +46,12 @@ pub fn handle_collect_fees(
     }
     accounts.pool.protocol_fees.set(0);
 
-    let bump = [bumps.pool_authority];
+    // The pool signs the CPI below with its own seeds.
+    let bump = [bumps.pool];
     let seeds: &[Seed] = &[
-        Seed::from(b"authority".as_ref()),
-        Seed::from(accounts.pool.address().as_ref()),
+        Seed::from(b"pool".as_ref()),
+        Seed::from(accounts.collateral_mint.address().as_ref()),
+        Seed::from(accounts.oracle_feed.address().as_ref()),
         Seed::from(&bump as &[u8]),
     ];
     accounts
@@ -61,7 +60,7 @@ pub fn handle_collect_fees(
             &accounts.custody_vault,
             &accounts.collateral_mint,
             &accounts.authority_collateral,
-            &accounts.pool_authority,
+            &accounts.pool,
             amount,
             accounts.collateral_mint.decimals(),
         )

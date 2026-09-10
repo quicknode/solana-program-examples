@@ -1,7 +1,7 @@
 use quasar_lang::prelude::*;
 use quasar_spl::prelude::*;
 
-use crate::state::{AssetRate, AssetRateInner, RouterAuthorityPda, RouterConfig, TreasuryPda};
+use crate::state::{AssetRate, AssetRateInner, RouterConfig, TreasuryPda};
 
 #[derive(Accounts)]
 pub struct SetRateAccountConstraints {
@@ -21,13 +21,11 @@ pub struct SetRateAccountConstraints {
     )]
     pub asset_rate: Account<AssetRate>,
 
-    #[account(address = RouterAuthorityPda::seeds())]
-    pub router_authority: UncheckedAccount,
-
+    // The USDC treasury, owned by the router config account.
     #[account(
         init(idempotent),
         payer = authority,
-        token(mint = usdc_mint, authority = router_authority, token_program = token_program),
+        token(mint = usdc_mint, authority = router_config, token_program = token_program),
         address = TreasuryPda::seeds(),
     )]
     pub router_usdc_treasury: InterfaceAccount<Token>,

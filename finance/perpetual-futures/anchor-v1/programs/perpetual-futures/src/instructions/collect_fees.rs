@@ -4,7 +4,7 @@ use anchor_spl::{
     token_interface::{transfer_checked, Mint, TokenAccount, TokenInterface, TransferChecked},
 };
 
-use crate::constants::{AUTHORITY_SEED, POOL_SEED, VAULT_SEED};
+use crate::constants::{POOL_SEED, VAULT_SEED};
 use crate::errors::PerpError;
 use crate::state::Pool;
 
@@ -16,8 +16,13 @@ pub fn handle_collect_fees(context: Context<CollectFeesAccountConstraints>) -> R
     // Effects before interaction: zero the balance, then transfer.
     pool.protocol_fees = 0;
 
-    let pool_key = pool.key();
-    let authority_seeds: &[&[u8]] = &[AUTHORITY_SEED, pool_key.as_ref(), &[pool.authority_bump]];
+    // The pool signs the CPI below with its own seeds.
+    let pool_seeds: &[&[u8]] = &[
+        POOL_SEED,
+        pool.collateral_mint.as_ref(),
+        pool.oracle_feed.as_ref(),
+        &[pool.bump],
+    ];
     transfer_checked(
         CpiContext::new_with_signer(
             context.accounts.token_program.key(),
@@ -25,9 +30,9 @@ pub fn handle_collect_fees(context: Context<CollectFeesAccountConstraints>) -> R
                 from: context.accounts.custody_vault.to_account_info(),
                 mint: context.accounts.collateral_mint.to_account_info(),
                 to: context.accounts.authority_collateral.to_account_info(),
-                authority: context.accounts.pool_authority.to_account_info(),
+                authority: pool.to_account_info(),
             },
-            &[authority_seeds],
+            &[pool_seeds],
         ),
         amount,
         context.accounts.collateral_mint.decimals,
@@ -50,13 +55,6 @@ pub struct CollectFeesAccountConstraints<'info> {
         has_one = custody_vault,
     )]
     pub pool: Box<Account<'info, Pool>>,
-
-    /// CHECK: PDA authority over the vault.
-    #[account(
-        seeds = [AUTHORITY_SEED, pool.key().as_ref()],
-        bump = pool.authority_bump,
-    )]
-    pub pool_authority: UncheckedAccount<'info>,
 
     pub collateral_mint: Box<InterfaceAccount<'info, Mint>>,
 

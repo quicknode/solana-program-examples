@@ -3,7 +3,7 @@ use anchor_spl::token_interface::{
     transfer_checked, Mint, TokenAccount, TokenInterface, TransferChecked,
 };
 
-use crate::constants::AUTHORITY_SEED;
+use crate::constants::MARKET_SEED;
 use crate::errors::OptionsError;
 use crate::state::Market;
 
@@ -52,21 +52,25 @@ pub fn transfer_from_signer<'info>(
     )
 }
 
-/// A transfer out of a vault, signed by the market's vault authority PDA.
-/// Takes the market by reference for its address and authority bump, so the
-/// caller must have finished mutating it (it has: effects come before CPIs).
+/// A transfer out of a vault, signed by the market account, which is the
+/// token authority of both vaults. Takes the market by reference for its
+/// seeds and bump, so the caller must have finished mutating it (it has:
+/// effects come before CPIs).
 pub fn transfer_from_vault<'info>(
     token_program: &Interface<'info, TokenInterface>,
     vault: &mut InterfaceAccount<'info, TokenAccount>,
     mint: &InterfaceAccount<'info, Mint>,
     to: &mut InterfaceAccount<'info, TokenAccount>,
-    market_authority: &UncheckedAccount<'info>,
     market: &Account<'info, Market>,
     amount: u64,
 ) -> Result<()> {
-    let market_key = market.key();
-    let bump = [market.authority_bump];
-    let authority_seeds: &[&[u8]] = &[AUTHORITY_SEED, market_key.as_ref(), &bump];
+    let bump = [market.bump];
+    let market_seeds: &[&[u8]] = &[
+        MARKET_SEED,
+        market.underlying_mint.as_ref(),
+        market.quote_mint.as_ref(),
+        &bump,
+    ];
     transfer_checked(
         CpiContext::new_with_signer(
             token_program.key(),
@@ -74,9 +78,9 @@ pub fn transfer_from_vault<'info>(
                 from: vault.to_account_info(),
                 mint: mint.to_account_info(),
                 to: to.to_account_info(),
-                authority: market_authority.to_account_info(),
+                authority: market.to_account_info(),
             },
-            &[authority_seeds],
+            &[market_seeds],
         ),
         amount,
         mint.decimals,

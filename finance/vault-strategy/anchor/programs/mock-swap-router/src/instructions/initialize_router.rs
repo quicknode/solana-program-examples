@@ -19,13 +19,6 @@ pub struct InitializeRouterAccountConstraints {
     )]
     pub router_config: BorshAccount<RouterConfig>,
 
-    /// CHECK: PDA used as mint authority only - no data stored
-    #[account(
-        seeds = [b"router_authority"],
-        bump
-    )]
-    pub router_authority: UncheckedAccount,
-
     pub token_program: Interface<'static, TokenInterface>,
     pub system_program: Program<System>,
 }

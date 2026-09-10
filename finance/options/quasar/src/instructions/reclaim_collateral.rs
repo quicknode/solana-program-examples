@@ -5,7 +5,7 @@ use {
         instructions::shared::{
             check_custody, may_reclaim, sub_locked, transfer_from_vault, Terms,
         },
-        state::{Market, MarketAuthorityPda, OptionContract},
+        state::{Market, OptionContract},
     },
     quasar_lang::{prelude::*, sysvars::Sysvar as _},
     quasar_spl::prelude::*,
@@ -30,9 +30,6 @@ pub struct ReclaimCollateralAccountConstraints {
         address = OptionContract::seeds(market.address(), writer.address(), option.id.into()),
     )]
     pub option: Account<OptionContract>,
-    /// Authority PDA over both vaults; holds no data, only signs.
-    #[account(address = MarketAuthorityPda::seeds(market.address()))]
-    pub market_authority: UncheckedAccount,
     pub underlying_mint: Account<Mint>,
     pub quote_mint: Account<Mint>,
     #[account(mut)]
@@ -96,7 +93,6 @@ pub fn handle_reclaim_collateral(
             &accounts.underlying_vault,
             &accounts.underlying_mint,
             &accounts.writer_underlying,
-            &accounts.market_authority,
             &accounts.market,
             collateral,
         )
@@ -106,7 +102,6 @@ pub fn handle_reclaim_collateral(
             &accounts.quote_vault,
             &accounts.quote_mint,
             &accounts.writer_quote,
-            &accounts.market_authority,
             &accounts.market,
             collateral,
         )

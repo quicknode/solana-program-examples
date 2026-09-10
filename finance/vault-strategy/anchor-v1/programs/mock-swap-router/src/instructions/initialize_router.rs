@@ -19,13 +19,6 @@ pub struct InitializeRouterAccountConstraints<'info> {
     )]
     pub router_config: Account<'info, RouterConfig>,
 
-    /// CHECK: PDA used as mint authority only - no data stored
-    #[account(
-        seeds = [b"router_authority"],
-        bump
-    )]
-    pub router_authority: UncheckedAccount<'info>,
-
     pub token_program: Interface<'info, TokenInterface>,
     pub system_program: Program<'info, System>,
 }

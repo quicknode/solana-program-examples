@@ -103,8 +103,10 @@ NVDAx the story hands them. NVDAx is trading around $165 offchain.
 ### Step 1: Maria opens the venue
 
 `initialize_market(fee_bps = 100)` creates the `Market` account (a PDA of the
-two mints), a dataless vault-authority PDA, and the two vaults. Maria's key is
-recorded as `admin`: it can sweep fees and do nothing else.
+two mints) and the two vaults. The market account is the token authority of
+both vaults: it owns them and signs every transfer out of them with its own
+seeds. Maria's key is recorded as `admin`: it can sweep fees and do nothing
+else.
 
 ### Step 2: Alice writes 5 covered calls
 

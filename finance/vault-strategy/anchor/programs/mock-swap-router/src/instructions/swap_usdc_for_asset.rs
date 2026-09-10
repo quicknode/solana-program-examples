@@ -14,6 +14,8 @@ pub struct SwapUsdcForAssetAccountConstraints {
     /// The caller - e.g. the vault strategy PDA (can be a signer or a PDA signer via CPI)
     pub caller: Signer,
 
+    /// Owns the USDC treasury and is the mint authority of every asset the
+    /// router mints; signs the mint below with its own seeds.
     #[account(
         seeds = [b"router_config"],
         bump = router_config.bump
@@ -52,17 +54,10 @@ pub struct SwapUsdcForAssetAccountConstraints {
     #[account(
         mut,
         associated_token::mint = usdc_mint,
-        associated_token::authority = router_authority,
+        associated_token::authority = router_config,
         associated_token::token_program = token_program
     )]
     pub router_usdc_treasury: Box<InterfaceAccount<TokenAccount>>,
-
-    /// CHECK: PDA used as mint authority - validated by seeds constraint
-    #[account(
-        seeds = [b"router_authority"],
-        bump
-    )]
-    pub router_authority: UncheckedAccount,
 
     pub associated_token_program: Program<AssociatedToken>,
     pub token_program: Interface<'static, TokenInterface>,
@@ -103,14 +98,14 @@ pub fn handle_swap_usdc_for_asset(
         context.accounts.usdc_mint.decimals(),
     )?;
 
-    // Mint asset tokens to caller - router_authority PDA signs
-    let router_authority_bump = context.bumps.router_authority;
-    let signer_seeds: &[&[&[u8]]] = &[&[b"router_authority", &[router_authority_bump]]];
+    // Mint asset tokens to caller - router_config is the mint authority and signs
+    let router_config_bump = context.accounts.router_config.bump;
+    let signer_seeds: &[&[&[u8]]] = &[&[b"router_config", &[router_config_bump]]];
 
     let mint_accounts = MintTo {
         mint: context.accounts.asset_mint.to_cpi_handle_mut(),
         to: context.accounts.caller_asset_account.to_cpi_handle_mut(),
-        authority: context.accounts.router_authority.cpi_handle(),
+        authority: context.accounts.router_config.to_cpi_handle(),
     };
     let cpi_ctx = CpiContext::new_with_signer(
         context.accounts.token_program.address(),

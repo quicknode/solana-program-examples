@@ -9,9 +9,6 @@ pub const BASIS_POINTS_DENOMINATOR: u64 = 10_000;
 pub const MARKET_SEED: &[u8] = b"market";
 
 #[constant]
-pub const AUTHORITY_SEED: &[u8] = b"authority";
-
-#[constant]
 pub const UNDERLYING_VAULT_SEED: &[u8] = b"underlying_vault";
 
 #[constant]
