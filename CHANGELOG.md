@@ -4,6 +4,22 @@ All notable changes to this repository are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-09-14] - Token fundraiser contributors can close their accounts
+
+A successful raise exits through `check_contributions`, which closes the vault
+and the fundraiser account but cannot reach the contributor accounts: there is
+one per contributor and the claim carries none of them. Their only other
+closer, `refund`, runs only on a failed raise, so every contributor to a
+successful raise held their rent in an account nothing could close.
+
+- The token fundraiser gains `close_contributor` in its Anchor v2 and Quasar
+  ports: a contributor closes their own contributor account once the
+  fundraiser is gone, and the rent comes back. The one check is that the
+  passed fundraiser account is not owned by the program, else the new
+  `FundraiserStillOpen` error, so a live contribution still closes only
+  through `refund`. Tests, READMEs, and changelogs follow. The Anchor v1 port
+  is a frozen snapshot and does not change.
+
 ## [2026-09-10] - Market and pool accounts own their vaults
 
 Five finance examples kept a dataless "authority" PDA beside their state

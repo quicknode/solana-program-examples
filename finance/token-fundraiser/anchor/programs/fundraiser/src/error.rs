@@ -22,4 +22,6 @@ pub enum FundraiserError {
     RefundsOutstanding,
     #[msg("Arithmetic overflow")]
     MathOverflow,
+    #[msg("The fundraiser still exists, so the contributor account closes through refund")]
+    FundraiserStillOpen,
 }
