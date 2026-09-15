@@ -57,4 +57,14 @@ mod quasar_token_fundraiser {
     pub fn refund(ctx: Ctx<RefundAccountConstraints>) -> Result<(), ProgramError> {
         instructions::handle_refund(&mut ctx.accounts, &ctx.bumps)
     }
+
+    /// A contributor closes their contributor account once the fundraiser is
+    /// gone, taking back its rent. A successful raise closes the fundraiser
+    /// without touching the contributor accounts, so this is their exit.
+    #[instruction(discriminator = 4)]
+    pub fn close_contributor(
+        ctx: Ctx<CloseContributorAccountConstraints>,
+    ) -> Result<(), ProgramError> {
+        instructions::handle_close_contributor(&mut ctx.accounts)
+    }
 }

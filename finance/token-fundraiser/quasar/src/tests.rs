@@ -5,8 +5,8 @@
 use {
     crate::{
         cpi::{
-            CheckContributionsInstruction, ContributeInstruction, InitializeFundraiserInstruction,
-            RefundInstruction,
+            CheckContributionsInstruction, CloseContributorInstruction, ContributeInstruction,
+            InitializeFundraiserInstruction, RefundInstruction,
         },
         error::FundraiserError,
         state::{Contributor, Fundraiser, SECONDS_PER_DAY},
@@ -101,6 +101,13 @@ fn check_contributions(test: &mut Test) -> Outcome {
         vault: VAULT,
         maker_ta: MAKER_TA,
         mint_to_raise: MINT,
+    })
+}
+
+fn close_contributor(test: &mut Test, fundraiser: Pubkey) -> Outcome {
+    test.send(CloseContributorInstruction {
+        contributor: CONTRIBUTOR,
+        fundraiser,
     })
 }
 
@@ -318,4 +325,45 @@ fn check_contributions_rejected_below_target(test: &mut Test) {
 
     test.add(TokenAccount::new(MINT, MAKER).at(MAKER_TA));
     check_contributions(test).fails_with(FundraiserError::TargetNotMet);
+}
+
+#[quasar_test]
+fn close_contributor_returns_rent_after_successful_raise(test: &mut Test) {
+    let fundraiser = initialized_world(test);
+    contribute(test, TARGET_AMOUNT).succeeds();
+
+    test.add(TokenAccount::new(MINT, MAKER).at(MAKER_TA));
+    check_contributions(test).succeeds().is_closed(fundraiser);
+
+    // The claim closed the fundraiser and the vault, but the contributor
+    // account is still open with its rent inside.
+    let contributor_account = test.derive_pda(Contributor::seeds(&fundraiser, &CONTRIBUTOR));
+    let rent = test.lamports(contributor_account);
+    assert!(rent > 0, "the contributor account survives the claim");
+    let lamports_before = test.lamports(CONTRIBUTOR);
+
+    close_contributor(test, fundraiser)
+        .succeeds()
+        .is_closed(contributor_account);
+    assert_eq!(
+        test.lamports(CONTRIBUTOR),
+        lamports_before + rent,
+        "the contributor account's rent returns to the contributor"
+    );
+}
+
+#[quasar_test]
+fn close_contributor_rejected_while_fundraiser_exists(test: &mut Test) {
+    let fundraiser = initialized_world(test);
+    contribute(test, PARTIAL_CONTRIBUTION).succeeds();
+
+    // The fundraiser is live, so the contribution is live too: closing the
+    // record now would erase what the vault owes this contributor.
+    close_contributor(test, fundraiser).fails_with(FundraiserError::FundraiserStillOpen);
+
+    let contributor_account = test.derive_pda(Contributor::seeds(&fundraiser, &CONTRIBUTOR));
+    assert_eq!(
+        u64::from(test.read::<Contributor>(contributor_account).amount),
+        PARTIAL_CONTRIBUTION
+    );
 }
