@@ -87,7 +87,7 @@ fn protocol_fees_accrue_and_owner_can_collect() {
     // No interest has accrued yet, so no fees.
     assert_eq!(env.reserve(&borrow).accumulated_protocol_fees, 0);
 
-    env.warp_slots(7_884_000);
+    env.warp_slots(SLOTS_PER_YEAR / 10);
     env.refresh_reserve_only(&borrower, &borrow);
 
     // Fees accrued, and they are ~10% (the reserve factor) of total interest.

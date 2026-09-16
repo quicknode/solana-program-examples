@@ -1,6 +1,6 @@
 mod common;
 
-use common::{ata, default_config, dollars, Env};
+use common::{ata, default_config, dollars, Env, SLOTS_PER_YEAR};
 use solana_signer::Signer;
 
 /// After interest makes the pool worth more than its share supply, a deposit so
@@ -26,7 +26,7 @@ fn deposit_that_would_mint_zero_shares_is_rejected() {
         .unwrap();
 
     // Accrue enough interest that total liquidity exceeds the share supply.
-    env.warp_slots(7_884_000);
+    env.warp_slots(SLOTS_PER_YEAR / 10);
     env.refresh_reserve_only(&borrower, &borrow);
     assert!(env.reserve(&borrow).borrow_accumulation_factor > lending::constants::FIXED_POINT_SCALE);
 

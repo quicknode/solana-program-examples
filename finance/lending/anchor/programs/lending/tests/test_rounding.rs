@@ -3,7 +3,7 @@ mod common;
 use anchor_v2_testing::Signer;
 use lending::errors::LendingError;
 
-use common::{ata, default_config, dollars, Env};
+use common::{ata, default_config, dollars, Env, SLOTS_PER_YEAR};
 
 /// After interest makes the pool worth more than its share supply, a deposit so
 /// small it would mint zero shares is rejected rather than silently giving the
@@ -35,7 +35,7 @@ fn deposit_that_would_mint_zero_shares_is_rejected() {
     .unwrap();
 
     // Accrue enough interest that total liquidity exceeds the share supply.
-    env.warp_slots(7_884_000);
+    env.warp_slots(SLOTS_PER_YEAR / 10);
     env.refresh_reserve_only(&borrower, &borrow);
     assert!(
         env.reserve(&borrow).borrow_accumulation_factor > lending::constants::FIXED_POINT_SCALE

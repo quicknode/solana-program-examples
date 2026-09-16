@@ -30,10 +30,10 @@ const DECIMALS: u8 = 6;
 const UNIT: u64 = 1_000_000; // 1 token at 6 decimals
 
 /// Slots in a year, which is how a reserve turns an APR into a per-slot rate.
-/// 78_840_000 is a 400ms slot: 2.5 slots/second * 60 * 60 * 24 * 365. It is a
+/// 157_680_000 is a 200ms slot: 5 slots/second * 60 * 60 * 24 * 365. It is a
 /// fixture, not a law: a deployment reads the slot time off the cluster it
 /// points at and calls `update_slots_per_year` when the protocol changes it.
-const SLOTS_PER_YEAR: u64 = 78_840_000;
+const SLOTS_PER_YEAR: u64 = 157_680_000;
 
 // Deterministic addresses.
 const OWNER: Pubkey = Pubkey::new_from_array([1; 32]);
@@ -766,7 +766,7 @@ mod slot_warp {
         world.borrow(500 * UNIT).assert_success();
 
         // ~0.1 year passes; re-publish prices so feeds stay fresh.
-        world.svm.sysvars.warp_to_slot(7_884_000);
+        world.svm.sysvars.warp_to_slot(super::SLOTS_PER_YEAR / 10);
         world.set_price(COLLATERAL_MINT, world.collateral_price, dollars(1));
         world.set_price(BORROW_MINT, world.borrow_price, dollars(1));
 
@@ -821,7 +821,7 @@ mod slot_warp {
         world.borrow(500 * UNIT).assert_success();
 
         // First window, at the figure the reserve was created with.
-        let window = 7_884_000;
+        let window = super::SLOTS_PER_YEAR / 10;
         let start = world.svm.sysvars.clock.slot;
         world.svm.sysvars.warp_to_slot(start + window);
         let first = balance(&world.collect_borrow_fees(), OWNER_BORROW);
@@ -854,7 +854,7 @@ mod slot_warp {
 
         // ~0.1 year passes; interest accrues, and the reserve factor (10%)
         // sets some of it aside for the market owner.
-        world.svm.sysvars.warp_to_slot(7_884_000);
+        world.svm.sysvars.warp_to_slot(super::SLOTS_PER_YEAR / 10);
 
         let result = world.collect_borrow_fees();
         result.assert_success();
