@@ -33,6 +33,9 @@ const TRADER_COLLATERAL: Pubkey = Pubkey::new_from_array([8; 32]);
 const LIQUIDATOR: Pubkey = Pubkey::new_from_array([9; 32]);
 const LIQUIDATOR_COLLATERAL: Pubkey = Pubkey::new_from_array([10; 32]);
 const ADMIN_COLLATERAL: Pubkey = Pubkey::new_from_array([11; 32]);
+const VICTIM: Pubkey = Pubkey::new_from_array([12; 32]);
+const VICTIM_COLLATERAL: Pubkey = Pubkey::new_from_array([13; 32]);
+const VICTIM_LP: Pubkey = Pubkey::new_from_array([14; 32]);
 
 fn dollars(whole: i128) -> i128 {
     whole * 10i128.pow(ORACLE_SCALE)
@@ -239,7 +242,7 @@ fn add_liquidity_deposits_and_mints_shares(test: &mut Test) {
 }
 
 #[quasar_test]
-fn remove_liquidity_round_trip_returns_the_deposit(test: &mut Test) {
+fn remove_liquidity_round_trip_returns_the_deposit_less_the_minimum(test: &mut Test) {
     let env = setup(test);
     fund(test, PROVIDER, PROVIDER_COLLATERAL, 10_000 * ONE_USDC);
     add_liquidity(test, &env, 10_000 * ONE_USDC).succeeds();
@@ -247,8 +250,87 @@ fn remove_liquidity_round_trip_returns_the_deposit(test: &mut Test) {
     let shares = test.tokens(PROVIDER_LP);
     remove_liquidity(test, &env, shares)
         .succeeds()
-        // Sole provider reclaims the full deposit.
-        .has_tokens(PROVIDER_COLLATERAL, 10_000 * ONE_USDC);
+        // Even the sole provider leaves the withheld minimum behind: those
+        // 1_000 shares belong to nobody, and their 1_000 stays in the vault.
+        .has_tokens(PROVIDER_COLLATERAL, 10_000 * ONE_USDC - 1_000)
+        .has_tokens(env.custody_vault, 1_000);
+
+    // The next deposit is priced against the minimum's slice rather than
+    // bootstrapped: 5_000 * (0 + 1_000) / 1_000 = 5_000 shares.
+    add_liquidity(test, &env, 5_000)
+        .succeeds()
+        .has_tokens(PROVIDER_LP, 5_000);
+}
+
+/// First-depositor share inflation without a donation. Tokens sent straight to
+/// the vault move nothing, because shares are priced against `liquidity`, but
+/// `liquidity` grows with every funding payment and trader loss, and a
+/// provider can also be the pool's only trader. The attacker opens the pool
+/// with 1 share, pays funding on a small long of their own until `liquidity`
+/// is large, and waits for a deposit. The withheld minimum counts as shares in
+/// both directions, so the attacker's share is 1 of 1_001 and what they paid
+/// in is spread across shares nobody can redeem.
+#[quasar_test]
+fn inflating_liquidity_through_own_trades_does_not_pay(test: &mut Test) {
+    // A steep funding rate: 1_000 of notional pays 1_000 USDC over 1_000 slots.
+    let env = setup_with_funding(test, 1_000_000_000_000);
+    fund(test, PROVIDER, PROVIDER_COLLATERAL, 1_001);
+    add_liquidity(test, &env, 1_001)
+        .succeeds()
+        .has_tokens(PROVIDER_LP, 1);
+
+    // The attacker's trading key: a 1_000 long, heavily collateralized.
+    fund(test, TRADER, TRADER_COLLATERAL, 2_000 * ONE_USDC);
+    open_position(test, &env, 0, 2_000 * ONE_USDC, 1_000).succeeds();
+    set_clock_at(test, 1_000);
+    set_feed_at_slot(test, dollars(100), 1_000, 0);
+    close_position(test, &env).succeeds();
+    // Spent: the 1_001 deposit, the funding, and a 1-unit fee each way. All
+    // but the two fees is now `liquidity`.
+    let attacker_spent = 1_001 + 2_000 * ONE_USDC - test.tokens(TRADER_COLLATERAL);
+    let pumped_liquidity = attacker_spent - 2;
+    assert!(pumped_liquidity > 1_000 * ONE_USDC);
+
+    // Just under twice the pumped liquidity: dividing by the bare supply of 1
+    // would mint a single share, and the attacker's share would redeem half.
+    let victim_deposit = 2 * pumped_liquidity - 1;
+    fund(test, VICTIM, VICTIM_COLLATERAL, victim_deposit);
+    test.send(AddLiquidityInstruction {
+        provider: VICTIM,
+        oracle_feed: FEED,
+        collateral_mint: COLLATERAL_MINT,
+        custody_vault: env.custody_vault,
+        provider_collateral: VICTIM_COLLATERAL,
+        provider_lp: VICTIM_LP,
+        amount: victim_deposit,
+        minimum_shares_out: 0,
+    })
+    .succeeds();
+    let victim_shares = test.tokens(VICTIM_LP);
+
+    remove_liquidity(test, &env, 1).succeeds();
+    let attacker_back = test.tokens(PROVIDER_COLLATERAL);
+    assert!(
+        attacker_back * 100 < attacker_spent,
+        "attacker spent {attacker_spent} and got back {attacker_back}"
+    );
+
+    test.send(RemoveLiquidityInstruction {
+        provider: VICTIM,
+        oracle_feed: FEED,
+        collateral_mint: COLLATERAL_MINT,
+        custody_vault: env.custody_vault,
+        provider_collateral: VICTIM_COLLATERAL,
+        provider_lp: VICTIM_LP,
+        shares: victim_shares,
+        minimum_amount_out: 0,
+    })
+    .succeeds();
+    let victim_back = test.tokens(VICTIM_COLLATERAL);
+    assert!(
+        victim_back * 1_000 >= victim_deposit * 999,
+        "victim deposited {victim_deposit} and got back {victim_back}"
+    );
 }
 
 #[quasar_test]
