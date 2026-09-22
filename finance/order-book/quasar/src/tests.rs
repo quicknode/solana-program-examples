@@ -10,7 +10,10 @@ use {
             PlaceOrderInstruction, SettleFundsInstruction, WithdrawFeesInstruction,
         },
         errors::OrderBookError,
-        state::{Market, MarketUser, Order, OrderStatus, ORDER_BOOK_ACCOUNT_SIZE},
+        state::{
+            BaseVaultPda, FeeVaultPda, Market, MarketUser, Order, OrderStatus, QuoteVaultPda,
+            ORDER_BOOK_ACCOUNT_SIZE,
+        },
     },
     quasar_test::prelude::*,
 };
@@ -31,9 +34,6 @@ const AUTHORITY: Pubkey = Pubkey::new_from_array([1; 32]);
 const BASE_MINT: Pubkey = Pubkey::new_from_array([2; 32]);
 const QUOTE_MINT: Pubkey = Pubkey::new_from_array([3; 32]);
 const ORDER_BOOK: Pubkey = Pubkey::new_from_array([4; 32]);
-const BASE_VAULT: Pubkey = Pubkey::new_from_array([5; 32]);
-const QUOTE_VAULT: Pubkey = Pubkey::new_from_array([6; 32]);
-const FEE_VAULT: Pubkey = Pubkey::new_from_array([7; 32]);
 const MAKER: Pubkey = Pubkey::new_from_array([8; 32]);
 const TAKER: Pubkey = Pubkey::new_from_array([9; 32]);
 const MAKER_BASE: Pubkey = Pubkey::new_from_array([10; 32]);
@@ -76,9 +76,6 @@ fn init_market(test: &mut Test) -> Pubkey {
         order_book: ORDER_BOOK,
         base_mint: BASE_MINT,
         quote_mint: QUOTE_MINT,
-        base_vault: BASE_VAULT,
-        quote_vault: QUOTE_VAULT,
-        fee_vault: FEE_VAULT,
         fee_basis_points: FEE_BASIS_POINTS,
         tick_size: TICK_SIZE,
         base_lot_size: BASE_LOT_SIZE,
@@ -88,6 +85,22 @@ fn init_market(test: &mut Test) -> Pubkey {
     .succeeds();
 
     test.derive_pda(Market::seeds(&BASE_MINT, &QUOTE_MINT))
+}
+
+/// The market's three vaults. They are PDAs of the market, so a client derives
+/// them rather than choosing them.
+struct Vaults {
+    base: Pubkey,
+    quote: Pubkey,
+    fee: Pubkey,
+}
+
+fn vaults(test: &mut Test, market: Pubkey) -> Vaults {
+    Vaults {
+        base: test.derive_pda(BaseVaultPda::seeds(&market)),
+        quote: test.derive_pda(QuoteVaultPda::seeds(&market)),
+        fee: test.derive_pda(FeeVaultPda::seeds(&market)),
+    }
 }
 
 fn initialize_market_user(test: &mut Test, market: Pubkey, owner: Pubkey) -> Pubkey {
@@ -117,12 +130,13 @@ fn place_order(
         remaining_accounts.push(AccountMeta::new(*maker_order, false));
         remaining_accounts.push(AccountMeta::new(*maker_market_user, false));
     }
+    let vaults = vaults(test, market);
     test.send(PlaceOrderInstruction {
         market,
         order_book: ORDER_BOOK,
-        base_vault: BASE_VAULT,
-        quote_vault: QUOTE_VAULT,
-        fee_vault: FEE_VAULT,
+        base_vault: vaults.base,
+        quote_vault: vaults.quote,
+        fee_vault: vaults.fee,
         user_base_account,
         user_quote_account,
         base_mint: BASE_MINT,
@@ -143,11 +157,12 @@ fn settle_funds(
     user_base_account: Pubkey,
     user_quote_account: Pubkey,
 ) -> Outcome {
+    let vaults = vaults(test, market);
     test.send(SettleFundsInstruction {
         owner,
         market,
-        base_vault: BASE_VAULT,
-        quote_vault: QUOTE_VAULT,
+        base_vault: vaults.base,
+        quote_vault: vaults.quote,
         user_base_account,
         user_quote_account,
         base_mint: BASE_MINT,
@@ -159,14 +174,16 @@ fn settle_funds(
 fn initialize_market_stamps_market_and_order_book(test: &mut Test) {
     let market = init_market(test);
 
-    // Market state records the pair, vaults, and parameters.
+    // Market state records the pair, vaults, and parameters. The vaults it
+    // records are the market's PDAs, not addresses the client chose.
+    let vaults = vaults(test, market);
     let state = test.read::<Market>(market);
     assert_eq!(state.authority, AUTHORITY, "authority");
     assert_eq!(state.base_mint, BASE_MINT, "base_mint");
     assert_eq!(state.quote_mint, QUOTE_MINT, "quote_mint");
-    assert_eq!(state.base_vault, BASE_VAULT, "base_vault");
-    assert_eq!(state.quote_vault, QUOTE_VAULT, "quote_vault");
-    assert_eq!(state.fee_vault, FEE_VAULT, "fee_vault");
+    assert_eq!(state.base_vault, vaults.base, "base_vault");
+    assert_eq!(state.quote_vault, vaults.quote, "quote_vault");
+    assert_eq!(state.fee_vault, vaults.fee, "fee_vault");
     assert_eq!(state.order_book, ORDER_BOOK, "order_book");
     assert_eq!(u16::from(state.fee_basis_points), FEE_BASIS_POINTS);
 
@@ -268,9 +285,10 @@ fn place_match_settle_withdraw_moves_tokens_and_fees(test: &mut Test) {
     // Both settle, then the authority sweeps the fee vault.
     settle_funds(test, market, MAKER, MAKER_BASE, MAKER_QUOTE).succeeds();
     settle_funds(test, market, TAKER, TAKER_BASE, TAKER_QUOTE).succeeds();
+    let vaults = vaults(test, market);
     test.send(WithdrawFeesInstruction {
         market,
-        fee_vault: FEE_VAULT,
+        fee_vault: vaults.fee,
         authority_quote_account: AUTHORITY_QUOTE,
         quote_mint: QUOTE_MINT,
         authority: AUTHORITY,
@@ -298,11 +316,11 @@ fn place_match_settle_withdraw_moves_tokens_and_fees(test: &mut Test) {
 
     // Fee swept to the authority.
     assert_eq!(test.tokens(AUTHORITY_QUOTE), FEE_QUOTE);
-    assert_eq!(test.tokens(FEE_VAULT), 0);
+    assert_eq!(test.tokens(vaults.fee), 0);
 
     // Vaults drained after settlement (maker sold all base, taker paid gross).
-    assert_eq!(test.tokens(BASE_VAULT), 0);
-    assert_eq!(test.tokens(QUOTE_VAULT), 0);
+    assert_eq!(test.tokens(vaults.base), 0);
+    assert_eq!(test.tokens(vaults.quote), 0);
 }
 
 /// Cancelling a resting order credits the locked base back to the owner's
@@ -365,9 +383,10 @@ fn withdraw_fees_rejects_a_non_authority_signer(test: &mut Test) {
     test.add(Wallet::new().at(ATTACKER));
     test.add(TokenAccount::new(QUOTE_MINT, ATTACKER).at(ATTACKER_QUOTE));
 
+    let vaults = vaults(test, market);
     test.send(WithdrawFeesInstruction {
         market,
-        fee_vault: FEE_VAULT,
+        fee_vault: vaults.fee,
         authority_quote_account: ATTACKER_QUOTE,
         quote_mint: QUOTE_MINT,
         authority: ATTACKER,

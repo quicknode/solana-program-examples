@@ -215,9 +215,9 @@ Maria's wallet signs. Five accounts are created:
 
 - `Market` PDA: type Program data, seeds `["market", NVDAx_mint, USDC_mint]`, state after `fee_bps=25`, `tick_size=1`, `is_active=true`; vault addresses recorded
 - `OrderBook`: type Zero-copy slab (~180 KB), seeds Client-allocated (not a PDA), state after Both critbit trees empty
-- `base_vault`: type Token account (NVDAx), seeds Authority = Market PDA, state after 0 NVDAx
-- `quote_vault`: type Token account (USDC), seeds Authority = Market PDA, state after 0 USDC
-- `fee_vault`: type Token account (USDC), seeds Authority = Market PDA, state after 0 USDC
+- `base_vault`: type Token account (NVDAx), seeds `["base_vault", market]`, authority Market PDA, state after 0 NVDAx
+- `quote_vault`: type Token account (USDC), seeds `["quote_vault", market]`, authority Market PDA, state after 0 USDC
+- `fee_vault`: type Token account (USDC), seeds `["fee_vault", market]`, authority Market PDA, state after 0 USDC
 
 **No tokens move.** Maria pays the SOL rent for all five accounts.
 
@@ -374,23 +374,25 @@ Alice's remaining 2-NVDAx [bid](https://www.investopedia.com/terms/b/bid.asp) st
 ### State / data accounts
 
 - `Market`: PDA yes, seeds `["market", base_mint, quote_mint]`, authority program, holds fee rate, tick size, min order size, base/quote mint pubkeys, vault pubkeys, order book pubkey, `authority` wallet (allowed to withdraw fees)
-- `OrderBook`: PDA no (client-allocated keypair), seeds n/a: too large (~180 KB) for an `init`/CPI PDA, so created via `create_account` (which needs a signing key a PDA lacks); tied to its market via `address = market.order_book`; authority program, holds two critbit trees (bids highest-first, asks lowest-first, 1024 leaves each), `next_order_id`
+- `OrderBook`: PDA no (client-allocated at a public key the client generates), seeds n/a: too large (~180 KB) for an `init`/CPI PDA, so created via `create_account` (which needs a signing key a PDA lacks); tied to its market via `address = market.order_book`; authority program, holds two critbit trees (bids highest-first, asks lowest-first, 1024 leaves each), `next_order_id`
 - `Order`: PDA yes, seeds `["order", market, order_id.to_le_bytes()]`, authority program, holds owner, side, price, original_quantity, filled_quantity, status, timestamp
 - `MarketUser`: PDA yes, seeds `["market_user", market, owner]`, authority program, holds `unsettled_base`, `unsettled_quote`, `open_orders: Vec<u64>` (max 20)
 
 ### Token accounts (owned by the Token Program, authority = Market PDA)
 
-- `base_vault`: PDA no (regular token account), authority Market PDA, mint base, holds bids' locked base IS NOT STORED HERE - only asks' locked base sits here pre-match, plus base owed to bid-takers waiting for `settle_funds`
-- `quote_vault`: PDA no, authority Market PDA, mint quote, holds bids' locked quote pre-match, plus quote owed to ask-takers and bid-makers waiting for settlement
-- `fee_vault`: PDA no, authority Market PDA, mint quote, holds taker fees accumulated across all fills; drained by `withdraw_fees`
+- `base_vault`: PDA yes, seeds `["base_vault", market]`, authority Market PDA, mint base, holds bids' locked base IS NOT STORED HERE - only asks' locked base sits here pre-match, plus base owed to bid-takers waiting for `settle_funds`
+- `quote_vault`: PDA yes, seeds `["quote_vault", market]`, authority Market PDA, mint quote, holds bids' locked quote pre-match, plus quote owed to ask-takers and bid-makers waiting for settlement
+- `fee_vault`: PDA yes, seeds `["fee_vault", market]`, authority Market PDA, mint quote, holds taker fees accumulated across all fills; drained by `withdraw_fees`
 
-Note: the **token vaults are not PDAs**. They are regular token
-accounts created with `init` in `initialize_market.rs`; their
-*authority* is the Market PDA, so only the program can move funds out.
-Their addresses are computed by the caller (e.g. generated Keypairs in
-the tests) and then written to `market.base_vault` / `quote_vault` /
-`fee_vault` for the program to validate them on later calls via
-`address = market.fee_vault` etc.
+Note: the **token vaults are PDAs of the market**, created with `init`
+in `initialize_market.rs` at seeds `["base_vault", market]`,
+`["quote_vault", market]` and `["fee_vault", market]`. Their *authority*
+is the Market PDA, so only the program can move funds out. Any client can
+derive them from the market's address. The market also records each
+address, and later instruction handlers validate the vaults they are
+passed with `address = market.fee_vault` etc., which is what stops the
+fee vault being passed where the quote vault belongs. The order book is
+the one market account that is not a PDA.
 
 ### Leaf layout in the `OrderBook` slab
 
@@ -550,7 +552,9 @@ pub fn initialize_market(
   `#[account(zero)]`)
 - `base_mint`, `quote_mint` (read-only)
 - `base_vault`, `quote_vault`, `fee_vault` (all **init** as
-  `TokenAccount`s, authority = `market`)
+  `TokenAccount`s at seeds `["base_vault", market]`,
+  `["quote_vault", market]` and `["fee_vault", market]`,
+  authority = `market`)
 - `token_program`, `system_program`
 
 **Checks:**
@@ -568,10 +572,10 @@ the supplied parameters plus all the derived fields
 (`market.authority`, the vault pubkeys, `is_active = true`,
 `next_order_id = 1`).
 
-The vaults are regular token accounts, *not* PDAs - their
-addresses are chosen by the caller (typically fresh keypairs) and
-captured on the market's state so later instruction handlers can
-validate them.
+The vaults are PDAs of the market, so the caller derives their
+addresses rather than choosing them. The market's state records them
+too, so later instruction handlers can validate the vaults they are
+passed.
 
 ### 3.2 `initialize_market_user`
 

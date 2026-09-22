@@ -34,11 +34,11 @@ funds, and it moves them only along the place / cancel / settle paths below.
 ## Accounts and PDAs
 
 - `Market` (PDA, seeds `["market", base_mint, quote_mint]`): One trading pair. Stores config + vault addresses. Its PDA is the vaults' token authority.
-- `OrderBook` (keypair account, not a PDA): Two critbit slabs (bids + asks), ~180 KB. Zero-copy. Bound to its market by the market's stored `order_book`.
+- `OrderBook` (at a public key the client generates, not a PDA): Two critbit slabs (bids + asks), ~180 KB. Zero-copy. Bound to its market by the market's stored `order_book`.
 - `MarketUser` (PDA, seeds `["market_user", market, owner]`): Per-user, per-market. Tracks open order ids and `unsettled_*` balances owed back to the user.
 - `Order` (PDA, seeds `["order", market, order_id]`): One order. `order_id` is the book's monotonic counter at placement time.
-- `base_vault` / `quote_vault` (token accounts): Hold locked funds while orders are open. Market PDA is the authority.
-- `fee_vault` (token account): Accumulates taker fees (quote mint). Kept separate so user balances and fees can't be confused.
+- `base_vault` / `quote_vault` (token accounts, PDAs at seeds `["base_vault", market]` and `["quote_vault", market]`): Hold locked funds while orders are open. Market PDA is the authority.
+- `fee_vault` (token account, PDA at seeds `["fee_vault", market]`): Accumulates taker fees (quote mint). Kept separate so user balances and fees can't be confused.
 
 The order book is **not** a PDA. Solana caps inner-CPI account allocations at 10 KB, so a ~180 KB account can't
 be created with an `init` constraint: the client calls `system_program::create_account` directly (sizing it to

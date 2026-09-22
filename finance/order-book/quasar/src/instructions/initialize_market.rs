@@ -2,7 +2,9 @@ use quasar_lang::prelude::*;
 use quasar_spl::prelude::*;
 
 use crate::errors::OrderBookError;
-use crate::state::{load_order_book_init, Market, MarketInner};
+use crate::state::{
+    load_order_book_init, BaseVaultPda, FeeVaultPda, Market, MarketInner, QuoteVaultPda,
+};
 
 // Basis points are hundredths of a percent; 10000 bps == 100%. Fees above 100%
 // would be nonsensical, so we cap here.
@@ -41,6 +43,7 @@ pub struct InitializeMarketAccountConstraints {
     #[account(
         init,
         payer = authority,
+        address = BaseVaultPda::seeds(market.address()),
         token(mint = base_mint, authority = market, token_program = token_program),
     )]
     pub base_vault: Account<Token>,
@@ -48,6 +51,7 @@ pub struct InitializeMarketAccountConstraints {
     #[account(
         init,
         payer = authority,
+        address = QuoteVaultPda::seeds(market.address()),
         token(mint = quote_mint, authority = market, token_program = token_program),
     )]
     pub quote_vault: Account<Token>,
@@ -57,6 +61,7 @@ pub struct InitializeMarketAccountConstraints {
     #[account(
         init,
         payer = authority,
+        address = FeeVaultPda::seeds(market.address()),
         token(mint = quote_mint, authority = market, token_program = token_program),
     )]
     pub fee_vault: Account<Token>,
