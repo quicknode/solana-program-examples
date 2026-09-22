@@ -228,6 +228,7 @@ fn set_quote(test: &mut Test, signer: Pubkey, spread_bps: u16, paused: u8) -> Ou
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn swap(
     test: &mut Test,
     env: &Env,
@@ -282,6 +283,12 @@ fn initialize_market_creates_market_and_stocked_vaults(test: &mut Test) {
     assert!(test.account(env.market).is_some());
     assert_eq!(test.tokens(env.base_vault), 1_000 * ONE_TOKEN);
     assert_eq!(test.tokens(env.quote_vault), 200_000 * ONE_TOKEN);
+    // The market account itself is the token authority of both vaults (the
+    // owner field is bytes 32..64 of the SPL Token account layout).
+    let vault_owner =
+        |address: Pubkey| Pubkey::try_from(&test.account(address).unwrap().data[32..64]).unwrap();
+    assert_eq!(vault_owner(env.base_vault), env.market);
+    assert_eq!(vault_owner(env.quote_vault), env.market);
 }
 
 /// Alice buys 5 NVDAx. At $165 with a 10 bps spread the ask is $165.165, so

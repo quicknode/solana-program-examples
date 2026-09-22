@@ -87,13 +87,9 @@ pub struct RebalanceAccountConstraints {
     #[account(mut)]
     pub router_config: UncheckedAccount,
 
-    /// CHECK: Router USDC treasury ATA
+    /// CHECK: Router USDC treasury ATA, owned by the router config account
     #[account(mut)]
     pub router_usdc_treasury: UncheckedAccount,
-
-    /// CHECK: Router authority PDA
-    #[account(mut)]
-    pub router_authority: UncheckedAccount,
 
     #[account(
         constraint = *swap_router_program.address() == strategy.swap_router @ VaultError::InvalidSwapRouter
@@ -179,7 +175,6 @@ pub fn handle_rebalance(
         caller_asset_account: context.accounts.vault_sell.to_cpi_handle_mut(),
         caller_usdc_account: context.accounts.vault_usdc.to_cpi_handle_mut(),
         router_usdc_treasury: context.accounts.router_usdc_treasury.cpi_handle_mut(),
-        router_authority: context.accounts.router_authority.cpi_handle(),
         associated_token_program: context.accounts.associated_token_program.cpi_handle(),
         token_program: context.accounts.token_program.cpi_handle(),
         system_program: context.accounts.system_program.cpi_handle(),
@@ -204,7 +199,6 @@ pub fn handle_rebalance(
         caller_usdc_account: context.accounts.vault_usdc.to_cpi_handle_mut(),
         caller_asset_account: context.accounts.vault_buy.to_cpi_handle_mut(),
         router_usdc_treasury: context.accounts.router_usdc_treasury.cpi_handle_mut(),
-        router_authority: context.accounts.router_authority.cpi_handle(),
         associated_token_program: context.accounts.associated_token_program.cpi_handle(),
         token_program: context.accounts.token_program.cpi_handle(),
         system_program: context.accounts.system_program.cpi_handle(),

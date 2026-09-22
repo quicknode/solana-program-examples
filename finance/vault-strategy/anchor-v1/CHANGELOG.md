@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-22
+
+- **Prices from before a cluster restart are rejected.** Under Alpenglow each leader sets the Clock's `unix_timestamp`, which may advance by at most twice the slot time elapsed since the parent block, so after a halt the timestamp trails real time and catches up gradually. The 60-second `publish_time` check would therefore accept a Pyth price published just before a multi-hour halt. `load_price` now also reads the update's `posted_slot` (offset 125) and requires it to be after the `LastRestartSlot` sysvar's slot, failing with the new `PricePredatesRestart` error until Pyth posts again. Tested by `test_deposit_rejects_price_from_before_restart`; the web app's IDL gains the error.
+
+## 2026-09-10
+
+- **The mock swap router signs as its config account.** The router used a second, dataless PDA as the owner of its USDC treasury and the mint authority of the basket mints. That PDA is removed: `router_config` (`["router_config"]`) now owns the treasury, is the mint authority of the basket mints, and signs the router's `mint_to` and `transfer_checked` CPIs with its own seeds and stored bump, mirroring how the strategy PDA signs for the share mint and vaults. The extra account is gone from every router instruction, from the vault's `deposit` and `rebalance` contexts, and from the router CPI account lists; the treasury is now the `router_config` account's USDC associated token account. Tests and the web app's PDA helpers, instruction builders, and IDL follow.
+
 ## 2026-07-20
 
 - **`WhitelistEntry` renamed `ApprovedAsset`** (and `whitelist_asset` renamed `approve_asset`, PDA seed `"whitelist"` renamed `"approved_asset"`), naming the account after what it is: one curator-approved asset bound to its official price feed. The unused `AssetNotWhitelisted` error is removed; approval is checked by the `ApprovedAsset` account's existence. Doc comments and README now state that the `Registry` account is the curator record at the root of the approved set, not the list itself.

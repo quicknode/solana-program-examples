@@ -4,12 +4,13 @@ All notable changes to this repository are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [2026-09-03] - Transaction v1 example
+## [2026-09-22] - Transaction v1 example
 
 Solana's v1 transaction format (SIMD-0385) raises the transaction size limit from
 1,232 to 4,096 bytes and moves the compute budget out of ComputeBudget instructions
-and into the message. It is live on testnet, pending on devnet, and targeted for
-mainnet on 9 September 2026. Programs need no change for it; tests and clients do.
+and into the message. It activated on mainnet beta at epoch 1035 (15 September
+2026) and is live on devnet and testnet. Programs need no change for it; tests and
+clients do.
 
 ### Added
 
@@ -26,11 +27,159 @@ mainnet on 9 September 2026. Programs need no change for it; tests and clients d
 ### Note
 
 - Every other example's tests still send legacy transactions, and keep passing.
-  Moving them is blocked on `solana-kite` 0.4.0 and `anchor-v2-testing`, which pin
-  LiteSVM 0.13.1, and on `quasar-svm`, which is on a `solana-message` without the
-  `v1` module. The root workspace cannot take LiteSVM 0.16 until the first two move:
-  0.13.1 and 0.16.0 pin different `solana-instruction` 3.x patch releases and so
-  cannot share a lockfile. The root `Cargo.toml` says why the example is not a member.
+  The Anchor v1 examples are already on LiteSVM 0.16 (see the Anchor 1.2.0 entry
+  below), so any of them could send a v1 transaction; `solana-kite`'s
+  `send_transaction_from_instructions` builds legacy ones. The root workspace, which
+  holds every Anchor v2, native and Pinocchio example, stays on LiteSVM 0.13.1
+  because `anchor-v2-testing` pins it exactly, and 0.13.1 and 0.16.0 pin different
+  `solana-instruction` 3.x patch releases, so one lockfile cannot hold both. The
+  Quasar examples wait on `quasar-svm`, still on a `solana-message` without the
+  `v1` module. The root `Cargo.toml` says why the example is not a member.
+
+## [2026-09-22] - Vault strategy rejects prices from before a cluster restart
+
+The vault strategy checks Pyth freshness in seconds. Under Alpenglow each
+leader sets the Clock's `unix_timestamp`, which may advance by at most twice
+the slot time elapsed since the parent block, so after a halt the timestamp
+trails real time and catches up gradually, and a price published just before
+a multi-hour halt still passes the 60-second check.
+
+- `finance/vault-strategy` (Anchor v2, Anchor v1 and Quasar) reads each Pyth
+  update's `posted_slot` and rejects it when it is at or before the
+  `LastRestartSlot` sysvar's slot, with the new `PricePredatesRestart` error,
+  as the lending, prop-amm and perpetual-futures examples already do. Tests,
+  READMEs, PRODUCT.md files, the web apps' IDLs and changelogs follow.
+
+## [2026-09-22] - The order book's vaults are market PDAs
+
+The order book created its base, quote, and fee vaults at public keys the client
+generated, so a client had to generate and sign with three extra keys to open
+a market, and nothing but the market's record said where its tokens were.
+
+- The order book's Anchor v2 and Quasar ports create all three vaults as PDAs
+  of the market, at `["base_vault", market]`, `["quote_vault", market]` and
+  `["fee_vault", market]`, with the market as their authority, the same shape
+  the options and prop AMM vaults already have. The stored-address checks
+  that stop the fee vault being passed as the quote vault are unchanged. The
+  order book itself stays client-allocated, since at about 180 KB it is too
+  large for the program to create. Tests, READMEs, and changelogs follow. The
+  Anchor v1 port is a frozen snapshot and does not change.
+
+## [2026-09-22] - Anchor v2 CI no longer starts a validator for LiteSVM-only projects
+
+Surfpool 1.6, which the Anchor v2 workflow installs as `latest`, deploys each
+program at startup through a runbook that reads `target/idl/<program>.json`.
+The nine projects built with `--no-idl` (the anchor#4947 workaround) have no
+IDL, so `anchor test` died with `Surfpool startup failed: Runbook execution
+failed` before any test ran, turning main's Anchor v2 runs red.
+
+- `anchor test` runs with `--skip-local-validator` for exactly those nine
+  projects. Each one's Anchor.toml runs `cargo test` against LiteSVM, so none
+  of them ever used the validator. Every other project is tested as before.
+
+## [2026-09-14] - Token fundraiser contributors can close their accounts
+
+A successful raise exits through `check_contributions`, which closes the vault
+and the fundraiser account but cannot reach the contributor accounts: there is
+one per contributor and the claim carries none of them. Their only other
+closer, `refund`, runs only on a failed raise, so every contributor to a
+successful raise held their rent in an account nothing could close.
+
+- The token fundraiser gains `close_contributor` in its Anchor v2 and Quasar
+  ports: a contributor closes their own contributor account once the
+  fundraiser is gone, and the rent comes back. The one check is that the
+  passed fundraiser account is not owned by the program, else the new
+  `FundraiserStillOpen` error, so a live contribution still closes only
+  through `refund`. Tests, READMEs, and changelogs follow. The Anchor v1 port
+  is a frozen snapshot and does not change.
+
+## [2026-09-10] - Market and pool accounts own their vaults
+
+Five finance examples kept a dataless "authority" PDA beside their state
+account, existing only to own the vaults and mints and to sign for them: the
+token swap, the prop AMM, the perpetual futures pool, the options venue, and the
+vault strategy's mock swap router. A program-owned data account signs with its
+own seeds just as well, as the escrow's offer account already does, and its
+seeds never change however its data does, so the extra account bought nothing
+but one more account per instruction and one more stored bump.
+
+- The pool config, market, pool, and router config now own their vaults and
+  mints directly and sign with their own seeds, in every port: Anchor v2,
+  Anchor v1, and Quasar. The token swap's reserves are now associated token
+  accounts of the pool config, so their addresses changed; the vault strategy's
+  web app derives the router treasury from the router config.
+- Each affected port's tests assert the new ownership, and its README and
+  changelog follow.
+- Pre-existing formatting drift and clippy findings in the prop AMM and token
+  swap v1 and Quasar ports were fixed so the gates pass.
+
+## [2026-09-08] - Anchor v1 examples on Anchor 1.2.0
+
+Anchor 1.2.0 is the current release of the v1 line. Every `anchor-v1/` example now
+builds against it. No program source changed: 1.2.0 has no breaking changes, and
+nothing here calls the two functions it deprecates (`cpi_guard_enable` and
+`cpi_guard_disable`). The test stack had to move, though, because the new
+`anchor-lang` cannot share a dependency graph with the old LiteSVM.
+
+### Changed
+
+- All 56 `anchor-v1/` examples move `anchor-lang` and `anchor-spl` from `1.1.2` to
+  `1.2.0`. Feature lists (`init-if-needed`, `metadata`, `token_2022`, ...) are
+  unchanged.
+- Their tests move from `litesvm 0.13.1` to `litesvm 0.16.0` (Agave 4.2), and the
+  test-only crates that must stay in step with LiteSVM move to their 4.x lines:
+  `solana-transaction 4.1.5`, `solana-message 4.2.4`, `solana-account 4.3.0`. The
+  55 examples that test through `solana-kite` move to `solana-kite 0.5.0`, the
+  release that makes the same LiteSVM bump. The reason: `anchor-lang 1.2.0` requires
+  `solana-loader-v3-interface ^6.1.1`, which requires `solana-instruction ^3.3.0`,
+  while `litesvm 0.13.1` pins `solana-instruction = "=3.2.0"`. Cargo cannot satisfy
+  both, and `solana-kite 0.4.0` pins `litesvm 0.13.1`, so the whole test stack moves
+  together.
+- Three tests warp to a slot relative to the current one instead of an absolute
+  slot: `test_stale_price_rejected` and `test_funding_charged_to_long` in
+  `perpetual-futures`, and `test_swap_rejects_stale_price` in `prop-amm`. LiteSVM
+  0.14 and later start the clock at a mainnet-like slot rather than zero, so a
+  warp to slot 200 or 10,000 moved time backwards and the price under test never
+  went stale. Every other test in the tree already warped relative to the current
+  slot. No other test source changed.
+- The Anchor v1 workflow installs and caches `anchor-cli 1.2.0` instead of `1.1.2`.
+  Everything else about the job is as before: the CLI still comes from crates.io
+  with `--locked`, the Solana CLI is still 3.1.14, and project discovery is
+  unchanged.
+- Every `anchor-v1/` README, `CONTRIBUTING.md` and `docs/anchor-v2-migration.md`
+  name 1.2.0 as the v1 CLI to install.
+
+### Note
+
+- `anchor-cli 1.2.0` builds with `--tools-version v1.57 --arch v3` by default, where
+  1.1.2 passed `--tools-version v1.52` and left the architecture at `cargo
+  build-sbf`'s default. The v1 programs are therefore now SBPF v3 binaries built with
+  platform-tools v1.57. `ANCHOR_BUILD_SBF_ARCH` overrides the architecture if that
+  ever needs to change.
+
+## [2026-09-04] - Options venue example
+
+### Added
+
+- `finance/options`: a fully collateralized, physically settled options venue,
+  in Anchor v2, Anchor v1, and Quasar, with a Kani proof crate. A writer posts
+  the whole obligation (the underlying for a call, the strike in the quote token
+  for a put) and lists an option at a premium; a buyer pays the premium and becomes
+  the holder; the holder may exercise before expiry; after expiry the writer
+  reclaims the collateral. Eight instruction handlers (`initialize_market`,
+  `write_option`, `buy_option`, `cancel_option`, `exercise_option`,
+  `collect_proceeds`, `reclaim_collateral`, `collect_fees`). Every settlement
+  amount is a product of two of the option's integers, so there is no division and
+  no rounding in settlement; the venue's fee on each premium is the only floor.
+  The market account keeps a ledger of what each vault owes, asserted against
+  the vault balances after every transfer, and the proof crate walks every path
+  through an option's life and shows the ledger returns to zero. No oracle: physical
+  settlement moves the tokens themselves, so the program never has to know the
+  price. Each option is one account, bought and exercised as a whole.
+- The Anchor v2 copy joins the `--no-idl` list in `.github/workflows/anchor.yml`
+  (anchor#4947: its `OptionKind` and `OptionStatus` enums reach the IDL) and the
+  root Cargo workspace; the proof crate joins both matrices in
+  `.github/workflows/kani.yml`.
 
 ## [2026-08-21] - Anchor v1 kept alongside Anchor v2
 

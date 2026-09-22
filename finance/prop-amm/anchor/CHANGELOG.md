@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-09-10
+
+The `Market` account now owns both vaults and signs their outgoing transfers
+with its own seeds, the way the escrow example's `offer` account does for its
+vault. The separate dataless signing PDA at seeds `["authority", market]`,
+the bump `Market` stored for it and its seed constant are gone, so
+`initialize_market`, `swap` and `withdraw_inventory` each take one account
+fewer. Tested by `test_market_owns_both_vaults`.
+
 ## 2026-08-04
 
 Reject oracle prices from before a cluster restart. A halt stops the slot

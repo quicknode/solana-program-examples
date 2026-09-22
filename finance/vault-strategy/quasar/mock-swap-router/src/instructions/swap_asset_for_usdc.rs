@@ -3,14 +3,14 @@ use quasar_lang::prelude::*;
 use quasar_spl::prelude::*;
 
 use crate::errors::RouterError;
-use crate::state::{
-    AssetRate, RouterAuthorityPda, RouterConfig, TreasuryPda, ROUTER_AUTHORITY_SEED,
-};
+use crate::state::{AssetRate, RouterConfig, TreasuryPda, ROUTER_CONFIG_SEED};
 
 #[derive(Accounts)]
 pub struct SwapAssetForUsdcAccountConstraints {
     pub caller: Signer,
 
+    // Owns the USDC treasury and is the mint authority of every asset the
+    // router mints; signs the treasury transfer below with its own seeds.
     #[account(address = RouterConfig::seeds())]
     pub router_config: Account<RouterConfig>,
 
@@ -30,9 +30,6 @@ pub struct SwapAssetForUsdcAccountConstraints {
     #[account(mut, address = TreasuryPda::seeds())]
     pub router_usdc_treasury: InterfaceAccount<Token>,
 
-    #[account(address = RouterAuthorityPda::seeds())]
-    pub router_authority: UncheckedAccount,
-
     pub token_program: Program<TokenProgram>,
 }
 
@@ -41,7 +38,6 @@ pub fn handle_swap_asset_for_usdc(
     accounts: &mut SwapAssetForUsdcAccountConstraints,
     asset_amount_in: u64,
     minimum_usdc_out: u64,
-    bumps: &SwapAssetForUsdcAccountConstraintsBumps,
 ) -> Result<(), ProgramError> {
     require_keys_eq!(
         accounts.asset_rate.mint,
@@ -77,17 +73,17 @@ pub fn handle_swap_asset_for_usdc(
         )
         .invoke()?;
 
-    // Pay USDC from the treasury to the caller; the router-authority PDA is the
-    // treasury authority and signs.
-    let bump = [bumps.router_authority];
-    let seeds = [Seed::from(ROUTER_AUTHORITY_SEED), Seed::from(bump.as_ref())];
+    // Pay USDC from the treasury to the caller; the router config account owns
+    // the treasury and signs.
+    let bump = [accounts.router_config.bump];
+    let seeds = [Seed::from(ROUTER_CONFIG_SEED), Seed::from(bump.as_ref())];
     accounts
         .token_program
         .transfer_checked(
             &accounts.router_usdc_treasury,
             &accounts.usdc_mint,
             &accounts.caller_usdc_account,
-            &accounts.router_authority,
+            &accounts.router_config,
             usdc_out,
             accounts.usdc_mint.decimals,
         )

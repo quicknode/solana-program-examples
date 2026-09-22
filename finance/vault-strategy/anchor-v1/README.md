@@ -3,7 +3,7 @@
 > [!NOTE]
 > This is the **Anchor v1** copy of this example, kept for programs staying on the
 > Anchor v1 LTS line. Every `anchor` command on this page needs the v1 CLI:
-> `avm install 1.1.2 && avm use 1.1.2`. The Anchor v2 version of this example is in
+> `avm install 1.2.0 && avm use 1.2.0`. The Anchor v2 version of this example is in
 > [`../anchor`](../anchor/).
 
 A manager-run investment vault on Solana. Users deposit [USDC](https://www.investopedia.com/terms/u/usd-coin-usdc.asp) and receive shares representing proportional ownership of a portfolio of assets. The manager adds assets a curator has approved and sets their target weights; each deposit is deployed across those assets at its weights in the same transaction. The manager rebalances as prices drift, earns a fee, and depositors withdraw their proportional slice in kind when they choose.
@@ -31,7 +31,7 @@ Because the asset set is dynamic, `deposit` must value *every* asset. The assets
 
 Referencing every asset has a transaction-size cost: `deposit` pulls in `14 + 5N` accounts and `withdraw` `10 + 4N`, where `N` is the asset count. That stays within Solana's 128-account transaction lock limit at the `MAX_ASSETS` cap of 16 (94 accounts for `deposit`), but a basket beyond roughly three assets no longer fits a legacy transaction's 1232-byte limit, so the client must send a v0 transaction with an [Address Lookup Table](https://docs.anza.xyz/proposals/versioned-transactions).
 
-Prices come from [Pyth Network](https://pyth.network/) `PriceUpdateV2` accounts. A 60-second staleness window is enforced; zero or negative prices are rejected.
+Prices come from [Pyth Network](https://pyth.network/) `PriceUpdateV2` accounts. A 60-second staleness window is enforced; zero or negative prices are rejected, and so is any price posted at or before the last cluster restart (`PricePredatesRestart`), which the seconds check alone cannot catch after a halt.
 
 ### Shares
 
@@ -114,13 +114,13 @@ A price move pushes the basket off target. `rebalance(sell_amount, usdc_to_inves
 
 ## Oracle Integration (Pyth)
 
-`PriceUpdateV2` price (i64) is read at byte offset 73 and `publish_time` at 93, directly from account bytes to avoid borsh version incompatibility with Anchor. Pyth USD pairs use exponent −8; with USDC and the basket tokens all at 6 decimals, value in USDC minor units is `amount × price / 10⁸`. Each asset's feed pubkey is fixed in its `AssetConfig` (copied from the registry), and validated on every read. In tests, mock `PriceUpdateV2` accounts are injected into LiteSVM (TSLAx $250, NVDAx $180).
+`PriceUpdateV2` price (i64) is read at byte offset 73, `publish_time` at 93 and `posted_slot` (u64) at 125, directly from account bytes to avoid borsh version incompatibility with Anchor. Under Alpenglow each leader sets the Clock's `unix_timestamp`, which may advance by at most twice the slot time elapsed since the parent block, so after a halt the timestamp trails real time and a price published just before the halt can still look fresh by seconds. `load_price` therefore also requires `posted_slot` to be after the `LastRestartSlot` sysvar's slot (0 means the cluster has never restarted), pausing deposits and rebalances until Pyth posts again. Pyth USD pairs use exponent −8; with USDC and the basket tokens all at 6 decimals, value in USDC minor units is `amount × price / 10⁸`. Each asset's feed pubkey is fixed in its `AssetConfig` (copied from the registry), and validated on every read. In tests, mock `PriceUpdateV2` accounts are injected into LiteSVM (TSLAx $250, NVDAx $180).
 
 ---
 
 ## Mock Swap Router vs Production
 
-The `mock-swap-router` exists only for testing: it stores a `usdc_per_token` rate per asset, holds the basket mints' authority, and mints/burns to simulate swaps. The `Strategy` stores the router program pubkey at creation, and `deposit` and `rebalance` require the router account to match it (`InvalidSwapRouter`). In production, replace the router CPIs with [Jupiter](https://jup.ag); the strategy PDA still signs.
+The `mock-swap-router` exists only for testing: it stores a `usdc_per_token` rate per asset, holds the basket mints' authority, and mints/burns to simulate swaps. Its single `router_config` account (`["router_config"]`) is both its state and its signer: it owns the USDC treasury, is the mint authority of every basket mint, and signs the router's token CPIs with its own seeds, the same way the strategy PDA does for the vaults. The `Strategy` stores the router program pubkey at creation, and `deposit` and `rebalance` require the router account to match it (`InvalidSwapRouter`). In production, replace the router CPIs with [Jupiter](https://jup.ag); the strategy PDA still signs.
 
 ---
 

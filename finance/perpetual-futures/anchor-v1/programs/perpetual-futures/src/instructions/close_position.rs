@@ -4,7 +4,7 @@ use anchor_spl::{
     token_interface::{transfer_checked, Mint, TokenAccount, TokenInterface, TransferChecked},
 };
 
-use crate::constants::{AUTHORITY_SEED, POOL_SEED, POSITION_SEED, VAULT_SEED};
+use crate::constants::{POOL_SEED, POSITION_SEED, VAULT_SEED};
 use crate::errors::PerpError;
 use crate::instructions::shared::{basis_points_of, refresh_price_and_funding, settle_position};
 use crate::state::{Pool, Position};
@@ -66,8 +66,13 @@ pub fn handle_close_position(
         .checked_add(close_fee)
         .ok_or(PerpError::MathOverflow)?;
 
-    let pool_key = pool.key();
-    let authority_seeds: &[&[u8]] = &[AUTHORITY_SEED, pool_key.as_ref(), &[pool.authority_bump]];
+    // The pool signs the CPI below with its own seeds.
+    let pool_seeds: &[&[u8]] = &[
+        POOL_SEED,
+        pool.collateral_mint.as_ref(),
+        pool.oracle_feed.as_ref(),
+        &[pool.bump],
+    ];
     transfer_checked(
         CpiContext::new_with_signer(
             context.accounts.token_program.key(),
@@ -75,9 +80,9 @@ pub fn handle_close_position(
                 from: context.accounts.custody_vault.to_account_info(),
                 mint: context.accounts.collateral_mint.to_account_info(),
                 to: context.accounts.trader_collateral.to_account_info(),
-                authority: context.accounts.pool_authority.to_account_info(),
+                authority: pool.to_account_info(),
             },
-            &[authority_seeds],
+            &[pool_seeds],
         ),
         payout,
         context.accounts.collateral_mint.decimals,
@@ -110,13 +115,6 @@ pub struct ClosePositionAccountConstraints<'info> {
         has_one = pool,
     )]
     pub position: Box<Account<'info, Position>>,
-
-    /// CHECK: PDA authority over the vault.
-    #[account(
-        seeds = [AUTHORITY_SEED, pool.key().as_ref()],
-        bump = pool.authority_bump,
-    )]
-    pub pool_authority: UncheckedAccount<'info>,
 
     /// CHECK: validated by the `has_one = oracle_feed` constraint on the pool.
     pub oracle_feed: UncheckedAccount<'info>,

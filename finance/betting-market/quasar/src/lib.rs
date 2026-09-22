@@ -22,17 +22,17 @@ mod quasar_betting_market {
     use super::*;
 
     /// One-time setup: the signer becomes the admin and fixes the stake token
-    /// and the settlement fee (basis points) for every market in this
-    /// deployment.
+    /// and the default settlement fee (basis points) that each new market
+    /// copies at creation.
     #[instruction(discriminator = 0)]
     pub fn initialize_config(
         ctx: Ctx<InitializeConfigAccountConstraints>,
-        fee_bps: u16,
+        default_fee_bps: u16,
         fee_recipient: Address,
     ) -> Result<(), ProgramError> {
         instructions::initialize_config::handle_initialize_config(
             &mut ctx.accounts,
-            fee_bps,
+            default_fee_bps,
             fee_recipient,
             &ctx.bumps,
         )

@@ -17,12 +17,12 @@ no-log-ix-name = []
 idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
 
 [dependencies]
-anchor-lang = "1.1.2"
-anchor-spl = "1.1.2"
+anchor-lang = "1.2.0"
+anchor-spl = "1.2.0"
 
 [dev-dependencies]
-litesvm = "0.13.1"
-solana-kite = "0.4.0"
+litesvm = "0.16.0"
+solana-kite = "0.5.0"
 solana-signer = "3.0.0"
 solana-keypair = "3.0.1"
 borsh = "1.6.1"

@@ -1,0 +1,42 @@
+[package]
+name = "quasar-options"
+version = "0.1.0"
+edition = "2021"
+
+# Standalone workspace: not part of the root program-examples workspace.
+# Quasar uses a different resolver and dependency tree.
+[workspace]
+
+[lints.rust.unexpected_cfgs]
+level = "warn"
+check-cfg = [
+    'cfg(target_os, values("solana"))',
+]
+
+[lib]
+# "lib" is required alongside "cdylib": the 0.1.0 IDL build compiles the
+# crate as a host library.
+crate-type = ["cdylib", "lib"]
+
+[features]
+alloc = []
+client = []
+debug = []
+idl-build = ["quasar-lang/idl-build"]
+
+[dependencies]
+# Quasar 0.1.0-release, pinned by rev: crates.io still hosts 0.0.0
+# placeholders for quasar-lang/quasar-cli, so the release line installs from
+# git. Keep this rev in lockstep with the CLI rev installed by
+# .github/workflows/quasar.yml.
+quasar-lang = { git = "https://github.com/blueshift-gg/quasar", rev = "be60fca" }
+quasar-spl = { git = "https://github.com/blueshift-gg/quasar", rev = "be60fca" }
+solana-instruction = { version = "3.2.0" }
+# Pinned: quasar-lang asks for zeropod "0.3.3" and wincode 0.4, but zeropod
+# 0.3.4 moved to wincode 0.5, so a fresh resolve (no lockfile is committed)
+# splits the graph across two wincode versions and every Pod* trait bound
+# fails. Unpin when quasar-lang's pinned rev accepts zeropod 0.3.4+.
+zeropod = "=0.3.3"
+
+[dev-dependencies]
+quasar-test = { git = "https://github.com/blueshift-gg/quasar", rev = "be60fca" }

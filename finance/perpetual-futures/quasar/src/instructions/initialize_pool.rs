@@ -3,7 +3,7 @@ use {
         constants::{BASIS_POINTS_DENOMINATOR, MAX_LEVERAGE_CEILING},
         instructions::shared::{err, error},
         state::{Pool, PoolInner},
-        LpMintPda, PoolAuthorityPda, VaultPda,
+        LpMintPda, VaultPda,
     },
     quasar_lang::{prelude::*, sysvars::clock::Clock},
     quasar_spl::prelude::*,
@@ -23,23 +23,22 @@ pub struct InitializePool {
     pub collateral_mint: Account<Mint>,
     /// CHECK: stored on the pool; every read validates layout, scale, freshness.
     pub oracle_feed: UncheckedAccount,
-    /// Authority PDA over the vault and liquidity-provider mint.
-    #[account(address = PoolAuthorityPda::seeds(pool.address()))]
-    pub pool_authority: UncheckedAccount,
+    /// Liquidity-provider share mint; the pool account is its mint authority.
     #[account(
         mut,
         init,
         payer = authority,
         address = LpMintPda::seeds(pool.address()),
-        mint(decimals = 6, authority = pool_authority, freeze_authority = None, token_program = token_program),
+        mint(decimals = 6, authority = pool, freeze_authority = None, token_program = token_program),
     )]
     pub lp_mint: Account<Mint>,
+    /// Custody vault for all collateral; the pool account owns it.
     #[account(
         mut,
         init(idempotent),
         payer = authority,
         address = VaultPda::seeds(pool.address()),
-        token(mint = collateral_mint, authority = pool_authority, token_program = token_program),
+        token(mint = collateral_mint, authority = pool, token_program = token_program),
     )]
     pub custody_vault: Account<Token>,
     pub token_program: Program<TokenProgram>,
@@ -113,7 +112,6 @@ pub fn handle_initialize_pool(
         liquidation_fee_bps,
         max_confidence_bps,
         bump: bumps.pool,
-        authority_bump: bumps.pool_authority,
     });
     Ok(())
 }

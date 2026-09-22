@@ -3,7 +3,7 @@
 > [!NOTE]
 > This is the **Anchor v1** copy of this example, kept for programs staying on the
 > Anchor v1 LTS line. Every `anchor` command on this page needs the v1 CLI:
-> `avm install 1.1.2 && avm use 1.1.2`. The Anchor v2 version of this example is in
+> `avm install 1.2.0 && avm use 1.2.0`. The Anchor v2 version of this example is in
 > [`../anchor`](../anchor/).
 
 A perpetual futures exchange on Solana: a venue for making leveraged bets on an asset's price without ever owning the asset. It is modelled on the oracle-priced, pool-collateralized design used by [Jupiter Perpetuals](https://station.jup.ag/guides/perpetual-exchange/overview) and GMX (and the open-source [`solana-labs/perpetuals`](https://github.com/solana-labs/perpetuals) reference that [Adrena](https://github.com/AdrenaFoundation/adrena-program) and [Flash Trade](https://github.com/flash-trade/flash-perpetuals) fork), rather than the order-book design used by [Drift](https://docs.drift.trade/).
@@ -48,7 +48,7 @@ So a winning trader can always be paid, the pool **reserves** liquidity to back 
 
 [Funding](https://www.investopedia.com/terms/f/futurescontract.asp) anchors the pool's risk: the heavier side of [open interest](https://www.investopedia.com/terms/o/openinterest.asp) pays the pool over time. A cumulative funding index rises while longs are the larger side and falls while shorts are, advancing by `funding_rate_per_slot` each [slot](https://solana.com/docs/terminology#slot); a position records the index at open and settles the change when it closes. In a pool-based perp this is the equivalent of the borrow fee Jupiter Perpetuals charges.
 
-Because the rate is quoted per slot, what a position costs per hour depends on the cluster's slot time as well as on the rate. Solana lowers the slot time over time, so a pool that outlives a reduction charges the heavier side more per hour than it was set up to. `set_funding_rate(funding_rate_per_slot)` lets the pool authority bring it back in line; it advances the index at the old rate first, so slots already elapsed are charged at the rate that was in force for them.
+Because the rate is quoted per slot, what a position costs per hour depends on the cluster's slot time as well as on the rate. Solana lowers the slot time over time, so a pool that outlives a reduction charges the heavier side more per hour than it was set up to. `set_funding_rate(funding_rate_per_slot)` lets the pool operator bring it back in line; it advances the index at the old rate first, so slots already elapsed are charged at the rate that was in force for them.
 
 ### Maintenance margin and liquidation
 
@@ -68,7 +68,7 @@ Open and close fees are charged in [basis points](https://www.investopedia.com/t
 
 ### Participants
 
-- **Admin** (Pool authority): Operate the market and collect the protocol's slice of trading fees.
+- **Admin** (Pool operator): Operate the market and collect the protocol's slice of trading fees.
 - **Carol** (Liquidity provider): Earn fees by funding the pool and being the counterparty to traders.
 - **Alice** (Long trader): She has a thesis that NVDA will rise and wants leveraged upside without buying the stock.
 - **Bob** (Short trader): He thinks NVDA will fall and wants to profit from the downside.
@@ -84,10 +84,9 @@ Amounts below are shown in whole USDC; onchain they are base units (× 10⁶). T
 
 **Accounts created:**
 
-- `Pool` [PDA](https://solana.com/docs/terminology#program-derived-address-pda), seeds `["pool", collateral_mint, oracle_feed]`: parameters, liquidity, reserved liquidity, collateral total, per-side open-interest accumulators, funding index, protocol fees
-- `pool_authority` PDA, seeds `["authority", pool]`: nothing; signs vault and mint CPIs
-- `custody_vault` [token account](https://solana.com/docs/terminology#token-account) PDA, seeds `["vault", pool]`: all USDC, both provider liquidity and trader collateral
-- `lp_mint` PDA, seeds `["lp_mint", pool]`: the share [mint](https://solana.com/docs/terminology#mint-account); `pool_authority` is the mint authority
+- `Pool` [PDA](https://solana.com/docs/terminology#program-derived-address-pda), seeds `["pool", collateral_mint, oracle_feed]`: parameters, liquidity, reserved liquidity, collateral total, per-side open-interest accumulators, funding index, protocol fees. The pool owns the vault and is the LP mint's authority, and signs vault transfers and mint/burn CPIs with its own seeds; there is no separate signing PDA
+- `custody_vault` [token account](https://solana.com/docs/terminology#token-account) PDA, seeds `["vault", pool]`: all USDC, both provider liquidity and trader collateral; `pool` is its owner
+- `lp_mint` PDA, seeds `["lp_mint", pool]`: the share [mint](https://solana.com/docs/terminology#mint-account); `pool` is the mint authority
 
 ---
 

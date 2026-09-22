@@ -3,7 +3,7 @@
 > [!NOTE]
 > This is the **Anchor v1** copy of this example, kept for programs staying on the
 > Anchor v1 LTS line. Every `anchor` command on this page needs the v1 CLI:
-> `avm install 1.1.2 && avm use 1.1.2`. The Anchor v2 version of this example is in
+> `avm install 1.2.0 && avm use 1.2.0`. The Anchor v2 version of this example is in
 > [`../anchor`](../anchor/).
 
 Sometimes you want to use [account](https://solana.com/docs/terminology#account) data to derive additional accounts in the extra-account-metas. For example, you might want to use the [token account](https://solana.com/docs/terminology#token-account)'s owner as a seed for a [PDA](https://solana.com/docs/terminology#program-derived-address-pda).

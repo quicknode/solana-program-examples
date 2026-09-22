@@ -1,0 +1,9 @@
+[project]
+name = "quasar-options"
+
+[testing]
+command = { program = "cargo", args = ["test"] }
+
+[clients]
+path = "target/client"
+targets = ["rust"]

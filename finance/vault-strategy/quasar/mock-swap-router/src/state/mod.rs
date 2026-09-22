@@ -2,10 +2,11 @@ use quasar_lang::prelude::*;
 
 pub const ROUTER_CONFIG_SEED: &[u8] = b"router_config";
 pub const ASSET_RATE_SEED: &[u8] = b"rate";
-pub const ROUTER_AUTHORITY_SEED: &[u8] = b"router_authority";
 
 /// Router configuration. PDA: `["router_config"]`. A single deployment-wide
 /// account naming the authority (who may set rates) and the base USDC mint.
+/// It is also the authority of the USDC treasury and the mint authority of
+/// every asset mint the router mints, and signs those CPIs with its own seeds.
 #[account(discriminator = 1, set_inner)]
 #[seeds(b"router_config")]
 pub struct RouterConfig {
@@ -25,14 +26,8 @@ pub struct AssetRate {
     pub bump: u8,
 }
 
-/// PDA that is the mint authority of every asset mint and the authority of the
-/// USDC treasury: `["router_authority"]`.
-#[derive(Seeds)]
-#[seeds(b"router_authority")]
-pub struct RouterAuthorityPda;
-
 /// PDA token account (USDC) the router pays out of and collects into:
-/// `["treasury"]`, authority = RouterAuthorityPda.
+/// `["treasury"]`, authority = RouterConfig.
 #[derive(Seeds)]
 #[seeds(b"treasury")]
 pub struct TreasuryPda;

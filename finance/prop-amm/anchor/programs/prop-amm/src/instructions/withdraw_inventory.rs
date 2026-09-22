@@ -3,7 +3,7 @@ use anchor_spl::token_interface::{
     transfer_checked, Mint, TokenAccount, TokenInterface, TransferChecked,
 };
 
-use crate::constants::{AUTHORITY_SEED, BASE_VAULT_SEED, MARKET_SEED, QUOTE_VAULT_SEED};
+use crate::constants::{BASE_VAULT_SEED, MARKET_SEED, QUOTE_VAULT_SEED};
 use crate::errors::PropAmmError;
 use crate::state::Market;
 
@@ -31,12 +31,14 @@ pub fn handle_withdraw_inventory(
         PropAmmError::InsufficientInventory
     );
 
+    // The market owns both vaults and signs the withdrawal with its own seeds.
     let market = &context.accounts.market;
-    let market_key = market.address();
-    let authority_seeds: &[&[u8]] = &[
-        AUTHORITY_SEED,
-        market_key.as_ref(),
-        &[market.authority_bump],
+    let market_bump = [market.bump];
+    let market_seeds: &[&[u8]] = &[
+        MARKET_SEED,
+        market.base_mint.as_ref(),
+        market.quote_mint.as_ref(),
+        &market_bump,
     ];
 
     if base_amount > 0 {
@@ -47,9 +49,9 @@ pub fn handle_withdraw_inventory(
                     from: context.accounts.base_vault.to_cpi_handle_mut(),
                     mint: context.accounts.base_mint.to_cpi_handle(),
                     to: context.accounts.operator_base.to_cpi_handle_mut(),
-                    authority: context.accounts.market_authority.cpi_handle(),
+                    authority: context.accounts.market.cpi_handle(),
                 },
-                &[authority_seeds],
+                &[market_seeds],
             ),
             base_amount,
             context.accounts.base_mint.decimals(),
@@ -64,9 +66,9 @@ pub fn handle_withdraw_inventory(
                     from: context.accounts.quote_vault.to_cpi_handle_mut(),
                     mint: context.accounts.quote_mint.to_cpi_handle(),
                     to: context.accounts.operator_quote.to_cpi_handle_mut(),
-                    authority: context.accounts.market_authority.cpi_handle(),
+                    authority: context.accounts.market.cpi_handle(),
                 },
-                &[authority_seeds],
+                &[market_seeds],
             ),
             quote_amount,
             context.accounts.quote_mint.decimals(),
@@ -86,13 +88,6 @@ pub struct WithdrawInventoryAccountConstraints {
         bump = market.bump,
     )]
     pub market: Box<BorshAccount<Market>>,
-
-    /// CHECK: PDA authority over both vaults; holds no data, only signs.
-    #[account(
-        seeds = [AUTHORITY_SEED, market.address().as_ref()],
-        bump = market.authority_bump,
-    )]
-    pub market_authority: UncheckedAccount,
 
     #[account(address = market.base_mint)]
     pub base_mint: Box<InterfaceAccount<Mint>>,

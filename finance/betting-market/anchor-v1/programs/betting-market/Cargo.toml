@@ -21,8 +21,8 @@ custom-panic = []
 
 [dependencies]
 # init-if-needed: place_bet and the lazy User index create accounts only on first use.
-anchor-lang = { version = "1.1.2", features = ["init-if-needed"] }
-anchor-spl = "1.1.2"
+anchor-lang = { version = "1.2.0", features = ["init-if-needed"] }
+anchor-spl = "1.2.0"
 
 [dev-dependencies]
 # no-entrypoint: solana-kite pulls these SPL program crates into the host test
@@ -31,10 +31,10 @@ anchor-spl = "1.1.2"
 # across the test build; the dependencies exist only for that.
 spl-token = { version = "9.0.0", features = ["no-entrypoint"] }
 spl-associated-token-account = { version = "8.0.0", features = ["no-entrypoint"] }
-litesvm = "0.13.1"
+litesvm = "0.16.0"
 solana-signer = "3.0.0"
 solana-keypair = "3.0.1"
-solana-kite = "0.4.0"
+solana-kite = "0.5.0"
 borsh = "1.6.1"
 
 [lints.rust]

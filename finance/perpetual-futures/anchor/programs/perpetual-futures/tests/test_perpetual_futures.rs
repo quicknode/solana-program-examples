@@ -53,14 +53,13 @@ struct Market {
     collateral_mint: Address,
     feed: Address,
     pool: Address,
-    pool_authority: Address,
     lp_mint: Address,
     custody_vault: Address,
 }
 
 impl Market {
     /// Stand up a market with the given starting oracle price and per-slot
-    /// funding rate. The admin is both the pool authority and the oracle feed
+    /// funding rate. The admin is both the pool operator and the oracle feed
     /// authority.
     fn new(initial_price: i128, funding_rate_per_slot: u64) -> Market {
         let parameters = PoolParameters {
@@ -134,9 +133,6 @@ impl Market {
             &perpetual_futures::id(),
         )
         .0;
-        let pool_authority =
-            Address::find_program_address(&[b"authority", pool.as_ref()], &perpetual_futures::id())
-                .0;
         let lp_mint =
             Address::find_program_address(&[b"lp_mint", pool.as_ref()], &perpetual_futures::id()).0;
         let custody_vault =
@@ -150,7 +146,6 @@ impl Market {
                 pool,
                 collateral_mint,
                 oracle_feed: feed,
-                pool_authority,
                 lp_mint,
                 custody_vault,
                 token_program: token_program_id(),
@@ -174,7 +169,6 @@ impl Market {
             collateral_mint,
             feed,
             pool,
-            pool_authority,
             lp_mint,
             custody_vault,
         })
@@ -271,7 +265,6 @@ impl Market {
             perpetual_futures::accounts::AddLiquidityAccountConstraints {
                 provider: provider.pubkey(),
                 pool: self.pool,
-                pool_authority: self.pool_authority,
                 oracle_feed: self.feed,
                 collateral_mint: self.collateral_mint,
                 lp_mint: self.lp_mint,
@@ -312,7 +305,6 @@ impl Market {
             perpetual_futures::accounts::RemoveLiquidityAccountConstraints {
                 provider: provider.pubkey(),
                 pool: self.pool,
-                pool_authority: self.pool_authority,
                 oracle_feed: self.feed,
                 collateral_mint: self.collateral_mint,
                 lp_mint: self.lp_mint,
@@ -405,7 +397,6 @@ impl Market {
                 owner: trader.pubkey(),
                 pool: self.pool,
                 position,
-                pool_authority: self.pool_authority,
                 oracle_feed: self.feed,
                 collateral_mint: self.collateral_mint,
                 custody_vault: self.custody_vault,
@@ -443,7 +434,6 @@ impl Market {
                 owner: *owner,
                 pool: self.pool,
                 position,
-                pool_authority: self.pool_authority,
                 oracle_feed: self.feed,
                 collateral_mint: self.collateral_mint,
                 custody_vault: self.custody_vault,
@@ -473,7 +463,6 @@ impl Market {
             perpetual_futures::accounts::CollectFeesAccountConstraints {
                 authority: authority.pubkey(),
                 pool: self.pool,
-                pool_authority: self.pool_authority,
                 collateral_mint: self.collateral_mint,
                 custody_vault: self.custody_vault,
                 authority_collateral,
@@ -538,6 +527,17 @@ fn test_initialize_pool() {
     assert_eq!(pool.max_leverage, 10);
     assert_eq!(pool.liquidity, 0);
     assert_eq!(pool.total_collateral, 0);
+
+    // The pool account itself owns the custody vault and is the LP mint's
+    // authority; there is no separate signing PDA. A token account keeps its
+    // owner at bytes 32..64, and a mint keeps its authority at bytes 4..36
+    // behind a four-byte `COption` tag.
+    let vault = market.svm.get_account(&market.custody_vault).unwrap();
+    let vault_owner = Address::new_from_array(vault.data[32..64].try_into().unwrap());
+    assert_eq!(vault_owner, market.pool);
+    let lp_mint = market.svm.get_account(&market.lp_mint).unwrap();
+    let mint_authority = Address::new_from_array(lp_mint.data[4..36].try_into().unwrap());
+    assert_eq!(mint_authority, market.pool);
 }
 
 #[test]
@@ -915,7 +915,7 @@ fn test_funding_charged_to_long() {
 
 /// The funding rate is quoted per slot, so what a position costs per hour also
 /// depends on the cluster's slot time. When the protocol shortens the slot, the
-/// pool authority retunes the rate, and the retune must settle the slots already
+/// pool operator retunes the rate, and the retune must settle the slots already
 /// elapsed at the old rate rather than repricing them at the new one.
 #[test]
 fn test_set_funding_rate_settles_at_the_old_rate_first() {

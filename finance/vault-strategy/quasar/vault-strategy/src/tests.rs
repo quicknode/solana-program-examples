@@ -3,7 +3,8 @@
 //! `deposit` is a two-program test: it loads the mock swap router too, wires
 //! up rates and a Pyth-shaped price feed, and deposits, checking that the
 //! deposit is priced 1:1 on the first deposit and deployed into the basket
-//! through the router CPI.
+//! through the router CPI. `deposit_rejects_price_from_before_a_restart`
+//! reuses that setup to show a pre-restart price is refused.
 
 use {
     crate::{
@@ -11,6 +12,7 @@ use {
             AddAssetInstruction, ApproveAssetInstruction, DepositInstruction,
             InitializeRegistryInstruction, InitializeStrategyInstruction,
         },
+        errors::VaultError,
         state::{AssetConfig, AssetVaultPda, Registry, ShareMintPda, Strategy, UsdcVaultPda},
     },
     quasar_test::prelude::*,
@@ -45,9 +47,6 @@ fn router_id() -> Pubkey {
 fn router_config_pda() -> Pubkey {
     Pubkey::find_program_address(&[b"router_config"], &router_id()).0
 }
-fn router_authority_pda() -> Pubkey {
-    Pubkey::find_program_address(&[b"router_authority"], &router_id()).0
-}
 fn router_treasury_pda() -> Pubkey {
     Pubkey::find_program_address(&[b"treasury"], &router_id()).0
 }
@@ -56,12 +55,37 @@ fn router_rate_pda(mint: &Pubkey) -> Pubkey {
 }
 
 // A Pyth PriceUpdateV2-shaped account: `price` (i64) at offset 73,
-// `publish_time` (i64) at offset 93. The program reads only those two fields.
+// `publish_time` (i64) at offset 93, `posted_slot` (u64) at offset 125. The
+// program reads only those three fields. Posted at slot 1.
 fn add_pyth_feed(test: &mut Test, price: i64, publish_time: i64) {
+    add_pyth_feed_posted_at(test, price, publish_time, 1);
+}
+
+// The same feed, as if Pyth posted it in `posted_slot`.
+fn add_pyth_feed_posted_at(test: &mut Test, price: i64, publish_time: i64, posted_slot: u64) {
     let mut data = vec![0u8; 200];
     data[73..81].copy_from_slice(&price.to_le_bytes());
     data[93..101].copy_from_slice(&publish_time.to_le_bytes());
+    data[125..133].copy_from_slice(&posted_slot.to_le_bytes());
     test.set_account(Account::new(PRICE_FEED, FEED_OWNER, 1_000_000, data));
+}
+
+/// Pin the LastRestartSlot sysvar account, simulating a cluster restart at
+/// `slot`: prices posted at or before it must be rejected until Pyth posts
+/// again. The sysvar's whole data is one little-endian u64.
+fn set_last_restart_slot(test: &mut Test, slot: u64) {
+    let sysvar_id: Pubkey = "SysvarLastRestartS1ot1111111111111111111111"
+        .parse()
+        .unwrap();
+    let sysvar_owner: Pubkey = "Sysvar1111111111111111111111111111111111111"
+        .parse()
+        .unwrap();
+    test.set_account(Account::new(
+        sysvar_id,
+        sysvar_owner,
+        1_169_280,
+        slot.to_le_bytes().to_vec(),
+    ));
 }
 
 /// The strategy-side PDAs the assertions read.
@@ -150,11 +174,15 @@ fn strategy_setup_records_the_basket(test: &mut Test) {
     );
 }
 
-/// Two-program deposit: set up the router + a single-asset strategy, then
-/// deposit USDC. The first deposit mints shares 1:1 and deploys the whole
-/// amount into the asset through the router CPI.
-#[quasar_test]
-fn deposit_mints_shares_and_deploys_into_the_basket(test: &mut Test) {
+// Asset priced 250 USDC/token: Pyth price = 250 * 10^8 so
+// asset_value = amount * price / 10^8 gives 250 USDC per token base unit.
+const PYTH_PRICE: i64 = 250 * 100_000_000;
+const DEPOSIT: u64 = 1_000;
+
+/// Load the router, set up a single-asset strategy, fund the depositor, and
+/// initialize the router with the asset's rate. Leaves the Pyth feed to the
+/// caller.
+fn setup_deposit(test: &mut Test) -> Pdas {
     // Runtime read (NOT include_bytes!): quasar-test auto-loads only this
     // program's .so; the sibling router program is added explicitly.
     let router_elf =
@@ -162,20 +190,12 @@ fn deposit_mints_shares_and_deploys_into_the_basket(test: &mut Test) {
     test.add(Program::new(router_id(), &router_elf));
     test.warp_to_timestamp(NOW);
 
-    let r_authority = router_authority_pda();
-    // The asset mint is minted by the router authority.
-    setup_strategy(test, r_authority);
+    // The router config account is the asset mint's mint authority, so the
+    // router can mint it on swap.
+    setup_strategy(test, router_config_pda());
     let w = pdas(test);
 
     test.add(Wallet::new().at(DEPOSITOR));
-
-    // Asset priced 250 USDC/token: Pyth price = 250 * 10^8 so
-    // asset_value = amount * price / 10^8 gives 250 USDC per token base unit.
-    let pyth_price: i64 = 250 * 100_000_000;
-    add_pyth_feed(test, pyth_price, NOW);
-
-    const DEPOSIT: u64 = 1_000;
-    const ASSET_OUT: u64 = DEPOSIT / RATE; // 4
 
     // Depositor token accounts (share account created up front).
     test.add(
@@ -213,7 +233,6 @@ fn deposit_mints_shares_and_deploys_into_the_basket(test: &mut Test) {
             AccountMeta::new_readonly(ASSET_MINT, false),
             AccountMeta::new_readonly(USDC_MINT, false),
             AccountMeta::new(router_rate_pda(&ASSET_MINT), false),
-            AccountMeta::new_readonly(r_authority, false),
             AccountMeta::new(router_treasury_pda(), false),
             AccountMeta::new_readonly(rent_id, false),
             AccountMeta::new_readonly(SPL_TOKEN_PROGRAM_ID, false),
@@ -223,8 +242,12 @@ fn deposit_mints_shares_and_deploys_into_the_basket(test: &mut Test) {
     })
     .succeeds();
 
-    // Deposit: declared accounts, then remaining accounts per basket asset
-    // (asset_config, vault_asset, asset_mint, asset_rate, price_feed).
+    w
+}
+
+/// Deposit `DEPOSIT` USDC: declared accounts, then remaining accounts per
+/// basket asset (asset_config, vault_asset, asset_mint, asset_rate, price_feed).
+fn send_deposit(test: &mut Test, w: &Pdas) -> Outcome {
     test.send(DepositInstruction {
         depositor: DEPOSITOR,
         strategy_index_seed: STRATEGY_INDEX,
@@ -233,7 +256,6 @@ fn deposit_mints_shares_and_deploys_into_the_basket(test: &mut Test) {
         depositor_share_account: DEPOSITOR_SHARE,
         router_config: router_config_pda(),
         router_usdc_treasury: router_treasury_pda(),
-        router_authority: r_authority,
         swap_router_program: router_id(),
         usdc_amount: DEPOSIT,
         minimum_shares: DEPOSIT,
@@ -245,13 +267,49 @@ fn deposit_mints_shares_and_deploys_into_the_basket(test: &mut Test) {
             AccountMeta::new_readonly(PRICE_FEED, false),
         ],
     })
-    .succeeds()
-    // First deposit mints shares 1:1 with USDC.
-    .has_tokens(DEPOSITOR_SHARE, DEPOSIT)
-    // The deposit was deployed into the asset via the router.
-    .has_tokens(w.vault_asset, ASSET_OUT)
-    .has_tokens(DEPOSITOR_USDC, 0)
-    .has_tokens(router_treasury_pda(), DEPOSIT)
-    // All USDC was swapped out of the vault into the asset.
-    .has_tokens(w.vault_usdc, 0);
+}
+
+/// Two-program deposit: set up the router + a single-asset strategy, then
+/// deposit USDC. The first deposit mints shares 1:1 and deploys the whole
+/// amount into the asset through the router CPI.
+#[quasar_test]
+fn deposit_mints_shares_and_deploys_into_the_basket(test: &mut Test) {
+    let w = setup_deposit(test);
+    add_pyth_feed(test, PYTH_PRICE, NOW);
+
+    const ASSET_OUT: u64 = DEPOSIT / RATE; // 4
+
+    send_deposit(test, &w)
+        .succeeds()
+        // First deposit mints shares 1:1 with USDC.
+        .has_tokens(DEPOSITOR_SHARE, DEPOSIT)
+        // The deposit was deployed into the asset via the router.
+        .has_tokens(w.vault_asset, ASSET_OUT)
+        .has_tokens(DEPOSITOR_USDC, 0)
+        .has_tokens(router_treasury_pda(), DEPOSIT)
+        // All USDC was swapped out of the vault into the asset.
+        .has_tokens(w.vault_usdc, 0);
+}
+
+/// Under Alpenglow the Clock's unix_timestamp may only advance by up to twice
+/// the slot time elapsed since the parent block, so after a halt it trails real
+/// time and a price published just before the halt still passes the 60-second
+/// staleness check. The vault must reject any price posted at or before the
+/// restart slot until Pyth posts again.
+#[quasar_test]
+fn deposit_rejects_price_from_before_a_restart(test: &mut Test) {
+    let w = setup_deposit(test);
+
+    // The feed is posted at slot 1 and stamped `NOW`, so it is fresh by the
+    // 60-second bound, but the cluster restarted at slot 3: only the restart
+    // check can catch it.
+    add_pyth_feed(test, PYTH_PRICE, NOW);
+    set_last_restart_slot(test, 3);
+    send_deposit(test, &w).fails_with(VaultError::PricePredatesRestart);
+
+    // Pyth posting again after the restart (slot 4) reopens the vault.
+    add_pyth_feed_posted_at(test, PYTH_PRICE, NOW, 4);
+    send_deposit(test, &w)
+        .succeeds()
+        .has_tokens(DEPOSITOR_SHARE, DEPOSIT);
 }

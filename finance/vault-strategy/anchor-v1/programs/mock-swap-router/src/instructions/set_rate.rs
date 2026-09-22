@@ -31,18 +31,12 @@ pub struct SetRateAccountConstraints<'info> {
     )]
     pub asset_rate: Account<'info, AssetRate>,
 
-    /// CHECK: PDA used as mint authority only
-    #[account(
-        seeds = [b"router_authority"],
-        bump
-    )]
-    pub router_authority: UncheckedAccount<'info>,
-
+    /// The router's USDC treasury, owned by `router_config`.
     #[account(
         init_if_needed,
         payer = authority,
         associated_token::mint = usdc_mint,
-        associated_token::authority = router_authority,
+        associated_token::authority = router_config,
         associated_token::token_program = token_program
     )]
     pub router_usdc_treasury: InterfaceAccount<'info, TokenAccount>,

@@ -9,3 +9,6 @@ pub use check_contributions::*;
 
 pub mod refund;
 pub use refund::*;
+
+pub mod close_contributor;
+pub use close_contributor::*;

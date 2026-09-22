@@ -12,8 +12,8 @@ use crate::state::{
 
 /// Discriminator of the router's `swap_usdc_for_asset` instruction.
 const ROUTER_SWAP_USDC_FOR_ASSET: u8 = 2;
-/// One `swap_usdc_for_asset` CPI: 10 accounts, 17 data bytes (disc + 2 u64).
-const SWAP_ACCOUNTS: usize = 10;
+/// One `swap_usdc_for_asset` CPI: 9 accounts, 17 data bytes (disc + 2 u64).
+const SWAP_ACCOUNTS: usize = 9;
 const SWAP_DATA_LEN: usize = 17;
 /// remaining_accounts arrive as, per asset index 0..asset_count:
 ///   [asset_config, vault, asset_mint, asset_rate, price_feed]
@@ -47,14 +47,13 @@ pub struct DepositAccountConstraints {
     #[account(mut, address = UsdcVaultPda::seeds(strategy.address()))]
     pub vault_usdc: InterfaceAccount<Token>,
 
-    /// Router config PDA (mock-swap-router).
+    /// Router config PDA (mock-swap-router); it owns the treasury and signs the
+    /// router's token CPIs.
     #[account(mut)]
     pub router_config: UncheckedAccount,
-    /// Router USDC treasury.
+    /// Router USDC treasury, owned by the router config account.
     #[account(mut)]
     pub router_usdc_treasury: UncheckedAccount,
-    /// Router mint-authority PDA.
-    pub router_authority: UncheckedAccount,
     /// The swap router program, verified against the strategy's stored router.
     pub swap_router_program: UncheckedAccount,
 
@@ -239,7 +238,7 @@ pub fn handle_deposit(
         // Router `swap_usdc_for_asset` account order:
         //   caller, router_config, asset_rate, usdc_mint, asset_mint,
         //   caller_usdc_account, caller_asset_account, router_usdc_treasury,
-        //   router_authority, token_program.
+        //   token_program.
         let mut cpi = CpiDynamic::<SWAP_ACCOUNTS, SWAP_DATA_LEN>::new(&router_program_addr);
         cpi.push_account(accounts.strategy.to_account_view(), true, false)?;
         cpi.push_account(accounts.router_config.to_account_view(), false, false)?;
@@ -249,7 +248,6 @@ pub fn handle_deposit(
         cpi.push_account(accounts.vault_usdc.to_account_view(), false, true)?;
         cpi.push_account(&vault_view, false, true)?;
         cpi.push_account(accounts.router_usdc_treasury.to_account_view(), false, true)?;
-        cpi.push_account(accounts.router_authority.to_account_view(), false, false)?;
         cpi.push_account(accounts.token_program.to_account_view(), false, false)?;
         cpi.set_data(&data)?;
         cpi.invoke_signed(&seeds)?;

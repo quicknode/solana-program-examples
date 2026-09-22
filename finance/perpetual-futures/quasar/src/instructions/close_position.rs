@@ -5,7 +5,6 @@ use {
             basis_points_of, err, error, position_funding, position_pnl, refresh_price_and_funding,
         },
         state::{Pool, Position},
-        PoolAuthorityPda,
     },
     quasar_lang::cpi::Seed,
     quasar_lang::{prelude::*, sysvars::clock::Clock},
@@ -29,8 +28,6 @@ pub struct ClosePosition {
         close(dest = owner),
     )]
     pub position: Account<Position>,
-    #[account(address = PoolAuthorityPda::seeds(pool.address()))]
-    pub pool_authority: UncheckedAccount,
     /// CHECK: bound to the pool via its seeds.
     pub oracle_feed: UncheckedAccount,
     pub collateral_mint: Account<Mint>,
@@ -128,10 +125,12 @@ pub fn handle_close_position(
         .ok_or(ProgramError::ArithmeticOverflow)?;
     accounts.pool.protocol_fees.set(new_protocol_fees);
 
-    let bump = [bumps.pool_authority];
+    // The pool signs the CPI below with its own seeds.
+    let bump = [bumps.pool];
     let seeds: &[Seed] = &[
-        Seed::from(b"authority".as_ref()),
-        Seed::from(accounts.pool.address().as_ref()),
+        Seed::from(b"pool".as_ref()),
+        Seed::from(accounts.collateral_mint.address().as_ref()),
+        Seed::from(accounts.oracle_feed.address().as_ref()),
         Seed::from(&bump as &[u8]),
     ];
     accounts
@@ -140,7 +139,7 @@ pub fn handle_close_position(
             &accounts.custody_vault,
             &accounts.collateral_mint,
             &accounts.trader_collateral,
-            &accounts.pool_authority,
+            &accounts.pool,
             payout,
             accounts.collateral_mint.decimals(),
         )

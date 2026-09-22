@@ -3,7 +3,7 @@
 > [!NOTE]
 > This is the **Anchor v1** copy of this example, kept for programs staying on the
 > Anchor v1 LTS line. Every `anchor` command on this page needs the v1 CLI:
-> `avm install 1.1.2 && avm use 1.1.2`. The Anchor v2 version of this example is in
+> `avm install 1.2.0 && avm use 1.2.0`. The Anchor v2 version of this example is in
 > [`../anchor`](../anchor/).
 
 Two [instruction handlers](https://solana.com/docs/terminology#instruction-handler): `create_user` initializes a [PDA](https://solana.com/docs/terminology#program-derived-address-pda) `User` [account](https://solana.com/docs/terminology#account), and `close_user` closes it and returns the [rent](https://solana.com/docs/terminology#rent) to the user.

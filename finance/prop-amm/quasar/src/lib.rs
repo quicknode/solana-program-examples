@@ -18,11 +18,6 @@ use instructions::*;
 
 declare_id!("FPTx81bSwghfrwzaQpgmKPw1TnajK66wif1cQyev4GdD");
 
-/// Authority PDA at seeds = [b"authority", market]. Signs vault CPIs.
-#[derive(Seeds)]
-#[seeds(b"authority", market: Address)]
-pub struct MarketAuthorityPda;
-
 /// Base-token vault PDA at seeds = [b"base_vault", market].
 #[derive(Seeds)]
 #[seeds(b"base_vault", market: Address)]

@@ -78,13 +78,13 @@ pub mod perpetual_futures {
         instructions::handle_liquidate_position(context)
     }
 
-    /// Pool authority sweeps the accumulated protocol fees from the vault.
+    /// The pool operator sweeps the accumulated protocol fees from the vault.
     pub fn collect_fees(context: &mut Context<CollectFeesAccountConstraints>) -> Result<()> {
         instructions::handle_collect_fees(context)
     }
 
-    /// Pool authority retunes the per-slot funding rate, accruing at the old
-    /// rate first.
+    /// The pool operator retunes the per-slot funding rate, accruing at the
+    /// old rate first.
     pub fn set_funding_rate(
         context: &mut Context<SetFundingRateAccountConstraints>,
         funding_rate_per_slot: u64,

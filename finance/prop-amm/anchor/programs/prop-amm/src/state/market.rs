@@ -62,9 +62,8 @@ pub struct Market {
     /// inventory operations still work.
     pub paused: bool,
 
+    /// Bump of this account's own PDA. The market is the token authority of
+    /// both vaults and signs their outgoing transfers with its own seeds, so
+    /// the bump is stored to avoid re-deriving it on every CPI.
     pub bump: u8,
-
-    /// Bump for the vault authority PDA, stored so CPIs can sign without
-    /// re-deriving it.
-    pub authority_bump: u8,
 }

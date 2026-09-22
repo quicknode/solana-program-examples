@@ -2,7 +2,7 @@
 
 Solana's v1 transaction format ([SIMD-0385](https://github.com/solana-foundation/solana-improvement-documents/blob/main/proposals/0385-transaction-v1.md), sized by [SIMD-0296](https://github.com/solana-foundation/solana-improvement-documents/blob/main/proposals/0296-larger-transactions.md)) raises the maximum transaction size from 1,232 to 4,096 bytes. This page is the repository's view of it: what changes, where it is live, which of the tools these examples build on can send it, and what that means for the examples. The worked example is [`basics/transaction-v1/`](../basics/transaction-v1/anchor/), in Anchor v2, Anchor v1, Pinocchio and native Rust.
 
-Status is as of 3 September 2026.
+Status is as of 22 September 2026.
 
 ## What changes
 
@@ -92,10 +92,10 @@ The feature gate is `enable_tx_v1`, `txv1aq4pp281K9um3tnPgkfX8UqtFT6wcVW3hNezGLL
 | --- | --- |
 | `solana-test-validator` (Agave 4.2+) and Surfpool 1.5+ | Active at genesis |
 | Testnet | Active since epoch 1025 |
-| Devnet | Pending activation (Agave 4.2.2) |
-| Mainnet beta | Pending. Anza's stated target is 9 September 2026 |
+| Devnet | Active |
+| Mainnet beta | Active since epoch 1035 (15 September 2026, about 01:00 UTC). The first target, 9 September, slipped by one epoch |
 
-Check a cluster before sending:
+To check any cluster, including a private one:
 
 ```bash
 solana -u <cluster> feature status txv1aq4pp281K9um3tnPgkfX8UqtFT6wcVW3hNezGLL
@@ -107,30 +107,30 @@ What the toolchains this repository uses can do with v1, checked against the ver
 
 | Tool | Used here as | v1 |
 | --- | --- | --- |
-| Agave CLI and `solana-test-validator` | CI installs 3.1.14; the example pins 4.2.2 | 4.2.0 and later |
-| `solana-message`, `solana-transaction` (Rust) | 3.x in most tests; 4.2 / 4.1 in the example | `solana-message` 4.2 and later |
-| [LiteSVM](https://github.com/LiteSVM/litesvm) | 0.13.1 everywhere but the example, which uses 0.16.0 | 0.16.0 (24 August 2026) and later. Reads the compute budget from the config |
+| Agave CLI and `solana-test-validator` | CI installs 3.1.14 | 4.2.0 and later. The LiteSVM tests do not need it |
+| `solana-message`, `solana-transaction` (Rust) | 4.2 / 4.1 in the Anchor v1 tests and the example; 3.x in the root workspace | `solana-message` 4.2 and later |
+| [LiteSVM](https://github.com/LiteSVM/litesvm) | 0.16.0 in the Anchor v1 examples and the example; 0.13.1 in the root workspace and two standalone native examples | 0.16.0 (24 August 2026) and later. Reads the compute budget from the config |
 | [Surfpool](https://surfpool.run/) | `anchor test` and `anchor localnet` default validator | 1.5 and later |
 | `@solana/kit` | Not used by the tests | 8.0.0 and later |
 | `@solana/web3.js` 1.x | Two wallet-adapter demo apps | Reads v1 from 1.99.0. Cannot build one. `@solana/web3.js` 3.0.0-rc.3 and later can |
-| Anchor v2 programs (`anchor-lang` 2.0.0-rc.1) | 46 examples | No change needed |
-| `anchor-v2-testing` (the Anchor v2 LiteSVM harness) | Every Anchor v2 example but this one | Not yet. Pins LiteSVM 0.13.1, on the pinned revision and on the tip of `anchor-next` as of today |
-| Anchor v1 programs (`anchor-lang` 1.1.2) | 37 examples | No change needed |
-| `@coral-xyz/anchor` 1.1.2 (Anchor's TypeScript client) | Not used by the tests | Not yet. Depends on `@solana/web3.js` 1.x, which cannot build a v1 transaction |
-| Quasar programs (`quasar-lang` 0.1.0) | 53 examples | No change needed |
-| `quasar-test` and `quasar-svm` (Quasar's test harness and VM) | Every Quasar example | Not yet. `quasar-svm` 0.1.0 is on `solana-message` 3.x and its `master` branch on 4.1, one release short of the `v1` module |
-| Pinocchio, native Rust and sBPF assembly programs | 50 examples | No change needed |
-| [`solana-kite`](https://github.com/solanakite/kite-rust) 0.4.0 | 111 test suites | Not yet. Pins LiteSVM 0.13.1 |
+| Anchor v2 programs (`anchor-lang` 2.0.0-rc.1) | 56 examples | No change needed |
+| `anchor-v2-testing` (the Anchor v2 LiteSVM harness) | Every Anchor v2 example but this one | Not yet. Pins LiteSVM `=0.13.1`, on the pinned revision and on the tip of `anchor-next`, unchanged since 17 August. Not on crates.io |
+| Anchor v1 programs (`anchor-lang` 1.2.0) | 56 examples | No change needed |
+| `@coral-xyz/anchor` (Anchor's TypeScript client) | The vault strategy web app | Not yet. Depends on `@solana/web3.js` 1.x, which cannot build a v1 transaction |
+| Quasar programs (`quasar-lang` 0.1.0) | 56 examples | No change needed |
+| `quasar-test` and `quasar-svm` (Quasar's test harness and VM) | Every Quasar example | Not yet. `quasar-svm` 0.1.0 (March, still the only release) is on `solana-message` 3.x and its `master` branch on 4.1, one release short of the `v1` module. No commits since 14 July |
+| Pinocchio, native Rust and sBPF assembly programs | 47 examples | No change needed |
+| [`solana-kite`](https://github.com/solanakite/kite-rust) | 0.5.0 in the Anchor v1 tests; 0.4.0 in the root workspace | On LiteSVM 0.16 from 0.5.0 (8 September 2026). Its `send_transaction_from_instructions` builds legacy transactions, so a v1 one is built by hand |
 
 ## What that means for the examples
 
 Only `basics/transaction-v1/` sends v1 transactions. Every other example's tests still send legacy transactions, and they keep passing, because nothing on the program side changed.
 
-Moving the rest of the repository is blocked on the two test dependencies, not on the examples:
+Where the rest of the tests stand:
 
-1. `solana-kite` needs a release on LiteSVM 0.16 or later. 111 test suites here depend on it, and LiteSVM 0.13.1 and 0.16.0 cannot share a lockfile (each pins a different `solana-instruction` 3.x patch release), so the root workspace cannot move until it does.
-2. `anchor-v2-testing` needs to move off its `=0.13.1` pin. Until then an Anchor v2 example can send v1 transactions only by calling LiteSVM directly, as the example does, and loses `anchor test --profile`, `anchor debugger` and `anchor coverage` for it.
-3. Quasar needs `quasar-svm` on `solana-message` 4.2 or later, and a way for a `#[quasar_test]` test to choose the transaction format. Neither exists yet, so there is no Quasar variant of the example.
+1. **Anchor v1 examples**: on LiteSVM 0.16 through `solana-kite` 0.5.0, since the move to Anchor 1.2.0. Any of them could send a v1 transaction today; none does, because kite builds legacy transactions.
+2. **Anchor v2, native and Pinocchio examples in the root workspace**: on LiteSVM 0.13.1 and `solana-kite` 0.4.0. They cannot move until `anchor-v2-testing` drops its `=0.13.1` pin, because 0.13.1 and 0.16.0 pin different `solana-instruction` 3.x patch releases and one lockfile cannot hold both. The alternative is for the Anchor v2 examples to call LiteSVM directly, as this example does, at the cost of `anchor test --profile`, `anchor debugger` and `anchor coverage`.
+3. **Quasar examples**: need `quasar-svm` on `solana-message` 4.2 or later, and a way for a `#[quasar_test]` test to choose the transaction format. Neither exists yet, so there is no Quasar variant of the example.
 
 That is also why the example's four directories are standalone Cargo workspaces, deliberately absent from the root `Cargo.toml` members list.
 
@@ -140,6 +140,7 @@ That is also why the example's four directories are standalone Cargo workspaces,
 - [SIMD-0385: Transaction V1](https://github.com/solana-foundation/solana-improvement-documents/blob/main/proposals/0385-transaction-v1.md) and [SIMD-0296: Larger transactions](https://github.com/solana-foundation/solana-improvement-documents/blob/main/proposals/0296-larger-transactions.md).
 - [solana-foundation/transaction-v1-examples](https://github.com/solana-foundation/transaction-v1-examples), runnable Rust, TypeScript, Python and Go clients and indexers, with a minimum-version table.
 - [The `transactions-v1` reference in solana-dev-skill](https://github.com/solana-foundation/solana-dev-skill/blob/main/skills/solana-dev/references/transactions-v1.md).
-- [Feature gate tracker schedule](https://github.com/anza-xyz/agave/wiki/Feature-Gate-Tracker-Schedule), for activation status per cluster.
+- [Feature gate tracker schedule](https://github.com/anza-xyz/agave/wiki/Feature-Gate-Tracker-Schedule), for features still pending activation.
+- [solana-foundation/solana-com#2078](https://github.com/solana-foundation/solana-com/pull/2078), which moved the upgrade page's mainnet date to the start of epoch 1035.
 - [LiteSVM 0.16.0](https://github.com/LiteSVM/litesvm/releases/tag/v0.16.0), the release that added v1 support.
 - [Solana v1 transactions explained](https://www.quicknode.com/blog/solana-v1-transactions-explained), on the Quicknode blog.

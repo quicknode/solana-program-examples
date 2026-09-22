@@ -401,10 +401,6 @@
           "writable": true
         },
         {
-          "name": "router_authority",
-          "writable": true
-        },
-        {
           "name": "swap_router_program",
           "address": "SWPR8Rk3aq3DrDGLdaANq7xCMnXoUFUJWJJmCWxc8Jm"
         },
@@ -721,10 +717,6 @@
         },
         {
           "name": "router_usdc_treasury",
-          "writable": true
-        },
-        {
-          "name": "router_authority",
           "writable": true
         },
         {
@@ -1092,6 +1084,11 @@
       "code": 6025,
       "name": "FeeTooHigh",
       "msg": "Management fee exceeds the maximum allowed"
+    },
+    {
+      "code": 6026,
+      "name": "PricePredatesRestart",
+      "msg": "Price feed is stale: it predates the last cluster restart"
     }
   ],
   "types": [

@@ -3,7 +3,7 @@
 > [!NOTE]
 > This is the **Anchor v1** copy of this example, kept for programs staying on the
 > Anchor v1 LTS line. Every `anchor` command on this page needs the v1 CLI:
-> `avm install 1.1.2 && avm use 1.1.2`. The Anchor v2 version of this example is in
+> `avm install 1.2.0 && avm use 1.2.0`. The Anchor v2 version of this example is in
 > [`../anchor`](../anchor/).
 
 An oracle-quoted **proprietary AMM** on Solana: a market-making firm funds a
@@ -86,9 +86,9 @@ option for whoever notices first.
 
 ### Step 1: Maria opens the market
 
-`initialize_market` creates the `Market` account (PDA of the mint pair), a
-dataless vault-authority PDA, and the two vaults, and pins the oracle feed,
-its scale, a 10 bps spread, and a 1% confidence limit. One market per pair:
+`initialize_market` creates the `Market` account (PDA of the mint pair) and
+the two vaults, which the market account itself owns and signs for, and pins
+the oracle feed, its scale, a 10 bps spread, and a 1% confidence limit. One market per pair:
 the deployment is the firm.
 
 ### Step 2: Maria stocks the inventory

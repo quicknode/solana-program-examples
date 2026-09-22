@@ -61,6 +61,7 @@ jobs:
           - vault-strategy
           - token-fundraiser
           - prop-amm
+          - options
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
@@ -105,6 +106,7 @@ jobs:
           - vault-strategy
           - token-fundraiser
           - prop-amm
+          - options
     steps:
       - uses: actions/checkout@v5
       - name: Run Kani

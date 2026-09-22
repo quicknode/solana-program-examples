@@ -39,9 +39,6 @@ pub const MAX_LEVERAGE_CEILING: u16 = 100;
 pub const POOL_SEED: &[u8] = b"pool";
 
 #[constant]
-pub const AUTHORITY_SEED: &[u8] = b"authority";
-
-#[constant]
 pub const LP_MINT_SEED: &[u8] = b"lp_mint";
 
 #[constant]

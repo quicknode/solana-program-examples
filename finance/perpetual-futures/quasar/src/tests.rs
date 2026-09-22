@@ -212,8 +212,17 @@ fn initialize_pool_creates_pool_vault_and_lp_mint(test: &mut Test) {
     let env = setup(test);
     // The pool, vault, and liquidity-provider mint were created.
     assert!(test.account(env.pool).is_some());
-    assert!(test.account(env.custody_vault).is_some());
-    assert!(test.account(env.lp_mint).is_some());
+    let custody_vault = test.account(env.custody_vault).unwrap();
+    let lp_mint = test.account(env.lp_mint).unwrap();
+
+    // The pool account itself owns the custody vault and is the LP mint's
+    // authority; there is no separate signing PDA. A token account keeps its
+    // owner at bytes 32..64, and a mint keeps its authority at bytes 4..36
+    // behind a four-byte `COption` tag.
+    let vault_owner = Pubkey::new_from_array(custody_vault.data[32..64].try_into().unwrap());
+    assert_eq!(vault_owner, env.pool);
+    let mint_authority = Pubkey::new_from_array(lp_mint.data[4..36].try_into().unwrap());
+    assert_eq!(mint_authority, env.pool);
 }
 
 #[quasar_test]
@@ -375,7 +384,7 @@ fn collect_fees_sweeps_the_open_fee_to_the_admin(test: &mut Test) {
 
 /// The funding rate is quoted per slot, so what a position costs per hour also
 /// depends on the cluster's slot time. When the protocol shortens the slot, the
-/// pool authority retunes the rate, and the retune settles the slots already
+/// pool operator retunes the rate, and the retune settles the slots already
 /// elapsed at the old rate rather than repricing them at the new one.
 ///
 /// Both halves below hold the same position for the same slots at the same

@@ -251,6 +251,23 @@ fn build_check_contributions_instruction(
     )
 }
 
+fn build_close_contributor_instruction(
+    setup: &FundraiserSetup,
+    contributor: &Address,
+    contributor_account_pda: &Address,
+) -> Instruction {
+    Instruction::new_with_bytes(
+        setup.program_id,
+        &fundraiser::instruction::CloseContributor {}.data(),
+        fundraiser::accounts::CloseContributorAccountConstraints {
+            contributor: *contributor,
+            fundraiser: setup.fundraiser_pda,
+            contributor_account: *contributor_account_pda,
+        }
+        .to_account_metas(None),
+    )
+}
+
 fn build_close_fundraiser_instruction(setup: &FundraiserSetup, maker_ata: &Address) -> Instruction {
     Instruction::new_with_bytes(
         setup.program_id,
@@ -988,4 +1005,131 @@ fn test_check_contributions_ignores_direct_vault_donations() {
         setup.svm.get_account(&setup.fundraiser_pda).is_some(),
         "Fundraiser account must stay open after a failed claim"
     );
+}
+
+#[test]
+fn test_close_contributor_after_successful_claim_returns_rent() {
+    let mut setup = full_setup();
+    initialize_fundraiser(&mut setup, AMOUNT_TO_RAISE, DURATION_DAYS);
+
+    // 10 contributors at the 10% cap reach the target exactly.
+    let mut contributors = Vec::new();
+    for _ in 0..10 {
+        let (contributor, contributor_ata, contributor_account_pda) =
+            create_funded_contributor(&mut setup);
+        let contribute_instruction = build_contribute_instruction(
+            &setup,
+            &contributor.pubkey(),
+            &contributor_ata,
+            &contributor_account_pda,
+            MAX_CONTRIBUTION,
+        );
+        send_transaction_from_instructions(
+            &mut setup.svm,
+            vec![contribute_instruction],
+            &[&contributor],
+            &contributor.pubkey(),
+        )
+        .unwrap();
+        contributors.push((contributor, contributor_account_pda));
+    }
+
+    let maker_ata = derive_ata(&setup.maker.pubkey(), &setup.mint);
+    let check_instruction = build_check_contributions_instruction(&setup, &maker_ata);
+    send_transaction_from_instructions(
+        &mut setup.svm,
+        vec![check_instruction],
+        &[&setup.maker],
+        &setup.maker.pubkey(),
+    )
+    .unwrap();
+    assert!(
+        setup.svm.get_account(&setup.fundraiser_pda).is_none(),
+        "Fundraiser account must be closed after a successful claim"
+    );
+
+    // The claim closed the fundraiser and the vault, but every contributor
+    // account is still open with its rent inside.
+    let (contributor, contributor_account_pda) = &contributors[0];
+    let rent = setup
+        .svm
+        .get_account(contributor_account_pda)
+        .expect("Contributor account survives the claim")
+        .lamports;
+    let lamports_before = setup
+        .svm
+        .get_account(&contributor.pubkey())
+        .unwrap()
+        .lamports;
+
+    let close_instruction =
+        build_close_contributor_instruction(&setup, &contributor.pubkey(), contributor_account_pda);
+    send_transaction_from_instructions(
+        &mut setup.svm,
+        vec![close_instruction],
+        &[contributor],
+        &contributor.pubkey(),
+    )
+    .unwrap();
+
+    assert!(
+        setup.svm.get_account(contributor_account_pda).is_none(),
+        "Contributor account must be closed"
+    );
+    let lamports_after = setup
+        .svm
+        .get_account(&contributor.pubkey())
+        .unwrap()
+        .lamports;
+    // The contributor paid the transaction fee out of the same balance, so
+    // the rent came back less that fee.
+    let fee = 5_000;
+    assert_eq!(
+        lamports_after,
+        lamports_before + rent - fee,
+        "The contributor account's rent must return to the contributor"
+    );
+}
+
+#[test]
+fn test_close_contributor_while_fundraiser_open_fails() {
+    let mut setup = full_setup();
+    initialize_fundraiser(&mut setup, AMOUNT_TO_RAISE, DURATION_DAYS);
+
+    let (contributor, contributor_ata, contributor_account_pda) =
+        create_funded_contributor(&mut setup);
+    let contribute_instruction = build_contribute_instruction(
+        &setup,
+        &contributor.pubkey(),
+        &contributor_ata,
+        &contributor_account_pda,
+        MAX_CONTRIBUTION,
+    );
+    send_transaction_from_instructions(
+        &mut setup.svm,
+        vec![contribute_instruction],
+        &[&contributor],
+        &contributor.pubkey(),
+    )
+    .unwrap();
+
+    // The fundraiser is live, so the contribution is live too: closing the
+    // record now would erase what the vault owes this contributor.
+    let close_instruction = build_close_contributor_instruction(
+        &setup,
+        &contributor.pubkey(),
+        &contributor_account_pda,
+    );
+    let result = send_transaction_from_instructions(
+        &mut setup.svm,
+        vec![close_instruction],
+        &[&contributor],
+        &contributor.pubkey(),
+    );
+    assert!(
+        result.is_err(),
+        "Closing a contributor account must fail while its fundraiser exists"
+    );
+    let contributor_state = read_contributor_state(&setup.svm, &contributor_account_pda);
+    assert_eq!(contributor_state.amount, MAX_CONTRIBUTION);
 }

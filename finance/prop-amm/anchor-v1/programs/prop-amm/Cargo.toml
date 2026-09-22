@@ -22,8 +22,8 @@ custom-panic = []
 [dependencies]
 # init-if-needed: swap creates the trader's destination token account when it
 # doesn't exist yet, so a first-time buyer needs no separate setup transaction.
-anchor-lang = { version = "1.1.2", features = ["init-if-needed"] }
-anchor-spl = "1.1.2"
+anchor-lang = { version = "1.2.0", features = ["init-if-needed"] }
+anchor-spl = "1.2.0"
 # For the LastRestartSlot sysvar (not re-exported by anchor-lang): the oracle
 # reader rejects prices from before a cluster restart. Same major as the
 # solana-sysvar anchor-lang itself uses, so only one copy is compiled in.
@@ -34,10 +34,10 @@ spl-token = { version = "9.0.0", features = ["no-entrypoint"] }
 spl-associated-token-account = { version = "8.0.0", features = ["no-entrypoint"] }
 
 [dev-dependencies]
-litesvm = "0.13.1"
+litesvm = "0.16.0"
 solana-signer = "3.0.0"
 solana-keypair = "3.0.1"
-solana-kite = "0.4.0"
+solana-kite = "0.5.0"
 borsh = "1.6.1"
 # The LiteSVM tests load the compiled mock oracle program; depending on the
 # crate here lets the tests reuse its instruction-argument types and program ID.

@@ -22,4 +22,7 @@ pub enum FundraiserError {
     MathOverflow,
     /// A token balance after a transfer did not match the expected value.
     BalanceMismatch,
+    /// The fundraiser account still exists, so the contribution is live and
+    /// its contributor account closes through refund, not here.
+    FundraiserStillOpen,
 }

@@ -3,7 +3,7 @@
 > [!NOTE]
 > This is the **Anchor v1** copy of this example, kept for programs staying on the
 > Anchor v1 LTS line. Every `anchor` command on this page needs the v1 CLI:
-> `avm install 1.1.2 && avm use 1.1.2`. The Anchor v2 version of this example is in
+> `avm install 1.2.0 && avm use 1.2.0`. The Anchor v2 version of this example is in
 > [`../anchor`](../anchor/).
 
 A Kamino/Solend-style borrow/lend program on Solana: suppliers earn interest on deposits,
@@ -177,7 +177,7 @@ refreshed in the same transaction, so a typical action transaction is
 
 ## Setup
 
-- Rust and the Solana toolchain (`cargo-build-sbf`), Anchor 1.1.2, Solana 3.1.8.
+- Rust and the Solana toolchain (`cargo-build-sbf`), Anchor 1.2.0, Solana 3.1.8.
 - This program has no client/JavaScript code; tests are Rust + LiteSVM.
 
 ## Testing

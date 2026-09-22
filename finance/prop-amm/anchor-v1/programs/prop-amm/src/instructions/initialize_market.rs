@@ -4,9 +4,7 @@ use anchor_spl::{
     token_interface::{Mint, TokenAccount, TokenInterface},
 };
 
-use crate::constants::{
-    AUTHORITY_SEED, BASE_VAULT_SEED, BASIS_POINTS_DENOMINATOR, MARKET_SEED, QUOTE_VAULT_SEED,
-};
+use crate::constants::{BASE_VAULT_SEED, BASIS_POINTS_DENOMINATOR, MARKET_SEED, QUOTE_VAULT_SEED};
 use crate::errors::PropAmmError;
 use crate::state::Market;
 
@@ -64,7 +62,6 @@ pub fn handle_initialize_market(
     market.max_confidence_bps = parameters.max_confidence_bps;
     market.paused = false;
     market.bump = context.bumps.market;
-    market.authority_bump = context.bumps.market_authority;
 
     Ok(())
 }
@@ -95,21 +92,16 @@ pub struct InitializeMarketAccountConstraints<'info> {
     /// trusted by type. Swap for a real Switchboard feed in production.
     pub oracle_feed: UncheckedAccount<'info>,
 
-    /// CHECK: PDA that owns both vaults. Holds no data; used only to sign
-    /// vault CPIs.
-    #[account(
-        seeds = [AUTHORITY_SEED, market.key().as_ref()],
-        bump,
-    )]
-    pub market_authority: UncheckedAccount<'info>,
-
+    // The market account itself is the token authority of both vaults and
+    // signs their outgoing transfers with its own seeds, so no separate
+    // signing account is needed.
     #[account(
         init,
         payer = operator,
         seeds = [BASE_VAULT_SEED, market.key().as_ref()],
         bump,
         token::mint = base_mint,
-        token::authority = market_authority,
+        token::authority = market,
         token::token_program = token_program,
     )]
     pub base_vault: Box<InterfaceAccount<'info, TokenAccount>>,
@@ -120,7 +112,7 @@ pub struct InitializeMarketAccountConstraints<'info> {
         seeds = [QUOTE_VAULT_SEED, market.key().as_ref()],
         bump,
         token::mint = quote_mint,
-        token::authority = market_authority,
+        token::authority = market,
         token::token_program = token_program,
     )]
     pub quote_vault: Box<InterfaceAccount<'info, TokenAccount>>,

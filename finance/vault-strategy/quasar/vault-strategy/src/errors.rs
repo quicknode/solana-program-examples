@@ -29,4 +29,5 @@ pub enum VaultError {
     InvalidUsdcMint,
     InvalidSwapRouter,
     FeeTooHigh,
+    PricePredatesRestart,
 }

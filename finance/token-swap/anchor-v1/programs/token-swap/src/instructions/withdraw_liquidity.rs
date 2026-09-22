@@ -5,7 +5,7 @@ use anchor_spl::{
 };
 
 use crate::{
-    constants::{AUTHORITY_SEED, CONFIG_SEED, LIQUIDITY_SEED, MINIMUM_LIQUIDITY},
+    constants::{CONFIG_SEED, LIQUIDITY_SEED, MINIMUM_LIQUIDITY},
     errors::AmmError,
     state::{Config, PoolConfig},
 };
@@ -16,15 +16,18 @@ pub fn handle_withdraw_liquidity(
     minimum_token_a_out: u64,
     minimum_token_b_out: u64,
 ) -> Result<()> {
-    let authority_bump = context.bumps.pool_authority;
-    let authority_seeds = &[
-        &context.accounts.pool_config.config.to_bytes(),
-        &context.accounts.mint_a.key().to_bytes(),
-        &context.accounts.mint_b.key().to_bytes(),
-        AUTHORITY_SEED,
-        &[authority_bump],
-    ];
-    let signer_seeds = &[&authority_seeds[..]];
+    // `pool_config` owns the reserves and signs the transfers out of them
+    // with its own seeds.
+    let config_bytes = context.accounts.pool_config.config.to_bytes();
+    let mint_a_bytes = context.accounts.mint_a.key().to_bytes();
+    let mint_b_bytes = context.accounts.mint_b.key().to_bytes();
+    let pool_config_bump = [context.accounts.pool_config.bump];
+    let signer_seeds: &[&[&[u8]]] = &[&[
+        config_bytes.as_ref(),
+        mint_a_bytes.as_ref(),
+        mint_b_bytes.as_ref(),
+        &pool_config_bump,
+    ]];
 
     // LPs withdraw a proportional share of the *effective* reserves
     // (vault balance minus the admin's accumulated fee claim). The admin's
@@ -99,7 +102,7 @@ pub fn handle_withdraw_liquidity(
                 from: context.accounts.pool_a.to_account_info(),
                 mint: context.accounts.mint_a.to_account_info(),
                 to: context.accounts.token_a.to_account_info(),
-                authority: context.accounts.pool_authority.to_account_info(),
+                authority: context.accounts.pool_config.to_account_info(),
             },
             signer_seeds,
         ),
@@ -114,7 +117,7 @@ pub fn handle_withdraw_liquidity(
                 from: context.accounts.pool_b.to_account_info(),
                 mint: context.accounts.mint_b.to_account_info(),
                 to: context.accounts.token_b.to_account_info(),
-                authority: context.accounts.pool_authority.to_account_info(),
+                authority: context.accounts.pool_config.to_account_info(),
             },
             signer_seeds,
         ),
@@ -153,23 +156,11 @@ pub struct WithdrawLiquidityAccountConstraints<'info> {
             pool_config.mint_a.key().as_ref(),
             pool_config.mint_b.key().as_ref(),
         ],
-        bump,
+        bump = pool_config.bump,
         has_one = mint_a,
         has_one = mint_b,
     )]
     pub pool_config: Account<'info, PoolConfig>,
-
-    /// CHECK: Read only authority
-    #[account(
-        seeds = [
-            pool_config.config.as_ref(),
-            mint_a.key().as_ref(),
-            mint_b.key().as_ref(),
-            AUTHORITY_SEED,
-        ],
-        bump,
-    )]
-    pub pool_authority: UncheckedAccount<'info>,
 
     pub withdrawer: Signer<'info>,
 
@@ -194,7 +185,7 @@ pub struct WithdrawLiquidityAccountConstraints<'info> {
     #[account(
         mut,
         associated_token::mint = mint_a,
-        associated_token::authority = pool_authority,
+        associated_token::authority = pool_config,
         associated_token::token_program = token_program,
     )]
     pub pool_a: Box<InterfaceAccount<'info, TokenAccount>>,
@@ -202,7 +193,7 @@ pub struct WithdrawLiquidityAccountConstraints<'info> {
     #[account(
         mut,
         associated_token::mint = mint_b,
-        associated_token::authority = pool_authority,
+        associated_token::authority = pool_config,
         associated_token::token_program = token_program,
     )]
     pub pool_b: Box<InterfaceAccount<'info, TokenAccount>>,

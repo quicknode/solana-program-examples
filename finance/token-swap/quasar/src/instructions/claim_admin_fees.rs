@@ -2,7 +2,7 @@ use {
     crate::{
         error::AmmError,
         state::{Config, PoolConfig, PoolConfigInner},
-        ConfigPda, PoolAuthorityPda, PoolPda,
+        ConfigPda, PoolPda,
     },
     quasar_lang::cpi::Seed,
     quasar_lang::prelude::*,
@@ -21,9 +21,6 @@ pub struct ClaimAdminFeesAccountConstraints {
         address = PoolPda::seeds(config.address(), mint_a.address(), mint_b.address()),
     )]
     pub pool_config: Account<PoolConfig>,
-    /// Pool authority PDA - signs the outbound transfers.
-    #[account(address = PoolAuthorityPda::seeds(config.address(), mint_a.address(), mint_b.address()))]
-    pub pool_authority: UncheckedAccount,
     pub mint_a: Account<Mint>,
     pub mint_b: Account<Mint>,
     /// Pool's token-A reserve. The admin's owed token-A fees are paid out of
@@ -64,10 +61,10 @@ pub fn handle_claim_admin_fees(
     // variant's behaviour.
     require!(owed_a > 0 || owed_b > 0, AmmError::NothingToClaim);
 
-    // Seed order matches PoolAuthorityPda: [b"authority", config, mint_a, mint_b, bump].
-    let bump = [bumps.pool_authority];
+    // `pool_config` owns the reserves and signs the outbound transfers.
+    // Seed order matches PoolPda: [config, mint_a, mint_b, bump].
+    let bump = [bumps.pool_config];
     let seeds: &[Seed] = &[
-        Seed::from(crate::AUTHORITY_SEED),
         Seed::from(accounts.config.address().as_ref()),
         Seed::from(accounts.mint_a.address().as_ref()),
         Seed::from(accounts.mint_b.address().as_ref()),
@@ -96,7 +93,7 @@ pub fn handle_claim_admin_fees(
                 &accounts.pool_a,
                 &accounts.mint_a,
                 &accounts.admin_token_a,
-                &accounts.pool_authority,
+                &accounts.pool_config,
                 owed_a,
                 accounts.mint_a.decimals(),
             )
@@ -110,7 +107,7 @@ pub fn handle_claim_admin_fees(
                 &accounts.pool_b,
                 &accounts.mint_b,
                 &accounts.admin_token_b,
-                &accounts.pool_authority,
+                &accounts.pool_config,
                 owed_b,
                 accounts.mint_b.decimals(),
             )

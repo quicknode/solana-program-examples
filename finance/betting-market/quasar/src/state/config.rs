@@ -13,8 +13,10 @@ pub struct Config {
     pub admin: Address,
     pub token_mint: Address,
     pub fee_recipient: Address,
-    /// Protocol fee, in basis points, taken from the losing pool at settlement.
-    pub fee_bps: u16,
+    /// Protocol fee, in basis points, that new events copy into their own
+    /// `fee_bps` at creation. Settlement charges the event's copy, so changing
+    /// this value only affects events created afterwards.
+    pub default_fee_bps: u16,
     pub event_count: u64,
     pub bump: u8,
 }
@@ -24,7 +26,7 @@ pub fn snapshot_config(config: &Account<Config>) -> ConfigInner {
         admin: config.admin,
         token_mint: config.token_mint,
         fee_recipient: config.fee_recipient,
-        fee_bps: u16::from(config.fee_bps),
+        default_fee_bps: u16::from(config.default_fee_bps),
         event_count: u64::from(config.event_count),
         bump: config.bump,
     }

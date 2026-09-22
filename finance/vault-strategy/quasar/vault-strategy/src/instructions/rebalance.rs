@@ -9,7 +9,7 @@ use crate::state::{AssetConfig, Strategy, STRATEGY_SEED};
 
 const ROUTER_SWAP_USDC_FOR_ASSET: u8 = 2;
 const ROUTER_SWAP_ASSET_FOR_USDC: u8 = 3;
-const SWAP_ACCOUNTS: usize = 10;
+const SWAP_ACCOUNTS: usize = 9;
 const SWAP_DATA_LEN: usize = 17;
 
 #[derive(Accounts)]
@@ -52,11 +52,11 @@ pub struct RebalanceAccountConstraints {
     pub sell_rate: UncheckedAccount,
     pub buy_rate: UncheckedAccount,
 
+    /// Router config PDA; it owns the treasury and signs the router's token CPIs.
     #[account(mut)]
     pub router_config: UncheckedAccount,
     #[account(mut)]
     pub router_usdc_treasury: UncheckedAccount,
-    pub router_authority: UncheckedAccount,
     pub swap_router_program: UncheckedAccount,
 
     pub token_program: Program<TokenProgram>,
@@ -157,7 +157,7 @@ pub fn handle_rebalance(
     // Step 1: sell the basket token for USDC. Router `swap_asset_for_usdc`
     // order: caller, router_config, asset_rate, usdc_mint, asset_mint,
     // caller_asset_account, caller_usdc_account, router_usdc_treasury,
-    // router_authority, token_program.
+    // token_program.
     let mut sell_data = [0u8; SWAP_DATA_LEN];
     sell_data[0] = ROUTER_SWAP_ASSET_FOR_USDC;
     sell_data[1..9].copy_from_slice(&sell_amount.to_le_bytes());
@@ -171,7 +171,6 @@ pub fn handle_rebalance(
     sell_cpi.push_account(accounts.vault_sell.to_account_view(), false, true)?;
     sell_cpi.push_account(accounts.vault_usdc.to_account_view(), false, true)?;
     sell_cpi.push_account(accounts.router_usdc_treasury.to_account_view(), false, true)?;
-    sell_cpi.push_account(accounts.router_authority.to_account_view(), false, false)?;
     sell_cpi.push_account(accounts.token_program.to_account_view(), false, false)?;
     sell_cpi.set_data(&sell_data)?;
     sell_cpi.invoke_signed(&seeds)?;
@@ -179,7 +178,7 @@ pub fn handle_rebalance(
     // Step 2: buy the basket token with USDC. Router `swap_usdc_for_asset`
     // order: caller, router_config, asset_rate, usdc_mint, asset_mint,
     // caller_usdc_account, caller_asset_account, router_usdc_treasury,
-    // router_authority, token_program.
+    // token_program.
     let mut buy_data = [0u8; SWAP_DATA_LEN];
     buy_data[0] = ROUTER_SWAP_USDC_FOR_ASSET;
     buy_data[1..9].copy_from_slice(&usdc_to_invest.to_le_bytes());
@@ -193,7 +192,6 @@ pub fn handle_rebalance(
     buy_cpi.push_account(accounts.vault_usdc.to_account_view(), false, true)?;
     buy_cpi.push_account(accounts.vault_buy.to_account_view(), false, true)?;
     buy_cpi.push_account(accounts.router_usdc_treasury.to_account_view(), false, true)?;
-    buy_cpi.push_account(accounts.router_authority.to_account_view(), false, false)?;
     buy_cpi.push_account(accounts.token_program.to_account_view(), false, false)?;
     buy_cpi.set_data(&buy_data)?;
     buy_cpi.invoke_signed(&seeds)?;

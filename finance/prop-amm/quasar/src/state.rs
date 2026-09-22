@@ -7,6 +7,10 @@ use quasar_lang::prelude::*;
 /// Note what this account does NOT hold, compared to a curve AMM's pool: no
 /// liquidity-provider mint, no fee ledger, no reserves that pricing depends
 /// on. The operator is the only capital in the market.
+///
+/// The market account is also the token authority of both vaults: it signs
+/// their outgoing transfers with its own seeds, so `bump` is stored to avoid
+/// re-deriving it on every CPI.
 #[account(discriminator = 100, set_inner)]
 #[seeds(b"market", base_mint: Address, quote_mint: Address)]
 pub struct Market {
@@ -29,5 +33,4 @@ pub struct Market {
     /// 1 while the operator has pulled its quotes; swaps are rejected.
     pub paused: u8,
     pub bump: u8,
-    pub authority_bump: u8,
 }

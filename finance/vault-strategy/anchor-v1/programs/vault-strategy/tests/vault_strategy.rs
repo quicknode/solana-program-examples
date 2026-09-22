@@ -45,8 +45,13 @@ fn derive_ata(wallet: &Pubkey, mint: &Pubkey) -> Pubkey {
 }
 
 /// Mock PriceUpdateV2 layout (see pyth-solana-receiver-sdk): price i64 at 73,
-/// publish_time i64 at 93. Exponent -8.
-fn build_mock_price_update_account(price: i64, exponent: i32, publish_time: i64) -> Vec<u8> {
+/// publish_time i64 at 93, posted_slot u64 at 125. Exponent -8.
+fn build_mock_price_update_account(
+    price: i64,
+    exponent: i32,
+    publish_time: i64,
+    posted_slot: u64,
+) -> Vec<u8> {
     let discriminator: [u8; 8] = [34, 241, 35, 99, 157, 126, 244, 205];
     let mut data = Vec::with_capacity(133);
     data.extend_from_slice(&discriminator);
@@ -60,12 +65,17 @@ fn build_mock_price_update_account(price: i64, exponent: i32, publish_time: i64)
     data.extend_from_slice(&(publish_time - 1).to_le_bytes());
     data.extend_from_slice(&price.to_le_bytes());
     data.extend_from_slice(&120_000u64.to_le_bytes());
-    data.extend_from_slice(&1u64.to_le_bytes());
+    data.extend_from_slice(&posted_slot.to_le_bytes());
     data
 }
 
 fn set_price_feed(svm: &mut LiteSVM, key: Pubkey, price: i64) {
-    let data = build_mock_price_update_account(price, -8, PUBLISH_TIME);
+    set_price_feed_posted_at(svm, key, price, 1);
+}
+
+/// Write a Pyth feed as if Pyth posted it in `posted_slot`.
+fn set_price_feed_posted_at(svm: &mut LiteSVM, key: Pubkey, price: i64, posted_slot: u64) {
+    let data = build_mock_price_update_account(price, -8, PUBLISH_TIME, posted_slot);
     let rent = svm.minimum_balance_for_rent_exemption(data.len());
     svm.set_account(
         key,
@@ -108,7 +118,6 @@ struct TestContext {
     approved_tsla: Pubkey,
     approved_nvda: Pubkey,
     router_config_pda: Pubkey,
-    router_authority_pda: Pubkey,
     tsla_rate_pda: Pubkey,
     nvda_rate_pda: Pubkey,
     vault_usdc: Pubkey,
@@ -167,15 +176,16 @@ fn setup_full() -> TestContext {
     let tsla_mint = create_token_mint(&mut svm, &payer, TOKEN_DECIMALS, None).unwrap();
     let nvda_mint = create_token_mint(&mut svm, &payer, TOKEN_DECIMALS, None).unwrap();
 
-    let (router_authority_pda, _) =
-        Pubkey::find_program_address(&[b"router_authority"], &router_program_id);
+    let (router_config_pda, _) =
+        Pubkey::find_program_address(&[b"router_config"], &router_program_id);
 
-    // The router mints basket assets on swap, so it must hold their mint authority.
+    // The router mints basket assets on swap, so its config account, which signs
+    // the router's token CPIs, must hold their mint authority.
     for basket_mint in [&tsla_mint, &nvda_mint] {
         let ix = spl_token::instruction::set_authority(
             &spl_token::ID,
             basket_mint,
-            Some(&router_authority_pda),
+            Some(&router_config_pda),
             spl_token::instruction::AuthorityType::MintTokens,
             &payer.pubkey(),
             &[],
@@ -200,8 +210,6 @@ fn setup_full() -> TestContext {
         &[b"approved_asset", registry_pda.as_ref(), nvda_mint.as_ref()],
         &vault_program_id,
     );
-    let (router_config_pda, _) =
-        Pubkey::find_program_address(&[b"router_config"], &router_program_id);
     let (tsla_rate_pda, _) =
         Pubkey::find_program_address(&[b"rate", tsla_mint.as_ref()], &router_program_id);
     let (nvda_rate_pda, _) =
@@ -210,7 +218,7 @@ fn setup_full() -> TestContext {
     let vault_usdc = derive_ata(&strategy_pda, &usdc_mint);
     let vault_tsla = derive_ata(&strategy_pda, &tsla_mint);
     let vault_nvda = derive_ata(&strategy_pda, &nvda_mint);
-    let router_usdc_treasury = derive_ata(&router_authority_pda, &usdc_mint);
+    let router_usdc_treasury = derive_ata(&router_config_pda, &usdc_mint);
 
     let price_feed_tsla = Keypair::new().pubkey();
     let price_feed_nvda = Keypair::new().pubkey();
@@ -225,7 +233,6 @@ fn setup_full() -> TestContext {
             authority: payer.pubkey(),
             usdc_mint,
             router_config: router_config_pda,
-            router_authority: router_authority_pda,
             token_program: token_program_id(),
             system_program: system_program::id(),
         }
@@ -251,7 +258,6 @@ fn setup_full() -> TestContext {
                 asset_mint: mint,
                 usdc_mint,
                 asset_rate: rate_pda,
-                router_authority: router_authority_pda,
                 router_usdc_treasury,
                 associated_token_program: ata_program_id(),
                 token_program: token_program_id(),
@@ -324,7 +330,6 @@ fn setup_full() -> TestContext {
         approved_tsla,
         approved_nvda,
         router_config_pda,
-        router_authority_pda,
         tsla_rate_pda,
         nvda_rate_pda,
         vault_usdc,
@@ -466,7 +471,6 @@ fn deposit_named_metas(ctx: &TestContext, user: &Keypair) -> Vec<AccountMeta> {
         vault_usdc: ctx.vault_usdc,
         router_config: ctx.router_config_pda,
         router_usdc_treasury: ctx.router_usdc_treasury,
-        router_authority: ctx.router_authority_pda,
         swap_router_program: ctx.router_program_id,
         associated_token_program: ata_program_id(),
         token_program: token_program_id(),
@@ -537,7 +541,6 @@ fn set_router_rate(ctx: &mut TestContext, mint: Pubkey, rate: u64, rate_pda: Pub
             asset_mint: mint,
             usdc_mint: ctx.usdc_mint,
             asset_rate: rate_pda,
-            router_authority: ctx.router_authority_pda,
             router_usdc_treasury: ctx.router_usdc_treasury,
             associated_token_program: ata_program_id(),
             token_program: token_program_id(),
@@ -655,7 +658,6 @@ fn do_rebalance(
             buy_rate,
             router_config: ctx.router_config_pda,
             router_usdc_treasury: ctx.router_usdc_treasury,
-            router_authority: ctx.router_authority_pda,
             swap_router_program: ctx.router_program_id,
             associated_token_program: ata_program_id(),
             token_program: token_program_id(),
@@ -1002,6 +1004,57 @@ fn test_deposit_rejects_unregistered_router() {
         r.is_err(),
         "deposit deploying through an unregistered router must fail"
     );
+}
+
+/// Simulate a cluster restart at `slot`: prices posted at or before it must be
+/// rejected until Pyth posts again.
+fn set_last_restart_slot(ctx: &mut TestContext, slot: u64) {
+    ctx.svm
+        .set_sysvar(&solana_sysvar::last_restart_slot::LastRestartSlot {
+            last_restart_slot: slot,
+        });
+}
+
+/// Under Alpenglow the Clock's unix_timestamp may only advance by up to twice
+/// the slot time elapsed since the parent block, so after a halt it trails real
+/// time and a price published just before the halt still passes the 60-second
+/// staleness check. The vault must reject any price posted at or before the
+/// restart slot until Pyth posts again.
+#[test]
+fn test_deposit_rejects_price_from_before_restart() {
+    let mut ctx = setup_full();
+    standard_strategy(&mut ctx);
+    let user = fund_user(&mut ctx, 10_000_000);
+
+    // Both feeds were posted at slot 1. Simulate a halt: the cluster restarts
+    // at slot 3, and the timestamp has barely moved, so the pre-halt prices are
+    // still well inside the 60-second window and only the restart check can
+    // catch them.
+    let clock = ctx.svm.get_sysvar::<Clock>();
+    ctx.svm.set_sysvar(&Clock {
+        slot: 5,
+        unix_timestamp: PUBLISH_TIME + 2,
+        ..clock
+    });
+    set_last_restart_slot(&mut ctx, 3);
+
+    let ix = deposit_instruction(&ctx, &user, 10_000_000, 1, deposit_remaining(&ctx));
+    let message =
+        send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[&user], &user.pubkey())
+            .expect_err("a deposit priced before the restart must fail");
+    let code = vault_strategy::error::VaultError::PricePredatesRestart as u32 + 6000;
+    assert!(
+        message.to_string().contains(&format!("Custom({code})")),
+        "expected PricePredatesRestart (Custom({code})), got: {message}"
+    );
+
+    // Pyth posting again after the restart reopens the vault. Fresh blockhash
+    // so the retry is not byte-identical to the rejected deposit.
+    set_price_feed_posted_at(&mut ctx.svm, ctx.price_feed_tsla, TSLA_PRICE, 4);
+    set_price_feed_posted_at(&mut ctx.svm, ctx.price_feed_nvda, NVDA_PRICE, 4);
+    ctx.svm.expire_blockhash();
+    do_deposit(&mut ctx, &user, 10_000_000, 1);
+    assert!(get_token_account_balance(&ctx.svm, &ctx.vault_tsla).unwrap() > 0);
 }
 
 #[test]

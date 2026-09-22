@@ -2,7 +2,7 @@ use {
     crate::{
         error::AmmError,
         state::{Config, PoolConfig},
-        ConfigPda, LiquidityMintPda, PoolAuthorityPda, PoolPda,
+        ConfigPda, LiquidityMintPda, PoolPda,
     },
     quasar_lang::cpi::Seed,
     quasar_lang::prelude::*,
@@ -13,11 +13,9 @@ use {
 pub struct WithdrawLiquidityAccountConstraints {
     #[account(address = ConfigPda::seeds())]
     pub config: Account<Config>,
+    /// Owns both reserves and signs the transfers out of them.
     #[account(address = PoolPda::seeds(config.address(), mint_a.address(), mint_b.address()))]
     pub pool_config: Account<PoolConfig>,
-    /// Pool authority PDA.
-    #[account(address = PoolAuthorityPda::seeds(config.address(), mint_a.address(), mint_b.address()))]
-    pub pool_authority: UncheckedAccount,
     pub depositor: Signer,
     /// LP mint at the LiquidityMintPda.
     ///
@@ -66,10 +64,10 @@ pub fn handle_withdraw_liquidity(
     minimum_token_b_out: u64,
     bumps: &WithdrawLiquidityAccountConstraintsBumps,
 ) -> Result<(), ProgramError> {
-    // Seed order matches PoolAuthorityPda: [b"authority", config, mint_a, mint_b, bump].
-    let bump = [bumps.pool_authority];
+    // `pool_config` owns the reserves and signs the transfers out of them.
+    // Seed order matches PoolPda: [config, mint_a, mint_b, bump].
+    let bump = [bumps.pool_config];
     let seeds: &[Seed] = &[
-        Seed::from(crate::AUTHORITY_SEED),
         Seed::from(accounts.config.address().as_ref()),
         Seed::from(accounts.mint_a.address().as_ref()),
         Seed::from(accounts.mint_b.address().as_ref()),
@@ -133,7 +131,7 @@ pub fn handle_withdraw_liquidity(
             &accounts.pool_a,
             &accounts.mint_a,
             &accounts.token_a,
-            &accounts.pool_authority,
+            &accounts.pool_config,
             amount_a,
             accounts.mint_a.decimals(),
         )
@@ -146,7 +144,7 @@ pub fn handle_withdraw_liquidity(
             &accounts.pool_b,
             &accounts.mint_b,
             &accounts.token_b,
-            &accounts.pool_authority,
+            &accounts.pool_config,
             amount_b,
             accounts.mint_b.decimals(),
         )

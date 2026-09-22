@@ -20,7 +20,7 @@ custom-heap = []
 custom-panic = []
 
 [dependencies]
-anchor-lang = "1.1.2"
+anchor-lang = "1.2.0"
 
 [dev-dependencies]
 # 0.16.0 is the first LiteSVM that understands v1 transactions: it reads the
@@ -29,9 +29,8 @@ anchor-lang = "1.1.2"
 # instructions.
 #
 # The other Anchor v1 examples build their transactions with `solana-kite`,
-# which pins LiteSVM 0.13.1 and so cannot send a v1 transaction yet. This
-# example builds them by hand. Move back to kite once it is on LiteSVM 0.16
-# or later.
+# whose `send_transaction_from_instructions` builds a legacy transaction.
+# This example builds its v1 transactions by hand instead.
 litesvm = "0.16.0"
 borsh = "1.6.1"
 solana-keypair = "3.1"

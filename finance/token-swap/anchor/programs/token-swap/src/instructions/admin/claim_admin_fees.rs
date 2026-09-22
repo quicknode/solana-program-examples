@@ -3,7 +3,7 @@ use anchor_spl::token;
 use anchor_spl::token_interface::{self, Mint, TokenAccount, TokenInterface, TransferChecked};
 
 use crate::{
-    constants::{AUTHORITY_SEED, CONFIG_SEED},
+    constants::CONFIG_SEED,
     errors::AmmError,
     state::{Config, PoolConfig},
 };
@@ -38,7 +38,7 @@ pub fn handle_claim_admin_fees(
     }
 
     // Pre-copy seed bytes before the mutable borrow of pool_config.
-    let authority_bump = context.bumps.pool_authority;
+    let pool_config_bump = [context.accounts.pool_config.bump];
     let config_bytes = context.accounts.pool_config.config.to_bytes();
     let mint_a_bytes = context.accounts.mint_a.address().to_bytes();
     let mint_b_bytes = context.accounts.mint_b.address().to_bytes();
@@ -52,14 +52,20 @@ pub fn handle_claim_admin_fees(
     }
 
     // Interactions: transfer the owed fees out of the pool reserves.
-    let authority_seeds = &[
+    // `pool_config` owns the reserves and signs with its own seeds.
+    let signer_seeds: &[&[&[u8]]] = &[&[
         config_bytes.as_ref(),
         mint_a_bytes.as_ref(),
         mint_b_bytes.as_ref(),
-        AUTHORITY_SEED,
-        &[authority_bump],
-    ];
-    let signer_seeds = &[&authority_seeds[..]];
+        &pool_config_bump,
+    ]];
+
+    // `pool_config` signs the CPIs below. It is a data account holding a live
+    // borrow on its buffer, which the runtime would reject when the CPI
+    // borrows the same account, so hand the borrow back for the duration.
+    // `release_borrow` flushes the zeroed accumulators and
+    // `reacquire_borrow_mut` re-reads them once the CPIs are done.
+    context.accounts.pool_config.release_borrow()?;
 
     if owed_a > 0 {
         token_interface::transfer_checked(
@@ -69,7 +75,7 @@ pub fn handle_claim_admin_fees(
                     from: context.accounts.pool_a.to_cpi_handle_mut(),
                     mint: context.accounts.mint_a.to_cpi_handle(),
                     to: context.accounts.admin_token_a.to_cpi_handle_mut(),
-                    authority: context.accounts.pool_authority.cpi_handle(),
+                    authority: context.accounts.pool_config.to_cpi_handle(),
                 },
                 signer_seeds,
             ),
@@ -86,7 +92,7 @@ pub fn handle_claim_admin_fees(
                     from: context.accounts.pool_b.to_cpi_handle_mut(),
                     mint: context.accounts.mint_b.to_cpi_handle(),
                     to: context.accounts.admin_token_b.to_cpi_handle_mut(),
-                    authority: context.accounts.pool_authority.cpi_handle(),
+                    authority: context.accounts.pool_config.to_cpi_handle(),
                 },
                 signer_seeds,
             ),
@@ -94,6 +100,8 @@ pub fn handle_claim_admin_fees(
             context.accounts.mint_b.decimals(),
         )?;
     }
+
+    context.accounts.pool_config.reacquire_borrow_mut()?;
 
     msg!(
         "Admin swept fees: {} of mint_a, {} of mint_b",
@@ -117,21 +125,9 @@ pub struct ClaimAdminFeesAccountConstraints {
             pool_config.mint_a.as_ref(),
             pool_config.mint_b.as_ref(),
         ],
-        bump,
+        bump = pool_config.bump,
     )]
     pub pool_config: BorshAccount<PoolConfig>,
-
-    /// CHECK: PDA that owns the pool reserves; signs the outbound transfers.
-    #[account(
-        seeds = [
-            pool_config.config.as_ref(),
-            mint_a.address().as_ref(),
-            mint_b.address().as_ref(),
-            AUTHORITY_SEED,
-        ],
-        bump,
-    )]
-    pub pool_authority: UncheckedAccount,
 
     #[account(address = pool_config.mint_a)]
     pub mint_a: Box<InterfaceAccount<Mint>>,
@@ -139,22 +135,22 @@ pub struct ClaimAdminFeesAccountConstraints {
     #[account(address = pool_config.mint_b)]
     pub mint_b: Box<InterfaceAccount<Mint>>,
 
-    /// The pool's token-A reserve. The admin's owed token-A fees are paid out
-    /// of this account.
+    /// The pool's token-A reserve, owned by `pool_config`. The admin's owed
+    /// token-A fees are paid out of this account.
     #[account(
         mut,
         associated_token::mint = mint_a,
-        associated_token::authority = pool_authority,
+        associated_token::authority = pool_config,
         associated_token::token_program = token_program,
     )]
     pub pool_a: Box<InterfaceAccount<TokenAccount>>,
 
-    /// The pool's token-B reserve. The admin's owed token-B fees are paid out
-    /// of this account.
+    /// The pool's token-B reserve, owned by `pool_config`. The admin's owed
+    /// token-B fees are paid out of this account.
     #[account(
         mut,
         associated_token::mint = mint_b,
-        associated_token::authority = pool_authority,
+        associated_token::authority = pool_config,
         associated_token::token_program = token_program,
     )]
     pub pool_b: Box<InterfaceAccount<TokenAccount>>,

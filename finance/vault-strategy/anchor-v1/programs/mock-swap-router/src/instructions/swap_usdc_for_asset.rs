@@ -14,6 +14,8 @@ pub struct SwapUsdcForAssetAccountConstraints<'info> {
     /// The caller - e.g. the vault strategy PDA (can be a signer or a PDA signer via CPI)
     pub caller: Signer<'info>,
 
+    /// Owns the USDC treasury and is the mint authority of every asset the
+    /// router mints; signs the mint below with its own seeds.
     #[account(
         seeds = [b"router_config"],
         bump = router_config.bump
@@ -52,17 +54,10 @@ pub struct SwapUsdcForAssetAccountConstraints<'info> {
     #[account(
         mut,
         associated_token::mint = usdc_mint,
-        associated_token::authority = router_authority,
+        associated_token::authority = router_config,
         associated_token::token_program = token_program
     )]
     pub router_usdc_treasury: Box<InterfaceAccount<'info, TokenAccount>>,
-
-    /// CHECK: PDA used as mint authority - validated by seeds constraint
-    #[account(
-        seeds = [b"router_authority"],
-        bump
-    )]
-    pub router_authority: UncheckedAccount<'info>,
 
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub token_program: Interface<'info, TokenInterface>,
@@ -99,14 +94,14 @@ pub fn handle_swap_usdc_for_asset(
     let cpi_ctx = CpiContext::new(context.accounts.token_program.key(), transfer_accounts);
     transfer_checked(cpi_ctx, usdc_amount_in, context.accounts.usdc_mint.decimals)?;
 
-    // Mint asset tokens to caller - router_authority PDA signs
-    let router_authority_bump = context.bumps.router_authority;
-    let signer_seeds: &[&[&[u8]]] = &[&[b"router_authority", &[router_authority_bump]]];
+    // Mint asset tokens to caller - router_config is the mint authority and signs
+    let router_config_bump = context.accounts.router_config.bump;
+    let signer_seeds: &[&[&[u8]]] = &[&[b"router_config", &[router_config_bump]]];
 
     let mint_accounts = MintTo {
         mint: context.accounts.asset_mint.to_account_info(),
         to: context.accounts.caller_asset_account.to_account_info(),
-        authority: context.accounts.router_authority.to_account_info(),
+        authority: context.accounts.router_config.to_account_info(),
     };
     let cpi_ctx = CpiContext::new_with_signer(
         context.accounts.token_program.key(),

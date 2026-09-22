@@ -47,7 +47,6 @@ mod quasar_mock_swap_router {
             &mut ctx.accounts,
             usdc_amount_in,
             minimum_asset_out,
-            &ctx.bumps,
         )
     }
 
@@ -61,7 +60,6 @@ mod quasar_mock_swap_router {
             &mut ctx.accounts,
             asset_amount_in,
             minimum_usdc_out,
-            &ctx.bumps,
         )
     }
 }

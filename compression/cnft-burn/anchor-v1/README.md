@@ -3,7 +3,7 @@
 > [!NOTE]
 > This is the **Anchor v1** copy of this example, kept for programs staying on the
 > Anchor v1 LTS line. Every `anchor` command on this page needs the v1 CLI:
-> `avm install 1.1.2 && avm use 1.1.2`. The Anchor v2 version of this example is in
+> `avm install 1.2.0 && avm use 1.2.0`. The Anchor v2 version of this example is in
 > [`../anchor`](../anchor/).
 
 An [Anchor](https://solana.com/docs/terminology#anchor) [program](https://solana.com/docs/terminology#program) that burns compressed NFTs (cNFTs) in your collection. The program performs a [CPI](https://solana.com/docs/terminology#cross-program-invocation-cpi) into the Metaplex Bubblegum program to do the burn.

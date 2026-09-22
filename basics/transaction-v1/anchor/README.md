@@ -30,7 +30,7 @@ From this directory (`basics/transaction-v1/anchor/`):
 anchor build
 ```
 
-Prerequisites: [Agave](https://docs.anza.xyz/) CLI 4.2 or later (`Anchor.toml` `[toolchain]` pins 4.2.2, the first line with the v1 format), [Anchor](https://www.anchor-lang.com/docs) v2.
+Prerequisites: [Agave](https://docs.anza.xyz/) CLI (version in `Anchor.toml` `[toolchain]`; the LiteSVM tests carry their own v1-capable runtime, so the CLI version does not matter to them), [Anchor](https://www.anchor-lang.com/docs) v2.
 
 This example is its own Cargo workspace and is deliberately absent from the repository root workspace's members: the root pins LiteSVM 0.13.1, which predates v1, and the two LiteSVM versions cannot share a lockfile. `Cargo.toml` at this level explains the details.
 
@@ -53,4 +53,4 @@ LiteSVM does not enforce either size limit (a validator's packet layer does), wh
 
 ## Sending v1 transactions to a real cluster
 
-The v1 format is behind the `enable_tx_v1` feature gate (`txv1aq4pp281K9um3tnPgkfX8UqtFT6wcVW3hNezGLL`). It needs Agave 4.2 or later and, on the RPC side, `maxSupportedTransactionVersion: 1` on every `getTransaction`, `getBlock` and `blockSubscribe` call, plus `encoding: "base64"` when sending, since base58 encoding stops at 1,232 bytes. Anchor's TypeScript client (`@coral-xyz/anchor`) builds its transactions with `@solana/web3.js` 1.x, which can read v1 transactions but not build them, so a v1 transaction to an Anchor program is built with `@solana/kit` 8 or later, or in Rust as in the tests here. See [docs/transaction-v1.md](../../../docs/transaction-v1.md) for the activation status per cluster and the client libraries that can build v1 transactions.
+The v1 format is live on mainnet beta since epoch 1035 (15 September 2026), and on devnet and testnet, behind the `enable_tx_v1` feature gate (`txv1aq4pp281K9um3tnPgkfX8UqtFT6wcVW3hNezGLL`). Sending one needs Agave 4.2 or later client crates and, on the RPC side, `maxSupportedTransactionVersion: 1` on every `getTransaction`, `getBlock` and `blockSubscribe` call, plus `encoding: "base64"` when sending, since base58 encoding stops at 1,232 bytes. Anchor's TypeScript client (`@coral-xyz/anchor`) builds its transactions with `@solana/web3.js` 1.x, which can read v1 transactions but not build them, so a v1 transaction to an Anchor program is built with `@solana/kit` 8 or later, or in Rust as in the tests here. See [docs/transaction-v1.md](../../../docs/transaction-v1.md) for the details and the client libraries that can build v1 transactions.

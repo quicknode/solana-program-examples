@@ -20,8 +20,8 @@ custom-heap = []
 custom-panic = []
 
 [dependencies]
-anchor-lang = "1.1.2"
-anchor-spl = "1.1.2"
+anchor-lang = "1.2.0"
+anchor-spl = "1.2.0"
 # Used by the ported Openbook slab - `bytemuck::Pod` / `Zeroable` on every node
 # variant + `min_const_generics` so `[AnyNode; 1024]` can derive Pod without
 # hitting bytemuck's default-32 array cap. `static_assertions` keeps the slab
@@ -32,10 +32,10 @@ static_assertions = "1.1"
 [dev-dependencies]
 # Match the test stack used by finance/escrow and the other LiteSVM-based
 # Anchor examples so contributors can move between them without version drift.
-litesvm = "0.13.1"
+litesvm = "0.16.0"
 solana-signer = "3.0.0"
 solana-keypair = "3.0.1"
-solana-kite = "0.4.0"
+solana-kite = "0.5.0"
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }

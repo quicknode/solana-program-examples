@@ -3,7 +3,9 @@ use anchor_spl::token;
 use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
 
 use crate::errors::ErrorCode;
-use crate::state::{Market, OrderBook, MARKET_SEED};
+use crate::state::{
+    Market, OrderBook, BASE_VAULT_SEED, FEE_VAULT_SEED, MARKET_SEED, QUOTE_VAULT_SEED,
+};
 
 // Basis points are hundredths of a percent; 10000 bps == 100%. Fees above 100%
 // would be nonsensical, so we cap here.
@@ -90,6 +92,8 @@ pub struct InitializeMarketAccountConstraints {
     #[account(
         init,
         payer = authority,
+        seeds = [BASE_VAULT_SEED, market.address().as_ref()],
+        bump,
         token::mint = base_mint,
         token::authority = market,
         token::token_program = token_program
@@ -99,6 +103,8 @@ pub struct InitializeMarketAccountConstraints {
     #[account(
         init,
         payer = authority,
+        seeds = [QUOTE_VAULT_SEED, market.address().as_ref()],
+        bump,
         token::mint = quote_mint,
         token::authority = market,
         token::token_program = token_program
@@ -110,6 +116,8 @@ pub struct InitializeMarketAccountConstraints {
     #[account(
         init,
         payer = authority,
+        seeds = [FEE_VAULT_SEED, market.address().as_ref()],
+        bump,
         token::mint = quote_mint,
         token::authority = market,
         token::token_program = token_program

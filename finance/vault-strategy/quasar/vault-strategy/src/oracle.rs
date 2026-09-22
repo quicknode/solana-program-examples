@@ -1,12 +1,15 @@
-use quasar_lang::prelude::*;
+use quasar_lang::{prelude::*, sysvars::Sysvar};
 
-use crate::errors::VaultError;
+use crate::{errors::VaultError, last_restart::LastRestartSlot};
 
 // Byte offset of `price` (i64) inside a Pyth PriceUpdateV2 account:
 //   8 discriminator + 32 write_authority + 1 verification_level + 32 feed_id = 73
 const PYTH_PRICE_OFFSET: usize = 73;
 // Byte offset of `publish_time` (i64): price(8) + conf(8) + exponent(4) after price.
 const PYTH_PUBLISH_TIME_OFFSET: usize = PYTH_PRICE_OFFSET + 8 + 8 + 4; // 93
+/// Byte offset of `posted_slot` (u64), the slot the update was posted in:
+/// publish_time(8) + prev_publish_time(8) + ema_price(8) + ema_conf(8) after publish_time.
+const PYTH_POSTED_SLOT_OFFSET: usize = PYTH_PUBLISH_TIME_OFFSET + 8 + 8 + 8 + 8; // 125
 /// Pyth USD pairs use exponent -8 (price * 10^-8 = dollars per token).
 pub const PYTH_PRICE_PRECISION: u128 = 100_000_000; // 10^8
 /// Prices older than this (seconds) are rejected.
@@ -35,8 +38,17 @@ fn read_i64(data: &[u8], offset: usize) -> Result<i64, ProgramError> {
     Ok(i64::from_le_bytes(bytes))
 }
 
+fn read_u64(data: &[u8], offset: usize) -> Result<u64, ProgramError> {
+    let bytes: [u8; 8] = data
+        .get(offset..offset + 8)
+        .and_then(|slice| slice.try_into().ok())
+        .ok_or(VaultError::InvalidPriceFeed)?;
+    Ok(u64::from_le_bytes(bytes))
+}
+
 /// Validate a price feed account against the one the strategy registered, then
 /// return its positive, fresh price as u128. `now` is the current unix timestamp.
+/// A price posted at or before the last cluster restart is rejected too.
 pub fn load_price(
     price_feed: &AccountView,
     expected_key: &Address,
@@ -47,11 +59,12 @@ pub fn load_price(
     }
 
     let data = account_data(price_feed);
-    if data.len() < PYTH_PUBLISH_TIME_OFFSET + 8 {
+    if data.len() < PYTH_POSTED_SLOT_OFFSET + 8 {
         return Err(VaultError::InvalidPriceFeed.into());
     }
     let price = read_i64(data, PYTH_PRICE_OFFSET)?;
     let publish_time = read_i64(data, PYTH_PUBLISH_TIME_OFFSET)?;
+    let posted_slot = read_u64(data, PYTH_POSTED_SLOT_OFFSET)?;
 
     require!(price > 0, VaultError::NegativePrice);
     require!(
@@ -59,6 +72,20 @@ pub fn load_price(
             .ok_or(VaultError::MathOverflow)?
             <= MAX_PRICE_AGE_SECONDS,
         VaultError::StalePriceFeed
+    );
+
+    // Restart handling. The staleness check above measures seconds against the
+    // Clock's unix_timestamp, which under Alpenglow may advance by at most
+    // twice the slot time elapsed since the parent block. A halt barely moves
+    // the slot count, so after a restart the timestamp trails real time and a
+    // price posted just before the halt can still pass the 60-second bound.
+    // Reject any price posted at or before the restart slot; deposits and
+    // rebalances then pause until Pyth posts again, rather than valuing the
+    // vault at a pre-halt price. Zero means the cluster has never restarted.
+    let last_restart = u64::from(LastRestartSlot::get()?.last_restart_slot);
+    require!(
+        last_restart == 0 || posted_slot > last_restart,
+        VaultError::PricePredatesRestart
     );
 
     Ok(price as u128)

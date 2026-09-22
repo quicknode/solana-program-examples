@@ -18,11 +18,6 @@ use instructions::*;
 
 declare_id!("GaxH8967GVLxtst2SHCtXxqKQqGxgHyxqYvr9WGe1fmC");
 
-/// Authority PDA at seeds = [b"authority", pool]. Signs vault and mint CPIs.
-#[derive(Seeds)]
-#[seeds(b"authority", pool: Address)]
-pub struct PoolAuthorityPda;
-
 /// Liquidity-provider mint PDA at seeds = [b"lp_mint", pool].
 #[derive(Seeds)]
 #[seeds(b"lp_mint", pool: Address)]

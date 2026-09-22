@@ -5,7 +5,7 @@ use anchor_spl::{
 };
 
 use crate::{
-    constants::{AUTHORITY_SEED, BASIS_POINTS_DIVISOR, CONFIG_SEED},
+    constants::{BASIS_POINTS_DIVISOR, CONFIG_SEED},
     errors::*,
     state::{Config, PoolConfig},
 };
@@ -140,7 +140,7 @@ pub fn handle_swap_tokens(
 
     // Pre-copy seed bytes before the mutable borrow of pool_config below.
     // to_bytes() returns an owned [u8; 32] copy so there are no borrow conflicts.
-    let authority_bump = context.bumps.pool_authority;
+    let pool_config_bump = [context.accounts.pool_config.bump];
     let config_bytes = context.accounts.pool_config.config.to_bytes();
     let mint_a_bytes = context.accounts.mint_a.address().to_bytes();
     let mint_b_bytes = context.accounts.mint_b.address().to_bytes();
@@ -163,15 +163,22 @@ pub fn handle_swap_tokens(
         }
     }
 
-    // Interactions: CPIs after state has been updated.
-    let authority_seeds = &[
+    // Interactions: CPIs after state has been updated. `pool_config` owns the
+    // reserves and signs the outbound transfer with its own seeds.
+    let signer_seeds: &[&[&[u8]]] = &[&[
         config_bytes.as_ref(),
         mint_a_bytes.as_ref(),
         mint_b_bytes.as_ref(),
-        AUTHORITY_SEED,
-        &[authority_bump],
-    ];
-    let signer_seeds = &[&authority_seeds[..]];
+        &pool_config_bump,
+    ]];
+
+    // `pool_config` signs a CPI below. It is a data account holding a live
+    // borrow on its buffer, which the runtime would reject when the CPI
+    // borrows the same account, so hand the borrow back for the duration.
+    // `release_borrow` flushes the fee accumulator written above and
+    // `reacquire_borrow_mut` re-reads it once the CPIs are done.
+    context.accounts.pool_config.release_borrow()?;
+
     if input_is_token_a {
         token_interface::transfer_checked(
             CpiContext::new(
@@ -193,7 +200,7 @@ pub fn handle_swap_tokens(
                     from: context.accounts.pool_b.to_cpi_handle_mut(),
                     mint: context.accounts.mint_b.to_cpi_handle(),
                     to: context.accounts.token_b.to_cpi_handle_mut(),
-                    authority: context.accounts.pool_authority.cpi_handle(),
+                    authority: context.accounts.pool_config.to_cpi_handle(),
                 },
                 signer_seeds,
             ),
@@ -208,7 +215,7 @@ pub fn handle_swap_tokens(
                     from: context.accounts.pool_a.to_cpi_handle_mut(),
                     mint: context.accounts.mint_a.to_cpi_handle(),
                     to: context.accounts.token_a.to_cpi_handle_mut(),
-                    authority: context.accounts.pool_authority.cpi_handle(),
+                    authority: context.accounts.pool_config.to_cpi_handle(),
                 },
                 signer_seeds,
             ),
@@ -229,6 +236,8 @@ pub fn handle_swap_tokens(
             context.accounts.mint_b.decimals(),
         )?;
     }
+
+    context.accounts.pool_config.reacquire_borrow_mut()?;
 
     msg!(
         "Traded {} tokens ({} after fees) for {} (admin slice {})",
@@ -288,21 +297,9 @@ pub struct SwapTokensAccountConstraints {
             pool_config.mint_a.as_ref(),
             pool_config.mint_b.as_ref(),
         ],
-        bump,
+        bump = pool_config.bump,
     )]
     pub pool_config: BorshAccount<PoolConfig>,
-
-    /// CHECK: Read only authority
-    #[account(
-        seeds = [
-            pool_config.config.as_ref(),
-            mint_a.address().as_ref(),
-            mint_b.address().as_ref(),
-            AUTHORITY_SEED,
-        ],
-        bump,
-    )]
-    pub pool_authority: UncheckedAccount,
 
     /// The account doing the swap
     pub trader: Signer,
@@ -316,7 +313,7 @@ pub struct SwapTokensAccountConstraints {
     #[account(
         mut,
         associated_token::mint = mint_a,
-        associated_token::authority = pool_authority,
+        associated_token::authority = pool_config,
         associated_token::token_program = token_program,
     )]
     pub pool_a: Box<InterfaceAccount<TokenAccount>>,
@@ -324,7 +321,7 @@ pub struct SwapTokensAccountConstraints {
     #[account(
         mut,
         associated_token::mint = mint_b,
-        associated_token::authority = pool_authority,
+        associated_token::authority = pool_config,
         associated_token::token_program = token_program,
     )]
     pub pool_b: Box<InterfaceAccount<TokenAccount>>,
