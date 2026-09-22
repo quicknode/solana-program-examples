@@ -1084,6 +1084,11 @@
       "code": 6025,
       "name": "FeeTooHigh",
       "msg": "Management fee exceeds the maximum allowed"
+    },
+    {
+      "code": 6026,
+      "name": "PricePredatesRestart",
+      "msg": "Price feed is stale: it predates the last cluster restart"
     }
   ],
   "types": [

@@ -1,5 +1,19 @@
 # Changelog
 
+## [2026-09-22]
+
+### Changed
+
+- Reject Pyth prices from before a cluster restart. Under Alpenglow the
+  Clock's `unix_timestamp` may advance by at most twice the slot time elapsed
+  since the parent block, so after a halt it trails real time and the
+  60-second `publish_time` check would accept a price published just before
+  the halt. `load_price` now reads the update's `posted_slot` (offset 125) and
+  requires it to be after the `LastRestartSlot` sysvar's slot
+  (`PricePredatesRestart`). quasar-lang has no LastRestartSlot sysvar, so
+  `src/last_restart.rs` declares the layout and reads it via
+  `sol_get_sysvar`. Tested by `deposit_rejects_price_from_before_a_restart`.
+
 ## [2026-09-10]
 
 ### Changed

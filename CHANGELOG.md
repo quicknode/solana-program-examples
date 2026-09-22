@@ -4,6 +4,20 @@ All notable changes to this repository are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-09-22] - Vault strategy rejects prices from before a cluster restart
+
+The vault strategy checks Pyth freshness in seconds. Under Alpenglow each
+leader sets the Clock's `unix_timestamp`, which may advance by at most twice
+the slot time elapsed since the parent block, so after a halt the timestamp
+trails real time and catches up gradually, and a price published just before
+a multi-hour halt still passes the 60-second check.
+
+- `finance/vault-strategy` (Anchor v2, Anchor v1 and Quasar) reads each Pyth
+  update's `posted_slot` and rejects it when it is at or before the
+  `LastRestartSlot` sysvar's slot, with the new `PricePredatesRestart` error,
+  as the lending, prop-amm and perpetual-futures examples already do. Tests,
+  READMEs, PRODUCT.md files, the web apps' IDLs and changelogs follow.
+
 ## [2026-09-22] - The order book's vaults are market PDAs
 
 The order book created its base, quote, and fee vaults at public keys the client
