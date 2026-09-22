@@ -164,7 +164,7 @@ fn proof_utilization_in_range() {
     assert!(util <= BPS_DENOMINATOR);
 }
 
-/// The kinked borrow-rate APR (bps) from `current_borrow_rate_per_slot`, given a
+/// The kinked borrow-rate APR (bps) from `current_borrow_rate_per_second`, given a
 /// utilization and the curve parameters. Mirrors the two-segment formula.
 ///
 /// `full_utilization` is the 100%-utilization denominator — `BPS_DENOMINATOR`

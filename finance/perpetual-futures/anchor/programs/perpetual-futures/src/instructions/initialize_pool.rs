@@ -19,9 +19,9 @@ pub struct PoolParameters {
     /// Decimal places the oracle quotes its price in (e.g. 8).
     pub oracle_scale: u32,
 
-    /// Funding accrued per slot, in `FUNDING_PRECISION` units, charged to the
+    /// Funding accrued per second, in `FUNDING_PRECISION` units, charged to the
     /// heavier side.
-    pub funding_rate_per_slot: u64,
+    pub funding_rate_per_second: u64,
 
     pub open_fee_bps: u16,
     pub close_fee_bps: u16,
@@ -92,8 +92,8 @@ pub fn handle_initialize_pool(
     pool.long_size_scaled = 0;
     pool.short_size_scaled = 0;
     pool.cumulative_funding = 0;
-    pool.last_funding_slot = Clock::get()?.slot;
-    pool.funding_rate_per_slot = parameters.funding_rate_per_slot;
+    pool.last_funding_timestamp = Clock::get()?.unix_timestamp;
+    pool.funding_rate_per_second = parameters.funding_rate_per_second;
     pool.open_fee_bps = parameters.open_fee_bps;
     pool.close_fee_bps = parameters.close_fee_bps;
     pool.max_leverage = parameters.max_leverage;

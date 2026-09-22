@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-use crate::constants::{BPS_DENOMINATOR, FIXED_POINT_SCALE, RESERVE_SEED};
+use crate::constants::{BPS_DENOMINATOR, FIXED_POINT_SCALE, RESERVE_SEED, SECONDS_PER_YEAR};
 use crate::errors::LendingError;
 use crate::math::{mul_div_ceil, mul_div_floor};
 
@@ -63,7 +63,15 @@ pub struct Reserve {
     /// Starts at FIXED_POINT_SCALE (1.0) and only ever multiplies by factors >= 1.
     pub borrow_accumulation_factor: u128,
 
+    /// The slot of the last refresh. Handlers that read the reserve's value
+    /// require it to equal the current slot, so the refresh ran in this
+    /// transaction. This is a freshness check, not the accrual clock.
     pub last_update_slot: u64,
+
+    /// The Clock's `unix_timestamp` at the last accrual. Interest accrues for
+    /// the seconds since, so it follows wall-clock time whatever the slot
+    /// length is.
+    pub last_accrual_timestamp: i64,
 
     /// Liquidity owed to the market owner: the protocol's cut of accrued
     /// interest (`config.reserve_factor_bps`). It is carved out of
@@ -100,14 +108,6 @@ pub struct ReserveConfig {
     pub optimal_borrow_rate_bps: u16,
     /// Borrow APR at 100% utilization.
     pub max_borrow_rate_bps: u16,
-    /// Slots in a year: the divisor that turns the APR fields above into the
-    /// per-slot rate interest actually accrues at. This is the cluster's slot
-    /// time expressed as a count, so it belongs in configuration rather than in
-    /// a constant. The protocol lowers the slot time over time, and a value left
-    /// behind here charges borrowers at the wrong wall-clock rate while every
-    /// other number in this struct still reads correctly. The owner updates it
-    /// with `update_reserve_config` when the slot time changes.
-    pub slots_per_year: u64,
 }
 
 impl ReserveConfig {
@@ -140,8 +140,6 @@ impl ReserveConfig {
                 && self.optimal_borrow_rate_bps <= self.max_borrow_rate_bps,
             LendingError::InvalidConfig
         );
-        // Zero would divide by zero when converting the APR to a per-slot rate.
-        require!(self.slots_per_year > 0, LendingError::InvalidConfig);
         Ok(())
     }
 }
@@ -187,10 +185,10 @@ impl Reserve {
         )
     }
 
-    /// Per-slot borrow rate (FIXED_POINT_SCALE-scaled) from the kinked curve:
+    /// Per-second borrow rate (FIXED_POINT_SCALE-scaled) from the kinked curve:
     /// linear from `min` to `optimal` up to the kink, then steeper from `optimal`
     /// to `max` between the kink and full utilization.
-    pub fn current_borrow_rate_per_slot(&self) -> Result<u128> {
+    pub fn current_borrow_rate_per_second(&self) -> Result<u128> {
         let utilization = self.utilization_bps()?;
         let optimal_utilization = self.config.optimal_utilization_bps as u128;
 
@@ -218,26 +216,37 @@ impl Reserve {
                 .ok_or(LendingError::MathOverflow)?
         };
 
-        // apr_bps / (BPS_DENOMINATOR * slots_per_year), carried at FIXED_POINT_SCALE.
+        // apr_bps / (BPS_DENOMINATOR * SECONDS_PER_YEAR), carried at FIXED_POINT_SCALE.
         let per_year_denominator = BPS_DENOMINATOR
-            .checked_mul(self.config.slots_per_year as u128)
+            .checked_mul(SECONDS_PER_YEAR)
             .ok_or(LendingError::MathOverflow)?;
         mul_div_floor(apr_bps, FIXED_POINT_SCALE, per_year_denominator)
     }
 
-    /// Advance the accumulation factor for the slots elapsed since the last refresh.
-    /// `new_factor = old_factor * (1 + rate_per_slot * elapsed_slots)`, a single
-    /// multiply per refresh that compounds across refreshes (Solend's approach).
-    pub fn accrue_interest(&mut self, current_slot: u64) -> Result<()> {
-        let elapsed = current_slot
-            .checked_sub(self.last_update_slot)
-            .ok_or(LendingError::MathOverflow)?;
+    /// Advance the accumulation factor for the seconds elapsed since the last
+    /// accrual, and record `current_slot` as the slot of this refresh.
+    /// `new_factor = old_factor * (1 + rate_per_second * elapsed_seconds)`, a
+    /// single multiply per refresh that compounds across refreshes (Solend's
+    /// approach, on the wall clock rather than the slot count).
+    ///
+    /// The timestamp is written by each block's leader. The runtime rejects a
+    /// block whose time goes backwards, but a timestamp at or before the stored
+    /// one is still treated as no time elapsed, and the stored stamp is left
+    /// where it is, so no second is ever charged twice or skipped.
+    pub fn accrue_interest(&mut self, current_slot: u64, current_timestamp: i64) -> Result<()> {
+        let elapsed = if current_timestamp > self.last_accrual_timestamp {
+            current_timestamp
+                .checked_sub(self.last_accrual_timestamp)
+                .ok_or(LendingError::MathOverflow)? as u128
+        } else {
+            0
+        };
 
         if elapsed > 0 && self.borrowed_principal > 0 {
             let borrowed_before = self.current_borrowed_amount()?;
-            let rate_per_slot = self.current_borrow_rate_per_slot()?;
-            let accrued = rate_per_slot
-                .checked_mul(elapsed as u128)
+            let rate_per_second = self.current_borrow_rate_per_second()?;
+            let accrued = rate_per_second
+                .checked_mul(elapsed)
                 .ok_or(LendingError::MathOverflow)?;
             let growth_factor = FIXED_POINT_SCALE
                 .checked_add(accrued)
@@ -266,6 +275,9 @@ impl Reserve {
                 .ok_or(LendingError::MathOverflow)?;
         }
 
+        if elapsed > 0 {
+            self.last_accrual_timestamp = current_timestamp;
+        }
         self.last_update_slot = current_slot;
         Ok(())
     }

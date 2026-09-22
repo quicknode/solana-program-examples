@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-09-22
+
+Accrue funding by the wall clock instead of by slots. The rate was quoted per
+slot, so what a position cost per hour moved with the cluster's slot time, and
+the reduction to 200 ms slots doubled it. `Pool::funding_rate_per_slot` is now
+`funding_rate_per_second`, and `last_funding_slot` is now
+`last_funding_timestamp`, the Clock's `unix_timestamp` at the last accrual; the
+same rename applies to `PoolParameters` and `set_funding_rate`'s argument. A
+timestamp at or before the stored one accrues nothing. Tested by
+`test_funding_follows_seconds_not_slots`, with
+`test_set_funding_rate_settles_at_the_old_rate_first` and
+`test_funding_charged_to_long` now counting seconds.
+
 ## 2026-09-10
 
 Remove the separate dataless signing PDA (seeds `["authority", pool]`) that

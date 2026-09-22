@@ -8,7 +8,7 @@
 /// values. A ratio `r` is stored as the integer `r * FIXED_POINT_SCALE`.
 ///
 /// All money math is integer-only (no floats, no fixed-point crates). 10^18
-/// keeps a single slot's interest — which can be a tiny fraction of the index —
+/// keeps a single second's interest, which can be a tiny fraction of the index,
 /// from truncating to zero, while u128's ~3.4e38 ceiling leaves headroom for the
 /// index to grow and for intermediate products before the final narrowing cast.
 pub const FIXED_POINT_SCALE: u128 = 1_000_000_000_000_000_000;
@@ -25,6 +25,12 @@ pub const BPS_DENOMINATOR: u128 = 10_000;
 /// separately as borrows. Bounds the account size and the compute cost of
 /// refresh_obligation (which iterates every entry).
 pub const MAX_OBLIGATION_RESERVES: usize = 4;
+
+/// Seconds in a 365-day year: the divisor that turns an annual rate into the
+/// per-second rate interest accrues at. Interest runs on the wall clock, not
+/// the slot count, because a rate quoted per year is a promise about wall-clock
+/// time and a slots-per-year divisor is only a guess at the slot length.
+pub const SECONDS_PER_YEAR: u128 = 31_536_000;
 
 /// A price feed older than this many slots is rejected as stale. Freshness is
 /// measured in slots, not unix time, because the runtime guarantees slot
