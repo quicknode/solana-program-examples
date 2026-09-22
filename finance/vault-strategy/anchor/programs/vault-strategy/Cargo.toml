@@ -36,6 +36,9 @@ wincode = { version = "0.5", features = ["derive"] }
 # belong to the version the account derives are not using and every
 # `SchemaRead`/`SchemaWrite` bound fails. 2.6.1 is the last 0.5-line release.
 solana-address = ">=2.6, <2.7"
+# pinocchio ships only Clock and Rent, so LastRestartSlot is read through
+# pinocchio's own `get_sysvar` wrapper (see src/last_restart.rs).
+pinocchio = "0.11"
 anchor-spl = "2.0.0-rc.1"
 mock-swap-router = { path = "../mock-swap-router", features = ["cpi"] }
 
@@ -56,6 +59,8 @@ mock-swap-router = { path = "../mock-swap-router", features = ["cpi"] }
 # an ordinary version.
 anchor-v2-testing = { git = "https://github.com/otter-sec/anchor.git", rev = "3e38a121b969d1a77230baeb0056baf5cc9b3c1a" }
 solana-clock = "3.0.1"
+# Host-side LastRestartSlot for LiteSVM's set_sysvar, as with Clock above.
+solana-sysvar = "3"
 solana-account = "3.0.0"
 solana-kite = "0.4.0"
 borsh = "1.6.1"

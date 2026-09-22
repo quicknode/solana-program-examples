@@ -54,4 +54,6 @@ pub enum VaultError {
     InvalidSwapRouter,
     #[msg("Management fee exceeds the maximum allowed")]
     FeeTooHigh,
+    #[msg("Price feed is stale: it predates the last cluster restart")]
+    PricePredatesRestart,
 }

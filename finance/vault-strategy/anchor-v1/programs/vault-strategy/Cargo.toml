@@ -22,6 +22,10 @@ custom-panic = []
 [dependencies]
 anchor-lang = { version = "1.2.0", features = ["init-if-needed"] }
 anchor-spl = "1.2.0"
+# For the LastRestartSlot sysvar (not re-exported by anchor-lang): the oracle
+# rejects prices from before a cluster restart. Same major as the
+# solana-sysvar anchor-lang itself uses, so only one copy is compiled in.
+solana-sysvar = "3"
 mock-swap-router = { path = "../mock-swap-router", features = ["cpi"] }
 
 [dev-dependencies]

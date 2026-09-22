@@ -4,6 +4,7 @@ use quasar_lang::prelude::*;
 
 pub mod errors;
 pub mod instructions;
+pub mod last_restart;
 pub mod oracle;
 pub mod state;
 

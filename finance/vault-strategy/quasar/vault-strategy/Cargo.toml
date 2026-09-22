@@ -36,6 +36,12 @@ quasar-lang = { git = "https://github.com/blueshift-gg/quasar", rev = "be60fca" 
 zeropod = "=0.3.3"
 quasar-spl = { git = "https://github.com/blueshift-gg/quasar", rev = "be60fca" }
 solana-instruction = { version = "3.2.0" }
+# The LastRestartSlot sysvar declaration (src/last_restart.rs) names these
+# three crates directly. Versions match quasar-lang's own constraints so each
+# is compiled once.
+solana-address = { version = ">=2.2, <2.6" }
+solana-program-error = "3.0.0"
+solana-define-syscall = "5.0.0"
 
 [dev-dependencies]
 quasar-test = { git = "https://github.com/blueshift-gg/quasar", rev = "be60fca" }

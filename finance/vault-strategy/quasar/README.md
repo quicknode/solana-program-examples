@@ -89,7 +89,11 @@ withdraw), in index order.
 - The management fee is capped (10% per year) and the slippage tolerance is
   capped (10%), so neither can be configured to drain the vault.
 - Price feeds are validated against the address recorded on the asset config and
-  rejected if stale or non-positive.
+  rejected if stale or non-positive, or if posted at or before the last cluster
+  restart. Under Alpenglow the Clock's timestamp trails real time after a halt,
+  so a pre-halt price can still pass the 60-second check; `load_price` also
+  requires the update's `posted_slot` to be after the `LastRestartSlot`
+  sysvar's slot (`PricePredatesRestart`).
 
 ## What the Quasar port does differently
 
@@ -107,6 +111,10 @@ differences follow from Quasar's model:
   token accounts, matching the other Quasar finance examples.
 - **The share mint carries no freeze authority** (it is never used); the Anchor
   build sets it to the strategy PDA.
+- **A hand-declared `LastRestartSlot` sysvar.** quasar-lang ships only the
+  Clock and Rent sysvars, so `src/last_restart.rs` declares the 8-byte layout
+  itself and reads it with the same `sol_get_sysvar` syscall. `load_price` uses
+  it to reject prices posted before a cluster restart.
 
 ## Building and testing
 
@@ -126,7 +134,8 @@ The router suite (`mock-swap-router/src/tests.rs`) exercises initialize, set-rat
 and a USDC-for-asset swap. The vault suite (`vault-strategy/src/tests.rs`) drives
 the manager setup (registry, approve asset, strategy, add asset) and a two-program
 deposit that deploys USDC into the basket through the router CPI, asserting share
-minting, vault balances, and treasury flow.
+minting, vault balances, and treasury flow. A second deposit test shows a price
+posted before a cluster restart is rejected until Pyth posts again.
 
 ## Extending
 

@@ -31,7 +31,7 @@ Because the asset set is dynamic, `deposit` must value *every* asset. The assets
 
 Referencing every asset has a transaction-size cost: `deposit` pulls in `14 + 5N` accounts and `withdraw` `10 + 4N`, where `N` is the asset count. That stays within Solana's 128-account transaction lock limit at the `MAX_ASSETS` cap of 16 (94 accounts for `deposit`), but a basket beyond roughly three assets no longer fits a legacy transaction's 1232-byte limit, so the client must send a v0 transaction with an [Address Lookup Table](https://docs.anza.xyz/proposals/versioned-transactions).
 
-Prices come from [Pyth Network](https://pyth.network/) `PriceUpdateV2` accounts. A 60-second staleness window is enforced; zero or negative prices are rejected.
+Prices come from [Pyth Network](https://pyth.network/) `PriceUpdateV2` accounts. A 60-second staleness window is enforced; zero or negative prices are rejected, and so is any price posted at or before the last cluster restart (`PricePredatesRestart`), which the seconds check alone cannot catch after a halt.
 
 ### Shares
 
@@ -114,7 +114,7 @@ A price move pushes the basket off target. `rebalance(sell_amount, usdc_to_inves
 
 ## Oracle Integration (Pyth)
 
-`PriceUpdateV2` price (i64) is read at byte offset 73 and `publish_time` at 93, directly from account bytes to avoid borsh version incompatibility with Anchor. Pyth USD pairs use exponent −8; with USDC and the basket tokens all at 6 decimals, value in USDC minor units is `amount × price / 10⁸`. Each asset's feed pubkey is fixed in its `AssetConfig` (copied from the registry), and validated on every read. In tests, mock `PriceUpdateV2` accounts are injected into LiteSVM (TSLAx $250, NVDAx $180).
+`PriceUpdateV2` price (i64) is read at byte offset 73, `publish_time` at 93 and `posted_slot` (u64) at 125, directly from account bytes to avoid borsh version incompatibility with Anchor. Under Alpenglow each leader sets the Clock's `unix_timestamp`, which may advance by at most twice the slot time elapsed since the parent block, so after a halt the timestamp trails real time and a price published just before the halt can still look fresh by seconds. `load_price` therefore also requires `posted_slot` to be after the `LastRestartSlot` sysvar's slot (0 means the cluster has never restarted), pausing deposits and rebalances until Pyth posts again. Pyth USD pairs use exponent −8; with USDC and the basket tokens all at 6 decimals, value in USDC minor units is `amount × price / 10⁸`. Each asset's feed pubkey is fixed in its `AssetConfig` (copied from the registry), and validated on every read. In tests, mock `PriceUpdateV2` accounts are injected into LiteSVM (TSLAx $250, NVDAx $180).
 
 ---
 
