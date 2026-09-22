@@ -24,17 +24,17 @@ pub struct InitializeConfigAccountConstraints {
 #[inline(always)]
 pub fn handle_initialize_config(
     accounts: &mut InitializeConfigAccountConstraints,
-    fee_bps: u16,
+    default_fee_bps: u16,
     fee_recipient: Address,
     bumps: &InitializeConfigAccountConstraintsBumps,
 ) -> Result<(), ProgramError> {
-    require!(fee_bps <= MAX_FEE_BPS, BettingError::FeeTooHigh);
+    require!(default_fee_bps <= MAX_FEE_BPS, BettingError::FeeTooHigh);
 
     accounts.config.set_inner(ConfigInner {
         admin: *accounts.admin.address(),
         token_mint: *accounts.token_mint.address(),
         fee_recipient,
-        fee_bps,
+        default_fee_bps,
         event_count: 0,
         bump: bumps.config,
     });

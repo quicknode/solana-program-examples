@@ -8,7 +8,7 @@ pub const EVENT_SEED: &[u8] = b"event";
 /// mutation (place_bet, settle, cancel) is a plain in-place write.
 pub const MAX_DESCRIPTION_LEN: usize = 200;
 
-/// Lifecycle of a market. Stored on-chain as a `u8`.
+/// Lifecycle of a market. Stored onchain as a `u8`.
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 #[repr(u8)]
 pub enum EventStatus {
@@ -30,8 +30,9 @@ pub struct Event {
     /// Sum of every stake placed across all outcomes.
     pub total_pool: u64,
     pub status: u8,
-    /// Fee snapshot taken at creation, so later Config changes can't alter a
-    /// market bettors have already joined.
+    /// The fee settlement charges, copied from the config's `default_fee_bps`
+    /// at creation so later Config changes can't alter a market bettors have
+    /// already joined.
     pub fee_bps: u16,
     /// Written at settlement, read at claim time.
     pub winning_outcome_index: u8,

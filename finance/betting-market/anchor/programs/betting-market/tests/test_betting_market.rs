@@ -114,7 +114,7 @@ fn initialize_config_ix(admin: Address, mint: Address, fee_recipient: Address) -
     Instruction::new_with_bytes(
         betting_market::id(),
         &betting_market::instruction::InitializeConfig {
-            fee_bps: FEE_BPS,
+            default_fee_bps: FEE_BPS,
             fee_recipient,
         }
         .data(),

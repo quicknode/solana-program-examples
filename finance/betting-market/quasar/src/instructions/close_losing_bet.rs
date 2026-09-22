@@ -34,9 +34,9 @@ pub fn handle_close_losing_bet(
     // Canonical-PDA check for the bet account. The pre-0.1.0 constraint
     // `address = Bet::seeds(&bet.outcome, ...)` is inexpressible in 0.1.0
     // (an Address-typed stored-data seed cannot both feed client codegen and
-    // typecheck on-chain), and the generated `Bet::find_address` helper is a
+    // typecheck onchain), and the generated `Bet::find_address` helper is a
     // const-context/client function whose software SHA-256 exhausts the CU
-    // budget on-chain. Verifying against the stored bump costs one sha256
+    // budget onchain. Verifying against the stored bump costs one sha256
     // syscall and rejects non-canonical bet accounts just the same.
     quasar_lang::pda::verify_program_address(
         &Bet::seeds(&accounts.bet.outcome, accounts.bettor.address())

@@ -107,7 +107,7 @@ fn initialize_config_ix(admin: Pubkey, mint: Pubkey, fee_recipient: Pubkey) -> I
     Instruction::new_with_bytes(
         betting_market::id(),
         &betting_market::instruction::InitializeConfig {
-            fee_bps: FEE_BPS,
+            default_fee_bps: FEE_BPS,
             fee_recipient,
         }
         .data(),

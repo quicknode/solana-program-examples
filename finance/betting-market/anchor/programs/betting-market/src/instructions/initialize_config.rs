@@ -29,16 +29,16 @@ pub struct InitializeConfigAccountConstraints {
 
 pub fn handle_initialize_config(
     context: &mut Context<InitializeConfigAccountConstraints>,
-    fee_bps: u16,
+    default_fee_bps: u16,
     fee_recipient: Address,
 ) -> Result<()> {
-    require!(fee_bps <= MAX_FEE_BPS, BettingError::FeeTooHigh);
+    require!(default_fee_bps <= MAX_FEE_BPS, BettingError::FeeTooHigh);
 
     *context.accounts.config = Config {
         admin: *context.accounts.admin.address(),
         token_mint: *context.accounts.token_mint.address(),
         fee_recipient,
-        fee_bps,
+        default_fee_bps,
         event_count: 0,
         bump: context.bumps.config,
     };
