@@ -347,13 +347,50 @@ fn deposit_liquidity_subsequent_proportional(test: &mut Test) {
     .succeeds();
     let lp2_bal = test.tokens(DEPOSITOR_LP);
 
-    // Half the first deposit → should get roughly half the LP tokens.
-    assert!(
-        lp2_bal > 0 && lp2_bal <= lp1_bal,
-        "second depositor LP={} should be > 0 and <= first LP={}",
-        lp2_bal,
-        lp1_bal
+    // Half the first deposit mints half of the first deposit's sqrt(a * b):
+    // the LP it received plus the unminted floor, since deposits divide by
+    // the same `supply + MINIMUM_LIQUIDITY` that withdrawals do.
+    assert_eq!(lp1_bal, 2_000_000 - crate::MINIMUM_LIQUIDITY);
+    assert_eq!(lp2_bal, (lp1_bal + crate::MINIMUM_LIQUIDITY) / 2);
+}
+
+/// Once every LP token is burned the floor's share of the reserves is still
+/// in the pool, so the next deposit takes the subsequent-deposit branch and
+/// mints against the floor alone. Dividing by the bare supply of zero would
+/// mint nothing and leave the pool unable to take deposits again.
+#[quasar_test]
+fn deposit_after_every_lp_token_is_burned(test: &mut Test) {
+    setup_pool(test);
+    let lp_balance = seed_pool(test, 4_000_000, 4_000_000);
+
+    // 3_999_900 * 4_000_000 / 4_000_000 of each side leaves; the floor's 100
+    // of each side stays.
+    withdraw(test, SEEDER, SEEDER_LP, RECV_A, RECV_B, lp_balance, 0, 0)
+        .succeeds()
+        .has_tokens(POOL_A, crate::MINIMUM_LIQUIDITY)
+        .has_tokens(POOL_B, crate::MINIMUM_LIQUIDITY);
+
+    // 1_000_000 * (0 + 100) / 100 = 1_000_000 LP tokens.
+    fund(
+        test,
+        DEPOSITOR,
+        DEPOSITOR_TOKEN_A,
+        DEPOSITOR_TOKEN_B,
+        1_000_000,
+        1_000_000,
     );
+    deposit(
+        test,
+        DEPOSITOR,
+        DEPOSITOR_TOKEN_A,
+        DEPOSITOR_TOKEN_B,
+        DEPOSITOR_LP,
+        1_000_000,
+        1_000_000,
+        0,
+    )
+    .succeeds()
+    .has_tokens(DEPOSITOR_LP, 1_000_000);
 }
 
 #[quasar_test]
@@ -393,7 +430,8 @@ fn deposit_clamps_down_never_up(test: &mut Test) {
 
     // Seed at a 4:1 ratio so pool_a > pool_b.
     let (pool_seed_a, pool_seed_b) = (4_000_000u64, 1_000_000u64);
-    let lp_supply = seed_pool(test, pool_seed_a, pool_seed_b);
+    // Later deposits divide by the LP supply plus the unminted floor.
+    let total_supply = seed_pool(test, pool_seed_a, pool_seed_b) + crate::MINIMUM_LIQUIDITY;
 
     // Depositor offers 1_000_000 of each and holds exactly that much. The
     // old logic would try to pull 4_000_000 token A (scaling A UP); the
@@ -409,7 +447,7 @@ fn deposit_clamps_down_never_up(test: &mut Test) {
     );
 
     let expected_b_pulled = mul_div(stated_a, pool_seed_b, pool_seed_a);
-    let expected_lp = mul_div(stated_a, lp_supply, pool_seed_a);
+    let expected_lp = mul_div(stated_a, total_supply, pool_seed_a);
 
     deposit(
         test,
@@ -440,7 +478,8 @@ fn deposit_clamps_down_other_side(test: &mut Test) {
 
     // Seed at a 1:4 ratio so pool_b > pool_a.
     let (pool_seed_a, pool_seed_b) = (1_000_000u64, 4_000_000u64);
-    let lp_supply = seed_pool(test, pool_seed_a, pool_seed_b);
+    // Later deposits divide by the LP supply plus the unminted floor.
+    let total_supply = seed_pool(test, pool_seed_a, pool_seed_b) + crate::MINIMUM_LIQUIDITY;
 
     let (stated_a, stated_b) = (1_000_000u64, 1_000_000u64);
     fund(
@@ -455,7 +494,7 @@ fn deposit_clamps_down_other_side(test: &mut Test) {
     // amount_b_required for the full stated_a would be 4_000_000 > stated_b,
     // so amount_b binds: all of B is used and A is clamped down.
     let expected_a_pulled = mul_div(stated_b, pool_seed_a, pool_seed_b);
-    let expected_lp = mul_div(stated_b, lp_supply, pool_seed_b);
+    let expected_lp = mul_div(stated_b, total_supply, pool_seed_b);
 
     deposit(
         test,
@@ -481,7 +520,8 @@ fn deposit_slippage_rejected(test: &mut Test) {
     setup_pool(test);
 
     let (pool_seed_a, pool_seed_b) = (1_000_000u64, 1_000_000u64);
-    let lp_supply = seed_pool(test, pool_seed_a, pool_seed_b);
+    // Later deposits divide by the LP supply plus the unminted floor.
+    let total_supply = seed_pool(test, pool_seed_a, pool_seed_b) + crate::MINIMUM_LIQUIDITY;
 
     let (stated_a, stated_b) = (500_000u64, 500_000u64);
     fund(
@@ -494,7 +534,7 @@ fn deposit_slippage_rejected(test: &mut Test) {
     );
 
     // The pool will mint exactly this much; ask for one more.
-    let exact_lp = mul_div(stated_a, lp_supply, pool_seed_a);
+    let exact_lp = mul_div(stated_a, total_supply, pool_seed_a);
     deposit(
         test,
         DEPOSITOR,

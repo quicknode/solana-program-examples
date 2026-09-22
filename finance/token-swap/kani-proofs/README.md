@@ -10,7 +10,7 @@ the mathematical correctness of a DeFi engine.
 The on-chain instructions hand token movement to the SPL token program through
 CPIs that Kani cannot symbolically execute, but the *interesting* part, the
 constant-product curve, the fee split, the integer square root used for the
-initial LP mint, and the proportional-withdraw math, is pure integer
+initial LP mint, and the proportional deposit and withdraw math, is pure integer
 arithmetic. This crate reproduces those formulas faithfully (same `u128`
 widening, multiply-before-divide, floor rounding) and proves their invariants:
 
@@ -20,6 +20,8 @@ widening, multiply-before-divide, floor rounding) and proves their invariants:
 - `proof_swap_at_zero_reserve_drains_whole_pool`: **Finding**, proven as a positive characterization (see below).
 - `proof_integer_sqrt_is_floor`: `integer_sqrt` returns the exact floor: `r² <= n < (r+1)²`.
 - `proof_withdraw_never_exceeds_reserve`: An LP can never withdraw more than the reserve holds (the `MINIMUM_LIQUIDITY` floor guarantees it).
+- `proof_deposit_withdraw_round_trip_is_fair`: Burning the LP tokens a deposit just minted returns at most the deposit, and less than one minor unit plus one LP token's worth short of it. The lower bound holds only because deposit and withdraw both divide by `lp_supply + MINIMUM_LIQUIDITY`; a deposit divided by the bare supply fails it.
+- `proof_rounding_a_deposit_to_zero_needs_floor_times_donation`: For a later deposit to mint zero LP tokens, the reserve must exceed the deposit times `attacker_lp + MINIMUM_LIQUIDITY`, so an attacker holding one LP token must donate about `MINIMUM_LIQUIDITY + 1` times the victim's deposit.
 - `proof_deposit_clamp_never_exceeds_request`: The ratio clamp never spends more of either token than the caller offered.
 
 ## Bounded model checking
@@ -40,9 +42,11 @@ difficulty:
 - `proof_swap_at_zero_reserve_drains_whole_pool`: `<= 255`, runs in ~15s
 - `proof_integer_sqrt_is_floor`: `n <= 255`, `unwind(11)`, runs in ~33s
 - `proof_withdraw_never_exceeds_reserve`: `<= 4095`, runs in ~5s
+- `proof_deposit_withdraw_round_trip_is_fair`: `<= 31` (two symbolic divisors), runs in ~18s
+- `proof_rounding_a_deposit_to_zero_needs_floor_times_donation`: deposit and attacker LP `<= 15`, reserve `<= 4095`, runs in ~2s
 - `proof_deposit_clamp_never_exceeds_request`: `<= 31` (symbolic divisor), runs in ~3s
 
-The whole suite verifies in ~90s of solver time. This is why these proofs run
+The whole suite verifies in about two minutes of solver time. This is why these proofs run
 **weekly in CI** (the `kani.yml` `verify` job), not on every push/PR. A fast
 unit-test job runs per push/PR.
 
