@@ -48,6 +48,8 @@ const account: StrategyAccount = {
   feeBps: 100,
   maxSlippageBps: 100,
   totalShares: new BN("12600000000"),
+  usdcHoldings: new BN(0),
+  assetHoldings: [new BN("20545200"), new BN("42802500"), ...Array.from({ length: 14 }, () => new BN(0))],
   lastFeeAccrualTimestamp: new BN("1900000000"),
   assetCount: 2,
   totalWeightBps: 10_000,

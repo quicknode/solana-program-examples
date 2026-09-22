@@ -30,4 +30,8 @@ pub enum VaultError {
     InvalidSwapRouter,
     FeeTooHigh,
     PricePredatesRestart,
+    /// A deployment leg of the deposit would buy none of its asset.
+    DepositTooSmall,
+    /// A rebalance would sell or spend more than the recorded holdings.
+    InsufficientHoldings,
 }

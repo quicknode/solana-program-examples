@@ -99,7 +99,6 @@ pub fn handle_deposit(
         VaultError::StrategyNotFullyAllocated
     );
 
-    let vault_usdc_amount = context.accounts.vault_usdc.amount();
     let total_shares = context.accounts.strategy.total_shares;
     let usdc_decimals = context.accounts.usdc_mint.decimals();
     let strategy_index = context.accounts.strategy.index;
@@ -107,6 +106,11 @@ pub fn handle_deposit(
     let strategy_key = *context.accounts.strategy.address();
     let max_slippage_bps = context.accounts.strategy.max_slippage_bps;
     let asset_count = context.accounts.strategy.asset_count as usize;
+    // The holdings the program has accounted for, not the vaults' token
+    // balances: a donation straight into a vault changes a balance and none of
+    // these, so it cannot move the share price.
+    let mut usdc_holdings = context.accounts.strategy.usdc_holdings;
+    let mut asset_holdings = context.accounts.strategy.asset_holdings;
 
     let now = Clock::get()?.unix_timestamp;
 
@@ -119,7 +123,7 @@ pub fn handle_deposit(
         VaultError::IncompleteAssetAccounts
     );
 
-    let mut nav: u128 = vault_usdc_amount as u128;
+    let mut nav: u128 = usdc_holdings as u128;
 
     for index in 0..asset_count {
         let config_account = &remaining[index * 5];
@@ -143,7 +147,7 @@ pub fn handle_deposit(
         );
 
         let price = load_price(feed_account, &config.price_feed, now)?;
-        let amount = read_token_amount(vault_account)?;
+        let amount = asset_holdings[index];
         nav = nav
             .checked_add(asset_value_in_usdc(amount, price)?)
             .ok_or(VaultError::MathOverflow)?;
@@ -167,6 +171,9 @@ pub fn handle_deposit(
 
     context.accounts.strategy.total_shares = total_shares
         .checked_add(shares_to_mint)
+        .ok_or(VaultError::MathOverflow)?;
+    usdc_holdings = usdc_holdings
+        .checked_add(usdc_amount)
         .ok_or(VaultError::MathOverflow)?;
 
     // Pull the depositor's USDC into the strategy's USDC vault.
@@ -237,6 +244,11 @@ pub fn handle_deposit(
             .try_into()
             .map_err(|_| VaultError::MathOverflow)?;
 
+        // Record what the swap actually moves, measured on the vaults, rather
+        // than what was asked for.
+        let asset_before = read_token_amount(&vault_account)?;
+        let usdc_before = context.accounts.vault_usdc.amount();
+
         let cpi_accounts = RouterSwapAccounts {
             caller: context.accounts.strategy.to_cpi_handle(),
             router_config: context.accounts.router_config.cpi_handle(),
@@ -256,6 +268,23 @@ pub fn handle_deposit(
             signer_seeds,
         );
         mock_swap_router::cpi::swap_usdc_for_asset(cpi_ctx, deploy_usdc, minimum_asset_out)?;
+
+        let asset_received = read_token_amount(&vault_account)?
+            .checked_sub(asset_before)
+            .ok_or(VaultError::MathOverflow)?;
+        let usdc_spent = usdc_before
+            .checked_sub(context.accounts.vault_usdc.amount())
+            .ok_or(VaultError::MathOverflow)?;
+        // A leg that spends USDC and buys nothing would leave shares minted
+        // against no recorded value, and every later deposit would divide by a
+        // zero NAV. Refuse it: the deposit is too small for this basket.
+        require!(asset_received > 0, VaultError::DepositTooSmall);
+        asset_holdings[index] = asset_holdings[index]
+            .checked_add(asset_received)
+            .ok_or(VaultError::MathOverflow)?;
+        usdc_holdings = usdc_holdings
+            .checked_sub(usdc_spent)
+            .ok_or(VaultError::MathOverflow)?;
     }
 
     // Mint the shares last, with the strategy PDA signing as the share mint authority.
@@ -272,6 +301,8 @@ pub fn handle_deposit(
     mint_to(cpi_ctx, shares_to_mint)?;
 
     context.accounts.strategy.reacquire_borrow_mut()?;
+    context.accounts.strategy.usdc_holdings = usdc_holdings;
+    context.accounts.strategy.asset_holdings = asset_holdings;
 
     Ok(())
 }

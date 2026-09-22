@@ -157,6 +157,18 @@ pub fn handle_rebalance(
         .try_into()
         .map_err(|_| VaultError::MathOverflow)?;
 
+    // Rebalancing may only trade what the program has accounted for: tokens
+    // donated into a vault are outside the fund, so they can be neither sold nor
+    // spent. The legs below record what each swap actually moved.
+    let sell_index = context.accounts.sell_config.index as usize;
+    let buy_index = context.accounts.buy_config.index as usize;
+    let mut usdc_holdings = context.accounts.strategy.usdc_holdings;
+    let mut asset_holdings = context.accounts.strategy.asset_holdings;
+    require!(
+        sell_amount <= asset_holdings[sell_index],
+        VaultError::InsufficientHoldings
+    );
+
     let index_bytes = strategy_index.to_le_bytes();
     let signer_seeds: &[&[&[u8]]] = &[&[b"strategy", index_bytes.as_ref(), &[strategy_bump]]];
 
@@ -164,6 +176,9 @@ pub fn handle_rebalance(
     // borrow on its buffer, which the runtime would reject when the CPI borrows
     // the same account, so hand the borrow back for the duration.
     context.accounts.strategy.release_borrow()?;
+
+    let sell_before = context.accounts.vault_sell.amount();
+    let usdc_before_sell = context.accounts.vault_usdc.amount();
 
     // Step 1: sell basket token -> USDC
     let sell_cpi_accounts = RouterSellAccounts {
@@ -189,6 +204,25 @@ pub fn handle_rebalance(
         minimum_usdc_from_sell,
     )?;
 
+    let sold = sell_before
+        .checked_sub(context.accounts.vault_sell.amount())
+        .ok_or(VaultError::MathOverflow)?;
+    let usdc_after_sell = context.accounts.vault_usdc.amount();
+    let usdc_received = usdc_after_sell
+        .checked_sub(usdc_before_sell)
+        .ok_or(VaultError::MathOverflow)?;
+    asset_holdings[sell_index] = asset_holdings[sell_index]
+        .checked_sub(sold)
+        .ok_or(VaultError::InsufficientHoldings)?;
+    usdc_holdings = usdc_holdings
+        .checked_add(usdc_received)
+        .ok_or(VaultError::MathOverflow)?;
+    require!(
+        usdc_to_invest <= usdc_holdings,
+        VaultError::InsufficientHoldings
+    );
+    let buy_before = context.accounts.vault_buy.amount();
+
     // Step 2: buy basket token with USDC
     let buy_cpi_accounts = RouterBuyAccounts {
         caller: context.accounts.strategy.to_cpi_handle(),
@@ -213,7 +247,25 @@ pub fn handle_rebalance(
         minimum_buy_amount,
     )?;
 
+    let bought = context
+        .accounts
+        .vault_buy
+        .amount()
+        .checked_sub(buy_before)
+        .ok_or(VaultError::MathOverflow)?;
+    let usdc_spent = usdc_after_sell
+        .checked_sub(context.accounts.vault_usdc.amount())
+        .ok_or(VaultError::MathOverflow)?;
+    asset_holdings[buy_index] = asset_holdings[buy_index]
+        .checked_add(bought)
+        .ok_or(VaultError::MathOverflow)?;
+    usdc_holdings = usdc_holdings
+        .checked_sub(usdc_spent)
+        .ok_or(VaultError::InsufficientHoldings)?;
+
     context.accounts.strategy.reacquire_borrow_mut()?;
+    context.accounts.strategy.usdc_holdings = usdc_holdings;
+    context.accounts.strategy.asset_holdings = asset_holdings;
 
     Ok(())
 }
