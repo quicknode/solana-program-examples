@@ -11,7 +11,7 @@ use anchor_spl::{
 };
 
 use crate::error::VaultError;
-use crate::state::{Registry, Strategy};
+use crate::state::{Registry, Strategy, MAX_ASSETS};
 
 /// Highest annual management fee a manager may set, in basis points (10%).
 /// `collect_fees` mints shares to the manager and dilutes every depositor,
@@ -97,6 +97,8 @@ pub fn handle_initialize_strategy(
         fee_bps,
         max_slippage_bps,
         total_shares: 0,
+        usdc_holdings: 0,
+        asset_holdings: [0; MAX_ASSETS as usize],
         last_fee_accrual_timestamp: clock.unix_timestamp,
         asset_count: 0,
         total_weight_bps: 0,

@@ -22,6 +22,10 @@ export interface StrategyAccount {
   feeBps: number;
   maxSlippageBps: number;
   totalShares: BN;
+  /** USDC the program has recorded in the USDC vault; excludes donations. */
+  usdcHoldings: BN;
+  /** Each asset's recorded holding, indexed by asset index; excludes donations. */
+  assetHoldings: BN[];
   lastFeeAccrualTimestamp: BN;
   assetCount: number;
   totalWeightBps: number;

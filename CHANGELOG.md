@@ -4,6 +4,26 @@ All notable changes to this repository are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-09-22] - Vault strategy ignores donations
+
+The vault strategy valued itself and paid withdrawals from its vaults' token
+balances, and anyone can transfer tokens into a vault. A dust-sized first
+deposit followed by a donation could price one share above the next deposit
+and round it down to zero shares: the first-depositor inflation attack.
+
+- `finance/vault-strategy` (Anchor v2, Anchor v1 and Quasar) records what the
+  strategy holds, `usdc_holdings` and `asset_holdings`, updated by `deposit`,
+  `withdraw` and `rebalance` with what each transfer actually moved, and prices
+  shares and pays withdrawals from those records. Donated tokens are outside
+  the fund, and `rebalance` can neither sell nor spend them
+  (`InsufficientHoldings`), as the lending example already ignores donations.
+- A deposit so small that a swap returns none of its asset is rejected with
+  `DepositTooSmall`; it would otherwise mint shares against a fund worth
+  nothing and make every later deposit divide by zero.
+- Tests in all three ports run the attack, the Kani crate proves recorded
+  holdings never exceed vault balances and that a donation cannot dilute the
+  next deposit, and the web apps read the recorded holdings.
+
 ## [2026-09-22] - Vault strategy rejects prices from before a cluster restart
 
 The vault strategy checks Pyth freshness in seconds. Under Alpenglow each

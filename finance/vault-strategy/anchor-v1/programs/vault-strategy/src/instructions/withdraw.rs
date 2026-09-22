@@ -7,8 +7,8 @@ use anchor_spl::{
 };
 
 use crate::error::VaultError;
-use crate::oracle::{read_mint_decimals, read_token_amount, read_token_mint_and_owner};
-use crate::state::{AssetConfig, Strategy};
+use crate::oracle::{read_mint_decimals, read_token_mint_and_owner};
+use crate::state::{AssetConfig, Strategy, MAX_ASSETS};
 
 #[derive(Accounts)]
 pub struct WithdrawAccountConstraints<'info> {
@@ -75,7 +75,6 @@ pub fn handle_withdraw<'info>(
     let total_shares = context.accounts.strategy.total_shares;
     require!(total_shares > 0, VaultError::ZeroTotalShares);
 
-    let vault_usdc_amount = context.accounts.vault_usdc.amount;
     let usdc_decimals = context.accounts.usdc_mint.decimals;
     let strategy_index = context.accounts.strategy.index;
     let strategy_bump = context.accounts.strategy.bump;
@@ -91,18 +90,37 @@ pub fn handle_withdraw<'info>(
     let shares_u128 = shares_to_burn as u128;
     let total_u128 = total_shares as u128;
 
-    // USDC leg, floored in the protocol's favour.
-    let amount_usdc: u64 = (vault_usdc_amount as u128)
-        .checked_mul(shares_u128)
-        .ok_or(VaultError::MathOverflow)?
-        .checked_div(total_u128)
-        .ok_or(VaultError::MathOverflow)? as u64;
+    // Every leg is a proportion of the holdings the program has recorded, not of
+    // the vault's token balance, so tokens donated into a vault are never paid
+    // out. Floored in the fund's favour.
+    let proportion = |holding: u64| -> Result<u64> {
+        Ok((holding as u128)
+            .checked_mul(shares_u128)
+            .ok_or(VaultError::MathOverflow)?
+            .checked_div(total_u128)
+            .ok_or(VaultError::MathOverflow)? as u64)
+    };
+    let amount_usdc = proportion(context.accounts.strategy.usdc_holdings)?;
     require!(amount_usdc >= min_usdc_out, VaultError::UsdcSlippage);
+    let mut asset_amounts = [0u64; MAX_ASSETS as usize];
+    for (index, amount) in asset_amounts.iter_mut().enumerate().take(asset_count) {
+        *amount = proportion(context.accounts.strategy.asset_holdings[index])?;
+    }
 
-    // Checks-effects-interactions: shrink supply before any transfer.
-    context.accounts.strategy.total_shares = total_shares
+    // Checks-effects-interactions: shrink supply and holdings before any transfer.
+    let strategy = &mut context.accounts.strategy;
+    strategy.total_shares = total_shares
         .checked_sub(shares_to_burn)
         .ok_or(VaultError::MathOverflow)?;
+    strategy.usdc_holdings = strategy
+        .usdc_holdings
+        .checked_sub(amount_usdc)
+        .ok_or(VaultError::MathOverflow)?;
+    for (index, amount) in asset_amounts.iter().enumerate().take(asset_count) {
+        strategy.asset_holdings[index] = strategy.asset_holdings[index]
+            .checked_sub(*amount)
+            .ok_or(VaultError::MathOverflow)?;
+    }
 
     let index_bytes = strategy_index.to_le_bytes();
     let signer_seeds: &[&[&[u8]]] = &[&[b"strategy", index_bytes.as_ref(), &[strategy_bump]]];
@@ -171,12 +189,7 @@ pub fn handle_withdraw<'info>(
         require_keys_eq!(recipient_owner, user_key, VaultError::InvalidRecipient);
         require_keys_eq!(recipient_mint, config.mint, VaultError::InvalidRecipient);
 
-        let vault_balance = read_token_amount(vault_ai)?;
-        let amount: u64 = (vault_balance as u128)
-            .checked_mul(shares_u128)
-            .ok_or(VaultError::MathOverflow)?
-            .checked_div(total_u128)
-            .ok_or(VaultError::MathOverflow)? as u64;
+        let amount = asset_amounts[i];
 
         if amount > 0 {
             let decimals = read_mint_decimals(mint_ai)?;

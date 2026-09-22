@@ -2,6 +2,9 @@
 
 ## 2026-09-22
 
+- **Donations are ignored.** The strategy records what it holds (`usdc_holdings` and `asset_holdings` on `Strategy`) and prices shares and pays withdrawals from those records, not from the vaults' token balances. `deposit`, `withdraw` and `rebalance` update them with what each transfer actually moved. Tokens transferred straight into a vault are outside the fund: they cannot inflate the share price, are never paid out, and `rebalance` can neither sell nor spend them (new `InsufficientHoldings` error). This closes the first-depositor inflation attack. Tested by `test_donation_does_not_inflate_share_price` and `test_rebalance_cannot_spend_donated_usdc`, and `test_full_lifecycle` checks the records against the vault balances after every step.
+- **A deposit leg that buys nothing is rejected.** A deposit so small that a swap spends USDC and returns none of the asset now fails with `DepositTooSmall`; before, it minted shares against a fund worth nothing and every later deposit then divided by zero. Tested by `test_deposit_rejects_leg_that_buys_nothing`.
+- The web app reads the recorded holdings for NAV and its allocation view, and its IDL gains the new fields and errors.
 - **Prices from before a cluster restart are rejected.** Under Alpenglow each leader sets the Clock's `unix_timestamp`, which may advance by at most twice the slot time elapsed since the parent block, so after a halt the timestamp trails real time and catches up gradually. The 60-second `publish_time` check would therefore accept a Pyth price published just before a multi-hour halt. `load_price` now also reads the update's `posted_slot` (offset 125) and requires it to be after the `LastRestartSlot` sysvar's slot, failing with the new `PricePredatesRestart` error until Pyth posts again. Tested by `test_deposit_rejects_price_from_before_restart`; the web app's IDL gains the error.
 
 ## 2026-09-10

@@ -44,12 +44,19 @@ themselves or pair a real mint with a feed they control.
   USDC vault plus every asset vault valued at its oracle price), mints shares for
   that fraction of the vault, and deploys the deposit across the basket by
   swapping a weight-sized slice into each asset through the router. The first
-  deposit into an empty vault mints shares one-to-one.
+  deposit into an empty vault mints shares one-to-one. A deposit so small that a
+  swap returns none of its asset is refused (`DepositTooSmall`).
+- The valuation and every payout use the holdings the strategy has recorded
+  (`usdc_holdings`, and `asset_holdings` stored as little-endian u64s because
+  zero-copy accounts hold byte arrays only), not the vaults' token balances.
+  Tokens transferred straight into a vault are outside the fund, so a donation
+  cannot inflate the share price, the first-depositor attack.
 - `withdraw` burns shares and pays out a proportional slice of the USDC vault and
   every asset vault, in kind.
 - `rebalance` lets the manager sell one asset for USDC and buy another with it,
   keeping holdings near their targets as prices drift. Both legs are floored to
-  the oracle price so a bad swap route reverts.
+  the oracle price so a bad swap route reverts, and neither can sell or spend
+  more than the recorded holdings (`InsufficientHoldings`).
 - `collect_fees` accrues the time-based management fee by minting fresh shares to
   the manager, diluting holders at the configured annual rate.
 

@@ -98,6 +98,8 @@ if (program) {
       feeBps: 100,
       maxSlippageBps: 250,
       totalShares: new BN("1350000000"),
+      usdcHoldings: new BN("1000"),
+      assetHoldings: Array.from({ length: 16 }, (_, i) => new BN(i === 1 ? 2880000 : 0)),
       lastFeeAccrualTimestamp: new BN("1700000000"),
       assetCount: 2,
       totalWeightBps: 10000,
@@ -112,7 +114,9 @@ if (program) {
       decoded.maxSlippageBps === 250 &&
       decoded.assetCount === 2 &&
       decoded.totalWeightBps === 10000 &&
-      decoded.totalShares.toString() === "1350000000";
+      decoded.totalShares.toString() === "1350000000" &&
+      decoded.usdcHoldings.toString() === "1000" &&
+      decoded.assetHoldings[1].toString() === "2880000";
     good ? ok("Strategy encode/decode round-trip") : fail("Strategy round-trip", JSON.stringify(decoded));
   } catch (e) {
     fail("Strategy round-trip", e.message);

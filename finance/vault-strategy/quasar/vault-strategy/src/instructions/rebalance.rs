@@ -4,8 +4,11 @@ use quasar_lang::sysvars::Sysvar as _;
 use quasar_spl::prelude::*;
 
 use crate::errors::VaultError;
-use crate::oracle::{load_price, PYTH_PRICE_PRECISION};
-use crate::state::{AssetConfig, Strategy, STRATEGY_SEED};
+use crate::oracle::{load_price, read_token_amount, PYTH_PRICE_PRECISION};
+use crate::state::{
+    read_asset_holdings, snapshot_strategy, write_asset_holdings, AssetConfig, Strategy,
+    STRATEGY_SEED,
+};
 
 const ROUTER_SWAP_USDC_FOR_ASSET: u8 = 2;
 const ROUTER_SWAP_ASSET_FOR_USDC: u8 = 3;
@@ -146,6 +149,18 @@ pub fn handle_rebalance(
         .try_into()
         .map_err(|_| VaultError::MathOverflow)?;
 
+    // Rebalancing may only trade what the program has accounted for: tokens
+    // donated into a vault are outside the fund, so they can be neither sold nor
+    // spent. The legs below record what each swap actually moved.
+    let sell_index = accounts.sell_config.index as usize;
+    let buy_index = accounts.buy_config.index as usize;
+    let mut strategy = snapshot_strategy(&accounts.strategy);
+    let mut asset_holdings = read_asset_holdings(&strategy.asset_holdings);
+    require!(
+        sell_amount <= asset_holdings[sell_index],
+        VaultError::InsufficientHoldings
+    );
+
     let index_bytes = strategy_index.to_le_bytes();
     let bump = [strategy_bump];
     let seeds = [
@@ -173,7 +188,28 @@ pub fn handle_rebalance(
     sell_cpi.push_account(accounts.router_usdc_treasury.to_account_view(), false, true)?;
     sell_cpi.push_account(accounts.token_program.to_account_view(), false, false)?;
     sell_cpi.set_data(&sell_data)?;
+    let sell_before = read_token_amount(accounts.vault_sell.to_account_view())?;
+    let usdc_before_sell = read_token_amount(accounts.vault_usdc.to_account_view())?;
     sell_cpi.invoke_signed(&seeds)?;
+
+    let sold = sell_before
+        .checked_sub(read_token_amount(accounts.vault_sell.to_account_view())?)
+        .ok_or(VaultError::MathOverflow)?;
+    let usdc_after_sell = read_token_amount(accounts.vault_usdc.to_account_view())?;
+    let usdc_received = usdc_after_sell
+        .checked_sub(usdc_before_sell)
+        .ok_or(VaultError::MathOverflow)?;
+    asset_holdings[sell_index] = asset_holdings[sell_index]
+        .checked_sub(sold)
+        .ok_or(VaultError::InsufficientHoldings)?;
+    strategy.usdc_holdings = strategy
+        .usdc_holdings
+        .checked_add(usdc_received)
+        .ok_or(VaultError::MathOverflow)?;
+    require!(
+        usdc_to_invest <= strategy.usdc_holdings,
+        VaultError::InsufficientHoldings
+    );
 
     // Step 2: buy the basket token with USDC. Router `swap_usdc_for_asset`
     // order: caller, router_config, asset_rate, usdc_mint, asset_mint,
@@ -194,7 +230,24 @@ pub fn handle_rebalance(
     buy_cpi.push_account(accounts.router_usdc_treasury.to_account_view(), false, true)?;
     buy_cpi.push_account(accounts.token_program.to_account_view(), false, false)?;
     buy_cpi.set_data(&buy_data)?;
+    let buy_before = read_token_amount(accounts.vault_buy.to_account_view())?;
     buy_cpi.invoke_signed(&seeds)?;
+
+    let bought = read_token_amount(accounts.vault_buy.to_account_view())?
+        .checked_sub(buy_before)
+        .ok_or(VaultError::MathOverflow)?;
+    let usdc_spent = usdc_after_sell
+        .checked_sub(read_token_amount(accounts.vault_usdc.to_account_view())?)
+        .ok_or(VaultError::MathOverflow)?;
+    asset_holdings[buy_index] = asset_holdings[buy_index]
+        .checked_add(bought)
+        .ok_or(VaultError::MathOverflow)?;
+    strategy.usdc_holdings = strategy
+        .usdc_holdings
+        .checked_sub(usdc_spent)
+        .ok_or(VaultError::InsufficientHoldings)?;
+    strategy.asset_holdings = write_asset_holdings(&asset_holdings);
+    accounts.strategy.set_inner(strategy);
 
     Ok(())
 }

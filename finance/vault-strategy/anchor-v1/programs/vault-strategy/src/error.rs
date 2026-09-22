@@ -56,4 +56,8 @@ pub enum VaultError {
     FeeTooHigh,
     #[msg("Price feed is stale: it predates the last cluster restart")]
     PricePredatesRestart,
+    #[msg("Deposit is too small: a deployment leg would buy none of its asset")]
+    DepositTooSmall,
+    #[msg("Rebalance spends more than the strategy's recorded holdings")]
+    InsufficientHoldings,
 }
