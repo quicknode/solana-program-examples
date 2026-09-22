@@ -7,7 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [2026-09-22] - Betting market events have a draft state and a close time
 
 The betting market locked its outcome list implicitly, by refusing
-`add_outcome` once `total_pool` was nonzero. Anyone could bet one base unit on
+`add_outcome` once `total_pool` was nonzero. Anyone could bet one minor unit on
 a half-built market to freeze it with a single outcome, and the admin's
 `add_outcome` and the first bet could land in either order in the same slot.
 Nothing stopped bets between the real-world result and settlement, either:
