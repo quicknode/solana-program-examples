@@ -18,6 +18,33 @@ a multi-hour halt still passes the 60-second check.
   as the lending, prop-amm and perpetual-futures examples already do. Tests,
   READMEs, PRODUCT.md files, the web apps' IDLs and changelogs follow.
 
+## [2026-09-22] - The order book's vaults are market PDAs
+
+The order book created its base, quote, and fee vaults at public keys the client
+generated, so a client had to generate and sign with three extra keys to open
+a market, and nothing but the market's record said where its tokens were.
+
+- The order book's Anchor v2 and Quasar ports create all three vaults as PDAs
+  of the market, at `["base_vault", market]`, `["quote_vault", market]` and
+  `["fee_vault", market]`, with the market as their authority, the same shape
+  the options and prop AMM vaults already have. The stored-address checks
+  that stop the fee vault being passed as the quote vault are unchanged. The
+  order book itself stays client-allocated, since at about 180 KB it is too
+  large for the program to create. Tests, READMEs, and changelogs follow. The
+  Anchor v1 port is a frozen snapshot and does not change.
+
+## [2026-09-22] - Anchor v2 CI no longer starts a validator for LiteSVM-only projects
+
+Surfpool 1.6, which the Anchor v2 workflow installs as `latest`, deploys each
+program at startup through a runbook that reads `target/idl/<program>.json`.
+The nine projects built with `--no-idl` (the anchor#4947 workaround) have no
+IDL, so `anchor test` died with `Surfpool startup failed: Runbook execution
+failed` before any test ran, turning main's Anchor v2 runs red.
+
+- `anchor test` runs with `--skip-local-validator` for exactly those nine
+  projects. Each one's Anchor.toml runs `cargo test` against LiteSVM, so none
+  of them ever used the validator. Every other project is tested as before.
+
 ## [2026-09-14] - Token fundraiser contributors can close their accounts
 
 A successful raise exits through `check_contributions`, which closes the vault
