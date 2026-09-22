@@ -4,6 +4,21 @@ All notable changes to this repository are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-09-22] - The order book's vaults are market PDAs
+
+The order book created its base, quote, and fee vaults at public keys the client
+generated, so a client had to generate and sign with three extra keys to open
+a market, and nothing but the market's record said where its tokens were.
+
+- The order book's Anchor v2 and Quasar ports create all three vaults as PDAs
+  of the market, at `["base_vault", market]`, `["quote_vault", market]` and
+  `["fee_vault", market]`, with the market as their authority, the same shape
+  the options and prop AMM vaults already have. The stored-address checks
+  that stop the fee vault being passed as the quote vault are unchanged. The
+  order book itself stays client-allocated, since at about 180 KB it is too
+  large for the program to create. Tests, READMEs, and changelogs follow. The
+  Anchor v1 port is a frozen snapshot and does not change.
+
 ## [2026-09-22] - Anchor v2 CI no longer starts a validator for LiteSVM-only projects
 
 Surfpool 1.6, which the Anchor v2 workflow installs as `latest`, deploys each
