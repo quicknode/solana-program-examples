@@ -4,6 +4,18 @@ All notable changes to this repository are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-09-22] - Anchor v2 CI no longer starts a validator for LiteSVM-only projects
+
+Surfpool 1.6, which the Anchor v2 workflow installs as `latest`, deploys each
+program at startup through a runbook that reads `target/idl/<program>.json`.
+The nine projects built with `--no-idl` (the anchor#4947 workaround) have no
+IDL, so `anchor test` died with `Surfpool startup failed: Runbook execution
+failed` before any test ran, turning main's Anchor v2 runs red.
+
+- `anchor test` runs with `--skip-local-validator` for exactly those nine
+  projects. Each one's Anchor.toml runs `cargo test` against LiteSVM, so none
+  of them ever used the validator. Every other project is tested as before.
+
 ## [2026-09-14] - Token fundraiser contributors can close their accounts
 
 A successful raise exits through `check_contributions`, which closes the vault
