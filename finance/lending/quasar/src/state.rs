@@ -36,14 +36,14 @@ pub struct Reserve {
     pub accumulated_protocol_fees: u64,
     pub borrowed_principal: u128,
     pub borrow_accumulation_factor: u128,
+    /// The slot of the last accrual. Every handler that reads the reserve's
+    /// value accrues it inline first, so this records when that last ran. It
+    /// is not the accrual clock.
     pub last_update_slot: u64,
-    /// Slots in a year: the divisor that turns the APR fields below into the
-    /// per-slot rate interest accrues at. This is the cluster's slot time
-    /// expressed as a count, so it is configuration rather than a constant. The
-    /// protocol lowers the slot time over time, and a value left behind here
-    /// charges borrowers at the wrong wall-clock rate while every other number
-    /// still reads correctly. The owner corrects it with `update_slots_per_year`.
-    pub slots_per_year: u64,
+    /// The Clock's `unix_timestamp` at the last accrual. Interest accrues for
+    /// the seconds since, so it follows wall-clock time whatever the slot
+    /// length is.
+    pub last_accrual_timestamp: i64,
     pub liquidity_decimals: u8,
     pub loan_to_value_bps: u16,
     pub liquidation_threshold_bps: u16,

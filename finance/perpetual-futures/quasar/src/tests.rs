@@ -20,6 +20,9 @@ const ORACLE_SCALE: u32 = 8;
 // quasar-test worlds run at the default slot (0); the feed is stamped with the
 // same slot so the staleness check passes.
 const SLOT: u64 = 0;
+/// How fast the funding tests move the slot while the clock moves: five a
+/// second, the network's 200 ms target, so prices age as they would.
+const SLOTS_PER_SECOND: u64 = 5;
 
 // Deterministic addresses.
 const ADMIN: Pubkey = Pubkey::new_from_array([1; 32]);
@@ -54,16 +57,17 @@ fn set_feed_at_slot(test: &mut Test, price: i128, slot: u64, confidence: u64) {
     test.set_account(Account::new(FEED, system_program::ID, 1_000_000, data));
 }
 
-/// Pin the Clock sysvar account at `slot`. Clock's bincode layout is the raw
-/// little-endian fields: slot, epoch_start_timestamp, epoch,
+/// Pin the Clock sysvar account at `slot` and `unix_timestamp`. Price freshness
+/// is counted in the slot; funding is counted in the timestamp. Clock's bincode
+/// layout is the raw little-endian fields: slot, epoch_start_timestamp, epoch,
 /// leader_schedule_epoch, unix_timestamp.
-fn set_clock_at(test: &mut Test, slot: u64) {
+fn set_clock_at(test: &mut Test, slot: u64, unix_timestamp: i64) {
     let mut data = Vec::with_capacity(40);
     data.extend_from_slice(&slot.to_le_bytes());
     data.extend_from_slice(&0i64.to_le_bytes());
     data.extend_from_slice(&0u64.to_le_bytes());
     data.extend_from_slice(&0u64.to_le_bytes());
-    data.extend_from_slice(&0i64.to_le_bytes());
+    data.extend_from_slice(&unix_timestamp.to_le_bytes());
     let clock_id: Pubkey = "SysvarC1ock11111111111111111111111111111111"
         .parse()
         .unwrap();
@@ -99,14 +103,14 @@ fn init_pool_with_funding(
     test: &mut Test,
     maintenance_margin_bps: u16,
     close_fee_bps: u16,
-    funding_rate_per_slot: u64,
+    funding_rate_per_second: u64,
 ) -> Outcome {
     test.send(InitializePoolInstruction {
         authority: ADMIN,
         collateral_mint: COLLATERAL_MINT,
         oracle_feed: FEED,
         oracle_scale: ORACLE_SCALE,
-        funding_rate_per_slot,
+        funding_rate_per_second,
         open_fee_bps: 10,
         close_fee_bps,
         max_leverage: 10,
@@ -130,13 +134,13 @@ fn setup(test: &mut Test) -> Env {
     setup_with_funding(test, 0)
 }
 
-/// Like `setup`, but with a non-zero per-slot funding rate so funding accrues
-/// as slots pass.
-fn setup_with_funding(test: &mut Test, funding_rate_per_slot: u64) -> Env {
+/// Like `setup`, but with a non-zero per-second funding rate so funding accrues
+/// as time passes.
+fn setup_with_funding(test: &mut Test, funding_rate_per_second: u64) -> Env {
     test.add(Wallet::new().at(ADMIN));
     test.add(Mint::new(ADMIN).at(COLLATERAL_MINT).decimals(6));
     set_feed(test, dollars(100), 0);
-    init_pool_with_funding(test, 500, 10, funding_rate_per_slot).succeeds();
+    init_pool_with_funding(test, 500, 10, funding_rate_per_second).succeeds();
 
     let pool = test.derive_pda(Pool::seeds(&COLLATERAL_MINT, &FEED));
     Env {
@@ -278,7 +282,7 @@ fn open_rejects_price_from_before_a_restart(test: &mut Test) {
     // The feed sits at slot 5, fresh by the 150-slot staleness bound, but the
     // cluster restarted at slot 7: only the restart check can catch the
     // pre-halt price.
-    set_clock_at(test, 10);
+    set_clock_at(test, 10, 0);
     set_feed_at_slot(test, dollars(100), 5, 0);
     set_last_restart_slot(test, 7);
     assert!(
@@ -382,12 +386,10 @@ fn collect_fees_sweeps_the_open_fee_to_the_admin(test: &mut Test) {
     .has_tokens(ADMIN_COLLATERAL, size / 1_000);
 }
 
-/// The funding rate is quoted per slot, so what a position costs per hour also
-/// depends on the cluster's slot time. When the protocol shortens the slot, the
-/// pool operator retunes the rate, and the retune settles the slots already
-/// elapsed at the old rate rather than repricing them at the new one.
+/// Retuning the rate settles the seconds already elapsed at the old rate
+/// rather than repricing them at the new one.
 ///
-/// Both halves below hold the same position for the same slots at the same
+/// Both halves below hold the same position for the same seconds at the same
 /// price, so the size and price scaling cancels and only the rates differ: the
 /// spanning position pays one window at the old rate plus one at the new (3
 /// window-rates), and the position opened afterwards pays one window wholly at
@@ -399,6 +401,7 @@ fn set_funding_rate_settles_at_the_old_rate_first(test: &mut Test) {
     let size = 5_000 * ONE_USDC;
     let collateral = 1_000 * ONE_USDC;
     let fees = 2 * (size / 1_000); // open and close, 0.1% of notional each
+    let window_slots = window as u64 * SLOTS_PER_SECOND;
 
     let env = setup_with_funding(test, rate);
     fund(test, PROVIDER, PROVIDER_COLLATERAL, 100_000 * ONE_USDC);
@@ -408,24 +411,24 @@ fn set_funding_rate_settles_at_the_old_rate_first(test: &mut Test) {
     // A position held across the retune: one window at `rate`, one at `rate * 2`.
     let before_spanning = test.tokens(TRADER_COLLATERAL);
     open_position(test, &env, 0, collateral, size).succeeds();
-    set_clock_at(test, window);
+    set_clock_at(test, window_slots, window);
     test.send(SetFundingRateInstruction {
         authority: ADMIN,
         collateral_mint: COLLATERAL_MINT,
         oracle_feed: FEED,
-        funding_rate_per_slot: rate * 2,
+        funding_rate_per_second: rate * 2,
     })
     .succeeds();
-    set_clock_at(test, 2 * window);
-    set_feed_at_slot(test, dollars(100), 2 * window, 0);
+    set_clock_at(test, 2 * window_slots, 2 * window);
+    set_feed_at_slot(test, dollars(100), 2 * window_slots, 0);
     close_position(test, &env).succeeds();
     let spanning = (before_spanning - test.tokens(TRADER_COLLATERAL)) - fees;
 
     // A fresh position over one window, now wholly at the doubled rate.
     let before_doubled = test.tokens(TRADER_COLLATERAL);
     open_position(test, &env, 0, collateral, size).succeeds();
-    set_clock_at(test, 3 * window);
-    set_feed_at_slot(test, dollars(100), 3 * window, 0);
+    set_clock_at(test, 3 * window_slots, 3 * window);
+    set_feed_at_slot(test, dollars(100), 3 * window_slots, 0);
     close_position(test, &env).succeeds();
     let doubled = (before_doubled - test.tokens(TRADER_COLLATERAL)) - fees;
 
@@ -441,6 +444,52 @@ fn set_funding_rate_settles_at_the_old_rate_first(test: &mut Test) {
     );
 }
 
+/// Funding is quoted per second of wall-clock time, so slots passing without
+/// the clock moving charge nothing. A million extra slots halfway through the
+/// window, as a much shorter slot would produce, leave the funding unchanged.
+///
+/// Both halves hold the same position for the same seconds at the same price,
+/// so they must pay the same funding; only the second sees the extra slots.
+#[quasar_test]
+fn funding_follows_seconds_not_slots(test: &mut Test) {
+    let rate = 5_000;
+    let window = 2_000;
+    let size = 5_000 * ONE_USDC;
+    let collateral = 1_000 * ONE_USDC;
+    let fees = 2 * (size / 1_000); // open and close, 0.1% of notional each
+    let window_slots = window as u64 * SLOTS_PER_SECOND;
+    let extra_slots = 1_000_000;
+
+    let env = setup_with_funding(test, rate);
+    fund(test, PROVIDER, PROVIDER_COLLATERAL, 100_000 * ONE_USDC);
+    add_liquidity(test, &env, 100_000 * ONE_USDC).succeeds();
+    fund(test, TRADER, TRADER_COLLATERAL, 10_000 * ONE_USDC);
+
+    // Two windows at the network's slot pace.
+    let before_flat = test.tokens(TRADER_COLLATERAL);
+    open_position(test, &env, 0, collateral, size).succeeds();
+    set_clock_at(test, 2 * window_slots, 2 * window);
+    set_feed_at_slot(test, dollars(100), 2 * window_slots, 0);
+    close_position(test, &env).succeeds();
+    let flat = (before_flat - test.tokens(TRADER_COLLATERAL)) - fees;
+
+    // Two more windows, with a million extra slots passing at the midpoint
+    // while the clock stands still.
+    let before_extra = test.tokens(TRADER_COLLATERAL);
+    open_position(test, &env, 0, collateral, size).succeeds();
+    set_clock_at(test, 3 * window_slots + extra_slots, 3 * window);
+    set_clock_at(test, 4 * window_slots + extra_slots, 4 * window);
+    set_feed_at_slot(test, dollars(100), 4 * window_slots + extra_slots, 0);
+    close_position(test, &env).succeeds();
+    let with_extra_slots = (before_extra - test.tokens(TRADER_COLLATERAL)) - fees;
+
+    assert!(
+        flat > 0,
+        "the flat run must pay some funding to compare against"
+    );
+    assert_eq!(with_extra_slots, flat);
+}
+
 #[quasar_test]
 fn only_the_authority_can_set_the_funding_rate(test: &mut Test) {
     let env = setup_with_funding(test, 5_000);
@@ -451,7 +500,7 @@ fn only_the_authority_can_set_the_funding_rate(test: &mut Test) {
             authority: TRADER,
             collateral_mint: COLLATERAL_MINT,
             oracle_feed: FEED,
-            funding_rate_per_slot: 1,
+            funding_rate_per_second: 1,
         })
         .is_err(),
         "a non-authority must not be able to retune the funding rate"

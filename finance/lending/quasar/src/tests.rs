@@ -1,7 +1,8 @@
 //! Integration tests. Most scenarios drive the program through `quasar-test`
-//! (`#[quasar_test]` fixtures + `crate::cpi` builders). The two scenarios that
-//! must warp the SLOT (interest accrual is computed from `Clock::get()?.slot`)
-//! keep the low-level QuasarSvm harness — see `slot_warp` at the bottom.
+//! (`#[quasar_test]` fixtures + `crate::cpi` builders). The scenarios that must
+//! move the slot and the Clock's timestamp independently (interest accrues on
+//! the timestamp, price freshness is counted in slots) keep the low-level
+//! QuasarSvm harness — see `clock_warp` at the bottom.
 
 use {
     crate::{
@@ -29,11 +30,8 @@ fn cents(amount: u64) -> i128 {
 const DECIMALS: u8 = 6;
 const UNIT: u64 = 1_000_000; // 1 token at 6 decimals
 
-/// Slots in a year, which is how a reserve turns an APR into a per-slot rate.
-/// 78_840_000 is a 400ms slot: 2.5 slots/second * 60 * 60 * 24 * 365. It is a
-/// fixture, not a law: a deployment reads the slot time off the cluster it
-/// points at and calls `update_slots_per_year` when the protocol changes it.
-const SLOTS_PER_YEAR: u64 = 78_840_000;
+/// A tenth of a 365-day year, in seconds: long enough for interest to show.
+const TENTH_OF_A_YEAR: i64 = crate::constants::SECONDS_PER_YEAR as i64 / 10;
 
 // Deterministic addresses.
 const OWNER: Pubkey = Pubkey::new_from_array([1; 32]);
@@ -158,7 +156,6 @@ fn initialize_reserve(test: &mut Test, w: &Pdas, the_mint: Pubkey) {
         min_borrow_rate_bps: 200,
         optimal_borrow_rate_bps: 2_000,
         max_borrow_rate_bps: 15_000,
-        slots_per_year: SLOTS_PER_YEAR,
     })
     .succeeds();
 }
@@ -354,22 +351,32 @@ fn unhealthy_position_is_liquidated_and_healthy_is_rejected(test: &mut Test) {
     );
 }
 
-/// The two scenarios below warp the SLOT so that interest accrues
-/// (`Clock::get()?.slot` drives the accumulation factor). quasar-test has no slot
-/// warp — `warp_to_timestamp` only moves `unix_timestamp` — so these keep the
-/// low-level quasar-svm harness (`QuasarSvm` + `sysvars.warp_to_slot` + raw
-/// instructions), loading the compiled program at runtime.
-mod slot_warp {
+/// The scenarios below move the slot and the Clock's timestamp independently:
+/// interest accrues on `unix_timestamp`, while price freshness and the restart
+/// check are counted in slots. quasar-test has no slot warp (`warp_to_timestamp`
+/// only moves `unix_timestamp`), so these keep the low-level quasar-svm harness
+/// (`QuasarSvm` + `sysvars` + raw instructions), loading the compiled program at
+/// runtime.
+mod clock_warp {
     use {
-        super::{dollars, EXP},
+        super::{dollars, EXP, TENTH_OF_A_YEAR},
         super::{
             BORROWER, BORROWER_BORROW, BORROWER_COLLATERAL, BORROWER_COLLATERAL_SHARE, BORROW_MINT,
             COLLATERAL_MINT, DECIMALS, MARKET_ID, OWNER, OWNER_BORROW, QUOTE_MINT, SUPPLIER,
             SUPPLIER_BORROW, SUPPLIER_BORROW_SHARE, UNIT,
         },
+        crate::{
+            constants::FIXED_POINT_SCALE,
+            math::{borrow_rate_per_second, utilization_bps},
+            state::Reserve,
+        },
+        quasar_lang::traits::Discriminator,
         quasar_svm::{Account, AccountMeta, Instruction, Pubkey, QuasarSvm},
         spl_token::state::{Account as SplToken, AccountState, Mint as SplMint},
     };
+
+    /// The reserve's zero-copy fields, as the program reads them.
+    type ReserveState = <Reserve as core::ops::Deref>::Target;
 
     fn pda(seeds: &[&[u8]]) -> (Pubkey, u8) {
         Pubkey::find_program_address(seeds, &crate::ID)
@@ -521,6 +528,51 @@ mod slot_warp {
             }
         }
 
+        fn current_timestamp(&self) -> i64 {
+            self.svm.sysvars.clock.unix_timestamp
+        }
+
+        /// Advance the slot only, leaving the Clock's timestamp where it is.
+        /// Price freshness is counted in slots, so this ages prices; interest
+        /// is counted in seconds, so on its own this accrues none.
+        /// quasar-svm's `warp_to_slot` resets the timestamp to zero, so this
+        /// puts it back.
+        fn warp_slots(&mut self, slots: u64) {
+            let timestamp = self.current_timestamp();
+            let target = self.svm.sysvars.clock.slot + slots;
+            self.svm.sysvars.warp_to_slot(target);
+            self.svm.sysvars.clock.unix_timestamp = timestamp;
+        }
+
+        /// Move the Clock's timestamp by `seconds` (backwards when negative),
+        /// leaving the slot where it is. Interest accrues on this clock.
+        fn shift_timestamp(&mut self, seconds: i64) {
+            self.svm.sysvars.clock.unix_timestamp += seconds;
+        }
+
+        /// Let `seconds` of wall-clock time pass: the timestamp moves by
+        /// `seconds` and the slot by five a second, the network's 200 ms
+        /// target, so prices age as they would. Interest accrues for exactly
+        /// `seconds`, however many slots that turns out to be.
+        fn warp_seconds(&mut self, seconds: i64) {
+            self.warp_slots(seconds as u64 * 5);
+            self.shift_timestamp(seconds);
+        }
+
+        /// Read a reserve's fields from its committed bytes: the discriminator,
+        /// then the zero-copy layout, which is how `quasar-test`'s `Test::read`
+        /// decodes an account.
+        fn reserve(&self, address: Pubkey) -> ReserveState {
+            let account = self.svm.get_account(&address).expect("reserve present");
+            let discriminator = <Reserve as Discriminator>::DISCRIMINATOR;
+            assert_eq!(&account.data[..discriminator.len()], discriminator);
+            let fields = &account.data[discriminator.len()..];
+            assert!(fields.len() >= core::mem::size_of::<ReserveState>());
+            // SAFETY: the zero-copy layout has alignment one and no padding, and
+            // the length check above keeps the read in bounds.
+            unsafe { core::ptr::read_unaligned(fields.as_ptr() as *const ReserveState) }
+        }
+
         fn run(&mut self, data: Vec<u8>, metas: Vec<AccountMeta>) -> quasar_svm::ExecutionResult {
             let instruction = Instruction {
                 program_id: crate::ID,
@@ -572,7 +624,6 @@ mod slot_warp {
             for value in config {
                 data.extend_from_slice(&value.to_le_bytes());
             }
-            data.extend_from_slice(&crate::tests::SLOTS_PER_YEAR.to_le_bytes());
             let metas = vec![
                 meta(OWNER, true, true),
                 meta(self.market, false, false),
@@ -731,20 +782,18 @@ mod slot_warp {
             self.post_collateral(1_000 * UNIT).assert_success();
         }
 
+        /// Accrue the borrow reserve. This port has no `refresh_reserve`: every
+        /// handler that reads a reserve accrues it first. Redeeming one share
+        /// is the smallest such call that needs no price, so it stands in for
+        /// the refresh here.
+        fn refresh_borrow_reserve(&mut self) {
+            self.redeem(SUPPLIER_BORROW, SUPPLIER_BORROW_SHARE, 1)
+                .assert_success();
+        }
+
         /// Market owner collects accrued protocol fees from the borrow reserve
         /// into `OWNER_BORROW`. The handler accrues interest itself, so no
         /// separate refresh.
-        fn update_slots_per_year(&mut self, slots_per_year: u64) -> quasar_svm::ExecutionResult {
-            let mut data = vec![12u8];
-            data.extend_from_slice(&slots_per_year.to_le_bytes());
-            let metas = vec![
-                meta(OWNER, false, true),
-                meta(self.market, false, false),
-                meta(self.borrow_reserve, true, false),
-            ];
-            self.run(data, metas)
-        }
-
         fn collect_borrow_fees(&mut self) -> quasar_svm::ExecutionResult {
             let metas = vec![
                 meta(OWNER, true, true),
@@ -765,8 +814,8 @@ mod slot_warp {
         world.bootstrap_position();
         world.borrow(500 * UNIT).assert_success();
 
-        // ~0.1 year passes; re-publish prices so feeds stay fresh.
-        world.svm.sysvars.warp_to_slot(7_884_000);
+        // A tenth of a year passes; re-publish prices so feeds stay fresh.
+        world.warp_seconds(TENTH_OF_A_YEAR);
         world.set_price(COLLATERAL_MINT, world.collateral_price, dollars(1));
         world.set_price(BORROW_MINT, world.borrow_price, dollars(1));
 
@@ -808,41 +857,99 @@ mod slot_warp {
         world.borrow(100 * UNIT).assert_success();
     }
 
-    /// `slots_per_year` is how the reserve converts its annual rate curve into
-    /// the per-slot rate it actually charges, so it carries the cluster's slot
-    /// time. Halving it doubles what accrues over the same number of slots,
-    /// which is what makes it configuration: when the protocol shortens the
-    /// slot, an owner who leaves the old figure in place charges borrowers more
-    /// per day than the APR they were quoted.
+    /// The factor after one accrual `seconds` after the last: one multiply by
+    /// `1 + rate_per_second * seconds`, floored, exactly as the program does it.
+    fn factor_after(reserve: &ReserveState, seconds: u128) -> u128 {
+        let factor = u128::from(reserve.borrow_accumulation_factor);
+        let utilization = utilization_bps(
+            u64::from(reserve.available_liquidity),
+            u128::from(reserve.borrowed_principal),
+            factor,
+        )
+        .unwrap();
+        let rate = borrow_rate_per_second(
+            utilization,
+            u16::from(reserve.optimal_utilization_bps),
+            u16::from(reserve.min_borrow_rate_bps),
+            u16::from(reserve.optimal_borrow_rate_bps),
+            u16::from(reserve.max_borrow_rate_bps),
+        )
+        .unwrap();
+        factor * (FIXED_POINT_SCALE + rate * seconds) / FIXED_POINT_SCALE
+    }
+
+    /// The rate fields are annual, and a year is a length of wall-clock time, so
+    /// interest accrues for the seconds on the Clock's timestamp and ignores the
+    /// slot count. Slots passing on their own accrue nothing; seconds passing on
+    /// their own accrue exactly the per-second rate times the seconds. A shorter
+    /// or longer slot therefore cannot change what a borrower pays.
     #[test]
-    fn retuning_slots_per_year_rescales_accrual() {
+    fn interest_accrues_by_seconds_not_slots() {
         let mut world = World::new();
         world.bootstrap_position();
         world.borrow(500 * UNIT).assert_success();
+        let before = world.reserve(world.borrow_reserve);
 
-        // First window, at the figure the reserve was created with.
-        let window = 7_884_000;
-        let start = world.svm.sysvars.clock.slot;
-        world.svm.sysvars.warp_to_slot(start + window);
-        let first = balance(&world.collect_borrow_fees(), OWNER_BORROW);
-        assert!(first > 0, "the first window must accrue collectable fees");
+        world.warp_slots(1_000_000);
+        world.refresh_borrow_reserve();
+        let idle = world.reserve(world.borrow_reserve);
+        assert_eq!(
+            u128::from(idle.borrow_accumulation_factor),
+            u128::from(before.borrow_accumulation_factor),
+            "a million slots with the clock standing still must accrue nothing"
+        );
 
-        // Halve the slot time, so a year now takes half as many slots.
-        world
-            .update_slots_per_year(super::SLOTS_PER_YEAR / 2)
-            .assert_success();
-
-        // Second window of exactly the same length.
-        world.svm.sysvars.warp_to_slot(start + 2 * window);
-        let second = balance(&world.collect_borrow_fees(), OWNER_BORROW) - first;
-
-        // Not exactly 2x: the factor compounds across the two windows and the
-        // first collection took liquidity out of the pool, both of which nudge
-        // the second window up. The band is wide enough for that and far too
-        // narrow to pass if the new figure were ignored.
+        let seconds = TENTH_OF_A_YEAR;
+        world.shift_timestamp(seconds);
+        world.refresh_borrow_reserve();
+        let after = world.reserve(world.borrow_reserve);
         assert!(
-            second * 10 >= first * 18 && second * 10 <= first * 22,
-            "halving slots_per_year should roughly double accrual: {first} then {second}"
+            u128::from(after.borrow_accumulation_factor)
+                > u128::from(before.borrow_accumulation_factor)
+        );
+        assert_eq!(
+            u128::from(after.borrow_accumulation_factor),
+            factor_after(&idle, seconds as u128)
+        );
+        assert_eq!(
+            i64::from(after.last_accrual_timestamp),
+            world.current_timestamp()
+        );
+    }
+
+    /// The leader writes the timestamp, and a timestamp at or before the stored
+    /// one accrues nothing and leaves the stored stamp alone. When the clock
+    /// moves forward again, only the seconds past the stored stamp are charged,
+    /// so no second is charged twice.
+    #[test]
+    fn a_timestamp_behind_the_last_accrual_charges_nothing() {
+        let mut world = World::new();
+        world.bootstrap_position();
+        world.borrow(500 * UNIT).assert_success();
+        let before = world.reserve(world.borrow_reserve);
+
+        world.shift_timestamp(-600);
+        world.refresh_borrow_reserve();
+        let behind = world.reserve(world.borrow_reserve);
+        assert_eq!(
+            u128::from(behind.borrow_accumulation_factor),
+            u128::from(before.borrow_accumulation_factor)
+        );
+        assert_eq!(
+            i64::from(behind.last_accrual_timestamp),
+            i64::from(before.last_accrual_timestamp)
+        );
+
+        // 1,600 seconds forward from the shifted clock is 1,000 past the stamp.
+        world.shift_timestamp(1_600);
+        world.refresh_borrow_reserve();
+        assert_eq!(
+            u128::from(
+                world
+                    .reserve(world.borrow_reserve)
+                    .borrow_accumulation_factor
+            ),
+            factor_after(&behind, 1_000)
         );
     }
 
@@ -852,9 +959,9 @@ mod slot_warp {
         world.bootstrap_position();
         world.borrow(500 * UNIT).assert_success();
 
-        // ~0.1 year passes; interest accrues, and the reserve factor (10%)
-        // sets some of it aside for the market owner.
-        world.svm.sysvars.warp_to_slot(7_884_000);
+        // A tenth of a year passes; interest accrues, and the reserve factor
+        // (10%) sets some of it aside for the market owner.
+        world.warp_seconds(TENTH_OF_A_YEAR);
 
         let result = world.collect_borrow_fees();
         result.assert_success();

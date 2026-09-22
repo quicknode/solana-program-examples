@@ -157,7 +157,7 @@ impl BorrowObligationLiquidity {
     #[inline(always)]
     pub fn run(&mut self, amount: u64) -> Result<(), ProgramError> {
         require!(amount > 0, LendingError::ZeroAmount);
-        let slot = now()?;
+        let (slot, timestamp) = now()?;
 
         require_keys_eq!(
             self.obligation.collateral_reserve,
@@ -176,9 +176,9 @@ impl BorrowObligationLiquidity {
         );
 
         let mut collateral = snapshot_reserve(&self.collateral_reserve);
-        accrue(&mut collateral, slot)?;
+        accrue(&mut collateral, slot, timestamp)?;
         let mut borrow = snapshot_reserve(&self.borrow_reserve);
-        accrue(&mut borrow, slot)?;
+        accrue(&mut borrow, slot, timestamp)?;
         let mut obligation = snapshot_obligation(&self.obligation);
         if obligation.borrow_reserve != Address::default() {
             require_keys_eq!(
@@ -300,7 +300,7 @@ impl RepayObligationLiquidity {
     #[inline(always)]
     pub fn run(&mut self, amount: u64) -> Result<(), ProgramError> {
         require!(amount > 0, LendingError::ZeroAmount);
-        let slot = now()?;
+        let (slot, timestamp) = now()?;
 
         require_keys_eq!(
             self.obligation.borrow_reserve,
@@ -309,7 +309,7 @@ impl RepayObligationLiquidity {
         );
 
         let mut borrow = snapshot_reserve(&self.borrow_reserve);
-        accrue(&mut borrow, slot)?;
+        accrue(&mut borrow, slot, timestamp)?;
         let mut obligation = snapshot_obligation(&self.obligation);
 
         let debt = current_debt(
@@ -382,7 +382,7 @@ impl WithdrawObligationCollateral {
     #[inline(always)]
     pub fn run(&mut self, shares: u64) -> Result<(), ProgramError> {
         require!(shares > 0, LendingError::ZeroAmount);
-        let slot = now()?;
+        let (slot, timestamp) = now()?;
 
         require_keys_eq!(
             self.obligation.collateral_reserve,
@@ -396,7 +396,7 @@ impl WithdrawObligationCollateral {
         );
 
         let mut collateral = snapshot_reserve(&self.collateral_reserve);
-        accrue(&mut collateral, slot)?;
+        accrue(&mut collateral, slot, timestamp)?;
         let mut obligation = snapshot_obligation(&self.obligation);
         require!(
             obligation.deposited_shares >= shares,
@@ -441,7 +441,7 @@ impl WithdrawObligationCollateral {
                 LendingError::WrongReserve
             );
             let mut borrow = snapshot_reserve(&self.borrow_reserve);
-            accrue(&mut borrow, slot)?;
+            accrue(&mut borrow, slot, timestamp)?;
             let debt = current_debt(
                 obligation.borrowed_principal,
                 borrow.borrow_accumulation_factor,
@@ -519,7 +519,7 @@ impl LiquidateObligation {
     #[inline(always)]
     pub fn run(&mut self, amount: u64) -> Result<(), ProgramError> {
         require!(amount > 0, LendingError::ZeroAmount);
-        let slot = now()?;
+        let (slot, timestamp) = now()?;
 
         require_keys_eq!(
             self.obligation.collateral_reserve,
@@ -543,9 +543,9 @@ impl LiquidateObligation {
         );
 
         let mut collateral = snapshot_reserve(&self.collateral_reserve);
-        accrue(&mut collateral, slot)?;
+        accrue(&mut collateral, slot, timestamp)?;
         let mut borrow = snapshot_reserve(&self.borrow_reserve);
-        accrue(&mut borrow, slot)?;
+        accrue(&mut borrow, slot, timestamp)?;
         let mut obligation = snapshot_obligation(&self.obligation);
 
         let collateral_price = price_scaled(&self.collateral_price, slot)?;

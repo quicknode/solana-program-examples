@@ -37,7 +37,7 @@ mod quasar_perpetual_futures {
     pub fn initialize_pool(
         ctx: Ctx<InitializePool>,
         oracle_scale: u32,
-        funding_rate_per_slot: u64,
+        funding_rate_per_second: u64,
         open_fee_bps: u16,
         close_fee_bps: u16,
         max_leverage: u16,
@@ -48,7 +48,7 @@ mod quasar_perpetual_futures {
         instructions::handle_initialize_pool(
             &mut ctx.accounts,
             oracle_scale,
-            funding_rate_per_slot,
+            funding_rate_per_second,
             open_fee_bps,
             close_fee_bps,
             max_leverage,
@@ -126,8 +126,8 @@ mod quasar_perpetual_futures {
     #[instruction(discriminator = 7)]
     pub fn set_funding_rate(
         ctx: Ctx<SetFundingRate>,
-        funding_rate_per_slot: u64,
+        funding_rate_per_second: u64,
     ) -> Result<(), ProgramError> {
-        instructions::handle_set_funding_rate(&mut ctx.accounts, funding_rate_per_slot)
+        instructions::handle_set_funding_rate(&mut ctx.accounts, funding_rate_per_second)
     }
 }

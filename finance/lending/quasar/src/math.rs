@@ -5,7 +5,7 @@
 use quasar_lang::prelude::*;
 
 use crate::{
-    constants::{BPS_DENOMINATOR, FIXED_POINT_SCALE, FIXED_POINT_SCALE_DECIMALS},
+    constants::{BPS_DENOMINATOR, FIXED_POINT_SCALE, FIXED_POINT_SCALE_DECIMALS, SECONDS_PER_YEAR},
     error::LendingError,
 };
 
@@ -149,15 +149,13 @@ pub fn utilization_bps(
     )
 }
 
-/// Per-slot borrow rate (FIXED_POINT_SCALE-scaled) from the kinked curve.
-#[allow(clippy::too_many_arguments)]
-pub fn borrow_rate_per_slot(
+/// Per-second borrow rate (FIXED_POINT_SCALE-scaled) from the kinked curve.
+pub fn borrow_rate_per_second(
     utilization: u128,
     optimal_utilization_bps: u16,
     min_rate_bps: u16,
     optimal_rate_bps: u16,
     max_rate_bps: u16,
-    slots_per_year: u64,
 ) -> Result<u128, ProgramError> {
     let optimal_utilization = optimal_utilization_bps as u128;
     let apr_bps = if utilization <= optimal_utilization {
@@ -185,45 +183,41 @@ pub fn borrow_rate_per_slot(
             .checked_add(mul_div_floor(range, above, span.max(1))?)
             .ok_or(LendingError::MathOverflow)?
     };
-    let denominator = BPS_DENOMINATOR
-        .checked_mul(slots_per_year as u128)
+    // apr_bps / (BPS_DENOMINATOR * SECONDS_PER_YEAR), carried at FIXED_POINT_SCALE.
+    let per_year_denominator = BPS_DENOMINATOR
+        .checked_mul(SECONDS_PER_YEAR)
         .ok_or(LendingError::MathOverflow)?;
-    mul_div_floor(apr_bps, FIXED_POINT_SCALE, denominator)
+    mul_div_floor(apr_bps, FIXED_POINT_SCALE, per_year_denominator)
 }
 
-/// Advance the accumulation factor for elapsed slots:
-/// `new_factor = factor * (1 + rate_per_slot * elapsed)`.
+/// Advance the accumulation factor for `elapsed_seconds`:
+/// `new_factor = factor * (1 + rate_per_second * elapsed_seconds)`.
 #[allow(clippy::too_many_arguments)]
 pub fn accrue_factor(
     factor: u128,
     borrowed_principal: u128,
     available: u64,
-    last_update_slot: u64,
-    now: u64,
+    elapsed_seconds: u128,
     optimal_utilization_bps: u16,
     min_rate_bps: u16,
     optimal_rate_bps: u16,
     max_rate_bps: u16,
-    slots_per_year: u64,
 ) -> Result<u128, ProgramError> {
-    let elapsed = now
-        .checked_sub(last_update_slot)
-        .ok_or(LendingError::MathOverflow)?;
-    if elapsed == 0 || borrowed_principal == 0 {
+    if elapsed_seconds == 0 || borrowed_principal == 0 {
         return Ok(factor);
     }
     let utilization = utilization_bps(available, borrowed_principal, factor)?;
-    let rate = borrow_rate_per_slot(
+    let rate_per_second = borrow_rate_per_second(
         utilization,
         optimal_utilization_bps,
         min_rate_bps,
         optimal_rate_bps,
         max_rate_bps,
-        slots_per_year,
     )?;
     let growth = FIXED_POINT_SCALE
         .checked_add(
-            rate.checked_mul(elapsed as u128)
+            rate_per_second
+                .checked_mul(elapsed_seconds)
                 .ok_or(LendingError::MathOverflow)?,
         )
         .ok_or(LendingError::MathOverflow)?;
@@ -241,7 +235,6 @@ pub fn validate_config(
     min_borrow_rate_bps: u16,
     optimal_borrow_rate_bps: u16,
     max_borrow_rate_bps: u16,
-    slots_per_year: u64,
 ) -> Result<(), ProgramError> {
     let within = |value: u16| (value as u128) <= BPS_DENOMINATOR;
     require!(
@@ -267,7 +260,5 @@ pub fn validate_config(
             && optimal_borrow_rate_bps <= max_borrow_rate_bps,
         LendingError::InvalidConfig
     );
-    // Zero would divide by zero when converting the APR to a per-slot rate.
-    require!(slots_per_year > 0, LendingError::InvalidConfig);
     Ok(())
 }

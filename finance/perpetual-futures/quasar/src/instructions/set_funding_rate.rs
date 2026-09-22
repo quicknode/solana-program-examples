@@ -1,5 +1,5 @@
 use {
-    crate::{instructions::shared::advance_funding, state::Pool},
+    crate::{instructions::shared::accrue_funding, state::Pool},
     quasar_lang::{prelude::*, sysvars::Sysvar},
 };
 
@@ -18,32 +18,18 @@ pub struct SetFundingRate {
     pub oracle_feed: UncheckedAccount,
 }
 
-/// Retune the pool's funding rate. The rate is quoted per slot, so what holding
-/// a position costs per hour depends on the cluster's slot time as well as on
-/// this number: shorten the slot and the same rate charges the heavier side
-/// more. Solana lowers the slot time over time, so a pool that outlives a
-/// reduction needs its rate brought back in line.
+/// Retune the pool's funding rate, quoted per second of wall-clock time.
 ///
-/// Funding advances at the old rate first, so slots already elapsed are charged
-/// at the rate that was in force for them rather than repriced by the new one.
+/// Funding is accrued at the old rate first, so the seconds already elapsed are
+/// charged at the rate that was in force for them rather than repriced by the
+/// new one.
 #[inline(always)]
 pub fn handle_set_funding_rate(
     accounts: &mut SetFundingRate,
-    funding_rate_per_slot: u64,
+    funding_rate_per_second: u64,
 ) -> Result<(), ProgramError> {
     let pool = &mut accounts.pool;
-    let slot = u64::from(Clock::get()?.slot);
-
-    let new_funding = advance_funding(
-        pool.cumulative_funding.get(),
-        pool.last_funding_slot.get(),
-        slot,
-        pool.funding_rate_per_slot.get(),
-        pool.long_size.get(),
-        pool.short_size.get(),
-    )?;
-    pool.cumulative_funding.set(new_funding);
-    pool.last_funding_slot.set(slot);
-    pool.funding_rate_per_slot.set(funding_rate_per_slot);
+    accrue_funding(pool, i64::from(Clock::get()?.unix_timestamp))?;
+    pool.funding_rate_per_second.set(funding_rate_per_second);
     Ok(())
 }

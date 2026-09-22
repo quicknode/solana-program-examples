@@ -129,29 +129,50 @@ pub fn read_oracle_price(
     u64::try_from(price).map_err(|_| overflow())
 }
 
-/// New cumulative funding index after advancing to `current_slot`. The heavier
-/// side pays: the index rises while longs lead, falls while shorts lead.
-pub fn advance_funding(
-    cumulative_funding: i128,
-    last_funding_slot: u64,
-    current_slot: u64,
-    funding_rate_per_slot: u64,
-    long_size: u128,
-    short_size: u128,
-) -> Result<i128, ProgramError> {
-    let elapsed = current_slot.saturating_sub(last_funding_slot);
-    if elapsed == 0 || (long_size == 0 && short_size == 0) {
-        return Ok(cumulative_funding);
+/// Advance the pool's cumulative funding index to `current_timestamp`, the
+/// Clock's `unix_timestamp`.
+///
+/// The heavier open-interest side pays funding to the pool: while longs are
+/// larger the index rises (longs owe), while shorts are larger it falls (shorts
+/// owe). No positions means no one to charge, so the index is left untouched and
+/// only the timestamp moves forward.
+///
+/// The timestamp is written by each block's leader. A timestamp at or before
+/// the stored one is treated as no time elapsed and leaves the stored stamp
+/// where it is, so no second is charged twice or skipped.
+pub fn accrue_funding(
+    pool: &mut Account<Pool>,
+    current_timestamp: i64,
+) -> Result<(), ProgramError> {
+    let last_funding_timestamp = pool.last_funding_timestamp.get();
+    if current_timestamp <= last_funding_timestamp {
+        return Ok(());
     }
-    let magnitude = (funding_rate_per_slot as i128)
-        .checked_mul(elapsed as i128)
+    let elapsed = current_timestamp
+        .checked_sub(last_funding_timestamp)
         .ok_or_else(overflow)?;
-    let delta = if long_size >= short_size {
-        magnitude
-    } else {
-        -magnitude
-    };
-    cumulative_funding.checked_add(delta).ok_or_else(overflow)
+
+    let long_size = pool.long_size.get();
+    let short_size = pool.short_size.get();
+    if long_size != 0 || short_size != 0 {
+        let magnitude = (pool.funding_rate_per_second.get() as i128)
+            .checked_mul(elapsed as i128)
+            .ok_or_else(overflow)?;
+        let delta = if long_size >= short_size {
+            magnitude
+        } else {
+            -magnitude
+        };
+        let new_funding = pool
+            .cumulative_funding
+            .get()
+            .checked_add(delta)
+            .ok_or_else(overflow)?;
+        pool.cumulative_funding.set(new_funding);
+    }
+
+    pool.last_funding_timestamp.set(current_timestamp);
+    Ok(())
 }
 
 pub fn scale_size(size: u64, entry_price: u64) -> Result<u128, ProgramError> {
@@ -247,13 +268,15 @@ pub fn basis_points_of(amount: u64, basis_points: u16) -> Result<u64, ProgramErr
 }
 
 /// The preamble every price-sensitive handler runs: read a validated oracle
-/// price from the feed, then bring the pool's funding index up to `slot`, so
-/// the settlement that follows uses fresh numbers for both. Centralized so no
+/// price from the feed, checked for freshness against `slot`, then bring the
+/// pool's funding index up to the current time, `unix_timestamp`, so the
+/// settlement that follows uses fresh numbers for both. Centralized so no
 /// handler can settle a position against a stale funding index.
 pub fn refresh_price_and_funding(
     pool: &mut Account<Pool>,
     oracle_feed: &UncheckedAccount,
     slot: u64,
+    unix_timestamp: i64,
 ) -> Result<u64, ProgramError> {
     let price = {
         let view = oracle_feed.to_account_view();
@@ -268,15 +291,6 @@ pub fn refresh_price_and_funding(
         )?
     };
 
-    let new_funding = advance_funding(
-        pool.cumulative_funding.get(),
-        pool.last_funding_slot.get(),
-        slot,
-        pool.funding_rate_per_slot.get(),
-        pool.long_size.get(),
-        pool.short_size.get(),
-    )?;
-    pool.cumulative_funding.set(new_funding);
-    pool.last_funding_slot.set(slot);
+    accrue_funding(pool, unix_timestamp)?;
     Ok(price)
 }
