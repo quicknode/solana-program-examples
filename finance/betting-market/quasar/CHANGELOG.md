@@ -1,5 +1,23 @@
 # Changelog
 
+## [2026-09-22]
+
+### Changed
+
+- Events start as `Draft` and move to `Open` through a new admin handler,
+  `open_betting`, which needs at least two outcomes (`NotEnoughOutcomes`).
+  `add_outcome` works only on a draft (`EventNotDraft`, replacing
+  `BettingAlreadyStarted`), and `place_bet` on a draft fails with
+  `EventNotOpen`, so the outcome list is fixed before any bet can land.
+- `initialize_event` takes `betting_closes_at` (after `event_id`, before the
+  description), which must be in the future (`CloseTimeInPast`). `place_bet`
+  requires `now < betting_closes_at` (`BettingClosed`) and `settle_event`
+  requires `now >= betting_closes_at` (`BettingStillOpen`).
+- `cancel_event` accepts a draft as well as an open event.
+- `EventStatus` gains `Draft = 0`, shifting `Open`, `Settled`, and `Cancelled`
+  to 1, 2, and 3 so they keep matching the Anchor build's borsh encoding.
+  `open_betting` takes discriminator 9, leaving the existing ones in place.
+
 ## [2026-07-22]
 
 ### Changed

@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-use crate::state::Event;
+use crate::state::{may_settle, Event};
 use anchor_spl::mint;
 use anchor_spl::{
     associated_token::AssociatedToken,
@@ -76,6 +76,13 @@ pub fn handle_settle_event(
     require!(
         context.accounts.event.status == EventStatus::Open,
         BettingError::EventNotOpen
+    );
+    // Settling before the close time would let the admin end a market early
+    // on bettors who were promised the full window.
+    let now = Clock::get()?.unix_timestamp;
+    require!(
+        may_settle(now, context.accounts.event.betting_closes_at),
+        BettingError::BettingStillOpen
     );
     require!(
         context.accounts.winning_outcome.total_amount > 0,

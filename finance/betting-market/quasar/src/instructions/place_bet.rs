@@ -1,10 +1,10 @@
-use quasar_lang::prelude::*;
+use quasar_lang::{prelude::*, sysvars::Sysvar as _};
 use quasar_spl::prelude::*;
 
 use crate::errors::BettingError;
 use crate::state::{
-    add_bet, snapshot_event, snapshot_outcome, snapshot_user, Bet, BetInner, Config, Event,
-    EventStatus, EventVaultPda, Outcome, User,
+    add_bet, betting_is_open, snapshot_event, snapshot_outcome, snapshot_user, Bet, BetInner,
+    Config, Event, EventStatus, EventVaultPda, Outcome, User,
 };
 
 use super::transfer_to_vault;
@@ -66,6 +66,11 @@ pub fn handle_place_bet(
     require!(
         accounts.event.status == EventStatus::Open as u8,
         BettingError::EventNotOpen
+    );
+    let now: i64 = Clock::get()?.unix_timestamp.into();
+    require!(
+        betting_is_open(now, i64::from(accounts.event.betting_closes_at)),
+        BettingError::BettingClosed
     );
 
     transfer_to_vault(

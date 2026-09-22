@@ -58,6 +58,9 @@ spl-token = { version = "9.0.0", features = ["no-entrypoint"] }
 spl-associated-token-account = { version = "8.0.0", features = ["no-entrypoint"] }
 solana-kite = "0.4.0"
 borsh = "1.6.1"
+# LiteSVM's `get_sysvar` / `set_sysvar` want the host-side Clock type; the
+# tests move `unix_timestamp` across the betting close time.
+solana-clock = "3.0.1"
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }

@@ -38,15 +38,11 @@ pub fn handle_add_outcome(
         label_bytes.len() <= MAX_LABEL_LEN,
         BettingError::LabelTooLong
     );
+    // Outcomes can only be added to a draft. Once `open_betting` runs, the
+    // field of choices is final before the first bet can land.
     require!(
-        accounts.event.status == EventStatus::Open as u8,
-        BettingError::EventNotOpen
-    );
-    // Lock the outcome set once betting starts so the field of choices can't
-    // change out from under existing bettors.
-    require!(
-        u64::from(accounts.event.total_pool) == 0,
-        BettingError::BettingAlreadyStarted
+        accounts.event.status == EventStatus::Draft as u8,
+        BettingError::EventNotDraft
     );
 
     let index = accounts.event.outcome_count;
