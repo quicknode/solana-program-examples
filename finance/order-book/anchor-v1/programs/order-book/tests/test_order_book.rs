@@ -34,6 +34,9 @@ use {
 const MARKET_SEED: &[u8] = b"market";
 const ORDER_SEED: &[u8] = b"order";
 const MARKET_USER_SEED: &[u8] = b"market_user";
+const BASE_VAULT_SEED: &[u8] = b"base_vault";
+const QUOTE_VAULT_SEED: &[u8] = b"quote_vault";
+const FEE_VAULT_SEED: &[u8] = b"fee_vault";
 
 // Size of the zero-copy OrderBook account, including Anchor's 8-byte
 // discriminator. Mirrors `order_book::state::ORDER_BOOK_ACCOUNT_SIZE` - duplicated
@@ -94,6 +97,12 @@ fn market_pda(program_id: &Pubkey, base_mint: &Pubkey, quote_mint: &Pubkey) -> P
     market
 }
 
+/// The market's vaults are PDAs of the market, one seed each.
+fn vault_pda(program_id: &Pubkey, seed: &[u8], market: &Pubkey) -> Pubkey {
+    let (vault, _) = Pubkey::find_program_address(&[seed, market.as_ref()], program_id);
+    vault
+}
+
 fn market_user_pda(program_id: &Pubkey, market: &Pubkey, owner: &Pubkey) -> Pubkey {
     let (market_user, _) = Pubkey::find_program_address(
         &[MARKET_USER_SEED, market.as_ref(), owner.as_ref()],
@@ -126,11 +135,11 @@ struct Scenario {
     seller: Keypair,
     base_mint: Pubkey,
     quote_mint: Pubkey,
-    base_vault: Keypair,
-    quote_vault: Keypair,
-    // Fees accumulate here (quote mint). Created fresh per Scenario; the
-    // market PDA is the signer, same as the other two vaults.
-    fee_vault: Keypair,
+    base_vault: Pubkey,
+    quote_vault: Pubkey,
+    // Fees accumulate here (quote mint). The market PDA signs transfers out of
+    // it, same as the other two vaults.
+    fee_vault: Pubkey,
     market: Pubkey,
     // The order book is a ~180 KB zero-copy account owned by the program.
     // It's NOT a PDA - the BPF runtime caps inner-CPI allocations at 10 KB,
@@ -194,11 +203,11 @@ fn full_setup() -> Scenario {
     let buyer_market_user = market_user_pda(&program_id, &market, &buyer.pubkey());
     let seller_market_user = market_user_pda(&program_id, &market, &seller.pubkey());
 
-    // Vaults are plain token accounts created in-line by initialize_market
-    // (not PDAs). Tests generate fresh keypairs to serve as their addresses.
-    let base_vault = Keypair::new();
-    let quote_vault = Keypair::new();
-    let fee_vault = Keypair::new();
+    // Vaults are PDAs of the market, created by initialize_market. A client
+    // derives their addresses; it never chooses them.
+    let base_vault = vault_pda(&program_id, BASE_VAULT_SEED, &market);
+    let quote_vault = vault_pda(&program_id, QUOTE_VAULT_SEED, &market);
+    let fee_vault = vault_pda(&program_id, FEE_VAULT_SEED, &market);
     let order_book = Keypair::new();
 
     Scenario {
@@ -278,9 +287,9 @@ fn build_initialize_market_ix(
             order_book: sc.order_book.pubkey(),
             base_mint: sc.base_mint,
             quote_mint: sc.quote_mint,
-            base_vault: sc.base_vault.pubkey(),
-            quote_vault: sc.quote_vault.pubkey(),
-            fee_vault: sc.fee_vault.pubkey(),
+            base_vault: sc.base_vault,
+            quote_vault: sc.quote_vault,
+            fee_vault: sc.fee_vault,
             authority: sc.authority.pubkey(),
             token_program: token_program_id(),
             system_program: system_program::id(),
@@ -330,9 +339,9 @@ fn build_place_order_ix(
             order_book: sc.order_book.pubkey(),
             order,
             market_user,
-            base_vault: sc.base_vault.pubkey(),
-            quote_vault: sc.quote_vault.pubkey(),
-            fee_vault: sc.fee_vault.pubkey(),
+            base_vault: sc.base_vault,
+            quote_vault: sc.quote_vault,
+            fee_vault: sc.fee_vault,
             user_base_account,
             user_quote_account,
             base_mint: sc.base_mint,
@@ -397,7 +406,7 @@ fn build_withdraw_fees_ix(
         &order_book::instruction::WithdrawFees {}.data(),
         order_book::accounts::WithdrawFeesAccountConstraints {
             market: sc.market,
-            fee_vault: sc.fee_vault.pubkey(),
+            fee_vault: sc.fee_vault,
             authority_quote_account,
             quote_mint: sc.quote_mint,
             authority: sc.authority.pubkey(),
@@ -441,8 +450,8 @@ fn build_settle_funds_ix(
         order_book::accounts::SettleFundsAccountConstraints {
             market: sc.market,
             market_user,
-            base_vault: sc.base_vault.pubkey(),
-            quote_vault: sc.quote_vault.pubkey(),
+            base_vault: sc.base_vault,
+            quote_vault: sc.quote_vault,
             user_base_account,
             user_quote_account,
             base_mint: sc.base_mint,
@@ -466,13 +475,7 @@ fn initialize_market_and_users(sc: &mut Scenario) {
     send_transaction_from_instructions(
         &mut sc.svm,
         vec![create_ix, init_ix],
-        &[
-            &sc.authority,
-            &sc.order_book,
-            &sc.base_vault,
-            &sc.quote_vault,
-            &sc.fee_vault,
-        ],
+        &[&sc.authority, &sc.order_book],
         &sc.authority.pubkey(),
     )
     .unwrap();
@@ -509,13 +512,7 @@ fn initialize_market_sets_market_and_order_book() {
     send_transaction_from_instructions(
         &mut sc.svm,
         vec![create_ix, ix],
-        &[
-            &sc.authority,
-            &sc.order_book,
-            &sc.base_vault,
-            &sc.quote_vault,
-            &sc.fee_vault,
-        ],
+        &[&sc.authority, &sc.order_book],
         &sc.authority.pubkey(),
     )
     .unwrap();
@@ -539,11 +536,11 @@ fn initialize_market_sets_market_and_order_book() {
     // Vaults were created with the market as authority; easiest check is
     // simply that they exist with a zero balance.
     assert_eq!(
-        get_token_account_balance(&sc.svm, &sc.base_vault.pubkey()).unwrap(),
+        get_token_account_balance(&sc.svm, &sc.base_vault).unwrap(),
         0
     );
     assert_eq!(
-        get_token_account_balance(&sc.svm, &sc.quote_vault.pubkey()).unwrap(),
+        get_token_account_balance(&sc.svm, &sc.quote_vault).unwrap(),
         0
     );
 }
@@ -557,13 +554,7 @@ fn initialize_market_user_tracks_market_and_owner() {
     send_transaction_from_instructions(
         &mut sc.svm,
         vec![create_ix, init_ix],
-        &[
-            &sc.authority,
-            &sc.order_book,
-            &sc.base_vault,
-            &sc.quote_vault,
-            &sc.fee_vault,
-        ],
+        &[&sc.authority, &sc.order_book],
         &sc.authority.pubkey(),
     )
     .unwrap();
@@ -608,7 +599,7 @@ fn place_bid_locks_quote_in_vault() {
     // A bid locks price * quantity * quote_lot_size raw quote tokens.
     let locked_quote = BID_PRICE * BID_QUANTITY * QUOTE_LOT_SIZE;
     assert_eq!(
-        get_token_account_balance(&sc.svm, &sc.quote_vault.pubkey()).unwrap(),
+        get_token_account_balance(&sc.svm, &sc.quote_vault).unwrap(),
         locked_quote
     );
     // Buyer's quote ATA dropped by exactly that.
@@ -618,7 +609,7 @@ fn place_bid_locks_quote_in_vault() {
     );
     // Base vault untouched - bids never move base tokens.
     assert_eq!(
-        get_token_account_balance(&sc.svm, &sc.base_vault.pubkey()).unwrap(),
+        get_token_account_balance(&sc.svm, &sc.base_vault).unwrap(),
         0
     );
 
@@ -652,7 +643,7 @@ fn place_ask_locks_base_in_vault() {
 
     // An ask locks quantity * base_lot_size raw base tokens in the base vault.
     assert_eq!(
-        get_token_account_balance(&sc.svm, &sc.base_vault.pubkey()).unwrap(),
+        get_token_account_balance(&sc.svm, &sc.base_vault).unwrap(),
         ASK_QUANTITY * BASE_LOT_SIZE
     );
     assert_eq!(
@@ -660,7 +651,7 @@ fn place_ask_locks_base_in_vault() {
         TRADER_STARTING_BALANCE - ASK_QUANTITY * BASE_LOT_SIZE
     );
     assert_eq!(
-        get_token_account_balance(&sc.svm, &sc.quote_vault.pubkey()).unwrap(),
+        get_token_account_balance(&sc.svm, &sc.quote_vault).unwrap(),
         0
     );
 }
@@ -705,13 +696,7 @@ fn place_order_rejects_unaligned_tick() {
     send_transaction_from_instructions(
         &mut sc.svm,
         vec![create_ix, init_ix],
-        &[
-            &sc.authority,
-            &sc.order_book,
-            &sc.base_vault,
-            &sc.quote_vault,
-            &sc.fee_vault,
-        ],
+        &[&sc.authority, &sc.order_book],
         &sc.authority.pubkey(),
     )
     .unwrap();
@@ -762,13 +747,7 @@ fn place_order_rejects_below_min_order_size() {
     send_transaction_from_instructions(
         &mut sc.svm,
         vec![create_ix, init_ix],
-        &[
-            &sc.authority,
-            &sc.order_book,
-            &sc.base_vault,
-            &sc.quote_vault,
-            &sc.fee_vault,
-        ],
+        &[&sc.authority, &sc.order_book],
         &sc.authority.pubkey(),
     )
     .unwrap();
@@ -850,7 +829,7 @@ fn cancel_ask_credits_unsettled_base() {
     // Funds are still in the vault - cancel does not move tokens, it only
     // updates the unsettled balance. Settlement is a separate step.
     assert_eq!(
-        get_token_account_balance(&sc.svm, &sc.base_vault.pubkey()).unwrap(),
+        get_token_account_balance(&sc.svm, &sc.base_vault).unwrap(),
         ASK_QUANTITY * BASE_LOT_SIZE
     );
     // Seller's ATA hasn't received anything back yet.
@@ -954,7 +933,7 @@ fn settle_funds_moves_unsettled_base_to_user() {
 
     // Vault drained, seller got their base tokens back in full.
     assert_eq!(
-        get_token_account_balance(&sc.svm, &sc.base_vault.pubkey()).unwrap(),
+        get_token_account_balance(&sc.svm, &sc.base_vault).unwrap(),
         0
     );
     assert_eq!(
@@ -1003,7 +982,7 @@ fn cancel_and_settle_bid_refunds_full_quote() {
 
     // Vault drained, buyer got the full price*quantity of quote back.
     assert_eq!(
-        get_token_account_balance(&sc.svm, &sc.quote_vault.pubkey()).unwrap(),
+        get_token_account_balance(&sc.svm, &sc.quote_vault).unwrap(),
         0
     );
     assert_eq!(
@@ -1064,9 +1043,9 @@ fn settle_funds_rejects_fee_vault_substituted_for_quote_vault() {
         order_book::accounts::SettleFundsAccountConstraints {
             market: sc.market,
             market_user: sc.buyer_market_user,
-            base_vault: sc.base_vault.pubkey(),
+            base_vault: sc.base_vault,
             // Attack: route the quote-side transfer at the fee_vault.
-            quote_vault: sc.fee_vault.pubkey(),
+            quote_vault: sc.fee_vault,
             user_base_account: sc.buyer_base_ata,
             user_quote_account: sc.buyer_quote_ata,
             base_mint: sc.base_mint,
@@ -1099,13 +1078,7 @@ fn initialize_market_rejects_zero_tick_size() {
     let result = send_transaction_from_instructions(
         &mut sc.svm,
         vec![create_ix, ix],
-        &[
-            &sc.authority,
-            &sc.order_book,
-            &sc.base_vault,
-            &sc.quote_vault,
-            &sc.fee_vault,
-        ],
+        &[&sc.authority, &sc.order_book],
         &sc.authority.pubkey(),
     );
     assert!(result.is_err(), "tick_size == 0 must be rejected");
@@ -1120,13 +1093,7 @@ fn initialize_market_rejects_zero_base_lot_size() {
     let result = send_transaction_from_instructions(
         &mut sc.svm,
         vec![create_ix, ix],
-        &[
-            &sc.authority,
-            &sc.order_book,
-            &sc.base_vault,
-            &sc.quote_vault,
-            &sc.fee_vault,
-        ],
+        &[&sc.authority, &sc.order_book],
         &sc.authority.pubkey(),
     );
     assert!(result.is_err(), "base_lot_size == 0 must be rejected");
@@ -1141,13 +1108,7 @@ fn initialize_market_rejects_zero_quote_lot_size() {
     let result = send_transaction_from_instructions(
         &mut sc.svm,
         vec![create_ix, ix],
-        &[
-            &sc.authority,
-            &sc.order_book,
-            &sc.base_vault,
-            &sc.quote_vault,
-            &sc.fee_vault,
-        ],
+        &[&sc.authority, &sc.order_book],
         &sc.authority.pubkey(),
     );
     assert!(result.is_err(), "quote_lot_size == 0 must be rejected");
@@ -1171,13 +1132,7 @@ fn initialize_market_rejects_oversized_fee() {
     let result = send_transaction_from_instructions(
         &mut sc.svm,
         vec![create_ix, ix],
-        &[
-            &sc.authority,
-            &sc.order_book,
-            &sc.base_vault,
-            &sc.quote_vault,
-            &sc.fee_vault,
-        ],
+        &[&sc.authority, &sc.order_book],
         &sc.authority.pubkey(),
     );
     assert!(
@@ -1316,7 +1271,7 @@ fn taker_bid_fully_crosses_best_ask() {
 
     // Fee vault received exactly fee_bps of the gross.
     assert_eq!(
-        get_token_account_balance(&sc.svm, &sc.fee_vault.pubkey()).unwrap(),
+        get_token_account_balance(&sc.svm, &sc.fee_vault).unwrap(),
         EXPECTED_FEE
     );
 
@@ -1391,7 +1346,7 @@ fn taker_ask_fully_crosses_best_bid() {
     .unwrap();
 
     assert_eq!(
-        get_token_account_balance(&sc.svm, &sc.fee_vault.pubkey()).unwrap(),
+        get_token_account_balance(&sc.svm, &sc.fee_vault).unwrap(),
         EXPECTED_FEE
     );
     // Maker (buyer) received the base tokens they paid for.
@@ -1469,7 +1424,7 @@ fn taker_partially_fills_resting_order_rest_stays_on_book() {
     // Total base in vault stays == MAKER_ASK_QUANTITY * BASE_LOT_SIZE, because
     // fills are bucket-accounting inside the single vault.
     assert_eq!(
-        get_token_account_balance(&sc.svm, &sc.base_vault.pubkey()).unwrap(),
+        get_token_account_balance(&sc.svm, &sc.base_vault).unwrap(),
         MAKER_ASK_QUANTITY * BASE_LOT_SIZE
     );
 
@@ -1875,7 +1830,7 @@ fn fee_rounds_up_when_gross_is_not_a_bps_multiple() {
         &sc.buyer.pubkey()).unwrap();
 
     assert_eq!(
-        get_token_account_balance(&sc.svm, &sc.fee_vault.pubkey()).unwrap(),
+        get_token_account_balance(&sc.svm, &sc.fee_vault).unwrap(),
         EXPECTED_FEE
     );
     // Maker's unsettled quote is gross minus the rounded-up fee.
@@ -1927,7 +1882,7 @@ fn fee_vault_receives_exactly_bps_of_taker_gross() {
 
 
     assert_eq!(
-        get_token_account_balance(&sc.svm, &sc.fee_vault.pubkey()).unwrap(),
+        get_token_account_balance(&sc.svm, &sc.fee_vault).unwrap(),
         EXPECTED_FEE
     );
 }
@@ -1984,7 +1939,7 @@ fn authority_can_withdraw_fees_after_match() {
 
 
     assert_eq!(
-        get_token_account_balance(&sc.svm, &sc.fee_vault.pubkey()).unwrap(),
+        get_token_account_balance(&sc.svm, &sc.fee_vault).unwrap(),
         EXPECTED_FEE
     );
 
@@ -1999,7 +1954,7 @@ fn authority_can_withdraw_fees_after_match() {
 
     // Fee vault drained, authority received the fees.
     assert_eq!(
-        get_token_account_balance(&sc.svm, &sc.fee_vault.pubkey()).unwrap(),
+        get_token_account_balance(&sc.svm, &sc.fee_vault).unwrap(),
         0
     );
     assert_eq!(
