@@ -98,16 +98,9 @@ pub fn handle_refund(accounts: &mut RefundAccountConstraints) -> Result<()> {
         accounts.maker.to_account_info().key.as_ref(),
         &[accounts.fundraiser.bump],
     ]];
-    let cpi_context = CpiContext::new_with_signer(
-        accounts.token_program.key(),
-        cpi_accounts,
-        &signer_seeds,
-    );
-    transfer_checked(
-        cpi_context,
-        refund_amount,
-        accounts.mint_to_raise.decimals,
-    )?;
+    let cpi_context =
+        CpiContext::new_with_signer(accounts.token_program.key(), cpi_accounts, &signer_seeds);
+    transfer_checked(cpi_context, refund_amount, accounts.mint_to_raise.decimals)?;
 
     Ok(())
 }

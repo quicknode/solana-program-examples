@@ -38,6 +38,13 @@ pub mod cnft_burn {
         nonce: u64,
         index: u32,
     ) -> Result<()> {
-        instructions::burn_cnft::handle_burn_cnft(context, root, data_hash, creator_hash, nonce, index)
+        instructions::burn_cnft::handle_burn_cnft(
+            context,
+            root,
+            data_hash,
+            creator_hash,
+            nonce,
+            index,
+        )
     }
 }

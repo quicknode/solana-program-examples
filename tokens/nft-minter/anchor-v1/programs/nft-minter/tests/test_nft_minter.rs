@@ -5,9 +5,7 @@ use {
     },
     litesvm::LiteSVM,
     solana_keypair::Keypair,
-    solana_kite::{
-        create_wallet, get_token_account_balance, send_transaction_from_instructions,
-    },
+    solana_kite::{create_wallet, get_token_account_balance, send_transaction_from_instructions},
     solana_signer::Signer,
 };
 

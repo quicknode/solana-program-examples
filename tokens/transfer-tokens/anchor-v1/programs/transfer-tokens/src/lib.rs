@@ -20,10 +20,7 @@ pub mod transfer_tokens {
     }
 
     /// Mint `amount` minor units of the token to the recipient.
-    pub fn mint_token(
-        context: Context<MintTokenAccountConstraints>,
-        amount: u64,
-    ) -> Result<()> {
+    pub fn mint_token(context: Context<MintTokenAccountConstraints>, amount: u64) -> Result<()> {
         mint::handle_mint_token(context, amount)
     }
 

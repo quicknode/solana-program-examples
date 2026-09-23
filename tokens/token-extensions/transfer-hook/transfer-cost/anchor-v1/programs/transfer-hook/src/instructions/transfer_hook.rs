@@ -74,7 +74,11 @@ pub fn handler(context: Context<TransferHookAccountConstraints>, amount: u64) ->
     );
     msg!(
         "Is destination mint {0}",
-        context.accounts.destination_token.to_account_info().is_writable
+        context
+            .accounts
+            .destination_token
+            .to_account_info()
+            .is_writable
     );
     msg!(
         "Is source mint {0}",
@@ -91,7 +95,10 @@ pub fn handler(context: Context<TransferHookAccountConstraints>, amount: u64) ->
             TransferChecked {
                 from: context.accounts.sender_wsol_token_account.to_account_info(),
                 mint: context.accounts.wsol_mint.to_account_info(),
-                to: context.accounts.delegate_wsol_token_account.to_account_info(),
+                to: context
+                    .accounts
+                    .delegate_wsol_token_account
+                    .to_account_info(),
                 authority: context.accounts.delegate.to_account_info(),
             },
         )

@@ -90,11 +90,8 @@ pub fn handle_check_contributions(
         destination: accounts.maker.to_account_info(),
         authority: accounts.fundraiser.to_account_info(),
     };
-    let close_context = CpiContext::new_with_signer(
-        accounts.token_program.key(),
-        close_accounts,
-        &signer_seeds,
-    );
+    let close_context =
+        CpiContext::new_with_signer(accounts.token_program.key(), close_accounts, &signer_seeds);
     close_account(close_context)?;
 
     Ok(())

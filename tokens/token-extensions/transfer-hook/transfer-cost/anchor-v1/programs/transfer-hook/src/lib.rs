@@ -48,7 +48,10 @@ pub mod transfer_hook {
     }
 
     #[instruction(discriminator = ExecuteInstruction::SPL_DISCRIMINATOR_SLICE)]
-    pub fn transfer_hook(context: Context<TransferHookAccountConstraints>, amount: u64) -> Result<()> {
+    pub fn transfer_hook(
+        context: Context<TransferHookAccountConstraints>,
+        amount: u64,
+    ) -> Result<()> {
         instructions::transfer_hook::handler(context, amount)
     }
 }

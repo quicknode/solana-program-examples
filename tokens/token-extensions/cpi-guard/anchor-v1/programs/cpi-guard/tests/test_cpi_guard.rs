@@ -8,6 +8,7 @@ use {
         InstructionData, ToAccountMetas,
     },
     litesvm::LiteSVM,
+    solana_keypair::Keypair,
     solana_kite::{
         assert_token_account_balance, create_wallet, send_transaction_from_instructions,
         token_extensions::{
@@ -15,7 +16,6 @@ use {
             TOKEN_EXTENSIONS_PROGRAM_ID,
         },
     },
-    solana_keypair::Keypair,
     solana_signer::Signer,
 };
 
@@ -125,7 +125,13 @@ fn test_cpi_guard_prevents_transfer_then_allows_after_disable() {
         &mint,
         &payer.pubkey(),
     );
-    send_transaction_from_instructions(&mut svm, token_ixs, &[&payer, &token_keypair], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        token_ixs,
+        &[&payer, &token_keypair],
+        &payer.pubkey(),
+    )
+    .unwrap();
     svm.expire_blockhash();
 
     // Step 3: Reallocate to add CPI Guard extension space
@@ -136,27 +142,23 @@ fn test_cpi_guard_prevents_transfer_then_allows_after_disable() {
         &payer.pubkey(),
         &[cpi_guard_extension_type],
     );
-    send_transaction_from_instructions(&mut svm, vec![reallocate_ix], &[&payer], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(&mut svm, vec![reallocate_ix], &[&payer], &payer.pubkey())
+        .unwrap();
     svm.expire_blockhash();
 
     // Step 4: Enable CPI Guard
     let enable_ix = enable_cpi_guard_instruction(&token_keypair.pubkey(), &payer.pubkey());
-    send_transaction_from_instructions(&mut svm, vec![enable_ix], &[&payer], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(&mut svm, vec![enable_ix], &[&payer], &payer.pubkey())
+        .unwrap();
     svm.expire_blockhash();
 
     // Step 5: Mint 1 token to the token account
-    mint_tokens_to_token_extensions_account(
-        &mut svm,
-        &mint,
-        &token_keypair.pubkey(),
-        1,
-        &payer,
-    ).unwrap();
+    mint_tokens_to_token_extensions_account(&mut svm, &mint, &token_keypair.pubkey(), 1, &payer)
+        .unwrap();
     svm.expire_blockhash();
 
     // Step 6: Try CPI transfer - should fail because CPI Guard is enabled
-    let (recipient_token_account, _bump) =
-        Pubkey::find_program_address(&[b"pda"], &program_id);
+    let (recipient_token_account, _bump) = Pubkey::find_program_address(&[b"pda"], &program_id);
 
     let transfer_ix = Instruction::new_with_bytes(
         program_id,
@@ -172,7 +174,8 @@ fn test_cpi_guard_prevents_transfer_then_allows_after_disable() {
         .to_account_metas(None),
     );
 
-    let result = send_transaction_from_instructions(&mut svm, vec![transfer_ix], &[&payer], &payer.pubkey());
+    let result =
+        send_transaction_from_instructions(&mut svm, vec![transfer_ix], &[&payer], &payer.pubkey());
     assert!(
         result.is_err(),
         "Transfer should fail when CPI Guard is enabled"
@@ -181,7 +184,8 @@ fn test_cpi_guard_prevents_transfer_then_allows_after_disable() {
 
     // Step 7: Disable CPI Guard
     let disable_ix = disable_cpi_guard_instruction(&token_keypair.pubkey(), &payer.pubkey());
-    send_transaction_from_instructions(&mut svm, vec![disable_ix], &[&payer], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(&mut svm, vec![disable_ix], &[&payer], &payer.pubkey())
+        .unwrap();
     svm.expire_blockhash();
 
     // Step 8: Transfer should now succeed
@@ -199,7 +203,13 @@ fn test_cpi_guard_prevents_transfer_then_allows_after_disable() {
         .to_account_metas(None),
     );
 
-    send_transaction_from_instructions(&mut svm, vec![transfer_ix2], &[&payer], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(&mut svm, vec![transfer_ix2], &[&payer], &payer.pubkey())
+        .unwrap();
 
-    assert_token_account_balance(&svm, &recipient_token_account, 1, "Recipient should have 1 token");
+    assert_token_account_balance(
+        &svm,
+        &recipient_token_account,
+        1,
+        "Recipient should have 1 token",
+    );
 }

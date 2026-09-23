@@ -1,8 +1,8 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token_2022::spl_token_2022::extension::interest_bearing_mint::InterestBearingConfig;
 use anchor_spl::token_interface::{
-    get_mint_extension_data, interest_bearing_mint_update_rate, InterestBearingMintUpdateRate, Mint,
-    Token2022,
+    get_mint_extension_data, interest_bearing_mint_update_rate, InterestBearingMintUpdateRate,
+    Mint, Token2022,
 };
 
 use crate::check_rate_authority;

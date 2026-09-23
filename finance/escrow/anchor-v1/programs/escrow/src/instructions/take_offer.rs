@@ -85,7 +85,9 @@ pub fn handle_send_wanted_tokens_to_maker(
     )
 }
 
-pub fn handle_withdraw_and_close_vault(context: Context<TakeOfferAccountConstraints>) -> Result<()> {
+pub fn handle_withdraw_and_close_vault(
+    context: Context<TakeOfferAccountConstraints>,
+) -> Result<()> {
     let maker_key = context.accounts.maker.key();
     let id_bytes = context.accounts.offer.id.to_le_bytes();
     let bump = [context.accounts.offer.bump];

@@ -41,5 +41,7 @@ pub struct Order {
 }
 
 pub fn remaining_quantity(order: &Order) -> u64 {
-    order.original_quantity.saturating_sub(order.filled_quantity)
+    order
+        .original_quantity
+        .saturating_sub(order.filled_quantity)
 }

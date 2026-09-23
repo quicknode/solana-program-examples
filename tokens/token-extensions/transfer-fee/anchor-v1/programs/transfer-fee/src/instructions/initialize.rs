@@ -53,8 +53,8 @@ pub fn handle_process_initialize(
                 to: context.accounts.mint_account.to_account_info(),
             },
         ),
-        lamports,                          // Lamports
-        mint_size as u64,                  // Space
+        lamports,                              // Lamports
+        mint_size as u64,                      // Space
         &context.accounts.token_program.key(), // Owner Program
     )?;
 
@@ -70,8 +70,8 @@ pub fn handle_process_initialize(
         ),
         Some(&context.accounts.payer.key()), // transfer fee config authority (update fee)
         Some(&context.accounts.payer.key()), // withdraw authority (withdraw fees)
-        transfer_fee_basis_points,       // transfer fee basis points (% fee per transfer)
-        maximum_fee,                     // maximum fee (maximum units of token per transfer)
+        transfer_fee_basis_points,           // transfer fee basis points (% fee per transfer)
+        maximum_fee,                         // maximum fee (maximum units of token per transfer)
     )?;
 
     // Initialize the standard mint account data
@@ -82,7 +82,7 @@ pub fn handle_process_initialize(
                 mint: context.accounts.mint_account.to_account_info(),
             },
         ),
-        2,                               // decimals
+        2,                                   // decimals
         &context.accounts.payer.key(),       // mint authority
         Some(&context.accounts.payer.key()), // freeze authority
     )?;
@@ -111,4 +111,3 @@ pub fn handle_check_mint_data(accounts: &InitializeAccountConstraints) -> Result
     msg!("{:?}", extension_data);
     Ok(())
 }
-

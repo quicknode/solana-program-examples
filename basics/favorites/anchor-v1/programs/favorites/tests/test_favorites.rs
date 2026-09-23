@@ -33,13 +33,11 @@ fn read_favorites(svm: &LiteSVM, pda: &Pubkey) -> FavoritesData {
     offset += color_len;
 
     // Vec<String> hobbies (4-byte vec length + each string)
-    let hobbies_count =
-        u32::from_le_bytes(data[offset..offset + 4].try_into().unwrap()) as usize;
+    let hobbies_count = u32::from_le_bytes(data[offset..offset + 4].try_into().unwrap()) as usize;
     offset += 4;
     let mut hobbies = Vec::with_capacity(hobbies_count);
     for _ in 0..hobbies_count {
-        let hobby_len =
-            u32::from_le_bytes(data[offset..offset + 4].try_into().unwrap()) as usize;
+        let hobby_len = u32::from_le_bytes(data[offset..offset + 4].try_into().unwrap()) as usize;
         offset += 4;
         let hobby = String::from_utf8(data[offset..offset + hobby_len].to_vec()).unwrap();
         offset += hobby_len;

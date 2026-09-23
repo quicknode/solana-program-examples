@@ -46,10 +46,7 @@ pub fn transfer_tokens_from_vault<'info>(
         to: to.to_account_info(),
         authority: event.clone(),
     };
-    let cpi_context = CpiContext::new_with_signer(
-        token_program.key(),
-        transfer_accounts,
-        &signer_seeds,
-    );
+    let cpi_context =
+        CpiContext::new_with_signer(token_program.key(), transfer_accounts, &signer_seeds);
     transfer_checked(cpi_context, amount, mint.decimals)
 }

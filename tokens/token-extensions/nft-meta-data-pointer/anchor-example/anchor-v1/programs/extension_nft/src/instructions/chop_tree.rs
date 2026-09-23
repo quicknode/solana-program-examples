@@ -7,7 +7,11 @@ use anchor_spl::token_2022_extensions::spl_token_metadata_interface;
 use anchor_spl::token_interface::{spl_token_2022, Token2022};
 use session_keys::{Session, SessionToken};
 
-pub fn chop_tree(context: Context<ChopTreeAccountConstraints>, counter: u16, amount: u64) -> Result<()> {
+pub fn chop_tree(
+    context: Context<ChopTreeAccountConstraints>,
+    counter: u16,
+    amount: u64,
+) -> Result<()> {
     // Save game_data bump on first creation (init_if_needed). See init_player.rs
     // for the same pattern.
     let game_data_bump = context.bumps.game_data;

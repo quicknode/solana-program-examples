@@ -28,7 +28,9 @@ pub struct InitializeExtraAccountMetaListAccountConstraints<'info> {
     pub white_list: Account<'info, WhiteList>,
 }
 
-pub fn handler(mut context: Context<InitializeExtraAccountMetaListAccountConstraints>) -> Result<()> {
+pub fn handler(
+    mut context: Context<InitializeExtraAccountMetaListAccountConstraints>,
+) -> Result<()> {
     // set authority field on white_list account as payer address
     context.accounts.white_list.authority = context.accounts.payer.key();
     context.accounts.white_list.bump = context.bumps.white_list;
@@ -39,8 +41,12 @@ pub fn handler(mut context: Context<InitializeExtraAccountMetaListAccountConstra
     // .map_err() needed because spl-tlv-account-resolution uses solana-program-error 2.x
     // while anchor-lang 1.0 uses 3.x - structurally identical but different semver types
     ExtraAccountMetaList::init::<ExecuteInstruction>(
-        &mut context.accounts.extra_account_meta_list.try_borrow_mut_data()?,
+        &mut context
+            .accounts
+            .extra_account_meta_list
+            .try_borrow_mut_data()?,
         &extra_account_metas,
-    ).map_err(|_| ProgramError::InvalidAccountData)?;
+    )
+    .map_err(|_| ProgramError::InvalidAccountData)?;
     Ok(())
 }

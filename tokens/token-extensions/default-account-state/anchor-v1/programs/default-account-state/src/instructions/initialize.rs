@@ -6,9 +6,7 @@ use anchor_spl::{
         spl_token_2022::{extension::ExtensionType, pod::PodMint, state::AccountState},
         InitializeMint2,
     },
-    token_interface::{
-        default_account_state_initialize, DefaultAccountStateInitialize, Token2022,
-    },
+    token_interface::{default_account_state_initialize, DefaultAccountStateInitialize, Token2022},
 };
 
 #[derive(Accounts)]
@@ -26,9 +24,8 @@ pub struct InitializeAccountConstraints<'info> {
 // We can manually create and initialize the mint account via CPIs in the instruction handler
 pub fn handler(context: Context<InitializeAccountConstraints>) -> Result<()> {
     // Calculate space required for mint and extension data
-    let mint_size = ExtensionType::try_calculate_account_len::<PodMint>(&[
-        ExtensionType::DefaultAccountState,
-    ])?;
+    let mint_size =
+        ExtensionType::try_calculate_account_len::<PodMint>(&[ExtensionType::DefaultAccountState])?;
 
     // Calculate minimum lamports required for size of mint account with extensions
     let lamports = (Rent::get()?).minimum_balance(mint_size);
@@ -42,8 +39,8 @@ pub fn handler(context: Context<InitializeAccountConstraints>) -> Result<()> {
                 to: context.accounts.mint_account.to_account_info(),
             },
         ),
-        lamports,                          // Lamports
-        mint_size as u64,                  // Space
+        lamports,                              // Lamports
+        mint_size as u64,                      // Space
         &context.accounts.token_program.key(), // Owner Program
     )?;
 
@@ -68,7 +65,7 @@ pub fn handler(context: Context<InitializeAccountConstraints>) -> Result<()> {
                 mint: context.accounts.mint_account.to_account_info(),
             },
         ),
-        2,                               // decimals
+        2,                                   // decimals
         &context.accounts.payer.key(),       // mint authority
         Some(&context.accounts.payer.key()), // freeze authority
     )?;

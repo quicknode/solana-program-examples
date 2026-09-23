@@ -5,9 +5,7 @@ use {
     },
     litesvm::LiteSVM,
     solana_keypair::Keypair,
-    solana_kite::{
-        create_wallet, get_token_account_balance, send_transaction_from_instructions,
-    },
+    solana_kite::{create_wallet, get_token_account_balance, send_transaction_from_instructions},
     solana_signer::Signer,
 };
 
@@ -56,11 +54,7 @@ fn derive_metadata_pda(mint: &Pubkey) -> Pubkey {
 
 fn derive_ata(wallet: &Pubkey, mint: &Pubkey) -> Pubkey {
     let (ata, _bump) = Pubkey::find_program_address(
-        &[
-            wallet.as_ref(),
-            token_program_id().as_ref(),
-            mint.as_ref(),
-        ],
+        &[wallet.as_ref(), token_program_id().as_ref(), mint.as_ref()],
         &associated_token_program_id(),
     );
     ata
@@ -109,13 +103,8 @@ fn test_create_token_and_mint() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(
-        &mut svm,
-        vec![create_ix],
-        &[&payer],
-        &payer.pubkey(),
-    )
-    .unwrap();
+    send_transaction_from_instructions(&mut svm, vec![create_ix], &[&payer], &payer.pubkey())
+        .unwrap();
 
     // Verify mint created
     let mint_account = svm.get_account(&mint_pda).expect("Mint PDA should exist");
@@ -147,13 +136,8 @@ fn test_create_token_and_mint() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(
-        &mut svm,
-        vec![mint_ix],
-        &[&payer],
-        &payer.pubkey(),
-    )
-    .unwrap();
+    send_transaction_from_instructions(&mut svm, vec![mint_ix], &[&payer], &payer.pubkey())
+        .unwrap();
 
     // Verify 100 tokens minted (in minor units)
     let balance = get_token_account_balance(&svm, &ata).unwrap();

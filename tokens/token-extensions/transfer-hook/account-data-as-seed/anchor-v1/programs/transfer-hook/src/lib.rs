@@ -3,13 +3,12 @@ use std::cell::RefMut;
 use anchor_lang::prelude::*;
 use anchor_spl::token_2022::spl_token_2022::{
     extension::{
-        transfer_hook::TransferHookAccount, BaseStateWithExtensionsMut,
-        PodStateWithExtensionsMut,
+        transfer_hook::TransferHookAccount, BaseStateWithExtensionsMut, PodStateWithExtensionsMut,
     },
     pod::PodAccount,
 };
-use spl_tlv_account_resolution::{account::ExtraAccountMeta, seeds::Seed};
 use spl_discriminator::SplDiscriminate;
+use spl_tlv_account_resolution::{account::ExtraAccountMeta, seeds::Seed};
 use spl_transfer_hook_interface::instruction::{
     ExecuteInstruction, InitializeExtraAccountMetaListInstruction,
 };
@@ -41,7 +40,10 @@ pub mod transfer_hook {
     }
 
     #[instruction(discriminator = ExecuteInstruction::SPL_DISCRIMINATOR_SLICE)]
-    pub fn transfer_hook(context: Context<TransferHookAccountConstraints>, amount: u64) -> Result<()> {
+    pub fn transfer_hook(
+        context: Context<TransferHookAccountConstraints>,
+        amount: u64,
+    ) -> Result<()> {
         instructions::transfer_hook::handler(context, amount)
     }
 }
@@ -53,7 +55,8 @@ pub fn check_is_transferring(context: &Context<TransferHookAccountConstraints>) 
     // while anchor-lang 1.0 uses 3.x - structurally identical but different semver types
     let mut account = PodStateWithExtensionsMut::<PodAccount>::unpack(*account_data_ref)
         .map_err(|_| ProgramError::InvalidAccountData)?;
-    let account_extension = account.get_extension_mut::<TransferHookAccount>()
+    let account_extension = account
+        .get_extension_mut::<TransferHookAccount>()
         .map_err(|_| ProgramError::InvalidAccountData)?;
 
     if !bool::from(account_extension.transferring) {
@@ -80,7 +83,8 @@ pub fn handle_extra_account_metas() -> Result<Vec<ExtraAccountMeta>> {
         ],
         false, // is_signer
         true,  // is_writable
-    ).map_err(|_| ProgramError::InvalidArgument)?])
+    )
+    .map_err(|_| ProgramError::InvalidArgument)?])
 }
 
 /// Returns the count of extra account metas (avoids the error conversion issue in #[account] attributes)
