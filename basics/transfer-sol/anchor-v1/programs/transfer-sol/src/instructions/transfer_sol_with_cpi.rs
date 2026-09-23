@@ -4,10 +4,10 @@ use anchor_lang::system_program;
 #[derive(Accounts)]
 pub struct TransferSolWithCpiAccountConstraints<'info> {
     #[account(mut)]
-    payer: Signer<'info>,
+    pub payer: Signer<'info>,
     #[account(mut)]
-    recipient: SystemAccount<'info>,
-    system_program: Program<'info, System>,
+    pub recipient: SystemAccount<'info>,
+    pub system_program: Program<'info, System>,
 }
 
 pub fn handler(context: Context<TransferSolWithCpiAccountConstraints>, amount: u64) -> Result<()> {

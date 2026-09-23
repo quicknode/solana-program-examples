@@ -19,7 +19,7 @@ use super::validate_metadata_strings;
 #[derive(Accounts)]
 pub struct CreateCollectionAccountConstraints<'info> {
     #[account(mut)]
-    user: Signer<'info>,
+    pub user: Signer<'info>,
 
     #[account(
         init,
@@ -28,7 +28,7 @@ pub struct CreateCollectionAccountConstraints<'info> {
         mint::authority = mint_authority,
         mint::freeze_authority = mint_authority,
     )]
-    mint: Account<'info, Mint>,
+    pub mint: Account<'info, Mint>,
 
     #[account(
         seeds = [b"authority"],
@@ -39,11 +39,11 @@ pub struct CreateCollectionAccountConstraints<'info> {
 
     #[account(mut)]
     /// CHECK: This account will be initialized by the metaplex program
-    metadata: UncheckedAccount<'info>,
+    pub metadata: UncheckedAccount<'info>,
 
     #[account(mut)]
     /// CHECK: This account will be initialized by the metaplex program
-    master_edition: UncheckedAccount<'info>,
+    pub master_edition: UncheckedAccount<'info>,
 
     #[account(
         init,
@@ -51,12 +51,12 @@ pub struct CreateCollectionAccountConstraints<'info> {
         associated_token::mint = mint,
         associated_token::authority = user
     )]
-    destination: Account<'info, TokenAccount>,
+    pub destination: Account<'info, TokenAccount>,
 
-    system_program: Program<'info, System>,
-    token_program: Program<'info, Token>,
-    associated_token_program: Program<'info, AssociatedToken>,
-    token_metadata_program: Program<'info, Metadata>,
+    pub system_program: Program<'info, System>,
+    pub token_program: Program<'info, Token>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
+    pub token_metadata_program: Program<'info, Metadata>,
 }
 
 /// Creates a collection NFT with caller-supplied metadata.

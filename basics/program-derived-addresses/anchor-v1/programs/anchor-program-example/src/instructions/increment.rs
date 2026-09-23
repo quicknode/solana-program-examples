@@ -3,7 +3,7 @@ use anchor_lang::prelude::*;
 
 #[derive(Accounts)]
 pub struct IncrementPageVisitsAccountConstraints<'info> {
-    user: SystemAccount<'info>,
+    pub user: SystemAccount<'info>,
     #[account(
         mut,
         seeds = [
@@ -12,7 +12,7 @@ pub struct IncrementPageVisitsAccountConstraints<'info> {
         ],
         bump = page_visits.bump,
     )]
-    page_visits: Account<'info, PageVisits>,
+    pub page_visits: Account<'info, PageVisits>,
 }
 
 pub fn handle_increment_page_visits(

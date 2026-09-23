@@ -6,10 +6,14 @@ use anchor_spl::{
         spl_token_2022::{extension::ExtensionType, pod::PodMint},
         InitializeMint2,
     },
-    token_interface::{interest_bearing_mint_initialize, InterestBearingMintInitialize, Token2022},
+    token_2022::spl_token_2022::extension::interest_bearing_mint::InterestBearingConfig,
+    token_interface::{
+        get_mint_extension_data, interest_bearing_mint_initialize, InterestBearingMintInitialize,
+        Token2022,
+    },
 };
 
-use crate::check_mint_data;
+use crate::check_rate_authority;
 
 #[derive(Accounts)]
 pub struct InitializeAccountConstraints<'info> {
@@ -72,9 +76,9 @@ pub fn handler(context: Context<InitializeAccountConstraints>, rate: i16) -> Res
         Some(&context.accounts.payer.key()), // freeze authority
     )?;
 
-    check_mint_data(
+    let config = get_mint_extension_data::<InterestBearingConfig>(
         &context.accounts.mint_account.to_account_info(),
-        &context.accounts.payer.key(),
     )?;
+    check_rate_authority(&config, &context.accounts.payer.key())?;
     Ok(())
 }
