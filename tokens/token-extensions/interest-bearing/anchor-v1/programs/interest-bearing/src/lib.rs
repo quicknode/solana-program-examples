@@ -1,11 +1,5 @@
 use anchor_lang::prelude::*;
-use anchor_spl::token_2022::spl_token_2022::{
-    extension::{
-        interest_bearing_mint::InterestBearingConfig, BaseStateWithExtensions,
-        StateWithExtensions,
-    },
-    state::Mint as MintState,
-};
+use anchor_spl::token_2022::spl_token_2022::extension::interest_bearing_mint::InterestBearingConfig;
 use anchor_spl::token_interface::spl_pod::optional_keys::OptionalNonZeroPubkey;
 
 mod instructions;
@@ -27,16 +21,15 @@ pub mod interest_bearing {
     }
 }
 
-pub fn check_mint_data(mint_account_info: &AccountInfo, authority_key: &Pubkey) -> Result<()> {
-    let mint_data = mint_account_info.data.borrow();
-    let mint_with_extension = StateWithExtensions::<MintState>::unpack(&mint_data)?;
-    let extension_data = mint_with_extension.get_extension::<InterestBearingConfig>()?;
-
+/// Assert the extension names `authority_key` as the account allowed to change
+/// the rate. Both callers read the extension with anchor-spl's
+/// `get_mint_extension_data`, which parses the mint's TLV data.
+pub fn check_rate_authority(config: &InterestBearingConfig, authority_key: &Pubkey) -> Result<()> {
     assert_eq!(
-        extension_data.rate_authority,
+        config.rate_authority,
         OptionalNonZeroPubkey::try_from(Some(*authority_key))?
     );
 
-    msg!("{:?}", extension_data);
+    msg!("{:?}", config);
     Ok(())
 }

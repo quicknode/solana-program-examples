@@ -1,9 +1,11 @@
 use anchor_lang::prelude::*;
+use anchor_spl::token_2022::spl_token_2022::extension::interest_bearing_mint::InterestBearingConfig;
 use anchor_spl::token_interface::{
-    interest_bearing_mint_update_rate, InterestBearingMintUpdateRate, Mint, Token2022,
+    get_mint_extension_data, interest_bearing_mint_update_rate, InterestBearingMintUpdateRate, Mint,
+    Token2022,
 };
 
-use crate::check_mint_data;
+use crate::check_rate_authority;
 
 #[derive(Accounts)]
 pub struct UpdateRateAccountConstraints<'info> {
@@ -29,9 +31,9 @@ pub fn handler(context: Context<UpdateRateAccountConstraints>, rate: i16) -> Res
         rate,
     )?;
 
-    check_mint_data(
+    let config = get_mint_extension_data::<InterestBearingConfig>(
         &context.accounts.mint_account.to_account_info(),
-        &context.accounts.authority.key(),
     )?;
+    check_rate_authority(&config, &context.accounts.authority.key())?;
     Ok(())
 }
