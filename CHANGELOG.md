@@ -20,6 +20,37 @@ the Quasar lending variant drops its `update_slots_per_year` instruction.
 Price freshness is still counted in slots. All three variants (Anchor v2,
 Anchor v1, Quasar) of both programs change.
 
+## [2026-09-22] - The first-deposit minimum is counted in every share divisor
+
+The token swap and perpetual futures examples both withhold a minimum from the
+first deposit's LP shares, but only one side of their share math counted it.
+
+- Token swap: `withdraw_liquidity` divided by `lp_supply + MINIMUM_LIQUIDITY`,
+  but `deposit_liquidity` minted later deposits against the bare `lp_supply`.
+  Every later depositor was minted slightly fewer LP tokens than they could
+  redeem; a donation to the vaults as large as a victim's deposit, rather than
+  101 times it, rounded that deposit down; and once every LP token was burned
+  the pool could never take a deposit again, since the floor's reserves stayed
+  behind with a supply of zero to divide by. Later deposits now divide by
+  `lp_supply + MINIMUM_LIQUIDITY` as well, in all three ports.
+- Perpetual futures: `add_liquidity` withheld 1,000 shares from the first
+  deposit but both `add_liquidity` and `remove_liquidity` divided by the bare
+  share supply, so the withheld value belonged to the share holders pro rata
+  and locked nothing. Shares are priced against `Pool.liquidity` rather than
+  the vault balance, so a direct donation moves nothing, but a provider who is
+  also the pool's only trader can grow `liquidity` with their own funding
+  payments. A new test does exactly that: the attacker opens the pool with one
+  share, pays about 1,000 USDC of funding into it, and against the old program
+  withdraws about 1,500 USDC after a victim deposits. Both handlers now divide
+  by the share supply plus `MINIMUM_LIQUIDITY`, and a pool whose providers have
+  all left prices the next deposit against the locked slice instead of
+  bootstrapping it, in all three ports.
+- The token swap's Kani crate models the deposit formula and proves a deposit
+  followed by a withdrawal returns at most the deposit and loses less than one
+  LP token's worth, a bound the bare-supply formula fails.
+- The Anchor v1 ports take the same fixes, since they correct share
+  accounting rather than add features.
+
 ## [2026-09-22] - Vault strategy ignores donations
 
 The vault strategy valued itself and paid withdrawals from its vaults' token

@@ -62,7 +62,10 @@ pub fn handle_add_liquidity(
     )?;
 
     let lp_supply = accounts.lp_mint.supply();
-    let shares: u64 = if lp_supply == 0 {
+    // Bootstrap only an empty pool. Once any deposit has landed, the withheld
+    // minimum's slice stays in `liquidity` even if every provider leaves, and
+    // later deposits are priced against it.
+    let shares: u64 = if lp_supply == 0 && accounts.pool.liquidity.get() == 0 {
         amount
             .checked_sub(MINIMUM_LIQUIDITY)
             .ok_or_else(|| err(error::DEPOSIT_TOO_SMALL))?
@@ -80,8 +83,16 @@ pub fn handle_add_liquidity(
         if aum <= 0 {
             return Err(err(error::POOL_INSOLVENT));
         }
+        // The withheld minimum counts as shares nobody holds, here and in
+        // remove_liquidity. A provider who is also the only trader can grow
+        // `liquidity` with their own funding payments and losses; with the
+        // minimum in the divisor, an attacker's single share is 1 of 1_001 and
+        // whatever they pay in is spread across shares they cannot redeem.
+        let total_shares = (lp_supply as u128)
+            .checked_add(MINIMUM_LIQUIDITY as u128)
+            .ok_or(ProgramError::ArithmeticOverflow)?;
         let computed = (amount as u128)
-            .checked_mul(lp_supply as u128)
+            .checked_mul(total_shares)
             .ok_or(ProgramError::ArithmeticOverflow)?
             .checked_div(aum as u128)
             .ok_or(ProgramError::ArithmeticOverflow)?;

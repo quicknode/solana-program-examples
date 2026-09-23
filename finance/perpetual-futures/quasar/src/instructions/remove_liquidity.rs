@@ -1,5 +1,6 @@
 use {
     crate::{
+        constants::MINIMUM_LIQUIDITY,
         instructions::shared::{err, error, refresh_price_and_funding, traders_unrealized_pnl},
         state::Pool,
         LpMintPda,
@@ -75,10 +76,15 @@ pub fn handle_remove_liquidity(
         return Err(err(error::POOL_INSOLVENT));
     }
 
+    // The withheld minimum counts as shares nobody holds, as it does in
+    // add_liquidity, so its slice of the pool never leaves.
+    let total_shares = (lp_supply as u128)
+        .checked_add(MINIMUM_LIQUIDITY as u128)
+        .ok_or(ProgramError::ArithmeticOverflow)?;
     let amount_out = (shares as u128)
         .checked_mul(aum as u128)
         .ok_or(ProgramError::ArithmeticOverflow)?
-        .checked_div(lp_supply as u128)
+        .checked_div(total_shares)
         .ok_or(ProgramError::ArithmeticOverflow)?;
     let amount_out = u64::try_from(amount_out).map_err(|_| ProgramError::ArithmeticOverflow)?;
 

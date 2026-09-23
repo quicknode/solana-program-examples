@@ -11,7 +11,17 @@ same rename applies to `initialize_pool`'s and `set_funding_rate`'s arguments. A
 timestamp at or before the stored one accrues nothing. `advance_funding` is
 replaced by `accrue_funding`, which updates the pool in place as the Anchor
 version's does. Tested by `funding_follows_seconds_not_slots`, with
-`set_funding_rate_settles_at_the_old_rate_first` now counting seconds.
+`set_funding_rate_settles_at_the_old_rate_first` and
+`inflating_liquidity_through_own_trades_does_not_pay` now counting seconds.
+
+`add_liquidity` and `remove_liquidity` now divide by the share supply plus
+`MINIMUM_LIQUIDITY`, so the 1,000 shares withheld from the first deposit belong
+to nobody and their slice of the pool stays locked. Before, both divided by the
+bare supply, and a provider who was also the only trader could pay funding into
+`liquidity` to inflate their single share and take part of the next deposit. A
+pool whose providers have all left now prices the next deposit against the
+locked slice. `inflating_liquidity_through_own_trades_does_not_pay` runs the
+attack.
 
 ## 2026-09-10
 

@@ -10,8 +10,20 @@ the reduction to 200 ms slots doubled it. `Pool::funding_rate_per_slot` is now
 same rename applies to `PoolParameters` and `set_funding_rate`'s argument. A
 timestamp at or before the stored one accrues nothing. Tested by
 `test_funding_follows_seconds_not_slots`, with
-`test_set_funding_rate_settles_at_the_old_rate_first` and
-`test_funding_charged_to_long` now counting seconds.
+`test_set_funding_rate_settles_at_the_old_rate_first`,
+`test_funding_charged_to_long` and
+`test_inflating_liquidity_through_own_trades_does_not_pay` now counting
+seconds.
+
+`add_liquidity` and `remove_liquidity` now divide by the share supply plus
+`MINIMUM_LIQUIDITY`, so the 1,000 shares withheld from the first deposit
+belong to nobody and their slice of the pool stays locked. Before, both divided
+by the bare supply, the withheld value was shared among the holders, and a
+provider who was also the only trader could pay funding into `liquidity` to
+inflate their single share and take part of the next deposit. A pool whose
+providers have all left now prices the next deposit against the locked slice
+rather than bootstrapping it. A sole provider's round trip returns the deposit
+less the 1,000 minimum, and a new test runs the funding-based inflation attack.
 
 ## 2026-09-10
 

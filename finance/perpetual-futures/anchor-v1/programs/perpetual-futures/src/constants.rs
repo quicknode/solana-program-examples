@@ -17,10 +17,13 @@ pub const SIZE_PRECISION: u128 = 1_000_000_000;
 
 /// Liquidity-provider shares withheld from the first deposit. The first
 /// depositor receives `deposit - MINIMUM_LIQUIDITY` shares rather than the full
-/// amount, the same convention Uniswap V2 uses, so the share supply can never be
-/// driven to a dust amount that rounding could exploit. (Share value here is
-/// priced off tracked liquidity, not the vault token balance, so a direct
-/// donation to the vault cannot move it.)
+/// amount, the same convention Uniswap V2 uses, and both `add_liquidity` and
+/// `remove_liquidity` divide by the share supply plus this minimum, so the
+/// withheld shares belong to nobody and their slice of the pool never leaves.
+/// Share value is priced off tracked liquidity, not the vault token balance,
+/// so a direct donation to the vault cannot move it; but a provider who is also
+/// the only trader can grow `liquidity` with their own funding payments and
+/// losses, and it is the locked minimum that makes that cost them.
 #[constant]
 pub const MINIMUM_LIQUIDITY: u64 = 1_000;
 
