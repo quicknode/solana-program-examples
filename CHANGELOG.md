@@ -19,8 +19,8 @@ unsettled balance, exactly as `cancel_order` refunds it, and stamped
 `MarketUser` after the maker pairs, or only the order when it is their own.
 The capacity was also misstated: a side holds 512 orders, not 1024, because
 every order after the first adds a leaf and an inner node to the side's
-1024-node tree. The Anchor v2 and Quasar variants change; the Anchor v1 port
-is a frozen snapshot and does not change.
+1024-node tree. All three variants (Anchor v2, Anchor v1, Quasar) change,
+with the same five tests in each.
 
 ## [2026-09-23] - Anchor v1 copies match their v2 counterparts where the version allows
 
