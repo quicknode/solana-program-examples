@@ -883,13 +883,21 @@ The specific data structure used here is a
 [critbit tree](https://cr.yp.to/critbit.html) (short for *critical-bit
 tree*) - a compact binary radix trie where each internal node splits on
 the first bit where two keys disagree. Unlike a self-balancing BST it
-never rotates or recolours nodes; its depth is instead bounded by the
-*bit width of the key* rather than the number of orders, so it stays
-shallow no matter what order keys arrive in. This implementation is ported from
+never rotates or recolours nodes, so it does not stay balanced: asks at
+prices 2, 4, 8, ... each set a new highest price bit and add a level to
+the path to the cheapest ask. Its depth is bounded instead by the *bit
+width of the key*: the price fills the top 64 of the key's 128 bits, so
+prices alone can lengthen a path by at most 64 levels, and no path can
+exceed 128. `doubling_prices_build_the_deepest_path_prices_allow` builds
+that 64-level path, and
+`deepest_path_adds_little_compute_to_insert_fill_and_cancel` checks that
+inserting, filling, and canceling at the bottom of it each cost less than
+15,000 compute units more than on a shallow book, and stay inside the
+default 200,000-unit instruction budget. This implementation is ported from
 [Openbook v2](https://github.com/openbook-dex/openbook-v2);
-[Phoenix](https://github.com/Ellipsis-Labs/phoenix-v1) uses the same
-approach. Both are production Solana CLOBs worth reading alongside this
-example.
+[Phoenix](https://github.com/Ellipsis-Labs/phoenix-v1) keeps its book in a
+red-black tree, the self-balancing alternative. Both are production Solana
+CLOBs worth reading alongside this example.
 
 ### 4.1 The plan
 
@@ -1425,16 +1433,21 @@ anchor test --skip-local-validator
 Expected:
 
 ```
-running 23 tests
+running 29 tests
 test authority_can_withdraw_fees_after_match ... ok
 test cancel_and_settle_bid_refunds_full_quote ... ok
 test cancel_ask_credits_unsettled_base ... ok
 test cancel_order_rejects_non_owner ... ok
-test initialize_market_user_tracks_market_and_owner ... ok
+test deepest_path_adds_little_compute_to_insert_fill_and_cancel ... ok
+test doubling_prices_build_the_deepest_path_prices_allow ... ok
+test fee_rounds_up_when_gross_is_not_a_bps_multiple ... ok
 test fee_vault_receives_exactly_bps_of_taker_gross ... ok
 test initialize_market_rejects_oversized_fee ... ok
+test initialize_market_rejects_zero_base_lot_size ... ok
+test initialize_market_rejects_zero_quote_lot_size ... ok
 test initialize_market_rejects_zero_tick_size ... ok
 test initialize_market_sets_market_and_order_book ... ok
+test initialize_market_user_tracks_market_and_owner ... ok
 test place_ask_locks_base_in_vault ... ok
 test place_bid_locks_quote_in_vault ... ok
 test place_order_rejects_below_min_order_size ... ok
@@ -1443,6 +1456,7 @@ test place_order_rejects_zero_price ... ok
 test resting_orders_at_same_price_fill_by_time_priority ... ok
 test settle_funds_after_match_pays_out_both_unsettled_balances ... ok
 test settle_funds_moves_unsettled_base_to_user ... ok
+test settle_funds_rejects_fee_vault_substituted_for_quote_vault ... ok
 test taker_ask_fully_crosses_best_bid ... ok
 test taker_bid_fully_crosses_best_ask ... ok
 test taker_bid_gets_price_improvement_from_resting_ask ... ok
@@ -1487,6 +1501,11 @@ test taker_partially_fills_resting_order_rest_stays_on_book ... ok
 - `fee_vault_receives_exactly_bps_of_taker_gross`: Fee math in a single batched CPI
 - `authority_can_withdraw_fees_after_match`: Fee drain after fills, authority-gated
 - `settle_funds_after_match_pays_out_both_unsettled_balances`: Both legs paid in one call
+
+**Tree depth:**
+
+- `doubling_prices_build_the_deepest_path_prices_allow`: Asks at 63 doubling prices plus two at price 1 make a 64-level path to the best ask
+- `deepest_path_adds_little_compute_to_insert_fill_and_cancel`: Insert, fill, and cancel at the bottom of that path stay within 15,000 compute units of a shallow book
 
 ### CI note
 
