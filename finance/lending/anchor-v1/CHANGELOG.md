@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-09-22
+
+Accrue interest by the wall clock instead of by slots. The reserve's
+`slots_per_year` config field was a guess at the cluster's slot length, and the
+test default of 78,840,000 (a 400 ms slot) charged twice the advertised APR once
+the network moved to 200 ms slots. Interest now accrues for the seconds between
+the Clock's `unix_timestamp` and the new `Reserve::last_accrual_timestamp`, at
+the APR divided by `SECONDS_PER_YEAR`; `slots_per_year` is gone from
+`ReserveConfig`, and `current_borrow_rate_per_slot` is now
+`current_borrow_rate_per_second`. A timestamp at or before the stored one
+accrues nothing. `last_update_slot` stays, as the same-slot refresh check.
+`update_reserve_config` now accrues at the old curve before storing the new one.
+Tested by `interest_accrues_by_seconds_not_slots`,
+`a_timestamp_behind_the_last_accrual_charges_nothing` and
+`a_config_update_accrues_at_the_old_rates_first`, which replace
+`slots_per_year_scales_the_per_slot_rate` and `rejects_zero_slots_per_year`.
+
 ## 2026-08-14
 
 Move slots-per-year out of the code and into the reserve config. Turning an APR

@@ -69,16 +69,16 @@ Everything else mirrors the Anchor version.
   the owner earns.
 - **Integer-only math**: `u128`, scaled by `FIXED_POINT_SCALE` (10^18), every
   conversion rounding in the protocol's favour.
-- **`slots_per_year`**: the divisor that turns a reserve's annual rate curve into
-  the per-slot rate interest accrues at. It is the cluster's slot time expressed
-  as a count, which is why it is stored rather than compiled in: Solana lowers
-  the slot time over time, and a reserve left on an old figure charges borrowers
-  more per day than the APR it advertises. Read the current slot time off the
-  cluster you deploy against (two
-  [`getBlockTime`](https://solana.com/docs/rpc/http/getblocktime) results a known
-  number of slots apart) and keep the reserve in step with
-  `update_slots_per_year`, which accrues at the old figure before storing the new
-  one.
+- **Interest on the wall clock**: a reserve's rate curve is annual, and the
+  conversion to a per-second rate divides by `SECONDS_PER_YEAR`. Elapsed time is
+  the Clock's `unix_timestamp` minus the reserve's `last_accrual_timestamp`, so a
+  borrower pays the advertised APR over a real year whatever the cluster's slot
+  time is. Counting slots instead would need a slots-per-year divisor, which is a
+  guess at the slot length: the network changes that length by feature gate, and
+  does not deliver it exactly between changes. The timestamp is written by each
+  block's leader, but the runtime bounds how far one block can move it, so an
+  elapsed time is out by a second or two at most, which is nothing against an
+  annual rate. A timestamp at or before the stored one accrues nothing.
 
 ### Instruction handlers (numeric discriminators)
 
@@ -87,7 +87,7 @@ Everything else mirrors the Anchor version.
 `initialize_obligation` (5), `deposit_obligation_collateral` (6),
 `withdraw_obligation_collateral` (7), `borrow_obligation_liquidity` (8),
 `repay_obligation_liquidity` (9), `liquidate_obligation` (10),
-`collect_protocol_fees` (11), `update_slots_per_year` (12).
+`collect_protocol_fees` (11).
 
 ## Setup
 
@@ -105,5 +105,7 @@ cargo test tests::       # runs the quasar-svm integration tests
 `cargo build-sbf` must run first: the tests load the compiled
 `target/deploy/quasar_lending.so` into `quasar-svm`. The suite drives the full
 lifecycle: supply/redeem (1:1 first deposit), borrow up to the LTV limit (and
-rejection beyond it), repay, interest accrual lifting the share value after slots
-pass, and liquidation of an unhealthy position (with a healthy position rejected).
+rejection beyond it), repay, interest accrual lifting the share value after time
+passes, interest that follows seconds rather than slots (and charges nothing for a
+timestamp behind the last accrual), and liquidation of an unhealthy position (with
+a healthy position rejected).

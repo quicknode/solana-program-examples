@@ -52,7 +52,7 @@ pub struct InitializePool {
 pub fn handle_initialize_pool(
     accounts: &mut InitializePool,
     oracle_scale: u32,
-    funding_rate_per_slot: u64,
+    funding_rate_per_second: u64,
     open_fee_bps: u16,
     close_fee_bps: u16,
     max_leverage: u16,
@@ -86,7 +86,7 @@ pub fn handle_initialize_pool(
         return Err(err(error::INVALID_PARAMETER));
     }
 
-    let slot = accounts.clock.slot.get();
+    let unix_timestamp = accounts.clock.unix_timestamp.get();
     accounts.pool.set_inner(PoolInner {
         authority: *accounts.authority.address(),
         collateral_mint: *accounts.collateral_mint.address(),
@@ -103,8 +103,8 @@ pub fn handle_initialize_pool(
         long_size_scaled: 0,
         short_size_scaled: 0,
         cumulative_funding: 0,
-        last_funding_slot: slot,
-        funding_rate_per_slot,
+        last_funding_timestamp: unix_timestamp,
+        funding_rate_per_second,
         open_fee_bps,
         close_fee_bps,
         max_leverage,

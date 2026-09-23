@@ -2,6 +2,19 @@
 
 ## 2026-09-22
 
+Accrue funding by the wall clock instead of by slots. The rate was quoted per
+slot, so what a position cost per hour moved with the cluster's slot time, and
+the reduction to 200 ms slots doubled it. `Pool::funding_rate_per_slot` is now
+`funding_rate_per_second`, and `last_funding_slot` is now
+`last_funding_timestamp`, the Clock's `unix_timestamp` at the last accrual; the
+same rename applies to `PoolParameters` and `set_funding_rate`'s argument. A
+timestamp at or before the stored one accrues nothing. Tested by
+`test_funding_follows_seconds_not_slots`, with
+`test_set_funding_rate_settles_at_the_old_rate_first`,
+`test_funding_charged_to_long` and
+`test_inflating_liquidity_through_own_trades_does_not_pay` now counting
+seconds.
+
 `add_liquidity` and `remove_liquidity` now divide by the share supply plus
 `MINIMUM_LIQUIDITY`, so the 1,000 shares withheld from the first deposit
 belong to nobody and their slice of the pool stays locked. Before, both divided

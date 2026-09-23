@@ -63,22 +63,28 @@ closing the classic empty-pool inflation attack. The first deposit mints 1:1.
 ### Interest: a kinked curve and a cumulative index
 
 Each `refresh_reserve` advances `borrow_accumulation_factor` by
-`(1 + rate_per_slot * elapsed_slots)`. `rate_per_slot` comes from a kinked
+`(1 + rate_per_second * elapsed_seconds)`. `rate_per_second` comes from a kinked
 utilization curve: linear from `min_borrow_rate_bps` to `optimal_borrow_rate_bps`
 up to `optimal_utilization_bps`, then steeper to `max_borrow_rate_bps` at full
 utilization. Each borrow stores its principal as **scaled debt** (principal ÷
 index at borrow time), so every obligation's debt grows automatically as the
 index advances: no per-obligation accrual loop.
 
-Those curve parameters are annual, and the conversion to a per-slot rate divides
-by `config.slots_per_year`. That divisor is the cluster's slot time expressed as
-a count, which is why it is configuration and not a constant: Solana lowers the
-slot time over time, and a reserve left on an old figure charges borrowers more
-per day than the APR it advertises, with nothing in the program changed to say
-so. Read the current slot time off the cluster you deploy against (two
-[`getBlockTime`](https://solana.com/docs/rpc/http/getblocktime) results a known
-number of slots apart) and keep the reserve in step with
-`update_reserve_config`.
+Those curve parameters are annual, and the conversion to a per-second rate
+divides by `SECONDS_PER_YEAR`. Elapsed time is the Clock's `unix_timestamp`
+minus the reserve's `last_accrual_timestamp`, so a borrower pays the advertised
+APR over a real year whatever the cluster's slot time is. Counting slots instead
+would need a slots-per-year divisor, which is a guess at the slot length: the
+network changes that length by feature gate, and does not deliver it exactly
+between changes. The timestamp is written by each block's leader, but the
+runtime bounds how far one block can move it, so an elapsed time is out by a
+second or two at most, which is nothing against an annual rate. A timestamp at
+or before the stored one accrues nothing. `update_reserve_config` accrues at the
+old curve before storing a new one, so the seconds already elapsed are charged
+at the rates that applied to them.
+
+The reserve still records `last_update_slot`, for a different job: handlers that
+read the reserve's value require the refresh to have run in the current slot.
 
 ### Protocol fees (how the market earns)
 

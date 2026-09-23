@@ -53,7 +53,13 @@ pub fn handle_remove_liquidity(
     }
 
     let slot = accounts.clock.slot.get();
-    let price = refresh_price_and_funding(&mut accounts.pool, &accounts.oracle_feed, slot)?;
+    let unix_timestamp = accounts.clock.unix_timestamp.get();
+    let price = refresh_price_and_funding(
+        &mut accounts.pool,
+        &accounts.oracle_feed,
+        slot,
+        unix_timestamp,
+    )?;
 
     let lp_supply = accounts.lp_mint.supply();
     let traders = traders_unrealized_pnl(

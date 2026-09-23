@@ -15,9 +15,11 @@ use crate::{
 
 use crate::constants::BPS_DENOMINATOR;
 
-/// Current slot as a native `u64`.
-pub fn now() -> Result<u64, ProgramError> {
-    Ok(u64::from(Clock::get()?.slot))
+/// The Clock's slot and `unix_timestamp`, as native types. The slot measures
+/// price freshness; the timestamp measures interest.
+pub fn now() -> Result<(u64, i64), ProgramError> {
+    let clock = Clock::get()?;
+    Ok((u64::from(clock.slot), i64::from(clock.unix_timestamp)))
 }
 
 /// Read a reserve into a native-typed, mutable snapshot.
@@ -34,7 +36,7 @@ pub fn snapshot_reserve(reserve: &Account<Reserve>) -> ReserveInner {
         borrowed_principal: u128::from(reserve.borrowed_principal),
         borrow_accumulation_factor: u128::from(reserve.borrow_accumulation_factor),
         last_update_slot: u64::from(reserve.last_update_slot),
-        slots_per_year: u64::from(reserve.slots_per_year),
+        last_accrual_timestamp: i64::from(reserve.last_accrual_timestamp),
         liquidity_decimals: reserve.liquidity_decimals,
         loan_to_value_bps: u16::from(reserve.loan_to_value_bps),
         liquidation_threshold_bps: u16::from(reserve.liquidation_threshold_bps),
@@ -62,9 +64,29 @@ pub fn snapshot_obligation(obligation: &Account<Obligation>) -> ObligationInner 
     }
 }
 
-/// Advance a reserve snapshot's accumulation factor to `slot` (a single
-/// `factor *= 1 + rate_per_slot * elapsed` per call, compounding across calls).
-pub fn accrue(reserve: &mut ReserveInner, slot: u64) -> Result<(), ProgramError> {
+/// Advance a reserve snapshot's accumulation factor for the seconds elapsed
+/// since the last accrual, and record `current_slot` as the slot of this one.
+/// `new_factor = factor * (1 + rate_per_second * elapsed_seconds)`, a single
+/// multiply per call that compounds across calls (Solend's approach, on the
+/// wall clock rather than the slot count).
+///
+/// The timestamp is written by each block's leader. The runtime rejects a
+/// block whose time goes backwards, but a timestamp at or before the stored
+/// one is still treated as no time elapsed, and the stored stamp is left
+/// where it is, so no second is ever charged twice or skipped.
+pub fn accrue(
+    reserve: &mut ReserveInner,
+    current_slot: u64,
+    current_timestamp: i64,
+) -> Result<(), ProgramError> {
+    let elapsed = if current_timestamp > reserve.last_accrual_timestamp {
+        current_timestamp
+            .checked_sub(reserve.last_accrual_timestamp)
+            .ok_or(LendingError::MathOverflow)? as u128
+    } else {
+        0
+    };
+
     let borrowed_before = current_debt(
         reserve.borrowed_principal,
         reserve.borrow_accumulation_factor,
@@ -73,13 +95,11 @@ pub fn accrue(reserve: &mut ReserveInner, slot: u64) -> Result<(), ProgramError>
         reserve.borrow_accumulation_factor,
         reserve.borrowed_principal,
         reserve.available_liquidity,
-        reserve.last_update_slot,
-        slot,
+        elapsed,
         reserve.optimal_utilization_bps,
         reserve.min_borrow_rate_bps,
         reserve.optimal_borrow_rate_bps,
         reserve.max_borrow_rate_bps,
-        reserve.slots_per_year,
     )?;
     // The protocol keeps `reserve_factor_bps` of the newly accrued interest; the
     // rest lifts the supplier exchange rate. Flooring rounds the owner's cut down.
@@ -97,7 +117,10 @@ pub fn accrue(reserve: &mut ReserveInner, slot: u64) -> Result<(), ProgramError>
         .accumulated_protocol_fees
         .checked_add(u64::try_from(fee).map_err(|_| LendingError::MathOverflow)?)
         .ok_or(LendingError::MathOverflow)?;
-    reserve.last_update_slot = slot;
+    if elapsed > 0 {
+        reserve.last_accrual_timestamp = current_timestamp;
+    }
+    reserve.last_update_slot = current_slot;
     Ok(())
 }
 

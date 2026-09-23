@@ -87,7 +87,6 @@ impl InitializeReserve {
         min_borrow_rate_bps: u16,
         optimal_borrow_rate_bps: u16,
         max_borrow_rate_bps: u16,
-        slots_per_year: u64,
         bumps: &InitializeReserveBumps,
     ) -> Result<(), ProgramError> {
         validate_config(
@@ -100,7 +99,6 @@ impl InitializeReserve {
             min_borrow_rate_bps,
             optimal_borrow_rate_bps,
             max_borrow_rate_bps,
-            slots_per_year,
         )?;
 
         let reserve_address = *self.reserve.address();
@@ -152,6 +150,7 @@ impl InitializeReserve {
             .initialize_mint2(&self.share_mint, decimals, &reserve_address, None)
             .invoke()?;
 
+        let (slot, timestamp) = now()?;
         self.reserve.set_inner(ReserveInner {
             lending_market: *self.lending_market.address(),
             liquidity_mint: *self.liquidity_mint.address(),
@@ -163,8 +162,8 @@ impl InitializeReserve {
             accumulated_protocol_fees: 0,
             borrowed_principal: 0,
             borrow_accumulation_factor: crate::constants::FIXED_POINT_SCALE,
-            last_update_slot: now()?,
-            slots_per_year,
+            last_update_slot: slot,
+            last_accrual_timestamp: timestamp,
             liquidity_decimals: decimals,
             loan_to_value_bps,
             liquidation_threshold_bps,
@@ -177,39 +176,6 @@ impl InitializeReserve {
             max_borrow_rate_bps,
             bump: bumps.reserve,
         });
-        Ok(())
-    }
-}
-
-// ---------------------------------------------------------------------------
-// update_slots_per_year
-// ---------------------------------------------------------------------------
-
-#[derive(Accounts)]
-pub struct UpdateSlotsPerYear {
-    pub owner: Signer,
-    #[account(has_one(owner))]
-    pub lending_market: Account<LendingMarket>,
-    #[account(mut, has_one(lending_market))]
-    pub reserve: Account<Reserve>,
-}
-
-impl UpdateSlotsPerYear {
-    /// Retune the reserve to the cluster's current slot time. Every other config
-    /// value is a policy choice the owner makes; this one tracks a protocol
-    /// parameter that changes without asking, so it gets its own handler.
-    ///
-    /// Interest is accrued at the old rate first, so the slots already elapsed
-    /// are charged at the figure that was in force for them rather than being
-    /// silently repriced by the new one.
-    #[inline(always)]
-    pub fn run(&mut self, slots_per_year: u64) -> Result<(), ProgramError> {
-        require!(slots_per_year > 0, LendingError::InvalidConfig);
-
-        let mut reserve = snapshot_reserve(&self.reserve);
-        accrue(&mut reserve, now()?)?;
-        reserve.slots_per_year = slots_per_year;
-        self.reserve.set_inner(reserve);
         Ok(())
     }
 }
@@ -240,12 +206,14 @@ impl SetPrice {
         exponent: i32,
         bumps: &SetPriceBumps,
     ) -> Result<(), ProgramError> {
+        // Prices are stamped with the slot: freshness is counted in slots.
+        let (slot, _) = now()?;
         self.price_feed.set_inner(PriceFeedInner {
             market: *self.lending_market.address(),
             mint: *self.mint.address(),
             price_mantissa,
             exponent,
-            last_updated_slot: now()?,
+            last_updated_slot: slot,
             bump: bumps.price_feed,
         });
         Ok(())
@@ -284,9 +252,9 @@ impl CollectProtocolFees {
     /// the liquidity currently sitting in the vault.
     #[inline(always)]
     pub fn run(&mut self) -> Result<(), ProgramError> {
-        let slot = now()?;
+        let (slot, timestamp) = now()?;
         let mut reserve = snapshot_reserve(&self.reserve);
-        accrue(&mut reserve, slot)?;
+        accrue(&mut reserve, slot, timestamp)?;
 
         let amount = reserve
             .accumulated_protocol_fees

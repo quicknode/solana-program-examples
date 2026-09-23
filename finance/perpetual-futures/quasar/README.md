@@ -31,7 +31,9 @@ math. This page only covers what differs in the Quasar version.
 Tests run in-process with [`quasar-svm`](https://github.com/blueshift-gg/quasar-svm).
 They build the program, set up a collateral mint, oracle feed, and funded
 wallets, then exercise pool initialization, liquidity add/remove, opening and
-closing a long in profit, leverage rejection, liquidation, and fee collection.
+closing a long in profit, leverage rejection, funding-rate retuning (including
+that it settles elapsed seconds at the old rate), funding that follows seconds
+rather than slots, liquidation, and fee collection.
 
 ```bash
 cargo build-sbf

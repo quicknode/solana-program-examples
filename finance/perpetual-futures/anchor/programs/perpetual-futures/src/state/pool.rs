@@ -66,11 +66,14 @@ pub struct Pool {
     /// open and close.
     pub cumulative_funding: i128,
 
-    pub last_funding_slot: u64,
+    /// The Clock's `unix_timestamp` when funding last accrued. Funding runs on
+    /// the wall clock, so what a position costs per hour does not depend on
+    /// the cluster's slot time.
+    pub last_funding_timestamp: i64,
 
-    /// Funding accrued per slot, in `FUNDING_PRECISION` units, applied to the
+    /// Funding accrued per second, in `FUNDING_PRECISION` units, applied to the
     /// heavier side. The funding paid by traders accrues to the pool.
-    pub funding_rate_per_slot: u64,
+    pub funding_rate_per_second: u64,
 
     /// Fee charged on notional when opening a position, in basis points.
     pub open_fee_bps: u16,

@@ -14,6 +14,12 @@ pub const FIXED_POINT_SCALE_DECIMALS: i32 = 18;
 /// 100% expressed in basis points.
 pub const BPS_DENOMINATOR: u128 = 10_000;
 
+/// Seconds in a 365-day year: the divisor that turns an annual rate into the
+/// per-second rate interest accrues at. Interest runs on the wall clock, not
+/// the slot count, because a rate quoted per year is a promise about wall-clock
+/// time and a slots-per-year divisor is only a guess at the slot length.
+pub const SECONDS_PER_YEAR: u128 = 31_536_000;
+
 /// Reject a price feed older than this many slots. Freshness is counted in
 /// slots, not unix time, because the runtime guarantees slot progression while
 /// the timestamp is validator-influenced. How long the window is in seconds

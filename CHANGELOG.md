@@ -4,6 +4,22 @@ All notable changes to this repository are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-09-22] - Lending interest and perpetual futures funding accrue by the wall clock
+
+Both programs accrued over elapsed slots, so a rate quoted per year or per
+hour depended on a guess at the slot length. The lending reserve's
+`slots_per_year` default assumed 400 ms slots and charged twice the advertised
+APR once the network moved to 200 ms. Interest and funding now accrue for the
+seconds between the Clock's `unix_timestamp` and a stored
+`last_accrual_timestamp` (lending) or `last_funding_timestamp` (perpetual
+futures). `slots_per_year` is removed from `ReserveConfig`, and
+`funding_rate_per_slot` is now `funding_rate_per_second`. A timestamp at or
+before the stored one accrues nothing. In the Anchor variants,
+`update_reserve_config` now accrues at the old curve before storing a new one;
+the Quasar lending variant drops its `update_slots_per_year` instruction.
+Price freshness is still counted in slots. All three variants (Anchor v2,
+Anchor v1, Quasar) of both programs change.
+
 ## [2026-09-22] - Betting market events have a draft state and a close time
 
 The betting market locked its outcome list implicitly, by refusing

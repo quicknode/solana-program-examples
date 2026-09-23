@@ -26,7 +26,7 @@ fn deposit_that_would_mint_zero_shares_is_rejected() {
         .unwrap();
 
     // Accrue enough interest that total liquidity exceeds the share supply.
-    env.warp_slots(7_884_000);
+    env.warp_seconds(common::TENTH_OF_A_YEAR);
     env.refresh_reserve_only(&borrower, &borrow);
     assert!(env.reserve(&borrow).borrow_accumulation_factor > lending::constants::FIXED_POINT_SCALE);
 

@@ -67,20 +67,27 @@ pub fn settle_position(pool: &mut Pool, position: &Position, price: u64) -> Resu
     })
 }
 
-/// Advance the pool's cumulative funding index to `current_slot`.
+/// Advance the pool's cumulative funding index to `current_timestamp`, the
+/// Clock's `unix_timestamp`.
 ///
 /// The heavier open-interest side pays funding to the pool: while longs are
 /// larger the index rises (longs owe), while shorts are larger it falls (shorts
 /// owe). No positions means no one to charge, so the index is left untouched and
 /// only the timestamp moves forward.
-pub fn accrue_funding(pool: &mut Pool, current_slot: u64) -> Result<()> {
-    let elapsed = current_slot.saturating_sub(pool.last_funding_slot);
-    if elapsed == 0 {
+///
+/// The timestamp is written by each block's leader. A timestamp at or before
+/// the stored one is treated as no time elapsed and leaves the stored stamp
+/// where it is, so no second is charged twice or skipped.
+pub fn accrue_funding(pool: &mut Pool, current_timestamp: i64) -> Result<()> {
+    if current_timestamp <= pool.last_funding_timestamp {
         return Ok(());
     }
+    let elapsed = current_timestamp
+        .checked_sub(pool.last_funding_timestamp)
+        .ok_or(PerpError::MathOverflow)?;
 
     if pool.long_size != 0 || pool.short_size != 0 {
-        let magnitude = (pool.funding_rate_per_slot as i128)
+        let magnitude = (pool.funding_rate_per_second as i128)
             .checked_mul(elapsed as i128)
             .ok_or(PerpError::MathOverflow)?;
         let delta = if pool.long_size >= pool.short_size {
@@ -94,7 +101,7 @@ pub fn accrue_funding(pool: &mut Pool, current_slot: u64) -> Result<()> {
             .ok_or(PerpError::MathOverflow)?;
     }
 
-    pool.last_funding_slot = current_slot;
+    pool.last_funding_timestamp = current_timestamp;
     Ok(())
 }
 
@@ -210,7 +217,7 @@ pub fn basis_points_of(amount: u64, basis_points: u16) -> Result<u64> {
 }
 
 /// The preamble every price-sensitive handler runs: read a validated oracle
-/// price, then bring the pool's funding index up to the current slot, so the
+/// price, then bring the pool's funding index up to the current time, so the
 /// settlement that follows uses fresh numbers for both. Centralized so no
 /// handler can settle a position against a stale funding index.
 pub fn refresh_price_and_funding(pool: &mut Pool, oracle_feed: &AccountView) -> Result<u64> {
@@ -219,6 +226,6 @@ pub fn refresh_price_and_funding(pool: &mut Pool, oracle_feed: &AccountView) -> 
         pool.oracle_scale,
         pool.max_confidence_bps,
     )?;
-    accrue_funding(pool, Clock::get()?.slot)?;
+    accrue_funding(pool, Clock::get()?.unix_timestamp)?;
     Ok(price)
 }

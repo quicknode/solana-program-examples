@@ -7,7 +7,13 @@ pub fn handle_update_reserve_config(
     config: ReserveConfig,
 ) -> Result<()> {
     config.validate()?;
-    context.accounts.reserve.config = config;
+    // Accrue at the old curve first, so the seconds since the last refresh are
+    // charged at the rates that applied to them rather than repriced by the new
+    // ones.
+    let clock = Clock::get()?;
+    let reserve = &mut context.accounts.reserve;
+    reserve.accrue_interest(clock.slot, clock.unix_timestamp)?;
+    reserve.config = config;
     Ok(())
 }
 

@@ -57,7 +57,13 @@ pub fn handle_open_position(
     }
 
     let slot = accounts.clock.slot.get();
-    let price = refresh_price_and_funding(&mut accounts.pool, &accounts.oracle_feed, slot)?;
+    let unix_timestamp = accounts.clock.unix_timestamp.get();
+    let price = refresh_price_and_funding(
+        &mut accounts.pool,
+        &accounts.oracle_feed,
+        slot,
+        unix_timestamp,
+    )?;
 
     if acceptable_price != 0 {
         let acceptable = if side == SIDE_LONG {

@@ -1,10 +1,10 @@
 mod common;
 
 use anchor_v2_testing::Signer;
-use common::{ata, default_config, dollars, Env, SLOTS_PER_YEAR};
+use common::{ata, default_config, dollars, Env, TENTH_OF_A_YEAR};
 use lending::constants::FIXED_POINT_SCALE;
 
-/// Borrowing at non-zero utilization, then letting slots pass, must grow the
+/// Borrowing at non-zero utilization, then letting time pass, must grow the
 /// reserve's accumulation factor, the borrower's debt, and the share exchange rate.
 #[test]
 fn interest_accrues_on_borrows_over_time() {
@@ -41,9 +41,8 @@ fn interest_accrues_on_borrows_over_time() {
         FIXED_POINT_SCALE
     );
 
-    // Let a tenth of a year pass, counted at the reserve's own slots-per-year
-    // figure, then re-publish prices and refresh.
-    env.warp_slots(SLOTS_PER_YEAR / 10);
+    // Let a tenth of a year pass, then re-publish prices and refresh.
+    env.warp_seconds(TENTH_OF_A_YEAR);
     env.set_price(collateral.mint, dollars(1));
     env.set_price(borrow.mint, dollars(1));
     env.refresh_reserve_only(&borrower, &borrow);
@@ -104,7 +103,7 @@ fn protocol_fees_accrue_and_owner_can_collect() {
     // No interest has accrued yet, so no fees.
     assert_eq!(env.reserve(&borrow).accumulated_protocol_fees, 0);
 
-    env.warp_slots(7_884_000);
+    env.warp_seconds(TENTH_OF_A_YEAR);
     env.refresh_reserve_only(&borrower, &borrow);
 
     // Fees accrued, and they are ~10% (the reserve factor) of total interest.

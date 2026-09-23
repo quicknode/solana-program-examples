@@ -6,8 +6,8 @@ use anchor_lang::prelude::*;
 pub const BASIS_POINTS_DENOMINATOR: u64 = 10_000;
 
 /// Fixed-point precision for the cumulative funding index. The index is carried
-/// as `i128` scaled by this factor so per-slot funding (a tiny ratio) keeps its
-/// precision when integrated over many slots.
+/// as `i128` scaled by this factor so per-second funding (a tiny ratio) keeps its
+/// precision when integrated over many seconds.
 pub const FUNDING_PRECISION: i128 = 1_000_000_000;
 
 /// Fixed-point precision for the aggregate `size / entry_price` accumulators the

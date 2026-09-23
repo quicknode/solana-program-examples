@@ -60,13 +60,13 @@ struct Market {
 }
 
 impl Market {
-    /// Stand up a market with the given starting oracle price and per-slot
+    /// Stand up a market with the given starting oracle price and per-second
     /// funding rate. The admin is both the pool operator and the oracle feed
     /// authority.
-    fn new(initial_price: i128, funding_rate_per_slot: u64) -> Market {
+    fn new(initial_price: i128, funding_rate_per_second: u64) -> Market {
         let parameters = PoolParameters {
             oracle_scale: ORACLE_SCALE,
-            funding_rate_per_slot,
+            funding_rate_per_second,
             open_fee_bps: 10,
             close_fee_bps: 10,
             max_leverage: 10,
@@ -209,8 +209,23 @@ impl Market {
         .unwrap();
     }
 
+    /// Move to `slot`, leaving the Clock's timestamp where it is. Price
+    /// freshness is counted in slots, so this ages prices; funding is counted
+    /// in seconds, so on its own this accrues none.
     fn warp(&mut self, slot: u64) {
         self.svm.warp_to_slot(slot);
+        self.svm.expire_blockhash();
+    }
+
+    /// Let `seconds` of wall-clock time pass: the timestamp moves by `seconds`
+    /// and the slot by five a second, the network's 200 ms target. Funding
+    /// accrues for exactly `seconds`, however many slots that turns out to be.
+    fn pass_seconds(&mut self, seconds: i64) {
+        let target = self.current_slot() + seconds as u64 * 5;
+        self.svm.warp_to_slot(target);
+        let mut clock = self.svm.get_sysvar::<anchor_lang::prelude::Clock>();
+        clock.unix_timestamp += seconds;
+        self.svm.set_sysvar(&clock);
         self.svm.expire_blockhash();
     }
 
@@ -488,7 +503,7 @@ impl Market {
         let instruction = Instruction::new_with_bytes(
             perpetual_futures::id(),
             &perpetual_futures::instruction::SetFundingRate {
-                funding_rate_per_slot: rate,
+                funding_rate_per_second: rate,
             }
             .data(),
             perpetual_futures::accounts::SetFundingRateAccountConstraints {
@@ -645,7 +660,7 @@ fn test_add_and_remove_liquidity_round_trip() {
 /// funding they paid in.
 #[test]
 fn test_inflating_liquidity_through_own_trades_does_not_pay() {
-    // A steep funding rate: 1_000 of notional pays 1_000 USDC over 1_000 slots.
+    // A steep funding rate: 1_000 of notional pays 1_000 USDC over 1_000 seconds.
     let mut market = Market::new(dollars(100), 1_000_000_000_000);
 
     let (attacker, attacker_collateral) = market.funded_trader(10_000 * ONE_USDC);
@@ -671,8 +686,7 @@ fn test_inflating_liquidity_through_own_trades_does_not_pay() {
             0,
         )
         .unwrap();
-    let opened_at = market.current_slot();
-    market.warp(opened_at + 1_000);
+    market.pass_seconds(1_000);
     market.set_price(dollars(100));
     market
         .close_position(&attacker, attacker_collateral, Side::Long, 0)
@@ -996,10 +1010,8 @@ fn test_funding_charged_to_long() {
     let liquidity_before = market.pool_state().liquidity;
 
     // Let funding accrue, then refresh the feed so the price is fresh again and
-    // close at the same price (no profit/loss). Warp relative to the current
-    // slot: LiteSVM starts the clock at a mainnet-like slot, not at zero.
-    let opened_at = market.current_slot();
-    market.warp(opened_at + 2_000);
+    // close at the same price (no profit/loss).
+    market.pass_seconds(2_000);
     market.set_price(dollars(100));
     market
         .close_position(&trader, trader_collateral, Side::Long, 0)
@@ -1021,61 +1033,76 @@ fn test_funding_charged_to_long() {
     );
 }
 
-/// The funding rate is quoted per slot, so what a position costs per hour also
-/// depends on the cluster's slot time. When the protocol shortens the slot, the
-/// pool operator retunes the rate, and the retune must settle the slots already
-/// elapsed at the old rate rather than repricing them at the new one.
+/// Funding held open for a window, closed at an unchanged price: returns the
+/// funding the trader paid. `between` runs halfway through.
+fn funding_paid_over(rate: u64, window: i64, between: impl Fn(&mut Market)) -> u64 {
+    let mut market = Market::new(dollars(100), rate);
+    market.seed_liquidity(100_000 * ONE_USDC);
+
+    let collateral = 1_000 * ONE_USDC;
+    let size = 5_000 * ONE_USDC;
+    let (trader, trader_collateral) = market.funded_trader(collateral);
+    market
+        .open_position(&trader, trader_collateral, Side::Long, collateral, size, 0)
+        .unwrap();
+
+    market.pass_seconds(window);
+    between(&mut market);
+    market.pass_seconds(window);
+    market.set_price(dollars(100));
+    market
+        .close_position(&trader, trader_collateral, Side::Long, 0)
+        .unwrap();
+
+    let fee = size / 1_000;
+    let payout = get_token_account_balance(&market.svm, &trader_collateral).unwrap();
+    (collateral - fee - fee) - payout
+}
+
+/// Retuning the rate settles the seconds already elapsed at the old rate
+/// rather than repricing them at the new one.
 #[test]
 fn test_set_funding_rate_settles_at_the_old_rate_first() {
     let rate = 5_000;
     let window = 2_000;
 
-    // Same position and the same total elapsed slots in both runs. The only
+    // Same position and the same total elapsed seconds in both runs. The only
     // difference is that the second doubles the rate halfway through, so it
     // should pay 1x for the first window and 2x for the second: 1.5x overall.
-    let funding_for = |retune: bool| -> u64 {
-        let mut market = Market::new(dollars(100), rate);
-        market.seed_liquidity(100_000 * ONE_USDC);
-
-        let collateral = 1_000 * ONE_USDC;
-        let size = 5_000 * ONE_USDC;
-        let (trader, trader_collateral) = market.funded_trader(collateral);
-        market
-            .open_position(&trader, trader_collateral, Side::Long, collateral, size, 0)
-            .unwrap();
-
-        let opened_at = market.current_slot();
-        market.warp(opened_at + window);
-        if retune {
-            let admin = market.admin.insecure_clone();
-            market.set_funding_rate(&admin, rate * 2).unwrap();
-        }
-        market.warp(opened_at + 2 * window);
-        market.set_price(dollars(100));
-        market
-            .close_position(&trader, trader_collateral, Side::Long, 0)
-            .unwrap();
-
-        let fee = size / 1_000;
-        let payout = get_token_account_balance(&market.svm, &trader_collateral).unwrap();
-        (collateral - fee - fee) - payout
-    };
-
-    let flat = funding_for(false);
-    let retuned = funding_for(true);
+    let flat = funding_paid_over(rate, window, |_| {});
+    let retuned = funding_paid_over(rate, window, |market| {
+        let admin = market.admin.insecure_clone();
+        market.set_funding_rate(&admin, rate * 2).unwrap();
+    });
     assert!(
         flat > 0,
         "the flat run must pay some funding to compare against"
     );
 
-    // Half the elapsed slots at 1x and half at 2x is 1.5x the flat run. Had the
-    // handler skipped its accrual, the new rate would have applied to every
-    // slot and this would be 2x.
+    // Half the elapsed seconds at 1x and half at 2x is 1.5x the flat run. Had
+    // the handler skipped its accrual, the new rate would have applied to every
+    // second and this would be 2x.
     assert_eq!(
         retuned * 2,
         flat * 3,
         "retuning halfway should cost 1.5x the flat run: flat {flat}, retuned {retuned}"
     );
+}
+
+/// Funding is quoted per second of wall-clock time, so slots passing without
+/// the clock moving charge nothing. A million extra slots halfway through the
+/// window, as a much shorter slot would produce, leave the funding unchanged.
+#[test]
+fn test_funding_follows_seconds_not_slots() {
+    let rate = 5_000;
+    let window = 2_000;
+    let flat = funding_paid_over(rate, window, |_| {});
+    let with_extra_slots = funding_paid_over(rate, window, |market| {
+        let slot = market.current_slot();
+        market.warp(slot + 1_000_000);
+    });
+    assert!(flat > 0);
+    assert_eq!(with_extra_slots, flat);
 }
 
 #[test]
@@ -1302,7 +1329,7 @@ fn test_initialize_pool_rejects_close_fee_at_or_above_maintenance_margin() {
     // close, so initialize_pool refuses the configuration.
     let parameters = PoolParameters {
         oracle_scale: ORACLE_SCALE,
-        funding_rate_per_slot: 0,
+        funding_rate_per_second: 0,
         open_fee_bps: 10,
         close_fee_bps: 600,
         max_leverage: 10,

@@ -53,10 +53,10 @@ impl DepositReserveLiquidity {
     #[inline(always)]
     pub fn run(&mut self, amount: u64) -> Result<(), ProgramError> {
         require!(amount > 0, LendingError::ZeroAmount);
-        let slot = now()?;
+        let (slot, timestamp) = now()?;
 
         let mut reserve = snapshot_reserve(&self.reserve);
-        accrue(&mut reserve, slot)?;
+        accrue(&mut reserve, slot, timestamp)?;
 
         let total = net_total_liquidity(
             reserve.available_liquidity,
@@ -141,10 +141,10 @@ impl RedeemReserveCollateral {
     #[inline(always)]
     pub fn run(&mut self, shares: u64) -> Result<(), ProgramError> {
         require!(shares > 0, LendingError::ZeroAmount);
-        let slot = now()?;
+        let (slot, timestamp) = now()?;
 
         let mut reserve = snapshot_reserve(&self.reserve);
-        accrue(&mut reserve, slot)?;
+        accrue(&mut reserve, slot, timestamp)?;
         require!(
             reserve.share_mint_supply > 0,
             LendingError::InsufficientLiquidity
