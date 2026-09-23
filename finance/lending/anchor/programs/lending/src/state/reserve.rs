@@ -1,6 +1,8 @@
 use anchor_lang::prelude::*;
 
-use crate::constants::{BPS_DENOMINATOR, FIXED_POINT_SCALE, RESERVE_SEED, SECONDS_PER_YEAR};
+use crate::constants::{
+    BPS_DENOMINATOR, FIXED_POINT_SCALE, MINIMUM_SHARES, RESERVE_SEED, SECONDS_PER_YEAR,
+};
 use crate::errors::LendingError;
 use crate::math::{mul_div_ceil, mul_div_floor};
 
@@ -52,7 +54,9 @@ pub struct Reserve {
     /// burning share tokens directly via the token program (outside this
     /// program) makes the real mint supply drift below this mirror; that drift
     /// only lowers what the burner could have redeemed, so the pool never pays
-    /// out more than it holds.
+    /// out more than it holds. The `MINIMUM_SHARES` withheld from the first
+    /// deposit are never minted and are not counted here; `total_shares` adds
+    /// them.
     pub share_mint_supply: u64,
 
     /// Total borrowed principal. The live debt is
@@ -169,6 +173,15 @@ impl Reserve {
     pub fn total_liquidity(&self) -> Result<u128> {
         self.gross_liquidity()?
             .checked_sub(self.accumulated_protocol_fees as u128)
+            .ok_or(LendingError::MathOverflow.into())
+    }
+
+    /// The share count every conversion between shares and liquidity divides
+    /// by: the outstanding supply plus the `MINIMUM_SHARES` withheld from the
+    /// first deposit, which belong to nobody and so never redeem.
+    pub fn total_shares(&self) -> Result<u128> {
+        (self.share_mint_supply as u128)
+            .checked_add(MINIMUM_SHARES as u128)
             .ok_or(LendingError::MathOverflow.into())
     }
 

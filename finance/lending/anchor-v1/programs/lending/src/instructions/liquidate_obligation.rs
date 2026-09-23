@@ -89,7 +89,7 @@ pub fn handle_liquidate_obligation(
     )?;
     let seize_shares = mul_div_floor(
         seize_liquidity as u128,
-        collateral_reserve.share_mint_supply as u128,
+        collateral_reserve.total_shares()?,
         collateral_reserve.total_liquidity()?.max(1),
     )?;
     let seize_shares = u64::try_from(seize_shares).map_err(|_| LendingError::MathOverflow)?;
