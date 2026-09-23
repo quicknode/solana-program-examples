@@ -17,9 +17,10 @@ pub const ASSET_HOLDINGS_BYTES: usize = MAX_ASSETS as usize * 8;
 /// Decode `Strategy::asset_holdings` into one amount per asset index.
 pub fn read_asset_holdings(bytes: &[u8; ASSET_HOLDINGS_BYTES]) -> [u64; MAX_ASSETS as usize] {
     let mut holdings = [0u64; MAX_ASSETS as usize];
-    for (holding, chunk) in holdings.iter_mut().zip(bytes.chunks_exact(8)) {
+    for (index, holding) in holdings.iter_mut().enumerate() {
+        let start = index * 8;
         let mut word = [0u8; 8];
-        word.copy_from_slice(chunk);
+        word.copy_from_slice(&bytes[start..start + 8]);
         *holding = u64::from_le_bytes(word);
     }
     holdings
@@ -28,8 +29,9 @@ pub fn read_asset_holdings(bytes: &[u8; ASSET_HOLDINGS_BYTES]) -> [u64; MAX_ASSE
 /// Encode one amount per asset index into `Strategy::asset_holdings`.
 pub fn write_asset_holdings(holdings: &[u64; MAX_ASSETS as usize]) -> [u8; ASSET_HOLDINGS_BYTES] {
     let mut bytes = [0u8; ASSET_HOLDINGS_BYTES];
-    for (chunk, holding) in bytes.chunks_exact_mut(8).zip(holdings) {
-        chunk.copy_from_slice(&holding.to_le_bytes());
+    for (index, holding) in holdings.iter().enumerate() {
+        let start = index * 8;
+        bytes[start..start + 8].copy_from_slice(&holding.to_le_bytes());
     }
     bytes
 }
