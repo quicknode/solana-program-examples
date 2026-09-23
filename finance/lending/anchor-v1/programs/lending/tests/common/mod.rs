@@ -118,7 +118,9 @@ impl Env {
     }
 
     pub fn current_slot(&self) -> u64 {
-        self.svm.get_sysvar::<anchor_lang::solana_program::clock::Clock>().slot
+        self.svm
+            .get_sysvar::<anchor_lang::solana_program::clock::Clock>()
+            .slot
     }
 
     /// Create a second lending market owned by `market_owner`, for tests that
@@ -141,7 +143,13 @@ impl Env {
             .to_account_metas(None),
             data: lending::instruction::InitializeLendingMarket { market_id }.data(),
         };
-        send(&mut self.svm, vec![instruction], &[market_owner], &market_owner.pubkey()).unwrap();
+        send(
+            &mut self.svm,
+            vec![instruction],
+            &[market_owner],
+            &market_owner.pubkey(),
+        )
+        .unwrap();
         market
     }
 
@@ -181,7 +189,13 @@ impl Env {
             .to_account_metas(None),
             data: lending::instruction::InitializeReserve { config }.data(),
         };
-        send(&mut self.svm, vec![instruction], &[market_owner], &market_owner.pubkey()).unwrap();
+        send(
+            &mut self.svm,
+            vec![instruction],
+            &[market_owner],
+            &market_owner.pubkey(),
+        )
+        .unwrap();
 
         ReserveHandle {
             mint,
@@ -194,7 +208,9 @@ impl Env {
     }
 
     pub fn current_timestamp(&self) -> i64 {
-        self.svm.get_sysvar::<anchor_lang::solana_program::clock::Clock>().unix_timestamp
+        self.svm
+            .get_sysvar::<anchor_lang::solana_program::clock::Clock>()
+            .unix_timestamp
     }
 
     /// Advance the slot only, leaving the Clock's timestamp where it is. Price
@@ -209,7 +225,9 @@ impl Env {
     /// Move the Clock's timestamp by `seconds` (backwards when negative),
     /// leaving the slot where it is. Interest accrues on this clock.
     pub fn shift_timestamp(&mut self, seconds: i64) {
-        let mut clock = self.svm.get_sysvar::<anchor_lang::solana_program::clock::Clock>();
+        let mut clock = self
+            .svm
+            .get_sysvar::<anchor_lang::solana_program::clock::Clock>();
         clock.unix_timestamp += seconds;
         self.svm.set_sysvar(&clock);
         self.svm.expire_blockhash();
@@ -228,9 +246,10 @@ impl Env {
     /// Simulate a cluster restart at `slot`: prices stamped at or before it
     /// must be rejected until the publisher posts again.
     pub fn set_last_restart_slot(&mut self, slot: u64) {
-        self.svm.set_sysvar(&solana_sysvar::last_restart_slot::LastRestartSlot {
-            last_restart_slot: slot,
-        });
+        self.svm
+            .set_sysvar(&solana_sysvar::last_restart_slot::LastRestartSlot {
+                last_restart_slot: slot,
+            });
     }
 
     /// The feed PDA the market owner writes for `mint`: seeded by the owner's
@@ -390,7 +409,12 @@ impl Env {
             .data(),
         };
         let refresh = self.refresh_reserve_ix(handle);
-        send(&mut self.svm, vec![refresh, deposit], &[user], &user.pubkey())?;
+        send(
+            &mut self.svm,
+            vec![refresh, deposit],
+            &[user],
+            &user.pubkey(),
+        )?;
         Ok(user_share)
     }
 
@@ -422,11 +446,20 @@ impl Env {
             data: lending::instruction::RedeemReserveCollateral { share_amount }.data(),
         };
         let refresh = self.refresh_reserve_ix(handle);
-        send(&mut self.svm, vec![refresh, redeem], &[user], &user.pubkey())
+        send(
+            &mut self.svm,
+            vec![refresh, redeem],
+            &[user],
+            &user.pubkey(),
+        )
     }
 
     pub fn initialize_obligation(&mut self, user: &Keypair) -> Pubkey {
-        let obligation = pda(&[OBLIGATION_SEED, self.market.as_ref(), user.pubkey().as_ref()]);
+        let obligation = pda(&[
+            OBLIGATION_SEED,
+            self.market.as_ref(),
+            user.pubkey().as_ref(),
+        ]);
         let instruction = Instruction {
             program_id: lending::id(),
             accounts: lending::accounts::InitializeObligation {
@@ -494,7 +527,8 @@ impl Env {
         deposit_reserves: &[&ReserveHandle],
         borrow_reserves: &[&ReserveHandle],
     ) -> Instruction {
-        let mut accounts = lending::accounts::RefreshObligation { obligation }.to_account_metas(None);
+        let mut accounts =
+            lending::accounts::RefreshObligation { obligation }.to_account_metas(None);
         for handle in deposit_reserves.iter().chain(borrow_reserves.iter()) {
             accounts.push(AccountMeta::new_readonly(handle.reserve, false));
             accounts.push(AccountMeta::new_readonly(handle.price_feed, false));
@@ -540,7 +574,11 @@ impl Env {
         refresh_set.push(borrow);
 
         let mut instructions = self.refresh_all_ix(&refresh_set);
-        instructions.push(self.refresh_obligation_ix(obligation, existing_deposits, existing_borrows));
+        instructions.push(self.refresh_obligation_ix(
+            obligation,
+            existing_deposits,
+            existing_borrows,
+        ));
         instructions.push(self.borrow_ix(user, obligation, borrow, amount));
         send(&mut self.svm, instructions, &[user], &user.pubkey())
     }
@@ -635,7 +673,11 @@ impl Env {
         all.extend_from_slice(borrow_reserves);
 
         let mut instructions = self.refresh_all_ix(&all);
-        instructions.push(self.refresh_obligation_ix(obligation, deposit_reserves, borrow_reserves));
+        instructions.push(self.refresh_obligation_ix(
+            obligation,
+            deposit_reserves,
+            borrow_reserves,
+        ));
         instructions.push(Instruction {
             program_id: lending::id(),
             accounts: lending::accounts::WithdrawObligationCollateral {
@@ -683,7 +725,11 @@ impl Env {
         let mut all: Vec<&ReserveHandle> = deposit_reserves.to_vec();
         all.extend_from_slice(borrow_reserves);
         let mut instructions = self.refresh_all_ix(&all);
-        instructions.push(self.refresh_obligation_ix(obligation, deposit_reserves, borrow_reserves));
+        instructions.push(self.refresh_obligation_ix(
+            obligation,
+            deposit_reserves,
+            borrow_reserves,
+        ));
         instructions.push(Instruction {
             program_id: lending::id(),
             accounts: lending::accounts::LiquidateObligation {
@@ -707,7 +753,12 @@ impl Env {
             }
             .data(),
         });
-        send(&mut self.svm, instructions, &[liquidator], &liquidator.pubkey())
+        send(
+            &mut self.svm,
+            instructions,
+            &[liquidator],
+            &liquidator.pubkey(),
+        )
     }
 
     /// Send a lone `refresh_reserve` so accrued interest lands in the index.
@@ -756,7 +807,13 @@ impl Env {
             .to_account_metas(None),
             data: lending::instruction::CollectProtocolFees {}.data(),
         };
-        send(&mut self.svm, vec![refresh, collect], &[&owner], &owner.pubkey()).unwrap();
+        send(
+            &mut self.svm,
+            vec![refresh, collect],
+            &[&owner],
+            &owner.pubkey(),
+        )
+        .unwrap();
         owner_liquidity
     }
 

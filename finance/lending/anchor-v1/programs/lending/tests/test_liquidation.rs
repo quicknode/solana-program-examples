@@ -28,8 +28,15 @@ fn setup() -> (
     env.supply(&borrower, &collateral, 1_000_000_000);
     let obligation = env.initialize_obligation(&borrower);
     env.post_collateral(&borrower, obligation, &collateral, 1_000_000_000);
-    env.try_borrow(&borrower, obligation, &[&collateral], &[], &borrow, 700_000_000)
-        .unwrap();
+    env.try_borrow(
+        &borrower,
+        obligation,
+        &[&collateral],
+        &[],
+        &borrow,
+        700_000_000,
+    )
+    .unwrap();
 
     let liquidator = env.create_user();
     env.fund(&liquidator, borrow.mint, 1_000_000_000);
@@ -96,7 +103,10 @@ fn unhealthy_obligation_liquidated_with_bonus_capped_by_close_factor() {
 
     // The borrower's debt and collateral both dropped.
     let obligation_state = env.obligation(obligation);
-    assert_eq!(obligation_state.deposits[0].deposited_shares, 1_000_000_000 - 459_375_000);
+    assert_eq!(
+        obligation_state.deposits[0].deposited_shares,
+        1_000_000_000 - 459_375_000
+    );
 }
 
 /// A repayment whose seizure would exceed the posted collateral is rejected
@@ -134,5 +144,8 @@ fn over_seizing_liquidation_rejected_smaller_succeeds() {
     )
     .unwrap();
     let liquidator_collateral_account = ata(&liquidator.pubkey(), &collateral.share_mint);
-    assert_eq!(env.token_balance(liquidator_collateral_account), 525_000_000);
+    assert_eq!(
+        env.token_balance(liquidator_collateral_account),
+        525_000_000
+    );
 }

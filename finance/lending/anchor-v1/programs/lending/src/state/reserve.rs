@@ -189,7 +189,11 @@ impl Reserve {
         if gross == 0 {
             return Ok(0);
         }
-        mul_div_floor(self.current_borrowed_amount()? as u128, BPS_DENOMINATOR, gross)
+        mul_div_floor(
+            self.current_borrowed_amount()? as u128,
+            BPS_DENOMINATOR,
+            gross,
+        )
     }
 
     /// Per-second borrow rate (FIXED_POINT_SCALE-scaled) from the kinked curve:
