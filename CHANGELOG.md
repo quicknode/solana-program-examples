@@ -4,6 +4,16 @@ All notable changes to this repository are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-09-23] - Finance examples point their production oracle path at Pyth
+
+The oracle network that the lending, perpetual futures and prop AMM examples
+modeled their price feeds on has shut down. The perpetual futures and prop AMM
+mock oracle program is now `mock-price-feed` in both Anchor variants, with the
+same program ID, instructions and account layout. Every production-path comment
+and README in the three examples, across Anchor v2, Anchor v1 and Quasar, now
+points at a Pyth `PriceUpdateV2` account, which `basics/pyth` reads. No program
+behavior changes.
+
 ## [2026-09-22] - Lending interest and perpetual futures funding accrue by the wall clock
 
 Both programs accrued over elapsed slots, so a rate quoted per year or per

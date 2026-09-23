@@ -127,7 +127,7 @@ round-trips.
 
 ### Oracle
 
-`PriceFeed` mirrors a Switchboard On-Demand pull feed: a signed mantissa, an
+`PriceFeed` mirrors an oracle price feed such as Pyth's: a signed mantissa, an
 exponent (`price = mantissa * 10^exponent`), and the slot the price was written.
 Freshness is checked in **slots** (`MAX_PRICE_STALENESS_SLOTS`), not wall-clock
 time, plus one check slots alone cannot make: a cluster restart passes hours of
@@ -140,11 +140,12 @@ trusts exactly its own market's feed for the mint, and isolated markets can
 price the same asset independently.
 
 The `set_price` handler writes the feed directly so the LiteSVM tests are
-deterministic; in production a reserve points at the real Switchboard feed and the
-program decodes `PullFeedAccountData` (`price_mantissa = current_result.value`,
-`exponent = -18`, `last_updated_slot = current_result.slot`) instead, and should
-also reject results whose confidence interval is too wide. Switchboard is used
-rather than Pyth here for its lower compute cost.
+deterministic; in production a reserve points at a Pyth price feed and the
+program reads its `PriceUpdateV2` account instead, as
+[`basics/pyth`](../../../basics/pyth/) does, after checking the update's
+`feed_id`: `price_mantissa` is `price_message.price`, `exponent` is
+`price_message.exponent`, and `last_updated_slot` is `posted_slot`. It should
+also reject results whose confidence interval is too wide.
 
 ### Custody
 

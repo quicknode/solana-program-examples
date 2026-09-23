@@ -87,16 +87,16 @@ impl Market {
             include_bytes!("../../../target/deploy/perpetual_futures.so"),
         )
         .unwrap();
-        // Use std::fs::read() instead of include_bytes!() for the switchboard program because
+        // Use std::fs::read() instead of include_bytes!() for the mock feed program because
         // include_bytes!() runs at compile time, and during `anchor build` the IDL generation
         // step compiles tests before the .so files exist. Since this is a cross-program
-        // dependency (not our own program), mock_switchboard.so may not be built yet at compile time.
-        let switchboard_bytes = std::fs::read(concat!(
+        // dependency (not our own program), mock_price_feed.so may not be built yet at compile time.
+        let mock_feed_bytes = std::fs::read(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../target/deploy/mock_switchboard.so"
+            "/../../target/deploy/mock_price_feed.so"
         ))
-        .expect("mock_switchboard.so not found - run `anchor build` first");
-        svm.add_program(mock_switchboard::id(), &switchboard_bytes)
+        .expect("mock_price_feed.so not found - run `anchor build` first");
+        svm.add_program(mock_price_feed::id(), &mock_feed_bytes)
             .unwrap();
 
         let payer = create_wallet(&mut svm, 100_000_000_000).unwrap();
@@ -107,14 +107,14 @@ impl Market {
         // program; the admin is its update authority.
         let feed_keypair = Keypair::new();
         let initialize_feed = Instruction::new_with_bytes(
-            mock_switchboard::id(),
-            &mock_switchboard::instruction::InitializeFeed {
+            mock_price_feed::id(),
+            &mock_price_feed::instruction::InitializeFeed {
                 price: initial_price,
                 scale: ORACLE_SCALE,
                 confidence: 0,
             }
             .data(),
-            mock_switchboard::accounts::InitializeFeedAccountConstraints {
+            mock_price_feed::accounts::InitializeFeedAccountConstraints {
                 feed: feed_keypair.pubkey(),
                 authority: admin.pubkey(),
                 system_program: system_program::id(),
@@ -192,9 +192,9 @@ impl Market {
 
     fn set_price_with_confidence(&mut self, price: i128, confidence: u64) {
         let set_price = Instruction::new_with_bytes(
-            mock_switchboard::id(),
-            &mock_switchboard::instruction::SetPrice { price, confidence }.data(),
-            mock_switchboard::accounts::SetPriceAccountConstraints {
+            mock_price_feed::id(),
+            &mock_price_feed::instruction::SetPrice { price, confidence }.data(),
+            mock_price_feed::accounts::SetPriceAccountConstraints {
                 feed: self.feed,
                 authority: self.admin.pubkey(),
             }

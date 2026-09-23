@@ -1,12 +1,12 @@
 [package]
-name = "mock_switchboard"
+name = "mock_price_feed"
 version = "0.1.0"
-description = "Mock Switchboard On-Demand feed for testing the perpetual-futures program"
+description = "Mock oracle price feed for testing the perpetual-futures program"
 edition = "2021"
 
 [lib]
 crate-type = ["cdylib", "lib"]
-name = "mock_switchboard"
+name = "mock_price_feed"
 
 [features]
 default = []

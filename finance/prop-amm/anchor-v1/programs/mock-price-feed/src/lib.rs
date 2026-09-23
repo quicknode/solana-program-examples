@@ -1,24 +1,25 @@
-//! Mock Switchboard On-Demand feed for testing the perpetual-futures program.
+//! Mock oracle price feed for testing the prop-amm program.
 //!
-//! Real Switchboard On-Demand feeds are program-owned accounts whose data is
-//! produced by an offchain oracle network and verified onchain via Ed25519
-//! signatures over the latest price update. That verification path is
-//! out-of-scope for this teaching example, so this mock stores a single price
-//! the test harness writes directly, plus the slot the update happened in.
+//! A real price feed account is written by an oracle network's receiver
+//! program, which verifies the network's signatures over each price update
+//! before recording it. That verification path is out of scope for this
+//! teaching example, so this mock stores a single price the test harness
+//! writes directly, plus the slot the update happened in.
 //!
-//! The perpetual-futures program reads this feed the same way it would read a
-//! real feed: load the account, decode the layout, read `price`, `scale`, and
-//! `last_update_slot` (see `perpetual_futures::state::oracle`). Swap this
-//! program ID for `SBondMDrcV3K4kxZR1HNVT7osZxAHVHgYXL5Ze1oMUv` (Switchboard
-//! On-Demand) and adapt the layout to consume real feeds in production.
+//! The prop-amm program reads this feed the same way it would read a real
+//! feed: load the account, decode the layout, read `price`, `scale`, and
+//! `last_update_slot` (see `prop_amm::state::oracle`). In production the
+//! program reads a Pyth `PriceUpdateV2` account instead, owned by the Pyth
+//! Receiver program `rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ`. The oracle
+//! module describes that change, and `basics/pyth` reads one.
 //!
 //! NOT FOR PRODUCTION.
 use anchor_lang::prelude::*;
 
-declare_id!("FnisQqhF56BxVYh5Wt8xW8wuTVN6STAGnk13MM5SRM7b");
+declare_id!("BdFYarCfgMJhC26dFN6JXKVx4kUEM3k2wYaNjyjFrvAD");
 
 #[program]
-pub mod mock_switchboard {
+pub mod mock_price_feed {
     use super::*;
 
     /// Initialize the mock feed with an initial price. The signer becomes the
@@ -38,9 +39,9 @@ pub mod mock_switchboard {
         Ok(())
     }
 
-    /// Push a new price (and confidence band) to the mock feed. In real
-    /// Switchboard this would be a signed update from the oracle network; here it
-    /// is an authority-gated write, because the goal is to drive deterministic
+    /// Push a new price (and confidence band) to the mock feed. For a real
+    /// feed this would be a signed update from the oracle network; here it is
+    /// an authority-gated write, because the goal is to drive deterministic
     /// test scenarios.
     pub fn set_price(
         context: Context<SetPriceAccountConstraints>,
@@ -81,15 +82,16 @@ pub struct SetPriceAccountConstraints<'info> {
     pub authority: Signer<'info>,
 }
 
-/// Mock of a Switchboard On-Demand feed. Real feeds carry many more fields
-/// (median, range, sample window, signatures) — this is the bare minimum the
-/// perpetual-futures program needs to do a price comparison.
+/// Mock of an oracle price feed. Real feeds carry many more fields (feed ID,
+/// publish time, EMA price, verification level) — this is the bare minimum the
+/// prop-amm program needs to price a quote.
 #[derive(InitSpace)]
 #[account]
 pub struct MockFeed {
     pub authority: Pubkey,
 
-    /// Signed 128-bit fixed-point price. Real Switchboard prices are also i128.
+    /// Signed 128-bit fixed-point price, wide enough for any feed's price
+    /// (Pyth's is an i64 with a separate exponent).
     pub price: i128,
 
     /// Number of decimal places implied by `price`. E.g. `scale = 8` means

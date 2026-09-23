@@ -19,7 +19,7 @@ A [perpetual future](https://www.investopedia.com/terms/f/futurescontract.asp) (
 ## Programs
 
 - `perpetual-futures`: The exchange: pool creation, liquidity provision, opening/closing leveraged positions, funding, liquidation, and fee collection.
-- `mock-switchboard`: Test-only price feed. Stores a price, scale, last-update slot, and confidence band that tests write directly. Replaced by a real [Switchboard](https://docs.switchboard.xyz/) On-Demand feed in production.
+- `mock-price-feed`: Test-only price feed. Stores a price, scale, last-update slot, and confidence band that tests write directly. Replaced in production by a Pyth `PriceUpdateV2` account, as read in [`basics/pyth`](../../../basics/pyth/).
 
 All money math is integer `u128` with `checked_*` operations, multiplying before dividing and rounding in the pool's favour: no floats, no fixed-point library.
 

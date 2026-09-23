@@ -22,7 +22,7 @@ math. This page only covers what differs in the Quasar version.
   of wall-clock time in zero slots).
 - **Oracle feed in tests.** Rather than a separate mock-oracle program, the
   tests write the feed account's bytes directly (price, scale, last-update slot)
-  and the program reads them the same way it would read a real Switchboard feed.
+  and the program reads them the same way it would read a real oracle feed.
 - **State writes** use Quasar's zero-copy field accessors (`field.get()` /
   `field.set()`) and `set_inner`, rather than Anchor's `Account` mutation.
 

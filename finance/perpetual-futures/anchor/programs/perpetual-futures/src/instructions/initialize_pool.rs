@@ -123,7 +123,7 @@ pub struct InitializePoolAccountConstraints {
 
     /// CHECK: The oracle feed account. Its key is stored on the pool and every
     /// read validates the layout, scale, and freshness; it is never trusted by
-    /// type. Swap for a real Switchboard feed in production.
+    /// type. Swap for a real Pyth price feed in production.
     pub oracle_feed: UncheckedAccount,
 
     /// Liquidity-provider share mint. The pool account is its mint authority

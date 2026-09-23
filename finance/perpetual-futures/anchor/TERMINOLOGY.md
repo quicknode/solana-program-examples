@@ -31,6 +31,7 @@ Terms used in this example, in the sense they carry here.
 - **Liquidity-provider share** — a token representing a pro-rata claim on
   assets-under-management.
 - **Oracle feed** — the account the pool reads its price from. This example uses
-  a mock Switchboard On-Demand feed; production points at a real one.
+  a mock oracle price feed; production points at a real one, such as
+  a Pyth price feed.
 - **Mark price** — the price positions are valued at. Here it is the oracle
   price directly, with no separate mark/index distinction.

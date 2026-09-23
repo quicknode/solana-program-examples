@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-23
+
+Documentation only: a production feed is now described as a Pyth
+`PriceUpdateV2` account, since the oracle network the test feed was modeled on
+has shut down.
+
 ## 2026-09-10
 
 The `Market` account now owns both vaults and signs their outgoing transfers

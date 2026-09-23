@@ -2648,7 +2648,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "mock_switchboard"
+name = "mock_price_feed"
 version = "0.1.0"
 dependencies = [
  "anchor-lang",
@@ -2657,7 +2657,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "mock_switchboard_prop_amm"
+name = "mock_price_feed_prop_amm"
 version = "0.1.0"
 dependencies = [
  "anchor-lang",
@@ -3083,7 +3083,7 @@ dependencies = [
  "anchor-spl",
  "anchor-v2-testing",
  "borsh 1.7.0",
- "mock_switchboard",
+ "mock_price_feed",
  "pinocchio 0.11.2",
  "solana-address 2.6.1",
  "solana-clock 3.1.1",
@@ -3373,7 +3373,7 @@ dependencies = [
  "anchor-spl",
  "anchor-v2-testing",
  "borsh 1.7.0",
- "mock_switchboard_prop_amm",
+ "mock_price_feed_prop_amm",
  "pinocchio 0.11.2",
  "solana-address 2.6.1",
  "solana-clock 3.1.1",

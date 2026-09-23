@@ -72,11 +72,12 @@ pub struct Obligation {
     pub bump: u8,
 }
 
-/// Switchboard-On-Demand-shaped price feed. PDA: `["price_feed", market, mint]`
-/// — scoped to a market (not to any individual); only the market's `owner` may
-/// write it, so prices can't be squatted and each market prices its own assets.
+/// Oracle-shaped price feed, a mantissa and exponent like Pyth's.
+/// PDA: `["price_feed", market, mint]` — scoped to a market (not to any
+/// individual); only the market's `owner` may write it, so prices can't be
+/// squatted and each market prices its own assets.
 /// `price = price_mantissa * 10^exponent`; freshness is checked in slots. In
-/// production this account would be the real Switchboard feed.
+/// production this account would be a real Pyth price feed.
 #[account(discriminator = 4, set_inner)]
 #[seeds(b"price_feed", market: Address, mint: Address)]
 pub struct PriceFeed {
