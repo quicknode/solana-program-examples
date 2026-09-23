@@ -11,6 +11,31 @@ pub const ASSET_CONFIG_SEED: &[u8] = b"asset";
 /// single transaction.
 pub const MAX_ASSETS: u8 = 16;
 
+/// Bytes of `Strategy::asset_holdings`: one little-endian u64 per asset index.
+pub const ASSET_HOLDINGS_BYTES: usize = MAX_ASSETS as usize * 8;
+
+/// Decode `Strategy::asset_holdings` into one amount per asset index.
+pub fn read_asset_holdings(bytes: &[u8; ASSET_HOLDINGS_BYTES]) -> [u64; MAX_ASSETS as usize] {
+    let mut holdings = [0u64; MAX_ASSETS as usize];
+    for (index, holding) in holdings.iter_mut().enumerate() {
+        let start = index * 8;
+        let mut word = [0u8; 8];
+        word.copy_from_slice(&bytes[start..start + 8]);
+        *holding = u64::from_le_bytes(word);
+    }
+    holdings
+}
+
+/// Encode one amount per asset index into `Strategy::asset_holdings`.
+pub fn write_asset_holdings(holdings: &[u64; MAX_ASSETS as usize]) -> [u8; ASSET_HOLDINGS_BYTES] {
+    let mut bytes = [0u8; ASSET_HOLDINGS_BYTES];
+    for (index, holding) in holdings.iter().enumerate() {
+        let start = index * 8;
+        bytes[start..start + 8].copy_from_slice(&holding.to_le_bytes());
+    }
+    bytes
+}
+
 /// One strategy (basket). PDA `["strategy", index]`, addressed by a
 /// caller-chosen counter rather than the manager's key. The index is stored so
 /// every handler can re-derive the PDA to sign for the vaults and share mint.
@@ -26,6 +51,18 @@ pub struct Strategy {
     pub fee_bps: u16,
     pub max_slippage_bps: u16,
     pub total_shares: u64,
+    /// USDC the program has accounted for in the USDC vault: deposits in, swap
+    /// spending and withdrawals out. Share prices and payouts use this, never the
+    /// vault's token balance, so USDC transferred straight into the vault
+    /// (a donation) is ignored rather than counted as fund value.
+    pub usdc_holdings: u64,
+    /// Each asset's accounted-for amount, indexed by asset index: swap output in,
+    /// swap input and withdrawals out. Like `usdc_holdings`, it ignores tokens
+    /// transferred straight into a vault. Always <= that vault's token balance.
+    /// Stored as little-endian u64s because zero-copy accounts hold byte arrays
+    /// only; read and write it with `read_asset_holdings` and
+    /// `write_asset_holdings`.
+    pub asset_holdings: [u8; ASSET_HOLDINGS_BYTES],
     pub last_fee_accrual_timestamp: i64,
     pub asset_count: u8,
     pub total_weight_bps: u16,
@@ -76,6 +113,8 @@ pub fn snapshot_strategy(strategy: &Account<Strategy>) -> StrategyInner {
         fee_bps: u16::from(strategy.fee_bps),
         max_slippage_bps: u16::from(strategy.max_slippage_bps),
         total_shares: u64::from(strategy.total_shares),
+        usdc_holdings: u64::from(strategy.usdc_holdings),
+        asset_holdings: strategy.asset_holdings,
         last_fee_accrual_timestamp: i64::from(strategy.last_fee_accrual_timestamp),
         asset_count: strategy.asset_count,
         total_weight_bps: u16::from(strategy.total_weight_bps),

@@ -7,7 +7,8 @@ use quasar_spl::prelude::*;
 use crate::errors::VaultError;
 use crate::oracle::{asset_value_in_usdc, load_price, read_token_amount, PYTH_PRICE_PRECISION};
 use crate::state::{
-    load_asset_config, snapshot_strategy, ShareMintPda, Strategy, UsdcVaultPda, STRATEGY_SEED,
+    load_asset_config, read_asset_holdings, snapshot_strategy, write_asset_holdings, ShareMintPda,
+    Strategy, UsdcVaultPda, STRATEGY_SEED,
 };
 
 /// Discriminator of the router's `swap_usdc_for_asset` instruction.
@@ -109,9 +110,16 @@ pub fn handle_deposit(
 
     let now = i64::from(Clock::get()?.unix_timestamp);
 
+    // The holdings the program has accounted for, not the vaults' token
+    // balances: a donation straight into a vault changes a balance and none of
+    // these, so it cannot move the share price.
+    let snapshot = snapshot_strategy(&accounts.strategy);
+    let mut usdc_holdings = snapshot.usdc_holdings;
+    let mut asset_holdings = read_asset_holdings(&snapshot.asset_holdings);
+
     // Net asset value over the complete asset set.
-    let mut nav: u128 = accounts.vault_usdc.amount() as u128;
-    for index in 0..asset_count {
+    let mut nav: u128 = usdc_holdings as u128;
+    for (index, &amount) in asset_holdings.iter().enumerate().take(asset_count) {
         let config_view = get_view(&remaining, index * ACCOUNTS_PER_ASSET)?;
         let vault_view = get_view(&remaining, index * ACCOUNTS_PER_ASSET + 1)?;
         let feed_view = get_view(&remaining, index * ACCOUNTS_PER_ASSET + 4)?;
@@ -133,7 +141,6 @@ pub fn handle_deposit(
         );
 
         let price = load_price(&feed_view, &config.price_feed, now)?;
-        let amount = read_token_amount(&vault_view)?;
         nav = nav
             .checked_add(asset_value_in_usdc(amount, price)?)
             .ok_or(VaultError::MathOverflow)?;
@@ -161,6 +168,9 @@ pub fn handle_deposit(
         .checked_add(shares_to_mint)
         .ok_or(VaultError::MathOverflow)?;
     accounts.strategy.set_inner(strategy);
+    usdc_holdings = usdc_holdings
+        .checked_add(usdc_amount)
+        .ok_or(VaultError::MathOverflow)?;
 
     // Pull the depositor's USDC into the strategy's USDC vault.
     accounts
@@ -186,7 +196,7 @@ pub fn handle_deposit(
     // Deploy the deposit across the basket at its target weights, each leg
     // swapped through the router under an oracle-anchored slippage floor. The
     // strategy PDA signs, since the USDC leaves a vault only it controls.
-    for index in 0..asset_count {
+    for (index, holding) in asset_holdings.iter_mut().enumerate().take(asset_count) {
         let config_view = get_view(&remaining, index * ACCOUNTS_PER_ASSET)?;
         let vault_view = get_view(&remaining, index * ACCOUNTS_PER_ASSET + 1)?;
         let mint_view = get_view(&remaining, index * ACCOUNTS_PER_ASSET + 2)?;
@@ -230,6 +240,11 @@ pub fn handle_deposit(
             .try_into()
             .map_err(|_| VaultError::MathOverflow)?;
 
+        // Record what the swap actually moves, measured on the vaults, rather
+        // than what was asked for.
+        let asset_before = read_token_amount(&vault_view)?;
+        let usdc_before = accounts.vault_usdc.amount();
+
         let mut data = [0u8; SWAP_DATA_LEN];
         data[0] = ROUTER_SWAP_USDC_FOR_ASSET;
         data[1..9].copy_from_slice(&deploy_usdc.to_le_bytes());
@@ -251,7 +266,29 @@ pub fn handle_deposit(
         cpi.push_account(accounts.token_program.to_account_view(), false, false)?;
         cpi.set_data(&data)?;
         cpi.invoke_signed(&seeds)?;
+
+        let asset_received = read_token_amount(&vault_view)?
+            .checked_sub(asset_before)
+            .ok_or(VaultError::MathOverflow)?;
+        let usdc_spent = usdc_before
+            .checked_sub(accounts.vault_usdc.amount())
+            .ok_or(VaultError::MathOverflow)?;
+        // A leg that spends USDC and buys nothing would leave shares minted
+        // against no recorded value, and every later deposit would divide by a
+        // zero NAV. Refuse it: the deposit is too small for this basket.
+        require!(asset_received > 0, VaultError::DepositTooSmall);
+        *holding = holding
+            .checked_add(asset_received)
+            .ok_or(VaultError::MathOverflow)?;
+        usdc_holdings = usdc_holdings
+            .checked_sub(usdc_spent)
+            .ok_or(VaultError::MathOverflow)?;
     }
+
+    let mut strategy = snapshot_strategy(&accounts.strategy);
+    strategy.usdc_holdings = usdc_holdings;
+    strategy.asset_holdings = write_asset_holdings(&asset_holdings);
+    accounts.strategy.set_inner(strategy);
 
     // Mint the shares last, with the strategy PDA signing as the share-mint
     // authority; the depositor's share account must belong to the depositor.

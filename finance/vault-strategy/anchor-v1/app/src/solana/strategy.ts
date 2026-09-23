@@ -61,9 +61,12 @@ export async function loadStrategyAccount(
 }
 
 /**
- * Load everything the UI needs about a strategy: config, assets, vault balances, and
- * freshly parsed oracle prices, then derive NAV exactly as the program does
- * (value = amount * price / 1e8, all in USDC minor units).
+ * Load everything the UI needs about a strategy: config, assets, the holdings the
+ * program has recorded, and freshly parsed oracle prices, then derive NAV exactly as
+ * the program does (value = amount * price / 1e8, all in USDC minor units). The
+ * program prices shares from its recorded holdings, not the vaults' token balances,
+ * so tokens donated straight into a vault are not part of the fund; neither are they
+ * here.
  */
 export async function loadStrategyView(
   connection: Connection,
@@ -98,20 +101,19 @@ export async function loadStrategyView(
   const configPdas = Array.from({ length: assetCount }, (_, i) => assetConfigPda(strategy, i));
   const configs = (await program.account.assetConfig.fetchMultiple(configPdas)) as (AssetConfigAccount | null)[];
 
-  // One RPC round-trip for the USDC vault + every asset vault + every price feed.
-  const raw: PublicKey[] = [usdcVault];
+  // One RPC round-trip for every price feed.
+  const raw: PublicKey[] = [];
   configs.forEach((c) => {
-    if (c) raw.push(c.vault, c.priceFeed);
+    if (c) raw.push(c.priceFeed);
   });
   const infos = await connection.getMultipleAccountsInfo(raw);
 
-  const usdcInfo = infos[0];
-  const usdcAmount = usdcInfo ? readTokenAmount(usdcInfo.data) : 0n;
+  const usdcAmount = toBig(account.usdcHoldings);
 
   const now = nowSeconds();
   let navMinor = usdcAmount;
   let navComplete = true;
-  let cursor = 1;
+  let cursor = 0;
 
   const assets: AssetView[] = configs.map((c, i) => {
     const config = configPdas[i];
@@ -132,9 +134,8 @@ export async function loadStrategyView(
         actualWeight: null,
       };
     }
-    const vaultInfo = infos[cursor++];
     const feedInfo = infos[cursor++];
-    const vaultAmount = vaultInfo ? readTokenAmount(vaultInfo.data) : 0n;
+    const vaultAmount = toBig(account.assetHoldings[c.index]);
 
     let price: bigint | null = null;
     let publishTime: number | null = null;

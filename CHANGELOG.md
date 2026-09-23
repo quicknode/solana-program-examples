@@ -28,6 +28,98 @@ Nothing stopped bets between the real-world result and settlement, either:
   lifecycle model in which the outcome list never changes once money is in the
   pool. The Anchor v1 port is a frozen snapshot and does not change.
 
+## [2026-09-22] - The first-deposit minimum is counted in every share divisor
+
+The token swap and perpetual futures examples both withhold a minimum from the
+first deposit's LP shares, but only one side of their share math counted it.
+
+- Token swap: `withdraw_liquidity` divided by `lp_supply + MINIMUM_LIQUIDITY`,
+  but `deposit_liquidity` minted later deposits against the bare `lp_supply`.
+  Every later depositor was minted slightly fewer LP tokens than they could
+  redeem; a donation to the vaults as large as a victim's deposit, rather than
+  101 times it, rounded that deposit down; and once every LP token was burned
+  the pool could never take a deposit again, since the floor's reserves stayed
+  behind with a supply of zero to divide by. Later deposits now divide by
+  `lp_supply + MINIMUM_LIQUIDITY` as well, in all three ports.
+- Perpetual futures: `add_liquidity` withheld 1,000 shares from the first
+  deposit but both `add_liquidity` and `remove_liquidity` divided by the bare
+  share supply, so the withheld value belonged to the share holders pro rata
+  and locked nothing. Shares are priced against `Pool.liquidity` rather than
+  the vault balance, so a direct donation moves nothing, but a provider who is
+  also the pool's only trader can grow `liquidity` with their own funding
+  payments. A new test does exactly that: the attacker opens the pool with one
+  share, pays about 1,000 USDC of funding into it, and against the old program
+  withdraws about 1,500 USDC after a victim deposits. Both handlers now divide
+  by the share supply plus `MINIMUM_LIQUIDITY`, and a pool whose providers have
+  all left prices the next deposit against the locked slice instead of
+  bootstrapping it, in all three ports.
+- The token swap's Kani crate models the deposit formula and proves a deposit
+  followed by a withdrawal returns at most the deposit and loses less than one
+  LP token's worth, a bound the bare-supply formula fails.
+- The Anchor v1 ports take the same fixes, since they correct share
+  accounting rather than add features.
+
+## [2026-09-22] - Vault strategy ignores donations
+
+The vault strategy valued itself and paid withdrawals from its vaults' token
+balances, and anyone can transfer tokens into a vault. A dust-sized first
+deposit followed by a donation could price one share above the next deposit
+and round it down to zero shares: the first-depositor inflation attack.
+
+- `finance/vault-strategy` (Anchor v2, Anchor v1 and Quasar) records what the
+  strategy holds, `usdc_holdings` and `asset_holdings`, updated by `deposit`,
+  `withdraw` and `rebalance` with what each transfer actually moved, and prices
+  shares and pays withdrawals from those records. Donated tokens are outside
+  the fund, and `rebalance` can neither sell nor spend them
+  (`InsufficientHoldings`), as the lending example already ignores donations.
+- A deposit so small that a swap returns none of its asset is rejected with
+  `DepositTooSmall`; it would otherwise mint shares against a fund worth
+  nothing and make every later deposit divide by zero.
+- Tests in all three ports run the attack, the Kani crate proves recorded
+  holdings never exceed vault balances and that a donation cannot dilute the
+  next deposit, and the web apps read the recorded holdings.
+
+## [2026-09-22] - Vault strategy rejects prices from before a cluster restart
+
+The vault strategy checks Pyth freshness in seconds. Under Alpenglow each
+leader sets the Clock's `unix_timestamp`, which may advance by at most twice
+the slot time elapsed since the parent block, so after a halt the timestamp
+trails real time and catches up gradually, and a price published just before
+a multi-hour halt still passes the 60-second check.
+
+- `finance/vault-strategy` (Anchor v2, Anchor v1 and Quasar) reads each Pyth
+  update's `posted_slot` and rejects it when it is at or before the
+  `LastRestartSlot` sysvar's slot, with the new `PricePredatesRestart` error,
+  as the lending, prop-amm and perpetual-futures examples already do. Tests,
+  READMEs, PRODUCT.md files, the web apps' IDLs and changelogs follow.
+
+## [2026-09-22] - The order book's vaults are market PDAs
+
+The order book created its base, quote, and fee vaults at public keys the client
+generated, so a client had to generate and sign with three extra keys to open
+a market, and nothing but the market's record said where its tokens were.
+
+- The order book's Anchor v2 and Quasar ports create all three vaults as PDAs
+  of the market, at `["base_vault", market]`, `["quote_vault", market]` and
+  `["fee_vault", market]`, with the market as their authority, the same shape
+  the options and prop AMM vaults already have. The stored-address checks
+  that stop the fee vault being passed as the quote vault are unchanged. The
+  order book itself stays client-allocated, since at about 180 KB it is too
+  large for the program to create. Tests, READMEs, and changelogs follow. The
+  Anchor v1 port is a frozen snapshot and does not change.
+
+## [2026-09-22] - Anchor v2 CI no longer starts a validator for LiteSVM-only projects
+
+Surfpool 1.6, which the Anchor v2 workflow installs as `latest`, deploys each
+program at startup through a runbook that reads `target/idl/<program>.json`.
+The nine projects built with `--no-idl` (the anchor#4947 workaround) have no
+IDL, so `anchor test` died with `Surfpool startup failed: Runbook execution
+failed` before any test ran, turning main's Anchor v2 runs red.
+
+- `anchor test` runs with `--skip-local-validator` for exactly those nine
+  projects. Each one's Anchor.toml runs `cargo test` against LiteSVM, so none
+  of them ever used the validator. Every other project is tested as before.
+
 ## [2026-09-14] - Token fundraiser contributors can close their accounts
 
 A successful raise exits through `check_contributions`, which closes the vault

@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-09-22
+
+`add_liquidity` and `remove_liquidity` now divide by the share supply plus
+`MINIMUM_LIQUIDITY`, so the 1,000 shares withheld from the first deposit
+belong to nobody and their slice of the pool stays locked. Before, both divided
+by the bare supply, the withheld value was shared among the holders, and a
+provider who was also the only trader could pay funding into `liquidity` to
+inflate their single share and take part of the next deposit. A pool whose
+providers have all left now prices the next deposit against the locked slice
+rather than bootstrapping it. A sole provider's round trip returns the deposit
+less the 1,000 minimum, and a new test runs the funding-based inflation attack.
+
 ## 2026-09-10
 
 Remove the separate dataless signing PDA (seeds `["authority", pool]`) that

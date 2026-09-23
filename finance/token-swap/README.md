@@ -113,6 +113,7 @@ Transfers token A and token B from the depositor to the pool, then mints LP toke
   1. Compute `amount_b_required = amount_a * effective_pool_b / effective_pool_a`.
   2. If `amount_b_required ≤ amount_b`, use `(amount_a, amount_b_required)` - the depositor offered enough B, so we take the full A and clamp B down.
   3. Otherwise, compute `amount_a_required = amount_b * effective_pool_a / effective_pool_b` and use `(amount_a_required, amount_b)` - B is the binding side, so we take the full B and clamp A down.
+- The LP amount for a later deposit is `min(amount_a * total / effective_pool_a, amount_b * total / effective_pool_b)` with `total = liquidity_provider_mint.supply + MINIMUM_LIQUIDITY`: the unminted floor counts as supply, exactly as it does in `withdraw_liquidity`, so a deposit is minted the share of the pool it can later redeem. Counting the floor on both sides is also what makes the donation (inflation) attack cost the attacker: to round a later deposit down to zero LP tokens, the attacker has to donate at least `MINIMUM_LIQUIDITY + 1` times that deposit, and the floor keeps its share of the donation.
 - All ratio math runs in `u128` with checked arithmetic. No floats are used for money; rounding is always toward the pool (the depositor never gets a sub-base-unit advantage).
 - The ratio is computed on the **effective reserves** (`pool_X.amount - admin_fees_owed_X`). The admin's owed slice isn't LP-claimable capital, so it doesn't shift the deposit ratio.
 - If the clamp rounds one of the amounts down to zero (e.g. a depositor offering a sub-base-unit fraction against a thick pool), the handler reverts with `DepositAmountTooSmall` rather than minting LP shares against a zero contribution.
@@ -243,7 +244,7 @@ At the current 1:5 ratio, Bob deposits **100 NVDAx and 500 USDC**.
 - **Accounts:** same shape as Step 3, `depositor` = Bob
 - **Args:** `amount_a = 100`, `amount_b = 500`, `minimum_lp_tokens_out = 223_000_000` (Bob quoted ~223.6 LP offchain and is unwilling to accept less than ~223.0 if the pool shifts before his tx lands; units here are LP base units at the LP mint's decimals)
 
-Math: subsequent deposits get `min(amount_a / pool_a, amount_b / pool_b) × current_lp_supply = min(100/20, 500/100) × 44.72 ≈ 223.6` LP tokens.
+Math: subsequent deposits get `min(amount_a / pool_a, amount_b / pool_b) × (current_lp_supply + MINIMUM_LIQUIDITY) = min(100/20, 500/100) × 44.72 ≈ 223.6` LP tokens (the 100 base-unit floor is too small to show at this precision).
 
 NVDAx/USDC pool state: **120 NVDAx, 600 USDC**. LP supply ~268.32. Bob owns ~83%, Alice ~17%.
 

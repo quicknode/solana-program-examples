@@ -121,7 +121,7 @@ NARRATION:
 
 Alice wants exposure to both stocks without buying and rebalancing them herself, so she calls `deposit` with 900 USDC. `deposit` is permissionless: any user can call it. This is buying into the strategy.
 
-The handler prices her shares against net asset value. It walks the complete asset set, index zero then index one, reading each vault's balance and each Pyth price, and it will not proceed unless every asset's accounts are present, so nothing can be hidden from the valuation. The strategy is empty, so net asset value is zero, and the first deposit is defined as one to one. Alice gets 900 shares. Shares carry six decimals, so under the hood that is 900 million minor units, but think of it as 900 shares worth a dollar each.
+The handler prices her shares against net asset value. It walks the complete asset set, index zero then index one, reading the holding the strategy has recorded for each vault and each Pyth price, and it will not proceed unless every asset's accounts are present, so nothing can be hidden from the valuation. The strategy is empty, so net asset value is zero, and the first deposit is defined as one to one. Alice gets 900 shares. Shares carry six decimals, so under the hood that is 900 million minor units, but think of it as 900 shares worth a dollar each.
 
 Checks, effects, interactions: the handler raises `total_shares` first, then pulls her USDC into the USDC vault, then mints her the shares with the strategy PDA signing.
 

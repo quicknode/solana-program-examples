@@ -49,8 +49,9 @@ exists.
 ## Accounts and PDAs
 
 - **Config**, PDA `["config"]`. The single global account. Its `admin` is the
-  only key allowed to create, open, settle, and cancel events; `token_mint` fixes the
-  one stake asset; `fee_recipient` and `fee_bps` set the settlement fee.
+  only key allowed to create, open, settle, and cancel events; `token_mint` fixes
+  the one stake asset; `fee_recipient` receives the settlement fee, and
+  `default_fee_bps` is the fee each new event copies at creation.
 - **Event**, PDA `["event", event_id]`. One market. Holds the running
   `total_pool`, the status (Draft, Open, Settled, Cancelled), the
   `betting_closes_at` timestamp and a fee snapshot both fixed at creation, and the
@@ -96,8 +97,8 @@ differences follow from Quasar being zero-copy and fixed-layout:
 - **The pool vault is a program-derived token account** (`["vault", event]`)
   rather than an associated token account, matching how the other Quasar finance
   examples (lending, perpetual-futures) hold pool funds.
-- **Enums are stored as `u8`** (zero-copy accounts hold POD scalars). `side` and
-  status values match the Anchor build's byte encodings.
+- **Enums are stored as `u8`** (zero-copy accounts hold POD scalars). The
+  `EventStatus` values match the Anchor build's byte encodings.
 
 ## Building and testing
 

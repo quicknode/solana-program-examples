@@ -7,10 +7,10 @@
 //! `withdraw_liquidity`) hand the actual token movement to the SPL token
 //! program via CPIs that Kani cannot symbolically execute. But the *interesting*
 //! part — the constant-product curve, the fee split, the integer square root
-//! used for the initial LP mint, and the proportional-withdraw math — is pure
-//! integer arithmetic. This crate reproduces those formulas faithfully (same
-//! `u128` widening, same multiply-before-divide, same floor rounding) and proves
-//! the invariants the program depends on.
+//! used for the initial LP mint, and the proportional deposit and withdraw
+//! math — is pure integer arithmetic. This crate reproduces those formulas
+//! faithfully (same `u128` widening, same multiply-before-divide, same floor
+//! rounding) and proves the invariants the program depends on.
 //!
 //! Constants mirror `constants.rs`.
 
@@ -289,7 +289,94 @@ fn proof_withdraw_never_exceeds_reserve() {
 }
 
 // ===========================================================================
-// 5. Deposit ratio clamp  (deposit_liquidity.rs)
+// 5. Proportional deposit  (deposit_liquidity.rs)
+// ===========================================================================
+
+/// `lp_out = amount * (lp_supply + MINIMUM_LIQUIDITY) / effective_reserve`,
+/// floored: one side of the subsequent-deposit formula in
+/// `handle_deposit_liquidity` (the program takes the `min` over both sides).
+/// The divisor is the same `lp_supply + MINIMUM_LIQUIDITY` that
+/// `withdraw_amount` uses, so a minted LP token and a burned one are the same
+/// fraction of the pool.
+pub fn deposit_lp_amount(amount: u64, effective_reserve: u64, lp_supply: u64) -> Option<u64> {
+    let total = (lp_supply as u128).checked_add(MINIMUM_LIQUIDITY)?;
+    let out = (amount as u128)
+        .checked_mul(total)?
+        .checked_div(effective_reserve as u128)?;
+    u64::try_from(out).ok()
+}
+
+/// A deposit followed at once by a withdrawal of the LP tokens it minted
+/// returns at most what was deposited, and less than one base unit plus one
+/// LP token's worth short of it. The upper bound means no round trip creates
+/// value; the lower bound means the depositor is minted the share they paid
+/// for. The lower bound holds only because deposit and withdraw divide by the
+/// same supply: dividing the deposit by the bare mint supply (without
+/// `MINIMUM_LIQUIDITY`) under-mints every depositor by the floor's fraction of
+/// the pool and fails it.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::solver(cadical)]
+fn proof_deposit_withdraw_round_trip_is_fair() {
+    let amount: u64 = kani::any();
+    let reserve: u64 = kani::any();
+    let lp_supply: u64 = kani::any();
+
+    // Bounded model checking: two symbolic divisors (the reserve, then the
+    // new supply), the most expensive shape for the solver, so the inputs
+    // stay small. The inequalities are scale-free, and `MINIMUM_LIQUIDITY`
+    // keeps its real value of 100, so the floor still dominates a small
+    // supply the way it does in a freshly seeded pool.
+    kani::assume(amount <= 31);
+    kani::assume(reserve >= 1 && reserve <= 31);
+    kani::assume(lp_supply <= 31);
+
+    let minted = deposit_lp_amount(amount, reserve, lp_supply).expect("computes");
+    // The program rejects a deposit that mints nothing (`DepositTooSmall`).
+    kani::assume(minted > 0);
+
+    let new_supply = lp_supply + minted;
+    let new_reserve = reserve + amount;
+    let out = withdraw_amount(minted, new_reserve, new_supply).expect("computes");
+
+    // Never more than was put in.
+    assert!(out <= amount);
+    // Short by less than one base unit plus one LP token's worth of reserve:
+    // (out + 1) * (total + minted) + reserve > amount * (total + minted).
+    let total_after = new_supply as u128 + MINIMUM_LIQUIDITY;
+    assert!((out as u128 + 1) * total_after + reserve as u128 > amount as u128 * total_after);
+}
+
+/// The price of the donation (inflation) attack. An attacker who holds
+/// `attacker_lp` LP tokens and wants a victim's deposit of `amount` to mint
+/// zero LP tokens must push the reserve to more than
+/// `amount * (attacker_lp + MINIMUM_LIQUIDITY)`: with the floor in the divisor,
+/// even an attacker holding a single LP token must make the reserve at least
+/// `MINIMUM_LIQUIDITY + 1` times the victim's deposit.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::solver(cadical)]
+fn proof_rounding_a_deposit_to_zero_needs_floor_times_donation() {
+    let amount: u64 = kani::any();
+    let reserve: u64 = kani::any();
+    let attacker_lp: u64 = kani::any();
+
+    // Bounded model checking (symbolic divisor). The reserve bound sits above
+    // `(MINIMUM_LIQUIDITY + 1) * amount` for small amounts so both outcomes
+    // are reachable.
+    kani::assume(amount >= 1 && amount <= 15);
+    kani::assume(reserve >= 1 && reserve <= 4095);
+    kani::assume(attacker_lp >= 1 && attacker_lp <= 15);
+
+    let minted = deposit_lp_amount(amount, reserve, attacker_lp).expect("computes");
+    if minted == 0 {
+        assert!(reserve as u128 > amount as u128 * (attacker_lp as u128 + MINIMUM_LIQUIDITY));
+        assert!(reserve as u128 > amount as u128 * (MINIMUM_LIQUIDITY + 1));
+    }
+}
+
+// ===========================================================================
+// 6. Deposit ratio clamp  (deposit_liquidity.rs)
 // ===========================================================================
 
 /// Models the Uniswap-V2 ratio clamp in `handle_deposit_liquidity`: given the
@@ -385,6 +472,38 @@ mod tests {
         // Burn 100 of 100 supply against a 1_000 reserve, floor of
         // 100*1000/(100+100) = 500.
         assert_eq!(withdraw_amount(100, 1_000, 100).unwrap(), 500);
+    }
+
+    #[test]
+    fn deposit_basic() {
+        // Doubling a pool whose first deposit minted sqrt(a*b) = 2_000_000
+        // (1_999_900 held, 100 floor) mints the full 2_000_000: the second
+        // depositor owns as much of the pool as the first deposit's whole
+        // supply, floor included.
+        assert_eq!(
+            deposit_lp_amount(4_000_000, 4_000_000, 1_999_900).unwrap(),
+            2_000_000
+        );
+    }
+
+    #[test]
+    fn deposit_then_withdraw_returns_the_deposit() {
+        // Same doubling: burning the 2_000_000 just minted from the doubled
+        // 8_000_000 reserve returns the 4_000_000 deposited, to the unit.
+        let minted = deposit_lp_amount(4_000_000, 4_000_000, 1_999_900).unwrap();
+        assert_eq!(
+            withdraw_amount(minted, 8_000_000, 1_999_900 + minted).unwrap(),
+            4_000_000
+        );
+    }
+
+    #[test]
+    fn donation_attack_price() {
+        // The attacker holds 1 LP token, so 101 units share the reserve. A
+        // 1_000 deposit rounds to zero only once the reserve passes
+        // 1_000 * 101 = 101_000.
+        assert_eq!(deposit_lp_amount(1_000, 101_000, 1).unwrap(), 1);
+        assert_eq!(deposit_lp_amount(1_000, 101_001, 1).unwrap(), 0);
     }
 
     #[test]

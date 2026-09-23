@@ -9,8 +9,10 @@ pub struct Config {
     pub admin: Pubkey,
     pub token_mint: Pubkey,
     pub fee_recipient: Pubkey,
-    // Protocol fee, in basis points, taken from the losing pool at settlement.
-    pub fee_bps: u16,
+    // Protocol fee, in basis points, that new events copy into their own
+    // `fee_bps` at creation. Settlement charges the event's copy, so changing
+    // this value only affects events created afterwards.
+    pub default_fee_bps: u16,
     pub event_count: u64,
     pub bump: u8,
 }

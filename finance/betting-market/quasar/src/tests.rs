@@ -1,6 +1,7 @@
 //! quasar-test integration tests. They drive the real program instructions
 //! end-to-end: initialize the config, create an event, add outcomes, open
-//! betting, place bets, settle, and claim, asserting on-chain state and token balances at each step.
+//! betting, place bets, settle, and claim, asserting onchain state and token
+//! balances at each step.
 
 use {
     crate::{
@@ -48,7 +49,7 @@ fn base_world(test: &mut Test) {
     test.send(InitializeConfigInstruction {
         admin: ADMIN,
         token_mint: TOKEN_MINT,
-        fee_bps: FEE_BPS,
+        default_fee_bps: FEE_BPS,
         fee_recipient: FEE_RECIPIENT,
     })
     .succeeds();
@@ -63,7 +64,7 @@ fn initialize_config_records_admin_mint_and_fee(test: &mut Test) {
     assert_eq!(state.admin, ADMIN, "admin");
     assert_eq!(state.token_mint, TOKEN_MINT, "token_mint");
     assert_eq!(state.fee_recipient, FEE_RECIPIENT, "fee_recipient");
-    assert_eq!(u16::from(state.fee_bps), FEE_BPS, "fee_bps");
+    assert_eq!(u16::from(state.default_fee_bps), FEE_BPS, "default_fee_bps");
 }
 
 /// Full parimutuel flow: two bettors stake on opposing outcomes, the admin

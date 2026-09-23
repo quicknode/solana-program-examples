@@ -1,5 +1,29 @@
 # Changelog
 
+## [2026-09-22]
+
+### Changed
+
+- Ignore donations. The strategy records what it holds (`usdc_holdings`, and
+  `asset_holdings` as little-endian u64s) and prices shares and pays
+  withdrawals from those records, not from the vaults' token balances;
+  `deposit`, `withdraw` and `rebalance` update them with what each transfer
+  actually moved. Tokens transferred straight into a vault cannot inflate the
+  share price, and `rebalance` cannot sell or spend them
+  (`InsufficientHoldings`). Tested by `donation_does_not_inflate_share_price`.
+- Reject a deposit leg that buys nothing (`DepositTooSmall`), which would mint
+  shares against a fund worth nothing. Tested by
+  `deposit_rejects_leg_that_buys_nothing`.
+- Reject Pyth prices from before a cluster restart. Under Alpenglow the
+  Clock's `unix_timestamp` may advance by at most twice the slot time elapsed
+  since the parent block, so after a halt it trails real time and the
+  60-second `publish_time` check would accept a price published just before
+  the halt. `load_price` now reads the update's `posted_slot` (offset 125) and
+  requires it to be after the `LastRestartSlot` sysvar's slot
+  (`PricePredatesRestart`). quasar-lang has no LastRestartSlot sysvar, so
+  `src/last_restart.rs` declares the layout and reads it via
+  `sol_get_sysvar`. Tested by `deposit_rejects_price_from_before_a_restart`.
+
 ## [2026-09-10]
 
 ### Changed

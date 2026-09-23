@@ -30,8 +30,9 @@ pub struct Event {
     // strictly before it and settlement can happen only at or after it, so no
     // one can stake once the result could be known.
     pub betting_closes_at: i64,
-    // Fee snapshot taken at creation, so later Config changes can't alter a
-    // market that bettors have already joined.
+    // The fee settlement charges, copied from the config's `default_fee_bps`
+    // at creation so later Config changes can't alter a market that bettors
+    // have already joined.
     pub fee_bps: u16,
     // Fields below are written at settlement and read at claim time.
     pub winning_outcome_index: u8,

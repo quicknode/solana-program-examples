@@ -26,7 +26,7 @@ A **multi-asset** strategy built from single-asset vaults, transparently priced 
 
 - Solana wallet–connected web app; users sign transactions in-wallet.
 - Runs against the deployed program on **devnet with mock tokens** for the demo. Portfolio assets in the example are **TSLAx** (Tesla) and **NVDAx** (NVIDIA) — xStocks issued on Solana by Backed Finance; mock tokens in tests.
-- Prices come from **Pyth Network** `PriceUpdateV2` accounts with a 60-second staleness window; the client must supply fresh price accounts for pricing operations.
+- Prices come from **Pyth Network** `PriceUpdateV2` accounts with a 60-second staleness window; a price posted before the last cluster restart is rejected too, so after a halt deposits and rebalances pause until Pyth posts again. The client must supply fresh price accounts for pricing operations.
 - Swaps in the example route through a **test-only mock swap router** (a fake Jupiter) that would be replaced by real [Jupiter](https://jup.ag) in production.
 - Baskets beyond ~3 assets exceed a legacy transaction's 1232-byte limit, so the client must send **v0 transactions with an Address Lookup Table**; `deposit` pulls `14 + 5N` accounts and `withdraw` `10 + 4N` for `N` assets.
 
@@ -42,6 +42,7 @@ Rules the UI must respect and reflect:
 
 - Deposits are accepted only when target weights sum to **exactly 10,000 bps**; a strategy is either still being configured or fully allocated and live (`StrategyNotFullyAllocated` otherwise).
 - Shares: first deposit is 1:1 with USDC minor units; later deposits mint `deposit_usdc × total_shares / NAV`. Share mint is a PDA owned by the strategy PDA.
+- NAV and withdrawals use the strategy's recorded holdings (`usdc_holdings`, `asset_holdings`), not vault token balances. Tokens sent straight to a vault are not part of the fund and should not be shown as fund value. A deposit too small to buy any of an asset is rejected (`DepositTooSmall`); a rebalance cannot sell or spend more than the recorded holdings (`InsufficientHoldings`).
 - Management fee is charged by minting new shares to the manager (dilution), fixed at creation, capped at `MAX_FEE_BPS` = 1,000 bps (10%), no setter to raise it. `collect_fees` is permissionless.
 - Slippage floors are computed on-chain from the Pyth price and `max_slippage_bps` (capped at 1,000 bps); a manager-supplied minimum is not trusted.
 - `MAX_ASSETS` = 16. `deposit` re-derives the full `0..asset_count` PDA range and refuses to run if any asset account is missing (`IncompleteAssetAccounts`), so NAV can't be understated.

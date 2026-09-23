@@ -25,20 +25,23 @@ A note on the word **vault**: by the common standard (ERC-4626) a vault holds a 
 
 ### Net Asset Value (NAV)
 
-[NAV](https://www.investopedia.com/terms/n/nav.asp) is the total value of everything the strategy holds: the USDC vault balance plus each asset vault balance valued at its Pyth price. It prices new deposits fairly, so every depositor pays the same per-share price regardless of when they join.
+[NAV](https://www.investopedia.com/terms/n/nav.asp) is the total value of everything the strategy holds: its USDC plus each asset valued at its Pyth price. It prices new deposits fairly, so every depositor pays the same per-share price regardless of when they join.
+
+The amounts come from the strategy's own records, `usdc_holdings` and `asset_holdings`, not from the vaults' token balances. Deposits, swaps and withdrawals update them with what each transfer actually moved, so they always equal what the fund owns. Anyone can transfer tokens straight into a vault, and those tokens (a donation) are outside the fund: they change a vault's balance and nothing the program reads. That is the defense against the first-depositor inflation attack, where a dust-sized first deposit followed by a donation would otherwise price one share above the next deposit and round it down to zero shares. Donated tokens are never paid out, and `rebalance` can neither sell nor spend them (`InsufficientHoldings`).
 
 Because the asset set is dynamic, `deposit` must value *every* asset. The assets live at PDAs indexed `0..asset_count`, and `deposit` re-derives that complete range from the accounts it is given, refusing to run if any asset is missing (`IncompleteAssetAccounts`). This makes it structurally impossible to omit an asset and understate NAV.
 
 Referencing every asset has a transaction-size cost: `deposit` pulls in `14 + 5N` accounts and `withdraw` `10 + 4N`, where `N` is the asset count. That stays within Solana's 128-account transaction lock limit at the `MAX_ASSETS` cap of 16 (94 accounts for `deposit`), but a basket beyond roughly three assets no longer fits a legacy transaction's 1232-byte limit, so the client must send a v0 transaction with an [Address Lookup Table](https://docs.anza.xyz/proposals/versioned-transactions).
 
-Prices come from [Pyth Network](https://pyth.network/) `PriceUpdateV2` accounts. A 60-second staleness window is enforced; zero or negative prices are rejected.
+Prices come from [Pyth Network](https://pyth.network/) `PriceUpdateV2` accounts. A 60-second staleness window is enforced; zero or negative prices are rejected, and so is any price posted at or before the last cluster restart (`PricePredatesRestart`), which the seconds check alone cannot catch after a halt.
 
 ### Shares
 
 A [share](https://www.investopedia.com/terms/s/shares.asp) represents a fraction of the whole strategy. Hold 1% of shares and you own 1% of every vault.
 
 - **First deposit**: shares are issued 1:1 with USDC minor units (initial price of 1 USDC per share).
-- **Later deposits**: `shares_to_mint = deposit_usdc × total_shares / NAV`.
+- **Later deposits**: `shares_to_mint = deposit_usdc × total_shares / NAV`, with NAV valued from the recorded holdings.
+- **A deposit leg must buy something.** A deposit so small that one of its swaps spends USDC and returns none of the asset is refused (`DepositTooSmall`). Otherwise it would mint shares against no recorded value, and every later deposit would divide by a zero NAV.
 - Shares are [SPL tokens](https://solana.com/docs/terminology#token); the share mint's address is a [PDA](https://solana.com/docs/terminology#program-derived-address-pda), so it is deterministic and the strategy PDA is its mint authority.
 
 ### Management Fee
@@ -92,7 +95,7 @@ An [in-kind distribution](https://www.investopedia.com/terms/i/in-kind.asp) retu
 
 ### Alice deposits, and her money is deployed at once
 
-`deposit(usdc_amount, minimum_shares)`, with each asset's `[asset_config, vault, mint, rate, price_feed]` passed as remaining accounts, plus the router accounts. The handler requires the strategy to be fully allocated, values every asset for NAV (first deposit is 1:1), mints shares to Alice, then deploys her USDC across the basket at its target weights through the router, each leg under an oracle slippage floor. With the weights at 40/60, a 900 USDC deposit lands as 1.44 TSLAx and 3.0 NVDAx with no idle USDC.
+`deposit(usdc_amount, minimum_shares)`, with each asset's `[asset_config, vault, mint, rate, price_feed]` passed as remaining accounts, plus the router accounts. The handler requires the strategy to be fully allocated, values every asset's recorded holding for NAV (first deposit is 1:1), mints shares to Alice, then deploys her USDC across the basket at its target weights through the router, each leg under an oracle slippage floor. With the weights at 40/60, a 900 USDC deposit lands as 1.44 TSLAx and 3.0 NVDAx with no idle USDC.
 
 ### Bob deposits at the current share price
 
@@ -114,7 +117,7 @@ A price move pushes the basket off target. `rebalance(sell_amount, usdc_to_inves
 
 ## Oracle Integration (Pyth)
 
-`PriceUpdateV2` price (i64) is read at byte offset 73 and `publish_time` at 93, directly from account bytes to avoid borsh version incompatibility with Anchor. Pyth USD pairs use exponent −8; with USDC and the basket tokens all at 6 decimals, value in USDC minor units is `amount × price / 10⁸`. Each asset's feed pubkey is fixed in its `AssetConfig` (copied from the registry), and validated on every read. In tests, mock `PriceUpdateV2` accounts are injected into LiteSVM (TSLAx $250, NVDAx $180).
+`PriceUpdateV2` price (i64) is read at byte offset 73, `publish_time` at 93 and `posted_slot` (u64) at 125, directly from account bytes to avoid borsh version incompatibility with Anchor. Under Alpenglow each leader sets the Clock's `unix_timestamp`, which may advance by at most twice the slot time elapsed since the parent block, so after a halt the timestamp trails real time and a price published just before the halt can still look fresh by seconds. `load_price` therefore also requires `posted_slot` to be after the `LastRestartSlot` sysvar's slot (0 means the cluster has never restarted), pausing deposits and rebalances until Pyth posts again. Pyth USD pairs use exponent −8; with USDC and the basket tokens all at 6 decimals, value in USDC minor units is `amount × price / 10⁸`. Each asset's feed pubkey is fixed in its `AssetConfig` (copied from the registry), and validated on every read. In tests, mock `PriceUpdateV2` accounts are injected into LiteSVM (TSLAx $250, NVDAx $180).
 
 ---
 
@@ -157,7 +160,7 @@ cargo build-sbf --manifest-path programs/vault-strategy/Cargo.toml
 cargo test --manifest-path programs/vault-strategy/Cargo.toml
 ```
 
-Tests live in `programs/vault-strategy/tests/vault_strategy.rs` and use [LiteSVM](https://github.com/LiteSVM/litesvm). Both `.so` files are loaded from `target/deploy/`, so build before testing. The suite covers the full lifecycle end to end (deposit with auto-deployment, a price move, rebalance back to target, a second depositor priced at the new NAV, a year's fee, in-kind withdrawal), retiring an asset with `set_weight` and reallocating to reopen deposits, and the rejection paths: unapproved asset, weight overflow, over-cap fee and slippage, oracle-bounded deposit slippage, an under-allocated strategy, non-manager `set_weight`, unregistered router, and incomplete asset accounts on deposit.
+Tests live in `programs/vault-strategy/tests/vault_strategy.rs` and use [LiteSVM](https://github.com/LiteSVM/litesvm). Both `.so` files are loaded from `target/deploy/`, so build before testing. The suite covers the full lifecycle end to end (deposit with auto-deployment, a price move, rebalance back to target, a second depositor priced at the new NAV, a year's fee, in-kind withdrawal), retiring an asset with `set_weight` and reallocating to reopen deposits, and the rejection paths: unapproved asset, weight overflow, over-cap fee and slippage, oracle-bounded deposit slippage, an under-allocated strategy, non-manager `set_weight`, unregistered router, and incomplete asset accounts on deposit. `test_full_lifecycle` checks after every step that the recorded holdings equal the vaults' balances. `test_donation_does_not_inflate_share_price` runs the first-depositor attack (a one-minor-unit deposit, a 1,000 USDC transfer straight into the USDC vault, then a 1,000 USDC deposit with no `minimum_shares` floor) and checks the victim gets exactly the shares they would have got without the donation. `test_deposit_rejects_leg_that_buys_nothing` and `test_rebalance_cannot_spend_donated_usdc` pin the other two guards.
 
 ## FAQ
 
@@ -167,7 +170,7 @@ A manager creates a strategy with `initialize_strategy`, registers curator-appro
 
 ### How are share prices calculated?
 
-Shares are priced at the strategy's net asset value: the total value of the vault balances at current prices divided by shares outstanding. A later depositor pays the current share price rather than diluting earlier ones.
+Shares are priced at the strategy's net asset value: the total value of its recorded holdings at current prices divided by shares outstanding. A later depositor pays the current share price rather than diluting earlier ones. Tokens transferred straight into a vault are not part of the recorded holdings, so they cannot move the share price.
 
 ### How does the manager operate the fund?
 

@@ -13,6 +13,11 @@ use {
     solana_signer::Signer,
 };
 
+/// Mirrors `constants::MINIMUM_LIQUIDITY`: the LP units withheld from the
+/// first deposit and never minted. Deposits and withdrawals both count them as
+/// supply.
+const MINIMUM_LIQUIDITY: u64 = 100;
+
 fn token_program_id() -> Pubkey {
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         .parse()
@@ -1078,7 +1083,8 @@ fn test_deposit_too_small_for_ratio_reverts() {
 }
 
 /// Test F: LP-mint correctness for a subsequent deposit at the current ratio.
-/// With the Uniswap V2 formula `min(a*supply/pool_a, b*supply/pool_b)`, an
+/// With the Uniswap V2 formula `min(a*total/pool_a, b*total/pool_b)`, where
+/// `total` is the LP supply plus the unminted `MINIMUM_LIQUIDITY` floor, an
 /// equal-ratio deposit must mint LP tokens exactly proportional to its share
 /// of the pool. Previously the program used `sqrt(a*b)` for *all* deposits,
 /// which over- or under-minted depending on pool size and broke
@@ -1100,8 +1106,9 @@ fn test_lp_mint_proportional_to_share_of_pool() {
     );
 
     // Second deposit at the same 4:1 ratio doubles the pool. The proportional
-    // formula must mint exactly `lp_supply_initial` more LP (so the depositor
-    // doubles their stake).
+    // formula must mint exactly `lp_supply_initial + MINIMUM_LIQUIDITY` more
+    // LP: the first deposit's whole `sqrt(a*b)`, floor included, because the
+    // second depositor owns exactly as much of the pool as it does.
     let lp_before_second = get_token_account_balance(&ts.svm, &ts.liquidity_account).unwrap();
     // Same depositor + same args as the first deposit → identical tx
     // signature. Bump the blockhash so litesvm doesn't reject the second
@@ -1111,12 +1118,32 @@ fn test_lp_mint_proportional_to_share_of_pool() {
     let lp_after_second = get_token_account_balance(&ts.svm, &ts.liquidity_account).unwrap();
 
     let minted_on_second = lp_after_second - lp_before_second;
-    // min(4M * 1_999_900 / 4M, 1M * 1_999_900 / 1M) = 1_999_900.
-    let expected_second: u64 = 1_999_900;
+    // min(4M * 2_000_000 / 4M, 1M * 2_000_000 / 1M) = 2_000_000.
+    let expected_second: u64 = 2_000_000;
     assert_eq!(
         minted_on_second, expected_second,
-        "second deposit (same ratio, same size) should mint the same LP \
-         amount as the initial deposit minus the locked floor"
+        "second deposit (same ratio, same size) should mint the initial \
+         deposit's LP amount plus the locked floor"
+    );
+
+    // Minted and burned LP tokens are the same fraction of the pool, so
+    // burning what the second deposit minted returns that deposit exactly.
+    // Dividing the deposit by the bare supply would have minted 1_999_900
+    // here, redeemable for only 3_999_900 of the 4_000_000 A deposited.
+    let pool_a_before = get_token_account_balance(&ts.svm, &ts.pool_a).unwrap();
+    let withdraw = withdraw_ix_with_min(&ts, minted_on_second, 0, 0);
+    send_transaction_from_instructions(
+        &mut ts.svm,
+        vec![withdraw],
+        &[&ts.payer, &ts.admin],
+        &ts.payer.pubkey(),
+    )
+    .expect("withdraw the second deposit's LP");
+    let pool_a_after = get_token_account_balance(&ts.svm, &ts.pool_a).unwrap();
+    assert_eq!(
+        pool_a_before - pool_a_after,
+        4_000_000,
+        "burning the second deposit's LP returns the A it deposited"
     );
 }
 
@@ -1131,7 +1158,8 @@ fn test_lp_mint_after_swap_uses_effective_reserves() {
     // Seed 10M : 10M, then swap A→B so the pool shifts off 1:1.
     send_deposit(&mut ts, 10_000_000, 10_000_000).expect("initial deposit");
     let lp_after_initial = get_token_account_balance(&ts.svm, &ts.liquidity_account).unwrap();
-    let total_supply_before_second = lp_after_initial;
+    // The divisor counts the unminted MINIMUM_LIQUIDITY floor as supply.
+    let total_supply_before_second = lp_after_initial + MINIMUM_LIQUIDITY;
 
     let swap_in = 1_000_000u64;
     swap_a_to_b(&mut ts, swap_in);
@@ -1152,7 +1180,7 @@ fn test_lp_mint_after_swap_uses_effective_reserves() {
     let deposit_a =
         ((deposit_b as u128) * (effective_pool_a as u128) / (effective_pool_b as u128)) as u64;
 
-    // Expected LP minted = min(a*supply/pool_a, b*supply/pool_b) using the
+    // Expected LP minted = min(a*total/pool_a, b*total/pool_b) using the
     // *clamped* (a, b) the program actually transfers. After clamp at the
     // exact ratio, the binding side is whichever clamp picks: in
     // deposit_liquidity, `amount_b_required = amount_a * pool_b / pool_a`.
@@ -1175,6 +1203,132 @@ fn test_lp_mint_after_swap_uses_effective_reserves() {
     assert_eq!(
         minted, expected_liquidity,
         "LP minted on post-swap deposit must match share-of-effective-pool math"
+    );
+}
+
+/// Test H: the donation (inflation) attack. An attacker opens the pool with
+/// the smallest deposit that clears the floor, so they hold 1 LP token and 101
+/// units of supply share the reserves (their 1 plus the unminted 100). They
+/// then donate straight to the vaults to make each unit of supply expensive,
+/// hoping a later deposit rounds down to zero LP tokens. Because deposits
+/// divide by the same `supply + MINIMUM_LIQUIDITY` as withdrawals, a donation
+/// as large as the victim's deposit is nowhere near enough: the victim is
+/// minted their share, and the attacker cannot get the donation back, because
+/// 100 of the 101 units it was spread over belong to no one.
+#[test]
+fn test_donation_cannot_round_a_later_deposit_to_zero() {
+    let mut ts = full_setup();
+
+    // sqrt(101 * 101) = 101, minus the 100 floor: the attacker holds 1 LP.
+    send_deposit(&mut ts, 101, 101).expect("attacker opens the pool");
+    assert_eq!(
+        get_token_account_balance(&ts.svm, &ts.liquidity_account).unwrap(),
+        1
+    );
+
+    // The donation: tokens sent straight to the vaults, no LP minted.
+    let donation: u64 = 1_000_000;
+    mint_tokens_to_token_account(&mut ts.svm, &ts.mint_a, &ts.pool_a, donation, &ts.admin).unwrap();
+    mint_tokens_to_token_account(&mut ts.svm, &ts.mint_b, &ts.pool_b, donation, &ts.admin).unwrap();
+
+    // The victim deposits exactly as much as was donated. Dividing by the
+    // bare supply of 1 would mint 1_000_000 * 1 / 1_000_101 = 0 LP tokens.
+    let victim = create_wallet(&mut ts.svm, 10_000_000_000).unwrap();
+    let victim_a =
+        create_associated_token_account(&mut ts.svm, &victim.pubkey(), &ts.mint_a, &ts.payer)
+            .unwrap();
+    let victim_b =
+        create_associated_token_account(&mut ts.svm, &victim.pubkey(), &ts.mint_b, &ts.payer)
+            .unwrap();
+    mint_tokens_to_token_account(&mut ts.svm, &ts.mint_a, &victim_a, donation, &ts.admin).unwrap();
+    mint_tokens_to_token_account(&mut ts.svm, &ts.mint_b, &victim_b, donation, &ts.admin).unwrap();
+    let victim_lp = derive_ata(&victim.pubkey(), &ts.liquidity_provider_mint);
+    let victim_deposit = Instruction::new_with_bytes(
+        ts.program_id,
+        &swap_example::instruction::DepositLiquidity {
+            amount_a: donation,
+            amount_b: donation,
+            minimum_lp_tokens_out: 0,
+        }
+        .data(),
+        swap_example::accounts::DepositLiquidityAccountConstraints {
+            pool_config: ts.pool_config_key,
+            depositor: victim.pubkey(),
+            liquidity_provider_mint: ts.liquidity_provider_mint,
+            mint_a: ts.mint_a,
+            mint_b: ts.mint_b,
+            pool_a: ts.pool_a,
+            pool_b: ts.pool_b,
+            liquidity_provider_token: victim_lp,
+            token_a: victim_a,
+            token_b: victim_b,
+            payer: ts.payer.pubkey(),
+            token_program: token_program_id(),
+            associated_token_program: ata_program_id(),
+            system_program: system_program::id(),
+        }
+        .to_account_metas(None),
+    );
+    send_transaction_from_instructions(
+        &mut ts.svm,
+        vec![victim_deposit],
+        &[&ts.payer, &victim],
+        &ts.payer.pubkey(),
+    )
+    .expect("victim deposit mints LP tokens");
+
+    // 1_000_000 * 101 / 1_000_101 = 100 LP tokens.
+    assert_eq!(get_token_account_balance(&ts.svm, &victim_lp).unwrap(), 100);
+
+    // The attacker exits. Their 1 LP token is 1 of 201 units of supply over a
+    // 2_000_101 reserve: 9_950 of each token, back from a 1_000_101 outlay.
+    let attacker_exit = withdraw_ix_with_min(&ts, 1, 0, 0);
+    let attacker_a_before = get_token_account_balance(&ts.svm, &ts.holder_account_a).unwrap();
+    send_transaction_from_instructions(
+        &mut ts.svm,
+        vec![attacker_exit],
+        &[&ts.payer, &ts.admin],
+        &ts.payer.pubkey(),
+    )
+    .expect("attacker withdraws");
+    let attacker_a_back =
+        get_token_account_balance(&ts.svm, &ts.holder_account_a).unwrap() - attacker_a_before;
+    assert_eq!(attacker_a_back, 9_950);
+    assert!(
+        attacker_a_back < donation / 100,
+        "the attacker recovers under 1% of the donation"
+    );
+}
+
+/// Test I: once every LP token is burned, the floor's share of the reserves
+/// is still in the pool, so the next deposit takes the subsequent-deposit
+/// branch and mints against the floor alone. Dividing by the bare supply of
+/// zero would mint nothing and leave the pool unable to take deposits again.
+#[test]
+fn test_deposit_after_every_lp_token_is_burned() {
+    let mut ts = full_setup();
+    send_deposit(&mut ts, 4_000_000, 4_000_000).expect("initial deposit");
+    let lp = get_token_account_balance(&ts.svm, &ts.liquidity_account).unwrap();
+
+    // Burn all 3_999_900 LP tokens: 3_999_900 * 4_000_000 / 4_000_000 of
+    // each side leaves, and the floor's 100 of each side stays.
+    let withdraw_all = withdraw_ix_with_min(&ts, lp, 0, 0);
+    send_transaction_from_instructions(
+        &mut ts.svm,
+        vec![withdraw_all],
+        &[&ts.payer, &ts.admin],
+        &ts.payer.pubkey(),
+    )
+    .expect("withdraw everything");
+    assert_eq!(get_token_account_balance(&ts.svm, &ts.pool_a).unwrap(), 100);
+    assert_eq!(get_token_account_balance(&ts.svm, &ts.pool_b).unwrap(), 100);
+
+    // 1_000_000 * (0 + 100) / 100 = 1_000_000 LP tokens.
+    ts.svm.expire_blockhash();
+    send_deposit(&mut ts, 1_000_000, 1_000_000).expect("deposit into the emptied pool");
+    assert_eq!(
+        get_token_account_balance(&ts.svm, &ts.liquidity_account).unwrap(),
+        1_000_000
     );
 }
 
@@ -1336,13 +1490,15 @@ fn test_deposit_reverts_when_lp_below_min() {
 
     // Compute the LP that a `(4M, 1M)` deposit at the current ratio would
     // mint, using the same formula as the program (no probe tx needed):
-    //   liquidity = min(a*supply/pool_a, b*supply/pool_b)
-    // Effective reserves == raw reserves here because no swaps have happened.
-    let lp_supply = get_token_account_balance(&ts.svm, &ts.liquidity_account).unwrap();
+    //   liquidity = min(a*total/pool_a, b*total/pool_b)
+    // where total = LP supply + MINIMUM_LIQUIDITY. Effective reserves == raw
+    // reserves here because no swaps have happened.
+    let total_supply =
+        get_token_account_balance(&ts.svm, &ts.liquidity_account).unwrap() + MINIMUM_LIQUIDITY;
     let pool_a_amount = get_token_account_balance(&ts.svm, &ts.pool_a).unwrap();
     let pool_b_amount = get_token_account_balance(&ts.svm, &ts.pool_b).unwrap();
-    let lp_from_a = (4_000_000u128 * lp_supply as u128) / pool_a_amount as u128;
-    let lp_from_b = (1_000_000u128 * lp_supply as u128) / pool_b_amount as u128;
+    let lp_from_a = (4_000_000u128 * total_supply as u128) / pool_a_amount as u128;
+    let lp_from_b = (1_000_000u128 * total_supply as u128) / pool_b_amount as u128;
     let achievable_lp = lp_from_a.min(lp_from_b) as u64;
 
     // Require *strictly more* than that - the deposit must revert.

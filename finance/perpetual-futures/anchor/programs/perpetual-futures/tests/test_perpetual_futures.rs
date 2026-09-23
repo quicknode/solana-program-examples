@@ -584,10 +584,10 @@ fn test_add_liquidity_subsequent_is_proportional() {
 
     let provider_lp = derive_ata(&provider.pubkey(), &market.lp_mint);
     let shares = get_token_account_balance(&market.svm, &provider_lp).unwrap();
-    // supply before second deposit was `first - 1_000`; second shares =
-    // second * supply / aum = second * (first - 1_000) / first.
-    let expected = ((second as u128) * ((first - 1_000) as u128) / (first as u128)) as u64;
-    assert_eq!(shares, expected);
+    // supply before second deposit was `first - 1_000`, and the withheld
+    // 1_000 counts as shares too, so second shares =
+    // second * (supply + 1_000) / aum = second * first / first = second.
+    assert_eq!(shares, second);
 }
 
 #[test]
@@ -605,12 +605,113 @@ fn test_add_and_remove_liquidity_round_trip() {
         .remove_liquidity(&provider, provider_collateral, shares, 0)
         .unwrap();
 
-    // As the only liquidity provider, they reclaim the full deposit: their
-    // shares carry the whole pool, since the withheld minimum was never minted
-    // to anyone else to hold it back.
+    // Even as the only liquidity provider, they reclaim their deposit less
+    // the withheld minimum: those 1_000 shares belong to nobody, and their
+    // 1_000 of liquidity stays in the pool.
     let returned = get_token_account_balance(&market.svm, &provider_collateral).unwrap();
-    assert_eq!(returned, deposit);
-    assert_eq!(market.pool_state().liquidity, 0);
+    assert_eq!(returned, deposit - 1_000);
+    assert_eq!(market.pool_state().liquidity, 1_000);
+
+    // The next provider is priced against the minimum's slice rather than
+    // bootstrapped: 5_000 * (0 + 1_000) / 1_000 = 5_000 shares, the same
+    // one share per unit the pool has always charged.
+    let (next, next_collateral) = market.funded_trader(5_000);
+    market
+        .add_liquidity(&next, next_collateral, 5_000, 0)
+        .unwrap();
+    let next_lp = derive_ata(&next.pubkey(), &market.lp_mint);
+    assert_eq!(
+        get_token_account_balance(&market.svm, &next_lp).unwrap(),
+        5_000
+    );
+}
+
+/// First-depositor share inflation without a donation. The vault balance is
+/// not what shares are priced against, so tokens sent straight to the vault
+/// move nothing, but `liquidity` itself grows with every funding payment and
+/// every trader loss, and a liquidity provider can also be the pool's only
+/// trader. An attacker opens the pool with the smallest deposit that clears
+/// the minimum (1 share), then pays funding on a small long of their own until
+/// `liquidity` is large, which makes each share expensive in the same way a
+/// donation would. The funding rate is a pool parameter the pool's creator
+/// sets, and nothing stops the attacker from being that creator.
+///
+/// The withheld `MINIMUM_LIQUIDITY` counts as shares in both directions, so
+/// the attacker's single share is 1 of 1_001 and the value pumped into the
+/// pool is spread across shares nobody can redeem. A later depositor is minted
+/// their fair share, and the attacker gets back a small fraction of the
+/// funding they paid in.
+#[test]
+fn test_inflating_liquidity_through_own_trades_does_not_pay() {
+    // A steep funding rate: 1_000 of notional pays 1_000 USDC over 1_000 slots.
+    let mut market = Market::new(dollars(100), 1_000_000_000_000);
+
+    let (attacker, attacker_collateral) = market.funded_trader(10_000 * ONE_USDC);
+    market
+        .add_liquidity(&attacker, attacker_collateral, 1_001, 0)
+        .unwrap();
+    let attacker_lp = derive_ata(&attacker.pubkey(), &market.lp_mint);
+    assert_eq!(
+        get_token_account_balance(&market.svm, &attacker_lp).unwrap(),
+        1
+    );
+
+    // The pool holds 1_001, so it can back a position of up to 1_001 notional.
+    // Heavy collateral keeps the position far from liquidation while funding
+    // drains it into `liquidity`.
+    market
+        .open_position(
+            &attacker,
+            attacker_collateral,
+            Side::Long,
+            2_000 * ONE_USDC,
+            1_000,
+            0,
+        )
+        .unwrap();
+    let opened_at = market.current_slot();
+    market.warp(opened_at + 1_000);
+    market.set_price(dollars(100));
+    market
+        .close_position(&attacker, attacker_collateral, Side::Long, 0)
+        .unwrap();
+    let pumped_liquidity = market.pool_state().liquidity;
+    assert!(pumped_liquidity > 1_000 * ONE_USDC);
+    let attacker_spent =
+        10_000 * ONE_USDC - get_token_account_balance(&market.svm, &attacker_collateral).unwrap();
+
+    // The victim deposits just under twice the pumped liquidity. Dividing by
+    // the bare share supply of 1 would mint them a single share, and the
+    // attacker's one share would then redeem half the pool.
+    let victim_deposit = 2 * pumped_liquidity - 1;
+    let (victim, victim_collateral) = market.funded_trader(victim_deposit);
+    market
+        .add_liquidity(&victim, victim_collateral, victim_deposit, 0)
+        .unwrap();
+    let victim_lp = derive_ata(&victim.pubkey(), &market.lp_mint);
+    let victim_shares = get_token_account_balance(&market.svm, &victim_lp).unwrap();
+
+    // The attacker exits with their one share.
+    let before_exit = get_token_account_balance(&market.svm, &attacker_collateral).unwrap();
+    market
+        .remove_liquidity(&attacker, attacker_collateral, 1, 0)
+        .unwrap();
+    let attacker_back =
+        get_token_account_balance(&market.svm, &attacker_collateral).unwrap() - before_exit;
+    assert!(
+        attacker_back * 100 < attacker_spent,
+        "attacker spent {attacker_spent} and got back {attacker_back}"
+    );
+
+    // The victim exits with everything and gets back all but a sliver.
+    market
+        .remove_liquidity(&victim, victim_collateral, victim_shares, 0)
+        .unwrap();
+    let victim_back = get_token_account_balance(&market.svm, &victim_collateral).unwrap();
+    assert!(
+        victim_back * 1_000 >= victim_deposit * 999,
+        "victim deposited {victim_deposit} and got back {victim_back}"
+    );
 }
 
 #[test]

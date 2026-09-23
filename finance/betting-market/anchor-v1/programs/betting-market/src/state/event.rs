@@ -23,8 +23,9 @@ pub struct Event {
     // Sum of every stake placed across all outcomes.
     pub total_pool: u64,
     pub status: EventStatus,
-    // Fee snapshot taken at creation, so later Config changes can't alter a
-    // market that bettors have already joined.
+    // The fee settlement charges, copied from the config's `default_fee_bps`
+    // at creation so later Config changes can't alter a market that bettors
+    // have already joined.
     pub fee_bps: u16,
     // Fields below are written at settlement and read at claim time.
     pub winning_outcome_index: u8,

@@ -123,26 +123,36 @@ pub fn handle_deposit_liquidity(
     //   - Initial deposit (pool creation): `liquidity = sqrt(a * b) - MINIMUM_LIQUIDITY`.
     //     The `MINIMUM_LIQUIDITY` floor is never minted to anyone: the first
     //     depositor receives `sqrt(a * b) - MINIMUM_LIQUIDITY` LP tokens, and
-    //     withdraw_liquidity adds the floor back into its supply denominator,
-    //     so the floor's share of the reserves stays in the pool, claimable by
-    //     nobody while any LP supply exists. This stops the first depositor
-    //     from draining the pool to a sub-minor-unit ratio. (Uniswap V2
-    //     instead mints the floor to the zero address; here, if every LP
-    //     token is burned, the floor's leftover reserves simply seed the next
-    //     bootstrap deposit.)
-    //   - Subsequent deposit: `liquidity = min(a * supply / pool_a, b * supply / pool_b)`.
-    //     This is the canonical Uniswap V2 formula: mint LP tokens in
-    //     proportion to the depositor's share of each reserve, taking the
-    //     smaller side as the binding constraint. After the ratio clamp
-    //     above, both sides give the same result; `min` is kept as an
-    //     invariant safety net and to match the published formula.
+    //     from then on both the subsequent-deposit branch below and
+    //     withdraw_liquidity divide by `lp_supply + MINIMUM_LIQUIDITY`, so the
+    //     floor counts as supply that nobody holds. Its share of the reserves
+    //     stays in the pool, claimable by nobody. An attacker who inflates the
+    //     value behind each share by donating to the vaults inflates the value
+    //     behind those units too, and loses that part of the donation.
+    //     (Uniswap V2 instead mints the floor to the zero address; here, if
+    //     every LP token is burned, the floor's leftover reserves stay behind
+    //     and the next depositor mints against them through the
+    //     subsequent-deposit branch.)
+    //   - Subsequent deposit: `liquidity = min(a * total / pool_a, b * total / pool_b)`
+    //     with `total = lp_supply + MINIMUM_LIQUIDITY`. This is the canonical
+    //     Uniswap V2 formula: mint LP tokens in proportion to the depositor's
+    //     share of each reserve, taking the smaller side as the binding
+    //     constraint. After the ratio clamp above, both sides give the same
+    //     result; `min` is kept as an invariant safety net and to match the
+    //     published formula (Uniswap V2's `totalSupply` includes the floor it
+    //     minted to the zero address). `total` must be the same divisor
+    //     withdraw_liquidity uses: dividing by the bare mint supply here would
+    //     mint every depositor slightly less than they could redeem, and would
+    //     let a donation merely as large as a victim's deposit round that
+    //     deposit down to zero LP tokens, where counting the floor makes the
+    //     attacker donate at least `MINIMUM_LIQUIDITY + 1` times the deposit.
     //
-    // All math is in `u128` with checked arithmetic. `amount * supply` can
-    // overflow `u64` (both are `u64`), but `u128` absorbs it: max product
-    // is `(2^64 - 1)^2 < 2^128`. We multiply before dividing to keep
-    // precision, then round down (floor) so the pool keeps any sub-unit
-    // rounding dust - protocol-favouring rounding, per the financial-math
-    // rules.
+    // All math is in `u128` with checked arithmetic. `amount * total` can
+    // overflow `u64`, but `u128` absorbs it for any supply a real mint can
+    // reach, and the checked multiply reports the rest. We multiply before
+    // dividing to keep precision, then round down (floor) so the pool keeps
+    // any sub-unit rounding dust - protocol-favouring rounding, per the
+    // financial-math rules.
     let liquidity: u64 = if pool_creation {
         let product = (amount_a as u128)
             .checked_mul(amount_b as u128)
@@ -156,7 +166,11 @@ pub fn handle_deposit_liquidity(
             .checked_sub(MINIMUM_LIQUIDITY)
             .ok_or(AmmError::MathOverflow)?
     } else {
-        let total_supply = context.accounts.liquidity_provider_mint.supply as u128;
+        // The floor is part of the supply the reserves are shared among, as
+        // it is in withdraw_liquidity.
+        let total_supply = (context.accounts.liquidity_provider_mint.supply as u128)
+            .checked_add(MINIMUM_LIQUIDITY as u128)
+            .ok_or(AmmError::MathOverflow)?;
         let liquidity_from_a = (amount_a as u128)
             .checked_mul(total_supply)
             .ok_or(AmmError::MathOverflow)?

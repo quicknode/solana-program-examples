@@ -11,6 +11,13 @@
 //! integer arithmetic. This crate reproduces it faithfully and proves the
 //! invariants the vault's solvency rests on.
 //!
+//! The program prices shares and pays withdrawals from the holdings it has
+//! recorded (`Strategy::usdc_holdings` and `asset_holdings`), never from the
+//! vaults' token balances, so tokens donated straight into a vault are outside
+//! the fund. The harnesses model a vault as a (recorded, balance) pair and prove
+//! what that buys: payouts never exceed the real balance, and a donation cannot
+//! dilute the next depositor.
+//!
 //! Nonlinear 128-bit harnesses use bounded model checking (small symbolic
 //! inputs), as percolator does; the share identities are scale-invariant.
 
@@ -24,17 +31,18 @@ pub fn mul_div_floor(a: u128, b: u128, d: u128) -> Option<u128> {
     a.checked_mul(b)?.checked_div(d)
 }
 
-/// Proportional withdrawal of one vault balance: `floor(balance * shares / total)`
-/// — the formula `handle_withdraw` applies to the USDC leg and to every basket
-/// asset.
+/// Proportional withdrawal from one vault's recorded holding:
+/// `floor(holding * shares / total)` — the formula `handle_withdraw` applies to
+/// the USDC leg and to every basket asset.
 pub fn withdraw_amount(balance: u64, shares_burned: u64, total_shares: u64) -> Option<u64> {
     mul_div_floor(balance as u128, shares_burned as u128, total_shares as u128)?
         .try_into()
         .ok()
 }
 
-/// Shares minted for a deposit: `floor(usdc_amount * total_shares / nav)`
-/// (`handle_deposit`; the first deposit, `total_shares == 0`, mints 1:1).
+/// Shares minted for a deposit: `floor(usdc_amount * total_shares / nav)`, where
+/// `nav` is valued from recorded holdings (`handle_deposit`; the first deposit,
+/// `total_shares == 0`, mints 1:1).
 pub fn deposit_shares(usdc_amount: u64, total_shares: u64, nav: u64) -> Option<u64> {
     if total_shares == 0 {
         return Some(usdc_amount);
@@ -109,7 +117,82 @@ fn proof_deposit_withdraw_cannot_extract() {
 }
 
 // ===========================================================================
-// 3. Manager fee dilution is bounded
+// 3. Recorded holdings never exceed the vault's balance
+// ===========================================================================
+
+/// One vault as the program sees it (`recorded`) and as the token program does
+/// (`balance`). A deposit adds to both, a donation adds to the balance only, and
+/// a withdrawal pays `withdraw_amount` of the recorded holding out of both. If
+/// `recorded <= balance` holds before each step it holds after it, and every
+/// payout is covered by the real balance: the program can never promise tokens
+/// the vault does not hold, however much is donated.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::solver(cadical)]
+fn proof_recorded_holdings_never_exceed_balance() {
+    let recorded: u64 = kani::any();
+    let balance: u64 = kani::any();
+    let deposit: u64 = kani::any();
+    let donation: u64 = kani::any();
+    let shares_burned: u64 = kani::any();
+    let total_shares: u64 = kani::any();
+
+    kani::assume(recorded <= balance && balance <= 255);
+    kani::assume(deposit <= 255 && donation <= 255);
+    kani::assume(total_shares >= 1 && total_shares <= 255);
+    kani::assume(shares_burned <= total_shares);
+
+    // Deposit: the swap output is recorded and lands in the vault.
+    let recorded = recorded + deposit;
+    let balance = balance + deposit;
+    assert!(recorded <= balance);
+
+    // Donation: tokens land in the vault and nothing is recorded.
+    let balance = balance + donation;
+    assert!(recorded <= balance);
+
+    // Withdrawal: paid from the recorded holding, out of the real balance.
+    let payout = withdraw_amount(recorded, shares_burned, total_shares).expect("computes");
+    assert!(payout <= recorded);
+    assert!(payout <= balance);
+    assert!(recorded - payout <= balance - payout);
+}
+
+// ===========================================================================
+// 4. A donation cannot dilute the next deposit
+// ===========================================================================
+
+/// The inflation attack against recorded holdings, in a USDC-only vault: an
+/// attacker's first deposit mints one share per minor unit, a donation of any
+/// size lands in the vault, and then the victim deposits. The donation is not in
+/// the recorded NAV, so the victim's shares are exactly their deposit, the same
+/// as with no donation, and withdrawing them returns every minor unit.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::solver(cadical)]
+fn proof_donation_cannot_dilute_next_deposit() {
+    let attacker_deposit: u64 = kani::any();
+    let donation: u64 = kani::any();
+    let victim_deposit: u64 = kani::any();
+
+    kani::assume(attacker_deposit >= 1 && attacker_deposit <= 31);
+    kani::assume(victim_deposit <= 31);
+
+    let attacker_shares = deposit_shares(attacker_deposit, 0, 0).expect("computes");
+    let recorded = attacker_deposit;
+    let _balance = recorded as u128 + donation as u128; // counted nowhere below
+
+    let victim_shares =
+        deposit_shares(victim_deposit, attacker_shares, recorded).expect("computes");
+    assert_eq!(victim_shares, victim_deposit);
+
+    let total = attacker_shares + victim_shares;
+    let back = withdraw_amount(recorded + victim_deposit, victim_shares, total).expect("computes");
+    assert_eq!(back, victim_deposit);
+}
+
+// ===========================================================================
+// 5. Manager fee dilution is bounded
 // ===========================================================================
 
 /// The time-based manager fee mints
@@ -156,6 +239,17 @@ mod tests {
     #[test]
     fn deposit_first_is_one_to_one() {
         assert_eq!(deposit_shares(500, 0, 0).unwrap(), 500);
+    }
+
+    #[test]
+    fn donation_does_not_dilute_next_deposit() {
+        // The attack from the book: one minor unit deposited, 1,000 USDC donated
+        // (and not recorded), then a 1,000 USDC deposit.
+        let attacker = deposit_shares(1, 0, 0).unwrap();
+        let victim = deposit_shares(1_000_000_000, attacker, 1).unwrap();
+        assert_eq!(victim, 1_000_000_000);
+        let back = withdraw_amount(1 + 1_000_000_000, victim, attacker + victim).unwrap();
+        assert_eq!(back, 1_000_000_000);
     }
 
     #[test]

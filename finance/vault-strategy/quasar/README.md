@@ -44,12 +44,19 @@ themselves or pair a real mint with a feed they control.
   USDC vault plus every asset vault valued at its oracle price), mints shares for
   that fraction of the vault, and deploys the deposit across the basket by
   swapping a weight-sized slice into each asset through the router. The first
-  deposit into an empty vault mints shares one-to-one.
+  deposit into an empty vault mints shares one-to-one. A deposit so small that a
+  swap returns none of its asset is refused (`DepositTooSmall`).
+- The valuation and every payout use the holdings the strategy has recorded
+  (`usdc_holdings`, and `asset_holdings` stored as little-endian u64s because
+  zero-copy accounts hold byte arrays only), not the vaults' token balances.
+  Tokens transferred straight into a vault are outside the fund, so a donation
+  cannot inflate the share price, the first-depositor attack.
 - `withdraw` burns shares and pays out a proportional slice of the USDC vault and
   every asset vault, in kind.
 - `rebalance` lets the manager sell one asset for USDC and buy another with it,
   keeping holdings near their targets as prices drift. Both legs are floored to
-  the oracle price so a bad swap route reverts.
+  the oracle price so a bad swap route reverts, and neither can sell or spend
+  more than the recorded holdings (`InsufficientHoldings`).
 - `collect_fees` accrues the time-based management fee by minting fresh shares to
   the manager, diluting holders at the configured annual rate.
 
@@ -89,7 +96,11 @@ withdraw), in index order.
 - The management fee is capped (10% per year) and the slippage tolerance is
   capped (10%), so neither can be configured to drain the vault.
 - Price feeds are validated against the address recorded on the asset config and
-  rejected if stale or non-positive.
+  rejected if stale or non-positive, or if posted at or before the last cluster
+  restart. Under Alpenglow the Clock's timestamp trails real time after a halt,
+  so a pre-halt price can still pass the 60-second check; `load_price` also
+  requires the update's `posted_slot` to be after the `LastRestartSlot`
+  sysvar's slot (`PricePredatesRestart`).
 
 ## What the Quasar port does differently
 
@@ -107,6 +118,10 @@ differences follow from Quasar's model:
   token accounts, matching the other Quasar finance examples.
 - **The share mint carries no freeze authority** (it is never used); the Anchor
   build sets it to the strategy PDA.
+- **A hand-declared `LastRestartSlot` sysvar.** quasar-lang ships only the
+  Clock and Rent sysvars, so `src/last_restart.rs` declares the 8-byte layout
+  itself and reads it with the same `sol_get_sysvar` syscall. `load_price` uses
+  it to reject prices posted before a cluster restart.
 
 ## Building and testing
 
@@ -126,7 +141,8 @@ The router suite (`mock-swap-router/src/tests.rs`) exercises initialize, set-rat
 and a USDC-for-asset swap. The vault suite (`vault-strategy/src/tests.rs`) drives
 the manager setup (registry, approve asset, strategy, add asset) and a two-program
 deposit that deploys USDC into the basket through the router CPI, asserting share
-minting, vault balances, and treasury flow.
+minting, vault balances, and treasury flow. A second deposit test shows a price
+posted before a cluster restart is rejected until Pyth posts again.
 
 ## Extending
 

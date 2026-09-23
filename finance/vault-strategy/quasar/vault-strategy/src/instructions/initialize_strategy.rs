@@ -3,7 +3,9 @@ use quasar_lang::sysvars::Sysvar as _;
 use quasar_spl::prelude::*;
 
 use crate::errors::VaultError;
-use crate::state::{Registry, ShareMintPda, Strategy, StrategyInner, UsdcVaultPda};
+use crate::state::{
+    Registry, ShareMintPda, Strategy, StrategyInner, UsdcVaultPda, ASSET_HOLDINGS_BYTES,
+};
 
 /// Highest annual management fee a manager may set (10%). `collect_fees` mints
 /// shares to the manager and dilutes every depositor, so an uncapped fee would
@@ -75,6 +77,8 @@ pub fn handle_initialize_strategy(
         fee_bps,
         max_slippage_bps,
         total_shares: 0,
+        usdc_holdings: 0,
+        asset_holdings: [0; ASSET_HOLDINGS_BYTES],
         last_fee_accrual_timestamp: now,
         asset_count: 0,
         total_weight_bps: 0,
