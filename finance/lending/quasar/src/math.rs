@@ -5,7 +5,10 @@
 use quasar_lang::prelude::*;
 
 use crate::{
-    constants::{BPS_DENOMINATOR, FIXED_POINT_SCALE, FIXED_POINT_SCALE_DECIMALS, SECONDS_PER_YEAR},
+    constants::{
+        BPS_DENOMINATOR, FIXED_POINT_SCALE, FIXED_POINT_SCALE_DECIMALS, MINIMUM_SHARES,
+        SECONDS_PER_YEAR,
+    },
     error::LendingError,
 };
 
@@ -129,6 +132,15 @@ pub fn net_total_liquidity(
 ) -> Result<u128, ProgramError> {
     total_liquidity(available, borrowed_principal, factor)?
         .checked_sub(protocol_fees as u128)
+        .ok_or(LendingError::MathOverflow.into())
+}
+
+/// The share count every conversion between shares and liquidity divides by:
+/// the outstanding supply plus the `MINIMUM_SHARES` withheld from the first
+/// deposit, which belong to nobody and so never redeem.
+pub fn total_shares(share_mint_supply: u64) -> Result<u128, ProgramError> {
+    (share_mint_supply as u128)
+        .checked_add(MINIMUM_SHARES as u128)
         .ok_or(LendingError::MathOverflow.into())
 }
 

@@ -8,8 +8,10 @@ use crate::math::mul_div_floor;
 use crate::state::{reserve_signer_seeds, Reserve};
 
 /// Burn share tokens and withdraw the underlying liquidity they represent:
-/// `share_amount * total_liquidity / share_supply`, floored so the protocol
-/// keeps any rounding dust. Capped by the reserve's available (un-borrowed)
+/// `share_amount * total_liquidity / total_shares`, floored so the protocol
+/// keeps any rounding dust. `total_shares` counts the `MINIMUM_SHARES` withheld
+/// from the first deposit, as `deposit_reserve_liquidity` does, so their slice
+/// of the pool never leaves. Capped by the reserve's available (un-borrowed)
 /// liquidity.
 pub fn handle_redeem_reserve_collateral(
     context: Context<RedeemReserveCollateral>,
@@ -19,12 +21,11 @@ pub fn handle_redeem_reserve_collateral(
     let reserve = &mut context.accounts.reserve;
     reserve.require_refreshed()?;
 
-    let share_supply = reserve.share_mint_supply as u128;
-    require!(share_supply > 0, LendingError::InsufficientReserveLiquidity);
+    require!(reserve.share_mint_supply > 0, LendingError::InsufficientReserveLiquidity);
     let liquidity_amount = mul_div_floor(
         share_amount as u128,
         reserve.total_liquidity()?,
-        share_supply,
+        reserve.total_shares()?,
     )?;
     let liquidity_amount = u64::try_from(liquidity_amount).map_err(|_| LendingError::MathOverflow)?;
     require!(

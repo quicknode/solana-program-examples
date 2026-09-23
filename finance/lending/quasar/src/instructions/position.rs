@@ -6,7 +6,7 @@ use {
         logic::{accrue, now, price_scaled, snapshot_obligation, snapshot_reserve, SCALE},
         math::{
             current_debt, market_value, mul_div_ceil, mul_div_floor, net_total_liquidity,
-            value_to_amount, Rounding,
+            total_shares, value_to_amount, Rounding,
         },
         state::{
             LendingMarket, Obligation, ObligationInner, ObligationVaultPda, PriceFeed, Reserve,
@@ -198,7 +198,7 @@ impl BorrowObligationLiquidity {
         let collateral_liquidity = mul_div_floor(
             obligation.deposited_shares as u128,
             collateral_total,
-            (collateral.share_mint_supply as u128).max(1),
+            total_shares(collateral.share_mint_supply)?,
         )?;
         let collateral_value = market_value(
             u64::try_from(collateral_liquidity).map_err(|_| LendingError::MathOverflow)?,
@@ -414,7 +414,7 @@ impl WithdrawObligationCollateral {
         let remaining_liquidity = mul_div_floor(
             remaining_shares as u128,
             collateral_total,
-            (collateral.share_mint_supply as u128).max(1),
+            total_shares(collateral.share_mint_supply)?,
         )?;
         let remaining_value = market_value(
             u64::try_from(remaining_liquidity).map_err(|_| LendingError::MathOverflow)?,
@@ -561,7 +561,7 @@ impl LiquidateObligation {
         let collateral_liquidity = mul_div_floor(
             obligation.deposited_shares as u128,
             collateral_total,
-            (collateral.share_mint_supply as u128).max(1),
+            total_shares(collateral.share_mint_supply)?,
         )?;
         let collateral_value = market_value(
             u64::try_from(collateral_liquidity).map_err(|_| LendingError::MathOverflow)?,
@@ -617,7 +617,7 @@ impl LiquidateObligation {
         )?;
         let seize_shares = mul_div_floor(
             seize_liquidity as u128,
-            collateral.share_mint_supply as u128,
+            total_shares(collateral.share_mint_supply)?,
             collateral_total.max(1),
         )?;
         let seize_shares = u64::try_from(seize_shares).map_err(|_| LendingError::MathOverflow)?;

@@ -9,7 +9,7 @@ use lending::state::Reserve;
 #[test]
 fn init_market_and_reserve() {
     let mut env = Env::new();
-    let usdc = env.add_reserve(6, common::dollars(1), default_config());
+    let usdc = env.add_empty_reserve(6, common::dollars(1), default_config());
 
     let reserve = env.reserve(&usdc);
     assert_eq!(reserve.lending_market, env.market);

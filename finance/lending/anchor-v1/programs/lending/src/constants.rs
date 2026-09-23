@@ -39,6 +39,22 @@ pub const SECONDS_PER_YEAR: u128 = 31_536_000;
 /// time, so the window tightens on its own and never loosens.
 pub const MAX_PRICE_STALENESS_SLOTS: u64 = 25;
 
+/// Reserve shares withheld from a reserve's first deposit. The first supplier
+/// receives `deposit - MINIMUM_SHARES` shares rather than the full amount, the
+/// convention Uniswap V2 uses for LP tokens, and every conversion between
+/// shares and liquidity counts these as shares that nobody holds
+/// (`Reserve::total_shares`), so their slice of the pool never leaves.
+///
+/// Shares are priced off tracked `total_liquidity`, not the vault balance, so a
+/// direct donation cannot move them. But `total_liquidity` counts interest owed
+/// on borrows, and a supplier can also borrow: a lone supplier holding one
+/// share can make it worth more than one unit through their own debt, then
+/// ratchet the price up with deposits and redemptions whose rounding stays in
+/// the pool, until a later deposit rounds down and they take part of it. With
+/// the minimum counted, their one share is 1 of 1_001, and whatever the
+/// rounding leaves behind is spread mostly across shares they cannot redeem.
+pub const MINIMUM_SHARES: u64 = 1_000;
+
 // PDA seeds.
 pub const LENDING_MARKET_SEED: &[u8] = b"lending_market";
 pub const RESERVE_SEED: &[u8] = b"reserve";

@@ -1,5 +1,32 @@
 # Changelog
 
+## 2026-09-23
+
+Lock a minimum number of reserve shares. The first deposit now mints
+`deposit - MINIMUM_SHARES` (1,000) shares, and every conversion between shares
+and liquidity (deposit, redeem, collateral valuation in `refresh_obligation`,
+`withdraw_obligation_collateral` and liquidation) divides by the share supply
+plus that minimum, through the new `Reserve::total_shares`. The withheld shares
+belong to nobody, so their slice of the pool stays locked. A first deposit of
+`MINIMUM_SHARES` or less fails with `DepositTooSmall`, and a reserve whose
+suppliers have all left prices the next deposit against the locked slice
+rather than bootstrapping it.
+
+Pricing shares against tracked `total_liquidity` stopped a vault donation, but
+`total_liquidity` includes interest owed on borrows. A lone supplier with one
+share could borrow a single base unit from their own reserve, let one second of
+interest round the debt up to two, and then ratchet the share price up about
+half again per round by depositing the most that still minted one share and
+redeeming it, leaving the rounding with their own share. On the default rate
+curve, with no bad debt and the loan repaid, 49 rounds made one share worth
+about 690 USDC, and a 1,000 USDC deposit made after that minted one share, so
+the attacker redeemed half the pool and kept 155 USDC of it. Tested by
+`inflating_shares_through_own_borrow_does_not_pay`, which fails against the
+previous program, and by `first_deposit_must_exceed_the_minimum` and
+`sole_supplier_leaves_the_minimum_behind`. The test harness's `add_reserve` now
+opens each reserve with a deposit from the market owner; `add_empty_reserve`
+leaves it empty.
+
 ## 2026-09-22
 
 Accrue interest by the wall clock instead of by slots. The reserve's

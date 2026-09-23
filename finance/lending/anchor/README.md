@@ -55,10 +55,26 @@ crosses the liquidation threshold and a liquidator can close part of the positio
 ### Share tokens (the deposit claim)
 
 Supplying liquidity mints share tokens; redeeming burns them. The exchange rate
-is `total_liquidity / share_supply`, where `total_liquidity = available_liquidity
-+ current_debt`. `available_liquidity` (not the vault's raw token balance) is the
-source of truth, so a token donated directly to the vault cannot inflate the rate,
-closing the classic empty-pool inflation attack. The first deposit mints 1:1.
+is `total_liquidity / total_shares`, where `total_liquidity = available_liquidity
++ current_debt` and `total_shares` is the share supply plus `MINIMUM_SHARES`.
+`available_liquidity` (not the vault's raw token balance) is the source of truth,
+so a token donated directly to the vault cannot inflate the rate.
+
+That alone does not close the empty-pool inflation attack, because
+`total_liquidity` also counts interest owed on borrows, and a supplier can
+borrow. A lone supplier holding one share borrows a single base unit from their
+own reserve; debt rounds up, so a second later it reads as two, and the share is
+worth two units without anything having been minted. Deposits and redemptions
+round in the pool's favor, so depositing the most that still mints one share
+and redeeming it leaves the remainder with the only other share, the attacker's
+own, and the price climbs about half again each round. After 49 rounds one share
+is worth about 690 USDC, a 1,000 USDC deposit mints one share, and the attacker's
+share redeems half the pool: 155 USDC of profit on a debt they repay. So the
+first deposit mints 1:1 less `MINIMUM_SHARES` (1,000), which are never minted and
+count as shares nobody holds in every conversion between shares and liquidity:
+deposit, redeem, collateral valuation, collateral withdrawal and liquidation.
+The attacker's one share is then 1 of 1,001, and what the rounding leaves behind
+goes mostly to shares nobody can redeem.
 
 ### Interest: a kinked curve and a cumulative index
 
