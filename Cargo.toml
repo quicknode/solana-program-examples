@@ -72,7 +72,7 @@ members = [
 
     # finance
     #
-    # The two `mock-switchboard` crates are excluded below: they share a package
+    # The two `mock-price-feed` crates are excluded below: they share a package
     # name, and one workspace cannot hold two packages called the same thing.
     # They stay path dependencies of the programs that test against them.
     "finance/betting-market/anchor/programs/betting-market",
@@ -127,11 +127,11 @@ members = [
     "tokens/token-extensions/transfer-hook/whitelist/anchor/programs/transfer-hook",
 ]
 # A path dependency inside the workspace directory joins the workspace unless it
-# is excluded. Both of these are named `mock_switchboard`, so leaving them in
-# fails with "two packages named `mock_switchboard` in this workspace".
+# is excluded. Both of these are named `mock_price_feed`, so leaving them in
+# fails with "two packages named `mock_price_feed` in this workspace".
 exclude = [
-    "finance/perpetual-futures/anchor/programs/mock-switchboard",
-    "finance/prop-amm/anchor/programs/mock-switchboard",
+    "finance/perpetual-futures/anchor/programs/mock-price-feed",
+    "finance/prop-amm/anchor/programs/mock-price-feed",
 ]
 resolver = "2"
 

@@ -20,7 +20,7 @@ via Jupiter routing rather than their own user interfaces.
 
 - **`prop-amm`**: the market. One operator, one base/quote pair, one oracle
   feed, two vaults, five instruction handlers.
-- **`mock-switchboard`**: a minimal stand-in for a Switchboard On-Demand
+- **`mock-price-feed`**: a minimal stand-in for an oracle's
   price feed, so tests can drive deterministic price scenarios. Not for
   production.
 
@@ -138,8 +138,8 @@ misprices.
 - Lifinity's public design notes and the Helius write-up
   "Solana's Proprietary AMM Revolution" are good next reads.
 - The oracle reader deliberately reads raw bytes at fixed offsets and
-  documents how to swap in `switchboard_on_demand::PullFeedAccountData::
-  parse_and_verify(...)` for production.
+  documents how to read a Pyth `PriceUpdateV2` account
+  instead in production.
 
 ## Limitations
 

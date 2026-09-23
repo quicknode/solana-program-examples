@@ -181,7 +181,7 @@ impl InitializeReserve {
 }
 
 // ---------------------------------------------------------------------------
-// set_price (Switchboard stand-in for tests)
+// set_price (oracle stand-in for tests)
 // ---------------------------------------------------------------------------
 
 #[derive(Accounts)]

@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-23
+
+The mock oracle program is now `mock-price-feed` (library and program
+`mock_price_feed`), with the same program ID, instructions and
+account layout. The oracle network it was modeled on has shut down, so the
+production path described in `state/oracle.rs` now reads a Pyth
+`PriceUpdateV2` account, as `basics/pyth` does. No behavior changes.
+
 ## 2026-09-22
 
 Accrue funding by the wall clock instead of by slots. The rate was quoted per

@@ -27,6 +27,12 @@ previous program, and by `first_deposit_must_exceed_the_minimum` and
 opens each reserve with a deposit from the market owner; `add_empty_reserve`
 leaves it empty.
 
+The price feed's production path now points at a Pyth `PriceUpdateV2` account
+(`price_mantissa = price_message.price`, `exponent = price_message.exponent`,
+`last_updated_slot = posted_slot`), since the oracle network the feed was
+modeled on has shut down. Documentation only: the account layout and handlers
+are unchanged.
+
 ## 2026-09-22
 
 Accrue interest by the wall clock instead of by slots. The reserve's
@@ -76,7 +82,7 @@ Initial lending program: a Kamino/Solend-style borrow/lend market.
   borrow-rate index; per-obligation scaled debt.
 - Oracle-priced obligation health with loan-to-value and liquidation-threshold
   limits, and close-factor-capped liquidation with a seize bonus.
-- Switchboard-On-Demand-shaped price feed with a `set_price` test writer.
+- Mantissa-and-exponent price feed with a `set_price` test writer.
 - Rust + LiteSVM integration tests covering supply/redeem, borrow/repay,
   withdraw, interest accrual, liquidation, the share-inflation guard, and
   rounding/stale-input edge cases.

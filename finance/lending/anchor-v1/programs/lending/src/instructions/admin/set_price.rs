@@ -4,9 +4,9 @@ use anchor_spl::token_interface::Mint;
 use crate::constants::PRICE_FEED_SEED;
 use crate::state::{LendingMarket, PriceFeed};
 
-/// Test stand-in for a Switchboard On-Demand feed: writes a price directly so
+/// Test stand-in for an oracle price feed: writes a price directly so
 /// LiteSVM tests are deterministic. In production the reserve points at a real
-/// Switchboard feed instead and this handler is unused.
+/// Pyth price feed instead and this handler is unused.
 ///
 /// The feed PDA is seeded by `[b"price_feed", market, mint]` and writing it
 /// requires the market's `owner` to sign, so a market's prices can only be set

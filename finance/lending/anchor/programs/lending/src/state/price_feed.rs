@@ -9,12 +9,13 @@ use crate::math::price_mantissa_to_scaled;
 /// individual), so each market prices its own assets and one market can never
 /// write another's feed. Only the market's `owner` may write it (`set_price`).
 ///
-/// The layout mirrors a Switchboard On-Demand pull feed: a signed mantissa plus
-/// an exponent (`price = price_mantissa * 10^exponent`) and the slot the value
-/// was written. In production this account would be the real Switchboard feed
-/// and the program would decode it with the `switchboard-on-demand` crate
-/// (`PullFeedAccountData`): `price_mantissa = current_result.value`,
-/// `exponent = -18`, `last_updated_slot = current_result.slot`. Here the
+/// The layout mirrors an oracle price feed such as Pyth's: a signed mantissa
+/// plus an exponent (`price = price_mantissa * 10^exponent`) and the slot the
+/// value was written. In production this account would be a Pyth
+/// `PriceUpdateV2` owned by the Pyth Receiver program (`basics/pyth` reads
+/// one), mapped as `price_mantissa = price_message.price`,
+/// `exponent = price_message.exponent` and `last_updated_slot = posted_slot`,
+/// after checking the update's `feed_id`. Here the
 /// `set_price` handler writes it directly so LiteSVM tests are deterministic.
 /// A production read should also reject results whose confidence interval is
 /// too wide; this stand-in has no confidence field to check.

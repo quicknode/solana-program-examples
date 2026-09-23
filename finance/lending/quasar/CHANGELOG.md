@@ -2,6 +2,11 @@
 
 ## [2026-09-23]
 
+### Changed
+
+- Documentation only: the price feed's production path now points at a Pyth
+  price feed, since the oracle network it was modeled on has shut down.
+
 ### Fixed
 
 - Lock a minimum number of reserve shares. The first deposit now mints
@@ -113,7 +118,7 @@ Initial Quasar port of the Kamino/Solend-style borrow/lend program.
   borrow-rate index, accrued inline per instruction.
 - Oracle-priced health with loan-to-value and liquidation-threshold limits, and
   close-factor-capped liquidation with a seize bonus.
-- Switchboard-On-Demand-shaped price feed with a `set_price` test writer.
+- Mantissa-and-exponent price feed with a `set_price` test writer.
 - quasar-svm integration tests covering supply/redeem, borrow/repay, interest
   accrual, and liquidation (including the healthy-rejection path).
 - Price feed PDAs are seeded by their authority, so no signer can write or

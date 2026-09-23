@@ -89,7 +89,7 @@ pub struct InitializeMarketAccountConstraints<'info> {
 
     /// CHECK: The oracle feed account. Its key is stored on the market and
     /// every read validates the layout, scale, and freshness; it is never
-    /// trusted by type. Swap for a real Switchboard feed in production.
+    /// trusted by type. Swap for a real Pyth price feed in production.
     pub oracle_feed: UncheckedAccount<'info>,
 
     // The market account itself is the token authority of both vaults and

@@ -26,7 +26,7 @@ use lending::state::{Obligation, Reserve, ReserveConfig};
 pub use anchor_lang::prelude::Address;
 
 /// A FIXED_POINT_SCALE-scaled price exponent: prices are passed as
-/// `mantissa * 10^-18`, matching a Switchboard On-Demand feed's 1e18 result.
+/// `mantissa * 10^-18`, the same 18 decimals as `FIXED_POINT_SCALE`.
 pub const PRICE_EXPONENT: i32 = -18;
 
 pub fn dollars(whole: u64) -> i128 {

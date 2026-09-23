@@ -18,7 +18,7 @@ use {
     quasar_test::prelude::*,
 };
 
-// Prices are passed as `mantissa * 10^-18` (Switchboard-shaped).
+// Prices are passed as `mantissa * 10^-18`, the program's fixed-point scale.
 const EXP: i32 = -18;
 fn dollars(whole: u64) -> i128 {
     (whole as i128) * 1_000_000_000_000_000_000

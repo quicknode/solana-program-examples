@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-23
+
+Documentation only: a production feed is now described as a Pyth
+`PriceUpdateV2` account, since the oracle network the test feed was modeled on
+has shut down.
+
 ## 2026-09-22
 
 Accrue funding by the wall clock instead of by slots. The rate was quoted per

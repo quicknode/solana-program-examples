@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-23
+
+The mock oracle program is now `mock-price-feed` (library and program
+`mock_price_feed`), with the same program ID, instructions and
+account layout. The oracle network it was modeled on has shut down, so the
+production path described in `state/oracle.rs` now reads a Pyth
+`PriceUpdateV2` account, as `basics/pyth` does. No behavior changes.
+
 ## 2026-09-10
 
 The `Market` account now owns both vaults and signs their outgoing transfers
@@ -38,5 +46,5 @@ same gates; only the amounts changed.
 
 Initial version: an oracle-quoted proprietary AMM. One operator funds the
 market's inventory and quotes both sides of it at the oracle price plus a
-spread; anyone can swap against the quotes. Includes the `mock-switchboard`
+spread; anyone can swap against the quotes. Includes the `mock-price-feed`
 oracle program for deterministic tests.

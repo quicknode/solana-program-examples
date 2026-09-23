@@ -38,11 +38,12 @@ fn overflow() -> ProgramError {
 
 // Byte layout of the oracle feed account: price (i128), scale (u32),
 // last_update_slot (u64), confidence (u64). The tests craft this directly; in
-// production it would be a real Switchboard On-Demand feed parsed with
-// signature verification. Like the Anchor sibling, this validates freshness,
-// positivity, scale, and the confidence band; the feed account's owning
-// program is NOT checked — the operator picks the oracle, and a bad choice
-// loses the operator's money, not the traders'.
+// production it would be a Pyth `PriceUpdateV2` account, which the Pyth
+// Receiver program writes only after verifying the update's signatures. Like
+// the Anchor sibling, this validates freshness, positivity, scale, and the
+// confidence band; the feed account's owning program is NOT checked — the
+// operator picks the oracle, and a bad choice loses the operator's money, not
+// the traders'.
 const PRICE_OFFSET: usize = 0;
 const SCALE_OFFSET: usize = PRICE_OFFSET + 16;
 const LAST_UPDATE_SLOT_OFFSET: usize = SCALE_OFFSET + 4;

@@ -47,12 +47,12 @@ Everything else mirrors the Anchor version.
 - **`Obligation`**: a borrower's isolated position: the collateral reserve and
   deposited share amount, plus the borrow reserve and scaled debt. PDA:
   `["obligation", market, owner]`.
-- **`PriceFeed`**: a Switchboard-On-Demand-shaped price (`mantissa * 10^exponent`
+- **`PriceFeed`**: an oracle-shaped price (`mantissa * 10^exponent`
   + slot). PDA: `["price_feed", market, mint]`: scoped to a market, not to any
   individual; only the market's `owner` may write it, so prices can't be squatted
   and each market prices its own assets. `set_price` writes it directly for
-  deterministic tests; in production a reserve points at the real Switchboard
-  feed. Freshness is checked in slots.
+  deterministic tests; in production a reserve points at a real Pyth
+  price feed. Freshness is checked in slots.
 - **Liquidation**: the close factor (max fraction of the debt one call repays)
   comes from the borrow reserve; the bonus from the collateral reserve. A
   repayment whose seizure would exceed the posted collateral fails with
