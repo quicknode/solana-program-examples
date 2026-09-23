@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-use crate::state::Event;
+use crate::state::{betting_is_open, Event};
 use anchor_spl::mint;
 use anchor_spl::{
     associated_token::AssociatedToken,
@@ -85,6 +85,11 @@ pub fn handle_place_bet(
     require!(
         context.accounts.event.status == EventStatus::Open,
         BettingError::EventNotOpen
+    );
+    let now = Clock::get()?.unix_timestamp;
+    require!(
+        betting_is_open(now, context.accounts.event.betting_closes_at),
+        BettingError::BettingClosed
     );
 
     transfer_tokens_to_vault(

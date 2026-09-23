@@ -4,16 +4,24 @@ use {
         InstructionData, ToAccountMetas,
     },
     anchor_v2_testing::{Keypair, LiteSVM, Signer},
-    betting_market::{User, MAX_BETS_PER_USER},
+    betting_market::{error::BettingError, User, MAX_BETS_PER_USER},
+    // LiteSVM's get_sysvar / set_sysvar want the host-side Clock.
+    solana_clock::Clock,
     solana_kite::{
         create_associated_token_account, create_token_mint, create_wallet,
         get_token_account_balance, mint_tokens_to_token_account,
-        send_transaction_from_instructions,
+        send_transaction_from_instructions, SolanaKiteError,
     },
 };
 
 const DECIMALS: u8 = 6;
 const FEE_BPS: u16 = 200; // 2%
+
+// A fixed unix timestamp the clock is warped to before anything is written,
+// so every market's betting window is deterministic: it closes a week later.
+const START_TIME: i64 = 1_750_000_000;
+const SECONDS_PER_DAY: i64 = 24 * 60 * 60;
+const BETTING_CLOSES_AT: i64 = START_TIME + 7 * SECONDS_PER_DAY;
 
 fn token_program_id() -> Address {
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
@@ -79,6 +87,8 @@ fn setup() -> Market {
     svm.add_program(betting_market::id(), program_bytes)
         .unwrap();
 
+    warp_to(&mut svm, START_TIME);
+
     let admin = create_wallet(&mut svm, 100_000_000_000).unwrap();
     let mint = create_token_mint(&mut svm, &admin, DECIMALS, None).unwrap();
 
@@ -93,6 +103,27 @@ fn setup() -> Market {
         fee_recipient,
         fee_recipient_ata,
     }
+}
+
+// Move the clock to `unix_timestamp`. Also expires the blockhash, so a retried
+// instruction after the warp is not dropped as a duplicate.
+fn warp_to(svm: &mut LiteSVM, unix_timestamp: i64) {
+    let mut clock: Clock = svm.get_sysvar();
+    clock.unix_timestamp = unix_timestamp;
+    svm.set_sysvar(&clock);
+    svm.expire_blockhash();
+}
+
+// Anchor numbers a program's errors from 6000 in declaration order, and a
+// failed transaction reports the number as `Custom(n)`. Matching it proves the
+// transaction failed for the rule under test, not for some unrelated reason.
+fn assert_fails_with(result: Result<(), SolanaKiteError>, expected: BettingError) {
+    let code = 6000 + expected as u32;
+    let error = format!("{:?}", result.expect_err("transaction should have failed"));
+    assert!(
+        error.contains(&format!("Custom({code})")),
+        "expected error {code}, got: {error}"
+    );
 }
 
 // Create a funded bettor with a token ATA holding `amount` of the stake token.
@@ -135,11 +166,22 @@ fn initialize_event_ix(
     event_id: u64,
     description: &str,
 ) -> Instruction {
+    initialize_event_closing_at_ix(admin, mint, event_id, description, BETTING_CLOSES_AT)
+}
+
+fn initialize_event_closing_at_ix(
+    admin: Address,
+    mint: Address,
+    event_id: u64,
+    description: &str,
+    betting_closes_at: i64,
+) -> Instruction {
     let event = event_pda(event_id);
     Instruction::new_with_bytes(
         betting_market::id(),
         &betting_market::instruction::InitializeEvent {
             event_id,
+            betting_closes_at,
             description: description.to_string(),
         }
         .data(),
@@ -171,6 +213,19 @@ fn add_outcome_ix(admin: Address, event_id: u64, index: u8, label: &str) -> Inst
             event,
             outcome: outcome_pda(&event, index),
             system_program: system_program::ID,
+        }
+        .to_account_metas(None),
+    )
+}
+
+fn open_betting_ix(admin: Address, event_id: u64) -> Instruction {
+    Instruction::new_with_bytes(
+        betting_market::id(),
+        &betting_market::instruction::OpenBetting {}.data(),
+        betting_market::accounts::OpenBettingAccountConstraints {
+            admin,
+            config: config_pda(),
+            event: event_pda(event_id),
         }
         .to_account_metas(None),
     )
@@ -363,6 +418,7 @@ fn test_full_lifecycle() {
             initialize_event_ix(admin, mint, event_id, "Will it rain tomorrow?"),
             add_outcome_ix(admin, event_id, 0, "Yes"),
             add_outcome_ix(admin, event_id, 1, "No"),
+            open_betting_ix(admin, event_id),
         ],
         &[&market.admin],
         &admin,
@@ -426,6 +482,8 @@ fn test_full_lifecycle() {
     // Settle to "Yes" (index 0). Losing pool 200, fee = 2% = 4, distributable = 196.
     let fee_recipient = market.fee_recipient.pubkey();
     let fee_recipient_ata = market.fee_recipient_ata;
+    // Betting has closed, so the event can be settled.
+    warp_to(&mut market.svm, BETTING_CLOSES_AT);
     send_transaction_from_instructions(
         &mut market.svm,
         vec![settle_event_ix(
@@ -558,6 +616,7 @@ fn test_cannot_bet_after_settle() {
             initialize_event_ix(admin, mint, event_id, "Coin flip"),
             add_outcome_ix(admin, event_id, 0, "Heads"),
             add_outcome_ix(admin, event_id, 1, "Tails"),
+            open_betting_ix(admin, event_id),
         ],
         &[&market.admin],
         &admin,
@@ -577,6 +636,8 @@ fn test_cannot_bet_after_settle() {
         &alice.pubkey(),
     )
     .unwrap();
+    // Betting has closed, so the event can be settled.
+    warp_to(&mut market.svm, BETTING_CLOSES_AT);
     send_transaction_from_instructions(
         &mut market.svm,
         vec![settle_event_ix(
@@ -605,7 +666,7 @@ fn test_cannot_bet_after_settle() {
         &[&bob],
         &bob.pubkey(),
     );
-    assert!(late_bet.is_err(), "betting after settlement must fail");
+    assert_fails_with(late_bet, BettingError::EventNotOpen);
 }
 
 #[test]
@@ -626,6 +687,7 @@ fn test_double_claim_fails() {
             initialize_event_ix(admin, mint, event_id, "Match winner"),
             add_outcome_ix(admin, event_id, 0, "Home"),
             add_outcome_ix(admin, event_id, 1, "Away"),
+            open_betting_ix(admin, event_id),
         ],
         &[&market.admin],
         &admin,
@@ -659,6 +721,8 @@ fn test_double_claim_fails() {
         &carol.pubkey(),
     )
     .unwrap();
+    // Betting has closed, so the event can be settled.
+    warp_to(&mut market.svm, BETTING_CLOSES_AT);
     send_transaction_from_instructions(
         &mut market.svm,
         vec![settle_event_ix(
@@ -721,6 +785,7 @@ fn test_settle_outcome_without_bets_fails() {
             initialize_event_ix(admin, mint, event_id, "Two horse race"),
             add_outcome_ix(admin, event_id, 0, "Horse A"),
             add_outcome_ix(admin, event_id, 1, "Horse B"),
+            open_betting_ix(admin, event_id),
         ],
         &[&market.admin],
         &admin,
@@ -742,6 +807,8 @@ fn test_settle_outcome_without_bets_fails() {
     )
     .unwrap();
 
+    // Betting has closed, so the event can be settled.
+    warp_to(&mut market.svm, BETTING_CLOSES_AT);
     let result = send_transaction_from_instructions(
         &mut market.svm,
         vec![settle_event_ix(
@@ -755,10 +822,7 @@ fn test_settle_outcome_without_bets_fails() {
         &[&market.admin],
         &admin,
     );
-    assert!(
-        result.is_err(),
-        "settling to an outcome with no bets must fail"
-    );
+    assert_fails_with(result, BettingError::OutcomeHasNoBets);
 }
 
 #[test]
@@ -777,6 +841,7 @@ fn test_cancel_and_refund() {
             initialize_event_ix(admin, mint, event_id, "Voided event"),
             add_outcome_ix(admin, event_id, 0, "A"),
             add_outcome_ix(admin, event_id, 1, "B"),
+            open_betting_ix(admin, event_id),
         ],
         &[&market.admin],
         &admin,
@@ -884,6 +949,7 @@ fn test_close_losing_bet_only_after_settle_and_only_for_losers() {
             initialize_event_ix(admin, mint, event_id, "Derby winner"),
             add_outcome_ix(admin, event_id, 0, "Red"),
             add_outcome_ix(admin, event_id, 1, "Blue"),
+            open_betting_ix(admin, event_id),
         ],
         &[&market.admin],
         &admin,
@@ -930,6 +996,8 @@ fn test_close_losing_bet_only_after_settle_and_only_for_losers() {
         "closing before settlement must fail"
     );
 
+    // Betting has closed, so the event can be settled.
+    warp_to(&mut market.svm, BETTING_CLOSES_AT);
     send_transaction_from_instructions(
         &mut market.svm,
         vec![settle_event_ix(
@@ -1018,10 +1086,18 @@ fn test_closing_a_bet_frees_a_slot_for_a_new_bet() {
     }
     send_transaction_from_instructions(
         &mut market.svm,
+        vec![open_betting_ix(admin, full_event_id)],
+        &[&market.admin],
+        &admin,
+    )
+    .unwrap();
+    send_transaction_from_instructions(
+        &mut market.svm,
         vec![
             initialize_event_ix(admin, mint, second_event_id, "Second market"),
             add_outcome_ix(admin, second_event_id, 0, "Yes"),
             add_outcome_ix(admin, second_event_id, 1, "No"),
+            open_betting_ix(admin, second_event_id),
         ],
         &[&market.admin],
         &admin,
@@ -1142,4 +1218,235 @@ fn test_closing_a_bet_frees_a_slot_for_a_new_bet() {
         final_bets.contains(&new_bet),
         "the new position must appear in the index"
     );
+}
+
+// The outcome list is final once betting opens, and nobody can bet before it
+// is. A bet on a draft would otherwise let anyone freeze a half-built market,
+// and an outcome added after a bet would change the question under it.
+#[test]
+fn test_outcomes_lock_when_betting_opens() {
+    let mut market = setup();
+    let event_id: u64 = 9;
+    let (alice, alice_ata) = create_bettor(&mut market, 1_000);
+
+    init_config(&mut market);
+    let admin = market.admin.pubkey();
+    let mint = market.mint;
+    send_transaction_from_instructions(
+        &mut market.svm,
+        vec![
+            initialize_event_ix(admin, mint, event_id, "Top-grossing film"),
+            add_outcome_ix(admin, event_id, 0, "Toy Story 5"),
+        ],
+        &[&market.admin],
+        &admin,
+    )
+    .unwrap();
+
+    // The draft has one outcome and no bettor can touch it yet.
+    let early_bet = send_transaction_from_instructions(
+        &mut market.svm,
+        vec![place_bet_ix(
+            mint,
+            &alice.pubkey(),
+            &alice_ata,
+            event_id,
+            0,
+            100,
+        )],
+        &[&alice],
+        &alice.pubkey(),
+    );
+    assert_fails_with(early_bet, BettingError::EventNotOpen);
+
+    // The admin finishes the list and opens the market.
+    send_transaction_from_instructions(
+        &mut market.svm,
+        vec![
+            add_outcome_ix(admin, event_id, 1, "Backrooms"),
+            open_betting_ix(admin, event_id),
+        ],
+        &[&market.admin],
+        &admin,
+    )
+    .unwrap();
+
+    // Now the list is fixed, with or without money in the pool.
+    let late_outcome = send_transaction_from_instructions(
+        &mut market.svm,
+        vec![add_outcome_ix(admin, event_id, 2, "Late entry")],
+        &[&market.admin],
+        &admin,
+    );
+    assert_fails_with(late_outcome, BettingError::EventNotDraft);
+
+    // Opening twice is refused too.
+    let reopen = send_transaction_from_instructions(
+        &mut market.svm,
+        vec![open_betting_ix(admin, event_id)],
+        &[&market.admin],
+        &admin,
+    );
+    assert_fails_with(reopen, BettingError::EventNotDraft);
+}
+
+#[test]
+fn test_open_betting_needs_two_outcomes() {
+    let mut market = setup();
+    let event_id: u64 = 10;
+
+    init_config(&mut market);
+    let admin = market.admin.pubkey();
+    let mint = market.mint;
+    send_transaction_from_instructions(
+        &mut market.svm,
+        vec![
+            initialize_event_ix(admin, mint, event_id, "One horse race"),
+            add_outcome_ix(admin, event_id, 0, "The only horse"),
+        ],
+        &[&market.admin],
+        &admin,
+    )
+    .unwrap();
+
+    let result = send_transaction_from_instructions(
+        &mut market.svm,
+        vec![open_betting_ix(admin, event_id)],
+        &[&market.admin],
+        &admin,
+    );
+    assert_fails_with(result, BettingError::NotEnoughOutcomes);
+
+    // Only the admin can open a market.
+    send_transaction_from_instructions(
+        &mut market.svm,
+        vec![add_outcome_ix(admin, event_id, 1, "A second horse")],
+        &[&market.admin],
+        &admin,
+    )
+    .unwrap();
+    let mallory = create_wallet(&mut market.svm, 10_000_000_000).unwrap();
+    let unauthorized = send_transaction_from_instructions(
+        &mut market.svm,
+        vec![open_betting_ix(mallory.pubkey(), event_id)],
+        &[&mallory],
+        &mallory.pubkey(),
+    );
+    assert_fails_with(unauthorized, BettingError::Unauthorized);
+}
+
+// Bets land strictly before the close time and settlement only at or after
+// it, so there is no second at which someone who knows the result can still
+// stake, and none at which the admin can end the market early.
+#[test]
+fn test_betting_closes_at_close_time() {
+    let mut market = setup();
+    let event_id: u64 = 11;
+    let (alice, alice_ata) = create_bettor(&mut market, 1_000);
+    let (carol, carol_ata) = create_bettor(&mut market, 1_000);
+
+    init_config(&mut market);
+    let admin = market.admin.pubkey();
+    let mint = market.mint;
+    let fee_recipient = market.fee_recipient.pubkey();
+    let fee_recipient_ata = market.fee_recipient_ata;
+    send_transaction_from_instructions(
+        &mut market.svm,
+        vec![
+            initialize_event_ix(admin, mint, event_id, "Final score"),
+            add_outcome_ix(admin, event_id, 0, "Home"),
+            add_outcome_ix(admin, event_id, 1, "Away"),
+            open_betting_ix(admin, event_id),
+        ],
+        &[&market.admin],
+        &admin,
+    )
+    .unwrap();
+
+    // One second before the close, a bet still lands...
+    warp_to(&mut market.svm, BETTING_CLOSES_AT - 1);
+    send_transaction_from_instructions(
+        &mut market.svm,
+        vec![place_bet_ix(
+            mint,
+            &alice.pubkey(),
+            &alice_ata,
+            event_id,
+            0,
+            100,
+        )],
+        &[&alice],
+        &alice.pubkey(),
+    )
+    .unwrap();
+
+    // ...and the admin cannot settle yet.
+    let early_settle = send_transaction_from_instructions(
+        &mut market.svm,
+        vec![settle_event_ix(
+            admin,
+            mint,
+            fee_recipient,
+            fee_recipient_ata,
+            event_id,
+            0,
+        )],
+        &[&market.admin],
+        &admin,
+    );
+    assert_fails_with(early_settle, BettingError::BettingStillOpen);
+
+    // At the close time, betting stops, even though the event is still Open.
+    warp_to(&mut market.svm, BETTING_CLOSES_AT);
+    let late_bet = send_transaction_from_instructions(
+        &mut market.svm,
+        vec![place_bet_ix(
+            mint,
+            &carol.pubkey(),
+            &carol_ata,
+            event_id,
+            1,
+            100,
+        )],
+        &[&carol],
+        &carol.pubkey(),
+    );
+    assert_fails_with(late_bet, BettingError::BettingClosed);
+
+    send_transaction_from_instructions(
+        &mut market.svm,
+        vec![settle_event_ix(
+            admin,
+            mint,
+            fee_recipient,
+            fee_recipient_ata,
+            event_id,
+            0,
+        )],
+        &[&market.admin],
+        &admin,
+    )
+    .unwrap();
+}
+
+#[test]
+fn test_close_time_must_be_in_the_future() {
+    let mut market = setup();
+    init_config(&mut market);
+    let admin = market.admin.pubkey();
+    let mint = market.mint;
+
+    let result = send_transaction_from_instructions(
+        &mut market.svm,
+        vec![initialize_event_closing_at_ix(
+            admin,
+            mint,
+            12,
+            "Already over",
+            START_TIME,
+        )],
+        &[&market.admin],
+        &admin,
+    );
+    assert_fails_with(result, BettingError::CloseTimeInPast);
 }

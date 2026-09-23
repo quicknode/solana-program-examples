@@ -1,8 +1,10 @@
-use quasar_lang::prelude::*;
+use quasar_lang::{prelude::*, sysvars::Sysvar as _};
 use quasar_spl::prelude::*;
 
 use crate::errors::BettingError;
-use crate::state::{snapshot_event, Config, Event, EventStatus, EventVaultPda, Outcome};
+use crate::state::{
+    may_settle, snapshot_event, Config, Event, EventStatus, EventVaultPda, Outcome,
+};
 
 use super::transfer_from_vault;
 
@@ -53,6 +55,13 @@ pub fn handle_settle_event(
     require!(
         accounts.event.status == EventStatus::Open as u8,
         BettingError::EventNotOpen
+    );
+    // Settling before the close time would let the admin end a market early
+    // on bettors who were promised the full window.
+    let now: i64 = Clock::get()?.unix_timestamp.into();
+    require!(
+        may_settle(now, i64::from(accounts.event.betting_closes_at)),
+        BettingError::BettingStillOpen
     );
     let winning_pool = u64::from(accounts.winning_outcome.total_amount);
     require!(winning_pool > 0, BettingError::OutcomeHasNoBets);

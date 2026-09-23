@@ -1,7 +1,7 @@
 # Solana Betting Market (Quasar)
 
-A parimutuel betting market on Solana, written with Quasar. An admin opens events (markets), adds the possible
-outcomes, and later settles or cancels each one. Bettors stake a fixed token on
+A parimutuel betting market on Solana, written with Quasar. An admin creates events (markets), adds the possible
+outcomes, opens them to bets, and later settles or cancels each one. Bettors stake a fixed token on
 the outcome they think will happen; when the event is settled, the winners split
 the losing side's stakes in proportion to their own, after a protocol fee. This
 is the same mechanism a racetrack tote board or a prediction market runs on.
@@ -18,14 +18,19 @@ A market pays out parimutuel-style: there is no fixed odds and no house taking
 the other side of your bet. Everyone's stake goes into one pool, and when the
 result is known the winners divide the pool.
 
-- The **admin** (whoever ran `initialize_config`) opens an event with
-  `initialize_event`, then lists each possible result with `add_outcome`. Outcomes
-  can only be added before the first bet, so the field of choices can't change
-  under bettors who have already staked.
-- A **bettor** stakes the market's token on one outcome with `place_bet`. The
-  stake joins the event's single pool vault. Re-betting the same outcome tops up
-  the existing position rather than opening a second one.
-- The admin resolves the market with `settle_event`, naming the winning outcome.
+- The **admin** (whoever ran `initialize_config`) creates an event as a draft
+  with `initialize_event`, fixing when betting closes, then lists each possible
+  result with `add_outcome`, and opens it with `open_betting`, which needs at
+  least two outcomes. Outcomes can only be added to a draft and nobody can bet on
+  one, so the field of choices is final before the first bet lands.
+- A **bettor** stakes the market's token on one outcome with `place_bet`, any
+  time before the close. The stake joins the event's single pool vault.
+  Re-betting the same outcome tops up the existing position rather than opening a
+  second one.
+- Once betting has closed, the admin resolves the market with `settle_event`,
+  naming the winning outcome. Bets are accepted only while `now <
+  betting_closes_at` and settlement only once `now >= betting_closes_at`, so
+  nobody can stake after the result could be known.
   The protocol fee is charged only on the losing pool, so a winner can never
   receive less than they staked. The fee moves to the fee recipient immediately;
   the figures winners need are recorded on the event.
@@ -33,7 +38,8 @@ result is known the winners divide the pool.
   the losing pool (their stake divided by the total winning stake, times the
   distributable losing pool). A loser calls `close_losing_bet` to reclaim their
   Bet account's rent and free a slot in their position index.
-- If a market cannot be resolved, the admin calls `cancel_event`, and every
+- If a market cannot be resolved, the admin calls `cancel_event` (on a draft or
+  an open event), and every
   bettor reclaims their exact stake with `claim_refund`. No fee is taken.
 
 Closing the Bet account is what ends a position and prevents a double claim: a
@@ -43,12 +49,13 @@ exists.
 ## Accounts and PDAs
 
 - **Config**, PDA `["config"]`. The single global account. Its `admin` is the
-  only key allowed to create, settle, and cancel events; `token_mint` fixes the
-  one stake asset; `fee_recipient` receives the settlement fee, and
+  only key allowed to create, open, settle, and cancel events; `token_mint` fixes
+  the one stake asset; `fee_recipient` receives the settlement fee, and
   `default_fee_bps` is the fee each new event copies at creation.
 - **Event**, PDA `["event", event_id]`. One market. Holds the running
-  `total_pool`, the status (Open, Settled, Cancelled), a fee snapshot taken at
-  creation, and the winning figures written at settlement. Its PDA is the token
+  `total_pool`, the status (Draft, Open, Settled, Cancelled), the
+  `betting_closes_at` timestamp and a fee snapshot both fixed at creation, and the
+  winning figures written at settlement. Its PDA is the token
   authority of the pool vault.
 - **Outcome**, PDA `["outcome", event, index]`. One possible result.
   `total_amount` is this outcome's share of the pool and the denominator for
@@ -106,10 +113,13 @@ cargo test            # QuasarSVM integration tests (they load the compiled .so)
 
 `quasar build` must run before `cargo test`, which loads the compiled `.so` into
 [QuasarSVM](https://github.com/blueshift-gg/quasar-svm), an in-process SVM. The
-suite in `src/tests.rs` drives the full lifecycle (open a market, add outcomes,
-place opposing bets, settle, claim the winnings, close the losing bet) and the
-cancel-and-refund path, asserting onchain state, token balances, and fee
-accounting at each step, plus an admin-authorization rejection.
+suite in `src/tests.rs` drives the full lifecycle (create a market, add outcomes,
+open betting, place opposing bets, settle after the close, claim the winnings,
+close the losing bet) and the cancel-and-refund path, asserting onchain state,
+token balances, and fee accounting at each step. It also checks the admin
+authorization, that the outcome list locks when betting opens, the two-outcome
+minimum, both edges of the betting close time, and that a close time in the past
+is refused.
 
 ## Extending
 

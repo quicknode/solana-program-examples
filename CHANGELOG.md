@@ -4,6 +4,30 @@ All notable changes to this repository are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-09-22] - Betting market events have a draft state and a close time
+
+The betting market locked its outcome list implicitly, by refusing
+`add_outcome` once `total_pool` was nonzero. Anyone could bet one minor unit on
+a half-built market to freeze it with a single outcome, and the admin's
+`add_outcome` and the first bet could land in either order in the same slot.
+Nothing stopped bets between the real-world result and settlement, either:
+`place_bet` accepted stakes until `settle_event` ran.
+
+- Events start as `Draft`. `add_outcome` works only on a draft (else the new
+  `EventNotDraft`, which replaces `BettingAlreadyStarted`), and a new admin
+  handler, `open_betting`, moves a draft with at least two outcomes (else
+  `NotEnoughOutcomes`) to `Open`. `place_bet` on a draft fails with
+  `EventNotOpen`, so the outcome list is final before any money can arrive.
+- `initialize_event` takes a `betting_closes_at` timestamp, which must be in the
+  future (else `CloseTimeInPast`) and is stored on the event. `place_bet`
+  requires `now < betting_closes_at` (else `BettingClosed`) and `settle_event`
+  requires `now >= betting_closes_at` (else `BettingStillOpen`).
+- `cancel_event` accepts a draft as well as an open event.
+- Changed in the Anchor v2 and Quasar ports, with new tests for each rule, and
+  two new Kani proofs: the betting and settlement windows partition time, and a
+  lifecycle model in which the outcome list never changes once money is in the
+  pool. The Anchor v1 port is a frozen snapshot and does not change.
+
 ## [2026-09-22] - The first-deposit minimum is counted in every share divisor
 
 The token swap and perpetual futures examples both withhold a minimum from the

@@ -1,6 +1,6 @@
 # Betting Market
 
-A parimutuel (pooled) betting market. An admin opens an event and its possible outcomes; bettors stake a token on the outcome they expect to win. All stakes share one pool, and when the admin settles the event, losing stakes (minus a protocol fee) are split among winners in proportion to their stake.
+A parimutuel (pooled) betting market. An admin creates an event, adds its possible outcomes, and opens it to bets; bettors stake a token on the outcome they expect to win until betting closes. All stakes share one pool, and when the admin settles the event, losing stakes (minus a protocol fee) are split among winners in proportion to their stake.
 
 [⚓ Anchor](./anchor)
 

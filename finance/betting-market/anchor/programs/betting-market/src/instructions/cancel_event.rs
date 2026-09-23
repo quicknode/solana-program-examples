@@ -24,8 +24,13 @@ pub struct CancelEventAccountConstraints {
 }
 
 pub fn handle_cancel_event(context: &mut Context<CancelEventAccountConstraints>) -> Result<()> {
+    // A draft or open event can be cancelled; a settled or cancelled one has
+    // already taken its exit.
     require!(
-        context.accounts.event.status == EventStatus::Open,
+        matches!(
+            context.accounts.event.status,
+            EventStatus::Draft | EventStatus::Open
+        ),
         BettingError::EventNotOpen
     );
     context.accounts.event.status = EventStatus::Cancelled;

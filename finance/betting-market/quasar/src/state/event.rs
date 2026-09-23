@@ -12,9 +12,13 @@ pub const MAX_DESCRIPTION_LEN: usize = 200;
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 #[repr(u8)]
 pub enum EventStatus {
-    Open = 0,
-    Settled = 1,
-    Cancelled = 2,
+    /// Being set up: the admin can add outcomes, and no one can bet yet.
+    Draft = 0,
+    /// The outcome list is final. Bets are accepted until `betting_closes_at`,
+    /// and the event can be settled from that moment on.
+    Open = 1,
+    Settled = 2,
+    Cancelled = 3,
 }
 
 /// One betting market. All stakes across every outcome live in a single vault
@@ -30,6 +34,10 @@ pub struct Event {
     /// Sum of every stake placed across all outcomes.
     pub total_pool: u64,
     pub status: u8,
+    /// Unix timestamp at which betting stops, fixed at creation. Bets must land
+    /// strictly before it and settlement can happen only at or after it, so no
+    /// one can stake once the result could be known.
+    pub betting_closes_at: i64,
     /// The fee settlement charges, copied from the config's `default_fee_bps`
     /// at creation so later Config changes can't alter a market bettors have
     /// already joined.
@@ -57,6 +65,7 @@ pub fn snapshot_event(event: &Account<Event>) -> EventInner {
         outcome_count: event.outcome_count,
         total_pool: u64::from(event.total_pool),
         status: event.status,
+        betting_closes_at: i64::from(event.betting_closes_at),
         fee_bps: u16::from(event.fee_bps),
         winning_outcome_index: event.winning_outcome_index,
         winning_pool: u64::from(event.winning_pool),
@@ -65,4 +74,16 @@ pub fn snapshot_event(event: &Account<Event>) -> EventInner {
         description_len: event.description_len,
         description: event.description,
     }
+}
+
+/// Bets are accepted while `now < betting_closes_at`.
+pub fn betting_is_open(now: i64, betting_closes_at: i64) -> bool {
+    now < betting_closes_at
+}
+
+/// Settlement is allowed once `now >= betting_closes_at`: the exact complement
+/// of `betting_is_open`, so there is no instant at which a bet and a settlement
+/// could both land.
+pub fn may_settle(now: i64, betting_closes_at: i64) -> bool {
+    now >= betting_closes_at
 }

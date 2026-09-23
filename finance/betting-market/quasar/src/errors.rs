@@ -18,7 +18,11 @@ pub enum BettingError {
     TooManyBets,
     BetNotInUserIndex,
     MathOverflow,
-    BettingAlreadyStarted,
+    EventNotDraft,
     DescriptionTooLong,
     LabelTooLong,
+    NotEnoughOutcomes,
+    CloseTimeInPast,
+    BettingClosed,
+    BettingStillOpen,
 }
