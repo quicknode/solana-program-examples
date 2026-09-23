@@ -6,7 +6,7 @@ use anchor_spl::{
     },
 };
 
-use crate::constants::{POOL_SEED, VAULT_SEED};
+use crate::constants::{MINIMUM_LIQUIDITY, POOL_SEED, VAULT_SEED};
 use crate::errors::PerpError;
 use crate::instructions::shared::{liquidity_provider_aum, refresh_price_and_funding};
 use crate::state::Pool;
@@ -25,11 +25,16 @@ pub fn handle_remove_liquidity(
     let aum = liquidity_provider_aum(pool, price)?;
     require!(aum > 0, PerpError::PoolInsolvent);
 
-    // amount_out = shares * assets-under-management / supply, floored.
+    // amount_out = shares * assets-under-management / (supply + MINIMUM_LIQUIDITY),
+    // floored. The withheld minimum counts as shares nobody holds, as it does
+    // in add_liquidity, so its slice of the pool never leaves.
+    let total_shares = (lp_supply as u128)
+        .checked_add(MINIMUM_LIQUIDITY as u128)
+        .ok_or(PerpError::MathOverflow)?;
     let amount_out: u64 = (shares as u128)
         .checked_mul(aum as u128)
         .ok_or(PerpError::MathOverflow)?
-        .checked_div(lp_supply as u128)
+        .checked_div(total_shares)
         .ok_or(PerpError::MathOverflow)?
         .try_into()
         .map_err(|_| PerpError::MathOverflow)?;

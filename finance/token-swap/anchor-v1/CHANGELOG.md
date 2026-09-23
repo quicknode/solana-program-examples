@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-09-22
+
+`deposit_liquidity` now mints later deposits against the LP supply plus
+`MINIMUM_LIQUIDITY`, the divisor `withdraw_liquidity` already used. Dividing by
+the bare supply minted every depositor slightly less than they could redeem,
+let a donation as large as a victim's deposit (rather than 101 times it) round
+that deposit down to zero LP tokens, and left a pool whose LP tokens were all
+burned unable to take another deposit. New tests cover the donation attack and
+the deposit into an emptied pool.
+
 ## 2026-09-10
 
 Removed the separate dataless signer PDA (seeds `[config, mint_a, mint_b,

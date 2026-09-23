@@ -11,7 +11,9 @@ pub const FUNDING_PRECISION: i128 = 1_000_000_000;
 pub const SIZE_PRECISION: u128 = 1_000_000_000;
 
 /// Liquidity-provider shares withheld from the first deposit so the share
-/// supply never starts at a dust amount.
+/// supply never starts at a dust amount. Both `add_liquidity` and
+/// `remove_liquidity` divide by the share supply plus this minimum, so the
+/// withheld shares belong to nobody and their slice of the pool never leaves.
 pub const MINIMUM_LIQUIDITY: u64 = 1_000;
 
 /// Reject an oracle price older than this many slots. Counted in slots because

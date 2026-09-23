@@ -162,12 +162,18 @@ pub fn handle_deposit_liquidity(
 
     // LP-mint math, two branches:
     //   - First deposit: liquidity = sqrt(a * b) - MINIMUM_LIQUIDITY. The
-    //     geometric mean bootstraps the pool; the locked floor is burned
-    //     forever to prevent the first depositor draining the pool later.
-    //   - Subsequent deposit: liquidity = min(a * supply / pool_a,
-    //     b * supply / pool_b), proportional to the depositor's share of each
-    //     reserve. The geometric mean must not be used here: it breaks
-    //     proportionality once the pool has existing supply.
+    //     geometric mean bootstraps the pool; the floor is never minted to
+    //     anyone, so its share of the reserves stays in the pool for good.
+    //   - Subsequent deposit: liquidity = min(a * total / pool_a,
+    //     b * total / pool_b) with total = supply + MINIMUM_LIQUIDITY,
+    //     proportional to the depositor's share of each reserve. The geometric
+    //     mean must not be used here: it breaks proportionality once the pool
+    //     has existing supply. `total` is the divisor withdraw_liquidity uses,
+    //     so a deposit is minted exactly the share it can later redeem, and an
+    //     attacker who donates to the vaults to round a later deposit down to
+    //     zero must donate at least MINIMUM_LIQUIDITY + 1 times that deposit,
+    //     most of which then belongs to the floor. Dividing by the bare supply
+    //     would let a donation as large as the deposit do it.
     let liquidity: u64 = if pool_creation {
         let product = (amount_a as u128)
             .checked_mul(amount_b as u128)
@@ -179,7 +185,9 @@ pub fn handle_deposit_liquidity(
         sqrt.checked_sub(crate::MINIMUM_LIQUIDITY)
             .ok_or(AmmError::MathOverflow)?
     } else {
-        let total_supply = accounts.liquidity_provider_mint.supply() as u128;
+        let total_supply = (accounts.liquidity_provider_mint.supply() as u128)
+            .checked_add(crate::MINIMUM_LIQUIDITY as u128)
+            .ok_or(AmmError::MathOverflow)?;
         let from_a = (amount_a as u128)
             .checked_mul(total_supply)
             .ok_or(AmmError::MathOverflow)?
