@@ -20,8 +20,11 @@ pub struct CancelEventAccountConstraints {
 pub fn handle_cancel_event(
     accounts: &mut CancelEventAccountConstraints,
 ) -> Result<(), ProgramError> {
+    // A draft or open event can be cancelled; a settled or cancelled one has
+    // already taken its exit.
     require!(
-        accounts.event.status == EventStatus::Open as u8,
+        accounts.event.status == EventStatus::Draft as u8
+            || accounts.event.status == EventStatus::Open as u8,
         BettingError::EventNotOpen
     );
     let mut event = snapshot_event(&accounts.event);

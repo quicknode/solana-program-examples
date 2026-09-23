@@ -16,6 +16,8 @@ integer arithmetic. This crate reproduces it faithfully and proves:
 - `proof_winner_never_below_stake`: `payout = stake + winnings >= stake`: a winner is never paid less than they staked (the fee is charged only on losers).
 - `proof_parimutuel_solvency`: **Solvency** (centrepiece): the winners collectively never claim more than the vault holds after the fee (`Σ payout_i <= winning_pool + distributable`).
 - `proof_refund_conserves_pool`: On cancellation, refunds sum back to the total pool, neither over- nor under-drained.
+- `proof_betting_and_settlement_windows_partition_time`: at every instant exactly one of `betting_is_open` and `may_settle` holds, so no bet can land once the event can be settled.
+- `proof_outcomes_fixed_before_money_arrives`: a model of the event's lifecycle guards (`add_outcome`, `open_betting`, `place_bet`, `settle_event`, `cancel_event`), run over every sequence of six calls at arbitrary times from a fresh draft. The outcome list never changes once money is in the pool, every stake lands in a market with at least two outcomes and before the close time, and settlement happens only at or after it.
 
 ### The solvency proof
 
@@ -40,6 +42,8 @@ the number of bettors).
 - `proof_winner_never_below_stake`: `winning_pool/distributable <= 255`, ~6s
 - `proof_parimutuel_solvency`: 3 winners, stakes `<= 7`, `distributable <= 63`, ~3s
 - `proof_refund_conserves_pool`: 4 bettors, full `u64`, <1s
+- `proof_betting_and_settlement_windows_partition_time`: full `i64`, <1s
+- `proof_outcomes_fixed_before_money_arrives`: 6 calls, full `u64` stakes and `i64` times, ~2s
 
 Run weekly in CI (the `.github/workflows/kani.yml` `verify` job), not on every push/PR, because the bounded nonlinear proofs are slow. A fast unit-test job runs per push/PR.
 

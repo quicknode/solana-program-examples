@@ -1,4 +1,4 @@
-use quasar_lang::prelude::*;
+use quasar_lang::{prelude::*, sysvars::Sysvar as _};
 use quasar_spl::prelude::*;
 
 use crate::errors::BettingError;
@@ -44,6 +44,7 @@ pub struct InitializeEventAccountConstraints {
 pub fn handle_initialize_event(
     accounts: &mut InitializeEventAccountConstraints,
     event_id: u64,
+    betting_closes_at: i64,
     description: &str,
     bumps: &InitializeEventAccountConstraintsBumps,
 ) -> Result<(), ProgramError> {
@@ -52,6 +53,9 @@ pub fn handle_initialize_event(
         description_bytes.len() <= MAX_DESCRIPTION_LEN,
         BettingError::DescriptionTooLong
     );
+    // A close time already passed would make a market no one can bet on.
+    let now: i64 = Clock::get()?.unix_timestamp.into();
+    require!(betting_closes_at > now, BettingError::CloseTimeInPast);
 
     let mut description_buffer = [0u8; MAX_DESCRIPTION_LEN];
     description_buffer[..description_bytes.len()].copy_from_slice(description_bytes);
@@ -62,7 +66,9 @@ pub fn handle_initialize_event(
         event_id,
         outcome_count: 0,
         total_pool: 0,
-        status: EventStatus::Open as u8,
+        // Starts as a draft: outcomes are added before anyone can bet.
+        status: EventStatus::Draft as u8,
+        betting_closes_at,
         fee_bps,
         winning_outcome_index: 0,
         winning_pool: 0,

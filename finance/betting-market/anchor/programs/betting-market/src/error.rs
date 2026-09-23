@@ -28,10 +28,18 @@ pub enum BettingError {
     BetNotInUserIndex,
     #[msg("Arithmetic overflow")]
     MathOverflow,
-    #[msg("Outcomes can only be added before any bets are placed")]
-    BettingAlreadyStarted,
+    #[msg("Outcomes can only be added, and betting opened, while the event is a draft")]
+    EventNotDraft,
     #[msg("The event description is too long")]
     DescriptionTooLong,
     #[msg("The outcome label is too long")]
     LabelTooLong,
+    #[msg("An event needs at least two outcomes before betting opens")]
+    NotEnoughOutcomes,
+    #[msg("The betting close time must be in the future")]
+    CloseTimeInPast,
+    #[msg("Betting on this event has closed")]
+    BettingClosed,
+    #[msg("Betting on this event is still open, so it cannot be settled yet")]
+    BettingStillOpen,
 }

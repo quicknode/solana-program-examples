@@ -55,19 +55,25 @@ pub struct InitializeEventAccountConstraints {
 pub fn handle_initialize_event(
     context: &mut Context<InitializeEventAccountConstraints>,
     event_id: u64,
+    betting_closes_at: i64,
     description: String,
 ) -> Result<()> {
     require!(
         description.len() <= MAX_DESCRIPTION_LEN,
         BettingError::DescriptionTooLong
     );
+    // A close time already passed would make a market no one can bet on.
+    let now = Clock::get()?.unix_timestamp;
+    require!(betting_closes_at > now, BettingError::CloseTimeInPast);
 
     *context.accounts.event = Event {
         event_id,
         description,
         outcome_count: 0,
         total_pool: 0,
-        status: EventStatus::Open,
+        // Starts as a draft: outcomes are added before anyone can bet.
+        status: EventStatus::Draft,
+        betting_closes_at,
         fee_bps: context.accounts.config.default_fee_bps,
         winning_outcome_index: 0,
         winning_pool: 0,
