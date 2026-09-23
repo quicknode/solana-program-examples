@@ -35,7 +35,10 @@ pub struct AddOutcomeAccountConstraints<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handle_add_outcome(context: Context<AddOutcomeAccountConstraints>, label: String) -> Result<()> {
+pub fn handle_add_outcome(
+    context: Context<AddOutcomeAccountConstraints>,
+    label: String,
+) -> Result<()> {
     require!(label.len() <= MAX_LABEL_LEN, BettingError::LabelTooLong);
     // Outcomes can only be added to a draft. Once `open_betting` runs, the
     // field of choices is final before the first bet can land.

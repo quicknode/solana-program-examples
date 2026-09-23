@@ -9,7 +9,8 @@ use {
     solana_keypair::Keypair,
     solana_kite::{
         create_associated_token_account, create_token_mint, create_wallet,
-        get_token_account_balance, mint_tokens_to_token_account, send_transaction_from_instructions,
+        get_token_account_balance, mint_tokens_to_token_account,
+        send_transaction_from_instructions,
     },
     solana_signer::Signer,
 };
@@ -296,7 +297,10 @@ fn test_initialize_fundraiser() {
     assert_eq!(fundraiser_state.current_amount, 0);
     assert_eq!(fundraiser_state.duration, DURATION_DAYS);
 
-    assert_eq!(get_token_account_balance(&setup.svm, &setup.vault).unwrap(), 0);
+    assert_eq!(
+        get_token_account_balance(&setup.svm, &setup.vault).unwrap(),
+        0
+    );
 }
 
 #[test]
@@ -329,7 +333,10 @@ fn test_initialize_below_minimum_target_fails() {
         &[&setup.maker],
         &setup.maker.pubkey(),
     );
-    assert!(result.is_err(), "Target below 3 major units must be rejected");
+    assert!(
+        result.is_err(),
+        "Target below 3 major units must be rejected"
+    );
     assert!(
         setup.svm.get_account(&setup.fundraiser_pda).is_none(),
         "Fundraiser account must not exist after a failed initialize"
@@ -404,7 +411,10 @@ fn test_contribute_after_deadline_fails() {
     );
     assert!(result.is_err(), "Contributing after the deadline must fail");
 
-    assert_eq!(get_token_account_balance(&setup.svm, &setup.vault).unwrap(), 0);
+    assert_eq!(
+        get_token_account_balance(&setup.svm, &setup.vault).unwrap(),
+        0
+    );
     assert_eq!(
         get_token_account_balance(&setup.svm, &contributor_ata).unwrap(),
         CONTRIBUTOR_STARTING_BALANCE
@@ -436,7 +446,10 @@ fn test_contribute_below_one_major_unit_fails() {
         result.is_err(),
         "Contributions below one major unit must fail"
     );
-    assert_eq!(get_token_account_balance(&setup.svm, &setup.vault).unwrap(), 0);
+    assert_eq!(
+        get_token_account_balance(&setup.svm, &setup.vault).unwrap(),
+        0
+    );
 }
 
 #[test]
@@ -525,7 +538,10 @@ fn test_refund_after_deadline_target_not_met_succeeds() {
     )
     .unwrap();
 
-    assert_eq!(get_token_account_balance(&setup.svm, &setup.vault).unwrap(), 0);
+    assert_eq!(
+        get_token_account_balance(&setup.svm, &setup.vault).unwrap(),
+        0
+    );
     assert_eq!(
         get_token_account_balance(&setup.svm, &contributor_ata).unwrap(),
         CONTRIBUTOR_STARTING_BALANCE
@@ -672,7 +688,10 @@ fn test_contribute_above_cap_fails() {
         result.is_err(),
         "A single contribution above the 10% cap must fail"
     );
-    assert_eq!(get_token_account_balance(&setup.svm, &setup.vault).unwrap(), 0);
+    assert_eq!(
+        get_token_account_balance(&setup.svm, &setup.vault).unwrap(),
+        0
+    );
 }
 
 #[test]
@@ -797,7 +816,10 @@ fn test_close_fundraiser_after_failed_raise_allows_a_new_raise() {
     let fundraiser_state = read_fundraiser_state(&setup.svm, &setup.fundraiser_pda);
     assert_eq!(fundraiser_state.current_amount, 0);
     assert_eq!(fundraiser_state.amount_to_raise, AMOUNT_TO_RAISE);
-    assert_eq!(get_token_account_balance(&setup.svm, &setup.vault).unwrap(), 0);
+    assert_eq!(
+        get_token_account_balance(&setup.svm, &setup.vault).unwrap(),
+        0
+    );
 }
 
 #[test]
@@ -922,8 +944,14 @@ fn test_close_fundraiser_sweeps_direct_donations_to_maker() {
     // accounting; on close they go to the maker instead of being burned
     // with the account.
     let donation = 5 * ONE_TOKEN;
-    mint_tokens_to_token_account(&mut setup.svm, &setup.mint, &setup.vault, donation, &setup.payer)
-        .unwrap();
+    mint_tokens_to_token_account(
+        &mut setup.svm,
+        &setup.mint,
+        &setup.vault,
+        donation,
+        &setup.payer,
+    )
+    .unwrap();
 
     warp_days_forward(&mut setup.svm, DURATION_DAYS as i64 + 1);
 

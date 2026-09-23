@@ -45,7 +45,10 @@ pub mod betting_market {
     }
 
     // Admin adds a possible result. Only allowed while the event is a draft.
-    pub fn add_outcome(context: Context<AddOutcomeAccountConstraints>, label: String) -> Result<()> {
+    pub fn add_outcome(
+        context: Context<AddOutcomeAccountConstraints>,
+        label: String,
+    ) -> Result<()> {
         instructions::add_outcome::handle_add_outcome(context, label)
     }
 
@@ -63,7 +66,10 @@ pub mod betting_market {
 
     // Admin resolves the market once betting has closed: takes the fee from the losing pool and records
     // the figures winners need to claim their share.
-    pub fn settle_event(context: Context<SettleEventAccountConstraints>, winning_outcome_index: u8) -> Result<()> {
+    pub fn settle_event(
+        context: Context<SettleEventAccountConstraints>,
+        winning_outcome_index: u8,
+    ) -> Result<()> {
         instructions::settle_event::handle_settle_event(context, winning_outcome_index)
     }
 

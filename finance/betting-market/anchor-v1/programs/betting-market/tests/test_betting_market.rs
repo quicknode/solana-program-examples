@@ -9,8 +9,8 @@ use {
     solana_keypair::Keypair,
     solana_kite::{
         create_associated_token_account, create_token_mint, create_wallet,
-        get_token_account_balance, mint_tokens_to_token_account, send_transaction_from_instructions,
-        SolanaKiteError,
+        get_token_account_balance, mint_tokens_to_token_account,
+        send_transaction_from_instructions, SolanaKiteError,
     },
     solana_signer::Signer,
 };
@@ -53,12 +53,19 @@ fn event_pda(event_id: u64) -> Pubkey {
 }
 
 fn outcome_pda(event: &Pubkey, index: u8) -> Pubkey {
-    Pubkey::find_program_address(&[b"outcome", event.as_ref(), &[index]], &betting_market::id()).0
+    Pubkey::find_program_address(
+        &[b"outcome", event.as_ref(), &[index]],
+        &betting_market::id(),
+    )
+    .0
 }
 
 fn bet_pda(outcome: &Pubkey, bettor: &Pubkey) -> Pubkey {
-    Pubkey::find_program_address(&[b"bet", outcome.as_ref(), bettor.as_ref()], &betting_market::id())
-        .0
+    Pubkey::find_program_address(
+        &[b"bet", outcome.as_ref(), bettor.as_ref()],
+        &betting_market::id(),
+    )
+    .0
 }
 
 fn user_pda(bettor: &Pubkey) -> Pubkey {
@@ -79,7 +86,8 @@ fn setup() -> Market {
     let mut svm = LiteSVM::new();
     warp_to(&mut svm, START_TIME);
     let program_bytes = include_bytes!("../../../target/deploy/betting_market.so");
-    svm.add_program(betting_market::id(), program_bytes).unwrap();
+    svm.add_program(betting_market::id(), program_bytes)
+        .unwrap();
 
     let admin = create_wallet(&mut svm, 100_000_000_000).unwrap();
     let mint = create_token_mint(&mut svm, &admin, DECIMALS, None).unwrap();
@@ -152,7 +160,12 @@ fn initialize_config_ix(admin: Pubkey, mint: Pubkey, fee_recipient: Pubkey) -> I
     )
 }
 
-fn initialize_event_ix(admin: Pubkey, mint: Pubkey, event_id: u64, description: &str) -> Instruction {
+fn initialize_event_ix(
+    admin: Pubkey,
+    mint: Pubkey,
+    event_id: u64,
+    description: &str,
+) -> Instruction {
     initialize_event_closing_at_ix(admin, mint, event_id, description, BETTING_CLOSES_AT)
 }
 
@@ -414,21 +427,42 @@ fn test_full_lifecycle() {
 
     send_transaction_from_instructions(
         &mut market.svm,
-        vec![place_bet_ix(mint, &alice.pubkey(), &alice_ata, event_id, 0, 100)],
+        vec![place_bet_ix(
+            mint,
+            &alice.pubkey(),
+            &alice_ata,
+            event_id,
+            0,
+            100,
+        )],
         &[&alice],
         &alice.pubkey(),
     )
     .unwrap();
     send_transaction_from_instructions(
         &mut market.svm,
-        vec![place_bet_ix(mint, &bob.pubkey(), &bob_ata, event_id, 0, 300)],
+        vec![place_bet_ix(
+            mint,
+            &bob.pubkey(),
+            &bob_ata,
+            event_id,
+            0,
+            300,
+        )],
         &[&bob],
         &bob.pubkey(),
     )
     .unwrap();
     send_transaction_from_instructions(
         &mut market.svm,
-        vec![place_bet_ix(mint, &carol.pubkey(), &carol_ata, event_id, 1, 200)],
+        vec![place_bet_ix(
+            mint,
+            &carol.pubkey(),
+            &carol_ata,
+            event_id,
+            1,
+            200,
+        )],
         &[&carol],
         &carol.pubkey(),
     )
@@ -439,7 +473,10 @@ fn test_full_lifecycle() {
     assert_eq!(get_token_account_balance(&market.svm, &vault).unwrap(), 600);
     assert_eq!(
         read_user_bets(&market, &alice.pubkey()),
-        vec![bet_pda(&outcome_pda(&event_pda(event_id), 0), &alice.pubkey())]
+        vec![bet_pda(
+            &outcome_pda(&event_pda(event_id), 0),
+            &alice.pubkey()
+        )]
     );
 
     // Settle to "Yes" (index 0). Losing pool 200, fee = 2% = 4, distributable = 196.
@@ -449,7 +486,14 @@ fn test_full_lifecycle() {
     warp_to(&mut market.svm, BETTING_CLOSES_AT);
     send_transaction_from_instructions(
         &mut market.svm,
-        vec![settle_event_ix(admin, mint, fee_recipient, fee_recipient_ata, event_id, 0)],
+        vec![settle_event_ix(
+            admin,
+            mint,
+            fee_recipient,
+            fee_recipient_ata,
+            event_id,
+            0,
+        )],
         &[&market.admin],
         &admin,
     )
@@ -462,14 +506,26 @@ fn test_full_lifecycle() {
     // Alice: 100 + 100*196/400 = 149. Bob: 300 + 300*196/400 = 447.
     send_transaction_from_instructions(
         &mut market.svm,
-        vec![claim_winnings_ix(mint, &alice.pubkey(), &alice_ata, event_id, 0)],
+        vec![claim_winnings_ix(
+            mint,
+            &alice.pubkey(),
+            &alice_ata,
+            event_id,
+            0,
+        )],
         &[&alice],
         &alice.pubkey(),
     )
     .unwrap();
     send_transaction_from_instructions(
         &mut market.svm,
-        vec![claim_winnings_ix(mint, &bob.pubkey(), &bob_ata, event_id, 0)],
+        vec![claim_winnings_ix(
+            mint,
+            &bob.pubkey(),
+            &bob_ata,
+            event_id,
+            0,
+        )],
         &[&bob],
         &bob.pubkey(),
     )
@@ -493,11 +549,20 @@ fn test_full_lifecycle() {
     // Carol bet the losing outcome, so she has nothing to claim.
     let carol_claim = send_transaction_from_instructions(
         &mut market.svm,
-        vec![claim_winnings_ix(mint, &carol.pubkey(), &carol_ata, event_id, 1)],
+        vec![claim_winnings_ix(
+            mint,
+            &carol.pubkey(),
+            &carol_ata,
+            event_id,
+            1,
+        )],
         &[&carol],
         &carol.pubkey(),
     );
-    assert!(carol_claim.is_err(), "loser must not be able to claim winnings");
+    assert!(
+        carol_claim.is_err(),
+        "loser must not be able to claim winnings"
+    );
 
     // Her losing position stays in the index until she closes it.
     let carol_bet = bet_pda(&outcome_pda(&event_pda(event_id), 1), &carol.pubkey());
@@ -521,7 +586,12 @@ fn test_only_admin_can_initialize_event() {
     let mallory = create_wallet(&mut market.svm, 10_000_000_000).unwrap();
     let result = send_transaction_from_instructions(
         &mut market.svm,
-        vec![initialize_event_ix(mallory.pubkey(), mint, 7, "Unauthorized event")],
+        vec![initialize_event_ix(
+            mallory.pubkey(),
+            mint,
+            7,
+            "Unauthorized event",
+        )],
         &[&mallory],
         &mallory.pubkey(),
     );
@@ -554,7 +624,14 @@ fn test_cannot_bet_after_settle() {
     .unwrap();
     send_transaction_from_instructions(
         &mut market.svm,
-        vec![place_bet_ix(mint, &alice.pubkey(), &alice_ata, event_id, 0, 100)],
+        vec![place_bet_ix(
+            mint,
+            &alice.pubkey(),
+            &alice_ata,
+            event_id,
+            0,
+            100,
+        )],
         &[&alice],
         &alice.pubkey(),
     )
@@ -563,7 +640,14 @@ fn test_cannot_bet_after_settle() {
     warp_to(&mut market.svm, BETTING_CLOSES_AT);
     send_transaction_from_instructions(
         &mut market.svm,
-        vec![settle_event_ix(admin, mint, fee_recipient, fee_recipient_ata, event_id, 0)],
+        vec![settle_event_ix(
+            admin,
+            mint,
+            fee_recipient,
+            fee_recipient_ata,
+            event_id,
+            0,
+        )],
         &[&market.admin],
         &admin,
     )
@@ -571,7 +655,14 @@ fn test_cannot_bet_after_settle() {
 
     let late_bet = send_transaction_from_instructions(
         &mut market.svm,
-        vec![place_bet_ix(mint, &bob.pubkey(), &bob_ata, event_id, 1, 100)],
+        vec![place_bet_ix(
+            mint,
+            &bob.pubkey(),
+            &bob_ata,
+            event_id,
+            1,
+            100,
+        )],
         &[&bob],
         &bob.pubkey(),
     );
@@ -604,14 +695,28 @@ fn test_double_claim_fails() {
     .unwrap();
     send_transaction_from_instructions(
         &mut market.svm,
-        vec![place_bet_ix(mint, &alice.pubkey(), &alice_ata, event_id, 0, 100)],
+        vec![place_bet_ix(
+            mint,
+            &alice.pubkey(),
+            &alice_ata,
+            event_id,
+            0,
+            100,
+        )],
         &[&alice],
         &alice.pubkey(),
     )
     .unwrap();
     send_transaction_from_instructions(
         &mut market.svm,
-        vec![place_bet_ix(mint, &carol.pubkey(), &carol_ata, event_id, 1, 100)],
+        vec![place_bet_ix(
+            mint,
+            &carol.pubkey(),
+            &carol_ata,
+            event_id,
+            1,
+            100,
+        )],
         &[&carol],
         &carol.pubkey(),
     )
@@ -620,7 +725,14 @@ fn test_double_claim_fails() {
     warp_to(&mut market.svm, BETTING_CLOSES_AT);
     send_transaction_from_instructions(
         &mut market.svm,
-        vec![settle_event_ix(admin, mint, fee_recipient, fee_recipient_ata, event_id, 0)],
+        vec![settle_event_ix(
+            admin,
+            mint,
+            fee_recipient,
+            fee_recipient_ata,
+            event_id,
+            0,
+        )],
         &[&market.admin],
         &admin,
     )
@@ -628,7 +740,13 @@ fn test_double_claim_fails() {
 
     send_transaction_from_instructions(
         &mut market.svm,
-        vec![claim_winnings_ix(mint, &alice.pubkey(), &alice_ata, event_id, 0)],
+        vec![claim_winnings_ix(
+            mint,
+            &alice.pubkey(),
+            &alice_ata,
+            event_id,
+            0,
+        )],
         &[&alice],
         &alice.pubkey(),
     )
@@ -637,7 +755,13 @@ fn test_double_claim_fails() {
     market.svm.expire_blockhash();
     let second = send_transaction_from_instructions(
         &mut market.svm,
-        vec![claim_winnings_ix(mint, &alice.pubkey(), &alice_ata, event_id, 0)],
+        vec![claim_winnings_ix(
+            mint,
+            &alice.pubkey(),
+            &alice_ata,
+            event_id,
+            0,
+        )],
         &[&alice],
         &alice.pubkey(),
     );
@@ -670,7 +794,14 @@ fn test_settle_outcome_without_bets_fails() {
     // Everyone bets Horse A; Horse B has no bets.
     send_transaction_from_instructions(
         &mut market.svm,
-        vec![place_bet_ix(mint, &alice.pubkey(), &alice_ata, event_id, 0, 100)],
+        vec![place_bet_ix(
+            mint,
+            &alice.pubkey(),
+            &alice_ata,
+            event_id,
+            0,
+            100,
+        )],
         &[&alice],
         &alice.pubkey(),
     )
@@ -680,7 +811,14 @@ fn test_settle_outcome_without_bets_fails() {
     warp_to(&mut market.svm, BETTING_CLOSES_AT);
     let result = send_transaction_from_instructions(
         &mut market.svm,
-        vec![settle_event_ix(admin, mint, fee_recipient, fee_recipient_ata, event_id, 1)],
+        vec![settle_event_ix(
+            admin,
+            mint,
+            fee_recipient,
+            fee_recipient_ata,
+            event_id,
+            1,
+        )],
         &[&market.admin],
         &admin,
     );
@@ -711,14 +849,28 @@ fn test_cancel_and_refund() {
     .unwrap();
     send_transaction_from_instructions(
         &mut market.svm,
-        vec![place_bet_ix(mint, &alice.pubkey(), &alice_ata, event_id, 0, 250)],
+        vec![place_bet_ix(
+            mint,
+            &alice.pubkey(),
+            &alice_ata,
+            event_id,
+            0,
+            250,
+        )],
         &[&alice],
         &alice.pubkey(),
     )
     .unwrap();
     send_transaction_from_instructions(
         &mut market.svm,
-        vec![place_bet_ix(mint, &carol.pubkey(), &carol_ata, event_id, 1, 750)],
+        vec![place_bet_ix(
+            mint,
+            &carol.pubkey(),
+            &carol_ata,
+            event_id,
+            1,
+            750,
+        )],
         &[&carol],
         &carol.pubkey(),
     )
@@ -737,7 +889,13 @@ fn test_cancel_and_refund() {
 
     send_transaction_from_instructions(
         &mut market.svm,
-        vec![claim_refund_ix(mint, &alice.pubkey(), &alice_ata, event_id, 0)],
+        vec![claim_refund_ix(
+            mint,
+            &alice.pubkey(),
+            &alice_ata,
+            event_id,
+            0,
+        )],
         &[&alice],
         &alice.pubkey(),
     )
@@ -748,15 +906,27 @@ fn test_cancel_and_refund() {
 
     send_transaction_from_instructions(
         &mut market.svm,
-        vec![claim_refund_ix(mint, &carol.pubkey(), &carol_ata, event_id, 1)],
+        vec![claim_refund_ix(
+            mint,
+            &carol.pubkey(),
+            &carol_ata,
+            event_id,
+            1,
+        )],
         &[&carol],
         &carol.pubkey(),
     )
     .unwrap();
 
     // Both bettors made whole; no fee on a cancelled event.
-    assert_eq!(get_token_account_balance(&market.svm, &alice_ata).unwrap(), 1_000);
-    assert_eq!(get_token_account_balance(&market.svm, &carol_ata).unwrap(), 1_000);
+    assert_eq!(
+        get_token_account_balance(&market.svm, &alice_ata).unwrap(),
+        1_000
+    );
+    assert_eq!(
+        get_token_account_balance(&market.svm, &carol_ata).unwrap(),
+        1_000
+    );
     let vault = derive_ata(&event_pda(event_id), &mint);
     assert_eq!(get_token_account_balance(&market.svm, &vault).unwrap(), 0);
 }
@@ -787,14 +957,28 @@ fn test_close_losing_bet_only_after_settle_and_only_for_losers() {
     .unwrap();
     send_transaction_from_instructions(
         &mut market.svm,
-        vec![place_bet_ix(mint, &alice.pubkey(), &alice_ata, event_id, 0, 100)],
+        vec![place_bet_ix(
+            mint,
+            &alice.pubkey(),
+            &alice_ata,
+            event_id,
+            0,
+            100,
+        )],
         &[&alice],
         &alice.pubkey(),
     )
     .unwrap();
     send_transaction_from_instructions(
         &mut market.svm,
-        vec![place_bet_ix(mint, &carol.pubkey(), &carol_ata, event_id, 1, 100)],
+        vec![place_bet_ix(
+            mint,
+            &carol.pubkey(),
+            &carol_ata,
+            event_id,
+            1,
+            100,
+        )],
         &[&carol],
         &carol.pubkey(),
     )
@@ -807,13 +991,23 @@ fn test_close_losing_bet_only_after_settle_and_only_for_losers() {
         &[&carol],
         &carol.pubkey(),
     );
-    assert!(premature_close.is_err(), "closing before settlement must fail");
+    assert!(
+        premature_close.is_err(),
+        "closing before settlement must fail"
+    );
 
     // Betting has closed, so the event can be settled.
     warp_to(&mut market.svm, BETTING_CLOSES_AT);
     send_transaction_from_instructions(
         &mut market.svm,
-        vec![settle_event_ix(admin, mint, fee_recipient, fee_recipient_ata, event_id, 0)],
+        vec![settle_event_ix(
+            admin,
+            mint,
+            fee_recipient,
+            fee_recipient_ata,
+            event_id,
+            0,
+        )],
         &[&market.admin],
         &admin,
     )
@@ -826,7 +1020,10 @@ fn test_close_losing_bet_only_after_settle_and_only_for_losers() {
         &[&alice],
         &alice.pubkey(),
     );
-    assert!(winner_close.is_err(), "a winning bet must not be closed as losing");
+    assert!(
+        winner_close.is_err(),
+        "a winning bet must not be closed as losing"
+    );
     let alice_bet = bet_pda(&outcome_pda(&event_pda(event_id), 0), &alice.pubkey());
     assert_eq!(read_user_bets(&market, &alice.pubkey()), vec![alice_bet]);
 
@@ -863,7 +1060,12 @@ fn test_closing_a_bet_frees_a_slot_for_a_new_bet() {
 
     send_transaction_from_instructions(
         &mut market.svm,
-        vec![initialize_event_ix(admin, mint, full_event_id, "Wide field")],
+        vec![initialize_event_ix(
+            admin,
+            mint,
+            full_event_id,
+            "Wide field",
+        )],
         &[&market.admin],
         &admin,
     )
@@ -871,7 +1073,12 @@ fn test_closing_a_bet_frees_a_slot_for_a_new_bet() {
     for index in 0..outcome_count {
         send_transaction_from_instructions(
             &mut market.svm,
-            vec![add_outcome_ix(admin, full_event_id, index, &format!("Runner {index}"))],
+            vec![add_outcome_ix(
+                admin,
+                full_event_id,
+                index,
+                &format!("Runner {index}"),
+            )],
             &[&market.admin],
             &admin,
         )
@@ -901,13 +1108,23 @@ fn test_closing_a_bet_frees_a_slot_for_a_new_bet() {
     for index in 0..MAX_BETS_PER_USER as u8 {
         send_transaction_from_instructions(
             &mut market.svm,
-            vec![place_bet_ix(mint, &alice.pubkey(), &alice_ata, full_event_id, index, STAKE)],
+            vec![place_bet_ix(
+                mint,
+                &alice.pubkey(),
+                &alice_ata,
+                full_event_id,
+                index,
+                STAKE,
+            )],
             &[&alice],
             &alice.pubkey(),
         )
         .unwrap();
     }
-    assert_eq!(read_user_bets(&market, &alice.pubkey()).len(), MAX_BETS_PER_USER);
+    assert_eq!(
+        read_user_bets(&market, &alice.pubkey()).len(),
+        MAX_BETS_PER_USER
+    );
 
     // With the index full, any new position is rejected - on this event or another.
     let one_too_many = send_transaction_from_instructions(
@@ -923,14 +1140,27 @@ fn test_closing_a_bet_frees_a_slot_for_a_new_bet() {
         &[&alice],
         &alice.pubkey(),
     );
-    assert!(one_too_many.is_err(), "a full index must reject a new position");
+    assert!(
+        one_too_many.is_err(),
+        "a full index must reject a new position"
+    );
     let other_market_bet = send_transaction_from_instructions(
         &mut market.svm,
-        vec![place_bet_ix(mint, &alice.pubkey(), &alice_ata, second_event_id, 0, STAKE)],
+        vec![place_bet_ix(
+            mint,
+            &alice.pubkey(),
+            &alice_ata,
+            second_event_id,
+            0,
+            STAKE,
+        )],
         &[&alice],
         &alice.pubkey(),
     );
-    assert!(other_market_bet.is_err(), "a full index must reject bets on any market");
+    assert!(
+        other_market_bet.is_err(),
+        "a full index must reject bets on any market"
+    );
 
     // Unwind one position: cancel the event and refund the first bet.
     send_transaction_from_instructions(
@@ -942,7 +1172,13 @@ fn test_closing_a_bet_frees_a_slot_for_a_new_bet() {
     .unwrap();
     send_transaction_from_instructions(
         &mut market.svm,
-        vec![claim_refund_ix(mint, &alice.pubkey(), &alice_ata, full_event_id, 0)],
+        vec![claim_refund_ix(
+            mint,
+            &alice.pubkey(),
+            &alice_ata,
+            full_event_id,
+            0,
+        )],
         &[&alice],
         &alice.pubkey(),
     )
@@ -960,15 +1196,28 @@ fn test_closing_a_bet_frees_a_slot_for_a_new_bet() {
     market.svm.expire_blockhash();
     send_transaction_from_instructions(
         &mut market.svm,
-        vec![place_bet_ix(mint, &alice.pubkey(), &alice_ata, second_event_id, 0, STAKE)],
+        vec![place_bet_ix(
+            mint,
+            &alice.pubkey(),
+            &alice_ata,
+            second_event_id,
+            0,
+            STAKE,
+        )],
         &[&alice],
         &alice.pubkey(),
     )
     .unwrap();
     let final_bets = read_user_bets(&market, &alice.pubkey());
     assert_eq!(final_bets.len(), MAX_BETS_PER_USER);
-    let new_bet = bet_pda(&outcome_pda(&event_pda(second_event_id), 0), &alice.pubkey());
-    assert!(final_bets.contains(&new_bet), "the new position must appear in the index");
+    let new_bet = bet_pda(
+        &outcome_pda(&event_pda(second_event_id), 0),
+        &alice.pubkey(),
+    );
+    assert!(
+        final_bets.contains(&new_bet),
+        "the new position must appear in the index"
+    );
 }
 
 // The outcome list is final once betting opens, and nobody can bet before it
@@ -997,7 +1246,14 @@ fn test_outcomes_lock_when_betting_opens() {
     // The draft has one outcome and no bettor can touch it yet.
     let early_bet = send_transaction_from_instructions(
         &mut market.svm,
-        vec![place_bet_ix(mint, &alice.pubkey(), &alice_ata, event_id, 0, 100)],
+        vec![place_bet_ix(
+            mint,
+            &alice.pubkey(),
+            &alice_ata,
+            event_id,
+            0,
+            100,
+        )],
         &[&alice],
         &alice.pubkey(),
     );
@@ -1111,7 +1367,14 @@ fn test_betting_closes_at_close_time() {
     warp_to(&mut market.svm, BETTING_CLOSES_AT - 1);
     send_transaction_from_instructions(
         &mut market.svm,
-        vec![place_bet_ix(mint, &alice.pubkey(), &alice_ata, event_id, 0, 100)],
+        vec![place_bet_ix(
+            mint,
+            &alice.pubkey(),
+            &alice_ata,
+            event_id,
+            0,
+            100,
+        )],
         &[&alice],
         &alice.pubkey(),
     )
@@ -1120,7 +1383,14 @@ fn test_betting_closes_at_close_time() {
     // ...and the admin cannot settle yet.
     let early_settle = send_transaction_from_instructions(
         &mut market.svm,
-        vec![settle_event_ix(admin, mint, fee_recipient, fee_recipient_ata, event_id, 0)],
+        vec![settle_event_ix(
+            admin,
+            mint,
+            fee_recipient,
+            fee_recipient_ata,
+            event_id,
+            0,
+        )],
         &[&market.admin],
         &admin,
     );
@@ -1130,7 +1400,14 @@ fn test_betting_closes_at_close_time() {
     warp_to(&mut market.svm, BETTING_CLOSES_AT);
     let late_bet = send_transaction_from_instructions(
         &mut market.svm,
-        vec![place_bet_ix(mint, &carol.pubkey(), &carol_ata, event_id, 1, 100)],
+        vec![place_bet_ix(
+            mint,
+            &carol.pubkey(),
+            &carol_ata,
+            event_id,
+            1,
+            100,
+        )],
         &[&carol],
         &carol.pubkey(),
     );
@@ -1138,7 +1415,14 @@ fn test_betting_closes_at_close_time() {
 
     send_transaction_from_instructions(
         &mut market.svm,
-        vec![settle_event_ix(admin, mint, fee_recipient, fee_recipient_ata, event_id, 0)],
+        vec![settle_event_ix(
+            admin,
+            mint,
+            fee_recipient,
+            fee_recipient_ata,
+            event_id,
+            0,
+        )],
         &[&market.admin],
         &admin,
     )
@@ -1154,7 +1438,13 @@ fn test_close_time_must_be_in_the_future() {
 
     let result = send_transaction_from_instructions(
         &mut market.svm,
-        vec![initialize_event_closing_at_ix(admin, mint, 12, "Already over", START_TIME)],
+        vec![initialize_event_closing_at_ix(
+            admin,
+            mint,
+            12,
+            "Already over",
+            START_TIME,
+        )],
         &[&market.admin],
         &admin,
     );

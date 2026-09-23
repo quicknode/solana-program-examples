@@ -10,11 +10,16 @@ pub mod anchor {
 
     use super::*;
 
-    pub fn create_token(context: Context<CreateTokenAccountConstraints>, token_name: String) -> Result<()> {
+    pub fn create_token(
+        context: Context<CreateTokenAccountConstraints>,
+        token_name: String,
+    ) -> Result<()> {
         instructions::create_token::handler(context, token_name)
     }
 
-    pub fn create_token_account(context: Context<CreateTokenAccountAccountConstraints>) -> Result<()> {
+    pub fn create_token_account(
+        context: Context<CreateTokenAccountAccountConstraints>,
+    ) -> Result<()> {
         instructions::create_token_account::handler(context)
     }
 
@@ -24,7 +29,10 @@ pub mod anchor {
         instructions::create_associated_token_account::handler(context)
     }
 
-    pub fn transfer_token(context: Context<TransferTokenAccountConstraints>, amount: u64) -> Result<()> {
+    pub fn transfer_token(
+        context: Context<TransferTokenAccountConstraints>,
+        amount: u64,
+    ) -> Result<()> {
         instructions::transfer_token::handler(context, amount)
     }
 

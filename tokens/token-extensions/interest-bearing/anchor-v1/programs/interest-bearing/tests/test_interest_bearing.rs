@@ -4,11 +4,11 @@ use {
         InstructionData, ToAccountMetas,
     },
     litesvm::LiteSVM,
+    solana_keypair::Keypair,
     solana_kite::{
         create_wallet, send_transaction_from_instructions,
         token_extensions::TOKEN_EXTENSIONS_PROGRAM_ID,
     },
-    solana_keypair::Keypair,
     solana_signer::Signer,
 };
 
@@ -40,7 +40,13 @@ fn test_initialize_and_update_rate() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![initialize_ix], &[&payer, &mint_keypair], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        vec![initialize_ix],
+        &[&payer, &mint_keypair],
+        &payer.pubkey(),
+    )
+    .unwrap();
 
     // Verify mint account exists
     let mint_account = svm
@@ -62,7 +68,8 @@ fn test_initialize_and_update_rate() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![update_rate_ix], &[&payer], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(&mut svm, vec![update_rate_ix], &[&payer], &payer.pubkey())
+        .unwrap();
 
     // Verify mint still exists after rate update
     let mint_account = svm

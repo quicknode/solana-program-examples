@@ -4,11 +4,11 @@ use {
         InstructionData, ToAccountMetas,
     },
     litesvm::LiteSVM,
+    solana_keypair::Keypair,
     solana_kite::{
         create_wallet, send_transaction_from_instructions,
         token_extensions::TOKEN_EXTENSIONS_PROGRAM_ID,
     },
-    solana_keypair::Keypair,
     solana_signer::Signer,
 };
 
@@ -40,7 +40,13 @@ fn test_create_and_close_mint() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![initialize_ix], &[&payer, &mint_keypair], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        vec![initialize_ix],
+        &[&payer, &mint_keypair],
+        &payer.pubkey(),
+    )
+    .unwrap();
 
     // Verify mint exists
     let mint_account = svm
@@ -61,14 +67,12 @@ fn test_create_and_close_mint() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![close_ix], &[&payer], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(&mut svm, vec![close_ix], &[&payer], &payer.pubkey())
+        .unwrap();
 
     // Verify mint no longer exists (lamports returned to authority)
     let mint_account = svm.get_account(&mint_keypair.pubkey());
-    assert!(
-        mint_account.is_none(),
-        "Mint account should be closed"
-    );
+    assert!(mint_account.is_none(), "Mint account should be closed");
 
     svm.expire_blockhash();
 
@@ -84,7 +88,13 @@ fn test_create_and_close_mint() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![initialize_ix2], &[&payer, &mint_keypair], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        vec![initialize_ix2],
+        &[&payer, &mint_keypair],
+        &payer.pubkey(),
+    )
+    .unwrap();
 
     // Verify mint exists again
     let mint_account = svm
@@ -105,10 +115,7 @@ fn test_create_and_close_mint() {
                 mint_keypair.pubkey(),
                 false,
             ),
-            anchor_lang::solana_program::instruction::AccountMeta::new(
-                payer.pubkey(),
-                false,
-            ),
+            anchor_lang::solana_program::instruction::AccountMeta::new(payer.pubkey(), false),
             anchor_lang::solana_program::instruction::AccountMeta::new_readonly(
                 payer.pubkey(),
                 true,
@@ -116,7 +123,8 @@ fn test_create_and_close_mint() {
         ],
         data: vec![9], // CloseAccount
     };
-    send_transaction_from_instructions(&mut svm, vec![close_direct_ix], &[&payer], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(&mut svm, vec![close_direct_ix], &[&payer], &payer.pubkey())
+        .unwrap();
 
     // Verify mint is closed again
     let mint_account = svm.get_account(&mint_keypair.pubkey());

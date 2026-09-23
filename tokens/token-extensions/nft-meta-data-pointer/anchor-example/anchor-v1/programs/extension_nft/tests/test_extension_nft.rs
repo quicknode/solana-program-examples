@@ -207,7 +207,10 @@ fn test_init_player_mint_and_chop() {
     // The associated token account should exist and hold the single NFT.
     let ata = associated_token_address(&signer, &mint.pubkey());
     let ata_account = svm.get_account(&ata).expect("ATA created");
-    assert_eq!(ata_account.owner, TOKEN_2022_ID, "ATA owned by Token Extensions");
+    assert_eq!(
+        ata_account.owner, TOKEN_2022_ID,
+        "ATA owned by Token Extensions"
+    );
 
     // 3. chop_tree - needs the existing mint so it can push the new wood total
     //    into the NFT metadata. Signed by the player's main wallet (no session).

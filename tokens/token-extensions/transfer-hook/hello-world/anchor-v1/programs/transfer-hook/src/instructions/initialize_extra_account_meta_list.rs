@@ -31,16 +31,22 @@ pub struct InitializeExtraAccountMetaListAccountConstraints<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handler(mut context: Context<InitializeExtraAccountMetaListAccountConstraints>) -> Result<()> {
+pub fn handler(
+    mut context: Context<InitializeExtraAccountMetaListAccountConstraints>,
+) -> Result<()> {
     let extra_account_metas = handle_extra_account_metas()?;
 
     // initialize ExtraAccountMetaList account with extra accounts
     // .map_err() needed because spl-tlv-account-resolution uses solana-program-error 2.x
     // while anchor-lang 1.0 uses 3.x - structurally identical but different semver types
     ExtraAccountMetaList::init::<ExecuteInstruction>(
-        &mut context.accounts.extra_account_meta_list.try_borrow_mut_data()?,
+        &mut context
+            .accounts
+            .extra_account_meta_list
+            .try_borrow_mut_data()?,
         &extra_account_metas,
-    ).map_err(|_| ProgramError::InvalidAccountData)?;
+    )
+    .map_err(|_| ProgramError::InvalidAccountData)?;
 
     Ok(())
 }

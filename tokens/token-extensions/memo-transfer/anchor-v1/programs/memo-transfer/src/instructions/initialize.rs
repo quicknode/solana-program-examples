@@ -38,8 +38,8 @@ pub fn handler(context: Context<InitializeAccountConstraints>) -> Result<()> {
                 to: context.accounts.token_account.to_account_info(),
             },
         ),
-        lamports,                          // Lamports
-        token_account_size as u64,         // Space
+        lamports,                              // Lamports
+        token_account_size as u64,             // Space
         &context.accounts.token_program.key(), // Owner Program
     )?;
 

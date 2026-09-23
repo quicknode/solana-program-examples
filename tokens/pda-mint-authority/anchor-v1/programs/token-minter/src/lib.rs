@@ -18,10 +18,7 @@ pub mod token_minter {
     }
 
     /// Mint `amount` minor units of the token to the payer.
-    pub fn mint_token(
-        context: Context<MintTokenAccountConstraints>,
-        amount: u64,
-    ) -> Result<()> {
+    pub fn mint_token(context: Context<MintTokenAccountConstraints>, amount: u64) -> Result<()> {
         mint::handle_mint_token(context, amount)
     }
 }

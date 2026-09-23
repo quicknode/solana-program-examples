@@ -2,8 +2,8 @@ use anchor_lang::prelude::*;
 
 use crate::errors::ErrorCode;
 use crate::state::{
-    credit_unfilled_lock, remove_open_order, Market, Order, OrderBook, OrderStatus, MarketUser,
-    ORDER_SEED, MARKET_USER_SEED,
+    credit_unfilled_lock, remove_open_order, Market, MarketUser, Order, OrderBook, OrderStatus,
+    MARKET_USER_SEED, ORDER_SEED,
 };
 
 pub fn handle_cancel_order(context: Context<CancelOrderAccountConstraints>) -> Result<()> {

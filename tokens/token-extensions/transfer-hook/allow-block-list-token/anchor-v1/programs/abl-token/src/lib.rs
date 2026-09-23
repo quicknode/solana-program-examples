@@ -20,7 +20,10 @@ pub mod abl_token {
 
     use super::*;
 
-    pub fn init_mint(context: Context<InitMintAccountConstraints>, args: InitMintArgs) -> Result<()> {
+    pub fn init_mint(
+        context: Context<InitMintAccountConstraints>,
+        args: InitMintArgs,
+    ) -> Result<()> {
         context.accounts.init_mint(args)
     }
 
@@ -37,7 +40,10 @@ pub mod abl_token {
         context.accounts.tx_hook(amount)
     }
 
-    pub fn init_wallet(context: Context<InitWalletAccountConstraints>, args: InitWalletArgs) -> Result<()> {
+    pub fn init_wallet(
+        context: Context<InitWalletAccountConstraints>,
+        args: InitWalletArgs,
+    ) -> Result<()> {
         let bump = context.bumps.ab_wallet;
         context.accounts.init_wallet(args, bump)
     }
@@ -46,7 +52,10 @@ pub mod abl_token {
         context.accounts.remove_wallet()
     }
 
-    pub fn change_mode(context: Context<ChangeModeAccountConstraints>, args: ChangeModeArgs) -> Result<()> {
+    pub fn change_mode(
+        context: Context<ChangeModeAccountConstraints>,
+        args: ChangeModeArgs,
+    ) -> Result<()> {
         context.accounts.change_mode(args)
     }
 }

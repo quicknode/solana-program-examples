@@ -8,13 +8,11 @@ use {
         InstructionData, ToAccountMetas,
     },
     litesvm::LiteSVM,
+    solana_keypair::Keypair,
     solana_kite::{
         assert_token_account_balance, create_wallet, send_transaction_from_instructions,
-        token_extensions::{
-            mint_tokens_to_token_extensions_account, TOKEN_EXTENSIONS_PROGRAM_ID,
-        },
+        token_extensions::{mint_tokens_to_token_extensions_account, TOKEN_EXTENSIONS_PROGRAM_ID},
     },
-    solana_keypair::Keypair,
     solana_signer::Signer,
 };
 
@@ -40,7 +38,11 @@ fn create_token_account_instructions(
     let space: u64 = 200;
     let lamports: u64 = 3_000_000;
     let create_account_ix = anchor_lang::solana_program::system_instruction::create_account(
-        payer, account, lamports, space, &TOKEN_EXTENSIONS_PROGRAM_ID,
+        payer,
+        account,
+        lamports,
+        space,
+        &TOKEN_EXTENSIONS_PROGRAM_ID,
     );
     // InitializeAccount3 (instruction 18): [18, owner(32)]
     let mut init_data = vec![18u8];
@@ -95,7 +97,13 @@ fn test_create_mint_with_permanent_delegate_and_burn() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![initialize_ix], &[&payer, &mint_keypair], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        vec![initialize_ix],
+        &[&payer, &mint_keypair],
+        &payer.pubkey(),
+    )
+    .unwrap();
     svm.expire_blockhash();
 
     // Step 2: Create a token account owned by a random keypair
@@ -107,7 +115,13 @@ fn test_create_mint_with_permanent_delegate_and_burn() {
         &mint_keypair.pubkey(),
         &random_owner.pubkey(),
     );
-    send_transaction_from_instructions(&mut svm, create_ata_ixs, &[&payer, &token_account], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        create_ata_ixs,
+        &[&payer, &token_account],
+        &payer.pubkey(),
+    )
+    .unwrap();
     svm.expire_blockhash();
 
     // Step 3: Mint 100 tokens to the token account
@@ -117,7 +131,8 @@ fn test_create_mint_with_permanent_delegate_and_burn() {
         &token_account.pubkey(),
         100,
         &payer,
-    ).unwrap();
+    )
+    .unwrap();
     svm.expire_blockhash();
 
     // Step 4: Burn all 100 tokens using the permanent delegate (payer)
@@ -128,7 +143,13 @@ fn test_create_mint_with_permanent_delegate_and_burn() {
         100,
         2, // decimals
     );
-    send_transaction_from_instructions(&mut svm, vec![burn_ix], &[&payer], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(&mut svm, vec![burn_ix], &[&payer], &payer.pubkey())
+        .unwrap();
 
-    assert_token_account_balance(&svm, &token_account.pubkey(), 0, "Token account balance should be 0 after burn");
+    assert_token_account_balance(
+        &svm,
+        &token_account.pubkey(),
+        0,
+        "Token account balance should be 0 after burn",
+    );
 }

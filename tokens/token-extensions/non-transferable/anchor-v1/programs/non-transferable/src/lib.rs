@@ -34,8 +34,8 @@ pub mod non_transferable {
                     to: context.accounts.mint_account.to_account_info(),
                 },
             ),
-            lamports,                          // Lamports
-            mint_size as u64,                  // Space
+            lamports,                              // Lamports
+            mint_size as u64,                      // Space
             &context.accounts.token_program.key(), // Owner Program
         )?;
 
@@ -57,7 +57,7 @@ pub mod non_transferable {
                     mint: context.accounts.mint_account.to_account_info(),
                 },
             ),
-            2,                               // decimals
+            2,                                   // decimals
             &context.accounts.payer.key(),       // mint authority
             Some(&context.accounts.payer.key()), // freeze authority
         )?;

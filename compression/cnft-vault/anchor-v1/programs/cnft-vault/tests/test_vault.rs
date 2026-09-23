@@ -476,11 +476,7 @@ fn create_tree_with_vault_cnft(context: &mut VaultTestContext) -> TreeWithVaultC
     let proof = [empty_node(0), empty_node(1), empty_node(2)];
 
     // Read the current root from the onchain tree account.
-    let tree_data = context
-        .svm
-        .get_account(&merkle_tree.pubkey())
-        .unwrap()
-        .data;
+    let tree_data = context.svm.get_account(&merkle_tree.pubkey()).unwrap().data;
     let root = read_current_root(&tree_data);
 
     TreeWithVaultCnft {
@@ -608,12 +604,8 @@ fn test_withdraw_cnft_by_authority() {
     let recipient = Keypair::new();
     let authority = context.authority.insecure_clone();
 
-    let withdraw_ix = build_withdraw_cnft_instruction(
-        &context,
-        authority.pubkey(),
-        &tree,
-        recipient.pubkey(),
-    );
+    let withdraw_ix =
+        build_withdraw_cnft_instruction(&context, authority.pubkey(), &tree, recipient.pubkey());
 
     // The stored authority signs, so the withdraw succeeds (the vault PDA
     // signs the Bubblegum CPI via invoke_signed inside the program).
@@ -692,12 +684,8 @@ fn test_withdraw_two_cnfts_by_authority() {
 
     // Both trees' roots moved, so both cNFTs left the vault: replaying the
     // single-tree withdraw against either tree with the cached roots fails.
-    let replay1 = build_withdraw_cnft_instruction(
-        &context,
-        authority.pubkey(),
-        &tree1,
-        recipient.pubkey(),
-    );
+    let replay1 =
+        build_withdraw_cnft_instruction(&context, authority.pubkey(), &tree1, recipient.pubkey());
     let replay = send(&mut context.svm, vec![replay1], &authority, &[&authority]);
     assert!(
         replay.is_err(),
