@@ -4,7 +4,7 @@ use anchor_spl::{
     token_interface::{Mint, TokenAccount, TokenInterface},
 };
 
-use crate::{error::BettingError, Config, Event, EventStatus, Outcome};
+use crate::{error::BettingError, may_settle, Config, Event, EventStatus, Outcome};
 
 use super::transfer_tokens_from_vault;
 
@@ -74,6 +74,13 @@ pub fn handle_settle_event(
     require!(
         context.accounts.event.status == EventStatus::Open,
         BettingError::EventNotOpen
+    );
+    // Settling before the close time would let the admin end a market early
+    // on bettors who were promised the full window.
+    let now = Clock::get()?.unix_timestamp;
+    require!(
+        may_settle(now, context.accounts.event.betting_closes_at),
+        BettingError::BettingStillOpen
     );
     require!(
         context.accounts.winning_outcome.total_amount > 0,

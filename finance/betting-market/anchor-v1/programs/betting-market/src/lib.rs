@@ -28,26 +28,40 @@ pub mod betting_market {
         )
     }
 
-    // Admin opens a new market and creates its pool vault.
+    // Admin creates a new market as a draft, fixes when betting closes, and
+    // creates its pool vault.
     pub fn initialize_event(
         context: Context<InitializeEventAccountConstraints>,
         event_id: u64,
+        betting_closes_at: i64,
         description: String,
     ) -> Result<()> {
-        instructions::initialize_event::handle_initialize_event(context, event_id, description)
+        instructions::initialize_event::handle_initialize_event(
+            context,
+            event_id,
+            betting_closes_at,
+            description,
+        )
     }
 
-    // Admin adds a possible result. Only allowed before betting starts.
+    // Admin adds a possible result. Only allowed while the event is a draft.
     pub fn add_outcome(context: Context<AddOutcomeAccountConstraints>, label: String) -> Result<()> {
         instructions::add_outcome::handle_add_outcome(context, label)
     }
 
-    // A bettor stakes tokens on one outcome. The stake joins the event's pool.
+    // Admin finalizes the outcome list and opens the market to bets. Needs at
+    // least two outcomes.
+    pub fn open_betting(context: Context<OpenBettingAccountConstraints>) -> Result<()> {
+        instructions::open_betting::handle_open_betting(context)
+    }
+
+    // A bettor stakes tokens on one outcome, before betting closes. The stake
+    // joins the event's pool.
     pub fn place_bet(context: Context<PlaceBetAccountConstraints>, amount: u64) -> Result<()> {
         instructions::place_bet::handle_place_bet(context, amount)
     }
 
-    // Admin resolves the market: takes the fee from the losing pool and records
+    // Admin resolves the market once betting has closed: takes the fee from the losing pool and records
     // the figures winners need to claim their share.
     pub fn settle_event(context: Context<SettleEventAccountConstraints>, winning_outcome_index: u8) -> Result<()> {
         instructions::settle_event::handle_settle_event(context, winning_outcome_index)
@@ -65,7 +79,7 @@ pub mod betting_market {
         instructions::close_losing_bet::handle_close_losing_bet(context)
     }
 
-    // Admin voids an unresolved market so bettors can be made whole.
+    // Admin voids a draft or unresolved market so bettors can be made whole.
     pub fn cancel_event(context: Context<CancelEventAccountConstraints>) -> Result<()> {
         instructions::cancel_event::handle_cancel_event(context)
     }

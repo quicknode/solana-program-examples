@@ -1,8 +1,8 @@
 use anchor_lang::prelude::*;
 
 // The global, single Config account. Its `admin` is the only key allowed to
-// create events, add outcomes, settle, and cancel. `token_mint` fixes the one
-// asset every market in this deployment accepts as a stake.
+// create events, add outcomes, open betting, settle, and cancel. `token_mint`
+// fixes the one asset every market in this deployment accepts as a stake.
 #[account]
 #[derive(InitSpace)]
 pub struct Config {

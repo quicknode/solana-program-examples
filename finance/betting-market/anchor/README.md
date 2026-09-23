@@ -136,13 +136,14 @@ anchor build
 
 ## Testing
 
-Tests are Rust integration tests running against [LiteSVM](https://www.anchor-lang.com/docs/testing/litesvm)
-with [solana-kite](https://crates.io/crates/solana-kite) helpers. They cover the full lifecycle
-(bet → settle → claim with exact payout and fee assertions), admin authorization, the
-bet-after-settle and double-claim guards, the outcome list locking when betting opens, the
-two-outcome minimum, both edges of the betting close time, settling an outcome with no bets, the cancel/refund
-path, the `close_losing_bet` guards, and the User index: claims, refunds, and losing-bet closes
-remove the Bet's entry, and a wallet whose index is full can bet again after closing a position.
+Tests are Rust integration tests running against
+[LiteSVM](https://www.anchor-lang.com/docs/testing/litesvm) with
+[solana-kite](https://crates.io/crates/solana-kite) helpers. They cover the full lifecycle (bet →
+settle → claim with exact payout and fee assertions), admin authorization, the bet-after-settle and
+double-claim guards, the outcome list locking when betting opens, the two-outcome minimum, both
+edges of the betting close time, settling an outcome with no bets, the cancel/refund path, the
+`close_losing_bet` guards, and the User index: claims, refunds, and losing-bet closes remove the
+Bet's entry, and a wallet whose index is full can bet again after closing a position.
 
 ```sh
 anchor test

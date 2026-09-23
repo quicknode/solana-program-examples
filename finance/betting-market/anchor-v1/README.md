@@ -6,8 +6,9 @@
 > `avm install 1.2.0 && avm use 1.2.0`. The Anchor v2 version of this example is in
 > [`../anchor`](../anchor/).
 
-A parimutuel (pooled) betting market on Solana. An admin opens an **event**, adds the possible
-**outcomes**, and bettors stake a token on the outcome they think will win. Every stake across
+A parimutuel (pooled) betting market on Solana. An admin creates an **event**, adds the possible
+**outcomes**, and opens it to bets; bettors then stake a token on the outcome they think will win,
+until the event's betting close time. Every stake across
 every outcome goes into one pool. When the admin settles the event to the winning outcome, the
 losing stakes - minus a protocol fee - are split among the winners in proportion to their stake.
 
@@ -21,20 +22,22 @@ them in one place no single bettor controls, and paying winners by a fixed, publ
 still requires trusting the admin, who chooses the winning outcome, as described below. The pool is
 a token account owned by the event's PDA, so payouts are signed by the program with the event's
 seeds - there is no admin key that can move bettors' stakes out of the pool. The admin's only
-powers are creating events/outcomes and choosing the winning outcome (or cancelling).
+powers are creating events/outcomes, opening them to bets, and choosing the winning outcome (or
+cancelling).
 
 ## Major Concepts
 
 ### Accounts
 
 - **Config** (`seeds = [b"config"]`) - one per deployment. Holds the `admin` (the only key that can
-  create events/outcomes, settle, and cancel), the `token_mint` every market accepts, the
-  `fee_recipient`, and the `default_fee_bps` each new event copies at creation.
+  create events/outcomes, open betting, settle, and cancel), the `token_mint` every market accepts,
+  the `fee_recipient`, and the `default_fee_bps` each new event copies at creation.
 - **Event** (`seeds = [b"event", event_id]`) - one betting market. Tracks `total_pool`, `status`
-  (`Open` / `Settled` / `Cancelled`), and - once settled - the `winning_outcome_index`,
-  `winning_pool`, and `distributable_losing_pool` that the payout formula reads. The event's
-  `fee_bps` is copied from the config's `default_fee_bps` at creation and is what settlement
-  charges, so later Config changes can't alter a market bettors have already joined.
+  (`Draft` / `Open` / `Settled` / `Cancelled`), `betting_closes_at`, and - once settled - the
+  `winning_outcome_index`, `winning_pool`, and `distributable_losing_pool` that the payout formula
+  reads. The event's `fee_bps` is copied from the config's `default_fee_bps` at creation and is what
+  settlement charges. It and `betting_closes_at` are fixed at creation, so later Config changes
+  can't alter a market bettors have already joined.
 - **Outcome** (`seeds = [b"outcome", event, index]`) - one possible result. Its `total_amount` is
   the outcome's share of the pool and the denominator for pro-rata payouts when it wins.
 - **Bet** (`seeds = [b"bet", outcome, bettor]`) - a bettor's total stake on one outcome. Re-betting
@@ -82,22 +85,44 @@ division floors each share, leaving at most a few minor units of dust in the vau
 
 - `initialize_config` - anyone (the signer becomes admin). One-time setup: sets admin, stake
   token, default fee, fee recipient.
-- `initialize_event` - admin. Opens a market and creates its vault.
-- `add_outcome` - admin. Adds a possible result. Only before any bet is placed.
-- `place_bet` - bettor. Stakes tokens on one outcome; updates the pools and adds the Bet to the
-  user's index (rejected with `TooManyBets` if all `MAX_BETS_PER_USER` slots hold open positions).
-- `settle_event` - admin. Resolves to a winning outcome, takes the fee, records the payout figures.
+- `initialize_event` - admin. Creates a market as a `Draft`, fixes its `betting_closes_at` (which
+  must be in the future), and creates its vault.
+- `add_outcome` - admin. Adds a possible result. Only while the event is a `Draft`.
+- `open_betting` - admin. Moves a `Draft` with at least two outcomes to `Open`, which fixes the
+  outcome list.
+- `place_bet` - bettor. Stakes tokens on one outcome of an `Open` event, before
+  `betting_closes_at`; updates the pools and adds the Bet to the user's index (rejected with
+  `TooManyBets` if all `MAX_BETS_PER_USER` slots hold open positions).
+- `settle_event` - admin. Once `betting_closes_at` has passed, resolves to a winning outcome, takes
+  the fee, records the payout figures.
 - `claim_winnings` - winning bettor. Withdraws stake plus pro-rata share of the losing pool, then
   closes the Bet account and removes it from the user's index.
 - `close_losing_bet` - losing bettor. After settlement, closes a worthless Bet to reclaim its rent
   and free the slot in the user's index.
-- `cancel_event` - admin. Voids an unresolved market.
+- `cancel_event` - admin. Voids a draft or unresolved market.
 - `claim_refund` - bettor. After a cancellation, reclaims the exact stake; the Bet account closes
   and leaves the user's index.
 
-`add_outcome` is locked once betting starts, so the field of choices can't change under existing
-bettors. `settle_event` rejects a winning outcome with no bets - use `cancel_event` to unwind an
-event that can't be resolved fairly.
+### Lifecycle
+
+```
+Draft --open_betting--> Open --settle_event (at or after betting_closes_at)--> Settled
+  |                      |
+  +------cancel_event----+----------------------------------------------> Cancelled
+```
+
+The outcome list is fixed when the admin opens betting, before any money can arrive: a bet on a
+`Draft` is rejected with `EventNotOpen`, and `add_outcome` on anything but a `Draft` with
+`EventNotDraft`. So no bettor can freeze a half-built market with an early bet, and no outcome can
+be added under someone who has already staked.
+
+Time splits the `Open` state in two. Bets land only while `now < betting_closes_at` (else
+`BettingClosed`), and `settle_event` only once `now >= betting_closes_at` (else
+`BettingStillOpen`). The two windows never overlap, so nobody can stake after the result could be
+known, and the admin cannot end a market before the window bettors were promised.
+
+`settle_event` rejects a winning outcome with no bets - use `cancel_event` to unwind an event that
+can't be resolved fairly.
 
 ## Setup
 
@@ -111,12 +136,14 @@ anchor build
 
 ## Testing
 
-Tests are Rust integration tests running against [LiteSVM](https://www.anchor-lang.com/docs/testing/litesvm)
-with [solana-kite](https://crates.io/crates/solana-kite) helpers. They cover the full lifecycle
-(bet → settle → claim with exact payout and fee assertions), admin authorization, the
-bet-after-settle and double-claim guards, settling an outcome with no bets, the cancel/refund
-path, the `close_losing_bet` guards, and the User index: claims, refunds, and losing-bet closes
-remove the Bet's entry, and a wallet whose index is full can bet again after closing a position.
+Tests are Rust integration tests running against
+[LiteSVM](https://www.anchor-lang.com/docs/testing/litesvm) with
+[solana-kite](https://crates.io/crates/solana-kite) helpers. They cover the full lifecycle (bet →
+settle → claim with exact payout and fee assertions), admin authorization, the bet-after-settle and
+double-claim guards, the outcome list locking when betting opens, the two-outcome minimum, both
+edges of the betting close time, settling an outcome with no bets, the cancel/refund path, the
+`close_losing_bet` guards, and the User index: claims, refunds, and losing-bet closes remove the
+Bet's entry, and a wallet whose index is full can bet again after closing a position.
 
 ```sh
 anchor test
@@ -128,7 +155,7 @@ anchor test
 
 ### How does a prediction market work on Solana?
 
-This example uses the parimutuel (pooled) model: an admin opens an event with `initialize_event` and `add_outcome`, and bettors stake tokens on an outcome with `place_bet`. Every stake goes into one pool; after `settle_event` names the winning outcome, winners call `claim_winnings` to split the losing stakes, minus a protocol fee, in proportion to their own stake.
+This example uses the parimutuel (pooled) model: an admin sets up an event with `initialize_event` and `add_outcome` and opens it with `open_betting`, and bettors stake tokens on an outcome with `place_bet` until betting closes. Every stake goes into one pool; after `settle_event` names the winning outcome, winners call `claim_winnings` to split the losing stakes, minus a protocol fee, in proportion to their own stake.
 
 ### How are the odds set?
 

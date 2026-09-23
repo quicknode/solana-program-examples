@@ -37,15 +37,11 @@ pub struct AddOutcomeAccountConstraints<'info> {
 
 pub fn handle_add_outcome(context: Context<AddOutcomeAccountConstraints>, label: String) -> Result<()> {
     require!(label.len() <= MAX_LABEL_LEN, BettingError::LabelTooLong);
+    // Outcomes can only be added to a draft. Once `open_betting` runs, the
+    // field of choices is final before the first bet can land.
     require!(
-        context.accounts.event.status == EventStatus::Open,
-        BettingError::EventNotOpen
-    );
-    // Lock the outcome set once betting starts so the field of choices can't
-    // change out from under existing bettors.
-    require!(
-        context.accounts.event.total_pool == 0,
-        BettingError::BettingAlreadyStarted
+        context.accounts.event.status == EventStatus::Draft,
+        BettingError::EventNotDraft
     );
 
     let index = context.accounts.event.outcome_count;

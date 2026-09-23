@@ -5,7 +5,8 @@ use anchor_spl::{
 };
 
 use crate::{
-    error::BettingError, Bet, Config, Event, EventStatus, Outcome, User, MAX_BETS_PER_USER,
+    betting_is_open, error::BettingError, Bet, Config, Event, EventStatus, Outcome, User,
+    MAX_BETS_PER_USER,
 };
 
 use super::transfer_tokens_to_vault;
@@ -84,6 +85,11 @@ pub fn handle_place_bet(context: Context<PlaceBetAccountConstraints>, amount: u6
     require!(
         context.accounts.event.status == EventStatus::Open,
         BettingError::EventNotOpen
+    );
+    let now = Clock::get()?.unix_timestamp;
+    require!(
+        betting_is_open(now, context.accounts.event.betting_closes_at),
+        BettingError::BettingClosed
     );
 
     transfer_tokens_to_vault(
