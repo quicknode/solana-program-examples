@@ -4,6 +4,20 @@ All notable changes to this repository are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-09-23] - Order book tests cover the deepest critbit path
+
+A critbit tree does not rebalance, so asks at doubling prices stretch the path
+to the best ask by one level each, up to 64 levels from the price half of the
+128-bit key. Both Anchor copies of the order book gain two tests:
+`doubling_prices_build_the_deepest_path_prices_allow` builds that path and reads
+its depth from the account, and
+`deepest_path_adds_little_compute_to_insert_fill_and_cancel` checks that
+inserting, filling, and cancelling at the bottom of it each cost less than 15,000
+compute units more than on a shallow book, and stay inside the default
+200,000-unit instruction budget. The README no longer says the tree stays
+shallow whatever order keys arrive in, or that Phoenix uses the same structure
+(it uses a red-black tree). No program behavior changes.
+
 ## [2026-09-23] - Finance examples point their production oracle path at Pyth
 
 The oracle network that the lending, perpetual futures and prop AMM examples

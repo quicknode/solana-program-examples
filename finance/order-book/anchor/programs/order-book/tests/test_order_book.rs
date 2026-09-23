@@ -2140,3 +2140,256 @@ fn settle_funds_after_match_pays_out_both_unsettled_balances() {
         EXPECTED_NET_QUOTE_TO_SELLER
     );
 }
+
+// ---------------------------------------------------------------------------
+// Worst-case tree depth
+//
+// A critbit tree does not rebalance. Asks at prices 2, 4, 8, ..., 2^63 each
+// set a new highest price bit, so each one adds an inner node above all the
+// cheaper asks and the path to the best ask becomes a chain. The tree key is
+// 128 bits with the price in the top 64, so prices alone can stretch a path
+// to at most 64 inner nodes, and no path can ever exceed 128. These tests
+// build that chain and check that inserting, matching, and cancelling at the
+// bottom of it still costs little compared with a shallow book.
+// ---------------------------------------------------------------------------
+
+// Each extra seller can hold MAX_OPEN_ORDERS_PER_USER resting orders.
+const MAX_OPEN_ORDERS_PER_USER: usize = 20;
+
+// Doubling prices 2^1 ..= 2^63. Together with the probe asks at price 1
+// placed underneath them, that is every power of two a u64 price can hold.
+const CHAIN_PRICE_EXPONENTS: std::ops::RangeInclusive<u32> = 1..=63;
+
+// The probe orders sit at the bottom of the chain, at the lowest price.
+const PROBE_PRICE: u64 = 1;
+
+// The most compute a worst-case path may add to any one instruction,
+// compared with the same instruction on a book holding only the probes.
+const MAX_EXTRA_COMPUTE_UNITS_FROM_DEPTH: u64 = 15_000;
+
+// What the runtime grants an instruction that does not request more.
+const DEFAULT_INSTRUCTION_COMPUTE_UNITS: u64 = 200_000;
+
+// Inner nodes between the root and a leaf, as read from the account bytes.
+// Offsets come from the program's own types, so a layout change moves them
+// with it.
+fn best_ask_depth(svm: &LiteSVM, order_book: &Address) -> usize {
+    use order_book::state::{slab::NodeTag, OrderBook};
+
+    const DISCRIMINATOR_LEN: usize = 8;
+    // OrderTreeNodes: order_tree_type (1) + padding (3) + bump_index (4)
+    // + free_list_len (4) + free_list_head (4), then the node array.
+    const NODES_OFFSET_IN_TREE: usize = 16;
+    // InnerNode: tag (1) + padding (3) + prefix_len (4) + key (16), then
+    // children[0], the left (lower-key) child.
+    const LEFT_CHILD_OFFSET_IN_NODE: usize = 24;
+
+    let data = svm.get_account(order_book).unwrap().data;
+    let asks_root = DISCRIMINATOR_LEN + std::mem::offset_of!(OrderBook, asks_root);
+    let asks_nodes =
+        DISCRIMINATOR_LEN + std::mem::offset_of!(OrderBook, asks) + NODES_OFFSET_IN_TREE;
+    let read_u32 = |offset: usize| u32::from_le_bytes(data[offset..offset + 4].try_into().unwrap());
+
+    let mut handle = read_u32(asks_root) as usize;
+    let mut depth = 0;
+    loop {
+        let node = asks_nodes + handle * order_book::state::slab::NODE_SIZE;
+        if data[node] == NodeTag::LeafNode as u8 {
+            return depth;
+        }
+        assert_eq!(data[node], NodeTag::InnerNode as u8);
+        // Asks sort lowest key first, so the best ask is always leftmost.
+        handle = read_u32(node + LEFT_CHILD_OFFSET_IN_NODE) as usize;
+        depth += 1;
+    }
+}
+
+// Send one instruction and return the compute units it used.
+fn send_and_measure(svm: &mut LiteSVM, instruction: Instruction, signer: &Keypair) -> u64 {
+    let message = anchor_v2_testing::Message::new_with_blockhash(
+        &[instruction],
+        Some(&signer.pubkey()),
+        &svm.latest_blockhash(),
+    );
+    let transaction = anchor_v2_testing::VersionedTransaction::try_new(
+        anchor_v2_testing::VersionedMessage::Legacy(message),
+        &[signer],
+    )
+    .unwrap();
+    svm.send_transaction(transaction)
+        .unwrap()
+        .compute_units_consumed
+}
+
+// A fresh seller with base tokens and a market user account.
+fn add_funded_seller(sc: &mut Scenario) -> (Keypair, Address, Address, Address) {
+    let seller = create_wallet(&mut sc.svm, 10_000_000_000).unwrap();
+    let base_ata =
+        create_associated_token_account(&mut sc.svm, &seller.pubkey(), &sc.base_mint, &sc.payer)
+            .unwrap();
+    let quote_ata =
+        create_associated_token_account(&mut sc.svm, &seller.pubkey(), &sc.quote_mint, &sc.payer)
+            .unwrap();
+    mint_tokens_to_token_account(
+        &mut sc.svm,
+        &sc.base_mint,
+        &base_ata,
+        TRADER_STARTING_BALANCE,
+        &sc.authority,
+    )
+    .unwrap();
+    let market_user = market_user_pda(&sc.program_id, &sc.market, &seller.pubkey());
+    let instruction = build_initialize_market_user_ix(sc, &seller.pubkey());
+    send_transaction_from_instructions(
+        &mut sc.svm,
+        vec![instruction],
+        &[&seller],
+        &seller.pubkey(),
+    )
+    .unwrap();
+    (seller, base_ata, quote_ata, market_user)
+}
+
+struct ProbeCosts {
+    // Inner nodes above the second probe ask once it rests.
+    depth: usize,
+    insert: u64,
+    fill: u64,
+    cancel: u64,
+}
+
+// Optionally build the doubling-price chain, then run the same three probes
+// at the bottom of it: rest an ask at PROBE_PRICE, rest a second one behind
+// it, fill the first with a taker bid, and cancel the second.
+fn run_probes_at_bottom_of_book(build_chain: bool) -> ProbeCosts {
+    use order_book::state::OrderSide;
+
+    let mut sc = full_setup();
+    initialize_market_and_users(&mut sc);
+    let mut next_order_id: u64 = 1;
+
+    if build_chain {
+        let chain_prices: Vec<u64> = CHAIN_PRICE_EXPONENTS
+            .map(|exponent| 1u64 << exponent)
+            .collect();
+        for sellers_orders in chain_prices.chunks(MAX_OPEN_ORDERS_PER_USER) {
+            let (seller, base_ata, quote_ata, market_user) = add_funded_seller(&mut sc);
+            for &price in sellers_orders {
+                let instruction = build_place_order_ix(
+                    &sc,
+                    &seller,
+                    market_user,
+                    base_ata,
+                    quote_ata,
+                    OrderSide::Ask,
+                    next_order_id,
+                    price,
+                    MIN_ORDER_SIZE,
+                );
+                send_transaction_from_instructions(
+                    &mut sc.svm,
+                    vec![instruction],
+                    &[&seller],
+                    &seller.pubkey(),
+                )
+                .unwrap();
+                next_order_id += 1;
+            }
+        }
+    }
+
+    let first_probe_id = next_order_id;
+    let instruction = build_place_order_ix(
+        &sc,
+        &sc.seller,
+        sc.seller_market_user,
+        sc.seller_base_ata,
+        sc.seller_quote_ata,
+        OrderSide::Ask,
+        first_probe_id,
+        PROBE_PRICE,
+        MIN_ORDER_SIZE,
+    );
+    let insert = send_and_measure(&mut sc.svm, instruction, &sc.seller);
+
+    let second_probe_id = first_probe_id + 1;
+    let instruction = build_place_order_ix(
+        &sc,
+        &sc.seller,
+        sc.seller_market_user,
+        sc.seller_base_ata,
+        sc.seller_quote_ata,
+        OrderSide::Ask,
+        second_probe_id,
+        PROBE_PRICE,
+        MIN_ORDER_SIZE,
+    );
+    send_and_measure(&mut sc.svm, instruction, &sc.seller);
+    let depth = best_ask_depth(&sc.svm, &sc.order_book.pubkey());
+
+    let taker_bid_id = second_probe_id + 1;
+    let instruction = build_place_order_with_makers_ix(
+        &sc,
+        &sc.buyer,
+        sc.buyer_market_user,
+        sc.buyer_base_ata,
+        sc.buyer_quote_ata,
+        OrderSide::Bid,
+        taker_bid_id,
+        PROBE_PRICE,
+        MIN_ORDER_SIZE,
+        &[(first_probe_id, sc.seller_market_user)],
+    );
+    let fill = send_and_measure(&mut sc.svm, instruction, &sc.buyer);
+    let first_probe = order_pda(&sc.program_id, &sc.market, first_probe_id);
+    assert_eq!(
+        read_order_fill_and_status(&sc.svm, &first_probe).1,
+        ORDER_STATUS_FILLED
+    );
+
+    let instruction = build_cancel_order_ix(
+        &sc,
+        &sc.seller.pubkey(),
+        sc.seller_market_user,
+        second_probe_id,
+    );
+    let cancel = send_and_measure(&mut sc.svm, instruction, &sc.seller);
+
+    ProbeCosts {
+        depth,
+        insert,
+        fill,
+        cancel,
+    }
+}
+
+#[test]
+fn doubling_prices_build_the_deepest_path_prices_allow() {
+    // 63 chain asks plus two probes at price 1: the chain gives 63 inner
+    // nodes above price 1, and the second probe splits from the first on a
+    // sequence-number bit, adding one more.
+    let deep = run_probes_at_bottom_of_book(true);
+    assert_eq!(deep.depth, 64);
+
+    let shallow = run_probes_at_bottom_of_book(false);
+    assert_eq!(shallow.depth, 1);
+}
+
+#[test]
+fn deepest_path_adds_little_compute_to_insert_fill_and_cancel() {
+    let deep = run_probes_at_bottom_of_book(true);
+    let shallow = run_probes_at_bottom_of_book(false);
+
+    for (operation, deep_units, shallow_units) in [
+        ("insert", deep.insert, shallow.insert),
+        ("fill", deep.fill, shallow.fill),
+        ("cancel", deep.cancel, shallow.cancel),
+    ] {
+        println!("{operation}: {shallow_units} CU on a shallow book, {deep_units} CU at depth 64");
+        assert!(
+            deep_units - shallow_units < MAX_EXTRA_COMPUTE_UNITS_FROM_DEPTH,
+            "{operation} costs {deep_units} CU at depth 64 against {shallow_units} CU on a shallow book"
+        );
+        assert!(deep_units < DEFAULT_INSTRUCTION_COMPUTE_UNITS);
+    }
+}
