@@ -247,12 +247,3 @@ impl OrderBook {
         }
     }
 }
-
-impl Default for OrderTreeRoot {
-    fn default() -> Self {
-        Self {
-            maybe_node: 0,
-            leaf_count: 0,
-        }
-    }
-}

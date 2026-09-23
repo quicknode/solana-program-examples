@@ -22,7 +22,7 @@ pub const MAX_TREE_NODES: usize = 1024;
 ///
 /// `maybe_node` is only meaningful when `leaf_count > 0` - a freshly-zeroed
 /// root represents an empty tree.
-#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Copy, Clone, Default, bytemuck::Pod, bytemuck::Zeroable)]
 #[repr(C)]
 pub struct OrderTreeRoot {
     pub maybe_node: NodeHandle,

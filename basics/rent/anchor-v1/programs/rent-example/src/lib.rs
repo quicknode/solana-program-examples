@@ -55,6 +55,6 @@ pub struct CreateSystemAccountAccountConstraints<'info> {
 
 #[derive(AnchorSerialize, AnchorDeserialize, Debug)]
 pub struct AddressData {
-    name: String,
-    address: String,
+    pub name: String,
+    pub address: String,
 }

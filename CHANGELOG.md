@@ -4,6 +4,35 @@ All notable changes to this repository are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-09-23] - Anchor v1 copies match their v2 counterparts where the version allows
+
+A scan of every `anchor/` and `anchor-v1/` pair, comparing function names,
+error variants, account fields, constants and seeds, and listing every v2
+program commit since July that left its v1 copy untouched, found these
+differences that the Anchor version does not force:
+
+- The transfer-hook `counter` and `account-data-as-seed` v1 copies still had
+  the bug v2 fixed in August: the hook computed the new transfer count and
+  dropped it, because `counter_account` was not `mut`, so the count read one
+  after every transfer. Both now write the count back and report an overflow
+  with the new `CounterOverflow` error instead of `AmountTooBig`, and each
+  test reads the counter back after the hooked transfer.
+- Interest-bearing (v1): `check_mint_data` becomes `check_rate_authority`
+  with v2's signature, taking the parsed `InterestBearingConfig`. The
+  handlers read the extension with anchor-spl's `get_mint_extension_data`.
+- Account fields that v2 declares `pub` are `pub` in the v1 copies of
+  account-data, checking-accounts, program-derived-addresses, rent,
+  transfer-sol and nft-operations.
+- Order book (v1): `OrderTreeRoot` derives `Default` like the v2 copy,
+  replacing a hand-written impl.
+
+What the scan still reports is forced by the Anchor version: v2's
+transfer-hook `entrypoint` fallback, the local session-token reader that
+replaces the v1-only `session-keys` crate, the `last_restart_slot` syscall
+wrapper (the v1 copies make the same restart check through the sysvar), the
+wincode span in rent, zero-copy padding, the Pyth account traits, and the
+betting market's borrow-release helper.
+
 ## [2026-09-23] - Finance examples point their production oracle path at Pyth
 
 The oracle network that the lending, perpetual futures and prop AMM examples

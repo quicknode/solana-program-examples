@@ -25,6 +25,8 @@ pub enum TransferError {
     AmountTooBig,
     #[msg("The token is not currently transferring")]
     IsNotCurrentlyTransferring,
+    #[msg("The transfer counter would overflow")]
+    CounterOverflow,
 }
 
 #[program]

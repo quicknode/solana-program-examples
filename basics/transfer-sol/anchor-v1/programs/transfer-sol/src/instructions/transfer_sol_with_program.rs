@@ -15,10 +15,10 @@ pub struct TransferSolWithProgramAccountConstraints<'info> {
         mut,
         owner = crate::ID // value of declare_id!()
     )]
-    payer: UncheckedAccount<'info>,
+    pub payer: UncheckedAccount<'info>,
 
     #[account(mut)]
-    recipient: SystemAccount<'info>,
+    pub recipient: SystemAccount<'info>,
 }
 
 // Directly modifying lamports is only possible if the program is the owner of the account
