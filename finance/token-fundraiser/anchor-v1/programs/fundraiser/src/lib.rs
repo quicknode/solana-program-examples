@@ -53,4 +53,12 @@ pub mod fundraiser {
 
         Ok(())
     }
+
+    pub fn close_contributor(
+        mut context: Context<CloseContributorAccountConstraints>,
+    ) -> Result<()> {
+        handle_close_contributor(&mut context.accounts)?;
+
+        Ok(())
+    }
 }
