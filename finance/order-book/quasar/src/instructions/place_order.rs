@@ -8,9 +8,9 @@ use quasar_spl::prelude::*;
 
 use crate::errors::OrderBookError;
 use crate::state::{
-    add_open_order, load_order_book, load_order_book_mut, plan_fills, remove_open_order,
-    snapshot_market_user, snapshot_order, Market, MarketUser, Order, OrderInner, OrderSide,
-    OrderStatus, MARKET_SEED, MAX_OPEN_ORDERS,
+    add_open_order, credit_unfilled_lock, load_order_book, load_order_book_mut, plan_fills,
+    remove_open_order, snapshot_market_user, snapshot_order, Market, MarketUser, Order, OrderInner,
+    OrderSide, OrderStatus, MARKET_SEED, MAX_OPEN_ORDERS,
 };
 
 // 10_000 bps == 100% - the universal rate convention on every major exchange.
@@ -21,7 +21,23 @@ const BASIS_POINTS_DENOMINATOR: u128 = 10_000;
 // unsettled_* balance (drained later via settle_funds), so the maker's ATAs
 // aren't needed here - keeping the per-fill account footprint small, as in
 // Openbook v2.
+//
+// When the order will rest on a side that is already full, the side's
+// worst-priced order follows the maker pairs: [evicted_order,
+// evicted_market_user]. When the worst order is the caller's own, only
+// [evicted_order] is passed, matching the Anchor build, where the framework
+// refuses a writable account that appears twice. See the eviction step below.
 const ACCOUNTS_PER_MAKER: usize = 2;
+
+/// True when `price` is a better price than `other` for an order on `side`:
+/// higher for a bid, lower for an ask. Equal is not better, because at equal
+/// price the resting order has time priority.
+fn is_better_price(side: OrderSide, price: u64, other: u64) -> bool {
+    match side {
+        OrderSide::Bid => price > other,
+        OrderSide::Ask => price < other,
+    }
+}
 
 /// raw token units for `lots × lot_size`, via a u128 intermediate so a
 /// high-decimal mint can't overflow the multiply before it's range-checked.
@@ -398,6 +414,123 @@ pub fn handle_place_order(
             .invoke_signed(&seeds)?;
     }
 
+    // The taker's own balances, credited below with the fills, and with the
+    // refund if the order evicted is their own.
+    let mut taker_user = snapshot_market_user(&accounts.market_user);
+
+    // ---------------------------------------------------------------
+    // Eviction. A full side would otherwise refuse every new resting order,
+    // so anyone with the capital could hold all of its slots with orders
+    // nobody will fill. Instead, an order that beats the side's worst price
+    // removes that worst order and takes its slot. The evicted order is
+    // treated exactly like a cancel: its unfilled lock is credited to its
+    // owner's unsettled balance, and it is stamped Cancelled. An order that
+    // does not beat the worst price is still refused with OrderBookFull.
+    // ---------------------------------------------------------------
+    let order_to_evict = if plan.taker_remaining > 0 {
+        let view = accounts.order_book.to_account_view();
+        // SAFETY: read-only cast of the order-book bytes; no other reference
+        // to this account's data is live.
+        let data = unsafe { core::slice::from_raw_parts(view.data_ptr(), view.data_len()) };
+        let order_book = load_order_book(data)?;
+        if order_book.is_side_full(side) {
+            let (worst_order_id, worst_price) = order_book
+                .worst(side)
+                .ok_or(OrderBookError::OrderBookFull)?;
+            require!(
+                is_better_price(side, price, worst_price),
+                OrderBookError::OrderBookFull
+            );
+            Some(worst_order_id)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    if let Some(worst_order_id) = order_to_evict {
+        let evicted_index = plan.count * ACCOUNTS_PER_MAKER;
+        let mut order_ra = remaining
+            .get(evicted_index)?
+            .ok_or(OrderBookError::MissingEvictedAccounts)?;
+        let order_view = unsafe { order_ra.as_account_view_unchecked_mut() };
+        Account::<Order>::from_account_view(&*order_view)?;
+        let evicted_order_acc =
+            unsafe { Account::<Order>::from_account_view_unchecked_mut(order_view) };
+        let mut evicted_order = snapshot_order(evicted_order_acc);
+        require!(
+            evicted_order.order_id == worst_order_id,
+            OrderBookError::EvictedAccountMismatch
+        );
+        require_keys_eq!(
+            evicted_order.market,
+            market_key,
+            OrderBookError::EvictedAccountMismatch
+        );
+
+        if evicted_order.owner == *accounts.owner.address() {
+            // The worst order is the taker's own: credit their snapshot,
+            // which is written back below.
+            credit_unfilled_lock(
+                &evicted_order,
+                base_lot_size,
+                quote_lot_size,
+                &mut taker_user,
+            )?;
+            remove_open_order(
+                &mut taker_user.open_orders,
+                &mut taker_user.open_orders_len,
+                evicted_order.order_id,
+            );
+        } else {
+            let mut user_ra = remaining
+                .get(evicted_index + 1)?
+                .ok_or(OrderBookError::MissingEvictedAccounts)?;
+            let user_view = unsafe { user_ra.as_account_view_unchecked_mut() };
+            Account::<MarketUser>::from_account_view(&*user_view)?;
+            let evicted_user_acc =
+                unsafe { Account::<MarketUser>::from_account_view_unchecked_mut(user_view) };
+            let mut evicted_user = snapshot_market_user(evicted_user_acc);
+            require_keys_eq!(
+                evicted_user.owner,
+                evicted_order.owner,
+                OrderBookError::EvictedAccountMismatch
+            );
+            require_keys_eq!(
+                evicted_user.market,
+                market_key,
+                OrderBookError::EvictedAccountMismatch
+            );
+            credit_unfilled_lock(
+                &evicted_order,
+                base_lot_size,
+                quote_lot_size,
+                &mut evicted_user,
+            )?;
+            remove_open_order(
+                &mut evicted_user.open_orders,
+                &mut evicted_user.open_orders_len,
+                evicted_order.order_id,
+            );
+            evicted_user_acc.set_inner(evicted_user);
+        }
+
+        {
+            let view = accounts.order_book.to_account_view();
+            let data = unsafe {
+                core::slice::from_raw_parts_mut(view.data_ptr() as *mut u8, view.data_len())
+            };
+            let order_book = load_order_book_mut(data)?;
+            require!(
+                order_book.remove_from(side, worst_order_id),
+                OrderBookError::OrderNotFound
+            );
+        }
+        evicted_order.status = OrderStatus::Cancelled as u8;
+        evicted_order_acc.set_inner(evicted_order);
+    }
+
     // ---------------------------------------------------------------
     // Allocate the taker's order id (rolling the book counter) and rest any
     // unmatched remainder on the book.
@@ -427,7 +560,6 @@ pub fn handle_place_order(
     };
 
     // Apply the taker's accumulated deltas + track the resting order.
-    let mut taker_user = snapshot_market_user(&accounts.market_user);
     taker_user.unsettled_base = taker_user
         .unsettled_base
         .checked_add(taker_base_received)

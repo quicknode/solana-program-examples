@@ -33,4 +33,10 @@ pub enum OrderBookError {
     OrderBookAlreadyInitialized,
     OrderIdMismatch,
     InvalidSide,
+    /// A full side, and the worst resting order (with its owner's MarketUser)
+    /// was not passed after the maker pairs.
+    MissingEvictedAccounts,
+    /// The order passed for eviction is not the side's worst, or the
+    /// MarketUser passed is not its owner's.
+    EvictedAccountMismatch,
 }

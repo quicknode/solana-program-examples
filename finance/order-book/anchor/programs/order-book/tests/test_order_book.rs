@@ -2393,3 +2393,372 @@ fn deepest_path_adds_little_compute_to_insert_fill_and_cancel() {
         assert!(deep_units < DEFAULT_INSTRUCTION_COMPUTE_UNITS);
     }
 }
+
+// ---------------------------------------------------------------------------
+// Eviction: a full side makes room for a better order
+// ---------------------------------------------------------------------------
+//
+// A side's 1024 tree nodes hold 512 resting orders, because every order after
+// the first adds a leaf and an inner node. These tests fill the bid side with
+// 512 one-lot bids, one per price from EVICTION_WORST_BID_PRICE upward, so the
+// worst bid is the first one placed: order ID 1, at the lowest price.
+
+const ORDERS_PER_SIDE: u64 = 512;
+// One under the 20-order cap, so every filler can still place an order of
+// their own (the self-eviction test needs that).
+const ORDERS_PER_FILLER: u64 = 19;
+const EVICTION_WORST_BID_PRICE: u64 = 100;
+const EVICTION_ORDER_QUANTITY: u64 = 1;
+const EVICTION_BETTER_BID_PRICE: u64 = 10_000;
+const WORST_BID_ORDER_ID: u64 = 1;
+const ORDER_STATUS_CANCELLED: u8 = 3;
+
+/// The runtime reports a program error as `Custom(n)`, and `#[error_code]`
+/// numbers the variants from 6000, so this is the text a failed transaction
+/// carries for `code`.
+fn custom_error(code: order_book::errors::ErrorCode) -> String {
+    format!("Custom({})", code as u32 + 6000)
+}
+
+struct Trader {
+    keypair: Keypair,
+    market_user: Address,
+    base_ata: Address,
+    quote_ata: Address,
+}
+
+fn create_trader(sc: &mut Scenario) -> Trader {
+    let keypair = create_wallet(&mut sc.svm, 10_000_000_000).unwrap();
+    let base_ata =
+        create_associated_token_account(&mut sc.svm, &keypair.pubkey(), &sc.base_mint, &sc.payer)
+            .unwrap();
+    let quote_ata =
+        create_associated_token_account(&mut sc.svm, &keypair.pubkey(), &sc.quote_mint, &sc.payer)
+            .unwrap();
+    mint_tokens_to_token_account(
+        &mut sc.svm,
+        &sc.quote_mint,
+        &quote_ata,
+        TRADER_STARTING_BALANCE,
+        &sc.authority,
+    )
+    .unwrap();
+    let init_ix = build_initialize_market_user_ix(sc, &keypair.pubkey());
+    send_transaction_from_instructions(&mut sc.svm, vec![init_ix], &[&keypair], &keypair.pubkey())
+        .unwrap();
+    let market_user = market_user_pda(&sc.program_id, &sc.market, &keypair.pubkey());
+    Trader {
+        keypair,
+        market_user,
+        base_ata,
+        quote_ata,
+    }
+}
+
+/// Fill the bid side to capacity. Returns the fillers in order; the first one
+/// owns the worst bid, `WORST_BID_ORDER_ID`.
+fn fill_bid_side(sc: &mut Scenario) -> Vec<Trader> {
+    let mut fillers: Vec<Trader> = vec![];
+    for order_id in 1..=ORDERS_PER_SIDE {
+        if (order_id - 1) % ORDERS_PER_FILLER == 0 {
+            fillers.push(create_trader(sc));
+        }
+        let filler = fillers.last().unwrap();
+        let price = EVICTION_WORST_BID_PRICE + (order_id - 1);
+        let ix = build_place_order_ix(
+            sc,
+            &filler.keypair,
+            filler.market_user,
+            filler.base_ata,
+            filler.quote_ata,
+            order_book::state::OrderSide::Bid,
+            order_id,
+            price,
+            EVICTION_ORDER_QUANTITY,
+        );
+        send_transaction_from_instructions(
+            &mut sc.svm,
+            vec![ix],
+            &[&filler.keypair],
+            &filler.keypair.pubkey(),
+        )
+        .unwrap_or_else(|error| panic!("bid {order_id} should rest: {error:?}"));
+    }
+    fillers
+}
+
+#[allow(clippy::too_many_arguments)]
+fn place_bid(
+    sc: &mut Scenario,
+    trader: &Trader,
+    order_id: u64,
+    price: u64,
+    evicted_pairs: &[(u64, Address)],
+) -> Result<(), String> {
+    let ix = build_place_order_with_makers_ix(
+        sc,
+        &trader.keypair,
+        trader.market_user,
+        trader.base_ata,
+        trader.quote_ata,
+        order_book::state::OrderSide::Bid,
+        order_id,
+        price,
+        EVICTION_ORDER_QUANTITY,
+        evicted_pairs,
+    );
+    send_transaction_from_instructions(
+        &mut sc.svm,
+        vec![ix],
+        &[&trader.keypair],
+        &trader.keypair.pubkey(),
+    )
+    .map_err(|error| format!("{error:?}"))
+}
+
+fn read_open_order_count(svm: &LiteSVM, market_user: &Address) -> u32 {
+    // After the two unsettled balances comes the Borsh Vec length prefix.
+    let offset = USER_ACCOUNT_UNSETTLED_QUOTE_OFFSET + 8;
+    let data = svm.get_account(market_user).unwrap().data;
+    u32::from_le_bytes(data[offset..offset + 4].try_into().unwrap())
+}
+
+#[test]
+fn full_side_refuses_an_order_no_better_than_its_worst() {
+    let mut sc = full_setup();
+    initialize_market_and_users(&mut sc);
+    let fillers = fill_bid_side(&mut sc);
+    let next_order_id = ORDERS_PER_SIDE + 1;
+
+    // Worse than the worst bid, and equal to it: equal is not better,
+    // because the resting bid got there first.
+    for price in [EVICTION_WORST_BID_PRICE - 1, EVICTION_WORST_BID_PRICE] {
+        let error = place_bid(
+            &mut sc,
+            &fillers[1],
+            next_order_id,
+            price,
+            &[(WORST_BID_ORDER_ID, fillers[0].market_user)],
+        )
+        .expect_err("a bid no better than the worst must not evict it");
+        assert!(
+            error.contains(&custom_error(order_book::errors::ErrorCode::OrderBookFull)),
+            "{error}"
+        );
+    }
+
+    let (_, status) = read_order_fill_and_status(
+        &sc.svm,
+        &order_pda(&sc.program_id, &sc.market, WORST_BID_ORDER_ID),
+    );
+    assert_eq!(status, ORDER_STATUS_OPEN);
+}
+
+#[test]
+fn better_order_evicts_the_worst_and_rests() {
+    let mut sc = full_setup();
+    initialize_market_and_users(&mut sc);
+    let fillers = fill_bid_side(&mut sc);
+    let newcomer = create_trader(&mut sc);
+    let new_order_id = ORDERS_PER_SIDE + 1;
+
+    place_bid(
+        &mut sc,
+        &newcomer,
+        new_order_id,
+        EVICTION_BETTER_BID_PRICE,
+        &[(WORST_BID_ORDER_ID, fillers[0].market_user)],
+    )
+    .unwrap();
+
+    let evicted_order = order_pda(&sc.program_id, &sc.market, WORST_BID_ORDER_ID);
+    let (_, evicted_status) = read_order_fill_and_status(&sc.svm, &evicted_order);
+    assert_eq!(evicted_status, ORDER_STATUS_CANCELLED);
+
+    // The evicted bid's whole lock is owed back to its owner, exactly as a
+    // cancel would owe it.
+    let (_, evicted_unsettled_quote) = read_user_unsettled(&sc.svm, &fillers[0].market_user);
+    assert_eq!(
+        evicted_unsettled_quote,
+        EVICTION_WORST_BID_PRICE * EVICTION_ORDER_QUANTITY * QUOTE_LOT_SIZE
+    );
+    assert_eq!(
+        read_open_order_count(&sc.svm, &fillers[0].market_user),
+        (ORDERS_PER_FILLER - 1) as u32
+    );
+
+    let (_, new_status) = read_order_fill_and_status(
+        &sc.svm,
+        &order_pda(&sc.program_id, &sc.market, new_order_id),
+    );
+    assert_eq!(new_status, ORDER_STATUS_OPEN);
+    assert_eq!(read_open_order_count(&sc.svm, &newcomer.market_user), 1);
+
+    // The side is still full, and its worst bid is now order 2, one tick up.
+    let error = place_bid(
+        &mut sc,
+        &newcomer,
+        new_order_id + 1,
+        EVICTION_WORST_BID_PRICE + 1,
+        &[(WORST_BID_ORDER_ID + 1, fillers[0].market_user)],
+    )
+    .expect_err("the side is still full after an eviction");
+    assert!(
+        error.contains(&custom_error(order_book::errors::ErrorCode::OrderBookFull)),
+        "{error}"
+    );
+}
+
+#[test]
+fn evicted_maker_settles_their_refund() {
+    let mut sc = full_setup();
+    initialize_market_and_users(&mut sc);
+    let fillers = fill_bid_side(&mut sc);
+    let newcomer = create_trader(&mut sc);
+
+    let evicted = &fillers[0];
+    let quote_before = get_token_account_balance(&sc.svm, &evicted.quote_ata).unwrap();
+
+    place_bid(
+        &mut sc,
+        &newcomer,
+        ORDERS_PER_SIDE + 1,
+        EVICTION_BETTER_BID_PRICE,
+        &[(WORST_BID_ORDER_ID, evicted.market_user)],
+    )
+    .unwrap();
+
+    let settle_ix = build_settle_funds_ix(
+        &sc,
+        &evicted.keypair.pubkey(),
+        evicted.market_user,
+        evicted.base_ata,
+        evicted.quote_ata,
+    );
+    send_transaction_from_instructions(
+        &mut sc.svm,
+        vec![settle_ix],
+        &[&evicted.keypair],
+        &evicted.keypair.pubkey(),
+    )
+    .unwrap();
+
+    let quote_after = get_token_account_balance(&sc.svm, &evicted.quote_ata).unwrap();
+    assert_eq!(
+        quote_after - quote_before,
+        EVICTION_WORST_BID_PRICE * EVICTION_ORDER_QUANTITY * QUOTE_LOT_SIZE
+    );
+    assert_eq!(read_user_unsettled(&sc.svm, &evicted.market_user), (0, 0));
+}
+
+#[test]
+fn eviction_rejects_missing_or_wrong_evicted_accounts() {
+    let mut sc = full_setup();
+    initialize_market_and_users(&mut sc);
+    let fillers = fill_bid_side(&mut sc);
+    let newcomer = create_trader(&mut sc);
+    let new_order_id = ORDERS_PER_SIDE + 1;
+
+    let error = place_bid(
+        &mut sc,
+        &newcomer,
+        new_order_id,
+        EVICTION_BETTER_BID_PRICE,
+        &[],
+    )
+    .expect_err("a full side needs the evicted order named");
+    assert!(
+        error.contains(&custom_error(
+            order_book::errors::ErrorCode::MissingEvictedAccounts
+        )),
+        "{error}"
+    );
+
+    // Order 2 is resting, but it is not the worst bid.
+    let error = place_bid(
+        &mut sc,
+        &newcomer,
+        new_order_id,
+        EVICTION_BETTER_BID_PRICE,
+        &[(WORST_BID_ORDER_ID + 1, fillers[0].market_user)],
+    )
+    .expect_err("only the worst order may be evicted");
+    assert!(
+        error.contains(&custom_error(
+            order_book::errors::ErrorCode::EvictedAccountMismatch
+        )),
+        "{error}"
+    );
+
+    // The right order, with someone else's MarketUser to credit.
+    let error = place_bid(
+        &mut sc,
+        &newcomer,
+        new_order_id,
+        EVICTION_BETTER_BID_PRICE,
+        &[(WORST_BID_ORDER_ID, fillers[1].market_user)],
+    )
+    .expect_err("the refund must go to the evicted order's owner");
+    assert!(
+        error.contains(&custom_error(
+            order_book::errors::ErrorCode::EvictedAccountMismatch
+        )),
+        "{error}"
+    );
+
+    let (_, status) = read_order_fill_and_status(
+        &sc.svm,
+        &order_pda(&sc.program_id, &sc.market, WORST_BID_ORDER_ID),
+    );
+    assert_eq!(status, ORDER_STATUS_OPEN);
+}
+
+#[test]
+fn trader_can_evict_their_own_worst_order() {
+    let mut sc = full_setup();
+    initialize_market_and_users(&mut sc);
+    let fillers = fill_bid_side(&mut sc);
+    let owner = &fillers[0];
+    let new_order_id = ORDERS_PER_SIDE + 1;
+
+    // Only the evicted order is passed: the owner's MarketUser is already the
+    // instruction's `market_user`, and Anchor refuses it a second time.
+    let mut ix = build_place_order_ix(
+        &sc,
+        &owner.keypair,
+        owner.market_user,
+        owner.base_ata,
+        owner.quote_ata,
+        order_book::state::OrderSide::Bid,
+        new_order_id,
+        EVICTION_BETTER_BID_PRICE,
+        EVICTION_ORDER_QUANTITY,
+    );
+    ix.accounts.push(AccountMeta::new(
+        order_pda(&sc.program_id, &sc.market, WORST_BID_ORDER_ID),
+        false,
+    ));
+    send_transaction_from_instructions(
+        &mut sc.svm,
+        vec![ix],
+        &[&owner.keypair],
+        &owner.keypair.pubkey(),
+    )
+    .unwrap();
+
+    let (_, evicted_status) = read_order_fill_and_status(
+        &sc.svm,
+        &order_pda(&sc.program_id, &sc.market, WORST_BID_ORDER_ID),
+    );
+    assert_eq!(evicted_status, ORDER_STATUS_CANCELLED);
+    let (_, unsettled_quote) = read_user_unsettled(&sc.svm, &owner.market_user);
+    assert_eq!(
+        unsettled_quote,
+        EVICTION_WORST_BID_PRICE * EVICTION_ORDER_QUANTITY * QUOTE_LOT_SIZE
+    );
+    // One order out, one order in.
+    assert_eq!(
+        read_open_order_count(&sc.svm, &owner.market_user),
+        ORDERS_PER_FILLER as u32
+    );
+}

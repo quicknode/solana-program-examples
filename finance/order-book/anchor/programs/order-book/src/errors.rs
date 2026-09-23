@@ -70,4 +70,12 @@ pub enum ErrorCode {
 
     #[msg("Order book account does not match the market's order book")]
     InvalidOrderBook,
+
+    #[msg(
+        "Book side is full: pass the worst resting order and its owner's MarketUser to evict it"
+    )]
+    MissingEvictedAccounts,
+
+    #[msg("Evicted order provided is not the worst resting order on the full side")]
+    EvictedAccountMismatch,
 }
