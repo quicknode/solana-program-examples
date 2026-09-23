@@ -14,6 +14,20 @@ and README in the three examples, across Anchor v2, Anchor v1 and Quasar, now
 points at a Pyth `PriceUpdateV2` account, which `basics/pyth` reads. No program
 behavior changes.
 
+## [2026-09-23] - The token fundraiser and order book Anchor v1 copies catch up
+
+Under the old rule that `anchor-v1/` copies were frozen, two v1 copies were
+left behind by changes to their v2 counterparts. Now that the copies track
+each other, both are ported.
+
+- Token fundraiser (Anchor v1): `close_contributor` and the
+  `FundraiserStillOpen` error, so a contributor to a successful raise can take
+  back their Contributor account's rent. Same two tests as the v2 copy.
+- Order book (Anchor v1): the base, quote, and fee vaults are PDAs of the
+  market at `["base_vault", market]`, `["quote_vault", market]` and
+  `["fee_vault", market]`, so a client derives them instead of generating and
+  signing with three extra keys. The tests derive them too.
+
 ## [2026-09-23] - Anchor v1 copies track their Anchor v2 counterparts
 
 CONTRIBUTING.md described each `anchor-v1/` copy as a frozen snapshot that

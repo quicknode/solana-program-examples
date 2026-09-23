@@ -6,7 +6,7 @@
 > `avm install 1.2.0 && avm use 1.2.0`. The Anchor v2 version of this example is in
 > [`../anchor`](../anchor/).
 
-Onchain crowdfunding on Solana: a program that collects tokens toward a target amount, like Kickstarter without a payment processor. A **maker** creates a fundraiser [account](https://solana.com/docs/terminology#account), specifies the [mint](https://solana.com/docs/terminology#token-mint) they want to receive, the target amount, and a duration in days. **Contributors** contribute while the window is open. If the target is reached, the maker claims the funds; if it is not reached by the deadline, contributors can refund, and once refunds are complete the maker can retire the fundraiser and open a new one.
+Onchain crowdfunding on Solana: a program that collects tokens toward a target amount, like Kickstarter without a payment processor. A **maker** creates a fundraiser [account](https://solana.com/docs/terminology#account), specifies the [mint](https://solana.com/docs/terminology#token-mint) they want to receive, the target amount, and a duration in days. **Contributors** contribute while the window is open. If the target is reached, the maker claims the funds and each contributor closes their own record to take back its rent; if it is not reached by the deadline, contributors can refund, and once refunds are complete the maker can retire the fundraiser and open a new one.
 
 ## Architecture
 
@@ -139,6 +139,14 @@ Retires a failed fundraiser so the maker can raise again. The Fundraiser PDA is 
 
 Anything still in the vault at this point is a direct donation outside the program's accounting; the handler sweeps it to `maker_ata` with `transfer_checked` rather than burning it, then closes the vault with `close_account` (both CPIs signed with the Fundraiser PDA's seeds). The Fundraiser state account is closed via `close = maker`.
 
+### `close_contributor`
+
+[`programs/fundraiser/src/instructions/close_contributor.rs`](programs/fundraiser/src/instructions/close_contributor.rs), account constraints `CloseContributorAccountConstraints`.
+
+Lets a contributor close their Contributor account once the fundraiser is gone, taking back its rent. A successful raise exits through `check_contributions`, which closes the vault and the Fundraiser account but cannot reach the Contributor accounts: there is one per contributor and the claim carries none of them. Their other closer, `refund`, runs only on a failed raise, so without this handler every contributor to a successful raise would hold their rent in an account nothing could close.
+
+One check: the `fundraiser` account passed in is not owned by this program, else `FundraiserStillOpen`. A live fundraiser is program-owned; a closed one belongs to the system program again, whatever lamports it holds. The Contributor account's seeds bind it to that fundraiser address, so no other fundraiser can be substituted. The account is closed via `close = contributor`.
+
 ## Testing
 
 The tests are Rust integration tests using [LiteSVM](https://www.anchor-lang.com/docs/testing/litesvm) and [solana-kite](https://crates.io/crates/solana-kite), in [`programs/fundraiser/tests/test_fundraiser.rs`](programs/fundraiser/tests/test_fundraiser.rs). They load the compiled program with `include_bytes!`, so build the program first and rebuild after every program change:
@@ -148,13 +156,17 @@ cargo build-sbf
 cargo test
 ```
 
-The suite uses a nonzero duration and warps the LiteSVM `Clock` sysvar to exercise both sides of every deadline: contributing inside the window succeeds, contributing after the deadline fails, refunding before the deadline fails, and refunding after the deadline succeeds when the target was not met. It exercises both contribution caps (a single contribution over the 10% cap, and contributions that cumulatively exceed it), and verifies that the claim pays the maker and closes the vault, that direct vault donations do not unlock the claim, and that `close_fundraiser` retires a failed raise (only after the deadline, only when the target was missed, only once refunds are complete, sweeping direct donations to the maker) and lets the same maker initialize a fresh fundraiser. Assertions check token balances and decoded account state rather than just transaction success.
+The suite uses a nonzero duration and warps the LiteSVM `Clock` sysvar to exercise both sides of every deadline: contributing inside the window succeeds, contributing after the deadline fails, refunding before the deadline fails, and refunding after the deadline succeeds when the target was not met. It exercises both contribution caps (a single contribution over the 10% cap, and contributions that cumulatively exceed it), and verifies that the claim pays the maker and closes the vault, that direct vault donations do not unlock the claim, that `close_fundraiser` retires a failed raise (only after the deadline, only when the target was missed, only once refunds are complete, sweeping direct donations to the maker) and lets the same maker initialize a fresh fundraiser, and that `close_contributor` returns a contributor's rent after a successful claim and is refused while the fundraiser exists. Assertions check token balances and decoded account state rather than just transaction success.
 
 ## FAQ
 
 ### How do I build crowdfunding on Solana?
 
 A maker opens a fundraiser with `initialize`, naming the token, target amount, and duration. Contributors deposit with `contribute` while the window is open, and the funds sit in a program-controlled vault that neither side can raid. When the target is reached, the maker claims the raise with `check_contributions`, which pays out the vault and closes the fundraiser.
+
+### What happens to the contributor accounts after a successful raise?
+
+The claim closes the vault and the Fundraiser account, but each Contributor account stays open with its rent inside. Its owner calls `close_contributor`, which checks that the fundraiser is gone and returns the rent.
 
 ### What happens if the fundraiser misses its target?
 

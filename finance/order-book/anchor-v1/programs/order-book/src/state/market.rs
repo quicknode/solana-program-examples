@@ -2,6 +2,15 @@ use anchor_lang::prelude::*;
 
 pub const MARKET_SEED: &[u8] = b"market";
 
+// The three vaults are PDAs of the market: each is found from its own seed
+// and the market's address, so any client can derive where the market keeps
+// its tokens without reading the market first. The market also records each
+// address, and every handler that touches a vault checks it against that
+// record, which is what stops the fee vault being passed as the quote vault.
+pub const BASE_VAULT_SEED: &[u8] = b"base_vault";
+pub const QUOTE_VAULT_SEED: &[u8] = b"quote_vault";
+pub const FEE_VAULT_SEED: &[u8] = b"fee_vault";
+
 // A Market is one trading pair (base/quote) with its own vaults and order book.
 // The market PDA itself is the authority of the token vaults, so funds can only
 // move out via program-signed CPIs (place/cancel/settle).
