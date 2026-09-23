@@ -13,9 +13,14 @@ See [CHANGELOG.md](./CHANGELOG.md) for release history. This file had no changel
 
 - Each example lives at `category/example-name/<framework>/`, e.g. `basics/counter/anchor/`.
 - Supported frameworks: `anchor`, `anchor-v1`, `quasar`, `pinocchio`, `native`, `asm`. Use the existing layout as a reference.
-- `anchor/` is Anchor v2 (2.0.0-rc.1) and is where new Anchor work goes. `anchor-v1/` is the
-  same example on Anchor v1 (1.2.0), kept for the v1 LTS line: it is a frozen snapshot and
-  changes only to keep the v1 build green, not to gain new features.
+- `anchor/` is Anchor v2 (2.0.0-rc.1) and is where new Anchor work starts. `anchor-v1/` is the
+  same example on Anchor v1 (1.2.0), kept for programs staying on the v1 LTS line, and it
+  tracks its v2 counterpart. A change to what an example does (a new handler, a new check, a
+  fix, a renamed field) goes into both copies, in the same pull request where practical, so a
+  v1 reader gets the same program and the same tests. The copies differ only where the Anchor
+  version forces it: account types and lifetimes, context syntax, and the test harness. If a
+  change needs something only Anchor v2 has, say so in the pull request and in the v1 copy's
+  CHANGELOG.
 - Anchor and Quasar programs usually keep Rust tests under `programs/<name>/tests/`.
 - Native and Pinocchio tests are Rust + LiteSVM, kept under `program/tests/`.
 
