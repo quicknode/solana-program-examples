@@ -12,7 +12,7 @@ to the best ask by one level each, up to 64 levels from the price half of the
 `doubling_prices_build_the_deepest_path_prices_allow` builds that path and reads
 its depth from the account, and
 `deepest_path_adds_little_compute_to_insert_fill_and_cancel` checks that
-inserting, filling, and cancelling at the bottom of it each cost less than 15,000
+inserting, filling, and canceling at the bottom of it each cost less than 15,000
 compute units more than on a shallow book, and stay inside the default
 200,000-unit instruction budget. The README no longer says the tree stays
 shallow whatever order keys arrive in, or that Phoenix uses the same structure

@@ -7,7 +7,7 @@
 - `doubling_prices_build_the_deepest_path_prices_allow` and
   `deepest_path_adds_little_compute_to_insert_fill_and_cancel`: asks at 63
   doubling prices build a 64-level path to the best ask, and inserting,
-  filling, and cancelling at the bottom of it each cost less than 15,000
+  filling, and canceling at the bottom of it each cost less than 15,000
   compute units more than on a shallow book.
 
 ### Changed

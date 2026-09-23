@@ -891,7 +891,7 @@ prices alone can lengthen a path by at most 64 levels, and no path can
 exceed 128. `doubling_prices_build_the_deepest_path_prices_allow` builds
 that 64-level path, and
 `deepest_path_adds_little_compute_to_insert_fill_and_cancel` checks that
-inserting, filling, and cancelling at the bottom of it each cost less than
+inserting, filling, and canceling at the bottom of it each cost less than
 15,000 compute units more than on a shallow book, and stay inside the
 default 200,000-unit instruction budget. This implementation is ported from
 [Openbook v2](https://github.com/openbook-dex/openbook-v2);

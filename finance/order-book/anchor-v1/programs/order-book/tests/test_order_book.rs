@@ -2062,7 +2062,7 @@ fn settle_funds_after_match_pays_out_both_unsettled_balances() {
 // cheaper asks and the path to the best ask becomes a chain. The tree key is
 // 128 bits with the price in the top 64, so prices alone can stretch a path
 // to at most 64 inner nodes, and no path can ever exceed 128. These tests
-// build that chain and check that inserting, matching, and cancelling at the
+// build that chain and check that inserting, matching, and canceling at the
 // bottom of it still costs little compared with a shallow book.
 // ---------------------------------------------------------------------------
 
