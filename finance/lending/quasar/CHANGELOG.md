@@ -7,6 +7,24 @@
 - Documentation only: the price feed's production path now points at a Pyth
   price feed, since the oracle network it was modeled on has shut down.
 
+### Fixed
+
+- Lock a minimum number of reserve shares. The first deposit now mints
+  `deposit - MINIMUM_SHARES` (1,000) shares, and deposit, redeem, collateral
+  valuation, collateral withdrawal and liquidation all divide by the share
+  supply plus that minimum (`math::total_shares`). The withheld shares belong
+  to nobody, so their slice of the pool stays locked. A first deposit of
+  `MINIMUM_SHARES` or less fails with `DepositTooSmall`, and a reserve whose
+  suppliers have all left prices the next deposit against the locked slice.
+  Recording `available_liquidity` stopped a vault donation, but total liquidity
+  also counts interest owed on borrows, and a lone supplier who borrowed from
+  their own reserve could raise their single share's value with that interest
+  and then with rounding, until a later deposit rounded down in their favor.
+  The Anchor ports carry the test that runs it. Tested here by
+  `first_deposit_withholds_the_minimum` and
+  `first_deposit_must_exceed_the_minimum`; the test harnesses now open each
+  reserve with a deposit from the market owner.
+
 ## [2026-09-22]
 
 ### Changed

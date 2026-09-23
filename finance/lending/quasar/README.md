@@ -59,9 +59,16 @@ Everything else mirrors the Anchor version.
   `LiquidationTooLarge` rather than silently seizing less, which would make the
   liquidator overpay.
 - **Share tokens**: supplying mints them, redeeming burns them; the exchange rate
-  `total_liquidity / share_supply` rises as borrowers pay interest.
+  `total_liquidity / total_shares` rises as borrowers pay interest.
   `available_liquidity` (not the vault's raw balance) is the source of truth, so a
-  token donation can't inflate the rate.
+  token donation can't inflate the rate. That is not enough on its own, because
+  total liquidity also counts interest owed on borrows and a supplier can borrow
+  from their own reserve: a lone supplier can raise the value of their one share
+  that way, then let rounding push it higher, until a later deposit rounds down
+  in their favor. So the first deposit mints 1:1 less `MINIMUM_SHARES` (1,000),
+  and `total_shares` (the share supply plus that minimum) is what every
+  conversion between shares and liquidity divides by. The withheld shares
+  belong to nobody, so the attacker's one share is 1 of 1,001.
 - **Protocol fees**: the reserve keeps `reserve_factor_bps` of each interest
   accrual in `accumulated_protocol_fees` (carved out of total liquidity, so it
   never lifts the supplier exchange rate); the market owner withdraws it with
@@ -104,7 +111,7 @@ cargo test tests::       # runs the quasar-svm integration tests
 
 `cargo build-sbf` must run first: the tests load the compiled
 `target/deploy/quasar_lending.so` into `quasar-svm`. The suite drives the full
-lifecycle: supply/redeem (1:1 first deposit), borrow up to the LTV limit (and
+lifecycle: supply/redeem (1:1 first deposit, less the withheld minimum), borrow up to the LTV limit (and
 rejection beyond it), repay, interest accrual lifting the share value after time
 passes, interest that follows seconds rather than slots (and charges nothing for a
 timestamp behind the last accrual), and liquidation of an unhealthy position (with

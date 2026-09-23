@@ -3,14 +3,16 @@ use anchor_spl::token_interface::{
     mint_to, transfer_checked, Mint, MintTo, TokenAccount, TokenInterface, TransferChecked,
 };
 
+use crate::constants::MINIMUM_SHARES;
 use crate::errors::LendingError;
 use crate::math::mul_div_floor;
 use crate::state::{reserve_signer_seeds, Reserve};
 
 /// Supply liquidity to a reserve and receive share tokens. The first deposit
-/// mints share tokens 1:1; later deposits mint
-/// `liquidity_amount * share_supply / total_liquidity`, floored so the protocol
-/// keeps any rounding dust.
+/// mints share tokens 1:1, less the `MINIMUM_SHARES` withheld; later deposits
+/// mint `liquidity_amount * total_shares / total_liquidity`, where
+/// `total_shares` counts the withheld minimum, floored so the protocol keeps
+/// any rounding dust.
 pub fn handle_deposit_reserve_liquidity(
     context: &mut Context<DepositReserveLiquidity>,
     liquidity_amount: u64,
@@ -19,14 +21,30 @@ pub fn handle_deposit_reserve_liquidity(
     let reserve = &mut context.accounts.reserve;
     reserve.require_refreshed()?;
 
-    let share_supply = reserve.share_mint_supply as u128;
-    let share_amount = if share_supply == 0 {
-        liquidity_amount as u128
+    let total_liquidity = reserve.total_liquidity()?;
+    let share_amount = if reserve.share_mint_supply == 0 && total_liquidity == 0 {
+        // Bootstrap: shares track liquidity one-for-one, less the withheld
+        // minimum, so the share supply can never start at a dust amount.
+        liquidity_amount
+            .checked_sub(MINIMUM_SHARES)
+            .ok_or(LendingError::DepositTooSmall)? as u128
     } else {
+        // The withheld minimum counts as shares nobody holds, here and in every
+        // other conversion, so its slice of the pool is locked for good. That
+        // is what stops share inflation: a lone supplier who borrows from their
+        // own reserve can lift `total_liquidity` with the interest they owe,
+        // and deposits and redemptions that round in the pool's favour lift it
+        // further, until one share is worth enough to round a later deposit
+        // down. With the minimum counted, their one share is 1 of 1_001 and
+        // whatever they leave in the pool goes mostly to shares nobody redeems.
+        //
+        // A reserve whose suppliers have all left takes this branch too: the
+        // minimum's slice is still in `total_liquidity`, so the next deposit
+        // is priced against it rather than bootstrapped.
         mul_div_floor(
             liquidity_amount as u128,
-            share_supply,
-            reserve.total_liquidity()?,
+            reserve.total_shares()?,
+            total_liquidity,
         )?
     };
     require!(share_amount > 0, LendingError::DepositTooSmall);

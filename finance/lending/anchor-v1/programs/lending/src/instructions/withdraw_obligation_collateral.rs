@@ -39,7 +39,7 @@ pub fn handle_withdraw_obligation_collateral(
     let removed_liquidity = mul_div_ceil(
         share_amount as u128,
         reserve.total_liquidity()?,
-        (reserve.share_mint_supply as u128).max(1),
+        reserve.total_shares()?,
     )?;
     let removed_liquidity = u64::try_from(removed_liquidity).map_err(|_| LendingError::MathOverflow)?;
     let removed_value = market_value(

@@ -18,8 +18,8 @@ use solana_kite::{
 };
 
 use lending::constants::{
-    LENDING_MARKET_SEED, LIQUIDITY_VAULT_SEED, OBLIGATION_SEED, OBLIGATION_SHARE_VAULT_SEED,
-    PRICE_FEED_SEED, RESERVE_SEED, SHARE_MINT_SEED,
+    LENDING_MARKET_SEED, LIQUIDITY_VAULT_SEED, MINIMUM_SHARES, OBLIGATION_SEED,
+    OBLIGATION_SHARE_VAULT_SEED, PRICE_FEED_SEED, RESERVE_SEED, SHARE_MINT_SEED,
 };
 use lending::state::{Obligation, Reserve, ReserveConfig};
 
@@ -301,7 +301,27 @@ impl Env {
         send(&mut self.svm, vec![instruction], &[owner], &owner.pubkey()).unwrap();
     }
 
+    /// Add a reserve to the default market and open it: the market owner makes
+    /// the first deposit, `MINIMUM_SHARES + 1`, so the withheld minimum is in
+    /// place and every later deposit mints shares one-for-one until interest
+    /// accrues. The owner keeps the one share it is minted.
     pub fn add_reserve(
+        &mut self,
+        decimals: u8,
+        price_mantissa: i128,
+        config: ReserveConfig,
+    ) -> ReserveHandle {
+        let handle = self.add_empty_reserve(decimals, price_mantissa, config);
+        let owner = self.owner.insecure_clone();
+        let opening_deposit = MINIMUM_SHARES + 1;
+        self.fund(&owner, handle.mint, opening_deposit);
+        self.supply(&owner, &handle, opening_deposit);
+        handle
+    }
+
+    /// Add a reserve to the default market with no deposits, for tests of the
+    /// first deposit itself.
+    pub fn add_empty_reserve(
         &mut self,
         decimals: u8,
         price_mantissa: i128,
@@ -359,7 +379,7 @@ impl Env {
     }
 
     /// Supply liquidity to a reserve, receiving share tokens. Returns the user's
-    /// share-token account.
+    /// share-token account, which the first supply creates.
     pub fn try_supply(
         &mut self,
         user: &Keypair,
@@ -367,13 +387,16 @@ impl Env {
         amount: u64,
     ) -> Result<Address, String> {
         let user_liquidity = ata(&user.pubkey(), &handle.mint);
-        let user_share = create_associated_token_account(
-            &mut self.svm,
-            &user.pubkey(),
-            &handle.share_mint,
-            user,
-        )
-        .unwrap();
+        let user_share = ata(&user.pubkey(), &handle.share_mint);
+        if self.svm.get_account(&user_share).is_none() {
+            create_associated_token_account(
+                &mut self.svm,
+                &user.pubkey(),
+                &handle.share_mint,
+                user,
+            )
+            .unwrap();
+        }
 
         let deposit = Instruction {
             program_id: lending::id(),

@@ -33,7 +33,7 @@ pub fn handle_refresh_obligation(context: Context<RefreshObligation>) -> Result<
         let liquidity = mul_div_floor(
             collateral.deposited_shares as u128,
             reserve.total_liquidity()?,
-            (reserve.share_mint_supply as u128).max(1),
+            reserve.total_shares()?,
         )?;
         let liquidity = u64::try_from(liquidity).map_err(|_| LendingError::MathOverflow)?;
         let value = market_value(liquidity, reserve.liquidity_decimals, price_scaled, Rounding::Down)?;

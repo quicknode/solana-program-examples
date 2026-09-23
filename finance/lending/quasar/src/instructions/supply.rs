@@ -1,8 +1,9 @@
 use {
     crate::{
+        constants::MINIMUM_SHARES,
         error::LendingError,
         logic::{accrue, now, snapshot_reserve},
-        math::{mul_div_floor, net_total_liquidity},
+        math::{mul_div_floor, net_total_liquidity, total_shares},
         state::Reserve,
     },
     quasar_lang::{cpi::Seed, prelude::*},
@@ -64,10 +65,31 @@ impl DepositReserveLiquidity {
             reserve.borrow_accumulation_factor,
             reserve.accumulated_protocol_fees,
         )?;
-        let shares = if reserve.share_mint_supply == 0 {
-            amount as u128
+        let shares = if reserve.share_mint_supply == 0 && total == 0 {
+            // Bootstrap: shares track liquidity one-for-one, less the withheld
+            // minimum, so the share supply can never start at a dust amount.
+            amount
+                .checked_sub(MINIMUM_SHARES)
+                .ok_or(LendingError::DepositTooSmall)? as u128
         } else {
-            mul_div_floor(amount as u128, reserve.share_mint_supply as u128, total)?
+            // The withheld minimum counts as shares nobody holds, here and in
+            // every other conversion, so its slice of the pool is locked for
+            // good. That is what stops share inflation: a lone supplier who
+            // borrows from their own reserve can lift the total with the
+            // interest they owe, and deposits and redemptions that round in the
+            // pool's favour lift it further, until one share is worth enough to
+            // round a later deposit down. With the minimum counted, their one
+            // share is 1 of 1_001 and whatever they leave in the pool goes
+            // mostly to shares nobody redeems.
+            //
+            // A reserve whose suppliers have all left takes this branch too:
+            // the minimum's slice is still in the total, so the next deposit is
+            // priced against it rather than bootstrapped.
+            mul_div_floor(
+                amount as u128,
+                total_shares(reserve.share_mint_supply)?,
+                total,
+            )?
         };
         require!(shares > 0, LendingError::DepositTooSmall);
         let shares = u64::try_from(shares).map_err(|_| LendingError::MathOverflow)?;
@@ -156,7 +178,13 @@ impl RedeemReserveCollateral {
             reserve.borrow_accumulation_factor,
             reserve.accumulated_protocol_fees,
         )?;
-        let liquidity = mul_div_floor(shares as u128, total, reserve.share_mint_supply as u128)?;
+        // The withheld minimum counts as shares nobody holds, as it does in
+        // deposit_reserve_liquidity, so its slice of the pool never leaves.
+        let liquidity = mul_div_floor(
+            shares as u128,
+            total,
+            total_shares(reserve.share_mint_supply)?,
+        )?;
         let liquidity = u64::try_from(liquidity).map_err(|_| LendingError::MathOverflow)?;
         require!(
             liquidity <= reserve.available_liquidity,

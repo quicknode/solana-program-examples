@@ -50,6 +50,12 @@ const BORROWER_BORROW: Pubkey = Pubkey::new_from_array([14; 32]);
 const LIQUIDATOR_BORROW: Pubkey = Pubkey::new_from_array([15; 32]);
 const LIQUIDATOR_COLLATERAL_SHARE: Pubkey = Pubkey::new_from_array([16; 32]);
 const OWNER_BORROW: Pubkey = Pubkey::new_from_array([17; 32]);
+const OWNER_COLLATERAL: Pubkey = Pubkey::new_from_array([18; 32]);
+const OWNER_COLLATERAL_SHARE: Pubkey = Pubkey::new_from_array([19; 32]);
+const OWNER_BORROW_SHARE: Pubkey = Pubkey::new_from_array([20; 32]);
+/// What the market owner deposits to open each reserve: the smallest first
+/// deposit that clears the withheld minimum, minting the owner one share.
+const OPENING_DEPOSIT: u64 = crate::constants::MINIMUM_SHARES + 1;
 // Per-owner market index this market is seeded from (owner's market 0).
 const MARKET_ID: u64 = 0;
 
@@ -124,8 +130,20 @@ fn base_world(test: &mut Test) -> Pdas {
     test.add(
         TokenAccount::new(w.collateral_share_mint, LIQUIDATOR).at(LIQUIDATOR_COLLATERAL_SHARE),
     );
-    // Where the market owner receives collected protocol fees.
-    test.add(TokenAccount::new(BORROW_MINT, OWNER).at(OWNER_BORROW));
+    // The owner's opening deposits come from these; once they are made,
+    // `OWNER_BORROW` is empty again and receives collected protocol fees.
+    test.add(
+        TokenAccount::new(BORROW_MINT, OWNER)
+            .at(OWNER_BORROW)
+            .amount(OPENING_DEPOSIT),
+    );
+    test.add(TokenAccount::new(w.borrow_share_mint, OWNER).at(OWNER_BORROW_SHARE));
+    test.add(
+        TokenAccount::new(COLLATERAL_MINT, OWNER)
+            .at(OWNER_COLLATERAL)
+            .amount(OPENING_DEPOSIT),
+    );
+    test.add(TokenAccount::new(w.collateral_share_mint, OWNER).at(OWNER_COLLATERAL_SHARE));
     w
 }
 
@@ -160,7 +178,38 @@ fn initialize_reserve(test: &mut Test, w: &Pdas, the_mint: Pubkey) {
     .succeeds();
 }
 
+/// Create the market and both reserves, then open each reserve with the
+/// owner's deposit so the withheld minimum is in place and later deposits mint
+/// shares one-for-one until interest accrues.
 fn setup_markets(test: &mut Test, w: &Pdas) {
+    setup_empty_markets(test, w);
+    test.send(DepositReserveLiquidityInstruction {
+        supplier: OWNER,
+        reserve: w.collateral_reserve,
+        liquidity_mint: COLLATERAL_MINT,
+        liquidity_vault: w.collateral_vault,
+        share_mint: w.collateral_share_mint,
+        supplier_liquidity: OWNER_COLLATERAL,
+        supplier_share: OWNER_COLLATERAL_SHARE,
+        amount: OPENING_DEPOSIT,
+    })
+    .succeeds();
+    test.send(DepositReserveLiquidityInstruction {
+        supplier: OWNER,
+        reserve: w.borrow_reserve,
+        liquidity_mint: BORROW_MINT,
+        liquidity_vault: w.borrow_vault,
+        share_mint: w.borrow_share_mint,
+        supplier_liquidity: OWNER_BORROW,
+        supplier_share: OWNER_BORROW_SHARE,
+        amount: OPENING_DEPOSIT,
+    })
+    .succeeds();
+}
+
+/// Create the market and both reserves with no deposits, for tests of the
+/// first deposit itself.
+fn setup_empty_markets(test: &mut Test, w: &Pdas) {
     test.send(InitializeLendingMarketInstruction {
         owner: OWNER,
         quote_mint: QUOTE_MINT,
@@ -296,6 +345,38 @@ fn supply_mints_shares_one_to_one_and_redeem_returns_liquidity(test: &mut Test) 
         .has_tokens(SUPPLIER_BORROW_SHARE, 0);
 }
 
+/// The first deposit into a reserve mints one share per unit, less the
+/// `MINIMUM_SHARES` withheld. Those shares belong to nobody, so even as the
+/// only supplier the depositor gets back their deposit less the minimum, and
+/// the minimum's liquidity stays in the pool.
+#[quasar_test]
+fn first_deposit_withholds_the_minimum(test: &mut Test) {
+    let w = base_world(test);
+    setup_empty_markets(test, &w);
+    let minimum = crate::constants::MINIMUM_SHARES;
+
+    deposit_borrow_side(test, &w, 1_000 * UNIT)
+        .succeeds()
+        .has_tokens(SUPPLIER_BORROW_SHARE, 1_000 * UNIT - minimum);
+
+    redeem(test, &w, 1_000 * UNIT - minimum)
+        .succeeds()
+        .has_tokens(SUPPLIER_BORROW, 1_000 * UNIT - minimum)
+        .has_tokens(SUPPLIER_BORROW_SHARE, 0);
+}
+
+/// A first deposit no larger than the minimum would mint nothing, so it is
+/// refused.
+#[quasar_test]
+fn first_deposit_must_exceed_the_minimum(test: &mut Test) {
+    let w = base_world(test);
+    setup_empty_markets(test, &w);
+    assert!(
+        deposit_borrow_side(test, &w, crate::constants::MINIMUM_SHARES).is_err(),
+        "a first deposit of only the minimum mints nothing and must be rejected"
+    );
+}
+
 #[quasar_test]
 fn borrow_up_to_ltv_succeeds_and_beyond_fails(test: &mut Test) {
     let w = base_world(test);
@@ -362,7 +443,8 @@ mod clock_warp {
         super::{dollars, EXP, TENTH_OF_A_YEAR},
         super::{
             BORROWER, BORROWER_BORROW, BORROWER_COLLATERAL, BORROWER_COLLATERAL_SHARE, BORROW_MINT,
-            COLLATERAL_MINT, DECIMALS, MARKET_ID, OWNER, OWNER_BORROW, QUOTE_MINT, SUPPLIER,
+            COLLATERAL_MINT, DECIMALS, MARKET_ID, OPENING_DEPOSIT, OWNER, OWNER_BORROW,
+            OWNER_BORROW_SHARE, OWNER_COLLATERAL, OWNER_COLLATERAL_SHARE, QUOTE_MINT, SUPPLIER,
             SUPPLIER_BORROW, SUPPLIER_BORROW_SHARE, UNIT,
         },
         crate::{
@@ -506,8 +588,13 @@ mod clock_warp {
                     0,
                 ),
                 token(BORROWER_BORROW, BORROW_MINT, BORROWER, 0),
-                // Where the market owner receives collected protocol fees.
-                token(OWNER_BORROW, BORROW_MINT, OWNER, 0),
+                // The owner's opening deposits come from these; once they are
+                // made, `OWNER_BORROW` is empty again and receives collected
+                // protocol fees.
+                token(OWNER_BORROW, BORROW_MINT, OWNER, OPENING_DEPOSIT),
+                token(OWNER_BORROW_SHARE, borrow_share_mint, OWNER, 0),
+                token(OWNER_COLLATERAL, COLLATERAL_MINT, OWNER, OPENING_DEPOSIT),
+                token(OWNER_COLLATERAL_SHARE, collateral_share_mint, OWNER, 0),
             ] {
                 svm.set_account(account);
             }
@@ -656,6 +743,30 @@ mod clock_warp {
                 self.borrow_share_mint,
                 self.borrow_price,
             );
+            // Open each reserve with the owner's deposit, as the quasar-test
+            // harness does.
+            self.deposit(
+                OWNER,
+                self.collateral_reserve,
+                COLLATERAL_MINT,
+                self.collateral_vault,
+                self.collateral_share_mint,
+                OWNER_COLLATERAL,
+                OWNER_COLLATERAL_SHARE,
+                OPENING_DEPOSIT,
+            )
+            .assert_success();
+            self.deposit(
+                OWNER,
+                self.borrow_reserve,
+                BORROW_MINT,
+                self.borrow_vault,
+                self.borrow_share_mint,
+                OWNER_BORROW,
+                OWNER_BORROW_SHARE,
+                OPENING_DEPOSIT,
+            )
+            .assert_success();
         }
 
         #[allow(clippy::too_many_arguments)]
