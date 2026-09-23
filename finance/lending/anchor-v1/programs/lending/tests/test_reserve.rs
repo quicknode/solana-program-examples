@@ -1,8 +1,8 @@
 mod common;
 
 use common::{default_config, Env};
-use lending::state::Reserve;
 use lending::constants::FIXED_POINT_SCALE;
+use lending::state::Reserve;
 
 #[test]
 fn init_market_and_reserve() {
@@ -76,8 +76,15 @@ fn half_borrowed_reserve(env: &mut Env) -> (common::ReserveHandle, common::Reser
     env.supply(&borrower, &collateral, 1_000_000_000);
     let obligation = env.initialize_obligation(&borrower);
     env.post_collateral(&borrower, obligation, &collateral, 1_000_000_000);
-    env.try_borrow(&borrower, obligation, &[&collateral], &[], &borrow, 500_000_000)
-        .unwrap();
+    env.try_borrow(
+        &borrower,
+        obligation,
+        &[&collateral],
+        &[],
+        &borrow,
+        500_000_000,
+    )
+    .unwrap();
     (collateral, borrow)
 }
 
@@ -134,7 +141,10 @@ fn a_timestamp_behind_the_last_accrual_charges_nothing() {
     env.shift_timestamp(-600);
     env.refresh_reserve_only(&refresher, &borrow);
     let behind = env.reserve(&borrow);
-    assert_eq!(behind.borrow_accumulation_factor, before.borrow_accumulation_factor);
+    assert_eq!(
+        behind.borrow_accumulation_factor,
+        before.borrow_accumulation_factor
+    );
     assert_eq!(behind.last_accrual_timestamp, before.last_accrual_timestamp);
 
     // 1,600 seconds forward from the shifted clock is 1,000 past the stamp.

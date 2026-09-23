@@ -21,13 +21,17 @@ pub fn handle_redeem_reserve_collateral(
     let reserve = &mut context.accounts.reserve;
     reserve.require_refreshed()?;
 
-    require!(reserve.share_mint_supply > 0, LendingError::InsufficientReserveLiquidity);
+    require!(
+        reserve.share_mint_supply > 0,
+        LendingError::InsufficientReserveLiquidity
+    );
     let liquidity_amount = mul_div_floor(
         share_amount as u128,
         reserve.total_liquidity()?,
         reserve.total_shares()?,
     )?;
-    let liquidity_amount = u64::try_from(liquidity_amount).map_err(|_| LendingError::MathOverflow)?;
+    let liquidity_amount =
+        u64::try_from(liquidity_amount).map_err(|_| LendingError::MathOverflow)?;
     require!(
         liquidity_amount <= reserve.available_liquidity,
         LendingError::InsufficientReserveLiquidity
