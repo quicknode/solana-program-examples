@@ -14,6 +14,21 @@ and README in the three examples, across Anchor v2, Anchor v1 and Quasar, now
 points at a Pyth `PriceUpdateV2` account, which `basics/pyth` reads. No program
 behavior changes.
 
+## [2026-09-23] - Anchor v1 copies track their Anchor v2 counterparts
+
+CONTRIBUTING.md described each `anchor-v1/` copy as a frozen snapshot that
+changed only to keep its build green. Several v2 examples have since gained
+behavior their v1 copies lack, so a reader on the v1 LTS line was learning a
+different program from the one the v2 copy and the book describe.
+
+- CONTRIBUTING.md now says a change to what an example does goes into both
+  copies, and the copies differ only where the Anchor version forces it.
+- The betting market's Anchor v1 copy gains the draft state and betting close
+  time from the v2 copy: `open_betting`, `betting_closes_at`, the
+  `EventNotDraft`, `NotEnoughOutcomes`, `CloseTimeInPast`, `BettingClosed` and
+  `BettingStillOpen` errors, a draft-or-open `cancel_event`, and the same new
+  tests.
+
 ## [2026-09-22] - Lending interest and perpetual futures funding accrue by the wall clock
 
 Both programs accrued over elapsed slots, so a rate quoted per year or per

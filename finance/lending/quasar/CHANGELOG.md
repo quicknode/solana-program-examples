@@ -20,8 +20,8 @@
   also counts interest owed on borrows, and a lone supplier who borrowed from
   their own reserve could raise their single share's value with that interest
   and then with rounding, until a later deposit rounded down in their favor.
-  The Anchor ports carry the test that runs it. Tested here by
-  `first_deposit_withholds_the_minimum` and
+  `inflating_shares_through_own_borrow_does_not_pay` runs that attack. Also
+  tested by `first_deposit_withholds_the_minimum` and
   `first_deposit_must_exceed_the_minimum`; the test harnesses now open each
   reserve with a deposit from the market owner.
 
