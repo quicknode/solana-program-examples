@@ -5,8 +5,8 @@ use anchor_spl::token_interface::{
 
 use crate::errors::ErrorCode;
 use crate::state::{
-    add_open_order, plan_fills, remove_open_order, Market, MarketUser, Order, OrderBook, OrderSide,
-    OrderStatus, MARKET_SEED, MARKET_USER_SEED, ORDER_SEED,
+    add_open_order, credit_unfilled_lock, plan_fills, remove_open_order, Market, MarketUser, Order,
+    OrderBook, OrderSide, OrderStatus, MARKET_SEED, MARKET_USER_SEED, ORDER_SEED,
 };
 
 // Mirror of MarketUser.open_orders max_len. Kept as a constant so the
@@ -23,7 +23,24 @@ const BASIS_POINTS_DENOMINATOR: u128 = 10_000;
 // unsettled_* balance - the maker drains them later via settle_funds. This
 // mirrors how Openbook v2 works and keeps the per-fill account footprint
 // small.
+//
+// When the order will rest on a side that is already full, the side's
+// worst-priced order follows the maker pairs: [evicted_order,
+// evicted_market_user]. When the worst order is the caller's own, only
+// [evicted_order] is passed: Anchor refuses a writable account that appears
+// twice, and the caller's MarketUser is already `market_user`. See the
+// eviction step below.
 const ACCOUNTS_PER_MAKER: usize = 2;
+
+/// True when `price` is a better price than `other` for an order on `side`:
+/// higher for a bid, lower for an ask. Equal is not better, because at equal
+/// price the resting order has time priority.
+fn is_better_price(side: OrderSide, price: u64, other: u64) -> bool {
+    match side {
+        OrderSide::Bid => price > other,
+        OrderSide::Ask => price < other,
+    }
+}
 
 pub fn handle_place_order(
     context: &mut Context<PlaceOrderAccountConstraints>,
@@ -121,10 +138,9 @@ pub fn handle_place_order(
     // transaction's remaining_accounts, in the same price-time-priority
     // order the book would walk. We plan fills against the resting tree,
     // then verify the caller's account list matches the plan, then apply.
-    require!(
-        maker_accounts.len() % ACCOUNTS_PER_MAKER == 0,
-        ErrorCode::MissingMakerAccounts
-    );
+    // The list need not be a whole number of pairs: an order evicting the
+    // caller's own worst order ends with a single account (see
+    // ACCOUNTS_PER_MAKER).
 
     let order_book_loader = &mut context.accounts.order_book;
 
@@ -405,6 +421,75 @@ pub fn handle_place_order(
         .ok_or(ErrorCode::NumericalOverflow)?
         .checked_add(taker_quote_received)
         .ok_or(ErrorCode::NumericalOverflow)?;
+
+    // ---------------------------------------------------------------
+    // Eviction. A full side would otherwise refuse every new resting order,
+    // so anyone with the capital could hold all of its slots with orders
+    // nobody will fill. Instead, an order that beats the side's worst price
+    // removes that worst order and takes its slot. The evicted order is
+    // treated exactly like a cancel: its unfilled lock is credited to its
+    // owner's unsettled balance, and it is stamped Cancelled. An order that
+    // does not beat the worst price is still refused with OrderBookFull.
+    // ---------------------------------------------------------------
+    let order_to_evict = if taker_remaining > 0 && order_book_loader.is_side_full(side) {
+        let worst = order_book_loader
+            .worst(side)
+            .ok_or(ErrorCode::OrderBookFull)?;
+        require!(
+            is_better_price(side, price, worst.price),
+            ErrorCode::OrderBookFull
+        );
+        Some(worst)
+    } else {
+        None
+    };
+
+    if let Some(worst) = order_to_evict {
+        let evicted_index = fills.len() * ACCOUNTS_PER_MAKER;
+        let evicted_order_info = maker_accounts
+            .get(evicted_index)
+            .ok_or(ErrorCode::MissingEvictedAccounts)?;
+        let market = &context.accounts.market;
+
+        // SAFETY: as for the maker accounts above. The evicted order is on
+        // the taker's own side, so it is never one of the maker orders.
+        let mut evicted_order = unsafe { BorshAccount::<Order>::load_mut(*evicted_order_info) }?;
+        require!(
+            evicted_order.order_id == worst.order_id && evicted_order.market == *market.address(),
+            ErrorCode::EvictedAccountMismatch
+        );
+
+        if evicted_order.owner == *context.accounts.owner.address() {
+            // The worst order is the taker's own. Their MarketUser is already
+            // loaded as `market_user`, so it is credited there and is not
+            // passed a second time.
+            credit_unfilled_lock(market, &evicted_order, taker_market_user)?;
+            remove_open_order(taker_market_user, evicted_order.order_id);
+        } else {
+            let evicted_user_info = maker_accounts
+                .get(evicted_index + 1)
+                .ok_or(ErrorCode::MissingEvictedAccounts)?;
+            let mut evicted_market_user =
+                unsafe { BorshAccount::<MarketUser>::load_mut(*evicted_user_info) }?;
+            require!(
+                evicted_market_user.owner == evicted_order.owner
+                    && evicted_market_user.market == *market.address(),
+                ErrorCode::EvictedAccountMismatch
+            );
+            credit_unfilled_lock(market, &evicted_order, &mut evicted_market_user)?;
+            remove_open_order(&mut evicted_market_user, evicted_order.order_id);
+            evicted_market_user.exit()?;
+        }
+
+        require!(
+            order_book_loader
+                .remove_from(side, worst.order_id)
+                .is_some(),
+            ErrorCode::OrderNotFound
+        );
+        evicted_order.status = OrderStatus::Cancelled;
+        evicted_order.exit()?;
+    }
 
     // ---------------------------------------------------------------
     // Stamp the taker's Order PDA. Either Filled (no remainder) or rested.

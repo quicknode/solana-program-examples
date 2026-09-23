@@ -1,5 +1,8 @@
 use quasar_lang::prelude::*;
 
+use crate::errors::OrderBookError;
+use crate::state::{remaining_quantity, OrderInner, OrderSide};
+
 pub const MARKET_USER_SEED: &[u8] = b"market_user";
 
 /// Per-user open-order cap. Matches the matching engine's upper bound so a
@@ -103,4 +106,50 @@ pub fn snapshot_market_user(market_user: &Account<MarketUser>) -> MarketUserInne
         bump: market_user.bump,
         open_orders: market_user.open_orders,
     }
+}
+
+/// Credit the owner of a resting `order` with the funds its unfilled
+/// remainder still has locked in the vault: quote for a bid, base for an ask.
+/// `settle_funds` later moves the credit to their token account. Used by
+/// `cancel_order`, and by `place_order` when it evicts an order from a full
+/// side. The arithmetic mirrors the lock in `place_order`, in u128 so
+/// high-decimal mints cannot overflow the intermediate product.
+pub fn credit_unfilled_lock(
+    order: &OrderInner,
+    base_lot_size: u64,
+    quote_lot_size: u64,
+    market_user: &mut MarketUserInner,
+) -> Result<(), ProgramError> {
+    let remaining = remaining_quantity(order.original_quantity, order.filled_quantity);
+    if remaining == 0 {
+        return Ok(());
+    }
+    let side = OrderSide::from_u8(order.side).ok_or(OrderBookError::InvalidSide)?;
+    match side {
+        OrderSide::Bid => {
+            let quote_amount: u64 = (order.price as u128)
+                .checked_mul(remaining as u128)
+                .ok_or(OrderBookError::NumericalOverflow)?
+                .checked_mul(quote_lot_size as u128)
+                .ok_or(OrderBookError::NumericalOverflow)?
+                .try_into()
+                .map_err(|_| OrderBookError::NumericalOverflow)?;
+            market_user.unsettled_quote = market_user
+                .unsettled_quote
+                .checked_add(quote_amount)
+                .ok_or(OrderBookError::NumericalOverflow)?;
+        }
+        OrderSide::Ask => {
+            let base_amount: u64 = (remaining as u128)
+                .checked_mul(base_lot_size as u128)
+                .ok_or(OrderBookError::NumericalOverflow)?
+                .try_into()
+                .map_err(|_| OrderBookError::NumericalOverflow)?;
+            market_user.unsettled_base = market_user
+                .unsettled_base
+                .checked_add(base_amount)
+                .ok_or(OrderBookError::NumericalOverflow)?;
+        }
+    }
+    Ok(())
 }

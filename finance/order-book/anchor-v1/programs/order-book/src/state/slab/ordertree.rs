@@ -13,9 +13,10 @@ use static_assertions::const_assert_eq;
 use super::nodes::{AnyNode, FreeNode, InnerNode, LeafNode, NodeHandle, NodeRef, NodeTag};
 use crate::errors::ErrorCode;
 
-/// Per-side slab capacity. 1024 leaves easily covers any realistic depth at
-/// the prices a single market quotes; the 88-byte node size keeps each side
-/// at ~90 KB, well under Solana's 10 MB per-account ceiling.
+/// Per-side slab capacity, in nodes. A critbit tree with n leaves also has
+/// n - 1 inner nodes, so 1024 nodes hold 512 resting orders (see
+/// `MAX_ORDERS_PER_SIDE`). The 88-byte node size keeps each side at ~90 KB,
+/// well under Solana's 10 MB per-account ceiling.
 pub const MAX_TREE_NODES: usize = 1024;
 
 /// Root pointer + leaf count for one side of the book.
@@ -116,6 +117,15 @@ impl OrderTreeNodes {
     /// bids ("max" means highest price) this is the rightmost leaf.
     pub fn best_leaf(&self, root: &OrderTreeRoot) -> Option<(NodeHandle, &LeafNode)> {
         let find_max = self.order_tree_type() == OrderTreeType::Bids;
+        self.leaf_min_max(find_max, root)
+    }
+
+    /// Worst-priced leaf for this tree: the highest ask or the lowest bid.
+    /// Within that price it is the latest order, because the key's low bits
+    /// carry the sequence number. Eviction removes this leaf when a side is
+    /// full.
+    pub fn worst_leaf(&self, root: &OrderTreeRoot) -> Option<(NodeHandle, &LeafNode)> {
+        let find_max = self.order_tree_type() == OrderTreeType::Asks;
         self.leaf_min_max(find_max, root)
     }
 

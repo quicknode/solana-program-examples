@@ -9,10 +9,12 @@ use crate::state::OrderSide;
 
 pub const ORDER_BOOK_SEED: &[u8] = b"order_book";
 
-/// Per-side capacity. 1024 leaves is enough for any realistic depth a single
-/// market quotes; at 88 bytes per node that's ~90 KB per side, so the whole
-/// OrderBook account fits in ~180 KB - well under Solana's per-account ceiling.
-pub const MAX_ORDERS_PER_SIDE: usize = MAX_TREE_NODES;
+/// Per-side capacity, in resting orders. Every order after the first adds a
+/// leaf and an inner node to the tree, so the side's `MAX_TREE_NODES` slots
+/// hold half as many orders. At 88 bytes per node that's ~90 KB per side, so
+/// the whole OrderBook account fits in ~180 KB. When a side is full,
+/// `place_order` evicts the worst-priced order to make room for a better one.
+pub const MAX_ORDERS_PER_SIDE: usize = MAX_TREE_NODES / 2;
 
 /// 8-byte marker written at the front of the order-book account so a wrong or
 /// uninitialized account can't be cast as a live book. Analogous to Anchor's
@@ -161,6 +163,17 @@ impl OrderBook {
         };
         nodes.insert_leaf(root, &leaf)?;
         Ok(())
+    }
+
+    /// Order ID and price of the worst-priced resting order on `side`, if
+    /// any: the order eviction removes when the side is full.
+    pub fn worst(&self, side: OrderSide) -> Option<(u64, u64)> {
+        let (root, nodes) = match side {
+            OrderSide::Bid => (&self.bids_root, &self.bids),
+            OrderSide::Ask => (&self.asks_root, &self.asks),
+        };
+        let (_handle, leaf) = nodes.worst_leaf(root)?;
+        Some((leaf.order_id, leaf.price()))
     }
 
     /// Remove a resting order from a specific side. Returns `true` if it was

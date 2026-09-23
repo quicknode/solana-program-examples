@@ -9,11 +9,12 @@ use crate::state::OrderSide;
 
 pub const ORDER_BOOK_SEED: &[u8] = b"order_book";
 
-/// Per-side capacity. 1024 leaves is enough for any realistic depth a single
-/// market quotes; at 88 bytes per node that's ~90 KB per side, so the whole
-/// OrderBook account fits in ~180 KB - well under Solana's per-account ceiling
-/// and well within the rent budget a market authority is happy to fund once.
-pub const MAX_ORDERS_PER_SIDE: usize = MAX_TREE_NODES;
+/// Per-side capacity, in resting orders. Every order after the first adds a
+/// leaf and an inner node to the tree, so the side's `MAX_TREE_NODES` slots
+/// hold half as many orders. At 88 bytes per node that's ~90 KB per side, so
+/// the whole OrderBook account fits in ~180 KB. When a side is full,
+/// `place_order` evicts the worst-priced order to make room for a better one.
+pub const MAX_ORDERS_PER_SIDE: usize = MAX_TREE_NODES / 2;
 
 /// Combined order book: two critbit trees plus a shared monotonic seq_num
 /// counter that gives every order a unique tie-break and acts as the public
@@ -178,6 +179,22 @@ impl OrderBook {
             OrderSide::Ask => (&self.asks_root, &self.asks),
         };
         let (_handle, leaf) = nodes.best_leaf(root)?;
+        Some(RestingOrderView {
+            order_id: leaf.order_id,
+            price: leaf.price(),
+            quantity: leaf.quantity,
+            owner: leaf.owner,
+        })
+    }
+
+    /// Resting-order view of the worst-priced leaf on `side`, if any: the
+    /// order eviction removes when the side is full.
+    pub fn worst(&self, side: OrderSide) -> Option<RestingOrderView> {
+        let (root, nodes) = match side {
+            OrderSide::Bid => (&self.bids_root, &self.bids),
+            OrderSide::Ask => (&self.asks_root, &self.asks),
+        };
+        let (_handle, leaf) = nodes.worst_leaf(root)?;
         Some(RestingOrderView {
             order_id: leaf.order_id,
             price: leaf.price(),

@@ -9,12 +9,26 @@
   doubling prices build a 64-level path to the best ask, and inserting,
   filling, and canceling at the bottom of it each cost less than 15,000
   compute units more than on a shallow book.
+- A full side of the book evicts instead of refusing. When a side already
+  holds its 512 orders, an order that beats the side's worst price removes
+  that worst order and rests in its place. The evicted order is refunded
+  through its owner's unsettled balance, as a cancel is, and stamped
+  Cancelled. An order that does not beat the worst price still gets
+  `OrderBookFull`. The caller passes the worst order and its owner's
+  `MarketUser` after the maker pairs, or only the order when it is their
+  own. New errors: `MissingEvictedAccounts`, `EvictedAccountMismatch`.
 
 ### Changed
 
 - The README states the critbit tree's real depth bound (64 levels from
   prices, 128 at most) instead of saying it stays shallow whatever order keys
   arrive in, and says Phoenix uses a red-black tree.
+
+### Fixed
+
+- A side holds 512 orders, not 1024: every order after the first adds a
+  leaf and an inner node to the side's 1024-node tree. `MAX_ORDERS_PER_SIDE`
+  and the README now say so.
 
 ## 2026-09-22
 

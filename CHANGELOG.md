@@ -4,6 +4,24 @@ All notable changes to this repository are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-09-23] - The order book evicts its worst order when a side is full
+
+A side of the order book refused every new resting order once it was full, so
+anyone willing to lock the minimum order size and pay rent for each slot could
+fill a side with orders far from the spread and keep every new order on that
+side out for as long as they liked. The market authority had no remedy, and
+the market PDA's seeds are the two mints, so the pair could not move to a new
+market. Now an order that beats a full side's worst price evicts that order
+and rests in its place. The evicted order is refunded through its owner's
+unsettled balance, exactly as `cancel_order` refunds it, and stamped
+`Cancelled`. An order that does not beat the worst price still gets
+`OrderBookFull`. The caller passes the worst order and its owner's
+`MarketUser` after the maker pairs, or only the order when it is their own.
+The capacity was also misstated: a side holds 512 orders, not 1024, because
+every order after the first adds a leaf and an inner node to the side's
+1024-node tree. All three variants (Anchor v2, Anchor v1, Quasar) change,
+with the same five tests in each.
+
 ## [2026-09-23] - Anchor v1 copies match their v2 counterparts where the version allows
 
 A scan of every `anchor/` and `anchor-v1/` pair, comparing function names,

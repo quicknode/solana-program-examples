@@ -34,7 +34,7 @@ funds, and it moves them only along the place / cancel / settle paths below.
 ## Accounts and PDAs
 
 - `Market` (PDA, seeds `["market", base_mint, quote_mint]`): One trading pair. Stores config + vault addresses. Its PDA is the vaults' token authority.
-- `OrderBook` (at a public key the client generates, not a PDA): Two critbit slabs (bids + asks), ~180 KB. Zero-copy. Bound to its market by the market's stored `order_book`.
+- `OrderBook` (at a public key the client generates, not a PDA): Two critbit slabs (bids + asks), ~180 KB, each holding 512 orders: every order after the first adds a leaf and an inner node to a 1024-node tree. Zero-copy. Bound to its market by the market's stored `order_book`.
 - `MarketUser` (PDA, seeds `["market_user", market, owner]`): Per-user, per-market. Tracks open order ids and `unsettled_*` balances owed back to the user.
 - `Order` (PDA, seeds `["order", market, order_id]`): One order. `order_id` is the book's monotonic counter at placement time.
 - `base_vault` / `quote_vault` (token accounts, PDAs at seeds `["base_vault", market]` and `["quote_vault", market]`): Hold locked funds while orders are open. Market PDA is the authority.
@@ -72,6 +72,15 @@ NVDAx (9 decimals) / USDC (6 decimals): `base_lot_size = 1000`, `quote_lot_size 
 resting maker orders to cross as **remaining accounts**, in pairs of `(maker_order, maker_market_user)`, in the
 book's price-time priority. `order_id` must equal the book's current `next_order_id` (the program verifies it),
 so the client derives the `Order` PDA deterministically.
+
+When the order will rest on a side that already holds its 512 orders, it must beat that side's worst price (a
+higher bid or a lower ask; equal is not better, because the resting order was there first), or it fails with
+`OrderBookFull`. When it does, the worst order is **evicted**: refunded to its owner's `unsettled_*` exactly as
+`cancel_order` would, removed from the book and its owner's open orders, and stamped `Cancelled`. The caller
+passes that order and its owner's `MarketUser` after the maker pairs, or only the order when it is their own.
+Without eviction, anyone willing to lock the minimum order size and pay rent 512 times could fill a side with
+orders far from the spread and keep every new order on that side out; with it, the orders that go are the ones
+least likely to fill.
 
 Fills never transfer tokens directly to the counterparty; they credit `unsettled_*` balances that each user
 drains later via `settle_funds`. This keeps the per-fill account footprint small (no maker ATAs in the fill
@@ -114,6 +123,8 @@ are all consequences of Quasar being zero-copy, `no_std`, and zero-allocation:
   vault for a user vault and drain fees.
 - Taker fees use **ceiling** division, rounding in the protocol's favor so many tiny fills can't leak a minor
   unit to the maker.
+- A full side **evicts its worst order** for a better one instead of refusing every new order, so filling the
+  book with far-off orders cannot shut a market (see the lifecycle section).
 
 ## Building and testing
 
@@ -130,7 +141,9 @@ cargo test            # QuasarSVM integration tests (they load the compiled .so)
 [QuasarSVM](https://github.com/blueshift-gg/quasar-svm), an in-process SVM, via `include`/`fs::read`. The suite
 in `src/tests.rs` drives the full lifecycle (initialize a market, create users, rest an ask, cross it with a
 bid, settle both sides, and withdraw the fee), asserting onchain state, token balances, and fee accounting at
-each step, plus an authorization rejection.
+each step, plus an authorization rejection. Five eviction tests fill the bid side with 512 bids and check that a
+worse or equal bid is refused, a better bid evicts the worst and rests, the evicted owner settles their refund,
+wrong or missing evicted accounts are rejected, and a trader can evict their own worst order.
 
 ## Extending
 

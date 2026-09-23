@@ -393,3 +393,307 @@ fn withdraw_fees_rejects_a_non_authority_signer(test: &mut Test) {
     })
     .fails_with(OrderBookError::NotMarketAuthority);
 }
+
+// --- Eviction: a full side makes room for a better order ---
+//
+// A side's 1024 tree nodes hold 512 resting orders, because every order after
+// the first adds a leaf and an inner node. These tests fill the bid side with
+// 512 one-lot bids, one per price from EVICTION_WORST_BID_PRICE upward, so the
+// worst bid is the first one placed: order ID 1, at the lowest price.
+
+const BID: u8 = 0;
+const ORDERS_PER_SIDE: u64 = 512;
+// One under the 20-order cap, so every filler can still place an order of
+// their own (the self-eviction test needs that).
+const ORDERS_PER_FILLER: u64 = 19;
+const EVICTION_WORST_BID_PRICE: u64 = 100;
+const EVICTION_ORDER_QUANTITY: u64 = 1;
+const EVICTION_BETTER_BID_PRICE: u64 = 10_000;
+const WORST_BID_ORDER_ID: u64 = 1;
+const EVICTION_TRADER_QUOTE: u64 = 1_000_000_000;
+
+struct Trader {
+    owner: Pubkey,
+    market_user: Pubkey,
+    base: Pubkey,
+    quote: Pubkey,
+}
+
+/// A distinct address per trader and role, clear of the fixed addresses above.
+fn trader_address(index: u8, role: u8) -> Pubkey {
+    let mut bytes = [0u8; 32];
+    bytes[0] = 200;
+    bytes[1] = index;
+    bytes[2] = role;
+    Pubkey::new_from_array(bytes)
+}
+
+/// A funded trader with a MarketUser.
+fn create_trader(test: &mut Test, market: Pubkey, index: u8) -> Trader {
+    let owner = trader_address(index, 1);
+    let base = trader_address(index, 2);
+    let quote = trader_address(index, 3);
+    let market_user = initialize_market_user(test, market, owner);
+    test.add(TokenAccount::new(BASE_MINT, owner).at(base));
+    test.add(
+        TokenAccount::new(QUOTE_MINT, owner)
+            .at(quote)
+            .amount(EVICTION_TRADER_QUOTE),
+    );
+    Trader {
+        owner,
+        market_user,
+        base,
+        quote,
+    }
+}
+
+/// Fill the bid side to capacity. Returns the fillers in order; the first one
+/// owns the worst bid, `WORST_BID_ORDER_ID`.
+fn fill_bid_side(test: &mut Test, market: Pubkey) -> Vec<Trader> {
+    let mut fillers: Vec<Trader> = Vec::new();
+    for order_id in 1..=ORDERS_PER_SIDE {
+        if (order_id - 1) % ORDERS_PER_FILLER == 0 {
+            let index = fillers.len() as u8;
+            fillers.push(create_trader(test, market, index));
+        }
+        let filler = fillers.last().unwrap();
+        let (owner, base, quote) = (filler.owner, filler.base, filler.quote);
+        place_order(
+            test,
+            market,
+            owner,
+            base,
+            quote,
+            BID,
+            EVICTION_WORST_BID_PRICE + (order_id - 1),
+            EVICTION_ORDER_QUANTITY,
+            order_id,
+            &[],
+        )
+        .succeeds();
+    }
+    fillers
+}
+
+/// Place a one-lot bid, passing `evicted` as the accounts after the (empty)
+/// maker pairs.
+fn place_bid(
+    test: &mut Test,
+    market: Pubkey,
+    trader: &Trader,
+    order_id: u64,
+    price: u64,
+    evicted: &[Pubkey],
+) -> Outcome {
+    let remaining_accounts = evicted
+        .iter()
+        .map(|address| AccountMeta::new(*address, false))
+        .collect();
+    let vaults = vaults(test, market);
+    test.send(PlaceOrderInstruction {
+        market,
+        order_book: ORDER_BOOK,
+        base_vault: vaults.base,
+        quote_vault: vaults.quote,
+        fee_vault: vaults.fee,
+        user_base_account: trader.base,
+        user_quote_account: trader.quote,
+        base_mint: BASE_MINT,
+        quote_mint: QUOTE_MINT,
+        owner: trader.owner,
+        side: BID,
+        price,
+        quantity: EVICTION_ORDER_QUANTITY,
+        order_id,
+        remaining_accounts,
+    })
+}
+
+#[quasar_test]
+fn full_side_refuses_an_order_no_better_than_its_worst(test: &mut Test) {
+    let market = init_market(test);
+    let fillers = fill_bid_side(test, market);
+    let worst_order = test.derive_pda(Order::seeds(&market, WORST_BID_ORDER_ID));
+
+    // Worse than the worst bid, and equal to it: equal is not better, because
+    // the resting bid got there first.
+    for price in [EVICTION_WORST_BID_PRICE - 1, EVICTION_WORST_BID_PRICE] {
+        place_bid(
+            test,
+            market,
+            &fillers[1],
+            ORDERS_PER_SIDE + 1,
+            price,
+            &[worst_order, fillers[0].market_user],
+        )
+        .fails_with(OrderBookError::OrderBookFull);
+    }
+    assert_eq!(
+        test.read::<Order>(worst_order).status,
+        OrderStatus::Open as u8
+    );
+}
+
+#[quasar_test]
+fn better_order_evicts_the_worst_and_rests(test: &mut Test) {
+    let market = init_market(test);
+    let fillers = fill_bid_side(test, market);
+    let newcomer = create_trader(test, market, 100);
+    let new_order_id = ORDERS_PER_SIDE + 1;
+    let worst_order = test.derive_pda(Order::seeds(&market, WORST_BID_ORDER_ID));
+
+    place_bid(
+        test,
+        market,
+        &newcomer,
+        new_order_id,
+        EVICTION_BETTER_BID_PRICE,
+        &[worst_order, fillers[0].market_user],
+    )
+    .succeeds();
+
+    assert_eq!(
+        test.read::<Order>(worst_order).status,
+        OrderStatus::Cancelled as u8
+    );
+    // The evicted bid's whole lock is owed back to its owner, exactly as a
+    // cancel would owe it.
+    let evicted_user = test.read::<MarketUser>(fillers[0].market_user);
+    assert_eq!(
+        u64::from(evicted_user.unsettled_quote),
+        EVICTION_WORST_BID_PRICE * EVICTION_ORDER_QUANTITY * QUOTE_LOT_SIZE
+    );
+    assert_eq!(evicted_user.open_orders_len as u64, ORDERS_PER_FILLER - 1);
+
+    let new_order = test.derive_pda(Order::seeds(&market, new_order_id));
+    assert_eq!(
+        test.read::<Order>(new_order).status,
+        OrderStatus::Open as u8
+    );
+    assert_eq!(
+        test.read::<MarketUser>(newcomer.market_user)
+            .open_orders_len,
+        1
+    );
+
+    // The side is still full, and its worst bid is now order 2, one tick up.
+    let second_worst = test.derive_pda(Order::seeds(&market, WORST_BID_ORDER_ID + 1));
+    place_bid(
+        test,
+        market,
+        &newcomer,
+        new_order_id + 1,
+        EVICTION_WORST_BID_PRICE + 1,
+        &[second_worst, fillers[0].market_user],
+    )
+    .fails_with(OrderBookError::OrderBookFull);
+}
+
+#[quasar_test]
+fn evicted_maker_settles_their_refund(test: &mut Test) {
+    let market = init_market(test);
+    let fillers = fill_bid_side(test, market);
+    let newcomer = create_trader(test, market, 100);
+    let evicted = &fillers[0];
+    let worst_order = test.derive_pda(Order::seeds(&market, WORST_BID_ORDER_ID));
+    let quote_before = test.tokens(evicted.quote);
+
+    place_bid(
+        test,
+        market,
+        &newcomer,
+        ORDERS_PER_SIDE + 1,
+        EVICTION_BETTER_BID_PRICE,
+        &[worst_order, evicted.market_user],
+    )
+    .succeeds();
+    settle_funds(test, market, evicted.owner, evicted.base, evicted.quote).succeeds();
+
+    assert_eq!(
+        test.tokens(evicted.quote) - quote_before,
+        EVICTION_WORST_BID_PRICE * EVICTION_ORDER_QUANTITY * QUOTE_LOT_SIZE
+    );
+    let evicted_user = test.read::<MarketUser>(evicted.market_user);
+    assert_eq!(u64::from(evicted_user.unsettled_base), 0);
+    assert_eq!(u64::from(evicted_user.unsettled_quote), 0);
+}
+
+#[quasar_test]
+fn eviction_rejects_missing_or_wrong_evicted_accounts(test: &mut Test) {
+    let market = init_market(test);
+    let fillers = fill_bid_side(test, market);
+    let newcomer = create_trader(test, market, 100);
+    let new_order_id = ORDERS_PER_SIDE + 1;
+    let worst_order = test.derive_pda(Order::seeds(&market, WORST_BID_ORDER_ID));
+    let second_worst = test.derive_pda(Order::seeds(&market, WORST_BID_ORDER_ID + 1));
+
+    place_bid(
+        test,
+        market,
+        &newcomer,
+        new_order_id,
+        EVICTION_BETTER_BID_PRICE,
+        &[],
+    )
+    .fails_with(OrderBookError::MissingEvictedAccounts);
+
+    // Order 2 is resting, but it is not the worst bid.
+    place_bid(
+        test,
+        market,
+        &newcomer,
+        new_order_id,
+        EVICTION_BETTER_BID_PRICE,
+        &[second_worst, fillers[0].market_user],
+    )
+    .fails_with(OrderBookError::EvictedAccountMismatch);
+
+    // The right order, with someone else's MarketUser to credit.
+    place_bid(
+        test,
+        market,
+        &newcomer,
+        new_order_id,
+        EVICTION_BETTER_BID_PRICE,
+        &[worst_order, fillers[1].market_user],
+    )
+    .fails_with(OrderBookError::EvictedAccountMismatch);
+
+    assert_eq!(
+        test.read::<Order>(worst_order).status,
+        OrderStatus::Open as u8
+    );
+}
+
+#[quasar_test]
+fn trader_can_evict_their_own_worst_order(test: &mut Test) {
+    let market = init_market(test);
+    let fillers = fill_bid_side(test, market);
+    let owner = &fillers[0];
+    let worst_order = test.derive_pda(Order::seeds(&market, WORST_BID_ORDER_ID));
+
+    // Only the evicted order is passed: the owner's MarketUser is already the
+    // instruction's `market_user`.
+    place_bid(
+        test,
+        market,
+        owner,
+        ORDERS_PER_SIDE + 1,
+        EVICTION_BETTER_BID_PRICE,
+        &[worst_order],
+    )
+    .succeeds();
+
+    assert_eq!(
+        test.read::<Order>(worst_order).status,
+        OrderStatus::Cancelled as u8
+    );
+    let user = test.read::<MarketUser>(owner.market_user);
+    assert_eq!(
+        u64::from(user.unsettled_quote),
+        EVICTION_WORST_BID_PRICE * EVICTION_ORDER_QUANTITY * QUOTE_LOT_SIZE
+    );
+    // One order out, one order in.
+    assert_eq!(user.open_orders_len as u64, ORDERS_PER_FILLER);
+}

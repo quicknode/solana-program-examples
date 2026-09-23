@@ -74,7 +74,7 @@ call `settle_funds` to pull their balances out.
   (base vault, quote vault, fee vault, order book), and the pubkey
   that can withdraw accumulated fees.
 - An **OrderBook** account - two stores: bids sorted highest-first,
-  asks sorted lowest-first, each holding up to 1024 entries. Rather
+  asks sorted lowest-first, each holding up to 512 orders. Rather
   than a plain list of orders, each side uses a depth-bounded tree (a
   critbit trie) for fast lookup - see [Ensuring fast order matching performance](#ensuring-fast-order-matching-performance).
   Each entry stores enough to drive matching (price, quantity,
@@ -374,7 +374,7 @@ Alice's remaining 2-NVDAx [bid](https://www.investopedia.com/terms/b/bid.asp) st
 ### State / data accounts
 
 - `Market`: PDA yes, seeds `["market", base_mint, quote_mint]`, authority program, holds fee rate, tick size, min order size, base/quote mint pubkeys, vault pubkeys, order book pubkey, `authority` wallet (allowed to withdraw fees)
-- `OrderBook`: PDA no (client-allocated at a public key the client generates), seeds n/a: too large (~180 KB) for an `init`/CPI PDA, so created via `create_account` (which needs a signing key a PDA lacks); tied to its market via `address = market.order_book`; authority program, holds two critbit trees (bids highest-first, asks lowest-first, 1024 leaves each), `next_order_id`
+- `OrderBook`: PDA no (client-allocated at a public key the client generates), seeds n/a: too large (~180 KB) for an `init`/CPI PDA, so created via `create_account` (which needs a signing key a PDA lacks); tied to its market via `address = market.order_book`; authority program, holds two critbit trees (bids highest-first, asks lowest-first, 512 orders each: every order after the first adds a leaf and an inner node to a 1024-node tree), `next_order_id`
 - `Order`: PDA yes, seeds `["order", market, order_id.to_le_bytes()]`, authority program, holds owner, side, price, original_quantity, filled_quantity, status, timestamp
 - `MarketUser`: PDA yes, seeds `["market_user", market, owner]`, authority program, holds `unsettled_base`, `unsettled_quote`, `open_orders: Vec<u64>` (max 20)
 
@@ -636,6 +636,19 @@ remaining_accounts[2*i]     = maker_order_pda (Order account)
 remaining_accounts[2*i + 1] = maker_user_account_pda (MarketUser)
 ```
 
+If the order will rest on a side that is already full, the side's
+worst-priced order follows the maker pairs, so the program can evict it
+(see the checks before resting, below):
+
+```
+remaining_accounts[2*fills]     = evicted_order_pda (Order account)
+remaining_accounts[2*fills + 1] = evicted_user_account_pda (MarketUser)
+```
+
+When the worst order is the caller's own, pass only the `Order`
+account: the caller's `MarketUser` is already `market_user`, and Anchor
+refuses the same writable account twice.
+
 If the caller doesn't pass any pairs, the order is treated as
 pure-maker: whatever part of it is allowed by the book state becomes a
 resting order.
@@ -648,7 +661,7 @@ resting order.
 - `quantity >= min_order_size` → `BelowMinOrderSize`
 - `open_orders.len() < 20` (mirror of the max_len on the struct) →
   `TooManyOpenOrders`
-- `remaining_accounts.len() % 2 == 0` → `MissingMakerAccounts`
+- `remaining_accounts.len() >= 2 * fills` → `MissingMakerAccounts`
 
 **Checks (per maker pair, during planning):**
 
@@ -667,8 +680,15 @@ resting order.
 
 **Checks (before resting remainder):**
 
-- the taker's side of the book isn't at its 1024-leaf capacity →
-  `OrderBookFull`
+- If the taker's side already holds its 512 orders, the remainder
+  must beat that side's worst price (a higher bid or a lower ask;
+  equal is not better, because the resting order was there first) →
+  `OrderBookFull`. When it does, the worst order is **evicted**:
+  - The caller passed that order, and its owner's `MarketUser` →
+    `MissingEvictedAccounts`
+  - The passed order is the worst order on this market, and the
+    `MarketUser` belongs to its owner on this market →
+    `EvictedAccountMismatch`
 - Integer math throughout: every multiplication uses
   `checked_mul`; every addition on balances uses `checked_add`;
   every product of two `u64` money values is computed in `u128`
@@ -745,6 +765,14 @@ On `order_book`:
   reverse-index order
 - Taker's remainder (if any) inserted into the correct side in price
   order
+
+On an evicted order (only when the taker's side was full), exactly as
+if its owner had called `cancel_order`:
+
+- Its owner's `unsettled_quote += price * remaining_quantity` (bid) or
+  `unsettled_base += remaining_quantity` (ask)
+- Removed from the book and from its owner's `open_orders`
+- `status = Cancelled`
 
 On the caller's new `order`:
 
@@ -1303,7 +1331,9 @@ From [`errors.rs`](programs/order-book/src/errors.rs):
 - `OrderNotFound`: `cancel_order` failed to locate the order in the book (sanity path)
 - `MarketPaused`: `place_order` on a market with `is_active = false` (no handler flips this today, but the field is there)
 - `Unauthorized`: `cancel_order` by someone other than the order owner
-- `OrderBookFull`: `place_order` remainder would push the taker's side past 1024 leaves
+- `OrderBookFull`: `place_order` remainder would rest on a side holding 512 orders without beating that side's worst price
+- `MissingEvictedAccounts`: A full side, and the worst resting order (with its owner's MarketUser) was not passed after the maker pairs
+- `EvictedAccountMismatch`: The order passed for eviction is not the side's worst, or the MarketUser passed is not its owner's
 - `TooManyOpenOrders`: User already has 20 open orders on this market
 - `InvalidTickSize`: `tick_size == 0` at init, or `price % tick_size != 0` on place
 - `BelowMinOrderSize`: `min_order_size == 0` at init, or `quantity < min_order_size` on place
@@ -1312,7 +1342,7 @@ From [`errors.rs`](programs/order-book/src/errors.rs):
 - `InvalidFeeBasisPoints`: `fee_basis_points > 10_000` at init
 - `InvalidFeeVault`: `market.fee_vault` on the struct does not match the passed `fee_vault` (the `address` constraint on `fee_vault`)
 - `MakerAccountMismatch`: Wrong number of maker accounts, wrong order, wrong market, or caller walked the book out of order
-- `MissingMakerAccounts`: `remaining_accounts.len()` not a multiple of 2
+- `MissingMakerAccounts`: Fewer remaining accounts than two per planned fill
 - `MakerOwnerMismatch`: Maker Order and MarketUser have different owners
 - `NotMarketAuthority`: `withdraw_fees` called by wrong signer
 
@@ -1375,10 +1405,19 @@ From [`errors.rs`](programs/order-book/src/errors.rs):
   the `fee_vault` account without re-checking its mint or authority.
 
 - **Book capacity check after matching.** The taker's remainder
-  check happens at the end. A bid that clears enough asks to free
-  up 3 slots can then rest its own 1-slot remainder even on a
-  previously-full book - matching the "liquidity-positive" spirit
-  of an order book.
+  check happens at the end. Matching removes orders from the other
+  side only, so a full side stays full; the remainder then rests only
+  by evicting that side's worst order.
+
+- **A full side evicts rather than refuses.** Each side holds 512
+  orders. Without eviction, anyone willing to lock the minimum order
+  size and pay rent 512 times could fill a side with orders far from
+  the spread and hold it, and every new order on that side would be
+  refused for as long as they liked. With eviction, an order that
+  beats the side's worst price removes that order and takes its slot,
+  so the orders that go are the ones least likely to fill, and the
+  market stays open at the prices that trade. The evicted order is
+  refunded the same way a cancel is, through `unsettled_*`.
 
 ### 6.3 Things this example does *not* do
 
@@ -1515,6 +1554,14 @@ test taker_partially_fills_resting_order_rest_stays_on_book ... ok
 
 - `doubling_prices_build_the_deepest_path_prices_allow`: Asks at 63 doubling prices plus two at price 1 make a 64-level path to the best ask
 - `deepest_path_adds_little_compute_to_insert_fill_and_cancel`: Insert, fill, and cancel at the bottom of that path stay within 15,000 compute units of a shallow book
+
+**Eviction (a full side, 512 bids):**
+
+- `full_side_refuses_an_order_no_better_than_its_worst`: A worse or equal bid gets `OrderBookFull`
+- `better_order_evicts_the_worst_and_rests`: The worst bid is Cancelled and refunded, the new bid rests, the side stays full
+- `evicted_maker_settles_their_refund`: The evicted owner's `settle_funds` pays out the refund
+- `eviction_rejects_missing_or_wrong_evicted_accounts`: No evicted order, a non-worst order, or the wrong owner's `MarketUser`
+- `trader_can_evict_their_own_worst_order`: Only the `Order` account is passed, and the caller's own `MarketUser` is credited
 
 ### CI note
 
