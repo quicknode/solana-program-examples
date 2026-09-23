@@ -4,10 +4,12 @@ use quasar_lang::remaining::RemainingAccounts;
 use quasar_spl::prelude::*;
 
 use crate::errors::VaultError;
-use crate::oracle::{read_mint_decimals, read_token_amount, read_token_mint_and_owner};
+use crate::oracle::{read_mint_decimals, read_token_mint_and_owner};
 use crate::state::{
-    load_asset_config, snapshot_strategy, ShareMintPda, Strategy, UsdcVaultPda, STRATEGY_SEED,
+    load_asset_config, snapshot_strategy, ShareMintPda, Strategy, UsdcVaultPda, MAX_ASSETS,
+    STRATEGY_SEED,
 };
+use crate::state::{read_asset_holdings, write_asset_holdings};
 
 /// remaining_accounts arrive as, per asset index 0..asset_count:
 ///   [asset_config, vault, mint, user_token_account]
@@ -69,7 +71,6 @@ pub fn handle_withdraw(
         VaultError::IncompleteAssetAccounts
     );
 
-    let vault_usdc_amount = accounts.vault_usdc.amount();
     let usdc_decimals = accounts.usdc_mint.decimals;
     let strategy_index = u64::from(accounts.strategy.index);
     let strategy_bump = accounts.strategy.bump;
@@ -79,21 +80,41 @@ pub fn handle_withdraw(
     let shares_u128 = shares_to_burn as u128;
     let total_u128 = total_shares as u128;
 
-    // USDC leg, floored in the protocol's favour.
-    let amount_usdc: u64 = (vault_usdc_amount as u128)
-        .checked_mul(shares_u128)
-        .ok_or(VaultError::MathOverflow)?
-        .checked_div(total_u128)
-        .ok_or(VaultError::MathOverflow)?
-        .try_into()
-        .map_err(|_| VaultError::MathOverflow)?;
-    require!(amount_usdc >= min_usdc_out, VaultError::UsdcSlippage);
-
-    // Checks-effects-interactions: shrink supply before any transfer.
+    // Every leg is a proportion of the holdings the program has recorded, not of
+    // the vault's token balance, so tokens donated into a vault are never paid
+    // out. Floored in the fund's favour.
+    let proportion = |holding: u64| -> Result<u64, ProgramError> {
+        (holding as u128)
+            .checked_mul(shares_u128)
+            .ok_or(VaultError::MathOverflow)?
+            .checked_div(total_u128)
+            .ok_or(VaultError::MathOverflow)?
+            .try_into()
+            .map_err(|_| VaultError::MathOverflow.into())
+    };
     let mut strategy = snapshot_strategy(&accounts.strategy);
+    let amount_usdc = proportion(strategy.usdc_holdings)?;
+    require!(amount_usdc >= min_usdc_out, VaultError::UsdcSlippage);
+    let mut asset_holdings = read_asset_holdings(&strategy.asset_holdings);
+    let mut asset_amounts = [0u64; MAX_ASSETS as usize];
+    for (index, amount) in asset_amounts.iter_mut().enumerate().take(asset_count) {
+        *amount = proportion(asset_holdings[index])?;
+    }
+
+    // Checks-effects-interactions: shrink supply and holdings before any transfer.
     strategy.total_shares = total_shares
         .checked_sub(shares_to_burn)
         .ok_or(VaultError::MathOverflow)?;
+    strategy.usdc_holdings = strategy
+        .usdc_holdings
+        .checked_sub(amount_usdc)
+        .ok_or(VaultError::MathOverflow)?;
+    for (index, amount) in asset_amounts.iter().enumerate().take(asset_count) {
+        asset_holdings[index] = asset_holdings[index]
+            .checked_sub(*amount)
+            .ok_or(VaultError::MathOverflow)?;
+    }
+    strategy.asset_holdings = write_asset_holdings(&asset_holdings);
     accounts.strategy.set_inner(strategy);
 
     let index_bytes = strategy_index.to_le_bytes();
@@ -131,7 +152,7 @@ pub fn handle_withdraw(
     }
 
     // Each basket asset, paid in kind, proportional to shares burned.
-    for i in 0..asset_count {
+    for (i, &amount) in asset_amounts.iter().enumerate().take(asset_count) {
         let config_view = get_view(&remaining, i * ACCOUNTS_PER_ASSET)?;
         let vault_view = get_view(&remaining, i * ACCOUNTS_PER_ASSET + 1)?;
         let mint_view = get_view(&remaining, i * ACCOUNTS_PER_ASSET + 2)?;
@@ -158,15 +179,6 @@ pub fn handle_withdraw(
         let (recipient_mint, recipient_owner) = read_token_mint_and_owner(&user_ata_view)?;
         require_keys_eq!(recipient_owner, user_key, VaultError::InvalidRecipient);
         require_keys_eq!(recipient_mint, config.mint, VaultError::InvalidRecipient);
-
-        let vault_balance = read_token_amount(&vault_view)?;
-        let amount: u64 = (vault_balance as u128)
-            .checked_mul(shares_u128)
-            .ok_or(VaultError::MathOverflow)?
-            .checked_div(total_u128)
-            .ok_or(VaultError::MathOverflow)?
-            .try_into()
-            .map_err(|_| VaultError::MathOverflow)?;
 
         if amount > 0 {
             let decimals = read_mint_decimals(&mint_view)?;

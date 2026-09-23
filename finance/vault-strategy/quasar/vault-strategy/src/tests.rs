@@ -5,12 +5,16 @@
 //! deposit is priced 1:1 on the first deposit and deployed into the basket
 //! through the router CPI. `deposit_rejects_price_from_before_a_restart`
 //! reuses that setup to show a pre-restart price is refused.
+//! `donation_does_not_inflate_share_price` shows a donation straight into the
+//! USDC vault leaves the share price alone, and
+//! `deposit_rejects_leg_that_buys_nothing` shows a deposit too small to buy
+//! any of the asset is refused.
 
 use {
     crate::{
         cpi::{
             AddAssetInstruction, ApproveAssetInstruction, DepositInstruction,
-            InitializeRegistryInstruction, InitializeStrategyInstruction,
+            InitializeRegistryInstruction, InitializeStrategyInstruction, WithdrawInstruction,
         },
         errors::VaultError,
         state::{AssetConfig, AssetVaultPda, Registry, ShareMintPda, Strategy, UsdcVaultPda},
@@ -38,6 +42,14 @@ const PRICE_FEED: Pubkey = Pubkey::new_from_array([6; 32]);
 const DEPOSITOR_USDC: Pubkey = Pubkey::new_from_array([7; 32]);
 const DEPOSITOR_SHARE: Pubkey = Pubkey::new_from_array([8; 32]);
 const FEED_OWNER: Pubkey = Pubkey::new_from_array([9; 32]);
+const ATTACKER: Pubkey = Pubkey::new_from_array([11; 32]);
+const ATTACKER_USDC: Pubkey = Pubkey::new_from_array([12; 32]);
+const ATTACKER_SHARE: Pubkey = Pubkey::new_from_array([13; 32]);
+const ATTACKER_ASSET: Pubkey = Pubkey::new_from_array([14; 32]);
+const VICTIM: Pubkey = Pubkey::new_from_array([15; 32]);
+const VICTIM_USDC: Pubkey = Pubkey::new_from_array([16; 32]);
+const VICTIM_SHARE: Pubkey = Pubkey::new_from_array([17; 32]);
+const VICTIM_ASSET: Pubkey = Pubkey::new_from_array([18; 32]);
 
 fn router_id() -> Pubkey {
     ROUTER_ID_STR.parse().unwrap()
@@ -312,4 +324,219 @@ fn deposit_rejects_price_from_before_a_restart(test: &mut Test) {
     send_deposit(test, &w)
         .succeeds()
         .has_tokens(DEPOSITOR_SHARE, DEPOSIT);
+}
+
+/// A depositor's wallet plus their USDC, share, and asset token accounts (the
+/// share account must exist before a deposit; the asset account before an
+/// in-kind withdrawal).
+fn add_depositor(test: &mut Test, w: &Pdas, owner: Pubkey, accounts: [Pubkey; 3], usdc: u64) {
+    let [usdc_account, share_account, asset_account] = accounts;
+    test.add(Wallet::new().at(owner));
+    test.add(
+        TokenAccount::new(USDC_MINT, owner)
+            .at(usdc_account)
+            .amount(usdc),
+    );
+    test.add(TokenAccount::new(w.share_mint, owner).at(share_account));
+    test.add(TokenAccount::new(ASSET_MINT, owner).at(asset_account));
+}
+
+/// Deposit: declared accounts, then remaining accounts per basket asset
+/// (asset_config, vault_asset, asset_mint, asset_rate, price_feed).
+fn deposit_as(
+    w: &Pdas,
+    depositor: Pubkey,
+    usdc_account: Pubkey,
+    share_account: Pubkey,
+    usdc_amount: u64,
+    minimum_shares: u64,
+) -> DepositInstruction {
+    DepositInstruction {
+        depositor,
+        strategy_index_seed: STRATEGY_INDEX,
+        usdc_mint: USDC_MINT,
+        depositor_usdc_account: usdc_account,
+        depositor_share_account: share_account,
+        router_config: router_config_pda(),
+        router_usdc_treasury: router_treasury_pda(),
+        swap_router_program: router_id(),
+        usdc_amount,
+        minimum_shares,
+        remaining_accounts: vec![
+            AccountMeta::new_readonly(w.asset_config, false),
+            AccountMeta::new(w.vault_asset, false),
+            AccountMeta::new(ASSET_MINT, false),
+            AccountMeta::new_readonly(router_rate_pda(&ASSET_MINT), false),
+            AccountMeta::new_readonly(PRICE_FEED, false),
+        ],
+    }
+}
+
+/// Withdraw in kind: declared accounts, then remaining accounts per basket
+/// asset (asset_config, vault_asset, asset_mint, user_asset_account).
+fn withdraw(
+    w: &Pdas,
+    user: Pubkey,
+    accounts: [Pubkey; 3],
+    shares_to_burn: u64,
+) -> WithdrawInstruction {
+    let [usdc_account, share_account, asset_account] = accounts;
+    WithdrawInstruction {
+        user,
+        strategy_index_seed: STRATEGY_INDEX,
+        usdc_mint: USDC_MINT,
+        user_share_account: share_account,
+        user_usdc_account: usdc_account,
+        shares_to_burn,
+        min_usdc_out: 0,
+        remaining_accounts: vec![
+            AccountMeta::new_readonly(w.asset_config, false),
+            AccountMeta::new(w.vault_asset, false),
+            AccountMeta::new_readonly(ASSET_MINT, false),
+            AccountMeta::new(asset_account, false),
+        ],
+    }
+}
+
+/// A holder's position valued in USDC minor units at the test's price: USDC
+/// plus the asset at 250 USDC per token.
+fn value_in_usdc(test: &Test, usdc_account: Pubkey, asset_account: Pubkey) -> u64 {
+    test.tokens(usdc_account) + test.tokens(asset_account) * RATE
+}
+
+/// The first-depositor inflation attack: a small first deposit, then a donation
+/// straight into the strategy's USDC vault, then a 1,000 USDC deposit with no
+/// `minimum_shares` floor. The program prices shares from the holdings it has
+/// recorded, so the donation changes the vault's balance and nothing the
+/// handler reads: the victim gets exactly the shares they would have got
+/// without it, and the donated USDC stays in the vault outside the fund.
+/// Modeled on the lending example's
+/// `raw_token_donation_does_not_inflate_exchange_rate`.
+#[quasar_test]
+fn donation_does_not_inflate_share_price(test: &mut Test) {
+    let w = setup_deposit(test);
+    add_pyth_feed(test, PYTH_PRICE, NOW);
+
+    // The smallest deposit that buys any of the asset at 250 USDC minor units
+    // per asset minor unit.
+    const ATTACKER_DEPOSIT: u64 = RATE;
+    const DONATION: u64 = 1_000_000_000; // 1,000 USDC
+    const VICTIM_DEPOSIT: u64 = 1_000_000_000; // 1,000 USDC
+
+    let attacker_accounts = [ATTACKER_USDC, ATTACKER_SHARE, ATTACKER_ASSET];
+    let victim_accounts = [VICTIM_USDC, VICTIM_SHARE, VICTIM_ASSET];
+    add_depositor(
+        test,
+        &w,
+        ATTACKER,
+        attacker_accounts,
+        ATTACKER_DEPOSIT + DONATION,
+    );
+    add_depositor(test, &w, VICTIM, victim_accounts, VICTIM_DEPOSIT);
+
+    // The empty-fund deposit mints one share per minor unit and buys one minor
+    // unit of the asset.
+    test.send(deposit_as(
+        &w,
+        ATTACKER,
+        ATTACKER_USDC,
+        ATTACKER_SHARE,
+        ATTACKER_DEPOSIT,
+        0,
+    ))
+    .succeeds()
+    .has_tokens(ATTACKER_SHARE, ATTACKER_DEPOSIT)
+    .has_tokens(w.vault_asset, 1);
+
+    // The attacker sends 1,000 USDC straight to the USDC vault with an ordinary
+    // token transfer (SPL Token `Transfer`, instruction 3). The deposit handler
+    // never ran, so the program records none of it.
+    let mut transfer_data = vec![3u8];
+    transfer_data.extend_from_slice(&DONATION.to_le_bytes());
+    test.send(Instruction {
+        program_id: SPL_TOKEN_PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(ATTACKER_USDC, false),
+            AccountMeta::new(w.vault_usdc, false),
+            AccountMeta::new_readonly(ATTACKER, true),
+        ],
+        data: transfer_data,
+    })
+    .succeeds()
+    .has_tokens(w.vault_usdc, DONATION);
+    let strategy = test.read::<Strategy>(w.strategy);
+    assert_eq!(
+        u64::from(strategy.usdc_holdings),
+        0,
+        "a donation is not recorded"
+    );
+
+    // The victim deposits 1,000 USDC with no floor. Priced off the recorded NAV of
+    // 250 minor units against 250 shares: 1,000,000,000 shares, the same as with
+    // no donation at all. Read off the vault balance it would have been
+    // 1,000,000,000 * 250 / 1,000,000,250 = 249.
+    test.send(deposit_as(
+        &w,
+        VICTIM,
+        VICTIM_USDC,
+        VICTIM_SHARE,
+        VICTIM_DEPOSIT,
+        0,
+    ))
+    .succeeds()
+    .has_tokens(VICTIM_SHARE, VICTIM_DEPOSIT);
+
+    // The victim redeems everything in kind, all 1,000 USDC of it in the asset.
+    test.send(withdraw(&w, VICTIM, victim_accounts, VICTIM_DEPOSIT))
+        .succeeds()
+        .has_tokens(VICTIM_SHARE, 0);
+    assert_eq!(
+        value_in_usdc(test, VICTIM_USDC, VICTIM_ASSET),
+        VICTIM_DEPOSIT
+    );
+
+    // The attacker redeems their shares for what they deposited through the
+    // handler. The donation is never paid out and stays in the vault.
+    test.send(withdraw(&w, ATTACKER, attacker_accounts, ATTACKER_DEPOSIT))
+        .succeeds()
+        .has_tokens(ATTACKER_SHARE, 0)
+        .has_tokens(w.vault_usdc, DONATION);
+    assert_eq!(
+        value_in_usdc(test, ATTACKER_USDC, ATTACKER_ASSET),
+        ATTACKER_DEPOSIT
+    );
+
+    let strategy = test.read::<Strategy>(w.strategy);
+    assert_eq!(u64::from(strategy.total_shares), 0, "total_shares");
+    assert_eq!(u64::from(strategy.usdc_holdings), 0, "usdc_holdings");
+}
+
+/// A deposit leg that spends USDC and buys none of its asset would mint shares
+/// against no recorded value, and every later deposit would then divide by a
+/// zero NAV. At 250 USDC minor units per asset minor unit, a one-minor-unit
+/// deposit buys nothing, so it must be refused.
+#[quasar_test]
+fn deposit_rejects_leg_that_buys_nothing(test: &mut Test) {
+    let w = setup_deposit(test);
+    add_pyth_feed(test, PYTH_PRICE, NOW);
+    add_depositor(
+        test,
+        &w,
+        ATTACKER,
+        [ATTACKER_USDC, ATTACKER_SHARE, ATTACKER_ASSET],
+        1,
+    );
+
+    test.send(deposit_as(
+        &w,
+        ATTACKER,
+        ATTACKER_USDC,
+        ATTACKER_SHARE,
+        1,
+        0,
+    ))
+    .fails_with(VaultError::DepositTooSmall);
+
+    let strategy = test.read::<Strategy>(w.strategy);
+    assert_eq!(u64::from(strategy.total_shares), 0, "total_shares");
 }

@@ -7471,10 +7471,12 @@ dependencies = [
  "anchor-v2-testing",
  "borsh 1.7.0",
  "mock-swap-router",
+ "pinocchio 0.11.2",
  "solana-account 3.4.0",
  "solana-address 2.6.1",
  "solana-clock 3.1.1",
  "solana-kite",
+ "solana-sysvar 3.1.1",
  "wincode 0.5.5",
 ]
 

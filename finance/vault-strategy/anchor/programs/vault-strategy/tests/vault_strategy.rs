@@ -15,6 +15,8 @@ use {
     },
 };
 
+use vault_strategy::error::VaultError;
+
 fn token_program_id() -> Address {
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         .parse()
@@ -592,6 +594,58 @@ fn tsla_only_strategy(ctx: &mut TestContext) {
 fn read_strategy(ctx: &TestContext) -> vault_strategy::state::Strategy {
     let account = ctx.svm.get_account(&ctx.strategy_pda).unwrap();
     vault_strategy::state::Strategy::try_deserialize(&mut &account.data[..]).unwrap()
+}
+
+/// How a failed transaction reports one of the program's errors: Anchor numbers
+/// them from 6000 in declaration order.
+fn program_error(error: VaultError) -> String {
+    format!("Custom({})", 6000 + error as u32)
+}
+
+/// Recorded holdings must equal the vaults' token balances whenever nothing has
+/// been donated: a mismatch means a handler moved tokens without recording it.
+fn assert_holdings_match_vaults(ctx: &TestContext) {
+    let strategy = read_strategy(ctx);
+    assert_eq!(
+        strategy.usdc_holdings,
+        get_token_account_balance(&ctx.svm, &ctx.vault_usdc).unwrap(),
+        "recorded USDC matches the USDC vault"
+    );
+    assert_eq!(
+        strategy.asset_holdings[0],
+        get_token_account_balance(&ctx.svm, &ctx.vault_tsla).unwrap(),
+        "recorded TSLAx matches the TSLAx vault"
+    );
+    assert_eq!(
+        strategy.asset_holdings[1],
+        get_token_account_balance(&ctx.svm, &ctx.vault_nvda).unwrap(),
+        "recorded NVDAx matches the NVDAx vault"
+    );
+}
+
+/// Transfer USDC straight into the strategy's USDC vault with an ordinary token
+/// transfer, never calling the deposit handler.
+fn donate_usdc(ctx: &mut TestContext, donor: &Keypair, amount: u64) {
+    let ix = spl_token::instruction::transfer(
+        &spl_token::ID,
+        &derive_ata(&donor.pubkey(), &ctx.usdc_mint),
+        &ctx.vault_usdc,
+        &donor.pubkey(),
+        &[],
+        amount,
+    )
+    .unwrap();
+    send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[donor], &donor.pubkey()).unwrap();
+}
+
+/// A holder's position valued in USDC minor units at the test's starting prices
+/// (TSLAx $250, NVDAx $180; both assets and USDC have six decimals).
+fn value_in_usdc(ctx: &TestContext, owner: &Address) -> u64 {
+    let balance =
+        |mint: &Address| get_token_account_balance(&ctx.svm, &derive_ata(owner, mint)).unwrap_or(0);
+    balance(&ctx.usdc_mint)
+        + balance(&ctx.tsla_mint) * (TSLA_PRICE as u64 / 100_000_000)
+        + balance(&ctx.nvda_mint) * (NVDA_PRICE as u64 / 100_000_000)
 }
 
 fn read_asset_config(ctx: &TestContext, index: u8) -> vault_strategy::state::AssetConfig {
@@ -1400,9 +1454,12 @@ fn test_full_lifecycle() {
         3_000_000
     );
 
+    assert_holdings_match_vaults(&ctx);
+
     // NVDAx 180 -> 200; basket drifts to 37.5 / 62.5. Rebalance back to 40/60.
     set_nvda_price(&mut ctx, 20_000_000_000, 200);
     do_rebalance(&mut ctx, 1, 0, 120_000, 24_000_000);
+    assert_holdings_match_vaults(&ctx);
     assert_eq!(
         get_token_account_balance(&ctx.svm, &ctx.vault_tsla).unwrap(),
         1_536_000
@@ -1428,6 +1485,8 @@ fn test_full_lifecycle() {
         4_320_000
     );
 
+    assert_holdings_match_vaults(&ctx);
+
     // A year passes; the manager collects 1% of the 1,350,000,000 supply = 13,500,000.
     advance_one_year(&mut ctx);
     let manager_share = do_collect_fees(&mut ctx);
@@ -1452,4 +1511,194 @@ fn test_full_lifecycle() {
         0
     );
     assert_eq!(read_strategy(&ctx).total_shares, 463_500_000);
+    assert_holdings_match_vaults(&ctx);
+}
+
+/// The first-depositor inflation attack: a dust deposit, then a donation straight
+/// into the strategy's USDC vault, then a 1,000 USDC deposit with no
+/// `minimum_shares` floor. The program prices shares from the holdings it has
+/// recorded, so the donation changes the vault's balance and nothing the
+/// handler reads: the victim gets exactly the shares they would have got without
+/// it, and the donated USDC stays in the vault outside the fund. Modeled on the
+/// lending example's `raw_token_donation_does_not_inflate_exchange_rate`.
+#[test]
+fn test_donation_does_not_inflate_share_price() {
+    let mut ctx = setup_full();
+    standard_strategy(&mut ctx);
+
+    let donation = 1_000_000_000u64; // 1,000 USDC
+    let victim_deposit = 1_000_000_000u64; // 1,000 USDC
+
+    // The attacker deposits one minor unit. Both 40/60 deploy legs round down to
+    // zero USDC and are skipped, so the minor unit stays in the USDC vault,
+    // recorded, and the empty-fund deposit mints one share per minor unit.
+    let attacker = fund_user(&mut ctx, 1 + donation);
+    let attacker_share = do_deposit(&mut ctx, &attacker, 1, 0);
+    assert_eq!(
+        get_token_account_balance(&ctx.svm, &attacker_share).unwrap(),
+        1
+    );
+    assert_eq!(read_strategy(&ctx).usdc_holdings, 1);
+
+    // The donation lands in the vault without going through the deposit handler.
+    donate_usdc(&mut ctx, &attacker, donation);
+    assert_eq!(
+        get_token_account_balance(&ctx.svm, &ctx.vault_usdc).unwrap(),
+        1 + donation
+    );
+    assert_eq!(
+        read_strategy(&ctx).usdc_holdings,
+        1,
+        "a donation is not recorded"
+    );
+
+    // The victim deposits 1,000 USDC with no floor. Priced off the recorded NAV
+    // of one minor unit against one share: 1,000,000,000 * 1 / 1 shares, the same
+    // as with no donation at all. Read off the vault balance it would have been
+    // 1,000,000,000 * 1 / 1,000,000,001 = 0.
+    let victim = fund_user(&mut ctx, victim_deposit);
+    let victim_share = do_deposit(&mut ctx, &victim, victim_deposit, 0);
+    let victim_shares = get_token_account_balance(&ctx.svm, &victim_share).unwrap();
+    assert_eq!(victim_shares, victim_deposit);
+
+    // The victim redeems everything in kind: all but rounding dust of the 1,000
+    // USDC they put in.
+    do_withdraw(&mut ctx, &victim, victim_shares, 0);
+    let victim_value = value_in_usdc(&ctx, &victim.pubkey());
+    assert!(
+        victim_value + 1_000 >= victim_deposit,
+        "victim got back {victim_value} of {victim_deposit}"
+    );
+
+    // The attacker redeems their one share for the recorded holdings left: their
+    // own minor unit plus the victim's rounding dust, under a tenth of a cent.
+    // The donation is never paid out.
+    do_withdraw(&mut ctx, &attacker, 1, 0);
+    let attacker_value = value_in_usdc(&ctx, &attacker.pubkey());
+    assert!(
+        attacker_value < 1_000,
+        "attacker got back {attacker_value} minor units"
+    );
+    assert_eq!(read_strategy(&ctx).total_shares, 0);
+    assert_eq!(read_strategy(&ctx).usdc_holdings, 0);
+    assert!(get_token_account_balance(&ctx.svm, &ctx.vault_usdc).unwrap() >= donation);
+}
+
+/// A deposit leg that spends USDC and buys none of its asset would mint shares
+/// against no recorded value, and every later deposit would then divide by a
+/// zero NAV. With TSLAx at 100% and $250, a one-minor-unit deposit swaps its
+/// minor unit for zero TSLAx, so the deposit must be refused.
+#[test]
+fn test_deposit_rejects_leg_that_buys_nothing() {
+    let mut ctx = setup_full();
+    tsla_only_strategy(&mut ctx);
+    set_weight(&mut ctx, 0, 10_000).unwrap();
+
+    let attacker = fund_user(&mut ctx, 1);
+    let ix = deposit_instruction(&ctx, &attacker, 1, 0, deposit_remaining_tsla(&ctx));
+    let r = send_transaction_from_instructions(
+        &mut ctx.svm,
+        vec![ix],
+        &[&attacker],
+        &attacker.pubkey(),
+    );
+    let err = format!(
+        "{:?}",
+        r.expect_err("a leg that buys nothing must revert the deposit")
+    );
+    assert!(
+        err.contains(&program_error(VaultError::DepositTooSmall)),
+        "{err}"
+    );
+    assert_eq!(read_strategy(&ctx).total_shares, 0);
+
+    // A deposit large enough to buy some TSLAx goes through.
+    let user = fund_user(&mut ctx, 1_000_000);
+    do_deposit_tsla_only(&mut ctx, &user, 1_000_000, 1);
+    assert_eq!(read_strategy(&ctx).asset_holdings[0], 4_000);
+}
+
+/// Donated USDC is outside the fund, so a rebalance cannot spend it: the buy leg
+/// may spend at most the recorded USDC, which after the sell leg is what the
+/// sale brought in.
+#[test]
+fn test_rebalance_cannot_spend_donated_usdc() {
+    let mut ctx = setup_full();
+    standard_strategy(&mut ctx);
+
+    // Alice's 900 USDC is fully deployed; the recorded USDC is zero.
+    let alice = fund_user(&mut ctx, 900_000_000);
+    do_deposit(&mut ctx, &alice, 900_000_000, 1);
+    assert_eq!(read_strategy(&ctx).usdc_holdings, 0);
+
+    let donor = fund_user(&mut ctx, 100_000_000);
+    donate_usdc(&mut ctx, &donor, 100_000_000);
+
+    // Selling 0.1 NVDAx at $180 brings in 18 USDC; investing 50 would need 32 USDC
+    // of the donation.
+    let (sell_mint, sell_config, sell_feed, vault_sell, sell_rate) = asset_accounts(&ctx, 1);
+    let (buy_mint, buy_config, buy_feed, vault_buy, buy_rate) = asset_accounts(&ctx, 0);
+    let rebalance = |sell_amount: u64, usdc_to_invest: u64| {
+        Instruction::new_with_bytes(
+            ctx.vault_program_id,
+            &vault_strategy::instruction::Rebalance {
+                sell_amount,
+                usdc_to_invest,
+            }
+            .data(),
+            vault_strategy::accounts::RebalanceAccountConstraints {
+                manager: ctx.manager.pubkey(),
+                strategy: ctx.strategy_pda,
+                usdc_mint: ctx.usdc_mint,
+                sell_mint,
+                buy_mint,
+                sell_config,
+                buy_config,
+                sell_price_feed: sell_feed,
+                buy_price_feed: buy_feed,
+                vault_sell,
+                vault_buy,
+                vault_usdc: ctx.vault_usdc,
+                sell_rate,
+                buy_rate,
+                router_config: ctx.router_config_pda,
+                router_usdc_treasury: ctx.router_usdc_treasury,
+                swap_router_program: ctx.router_program_id,
+                associated_token_program: ata_program_id(),
+                token_program: token_program_id(),
+                system_program: system_program::ID,
+            }
+            .to_account_metas(None),
+        )
+    };
+    let too_much = rebalance(100_000, 50_000_000);
+    let r = send_transaction_from_instructions(
+        &mut ctx.svm,
+        vec![too_much],
+        &[&ctx.manager],
+        &ctx.manager.pubkey(),
+    );
+    let err = format!(
+        "{:?}",
+        r.expect_err("a rebalance must not spend donated USDC")
+    );
+    assert!(
+        err.contains(&program_error(VaultError::InsufficientHoldings)),
+        "{err}"
+    );
+
+    // Investing only what the sale brought in goes through, and the donation is
+    // still outside the recorded holdings.
+    ctx.svm.expire_blockhash();
+    do_rebalance(&mut ctx, 1, 0, 100_000, 18_000_000);
+    let strategy = read_strategy(&ctx);
+    assert_eq!(strategy.usdc_holdings, 0);
+    assert_eq!(
+        get_token_account_balance(&ctx.svm, &ctx.vault_usdc).unwrap(),
+        100_000_000
+    );
+    assert_eq!(
+        strategy.asset_holdings[1],
+        get_token_account_balance(&ctx.svm, &ctx.vault_nvda).unwrap()
+    );
 }

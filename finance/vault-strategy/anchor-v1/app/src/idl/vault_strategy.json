@@ -1089,6 +1089,16 @@
       "code": 6026,
       "name": "PricePredatesRestart",
       "msg": "Price feed is stale: it predates the last cluster restart"
+    },
+    {
+      "code": 6027,
+      "name": "DepositTooSmall",
+      "msg": "Deposit is too small: a deployment leg would buy none of its asset"
+    },
+    {
+      "code": 6028,
+      "name": "InsufficientHoldings",
+      "msg": "Rebalance spends more than the strategy's recorded holdings"
     }
   ],
   "types": [
@@ -1284,6 +1294,27 @@
           {
             "name": "total_shares",
             "type": "u64"
+          },
+          {
+            "name": "usdc_holdings",
+            "docs": [
+              "USDC the program has accounted for in the USDC vault: deposits in, swap",
+              "spending and withdrawals out. Share prices and payouts use this, never the",
+              "vault's token balance, so USDC transferred straight into the vault",
+              "(a donation) is ignored rather than counted as fund value."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "asset_holdings",
+            "docs": [
+              "Each asset's accounted-for amount, indexed by asset index: swap output in,",
+              "swap input and withdrawals out. Like `usdc_holdings`, it ignores tokens",
+              "transferred straight into a vault. Always <= that vault's token balance."
+            ],
+            "type": {
+              "array": ["u64", 16]
+            }
           },
           {
             "name": "last_fee_accrual_timestamp",

@@ -33,6 +33,15 @@ pub struct Strategy {
     /// the Pyth-implied amount on deposit/rebalance. Bounded by MAX_SLIPPAGE_BPS.
     pub max_slippage_bps: u16,
     pub total_shares: u64,
+    /// USDC the program has accounted for in the USDC vault: deposits in, swap
+    /// spending and withdrawals out. Share prices and payouts use this, never the
+    /// vault's token balance, so USDC transferred straight into the vault
+    /// (a donation) is ignored rather than counted as fund value.
+    pub usdc_holdings: u64,
+    /// Each asset's accounted-for amount, indexed by asset index: swap output in,
+    /// swap input and withdrawals out. Like `usdc_holdings`, it ignores tokens
+    /// transferred straight into a vault. Always <= that vault's token balance.
+    pub asset_holdings: [u64; MAX_ASSETS as usize],
     pub last_fee_accrual_timestamp: i64,
     /// Assets live at PDAs indexed 0..asset_count, so callers can re-derive the
     /// complete set and no asset can be silently omitted from a NAV calculation.
