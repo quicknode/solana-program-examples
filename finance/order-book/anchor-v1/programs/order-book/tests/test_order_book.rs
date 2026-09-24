@@ -2755,3 +2755,29 @@ fn trader_can_evict_their_own_worst_order() {
         ORDERS_PER_FILLER as u32
     );
 }
+
+#[test]
+fn full_side_cancel_of_the_last_scanned_order_fits_the_default_budget() {
+    // `cancel_order` finds the order's tree key by walking the side from the
+    // best price down, so on a full bid side the worst bid is the last of
+    // 512 leaves it reads. That is the most compute a cancel can cost.
+    let mut sc = full_setup();
+    initialize_market_and_users(&mut sc);
+    let fillers = fill_bid_side(&mut sc);
+
+    let instruction = build_cancel_order_ix(
+        &sc,
+        &fillers[0].keypair.pubkey(),
+        fillers[0].market_user,
+        WORST_BID_ORDER_ID,
+    );
+    let units = send_and_measure(&mut sc.svm, instruction, &fillers[0].keypair);
+    println!("cancel of the last of {ORDERS_PER_SIDE} bids scanned: {units} CU");
+    assert!(units < DEFAULT_INSTRUCTION_COMPUTE_UNITS, "{units} CU");
+
+    let (_, status) = read_order_fill_and_status(
+        &sc.svm,
+        &order_pda(&sc.program_id, &sc.market, WORST_BID_ORDER_ID),
+    );
+    assert_eq!(status, ORDER_STATUS_CANCELLED);
+}

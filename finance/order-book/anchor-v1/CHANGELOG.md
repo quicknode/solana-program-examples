@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-09-24
+
+### Added
+
+- `full_side_cancel_of_the_last_scanned_order_fits_the_default_budget`:
+  `cancel_order` finds an order by walking its side from the best price, so
+  on a full side of 512 bids the worst bid is the last one it reads. Canceling
+  it stays inside the default 200,000-unit instruction budget.
+
 ## 2026-09-23
 
 ### Added

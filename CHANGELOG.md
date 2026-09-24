@@ -4,6 +4,16 @@ All notable changes to this repository are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-09-24] - Order book tests cover the costliest cancel
+
+`cancel_order` finds an order's place in the tree by walking its side from the
+best price down, so its cost grows with the number of resting orders. Both
+Anchor copies gain `full_side_cancel_of_the_last_scanned_order_fits_the_default_budget`,
+which fills the bid side to its 512 orders, cancels the bid the walk reaches
+last, and checks it stays inside the default 200,000-unit instruction budget.
+It measures 50,078 compute units in the Anchor v2 copy and 57,383 in the v1
+copy. No program behavior changes.
+
 ## [2026-09-23] - The order book evicts its worst order when a side is full
 
 A side of the order book refused every new resting order once it was full, so
