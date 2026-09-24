@@ -21,7 +21,7 @@ pub enum PythExampleError {
 }
 
 #[program]
-pub mod anchor_test {
+pub mod pythexample {
     use super::*;
 
     pub fn read_price(context: Context<ReadPriceAccountConstraints>) -> Result<()> {
