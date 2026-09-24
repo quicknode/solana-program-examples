@@ -1473,15 +1473,20 @@ anchor test --skip-local-validator
 Expected:
 
 ```
-running 29 tests
+running 35 tests
 test authority_can_withdraw_fees_after_match ... ok
+test better_order_evicts_the_worst_and_rests ... ok
 test cancel_and_settle_bid_refunds_full_quote ... ok
 test cancel_ask_credits_unsettled_base ... ok
 test cancel_order_rejects_non_owner ... ok
 test deepest_path_adds_little_compute_to_insert_fill_and_cancel ... ok
 test doubling_prices_build_the_deepest_path_prices_allow ... ok
+test evicted_maker_settles_their_refund ... ok
+test eviction_rejects_missing_or_wrong_evicted_accounts ... ok
 test fee_rounds_up_when_gross_is_not_a_bps_multiple ... ok
 test fee_vault_receives_exactly_bps_of_taker_gross ... ok
+test full_side_cancel_of_the_last_scanned_order_fits_the_default_budget ... ok
+test full_side_refuses_an_order_no_better_than_its_worst ... ok
 test initialize_market_rejects_oversized_fee ... ok
 test initialize_market_rejects_zero_base_lot_size ... ok
 test initialize_market_rejects_zero_quote_lot_size ... ok
@@ -1503,6 +1508,7 @@ test taker_bid_gets_price_improvement_from_resting_ask ... ok
 test taker_crosses_multiple_resting_orders_best_price_first ... ok
 test taker_partially_filled_remainder_rests_on_book ... ok
 test taker_partially_fills_resting_order_rest_stays_on_book ... ok
+test trader_can_evict_their_own_worst_order ... ok
 ```
 
 ### What each test exercises
@@ -1554,6 +1560,7 @@ test taker_partially_fills_resting_order_rest_stays_on_book ... ok
 - `evicted_maker_settles_their_refund`: The evicted owner's `settle_funds` pays out the refund
 - `eviction_rejects_missing_or_wrong_evicted_accounts`: No evicted order, a non-worst order, or the wrong owner's `MarketUser`
 - `trader_can_evict_their_own_worst_order`: Only the `Order` account is passed, and the caller's own `MarketUser` is credited
+- `full_side_cancel_of_the_last_scanned_order_fits_the_default_budget`: Canceling the bid found last among 512 stays inside the default 200,000-unit budget
 
 ### CI note
 
