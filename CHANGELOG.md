@@ -4,6 +4,23 @@ All notable changes to this repository are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-09-25] - Anchor v1 is the current stable Anchor
+
+The README described Anchor v2 as Anchor's current major version and Anchor v1
+as a previous version on long-term support. Anchor v1 is the current stable
+release (1.2.0) and Anchor v2 is a release candidate (2.0.0-rc.1), so the
+documentation now says so.
+
+### Changed
+
+- `README.md` lists Anchor v1 first, as the current major version, and Anchor v2
+  as the upcoming, unreleased rewrite. Every example's links and the CI badges
+  follow the same order.
+- The note at the top of every `anchor-v1/README.md` names 1.2.0 as the current
+  stable Anchor release instead of an LTS line.
+- `CONTRIBUTING.md` describes the two Anchor directories the same way, and
+  `llms.txt` names Anchor 1.2 rather than 1.1.
+
 ## [2026-09-23] - The order book evicts its worst order when a side is full
 
 A side of the order book refused every new resting order once it was full, so

@@ -1,8 +1,8 @@
 # cNFT Utils
 
 > [!NOTE]
-> This is the **Anchor v1** copy of this example, kept for programs staying on the
-> Anchor v1 LTS line. Every `anchor` command on this page needs the v1 CLI:
+> This is the **Anchor v1** copy of this example, on Anchor 1.2.0, the current
+> stable Anchor release. Every `anchor` command on this page needs the v1 CLI:
 > `avm install 1.2.0 && avm use 1.2.0`. The Anchor v2 version of this example is in
 > [`../anchor`](../anchor/).
 
