@@ -1,6 +1,6 @@
 # Solana Program Examples
 
-> Working, tested, up-to-date Solana program ('smart contract') examples, maintained by Quicknode. Focused on financial software ('DeFi'): every finance example ships LiteSVM integration tests and Kani formal-verification proofs of its money math, and builds in CI on Anchor 1.1. Most examples are available in several frameworks: Anchor, Quasar, Pinocchio, native Rust, and sBPF assembly.
+> Working, tested, up-to-date Solana program ('smart contract') examples, maintained by Quicknode. Focused on financial software ('DeFi'): every finance example ships LiteSVM integration tests and Kani formal-verification proofs of its money math, and builds in CI on Anchor 1.2. Most examples are available in several frameworks: Anchor, Quasar, Pinocchio, native Rust, and sBPF assembly.
 
 A Solana program is what other chains call a smart contract. These examples are reference implementations for learning: tested and formally verified, but not audited or deployed to mainnet.
 
