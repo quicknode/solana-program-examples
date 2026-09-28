@@ -15,7 +15,7 @@ declare_id!("Eoiuq1dXvHxh6dLx3wh9gj8kSAUpga11krTrbfF5XYsC");
 /// SPL token. Contributors deposit tokens into a vault. If the target is met,
 /// the maker withdraws everything. If not, contributors can reclaim their funds.
 #[program]
-mod quasar_token_fundraiser {
+mod quasar_fundraiser {
     use super::*;
 
     /// Create a new fundraiser with a target amount and duration.

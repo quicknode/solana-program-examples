@@ -110,8 +110,8 @@ const examples = {
     purpose: "Atomic token swap escrow between maker and taker.",
     concepts: ["Escrow PDA", "See [Anchor variant](../anchor/README.md) for the full walkthrough"],
   },
-  "finance/token-fundraiser/quasar": {
-    title: "Token Fundraiser",
+  "finance/fundraiser/quasar": {
+    title: "Fundraiser",
     purpose: "Onchain crowdfunding toward a target amount in a chosen token.",
     concepts: ["Fundraiser PDA", "Contributor deposits"],
   },

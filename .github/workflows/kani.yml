@@ -59,7 +59,7 @@ jobs:
           - lending
           - betting-market
           - managed-fund
-          - token-fundraiser
+          - fundraiser
           - prop-amm
           - options
     steps:
@@ -104,7 +104,7 @@ jobs:
           - lending
           - betting-market
           - managed-fund
-          - token-fundraiser
+          - fundraiser
           - prop-amm
           - options
     steps:

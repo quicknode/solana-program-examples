@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-28
+
+- **Renamed from Token Fundraiser to Fundraiser.** The example moved from `finance/token-fundraiser` to `finance/fundraiser`: contributors receive no token, only a refund if the target is missed, so "Token" described something the program does not do. The program, its accounts, its instruction handlers and its tests are unchanged.
+
 ## 2026-09-14
 
 ### Added

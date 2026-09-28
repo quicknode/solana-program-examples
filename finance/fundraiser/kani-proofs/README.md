@@ -1,6 +1,6 @@
-# Token-fundraiser: Kani proofs
+# Fundraiser: Kani proofs
 
-Formal-verification harnesses for the token-fundraiser program, in the spirit of
+Formal-verification harnesses for the fundraiser program, in the spirit of
 [`aeyakovenko/percolator`](https://github.com/aeyakovenko/percolator), which
 uses the [Kani](https://github.com/model-checking/kani) model checker to prove
 the mathematical correctness of a DeFi engine.

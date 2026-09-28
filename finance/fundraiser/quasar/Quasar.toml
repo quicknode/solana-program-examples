@@ -1,5 +1,5 @@
 [project]
-name = "quasar-token-fundraiser"
+name = "quasar-fundraiser"
 
 [testing]
 command = { program = "cargo", args = ["test"] }

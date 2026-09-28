@@ -4,6 +4,22 @@ All notable changes to this repository are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-09-28] - Token Fundraiser is renamed Fundraiser
+
+Contributors to the fundraiser receive no token, only a refund if the target is
+missed, so "Token Fundraiser" described something the program does not do.
+
+### Changed
+
+- `finance/token-fundraiser` is now `finance/fundraiser`, in Anchor v2, Anchor
+  v1 and Quasar, with its Kani proofs. The Quasar crate is `quasar-fundraiser`
+  and the proofs crate `fundraiser-kani-proofs`; the Anchor programs were
+  already named `fundraiser`. Accounts, instruction handlers and behavior are
+  unchanged.
+- `README.md`, `llms.txt` and the example's READMEs say it was formerly Token
+  Fundraiser, and `finance/token-fundraiser/README.md` points old links to the
+  new location.
+
 ## [2026-09-28] - Vault Strategy is renamed Managed Fund
 
 The example called Vault Strategy is a manager-run fund: investors deposit for

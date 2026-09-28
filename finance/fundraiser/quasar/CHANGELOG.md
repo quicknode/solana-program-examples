@@ -1,5 +1,13 @@
 # Changelog
 
+## [2026-09-28]
+
+### Changed
+
+- Renamed from Token Fundraiser to Fundraiser. The example moved from
+  `finance/token-fundraiser` to `finance/fundraiser`, and the crate is now
+  `quasar-fundraiser`. The program's behavior is unchanged.
+
 ## [2026-09-14]
 
 ### Added

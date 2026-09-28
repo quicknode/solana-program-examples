@@ -1,5 +1,5 @@
 [package]
-name = "quasar-token-fundraiser"
+name = "quasar-fundraiser"
 version = "0.1.0"
 edition = "2021"
 

@@ -6,7 +6,7 @@
 [workspace]
 
 [package]
-name = "token-fundraiser-kani-proofs"
+name = "fundraiser-kani-proofs"
 version = "0.1.0"
 edition = "2021"
 publish = false

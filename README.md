@@ -97,11 +97,13 @@ A perpetual futures exchange: a venue for making leveraged bets on an asset's pr
 
 [⚓ Anchor v1](./finance/perpetual-futures/anchor-v1) [⚓ Anchor v2](./finance/perpetual-futures/anchor) [💫 Quasar](./finance/perpetual-futures/quasar)
 
-### Token Fundraiser
+### Fundraiser
+
+*Formerly **Token Fundraiser**. Contributors receive no token, only a refund if the target is missed, so the example was renamed.*
 
 Onchain crowdfunding, like Kickstarter or GoFundMe. A creator sets a target amount in a chosen token, and contributors deposit into the fundraiser's account until the goal is reached.
 
-[⚓ Anchor v1](./finance/token-fundraiser/anchor-v1) [⚓ Anchor v2](./finance/token-fundraiser/anchor) [💫 Quasar](./finance/token-fundraiser/quasar)
+[⚓ Anchor v1](./finance/fundraiser/anchor-v1) [⚓ Anchor v2](./finance/fundraiser/anchor) [💫 Quasar](./finance/fundraiser/quasar)
 
 ## Single concept examples
 

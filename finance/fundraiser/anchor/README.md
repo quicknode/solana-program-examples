@@ -1,23 +1,25 @@
-# Solana Token Fundraiser (Anchor)
+# Solana Fundraiser (Anchor)
 
 > [!NOTE]
-> This is the **Anchor v1** copy of this example, on Anchor 1.2.0, the current
-> stable Anchor release. Every `anchor` command on this page needs the v1 CLI:
-> `avm install 1.2.0 && avm use 1.2.0`. The Anchor v2 version of this example is in
-> [`../anchor`](../anchor/).
+> This is the **Anchor v2** copy of this example. Every `anchor` command on this page
+> needs the v2 CLI: `cargo install anchor-cli --version 2.0.0-rc.1 --locked` (avm has
+> no prebuilt binary for this pre-release). The Anchor v1 version of this example is in
+> [`../anchor-v1`](../anchor-v1/).
 
 Onchain crowdfunding on Solana: a program that collects tokens toward a target amount, like Kickstarter without a payment processor. A **maker** creates a fundraiser [account](https://solana.com/docs/terminology#account), specifies the [mint](https://solana.com/docs/terminology#token-mint) they want to receive, the target amount, and a duration in days. **Contributors** contribute while the window is open. If the target is reached, the maker claims the funds and each contributor closes their own record to take back its rent; if it is not reached by the deadline, contributors can refund, and once refunds are complete the maker can retire the fundraiser and open a new one.
+
+This example was called **Token Fundraiser** (`finance/token-fundraiser`) until it was renamed: contributors receive no token, only a refund if the target is missed.
 
 ## Architecture
 
 The fundraiser state account:
 
 ```rust
-#[account]
+#[account(borsh)]
 #[derive(InitSpace)]
 pub struct Fundraiser {
-    pub maker: Pubkey,
-    pub mint_to_raise: Pubkey,
+    pub maker: Address,
+    pub mint_to_raise: Address,
     pub amount_to_raise: u64,
     pub current_amount: u64,
     pub time_started: i64,
@@ -41,10 +43,11 @@ The `InitSpace` derive macro implements the `Space` trait, which calculates the 
 A per-contributor record:
 
 ```rust
-#[account]
+#[account(borsh)]
 #[derive(InitSpace)]
 pub struct Contributor {
     pub amount: u64,
+    /// Canonical bump for this PDA.
     pub bump: u8,
 }
 ```
@@ -81,7 +84,7 @@ All balance arithmetic uses `checked_*` operations and returns `FundraiserError:
 
 ## Lifecycle
 
-### `initialize`
+### `initialize_fundraiser`
 
 [`programs/fundraiser/src/instructions/initialize.rs`](programs/fundraiser/src/instructions/initialize.rs), account constraints `InitializeFundraiserAccountConstraints`.
 
@@ -162,7 +165,7 @@ The suite uses a nonzero duration and warps the LiteSVM `Clock` sysvar to exerci
 
 ### How do I build crowdfunding on Solana?
 
-A maker opens a fundraiser with `initialize`, naming the token, target amount, and duration. Contributors deposit with `contribute` while the window is open, and the funds sit in a program-controlled vault that neither side can raid. When the target is reached, the maker claims the raise with `check_contributions`, which pays out the vault and closes the fundraiser.
+A maker opens a fundraiser with `initialize_fundraiser`, naming the token, target amount, and duration. Contributors deposit with `contribute` while the window is open, and the funds sit in a program-controlled vault that neither side can raid. When the target is reached, the maker claims the raise with `check_contributions`, which pays out the vault and closes the fundraiser.
 
 ### What happens to the contributor accounts after a successful raise?
 

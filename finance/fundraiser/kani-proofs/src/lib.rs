@@ -1,4 +1,4 @@
-//! Kani proof harnesses for the token-fundraiser program (`finance/token-fundraiser`).
+//! Kani proof harnesses for the fundraiser program (`finance/fundraiser`).
 //!
 //! Inspired by aeyakovenko/percolator, which uses the Kani model checker to
 //! prove the mathematical correctness of a DeFi engine's pure numeric core.
