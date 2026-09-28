@@ -58,7 +58,7 @@ jobs:
           - order-book
           - lending
           - betting-market
-          - vault-strategy
+          - managed-fund
           - token-fundraiser
           - prop-amm
           - options
@@ -103,7 +103,7 @@ jobs:
           - order-book
           - lending
           - betting-market
-          - vault-strategy
+          - managed-fund
           - token-fundraiser
           - prop-amm
           - options

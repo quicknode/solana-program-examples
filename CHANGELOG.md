@@ -4,6 +4,35 @@ All notable changes to this repository are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-09-28] - Vault Strategy is renamed Managed Fund
+
+The example called Vault Strategy is a manager-run fund: investors deposit for
+shares priced at net asset value, and a manager allocates the pool across a
+basket of approved assets. Finance calls that a managed fund, the onchain
+equivalent of a mutual fund. It is not an index fund, whose weights follow an
+outside index with no manager choosing them. "Vault" also meant two things in
+the example: the whole product, and the single-asset token accounts it owns.
+Now it means only the token accounts.
+
+### Changed
+
+- `finance/vault-strategy` is now `finance/managed-fund`, in Anchor v2, Anchor
+  v1 and Quasar, with its Kani proofs and web app. The program crate is
+  `managed-fund` (library `managed_fund`; Quasar `quasar-managed-fund`), the
+  `Strategy` account is `Fund`, `initialize_strategy` is `initialize_fund`, the
+  `StrategyNotFullyAllocated` error is `FundNotFullyAllocated`, and the error
+  enum `VaultError` is `FundError`. The fund PDA's seed is `"fund"` instead of
+  `"strategy"`, so fund addresses change, and `initialize_fund` and `Fund`
+  have new Anchor discriminators. The program IDs and the programs' behavior
+  are unchanged, and every test passes under its new name.
+- The web app's IDL, client and environment variables follow the rename
+  (`VITE_STRATEGY_INDEX` is `VITE_FUND_INDEX`, `VITE_VAULT_PROGRAM_ID` is
+  `VITE_FUND_PROGRAM_ID`).
+- `README.md` and `llms.txt` list the example as Managed Fund and say it was
+  formerly Vault Strategy, and each of its READMEs says so too, so a search for
+  either name finds it. `finance/vault-strategy/README.md` stays behind as a
+  pointer to the new location for anyone following an old link.
+
 ## [2026-09-25] - Anchor v1 is the current stable Anchor
 
 The README described Anchor v2 as Anchor's current major version and Anchor v1

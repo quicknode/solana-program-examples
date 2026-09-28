@@ -68,11 +68,13 @@ A **proprietary AMM**: a market-making firm funds a venue with its own capital a
 
 [⚓ Anchor v1](./finance/prop-amm/anchor-v1) [⚓ Anchor v2](./finance/prop-amm/anchor) [💫 Quasar](./finance/prop-amm/quasar)
 
-### Vault Strategy
+### Managed Fund
 
-A managed investment fund onchain, like an ETF or mutual fund. Investors deposit USDC for shares, a manager allocates the pool across a basket of assets (here, stocks like TSLAx and NVDAx), and each share's value tracks the fund's net asset value. The manager earns a management fee, and investors redeem a proportional slice of the underlying assets.
+*Formerly **Vault Strategy**. Some platforms call this product a vault or a vault strategy; the example was renamed to use the finance term.*
 
-[⚓ Anchor v1](./finance/vault-strategy/anchor-v1) [⚓ Anchor v2](./finance/vault-strategy/anchor) [💫 Quasar](./finance/vault-strategy/quasar)
+A managed investment fund onchain, the equivalent of a mutual fund. Investors deposit USDC for shares, a manager allocates the pool across a basket of assets (here, stocks like TSLAx and NVDAx), and each share's value tracks the fund's net asset value. The manager earns a management fee, and investors redeem a proportional slice of the underlying assets.
+
+[⚓ Anchor v1](./finance/managed-fund/anchor-v1) [⚓ Anchor v2](./finance/managed-fund/anchor) [💫 Quasar](./finance/managed-fund/quasar)
 
 ### Betting Market
 
