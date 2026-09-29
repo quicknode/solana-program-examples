@@ -1,5 +1,8 @@
 use {
-    crate::state::{Offer, OfferInner},
+    crate::{
+        error::EscrowError,
+        state::{Offer, OfferInner},
+    },
     quasar_lang::prelude::*,
     quasar_spl::prelude::*,
 };
@@ -32,6 +35,22 @@ pub struct MakeOfferAccountConstraints {
     pub rent: Sysvar<Rent>,
     pub token_program: Program<TokenProgram>,
     pub system_program: Program<SystemProgram>,
+}
+
+/// Refuse an offer nobody could take fairly: zero tokens on either side, or a
+/// token swapped for a different amount of itself.
+#[inline(always)]
+pub fn handle_validate_offer(
+    accounts: &MakeOfferAccountConstraints,
+    deposit: u64,
+    receive: u64,
+) -> Result<(), ProgramError> {
+    require!(deposit > 0 && receive > 0, EscrowError::ZeroAmount);
+    require!(
+        accounts.token_mint_a.address() != accounts.token_mint_b.address(),
+        EscrowError::SameMint
+    );
+    Ok(())
 }
 
 #[inline(always)]

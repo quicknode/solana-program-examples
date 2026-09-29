@@ -6,7 +6,7 @@ use anchor_spl::{
     token_interface::{Mint, TokenAccount, TokenInterface},
 };
 
-use crate::Offer;
+use crate::{error::EscrowError, Offer};
 
 use super::transfer_tokens;
 
@@ -67,6 +67,21 @@ pub struct MakeOfferAccountConstraints {
     pub associated_token_program: Program<AssociatedToken>,
     pub token_program: Interface<'static, TokenInterface>,
     pub system_program: Program<System>,
+}
+
+// Refuse an offer with nothing on one side. An offer of a token for a
+// different amount of itself never reaches this handler: the maker's token-A
+// and token-B accounts would be the same account, and Anchor refuses the same
+// mutable account twice with `ConstraintDuplicateMutableAccount`.
+pub fn handle_validate_offer(
+    token_a_offered_amount: u64,
+    token_b_wanted_amount: u64,
+) -> Result<()> {
+    require!(
+        token_a_offered_amount > 0 && token_b_wanted_amount > 0,
+        EscrowError::ZeroAmount
+    );
+    Ok(())
 }
 
 // Move the tokens from the maker's ATA to the vault

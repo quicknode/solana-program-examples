@@ -46,6 +46,15 @@ impl MakeOffer {
             return Err(ProgramError::MissingRequiredSignature);
         }
 
+        // Refuse an offer nobody could take fairly: zero tokens on either side,
+        // or a token swapped for a different amount of itself.
+        if args.token_a_offered_amount == 0 || args.token_b_wanted_amount == 0 {
+            return Err(EscrowError::ZeroAmount.into());
+        }
+        if token_mint_a.key == token_mint_b.key {
+            return Err(EscrowError::SameMint.into());
+        }
+
         let offer_seeds = &[
             Offer::SEED_PREFIX,
             maker.key.as_ref(),
