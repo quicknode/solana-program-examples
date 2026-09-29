@@ -1,9 +1,0 @@
-[project]
-name = "quasar-vault-strategy"
-
-[testing]
-command = { program = "cargo", args = ["test"] }
-
-[clients]
-path = "target/client"
-targets = ["rust"]

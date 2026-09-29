@@ -82,10 +82,10 @@ members = [
     "finance/order-book/anchor/programs/order-book",
     "finance/perpetual-futures/anchor/programs/perpetual-futures",
     "finance/prop-amm/anchor/programs/prop-amm",
-    "finance/token-fundraiser/anchor/programs/fundraiser",
+    "finance/fundraiser/anchor/programs/fundraiser",
     "finance/token-swap/anchor/programs/token-swap",
-    "finance/vault-strategy/anchor/programs/vault-strategy",
-    "finance/vault-strategy/anchor/programs/mock-swap-router",
+    "finance/managed-fund/anchor/programs/managed-fund",
+    "finance/managed-fund/anchor/programs/mock-swap-router",
 
     # tokens
     "tokens/token-extensions/mint-close-authority/native/program",

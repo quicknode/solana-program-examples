@@ -34,12 +34,12 @@ jobs:
   # the program's IDL would have gone unnoticed. `verify` runs the client's
   # instruction encoding, account decoding and PDA derivation against the
   # committed IDL, offline, with no validator.
-  vault-strategy-app:
-    name: Vault strategy app
+  managed-fund-app:
+    name: Managed fund app
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: finance/vault-strategy/anchor/app
+        working-directory: finance/managed-fund/anchor/app
     steps:
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
