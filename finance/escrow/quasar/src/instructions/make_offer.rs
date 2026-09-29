@@ -37,19 +37,13 @@ pub struct MakeOfferAccountConstraints {
     pub system_program: Program<SystemProgram>,
 }
 
-/// Refuse an offer nobody could take fairly: zero tokens on either side, or a
-/// token swapped for a different amount of itself.
+/// Refuse an offer with nothing on one side. An offer of a token for a
+/// different amount of itself never reaches this handler: both mint slots
+/// would hold the same account, and loading it twice fails with
+/// `AccountBorrowFailed`.
 #[inline(always)]
-pub fn handle_validate_offer(
-    accounts: &MakeOfferAccountConstraints,
-    deposit: u64,
-    receive: u64,
-) -> Result<(), ProgramError> {
+pub fn handle_validate_offer(deposit: u64, receive: u64) -> Result<(), ProgramError> {
     require!(deposit > 0 && receive > 0, EscrowError::ZeroAmount);
-    require!(
-        accounts.token_mint_a.address() != accounts.token_mint_b.address(),
-        EscrowError::SameMint
-    );
     Ok(())
 }
 

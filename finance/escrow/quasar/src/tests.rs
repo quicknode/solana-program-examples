@@ -340,9 +340,8 @@ fn make_offer_rejects_a_zero_receive_amount(test: &mut Test) {
 #[quasar_test]
 fn make_offer_rejects_an_offer_of_a_token_for_itself(test: &mut Test) {
     maker_holding_token_a(test);
-    // The maker's second account also holds token A, so the program's own
-    // account checks pass and only the mint comparison can refuse the offer.
-    test.add(TokenAccount::new(TOKEN_MINT_A, MAKER).at(MAKER_TOKEN_ACCOUNT_B));
+    // Both mint slots hold the same account, and loading it twice fails
+    // before the handler runs.
     make_offer(test, DEPOSIT_AMOUNT, RECEIVE_AMOUNT, TOKEN_MINT_A)
-        .fails_with(EscrowError::SameMint);
+        .fails(ProgramError::Runtime("AccountBorrowFailed".into()));
 }

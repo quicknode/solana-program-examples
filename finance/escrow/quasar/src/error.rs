@@ -7,6 +7,4 @@ pub enum EscrowError {
     // program-specific error codes (Quasar's #[error_code] starts at 0
     // unless told otherwise; framework errors occupy 3000+).
     ZeroAmount = 6000,
-    /// The offer swaps a token for a different amount of itself.
-    SameMint,
 }
