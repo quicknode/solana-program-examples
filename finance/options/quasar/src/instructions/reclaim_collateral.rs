@@ -2,9 +2,7 @@ use {
     crate::{
         constants::STATUS_HELD,
         errors::OptionsError,
-        instructions::shared::{
-            check_custody, may_reclaim, sub_locked, transfer_from_vault, Terms,
-        },
+        instructions::shared::{check_custody, may_reclaim, sub_owed, transfer_from_vault, Terms},
         state::{Market, OptionContract},
     },
     quasar_lang::{prelude::*, sysvars::Sysvar as _},
@@ -73,14 +71,14 @@ pub fn handle_reclaim_collateral(
     let mut underlying_after = accounts.underlying_vault.amount();
     let mut quote_after = accounts.quote_vault.amount();
     if terms.is_call() {
-        sub_locked(
-            &mut accounts.market.underlying_locked,
+        sub_owed(
+            &mut accounts.market.underlying_owed,
             &mut underlying_after,
             collateral,
         )?;
     } else {
-        sub_locked(
-            &mut accounts.market.quote_locked,
+        sub_owed(
+            &mut accounts.market.quote_owed,
             &mut quote_after,
             collateral,
         )?;

@@ -484,13 +484,13 @@ impl Venue {
         let market = self.market_state();
         assert_eq!(
             self.balance(&self.underlying_vault),
-            market.underlying_locked,
-            "underlying vault must hold exactly the locked underlying"
+            market.underlying_owed,
+            "underlying vault must hold exactly the underlying owed"
         );
         assert_eq!(
             self.balance(&self.quote_vault),
-            market.quote_locked + market.fees_owed,
-            "quote vault must hold exactly the locked quote plus the fees owed"
+            market.quote_owed + market.fees_owed,
+            "quote vault must hold exactly the quote owed plus the fees owed"
         );
     }
 }
@@ -528,7 +528,7 @@ fn test_write_call_moves_underlying_into_vault() {
     assert_eq!(state.contracts, CONTRACTS);
     assert_eq!(state.strike_per_contract, CALL_STRIKE);
     assert_eq!(state.premium, CALL_PREMIUM);
-    assert_eq!(venue.market_state().underlying_locked, FIVE_NVDAX);
+    assert_eq!(venue.market_state().underlying_owed, FIVE_NVDAX);
     venue.assert_vaults_match_ledger();
 }
 
@@ -582,8 +582,8 @@ fn test_exercise_call_swaps_the_strike_for_the_underlying() {
     assert_eq!(venue.balance(&venue.underlying_vault), 0);
     assert_eq!(venue.balance(&venue.quote_vault), strike_total + 250_000);
     let market = venue.market_state();
-    assert_eq!(market.underlying_locked, 0);
-    assert_eq!(market.quote_locked, strike_total);
+    assert_eq!(market.underlying_owed, 0);
+    assert_eq!(market.quote_owed, strike_total);
     assert_eq!(venue.option_state(&option).status, OptionStatus::Exercised);
     venue.assert_vaults_match_ledger();
 }
@@ -616,13 +616,13 @@ fn test_collect_proceeds_pays_the_writer_and_closes_the_option() {
         "the option's rent must return to the writer"
     );
     let market = venue.market_state();
-    assert_eq!(market.quote_locked, 0);
+    assert_eq!(market.quote_owed, 0);
     assert_eq!(market.fees_owed, 250_000);
     venue.assert_vaults_match_ledger();
 }
 
 /// Maria sweeps the venue's fee. Only the 0.25 USDC of fees leaves the
-/// vault; the strike payment sitting beside it stays locked to Alice.
+/// vault; the strike payment sitting beside it stays owed to Alice.
 #[test]
 fn test_collect_fees_pays_only_the_fees_owed() {
     let mut venue = Venue::new();
@@ -664,7 +664,7 @@ fn test_put_lifecycle_delivers_the_underlying_for_the_strike() {
     let collateral = 750 * ONE_TOKEN;
     assert_eq!(venue.balance(&carol.quote), STANDARD_USDC - collateral);
     assert_eq!(venue.balance(&venue.quote_vault), collateral);
-    assert_eq!(venue.market_state().quote_locked, collateral);
+    assert_eq!(venue.market_state().quote_owed, collateral);
     venue.assert_vaults_match_ledger();
 
     venue.buy_option(&dave, &carol.pubkey(), &option).unwrap();
@@ -687,13 +687,13 @@ fn test_put_lifecycle_delivers_the_underlying_for_the_strike() {
     assert_eq!(venue.balance(&venue.underlying_vault), FIVE_NVDAX);
     assert_eq!(venue.balance(&venue.quote_vault), fee);
     let market = venue.market_state();
-    assert_eq!(market.underlying_locked, FIVE_NVDAX);
-    assert_eq!(market.quote_locked, 0);
+    assert_eq!(market.underlying_owed, FIVE_NVDAX);
+    assert_eq!(market.quote_owed, 0);
     venue.assert_vaults_match_ledger();
 
     venue.collect_proceeds(&carol, &option).unwrap();
     assert_eq!(venue.balance(&carol.underlying), FIVE_NVDAX);
-    assert_eq!(venue.market_state().underlying_locked, 0);
+    assert_eq!(venue.market_state().underlying_owed, 0);
     assert!(!venue.option_exists(&option));
     venue.assert_vaults_match_ledger();
 }
@@ -720,7 +720,7 @@ fn test_reclaim_collateral_after_expiry_returns_it_to_the_writer() {
     );
     assert_eq!(venue.balance(&bob.quote), STANDARD_USDC - CALL_PREMIUM);
     assert!(!venue.option_exists(&option));
-    assert_eq!(venue.market_state().underlying_locked, 0);
+    assert_eq!(venue.market_state().underlying_owed, 0);
     venue.assert_vaults_match_ledger();
 }
 
@@ -788,8 +788,8 @@ fn test_buy_is_refused_after_expiry() {
 // ===========================================================================
 
 /// An unsold option can be withdrawn at any time, collateral back, account
-/// closed. Without this, an option nobody buys would lock the writer's tokens
-/// forever.
+/// closed. Without this, an option nobody buys would leave the writer's tokens
+/// in the vault forever.
 #[test]
 fn test_cancel_unsold_option_returns_the_collateral() {
     let mut venue = Venue::new();
@@ -817,7 +817,7 @@ fn test_cancel_unsold_option_works_after_expiry() {
     venue.cancel_option(&carol, &option).unwrap();
 
     assert_eq!(venue.balance(&carol.quote), STANDARD_USDC);
-    assert_eq!(venue.market_state().quote_locked, 0);
+    assert_eq!(venue.market_state().quote_owed, 0);
     venue.assert_vaults_match_ledger();
 }
 

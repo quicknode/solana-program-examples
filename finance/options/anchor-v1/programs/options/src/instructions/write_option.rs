@@ -93,8 +93,8 @@ pub fn handle_write_option(
     let mut quote_after = context.accounts.quote_vault.amount;
     match kind {
         OptionKind::Call => {
-            market.underlying_locked = market
-                .underlying_locked
+            market.underlying_owed = market
+                .underlying_owed
                 .checked_add(collateral)
                 .ok_or(OptionsError::MathOverflow)?;
             underlying_after = underlying_after
@@ -102,8 +102,8 @@ pub fn handle_write_option(
                 .ok_or(OptionsError::MathOverflow)?;
         }
         OptionKind::Put => {
-            market.quote_locked = market
-                .quote_locked
+            market.quote_owed = market
+                .quote_owed
                 .checked_add(collateral)
                 .ok_or(OptionsError::MathOverflow)?;
             quote_after = quote_after

@@ -41,7 +41,7 @@ pub fn handle_buy_option(context: &mut Context<BuyOptionAccountConstraints>) -> 
         .amount()
         .checked_add(fee)
         .ok_or(OptionsError::MathOverflow)?;
-    check_custody(market, market.underlying_locked, quote_after)?;
+    check_custody(market, market.underlying_owed, quote_after)?;
 
     transfer_from_signer(
         &context.accounts.token_program,

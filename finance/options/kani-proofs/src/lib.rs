@@ -220,8 +220,8 @@ fn proof_exercise_and_reclaim_windows_partition_time() {
 /// the three counters on the `Market` account.
 #[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
 pub struct Ledger {
-    pub underlying_locked: u64,
-    pub quote_locked: u64,
+    pub underlying_owed: u64,
+    pub quote_owed: u64,
     pub fees_owed: u64,
     /// The token balances the handlers' transfers leave in the two vaults.
     pub underlying_vault: u64,
@@ -233,19 +233,19 @@ impl Ledger {
     /// `shared::check_custody`), strengthened to equality: with no donations,
     /// each vault holds exactly what the market owes.
     pub fn is_consistent(&self) -> bool {
-        self.underlying_vault == self.underlying_locked
-            && self.quote_vault as u128 == self.quote_locked as u128 + self.fees_owed as u128
+        self.underlying_vault == self.underlying_owed
+            && self.quote_vault as u128 == self.quote_owed as u128 + self.fees_owed as u128
     }
 
     /// `write_option`: collateral into the vault, owed back to the writer.
     pub fn write(&mut self, kind: OptionKind, collateral: u64) -> Option<()> {
         match kind {
             OptionKind::Call => {
-                self.underlying_locked = self.underlying_locked.checked_add(collateral)?;
+                self.underlying_owed = self.underlying_owed.checked_add(collateral)?;
                 self.underlying_vault = self.underlying_vault.checked_add(collateral)?;
             }
             OptionKind::Put => {
-                self.quote_locked = self.quote_locked.checked_add(collateral)?;
+                self.quote_owed = self.quote_owed.checked_add(collateral)?;
                 self.quote_vault = self.quote_vault.checked_add(collateral)?;
             }
         }
@@ -265,15 +265,15 @@ impl Ledger {
     pub fn exercise(&mut self, kind: OptionKind, collateral: u64, payment: u64) -> Option<()> {
         match kind {
             OptionKind::Call => {
-                self.underlying_locked = self.underlying_locked.checked_sub(collateral)?;
+                self.underlying_owed = self.underlying_owed.checked_sub(collateral)?;
                 self.underlying_vault = self.underlying_vault.checked_sub(collateral)?;
-                self.quote_locked = self.quote_locked.checked_add(payment)?;
+                self.quote_owed = self.quote_owed.checked_add(payment)?;
                 self.quote_vault = self.quote_vault.checked_add(payment)?;
             }
             OptionKind::Put => {
-                self.quote_locked = self.quote_locked.checked_sub(collateral)?;
+                self.quote_owed = self.quote_owed.checked_sub(collateral)?;
                 self.quote_vault = self.quote_vault.checked_sub(collateral)?;
-                self.underlying_locked = self.underlying_locked.checked_add(payment)?;
+                self.underlying_owed = self.underlying_owed.checked_add(payment)?;
                 self.underlying_vault = self.underlying_vault.checked_add(payment)?;
             }
         }
@@ -284,11 +284,11 @@ impl Ledger {
     pub fn collect_proceeds(&mut self, kind: OptionKind, payment: u64) -> Option<()> {
         match kind {
             OptionKind::Call => {
-                self.quote_locked = self.quote_locked.checked_sub(payment)?;
+                self.quote_owed = self.quote_owed.checked_sub(payment)?;
                 self.quote_vault = self.quote_vault.checked_sub(payment)?;
             }
             OptionKind::Put => {
-                self.underlying_locked = self.underlying_locked.checked_sub(payment)?;
+                self.underlying_owed = self.underlying_owed.checked_sub(payment)?;
                 self.underlying_vault = self.underlying_vault.checked_sub(payment)?;
             }
         }
@@ -300,11 +300,11 @@ impl Ledger {
     pub fn return_collateral(&mut self, kind: OptionKind, collateral: u64) -> Option<()> {
         match kind {
             OptionKind::Call => {
-                self.underlying_locked = self.underlying_locked.checked_sub(collateral)?;
+                self.underlying_owed = self.underlying_owed.checked_sub(collateral)?;
                 self.underlying_vault = self.underlying_vault.checked_sub(collateral)?;
             }
             OptionKind::Put => {
-                self.quote_locked = self.quote_locked.checked_sub(collateral)?;
+                self.quote_owed = self.quote_owed.checked_sub(collateral)?;
                 self.quote_vault = self.quote_vault.checked_sub(collateral)?;
             }
         }
@@ -403,8 +403,8 @@ fn proof_vault_ledger_stays_consistent_across_every_lifecycle() {
     }
 
     // With every option closed, nothing is owed to any writer or holder ...
-    assert_eq!(ledger.underlying_locked, 0);
-    assert_eq!(ledger.quote_locked, 0);
+    assert_eq!(ledger.underlying_owed, 0);
+    assert_eq!(ledger.quote_owed, 0);
     // ... and once the admin sweeps the fees, both vaults are empty: no token
     // was created or lost along any path.
     ledger.collect_fees().unwrap();

@@ -13,11 +13,11 @@ use crate::state::Market;
 /// behind, computed from the balances read before any CPI ran.
 pub fn check_custody(market: &Market, underlying_after: u64, quote_after: u64) -> Result<()> {
     require!(
-        underlying_after >= market.underlying_locked,
+        underlying_after >= market.underlying_owed,
         OptionsError::CustodyInvariantViolated
     );
     let quote_owed = market
-        .quote_locked
+        .quote_owed
         .checked_add(market.fees_owed)
         .ok_or(OptionsError::MathOverflow)?;
     require!(

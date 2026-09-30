@@ -2,7 +2,7 @@ use {
     crate::{
         constants::STATUS_LISTED,
         errors::OptionsError,
-        instructions::shared::{add_locked, check_custody, require_valid_kind, Terms},
+        instructions::shared::{add_owed, check_custody, require_valid_kind, Terms},
         state::{Market, OptionContract, OptionContractInner},
     },
     quasar_lang::{prelude::*, sysvars::Sysvar as _},
@@ -117,14 +117,14 @@ pub fn handle_write_option(
     let mut underlying_after = accounts.underlying_vault.amount();
     let mut quote_after = accounts.quote_vault.amount();
     if terms.is_call() {
-        add_locked(
-            &mut accounts.market.underlying_locked,
+        add_owed(
+            &mut accounts.market.underlying_owed,
             &mut underlying_after,
             collateral,
         )?;
     } else {
-        add_locked(
-            &mut accounts.market.quote_locked,
+        add_owed(
+            &mut accounts.market.quote_owed,
             &mut quote_after,
             collateral,
         )?;

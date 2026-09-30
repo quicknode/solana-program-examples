@@ -31,8 +31,8 @@ pub fn handle_cancel_option(context: &mut Context<CancelOptionAccountConstraints
     let mut quote_after = context.accounts.quote_vault.amount();
     match kind {
         OptionKind::Call => {
-            market.underlying_locked = market
-                .underlying_locked
+            market.underlying_owed = market
+                .underlying_owed
                 .checked_sub(collateral)
                 .ok_or(OptionsError::MathOverflow)?;
             underlying_after = underlying_after
@@ -40,8 +40,8 @@ pub fn handle_cancel_option(context: &mut Context<CancelOptionAccountConstraints
                 .ok_or(OptionsError::CustodyInvariantViolated)?;
         }
         OptionKind::Put => {
-            market.quote_locked = market
-                .quote_locked
+            market.quote_owed = market
+                .quote_owed
                 .checked_sub(collateral)
                 .ok_or(OptionsError::MathOverflow)?;
             quote_after = quote_after

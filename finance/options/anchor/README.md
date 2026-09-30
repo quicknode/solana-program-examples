@@ -165,8 +165,8 @@ insurance he did not need; Maria earned 1% of every premium.
 ## Custody
 
 The two vaults hold other people's money, so the `Market` account keeps a
-ledger of what each vault owes: `underlying_locked` (call collateral, plus put
-holders' deliveries awaiting collection), `quote_locked` (put collateral, plus
+ledger of what each vault owes: `underlying_owed` (call collateral, plus put
+holders' deliveries awaiting collection), `quote_owed` (put collateral, plus
 call holders' strike payments awaiting collection) and `fees_owed`. Every
 handler that moves tokens updates the ledger before any transfer and then
 asserts that each vault still covers what it owes (`CustodyInvariantViolated`
@@ -248,5 +248,5 @@ exercise.
 
 `buy_option` takes `fee_bps` of every premium into the quote vault, and the
 admin sweeps it with `collect_fees`. The fee is the admin's only reach into
-the vault; collateral and strike payments are locked to their writers and
+the vault; collateral and strike payments are owed to their writers and
 holders.

@@ -310,13 +310,13 @@ fn assert_vaults_match_ledger(test: &Test, env: &Env) {
     let market = test.read::<Market>(env.market);
     assert_eq!(
         test.tokens(env.underlying_vault),
-        u64::from(market.underlying_locked),
-        "underlying vault must hold exactly the locked underlying"
+        u64::from(market.underlying_owed),
+        "underlying vault must hold exactly the underlying owed"
     );
     assert_eq!(
         test.tokens(env.quote_vault),
-        u64::from(market.quote_locked) + u64::from(market.fees_owed),
-        "quote vault must hold exactly the locked quote plus the fees owed"
+        u64::from(market.quote_owed) + u64::from(market.fees_owed),
+        "quote vault must hold exactly the quote owed plus the fees owed"
     );
 }
 
@@ -353,7 +353,7 @@ fn write_call_moves_underlying_into_vault(test: &mut Test) {
     assert_eq!(u64::from(state.premium), CALL_PREMIUM);
     assert_eq!(i64::from(state.expiry), EXPIRY);
     assert_eq!(
-        u64::from(test.read::<Market>(env.market).underlying_locked),
+        u64::from(test.read::<Market>(env.market).underlying_owed),
         FIVE_NVDAX
     );
     assert_vaults_match_ledger(test, &env);
@@ -399,8 +399,8 @@ fn exercise_call_swaps_the_strike_for_the_underlying(test: &mut Test) {
         .has_tokens(env.quote_vault, strike_total + 250_000);
 
     let market = test.read::<Market>(env.market);
-    assert_eq!(u64::from(market.underlying_locked), 0);
-    assert_eq!(u64::from(market.quote_locked), strike_total);
+    assert_eq!(u64::from(market.underlying_owed), 0);
+    assert_eq!(u64::from(market.quote_owed), strike_total);
     assert_eq!(test.read::<OptionContract>(option).status, STATUS_EXERCISED);
     assert_vaults_match_ledger(test, &env);
 }
@@ -423,13 +423,13 @@ fn collect_proceeds_pays_the_writer_and_closes_the_option(test: &mut Test) {
         .is_closed(option);
 
     let market = test.read::<Market>(env.market);
-    assert_eq!(u64::from(market.quote_locked), 0);
+    assert_eq!(u64::from(market.quote_owed), 0);
     assert_eq!(u64::from(market.fees_owed), 250_000);
     assert_vaults_match_ledger(test, &env);
 }
 
 /// Maria sweeps the venue's fee. Only the 0.25 USDC of fees leaves the
-/// vault; the strike payment sitting beside it stays locked to Alice.
+/// vault; the strike payment sitting beside it stays owed to Alice.
 #[quasar_test]
 fn collect_fees_pays_only_the_fees_owed(test: &mut Test) {
     let env = setup(test);
@@ -477,8 +477,8 @@ fn put_lifecycle_delivers_the_underlying_for_the_strike(test: &mut Test) {
         .has_tokens(env.underlying_vault, FIVE_NVDAX)
         .has_tokens(env.quote_vault, fee);
     let market = test.read::<Market>(env.market);
-    assert_eq!(u64::from(market.underlying_locked), FIVE_NVDAX);
-    assert_eq!(u64::from(market.quote_locked), 0);
+    assert_eq!(u64::from(market.underlying_owed), FIVE_NVDAX);
+    assert_eq!(u64::from(market.quote_owed), 0);
     assert_vaults_match_ledger(test, &env);
 
     collect_proceeds(test, &env, &CAROL_P, PUT_ID)
@@ -486,7 +486,7 @@ fn put_lifecycle_delivers_the_underlying_for_the_strike(test: &mut Test) {
         .has_tokens(CAROL_NVDAX, FIVE_NVDAX)
         .is_closed(option);
     assert_eq!(
-        u64::from(test.read::<Market>(env.market).underlying_locked),
+        u64::from(test.read::<Market>(env.market).underlying_owed),
         0
     );
     assert_vaults_match_ledger(test, &env);
@@ -509,7 +509,7 @@ fn reclaim_collateral_after_expiry_returns_it_to_the_writer(test: &mut Test) {
     // Bob is not part of the reclaim: he is left with nothing to claim.
     assert_eq!(test.tokens(BOB_USDC), STANDARD_USDC - CALL_PREMIUM);
     assert_eq!(
-        u64::from(test.read::<Market>(env.market).underlying_locked),
+        u64::from(test.read::<Market>(env.market).underlying_owed),
         0
     );
     assert_vaults_match_ledger(test, &env);
@@ -583,7 +583,7 @@ fn cancel_unsold_option_works_after_expiry(test: &mut Test) {
     cancel_option(test, &env, &CAROL_P, PUT_ID)
         .succeeds()
         .has_tokens(CAROL_USDC, STANDARD_USDC);
-    assert_eq!(u64::from(test.read::<Market>(env.market).quote_locked), 0);
+    assert_eq!(u64::from(test.read::<Market>(env.market).quote_owed), 0);
     assert_vaults_match_ledger(test, &env);
 }
 

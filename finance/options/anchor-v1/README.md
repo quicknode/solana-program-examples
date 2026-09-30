@@ -165,8 +165,8 @@ insurance he did not need; Maria earned 1% of every premium.
 ## Custody
 
 The two vaults hold other people's money, so the `Market` account keeps a
-ledger of what each vault owes: `underlying_locked` (call collateral, plus put
-holders' deliveries awaiting collection), `quote_locked` (put collateral, plus
+ledger of what each vault owes: `underlying_owed` (call collateral, plus put
+holders' deliveries awaiting collection), `quote_owed` (put collateral, plus
 call holders' strike payments awaiting collection) and `fees_owed`. Every
 handler that moves tokens updates the ledger before any transfer and then
 asserts that each vault still covers what it owes (`CustodyInvariantViolated`

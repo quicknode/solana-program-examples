@@ -17,8 +17,8 @@ pure integer math, and small: every settlement amount is a product of two
 integers the writer chose, the only rounding in the program is the floor in
 the fee split, and the expiry window is one comparison and its complement.
 This crate reproduces those formulas (mirroring `options::contract_math`) and
-the handlers' custody accounting (mirroring the `underlying_locked`,
-`quote_locked` and `fees_owed` counters on the `Market` account) and checks, for every input
+the handlers' custody accounting (mirroring the `underlying_owed`,
+`quote_owed` and `fees_owed` counters on the `Market` account) and checks, for every input
 in the declared ranges:
 
 - `proof_exercise_moves_exactly_the_posted_terms`: for every option the program

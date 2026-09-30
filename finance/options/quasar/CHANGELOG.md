@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-30
+
+Rename the market's `underlying_locked` and `quote_locked` to `underlying_owed`
+and `quote_owed`. Each counts what the vault owes, to writers as collateral and
+to writers and holders as settlement proceeds waiting to be collected, and
+"locked" did not say to whom. The Quasar helpers `add_locked` and `sub_locked` are now `add_owed` and
+`sub_owed`. The account layout is unchanged.
+
 ## 2026-09-10
 
 The `Market` account is now the token authority of both vaults and signs
