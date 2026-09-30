@@ -40,11 +40,11 @@ pub fn handle_collect_fees(
     accounts: &mut CollectFees,
     bumps: &CollectFeesBumps,
 ) -> Result<(), ProgramError> {
-    let amount = accounts.pool.protocol_fees.get();
+    let amount = accounts.pool.program_fees.get();
     if amount == 0 {
         return Err(err(error::NOTHING_TO_CLAIM));
     }
-    accounts.pool.protocol_fees.set(0);
+    accounts.pool.program_fees.set(0);
 
     // The pool signs the CPI below with its own seeds.
     let bump = [bumps.pool];

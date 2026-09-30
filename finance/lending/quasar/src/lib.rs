@@ -141,7 +141,7 @@ mod quasar_lending {
     }
 
     #[instruction(discriminator = 11)]
-    pub fn collect_protocol_fees(ctx: Ctx<CollectProtocolFees>) -> Result<(), ProgramError> {
+    pub fn collect_program_fees(ctx: Ctx<CollectProgramFees>) -> Result<(), ProgramError> {
         ctx.accounts.run()
     }
 }

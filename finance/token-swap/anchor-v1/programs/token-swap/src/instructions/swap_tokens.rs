@@ -36,7 +36,7 @@ pub fn handle_swap_tokens(
     // u128 + checked arithmetic: `input * fee` can overflow u64 (both are
     // u64-sized in practice; fee is u16 but the multiplication grows fast).
     // Multiply before divide to preserve precision; floor on the divide is
-    // protocol-favouring (the trader pays slightly more fee on rounding,
+    // program-favouring (the trader pays slightly more fee on rounding,
     // not less).
     let config = &context.accounts.config;
     let fee_amount = (input_amount as u128)
@@ -102,7 +102,7 @@ pub fn handle_swap_tokens(
     //
     // u128 + checked: the numerator `taxed_input * reserve` can fill the
     // full u128 (both factors are u64). Multiply before divide to keep
-    // precision. Floor on the divide is protocol-favouring (the pool keeps
+    // precision. Floor on the divide is program-favouring (the pool keeps
     // sub-base-unit rounding, the trader gets slightly less output) - same
     // direction as Uniswap V2.
     let (this_reserve, other_reserve) = if input_is_token_a {

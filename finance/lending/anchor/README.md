@@ -9,7 +9,7 @@
 A Kamino/Solend-style borrow/lend program on Solana: suppliers earn interest on deposits,
 borrowers post collateral and draw other assets against it, and liquidators keep
 the market solvent. It demonstrates the techniques the most-used Solana lending
-protocols share: share-token deposit accounting, a utilization-based interest
+programs share: share-token deposit accounting, a utilization-based interest
 index, oracle-priced obligation health, and close-factor-capped liquidation.
 
 ## Purpose
@@ -57,7 +57,7 @@ crosses the liquidation threshold and a liquidator can close part of the positio
 Supplying liquidity mints share tokens; redeeming burns them. The exchange rate
 is `total_liquidity / total_shares`, where `total_liquidity = available_liquidity
 + current_debt` and `total_shares` is the share supply plus `MINIMUM_SHARES`.
-`available_liquidity` (not the vault's raw token balance) is the source of truth,
+The program prices shares from `available_liquidity`, not the vault's raw token balance,
 so a token donated directly to the vault cannot inflate the rate.
 
 That alone does not close the empty-pool inflation attack, because
@@ -102,15 +102,15 @@ at the rates that applied to them.
 The reserve still records `last_update_slot`, for a different job: handlers that
 read the reserve's value require the refresh to have run in the current slot.
 
-### Protocol fees (how the market earns)
+### Program fees (how the market earns)
 
 Borrowers owe the full interest, but suppliers don't receive all of it. On each
 accrual the reserve keeps `config.reserve_factor_bps` of the freshly accrued
-interest in `accumulated_protocol_fees`; only the remainder lifts the supplier
+interest in `accumulated_program_fees`; only the remainder lifts the supplier
 exchange rate. Those fees are carved out of `total_liquidity`, so they never
 count as a supplier claim, and the market owner withdraws them with
-**`collect_protocol_fees`** (paid out of the reserve's available liquidity).
-This spread between the borrow rate and the supply rate is the protocol's revenue.
+**`collect_program_fees`** (paid out of the reserve's available liquidity).
+This spread between the borrow rate and the supply rate is the program's revenue.
 
 ### Obligation health
 
@@ -137,7 +137,7 @@ less, which would make the liquidator overpay.
 
 All arithmetic is integer-only `u128`: no floats, no fixed-point crates. Ratios
 (rates, the index, the exchange rate, obligation values) are scaled by
-`FIXED_POINT_SCALE` (10^18). Every conversion rounds in the protocol's favour
+`FIXED_POINT_SCALE` (10^18). Every conversion rounds in the program's favour
 (user output floored, debt ceiled), so dust cannot be extracted by repeated
 round-trips.
 
@@ -168,7 +168,7 @@ also reject results whose confidence interval is too wide.
 Supplied liquidity sits in program-owned vault PDAs, and posted collateral sits in
 per-obligation vault PDAs whose authority is the obligation PDA. The market owner
 can update reserve risk parameters (`update_reserve_config`) and withdraw the
-protocol's earned fees (`collect_protocol_fees`), but has no path to a supplier's
+program's earned fees (`collect_program_fees`), but has no path to a supplier's
 deposits or a borrower's collateral: there is no admin escape hatch over user funds.
 
 ### Known limits
@@ -176,7 +176,7 @@ deposits or a borrower's collateral: there is no admin escape hatch over user fu
 - **Tokens with transfer fees are not supported.** The program uses
   `token_interface`, so Token Extensions mints are accepted, but a transfer-fee
   extension would make the vault receive less than the recorded deposit and the
-  accounting would overstate `available_liquidity`. Production protocols
+  accounting would overstate `available_liquidity`. Production lending programs
   whitelist mints; a market owner here must only create reserves for tokens
   without transfer fees.
 - **Reserve config changes act immediately.** Lowering a reserve's
@@ -188,7 +188,7 @@ deposits or a borrower's collateral: there is no admin escape hatch over user fu
 ### Instruction handlers
 
 Admin: `initialize_lending_market`, `initialize_reserve`, `update_reserve_config`, `set_price`,
-`collect_protocol_fees`.
+`collect_program_fees`.
 Supply side: `refresh_reserve`, `deposit_reserve_liquidity`,
 `redeem_reserve_collateral`. Borrow side: `initialize_obligation`, `refresh_obligation`,
 `deposit_obligation_collateral`, `withdraw_obligation_collateral`,
@@ -218,15 +218,15 @@ move, the share-inflation guard, and rounding edges.
 
 ## FAQ
 
-### How does a lending protocol work on Solana?
+### How does a lending program work on Solana?
 
 Suppliers deposit a token with `deposit_reserve_liquidity` and receive share tokens that grow in value as borrowers pay interest. Borrowers post those shares as collateral (`deposit_obligation_collateral`) and draw a different token with `borrow_obligation_liquidity`, up to a loan-to-value limit. When a position's collateral no longer covers its debt, anyone can call `liquidate_obligation` to repay part of the debt in exchange for discounted collateral.
 
 ### How does interest accrue without looping over every account?
 
-Through a cumulative accumulation factor: `refresh_reserve` advances a per-reserve factor along a utilization-based rate curve, and each obligation stores the index value from its last interaction. The gap between the two is the interest owed, so no per-account accrual loop is needed. This is the same technique the most-used Solana lending protocols share.
+Through a cumulative accumulation factor: `refresh_reserve` advances a per-reserve factor along a utilization-based rate curve, and each obligation stores the index value from its last interaction. The gap between the two is the interest owed, so no per-account accrual loop is needed. This is the same technique the most-used Solana lending programs share.
 
-### How are prices fed into the protocol?
+### How are prices fed into the program?
 
 The admin `set_price` instruction handler stands in for an oracle feed in this example. `refresh_obligation` re-values collateral and debt at those prices before any borrow, withdraw, or liquidation is allowed, and stale reserves or prices are rejected.
 

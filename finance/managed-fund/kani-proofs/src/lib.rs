@@ -92,7 +92,7 @@ fn proof_withdraw_within_balance() {
 
 /// In a USDC-only vault (NAV == vault USDC, no basket assets), depositing and
 /// immediately withdrawing the minted shares never returns more USDC than was
-/// deposited. Both legs floor in the protocol's favour, so a deposit/withdraw
+/// deposited. Both legs floor in the program's favour, so a deposit/withdraw
 /// round-trip is never profitable — there is no rounding attack that mints
 /// shares worth more than they cost.
 #[cfg(kani)]

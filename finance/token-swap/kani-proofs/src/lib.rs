@@ -228,7 +228,7 @@ fn integer_sqrt(n: u128) -> u128 {
 
 /// `integer_sqrt` returns the exact floor of the real square root:
 /// `r*r <= n < (r+1)*(r+1)`. This is what makes the initial-deposit LP mint
-/// (`sqrt(a*b) - MINIMUM_LIQUIDITY`) correct and protocol-favouring.
+/// (`sqrt(a*b) - MINIMUM_LIQUIDITY`) correct and program-favouring.
 ///
 /// `n` is bounded so `(r+1)^2` cannot overflow `u128` and so the Newton
 /// iteration's unwind stays tractable; the property is value-general within the

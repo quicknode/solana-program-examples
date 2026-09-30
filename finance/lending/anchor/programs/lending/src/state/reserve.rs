@@ -45,7 +45,7 @@ pub struct Reserve {
     pub liquidity_decimals: u8,
 
     /// Base units sitting in `liquidity_vault`, available to borrow or redeem.
-    /// This is the source of truth for the pool size, not the vault's token
+    /// The program reads the pool size from this field, not the vault's token
     /// balance, so a raw token donation cannot move the exchange rate.
     pub available_liquidity: u64,
 
@@ -77,11 +77,11 @@ pub struct Reserve {
     /// length is.
     pub last_accrual_timestamp: i64,
 
-    /// Liquidity owed to the market owner: the protocol's cut of accrued
+    /// Liquidity owed to the market owner: the program's cut of accrued
     /// interest (`config.reserve_factor_bps`). It is carved out of
     /// `total_liquidity` so it never inflates the share exchange rate, and the
-    /// owner withdraws it with `collect_protocol_fees`.
-    pub accumulated_protocol_fees: u64,
+    /// owner withdraws it with `collect_program_fees`.
+    pub accumulated_program_fees: u64,
 
     pub config: ReserveConfig,
 
@@ -101,7 +101,7 @@ pub struct ReserveConfig {
     pub liquidation_bonus_bps: u16,
     /// Maximum fraction of a borrow that one liquidation may repay.
     pub close_factor_bps: u16,
-    /// Share of accrued borrow interest kept by the protocol (the rest lifts the
+    /// Share of accrued borrow interest kept by the program (the rest lifts the
     /// supplier exchange rate). This is how the market owner earns.
     pub reserve_factor_bps: u16,
     /// Utilization at which the borrow rate reaches `optimal_borrow_rate_bps`.
@@ -149,7 +149,7 @@ impl ReserveConfig {
 }
 
 impl Reserve {
-    /// Live total debt owed to the pool, rounded up (protocol-favourable).
+    /// Live total debt owed to the pool, rounded up (program-favourable).
     pub fn current_borrowed_amount(&self) -> Result<u64> {
         let amount = mul_div_ceil(
             self.borrowed_principal,
@@ -159,7 +159,7 @@ impl Reserve {
         u64::try_from(amount).map_err(|_| LendingError::MathOverflow.into())
     }
 
-    /// Available liquidity plus live debt, before the protocol's fee is removed.
+    /// Available liquidity plus live debt, before the program's fee is removed.
     /// Used for the utilization ratio, which is about how much of the pool is lent
     /// out, independent of who owns the interest.
     pub fn gross_liquidity(&self) -> Result<u128> {
@@ -169,10 +169,10 @@ impl Reserve {
     }
 
     /// The pool size the share token is a claim on: gross liquidity minus the
-    /// protocol fees owed to the owner, which belong to no supplier.
+    /// program fees owed to the owner, which belong to no supplier.
     pub fn total_liquidity(&self) -> Result<u128> {
         self.gross_liquidity()?
-            .checked_sub(self.accumulated_protocol_fees as u128)
+            .checked_sub(self.accumulated_program_fees as u128)
             .ok_or(LendingError::MathOverflow.into())
     }
 
@@ -271,7 +271,7 @@ impl Reserve {
             )?;
 
             // Borrowers owe the full interest (the factor grew for all of it); the
-            // protocol keeps `reserve_factor_bps` of the newly accrued interest,
+            // program keeps `reserve_factor_bps` of the newly accrued interest,
             // and the remainder lifts the supplier exchange rate. Flooring the fee
             // rounds the owner's cut down, in the suppliers' favour.
             let interest = self
@@ -282,8 +282,8 @@ impl Reserve {
                 self.config.reserve_factor_bps as u128,
                 BPS_DENOMINATOR,
             )?;
-            self.accumulated_protocol_fees = self
-                .accumulated_protocol_fees
+            self.accumulated_program_fees = self
+                .accumulated_program_fees
                 .checked_add(u64::try_from(fee).map_err(|_| LendingError::MathOverflow)?)
                 .ok_or(LendingError::MathOverflow)?;
         }

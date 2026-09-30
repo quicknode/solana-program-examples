@@ -62,7 +62,7 @@ const QUOTE_DECIMALS: u8 = 6; // USDC
 const FEE_BASIS_POINTS: u16 = 10;
 
 // Mirror of the program's fee rounding: ceiling division so the fee rounds
-// in the protocol's favour (flooring would leak dust to the maker per fill).
+// in the program's favour (flooring would leak dust to the maker per fill).
 const fn fee_ceil(gross: u64) -> u64 {
     ((gross as u128 * FEE_BASIS_POINTS as u128 + 9_999) / 10_000) as u64
 }
@@ -593,7 +593,7 @@ fn initialize_market_user_tracks_market_and_owner() {
 }
 
 #[test]
-fn place_bid_locks_quote_in_vault() {
+fn place_bid_moves_quote_into_vault() {
     let mut sc = full_setup();
     initialize_market_and_users(&mut sc);
 
@@ -639,7 +639,7 @@ fn place_bid_locks_quote_in_vault() {
 }
 
 #[test]
-fn place_ask_locks_base_in_vault() {
+fn place_ask_moves_base_into_vault() {
     let mut sc = full_setup();
     initialize_market_and_users(&mut sc);
 
@@ -1526,7 +1526,7 @@ fn taker_partially_filled_remainder_rests_on_book() {
     // The taker's own Order PDA holds the true remaining-on-book quantity
     // (original_quantity - filled_quantity). On-book quantity isn't stored
     // on OrderEntry directly - see state/order_book.rs - so this is the
-    // source of truth both here and at runtime.
+    // field the program reads both here and at runtime.
     assert_eq!(
         TAKER_BID_QUANTITY - taker_filled,
         TAKER_BID_QUANTITY - MAKER_ASK_QUANTITY
@@ -1842,7 +1842,7 @@ fn taker_bid_gets_price_improvement_from_resting_ask() {
 #[test]
 fn fee_rounds_up_when_gross_is_not_a_bps_multiple() {
     // Rounding regression: with fee_bps = 10, a gross of 501 quote tokens
-    // gives 501 * 10 / 10_000 = 0.501, which must round UP to 1 (protocol-
+    // gives 501 * 10 / 10_000 = 0.501, which must round UP to 1 (program-
     // favouring ceiling), not down to 0. A floor here would let makers
     // fill fee-free with many small orders.
     let mut sc = full_setup();

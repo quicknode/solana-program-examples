@@ -139,7 +139,7 @@ fn base_world(test: &mut Test) -> Pdas {
         TokenAccount::new(w.collateral_share_mint, LIQUIDATOR).at(LIQUIDATOR_COLLATERAL_SHARE),
     );
     // The owner's opening deposits come from these; once they are made,
-    // `OWNER_BORROW` is empty again and receives collected protocol fees.
+    // `OWNER_BORROW` is empty again and receives collected program fees.
     test.add(
         TokenAccount::new(BORROW_MINT, OWNER)
             .at(OWNER_BORROW)
@@ -613,7 +613,7 @@ mod clock_warp {
                 token(BORROWER_BORROW, BORROW_MINT, BORROWER, 0),
                 // The owner's opening deposits come from these; once they are
                 // made, `OWNER_BORROW` is empty again and receives collected
-                // protocol fees.
+                // program fees.
                 token(OWNER_BORROW, BORROW_MINT, OWNER, OPENING_DEPOSIT),
                 token(OWNER_BORROW_SHARE, borrow_share_mint, OWNER, 0),
                 token(OWNER_COLLATERAL, COLLATERAL_MINT, OWNER, OPENING_DEPOSIT),
@@ -700,7 +700,7 @@ mod clock_warp {
             u64::from_le_bytes(account.data[64..72].try_into().unwrap())
         }
 
-        /// The borrow reserve's liquidity, net of protocol fees, and the share
+        /// The borrow reserve's liquidity, net of program fees, and the share
         /// count every conversion divides by, as the program prices them.
         fn borrow_reserve_totals(&self) -> (u128, u128) {
             let reserve = self.reserve(self.borrow_reserve);
@@ -708,7 +708,7 @@ mod clock_warp {
                 u64::from(reserve.available_liquidity),
                 u128::from(reserve.borrowed_principal),
                 u128::from(reserve.borrow_accumulation_factor),
-                u64::from(reserve.accumulated_protocol_fees),
+                u64::from(reserve.accumulated_program_fees),
             )
             .unwrap();
             let shares = total_shares(u64::from(reserve.share_mint_supply)).unwrap();
@@ -1017,7 +1017,7 @@ mod clock_warp {
                 .assert_success();
         }
 
-        /// Market owner collects accrued protocol fees from the borrow reserve
+        /// Market owner collects accrued program fees from the borrow reserve
         /// into `OWNER_BORROW`. The handler accrues interest itself, so no
         /// separate refresh.
         fn collect_borrow_fees(&mut self) -> quasar_svm::ExecutionResult {
@@ -1188,7 +1188,7 @@ mod clock_warp {
     }
 
     #[test]
-    fn protocol_fees_accrue_and_owner_can_collect() {
+    fn program_fees_accrue_and_owner_can_collect() {
         let mut world = World::new();
         world.bootstrap_position();
         world
@@ -1203,7 +1203,7 @@ mod clock_warp {
         result.assert_success();
         assert!(
             balance(&result, OWNER_BORROW) > 0,
-            "owner should collect a positive protocol fee, got {}",
+            "owner should collect a positive program fee, got {}",
             balance(&result, OWNER_BORROW)
         );
     }

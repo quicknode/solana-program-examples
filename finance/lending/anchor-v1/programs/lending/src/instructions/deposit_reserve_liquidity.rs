@@ -11,7 +11,7 @@ use crate::state::{reserve_signer_seeds, Reserve};
 /// Supply liquidity to a reserve and receive share tokens. The first deposit
 /// mints share tokens 1:1, less the `MINIMUM_SHARES` withheld; later deposits
 /// mint `liquidity_amount * total_shares / total_liquidity`, where
-/// `total_shares` counts the withheld minimum, floored so the protocol keeps
+/// `total_shares` counts the withheld minimum, floored so the program keeps
 /// any rounding dust.
 pub fn handle_deposit_reserve_liquidity(
     context: Context<DepositReserveLiquidity>,

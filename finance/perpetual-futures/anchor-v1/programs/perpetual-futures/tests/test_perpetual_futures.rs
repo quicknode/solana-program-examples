@@ -748,7 +748,7 @@ fn test_open_long_updates_pool() {
     // Collateral minus the 0.1% open fee is now tracked as trader collateral.
     let open_fee = size / 1_000;
     assert_eq!(pool.total_collateral, collateral - open_fee);
-    assert_eq!(pool.protocol_fees, open_fee);
+    assert_eq!(pool.program_fees, open_fee);
 }
 
 #[test]
@@ -1197,7 +1197,7 @@ fn test_collect_fees() {
         .open_position(&trader, trader_collateral, Side::Long, collateral, size, 0)
         .unwrap();
 
-    let fees = market.pool_state().protocol_fees;
+    let fees = market.pool_state().program_fees;
     assert!(fees > 0);
 
     let admin = market.admin.insecure_clone();
@@ -1214,7 +1214,7 @@ fn test_collect_fees() {
         get_token_account_balance(&market.svm, &admin_collateral).unwrap(),
         fees
     );
-    assert_eq!(market.pool_state().protocol_fees, 0);
+    assert_eq!(market.pool_state().program_fees, 0);
 
     // Nothing left to claim on a second sweep.
     assert!(market.collect_fees(&admin).is_err());

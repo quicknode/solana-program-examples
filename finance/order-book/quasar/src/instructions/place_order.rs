@@ -61,7 +61,7 @@ fn quote_value(price: u64, lots: u64, quote_lot_size: u64) -> Result<u64, Progra
 }
 
 /// Taker fee on a fill's gross quote, rounded up (ceiling division) so the
-/// protocol never leaks a minor unit to the maker across many tiny fills.
+/// program never leaks a minor unit to the maker across many tiny fills.
 fn ceil_fee(gross_quote: u64, fee_basis_points: u16) -> Result<u64, ProgramError> {
     (gross_quote as u128)
         .checked_mul(fee_basis_points as u128)

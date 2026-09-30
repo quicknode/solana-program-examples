@@ -159,7 +159,7 @@ impl InitializeReserve {
             price_feed: *self.price_feed.address(),
             available_liquidity: 0,
             share_mint_supply: 0,
-            accumulated_protocol_fees: 0,
+            accumulated_program_fees: 0,
             borrowed_principal: 0,
             borrow_accumulation_factor: crate::constants::FIXED_POINT_SCALE,
             last_update_slot: slot,
@@ -221,11 +221,11 @@ impl SetPrice {
 }
 
 // ---------------------------------------------------------------------------
-// collect_protocol_fees
+// collect_program_fees
 // ---------------------------------------------------------------------------
 
 #[derive(Accounts)]
-pub struct CollectProtocolFees {
+pub struct CollectProgramFees {
     #[account(mut)]
     pub owner: Signer,
     #[account(has_one(owner))]
@@ -245,10 +245,10 @@ pub struct CollectProtocolFees {
     pub token_program: Program<TokenProgram>,
 }
 
-impl CollectProtocolFees {
-    /// Pay the reserve's accrued protocol fees to the market owner. This is how
+impl CollectProgramFees {
+    /// Pay the reserve's accrued program fees to the market owner. This is how
     /// the owner earns: `reserve_factor_bps` of every interest accrual is set
-    /// aside in `accumulated_protocol_fees`, and this withdraws it — capped by
+    /// aside in `accumulated_program_fees`, and this withdraws it — capped by
     /// the liquidity currently sitting in the vault.
     #[inline(always)]
     pub fn run(&mut self) -> Result<(), ProgramError> {
@@ -257,11 +257,11 @@ impl CollectProtocolFees {
         accrue(&mut reserve, slot, timestamp)?;
 
         let amount = reserve
-            .accumulated_protocol_fees
+            .accumulated_program_fees
             .min(reserve.available_liquidity);
         require!(amount > 0, LendingError::NothingToCollect);
-        reserve.accumulated_protocol_fees = reserve
-            .accumulated_protocol_fees
+        reserve.accumulated_program_fees = reserve
+            .accumulated_program_fees
             .checked_sub(amount)
             .ok_or(LendingError::MathOverflow)?;
         reserve.available_liquidity = reserve

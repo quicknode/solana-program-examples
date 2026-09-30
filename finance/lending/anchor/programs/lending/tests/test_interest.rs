@@ -72,10 +72,10 @@ fn interest_accrues_on_borrows_over_time() {
     );
 }
 
-/// The protocol keeps `reserve_factor_bps` of accrued interest as fees the
+/// The program keeps `reserve_factor_bps` of accrued interest as fees the
 /// market owner can withdraw, while the rest lifts the supplier exchange rate.
 #[test]
-fn protocol_fees_accrue_and_owner_can_collect() {
+fn program_fees_accrue_and_owner_can_collect() {
     let mut env = Env::new();
     let collateral = env.add_reserve(6, dollars(1), default_config());
     let borrow = env.add_reserve(6, dollars(1), default_config());
@@ -101,15 +101,15 @@ fn protocol_fees_accrue_and_owner_can_collect() {
     .unwrap();
 
     // No interest has accrued yet, so no fees.
-    assert_eq!(env.reserve(&borrow).accumulated_protocol_fees, 0);
+    assert_eq!(env.reserve(&borrow).accumulated_program_fees, 0);
 
     env.warp_seconds(TENTH_OF_A_YEAR);
     env.refresh_reserve_only(&borrower, &borrow);
 
     // Fees accrued, and they are ~10% (the reserve factor) of total interest.
     let reserve = env.reserve(&borrow);
-    let fees = reserve.accumulated_protocol_fees;
-    assert!(fees > 0, "protocol fees should accrue once interest does");
+    let fees = reserve.accumulated_program_fees;
+    assert!(fees > 0, "program fees should accrue once interest does");
     let total_interest = reserve.current_borrowed_amount().unwrap() - 500_000_000;
     let expected_fee = total_interest / 10; // 1000 bps = 10%
                                             // Allow a 1-unit rounding tolerance from flooring.
@@ -119,7 +119,7 @@ fn protocol_fees_accrue_and_owner_can_collect() {
     );
 
     // Maria withdraws the fees to her own account.
-    let owner_account = env.collect_protocol_fees(&borrow);
+    let owner_account = env.collect_program_fees(&borrow);
     assert_eq!(env.token_balance(owner_account), fees);
-    assert_eq!(env.reserve(&borrow).accumulated_protocol_fees, 0);
+    assert_eq!(env.reserve(&borrow).accumulated_program_fees, 0);
 }

@@ -60,7 +60,7 @@ The mark price comes from an oracle feed. This example validates the price for s
 
 ### Fees and slippage
 
-Open and close fees are charged in [basis points](https://www.investopedia.com/terms/b/basispoint.asp) (1 bp = 0.01%) of notional and accrue to the protocol. Every state-changing handler takes a `minimum_*` / acceptable-price bound (protection against [slippage](https://www.investopedia.com/terms/s/slippage.asp), the gap between the expected and actual fill) and reverts if the bound is breached. Pass `0` to opt out.
+Open and close fees are charged in [basis points](https://www.investopedia.com/terms/b/basispoint.asp) (1 bp = 0.01%) of notional and accrue to the program. Every state-changing handler takes a `minimum_*` / acceptable-price bound (protection against [slippage](https://www.investopedia.com/terms/s/slippage.asp), the gap between the expected and actual fill) and reverts if the bound is breached. Pass `0` to opt out.
 
 ---
 
@@ -68,7 +68,7 @@ Open and close fees are charged in [basis points](https://www.investopedia.com/t
 
 ### Participants
 
-- **Admin** (Pool operator): Operate the market and collect the protocol's slice of trading fees.
+- **Admin** (Pool operator): Operate the market and collect the program's slice of trading fees.
 - **Carol** (Liquidity provider): Earn fees by funding the pool and being the counterparty to traders.
 - **Alice** (Long trader): She has a thesis that NVDA will rise and wants leveraged upside without buying the stock.
 - **Bob** (Short trader): He thinks NVDA will fall and wants to profit from the downside.
@@ -84,7 +84,7 @@ Amounts below are shown in whole USDC; onchain they are base units (× 10⁶). T
 
 **Accounts created:**
 
-- `Pool` [PDA](https://solana.com/docs/terminology#program-derived-address-pda), seeds `["pool", collateral_mint, oracle_feed]`: parameters, liquidity, reserved liquidity, collateral total, per-side open-interest accumulators, funding index, protocol fees. The pool owns the vault and is the LP mint's authority, and signs vault transfers and mint/burn CPIs with its own seeds; there is no separate signing PDA
+- `Pool` [PDA](https://solana.com/docs/terminology#program-derived-address-pda), seeds `["pool", collateral_mint, oracle_feed]`: parameters, liquidity, reserved liquidity, collateral total, per-side open-interest accumulators, funding index, program fees. The pool owns the vault and is the LP mint's authority, and signs vault transfers and mint/burn CPIs with its own seeds; there is no separate signing PDA
 - `custody_vault` [token account](https://solana.com/docs/terminology#token-account) PDA, seeds `["vault", pool]`: all USDC, both provider liquidity and trader collateral; `pool` is its owner
 - `lp_mint` PDA, seeds `["lp_mint", pool]`: the share [mint](https://solana.com/docs/terminology#mint-account); `pool` is the mint authority
 
@@ -117,7 +117,7 @@ NVDAx is at $100. The 0.1% open fee ($5) comes out of her collateral, leaving $9
 - `alice_usdc`: −1,000 USDC
 - `custody_vault`: +1,000 USDC
 - `Pool.total_collateral`: +$995
-- `Pool.protocol_fees`: +$5
+- `Pool.program_fees`: +$5
 - `Pool.reserved_liquidity`: +$5,000 (must stay ≤ liquidity)
 - `Pool` long open-interest accumulators: += this position
 
@@ -127,7 +127,7 @@ NVDAx is at $100. The 0.1% open fee ($5) comes out of her collateral, leaving $9
 
 **Instruction:** `open_position(side = Short, collateral_amount = 1,000 USDC, size = 5,000 USDC, acceptable_price)`
 
-**Accounts modified:** a `Position` PDA `["position", pool, bob, Short]` is created; `custody_vault` +1,000 USDC; `Pool.total_collateral` +$995; `Pool.protocol_fees` +$5; `Pool.reserved_liquidity` +$5,000 (now $10,000 of the $100,000 reserved); short open-interest accumulators rise.
+**Accounts modified:** a `Position` PDA `["position", pool, bob, Short]` is created; `custody_vault` +1,000 USDC; `Pool.total_collateral` +$995; `Pool.program_fees` +$5; `Pool.reserved_liquidity` +$5,000 (now $10,000 of the $100,000 reserved); short open-interest accumulators rise.
 
 While both are open, **funding** accrues to the pool from the heavier side; it is settled when each position closes.
 
@@ -144,7 +144,7 @@ Her profit is `5,000 × (116 − 100) / 100 = $800` (well under the $5,000 reser
 - `Pool.liquidity`: −$800 (providers pay her profit)
 - `Pool.reserved_liquidity`: −$5,000 (reserve released)
 - `Pool.total_collateral`: −$995
-- `Pool.protocol_fees`: +$5
+- `Pool.program_fees`: +$5
 - long open-interest accumulators: −= this position
 - `custody_vault` → `alice_usdc`: pays out $1,790 (net collateral + profit − close fee)
 - `Position` (Alice): closed; rent returned to Alice
@@ -169,11 +169,11 @@ At $116 Bob's short has lost $800; his equity ($995 − $800 = $195) has fallen 
 
 ---
 
-### Step 7: Admin collects the protocol's fees
+### Step 7: Admin collects the program's fees
 
 **Instruction:** `collect_fees()`
 
-**Accounts modified:** `Pool.protocol_fees` → 0; `custody_vault` pays that amount to `admin_usdc`.
+**Accounts modified:** `Pool.program_fees` → 0; `custody_vault` pays that amount to `admin_usdc`.
 
 ---
 

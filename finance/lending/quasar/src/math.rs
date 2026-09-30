@@ -1,6 +1,6 @@
 //! Integer-only arithmetic (no floats, no fixed-point crates), shared by the
 //! handlers. Ratios are scaled by `FIXED_POINT_SCALE`; conversions round in the
-//! protocol's favour.
+//! program's favour.
 
 use quasar_lang::prelude::*;
 
@@ -104,13 +104,13 @@ pub fn value_to_amount(
 
 // --- reserve interest / share helpers (free functions over reserve fields) ---
 
-/// Live total debt owed to the pool, rounded up (protocol-favourable).
+/// Live total debt owed to the pool, rounded up (program-favourable).
 pub fn current_debt(borrowed_principal: u128, factor: u128) -> Result<u64, ProgramError> {
     let debt = mul_div_ceil(borrowed_principal, factor, FIXED_POINT_SCALE)?;
     u64::try_from(debt).map_err(|_| LendingError::MathOverflow.into())
 }
 
-/// Available liquidity plus live debt, before the protocol fee is removed. Used
+/// Available liquidity plus live debt, before the program fee is removed. Used
 /// for the utilization ratio (about how much of the pool is lent out).
 pub fn total_liquidity(
     available: u64,
@@ -122,16 +122,16 @@ pub fn total_liquidity(
         .ok_or(LendingError::MathOverflow.into())
 }
 
-/// What the share token is a claim on: gross liquidity minus the protocol fees
+/// What the share token is a claim on: gross liquidity minus the program fees
 /// owed to the owner, which belong to no supplier.
 pub fn net_total_liquidity(
     available: u64,
     borrowed_principal: u128,
     factor: u128,
-    protocol_fees: u64,
+    program_fees: u64,
 ) -> Result<u128, ProgramError> {
     total_liquidity(available, borrowed_principal, factor)?
-        .checked_sub(protocol_fees as u128)
+        .checked_sub(program_fees as u128)
         .ok_or(LendingError::MathOverflow.into())
 }
 

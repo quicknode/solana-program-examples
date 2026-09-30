@@ -12,7 +12,7 @@ Let's build a managed fund: the onchain equivalent of a mutual fund, sometimes s
 
 By the end you will have watched an asset get approved, a fund get built, someone deposit, the manager invest and rebalance, a fee accrue, and someone redeem, and you will know which instruction handler does each one. The program controls every dollar the whole time: the manager invests the deposits but can never move them to herself, a limit we will pin down precisely.
 
-You have seen this shape on Solana, in protocols like Symmetry and Kamino. This is the teaching-sized version.
+You have seen this shape on Solana, in programs like Symmetry and Kamino. This is the teaching-sized version.
 
 Two things genuinely change once the fund is onchain:
 
@@ -244,7 +244,7 @@ NARRATION:
 
 Alice calls `withdraw` and burns all 900 of her shares. Here is the part people miss: withdrawal is in kind and proportional. She does not get cash. She gets her exact fraction of every balance the fund holds, across the USDC vault and both asset vaults. It is the same move an ETF makes when it redeems in kind, handing back the underlying holdings instead of cash. Just like deposit, the handler insists on seeing every asset, so her slice is computed against the whole fund.
 
-Her fraction is 900 shares out of the 1,363.5 that now exist. The handler floors each amount in the protocol's favor, so any rounding dust stays with the remaining holders.
+Her fraction is 900 shares out of the 1,363.5 that now exist. The handler floors each amount in the program's favor, so any rounding dust stays with the remaining holders.
 
 ON SCREEN:
 

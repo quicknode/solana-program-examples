@@ -14,7 +14,7 @@
 //! factor and bonus (`liquidate_obligation`). All of that is pure integer
 //! arithmetic; the token movement is delegated to SPL CPIs that Kani cannot
 //! symbolically execute. This crate reproduces the formulas faithfully and
-//! checks the invariants the protocol's safety rests on.
+//! checks the invariants the program's safety rests on.
 //!
 //! Nonlinear 128-bit arithmetic is the hard case for a bit-precise solver, so —
 //! as percolator does — the harnesses use bounded model checking: symbolic
@@ -87,21 +87,21 @@ fn proof_mul_div_floor_ceil_correct() {
 }
 
 /// Directional-rounding safety, the property `math.rs`'s `Rounding` enum exists
-/// to guarantee: debt/protocol quantities (rounded UP) are never *less* than the
+/// to guarantee: debt/program-owed quantities (rounded UP) are never *less* than the
 /// same quantity rounded DOWN for the user. So a borrower's debt is never
 /// undercounted and a supplier's claim is never overcounted by rounding — the
-/// protocol cannot be drained by repeated round-trips.
+/// program cannot be drained by repeated round-trips.
 #[cfg(kani)]
 #[kani::proof]
 #[kani::solver(cadical)]
-fn proof_rounding_is_protocol_favourable() {
+fn proof_rounding_is_program_favourable() {
     let a: u128 = kani::any();
     let b: u128 = kani::any();
     let d: u128 = kani::any();
     kani::assume(a <= 127 && b <= 127);
     kani::assume(d >= 1 && d <= 127);
 
-    let up = mul_div_ceil(a, b, d).unwrap(); // debt / protocol-owed
+    let up = mul_div_ceil(a, b, d).unwrap(); // debt / program-owed
     let down = mul_div_floor(a, b, d).unwrap(); // user-favourable
     assert!(up >= down);
 }
@@ -251,7 +251,7 @@ pub fn shares_to_liquidity(shares: u128, total_liquidity: u128, supply: u128) ->
 }
 
 /// A deposit-then-redeem round-trip can never return more liquidity than was put
-/// in. Both legs floor (in the protocol's favour), so redeeming the shares a
+/// in. Both legs floor (in the program's favour), so redeeming the shares a
 /// deposit minted yields `<= amount` — there is no rounding round-trip that
 /// extracts value from the pool. This is the supplier-side analogue of the AMM's
 /// constant-product safety.

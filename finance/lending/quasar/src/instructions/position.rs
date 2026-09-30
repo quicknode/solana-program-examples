@@ -193,7 +193,7 @@ impl BorrowObligationLiquidity {
             collateral.available_liquidity,
             collateral.borrowed_principal,
             collateral.borrow_accumulation_factor,
-            collateral.accumulated_protocol_fees,
+            collateral.accumulated_program_fees,
         )?;
         let collateral_liquidity = mul_div_floor(
             obligation.deposited_shares as u128,
@@ -409,7 +409,7 @@ impl WithdrawObligationCollateral {
             collateral.available_liquidity,
             collateral.borrowed_principal,
             collateral.borrow_accumulation_factor,
-            collateral.accumulated_protocol_fees,
+            collateral.accumulated_program_fees,
         )?;
         let remaining_liquidity = mul_div_floor(
             remaining_shares as u128,
@@ -556,7 +556,7 @@ impl LiquidateObligation {
             collateral.available_liquidity,
             collateral.borrowed_principal,
             collateral.borrow_accumulation_factor,
-            collateral.accumulated_protocol_fees,
+            collateral.accumulated_program_fees,
         )?;
         let collateral_liquidity = mul_div_floor(
             obligation.deposited_shares as u128,

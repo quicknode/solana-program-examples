@@ -78,7 +78,7 @@ pub mod perpetual_futures {
         instructions::handle_liquidate_position(context)
     }
 
-    /// The pool operator sweeps the accumulated protocol fees from the vault.
+    /// The pool operator sweeps the accumulated program fees from the vault.
     pub fn collect_fees(context: &mut Context<CollectFeesAccountConstraints>) -> Result<()> {
         instructions::handle_collect_fees(context)
     }

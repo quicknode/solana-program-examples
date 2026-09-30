@@ -9,7 +9,7 @@ use anchor_lang::prelude::*;
 #[account]
 #[derive(InitSpace)]
 pub struct Pool {
-    /// Admin: configures the pool and sweeps protocol fees. Not a custody
+    /// Admin: configures the pool and sweeps program fees. Not a custody
     /// escape hatch — it cannot touch liquidity-provider or trader funds.
     pub authority: Pubkey,
 
@@ -43,8 +43,8 @@ pub struct Pool {
     /// Sum of every open position's posted collateral, held in the same vault.
     pub total_collateral: u64,
 
-    /// Protocol fees accrued from open/close fees, awaiting `collect_fees`.
-    pub protocol_fees: u64,
+    /// Program fees accrued from open/close fees, awaiting `collect_fees`.
+    pub program_fees: u64,
 
     /// Aggregate long open interest (sum of position `size`), in collateral
     /// base units of notional.

@@ -281,7 +281,7 @@ mod tests {
         assert_eq!(ceil_fee(1, 5_000).unwrap(), 1);
         // gross 10_000, bps 30 -> exactly 30.
         assert_eq!(ceil_fee(10_000, 30).unwrap(), 30);
-        // gross 1, bps 1 -> ceil(0.0001) == 1 (rounds up in protocol favour).
+        // gross 1, bps 1 -> ceil(0.0001) == 1 (rounds up in the program's favour).
         assert_eq!(ceil_fee(1, 1).unwrap(), 1);
         // never exceeds gross.
         assert!(ceil_fee(10_000, 10_000).unwrap() <= 10_000);

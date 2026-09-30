@@ -121,7 +121,7 @@ are all consequences of Quasar being zero-copy, `no_std`, and zero-allocation:
 - `place_order` binds every market-owned account (`base_vault`, `quote_vault`, `fee_vault`, both mints, the
   order book) to the addresses stored on the `Market` PDA with `has_one`, so a caller can't substitute the fee
   vault for a user vault and drain fees.
-- Taker fees use **ceiling** division, rounding in the protocol's favor so many tiny fills can't leak a minor
+- Taker fees use **ceiling** division, rounding in the program's favor so many tiny fills can't leak a minor
   unit to the maker.
 - A full side **evicts its worst order** for a better one instead of refusing every new order, so filling the
   book with far-off orders cannot shut a market (see the lifecycle section).

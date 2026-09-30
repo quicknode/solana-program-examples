@@ -32,7 +32,7 @@ pub fn snapshot_reserve(reserve: &Account<Reserve>) -> ReserveInner {
         price_feed: reserve.price_feed,
         available_liquidity: u64::from(reserve.available_liquidity),
         share_mint_supply: u64::from(reserve.share_mint_supply),
-        accumulated_protocol_fees: u64::from(reserve.accumulated_protocol_fees),
+        accumulated_program_fees: u64::from(reserve.accumulated_program_fees),
         borrowed_principal: u128::from(reserve.borrowed_principal),
         borrow_accumulation_factor: u128::from(reserve.borrow_accumulation_factor),
         last_update_slot: u64::from(reserve.last_update_slot),
@@ -101,7 +101,7 @@ pub fn accrue(
         reserve.optimal_borrow_rate_bps,
         reserve.max_borrow_rate_bps,
     )?;
-    // The protocol keeps `reserve_factor_bps` of the newly accrued interest; the
+    // The program keeps `reserve_factor_bps` of the newly accrued interest; the
     // rest lifts the supplier exchange rate. Flooring rounds the owner's cut down.
     let borrowed_after = current_debt(
         reserve.borrowed_principal,
@@ -113,8 +113,8 @@ pub fn accrue(
         reserve.reserve_factor_bps as u128,
         BPS_DENOMINATOR,
     )?;
-    reserve.accumulated_protocol_fees = reserve
-        .accumulated_protocol_fees
+    reserve.accumulated_program_fees = reserve
+        .accumulated_program_fees
         .checked_add(u64::try_from(fee).map_err(|_| LendingError::MathOverflow)?)
         .ok_or(LendingError::MathOverflow)?;
     if elapsed > 0 {

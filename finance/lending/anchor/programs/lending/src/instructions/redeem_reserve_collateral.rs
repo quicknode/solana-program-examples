@@ -8,7 +8,7 @@ use crate::math::mul_div_floor;
 use crate::state::{reserve_signer_seeds, Reserve};
 
 /// Burn share tokens and withdraw the underlying liquidity they represent:
-/// `share_amount * total_liquidity / total_shares`, floored so the protocol
+/// `share_amount * total_liquidity / total_shares`, floored so the program
 /// keeps any rounding dust. `total_shares` counts the `MINIMUM_SHARES` withheld
 /// from the first deposit, as `deposit_reserve_liquidity` does, so their slice
 /// of the pool never leaves. Capped by the reserve's available (un-borrowed)

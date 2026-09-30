@@ -337,7 +337,7 @@ fn market_owns_both_vaults(test: &mut Test) {
 /// Alice writes 5 covered calls on her 5 NVDAx. The whole 5 NVDAx moves into
 /// the vault at once; the option is listed for a 25 USDC premium.
 #[quasar_test]
-fn write_call_locks_the_underlying(test: &mut Test) {
+fn write_call_moves_underlying_into_vault(test: &mut Test) {
     let env = setup(test);
     let option = write_call(test, &env);
 

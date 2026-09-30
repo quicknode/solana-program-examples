@@ -47,7 +47,7 @@ every push/PR, because they are slow. A fast unit-test job runs per push/PR.
 
 - The ceiling fee can make `fee == gross` on dust fills (e.g. `gross = 1`), so a
   maker can net zero quote on a sub-unit fill. This is intended (the comment in
-  `place_order` notes ceiling rounding is in the protocol's favour to stop
+  `place_order` notes ceiling rounding is in the program's favour to stop
   fee-dust farming), not a bug: the model check confirms `fee <= gross` always holds,
   so the maker is never *overdrawn*.
 

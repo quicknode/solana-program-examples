@@ -80,8 +80,8 @@ pub fn handle_open_position(
         .total_collateral
         .checked_add(net_collateral)
         .ok_or(PerpError::MathOverflow)?;
-    pool.protocol_fees = pool
-        .protocol_fees
+    pool.program_fees = pool
+        .program_fees
         .checked_add(open_fee)
         .ok_or(PerpError::MathOverflow)?;
 

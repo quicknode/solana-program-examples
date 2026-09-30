@@ -1,6 +1,6 @@
 //! Arithmetic and the oracle decode, ported verbatim from the Anchor sibling.
 //! All integer, all `checked_*`, multiply-before-divide, rounding toward the
-//! protocol. Errors are `ProgramError::Custom(code)`; the codes are listed here.
+//! program. Errors are `ProgramError::Custom(code)`; the codes are listed here.
 
 use quasar_lang::{prelude::*, sysvars::Sysvar};
 

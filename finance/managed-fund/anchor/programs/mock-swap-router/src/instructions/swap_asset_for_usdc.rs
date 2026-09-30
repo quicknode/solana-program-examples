@@ -73,7 +73,7 @@ pub fn handle_swap_asset_for_usdc(
     require!(rate > 0, RouterError::ZeroRate);
     require!(asset_amount_in > 0, RouterError::ZeroAmount);
 
-    // usdc_out = asset_amount_in * rate  (u128 intermediate, protocol gets ceil on sell)
+    // usdc_out = asset_amount_in * rate  (u128 intermediate, program gets ceil on sell)
     let usdc_out: u64 = (asset_amount_in as u128)
         .checked_mul(rate as u128)
         .ok_or(RouterError::MathOverflow)? as u64;

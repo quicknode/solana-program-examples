@@ -123,13 +123,13 @@ pub fn handle_close_position(
         .liquidity
         .set(u64::try_from(new_liquidity).map_err(|_| ProgramError::ArithmeticOverflow)?);
 
-    let new_protocol_fees = accounts
+    let new_program_fees = accounts
         .pool
-        .protocol_fees
+        .program_fees
         .get()
         .checked_add(close_fee)
         .ok_or(ProgramError::ArithmeticOverflow)?;
-    accounts.pool.protocol_fees.set(new_protocol_fees);
+    accounts.pool.program_fees.set(new_program_fees);
 
     // The pool signs the CPI below with its own seeds.
     let bump = [bumps.pool];

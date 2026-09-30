@@ -22,7 +22,7 @@ pub struct Pool {
     /// `reserved + size <= liquidity`.
     pub reserved_liquidity: u64,
     pub total_collateral: u64,
-    pub protocol_fees: u64,
+    pub program_fees: u64,
     pub long_size: u128,
     pub short_size: u128,
     pub long_size_scaled: u128,

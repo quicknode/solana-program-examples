@@ -37,8 +37,8 @@ pub mod lending {
         instructions::handle_update_reserve_config(context, config)
     }
 
-    pub fn collect_protocol_fees(context: &mut Context<CollectProtocolFees>) -> Result<()> {
-        instructions::handle_collect_protocol_fees(context)
+    pub fn collect_program_fees(context: &mut Context<CollectProgramFees>) -> Result<()> {
+        instructions::handle_collect_program_fees(context)
     }
 
     pub fn set_price(
