@@ -1,7 +1,7 @@
 # Standalone workspace - intentionally NOT part of the root program-examples
 # workspace. Kani (https://github.com/model-checking/kani) proof harnesses that
 # model the AMM's pure arithmetic (constant-product curve, fee split, integer
-# sqrt, proportional withdraw) so the model checker can verify the invariants
+# sqrt, proportional withdraw) so the model checker can check the invariants
 # without the Solana / SPL-token CPI machinery, which Kani cannot symbolically
 # execute.
 [workspace]

@@ -176,4 +176,4 @@ Contributors call `refund` after the deadline to reclaim exactly what they put i
 
 ### How is this fundraiser tested and verified?
 
-`anchor build` then `cargo test` runs LiteSVM tests that warp the clock across the deadline to exercise contribution windows, per-contributor caps, claims, refunds, and closing. The money math has [Kani](https://github.com/model-checking/kani) proofs in [`../kani-proofs/`](../kani-proofs/).
+`anchor build` then `cargo test` runs LiteSVM tests that warp the clock across the deadline to exercise contribution windows, per-contributor caps, claims, refunds, and closing. The arithmetic has [Kani](https://github.com/model-checking/kani) model checks in [`../kani-proofs/`](../kani-proofs/).

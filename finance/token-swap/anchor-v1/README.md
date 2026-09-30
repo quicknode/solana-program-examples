@@ -52,4 +52,4 @@ An automated market maker replaces the order book with a liquidity pool: anyone 
 
 ### Where is the full walkthrough for this example?
 
-The example-level [Token Swap overview](../README.md) covers the pool math, LP tokens, and lifecycle; this page covers the Anchor build and test commands. The money math has [Kani](https://github.com/model-checking/kani) proofs in [`../kani-proofs/`](../kani-proofs/).
+The example-level [Token Swap overview](../README.md) covers the pool math, LP tokens, and lifecycle; this page covers the Anchor build and test commands. The arithmetic has [Kani](https://github.com/model-checking/kani) model checks in [`../kani-proofs/`](../kani-proofs/).

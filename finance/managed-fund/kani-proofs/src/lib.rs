@@ -1,20 +1,23 @@
-//! Kani proof harnesses for the managed-fund program (`finance/managed-fund`).
+//! Kani harnesses for the managed-fund program (`finance/managed-fund`).
 //!
 //! Inspired by aeyakovenko/percolator, which uses the Kani model checker to
-//! prove the mathematical correctness of a DeFi engine's pure numeric core.
+//! check the arithmetic of a DeFi engine's pure numeric core. Kani marks a
+//! harness with `#[kani::proof]`, which is why the crate is `kani-proofs` and
+//! the harnesses are named `proof_*`; each one is a model check over every value
+//! of the inputs it declares.
 //!
 //! The program is an ERC4626-style share vault: depositors mint share tokens
 //! against the fund's net asset value, and withdrawals burn shares for a
 //! proportional slice of every vault balance. A manager fee mints a small slice
 //! of shares over time. Token movement is via SPL CPIs Kani cannot symbolically
 //! execute, but the share math (`deposit`, `withdraw`, `collect_fees`) is pure
-//! integer arithmetic. This crate reproduces it faithfully and proves the
+//! integer arithmetic. This crate reproduces it faithfully and checks the
 //! invariants the fund's solvency rests on.
 //!
 //! The program prices shares and pays withdrawals from the holdings it has
 //! recorded (`Fund::usdc_holdings` and `asset_holdings`), never from the
 //! vaults' token balances, so tokens donated straight into a vault are outside
-//! the fund. The harnesses model a vault as a (recorded, balance) pair and prove
+//! the fund. The harnesses model a vault as a (recorded, balance) pair and check
 //! what that buys: payouts never exceed the real balance, and a donation cannot
 //! dilute the next depositor.
 //!

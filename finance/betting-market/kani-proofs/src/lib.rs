@@ -1,17 +1,20 @@
-//! Kani proof harnesses for the betting-market program (`finance/betting-market`).
+//! Kani harnesses for the betting-market program (`finance/betting-market`).
 //!
 //! Inspired by aeyakovenko/percolator, which uses the Kani model checker to
-//! prove the mathematical correctness of a DeFi engine's pure numeric core.
+//! check the arithmetic of a DeFi engine's pure numeric core. Kani marks a
+//! harness with `#[kani::proof]`, which is why the crate is `kani-proofs` and
+//! the harnesses are named `proof_*`; each one is a model check over every value
+//! of the inputs it declares.
 //!
 //! The program is a pari-mutuel betting market: every stake lands in one vault,
 //! and at settlement the losing pool (minus a fee) is split among the winners in
 //! proportion to their stake. The token movement goes through SPL CPIs Kani
 //! cannot symbolically execute, but the payout math (`settle_event`,
 //! `claim_winnings`) is pure integer arithmetic. This crate reproduces it
-//! faithfully and proves the two properties that matter: **solvency** (winners
+//! faithfully and checks the two properties that matter: **solvency** (winners
 //! can never collectively claim more than the vault holds) and that a winner is
 //! never paid less than their own stake. A small model of the event's
-//! lifecycle guards also proves the outcome list is fixed before any money
+//! lifecycle guards also checks that the outcome list is fixed before any money
 //! arrives and that the betting and settlement windows never overlap.
 //!
 //! The nonlinear harness uses bounded model checking (small symbolic inputs), as

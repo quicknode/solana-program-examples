@@ -1,16 +1,20 @@
-# Betting-market: Kani proofs
+# Betting-market: Kani model checks
 
-Formal-verification harnesses for the pari-mutuel betting market, in the spirit
+Kani harnesses that model-check the pari-mutuel betting market, in the spirit
 of [`aeyakovenko/percolator`](https://github.com/aeyakovenko/percolator), which
-uses the [Kani](https://github.com/model-checking/kani) model checker to prove
-the mathematical correctness of a DeFi engine.
+uses the [Kani](https://github.com/model-checking/kani) model checker to check
+the arithmetic of a DeFi engine. Kani marks a harness with `#[kani::proof]`,
+which is why the crate is `kani-proofs` and the harnesses are named `proof_*`;
+each one is a model check: Kani tries every value of the inputs the harness
+declares and reports either that every assertion held or an input that breaks
+one.
 
-## What is verified
+## What is checked
 
 Every stake lands in one vault; at settlement the losing pool (minus a fee) is
 split among the winners in proportion to their stake. The token movement goes
 through SPL CPIs Kani cannot symbolically execute, but the payout math is pure
-integer arithmetic. This crate reproduces it faithfully and proves:
+integer arithmetic. This crate reproduces it faithfully and checks, for every input:
 
 - `proof_settlement_fee_and_split`: `fee <= losing_pool` (so `distributable` never underflows) and `winning + distributable + fee == total`, settlement conserves the pool.
 - `proof_winner_never_below_stake`: `payout = stake + winnings >= stake`: a winner is never paid less than they staked (the fee is charged only on losers).
@@ -19,7 +23,7 @@ integer arithmetic. This crate reproduces it faithfully and proves:
 - `proof_betting_and_settlement_windows_partition_time`: at every instant exactly one of `betting_is_open` and `may_settle` holds, so no bet can land once the event can be settled.
 - `proof_outcomes_fixed_before_money_arrives`: a model of the event's lifecycle guards (`add_outcome`, `open_betting`, `place_bet`, `settle_event`, `cancel_event`), run over every sequence of six calls at arbitrary times from a fresh draft. The outcome list never changes once money is in the pool, every stake lands in a market with at least two outcomes and before the close time, and settlement happens only at or after it.
 
-### The solvency proof
+### The solvency check
 
 After settlement the vault holds `winning_pool + distributable_losing_pool`.
 Each winner is paid `stake_i + floor(stake_i · D / winning_pool)`, and the
@@ -31,11 +35,11 @@ the vault below zero; floor rounding only ever leaves dust behind. Modelled with
 
 ## Bounded model checking
 
-The settlement, payout, and solvency proofs verify nonlinear 128-bit arithmetic
+The settlement, payout, and solvency harnesses check nonlinear 128-bit arithmetic
 (`stake · distributable`, divided by the symbolic winning pool), the hard case
 for a bit-precise solver, so (as percolator does) they bound their symbolic
 inputs to a representative range; the pro-rata identity is scale-invariant. The
-refund proof is pure linear logic and runs at full `u64` width (bounded only in
+refund harness is pure linear logic and runs at full `u64` width (bounded only in
 the number of bettors).
 
 - `proof_settlement_fee_and_split`: `total_pool <= 4095`, `fee_bps` symbolic, ~1s
@@ -45,12 +49,12 @@ the number of bettors).
 - `proof_betting_and_settlement_windows_partition_time`: full `i64`, <1s
 - `proof_outcomes_fixed_before_money_arrives`: 6 calls, full `u64` stakes and `i64` times, ~2s
 
-Run weekly in CI (the `.github/workflows/kani.yml` `verify` job), not on every push/PR, because the bounded nonlinear proofs are slow. A fast unit-test job runs per push/PR.
+Run weekly in CI (the `.github/workflows/kani.yml` `verify` job), not on every push/PR, because the bounded nonlinear model checks are slow. A fast unit-test job runs per push/PR.
 
 ## Running
 
 ```bash
 cargo test                                                 # unit tests, no Kani
 cargo install --locked kani-verifier && cargo kani setup   # one-time
-cargo kani                                                  # formal verification
+cargo kani                                                  # Kani model checks
 ```

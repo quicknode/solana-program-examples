@@ -1,4 +1,4 @@
-//! Integer-only money math (no floats, no fixed-point crates), shared by the
+//! Integer-only arithmetic (no floats, no fixed-point crates), shared by the
 //! handlers. Ratios are scaled by `FIXED_POINT_SCALE`; conversions round in the
 //! protocol's favour.
 

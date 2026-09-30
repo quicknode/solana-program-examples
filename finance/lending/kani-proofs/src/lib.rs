@@ -1,7 +1,11 @@
-//! Kani proof harnesses for the lending program (`finance/lending`).
+//! Kani model-check harnesses for the lending program (`finance/lending`).
 //!
 //! Inspired by aeyakovenko/percolator, which uses the Kani model checker to
-//! prove the mathematical correctness of a DeFi engine's pure numeric core.
+//! check the arithmetic of a DeFi engine's pure numeric core.
+//!
+//! Kani marks a harness with `#[kani::proof]`, which is why the crate is
+//! `kani-proofs` and the harnesses are named `proof_*`; each one is a model
+//! check, which tries every value of its declared inputs, not a formal proof.
 //!
 //! The lending program is the richest of the finance examples: a Solend-style
 //! pool with `mul_div` floor/ceil rounding (`math.rs`), a kinked interest-rate
@@ -10,7 +14,7 @@
 //! factor and bonus (`liquidate_obligation`). All of that is pure integer
 //! arithmetic; the token movement is delegated to SPL CPIs that Kani cannot
 //! symbolically execute. This crate reproduces the formulas faithfully and
-//! proves the invariants the protocol's safety rests on.
+//! checks the invariants the protocol's safety rests on.
 //!
 //! Nonlinear 128-bit arithmetic is the hard case for a bit-precise solver, so —
 //! as percolator does — the harnesses use bounded model checking: symbolic
@@ -169,7 +173,7 @@ fn proof_utilization_in_range() {
 ///
 /// `full_utilization` is the 100%-utilization denominator — `BPS_DENOMINATOR`
 /// (10_000) on-chain. It is a parameter here only so the scale-invariant
-/// in-bounds proof can use a small denominator: dividing by a symbolic value
+/// in-bounds harness can use a small denominator: dividing by a symbolic value
 /// near 10_000 is intractable for the bit-precise solver, but the property is
 /// identical at any scale.
 pub fn borrow_rate_bps(

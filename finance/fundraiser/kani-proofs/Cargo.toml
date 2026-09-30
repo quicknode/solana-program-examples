@@ -1,6 +1,6 @@
 # Standalone workspace - intentionally NOT part of the root program-examples
 # workspace. Kani (https://github.com/model-checking/kani) proof harnesses
-# modelling this program's pure money-math so the model checker can verify the
+# modelling this program's pure arithmetic so the model checker can check the
 # invariants without the Solana / SPL-token CPI machinery, which Kani cannot
 # symbolically execute.
 [workspace]

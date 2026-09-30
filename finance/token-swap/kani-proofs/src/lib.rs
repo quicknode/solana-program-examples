@@ -1,7 +1,12 @@
-//! Kani proof harnesses for the constant-product AMM (`finance/token-swap`).
+//! Kani model-check harnesses for the constant-product AMM
+//! (`finance/token-swap`).
 //!
 //! Inspired by aeyakovenko/percolator, which uses the Kani model checker to
-//! prove the mathematical correctness of a DeFi engine's pure numeric core.
+//! check the arithmetic of a DeFi engine's pure numeric core.
+//!
+//! Kani marks a harness with `#[kani::proof]`, which is why the crate is
+//! `kani-proofs` and the harnesses are named `proof_*`; each one is a model
+//! check, which tries every value of its declared inputs, not a formal proof.
 //!
 //! The on-chain instructions (`swap_tokens`, `deposit_liquidity`,
 //! `withdraw_liquidity`) hand the actual token movement to the SPL token
@@ -10,7 +15,7 @@
 //! used for the initial LP mint, and the proportional deposit and withdraw
 //! math — is pure integer arithmetic. This crate reproduces those formulas
 //! faithfully (same `u128` widening, same multiply-before-divide, same floor
-//! rounding) and proves the invariants the program depends on.
+//! rounding) and checks the invariants the program depends on.
 //!
 //! Constants mirror `constants.rs`.
 
@@ -96,7 +101,7 @@ pub fn swap_output(taxed_input: u64, this_reserve: u64, other_reserve: u64) -> O
 ///
 /// This models the full reserve transition the on-chain `require!(new_invariant
 /// >= invariant)` checks: the input side grows by `taxed_input` plus the LP
-/// slice of the fee (`lp_fee`), the output side shrinks by `output`. We prove
+/// slice of the fee (`lp_fee`), the output side shrinks by `output`. We check
 /// the post-trade product dominates the pre-trade product for *every* reserve
 /// configuration and input — the model checker's analogue of "the pool can
 /// never be drained below the curve".
@@ -109,10 +114,10 @@ fn proof_swap_preserves_constant_product() {
     let taxed_input: u64 = kani::any();
     let lp_fee: u64 = kani::any(); // fee_amount - admin_portion, stays in pool
 
-    // Bounded model checking: this proof multiplies two symbolic reserves
+    // Bounded model checking: this harness multiplies two symbolic reserves
     // (`new_in * new_out`), the worst case for a bit-precise solver. Cap each
-    // quantity at 1023 so the four-variable nonlinear search stays fast; the
-    // algebraic identity it verifies — (ra+t)(rb-floor(t*rb/(ra+t))) >= ra*rb —
+    // quantity at 63 so the four-variable nonlinear search stays fast; the
+    // algebraic identity it checks, (ra+t)(rb-floor(t*rb/(ra+t))) >= ra*rb,
     // is scale-invariant, so the bounded domain exercises the same rounding
     // edges as the full u64 range.
     kani::assume(reserve_in <= 63);
@@ -127,7 +132,7 @@ fn proof_swap_preserves_constant_product() {
 
     // Reserve transition (effective reserves):
     let new_in = reserve_in as u128 + taxed_input as u128 + lp_fee as u128;
-    let new_out = reserve_out as u128 - output as u128; // proves output <= reserve_out (no underflow)
+    let new_out = reserve_out as u128 - output as u128; // checks output <= reserve_out (no underflow)
 
     let old_k = (reserve_in as u128) * (reserve_out as u128);
     let new_k = new_in * new_out;
@@ -155,7 +160,7 @@ fn proof_swap_cannot_fully_drain_when_reserve_positive() {
     assert!(output < other_reserve, "output must leave the pool solvent");
 }
 
-/// FINDING (now FIXED in the program) — this proof is the justification for the
+/// FINDING (now FIXED in the program) — this harness is the justification for the
 /// fix. It characterizes *why* `swap_tokens` must reject empty reserves: when an
 /// input-side effective reserve is exactly `0`, the curve outputs the ENTIRE
 /// opposite reserve (`output == other_reserve`), draining that side — and the
@@ -171,16 +176,17 @@ fn proof_swap_cannot_fully_drain_when_reserve_positive() {
 /// already make it unreachable in normal operation; the guard means solvency no
 /// longer *depends* on that reachability argument.
 ///
-/// We keep this as a *positive* proof (every assertion below holds) characterizing
-/// the raw `swap_output` formula at the boundary — not a `#[kani::should_panic]`,
-/// which would have started failing the moment the `require!` fix landed.
+/// We keep this as a *positive* model check (every assertion below holds)
+/// characterizing the raw `swap_output` formula at the boundary — not a
+/// `#[kani::should_panic]`, which would have started failing the moment the
+/// `require!` fix landed.
 #[cfg(kani)]
 #[kani::proof]
 #[kani::solver(cadical)]
 fn proof_swap_at_zero_reserve_drains_whole_pool() {
     let other_reserve: u64 = kani::any();
     let taxed_input: u64 = kani::any();
-    // Bounded model checking: proving `floor(taxed*other/taxed) == other` for all
+    // Bounded model checking: checking `floor(taxed*other/taxed) == other` for all
     // inputs is a symbolic exact-division (divisor == a factor of the numerator),
     // costlier than the old refute-by-counterexample form, so bound tightly.
     kani::assume(other_reserve >= 1 && other_reserve <= 255);
@@ -204,7 +210,7 @@ fn proof_swap_at_zero_reserve_drains_whole_pool() {
 
 /// Verbatim copy of `deposit_liquidity::integer_sqrt` (Newton's method, floor).
 ///
-/// Only the `#[cfg(kani)]` proof and the unit tests call it, so a plain
+/// Only the `#[cfg(kani)]` harness and the unit tests call it, so a plain
 /// `cargo build` of the library sees no caller.
 #[allow(dead_code)]
 fn integer_sqrt(n: u128) -> u128 {
@@ -237,7 +243,7 @@ fn proof_integer_sqrt_is_floor() {
     // 128-bit division (`n / x`) in its body, which the model checker must
     // unroll and bit-blast — the single most expensive shape for a SAT
     // backend. Capping `n` at 255 keeps the unroll short (<=10 iterations, so
-    // `unwind(11)` proves termination) and the `r*r` / `(r+1)*(r+1)` products
+    // `unwind(11)` checks termination) and the `r*r` / `(r+1)*(r+1)` products
     // small, while still exercising every floor-rounding boundary up to r = 15.
     kani::assume(n <= 255);
 
@@ -424,7 +430,7 @@ fn proof_deposit_clamp_never_exceeds_request() {
     // Bound them tightly to stay tractable; the clamp identity is scale-free.
     kani::assume(amount_a <= 31 && amount_b <= 31);
     // Existing pool: both reserves non-zero (the pool-creation branch is the
-    // trivial identity, proven by construction).
+    // trivial identity, so this harness does not check it).
     kani::assume(pool_a >= 1 && pool_a <= 31);
     kani::assume(pool_b >= 1 && pool_b <= 31);
 

@@ -61,9 +61,9 @@ Yes. Escrow is the smallest complete finance program: one state PDA, one vault, 
 
 Build with `anchor build`, then run `cargo test`. The tests are Rust integration tests against [LiteSVM](https://www.anchor-lang.com/docs/testing/litesvm), so no local validator is needed.
 
-### How is this escrow program verified?
+### How is this escrow program tested?
 
-Two ways: LiteSVM integration tests covering the make, take, and cancel flows, and [Kani](https://github.com/model-checking/kani) proofs in [`../kani-proofs/`](../kani-proofs/) that check the money-math invariants over all possible inputs, not just test cases.
+Two ways: LiteSVM integration tests covering the make, take, and cancel flows, and [Kani](https://github.com/model-checking/kani) model checks in [`../kani-proofs/`](../kani-proofs/) that check the arithmetic invariants for every input in their declared ranges, not just test cases.
 
 ## Credit
 

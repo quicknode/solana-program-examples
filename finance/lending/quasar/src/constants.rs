@@ -2,7 +2,7 @@
 
 /// Fixed-point scale (10^18) for every ratio: interest rates, the cumulative
 /// borrow-rate index, the share-token exchange rate, and obligation values.
-/// All money math is integer-only `u128`; a ratio `r` is stored as
+/// All arithmetic is integer-only `u128`; a ratio `r` is stored as
 /// `r * FIXED_POINT_SCALE`.
 pub const FIXED_POINT_SCALE: u128 = 1_000_000_000_000_000_000;
 
