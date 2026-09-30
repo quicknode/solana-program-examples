@@ -38,6 +38,14 @@ pub const MAX_PRICE_STALENESS_SLOTS: u64 = 150;
 /// liquidatable on the smallest price move.
 pub const MAX_LEVERAGE_CEILING: u16 = 100;
 
+/// Upper bound on the per-pool `funding_rate_per_second` parameter, in
+/// `FUNDING_PRECISION` units: 277 billionths of a position's size per second,
+/// just under 0.1% of its size per hour. The rate is fixed when the pool is
+/// created, so everyone who opens a position or deposits liquidity has seen it,
+/// and no position can be charged or paid funding faster than this.
+#[constant]
+pub const MAX_FUNDING_RATE_PER_SECOND: u64 = 277;
+
 #[constant]
 pub const POOL_SEED: &[u8] = b"pool";
 

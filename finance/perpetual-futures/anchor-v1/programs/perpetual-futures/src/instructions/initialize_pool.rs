@@ -5,12 +5,14 @@ use anchor_spl::{
 };
 
 use crate::constants::{
-    BASIS_POINTS_DENOMINATOR, LP_MINT_SEED, MAX_LEVERAGE_CEILING, POOL_SEED, VAULT_SEED,
+    BASIS_POINTS_DENOMINATOR, LP_MINT_SEED, MAX_FUNDING_RATE_PER_SECOND, MAX_LEVERAGE_CEILING,
+    POOL_SEED, VAULT_SEED,
 };
 use crate::errors::PerpError;
 use crate::state::Pool;
 
-/// Trading parameters set once at pool creation. Bundled into one struct so the
+/// Trading parameters set once at pool creation. None of them can be changed
+/// afterwards. Bundled into one struct so the
 /// instruction signature stays readable.
 #[derive(AnchorSerialize, AnchorDeserialize, Clone)]
 pub struct PoolParameters {
@@ -38,6 +40,12 @@ pub fn handle_initialize_pool(
     let denominator = BASIS_POINTS_DENOMINATOR as u16;
     require!(
         parameters.max_leverage >= 1 && parameters.max_leverage <= MAX_LEVERAGE_CEILING,
+        PerpError::InvalidParameter
+    );
+    // The rate never changes after this, so bounding it here bounds it for the
+    // life of the pool.
+    require!(
+        parameters.funding_rate_per_second <= MAX_FUNDING_RATE_PER_SECOND,
         PerpError::InvalidParameter
     );
     require!(

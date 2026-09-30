@@ -4,10 +4,11 @@
 
 use {
     crate::{
+        constants::{MAX_FUNDING_RATE_PER_SECOND, SIDE_LONG, SIDE_SHORT},
         cpi::{
             AddLiquidityInstruction, ClosePositionInstruction, CollectFeesInstruction,
             InitializePoolInstruction, LiquidatePositionInstruction, OpenPositionInstruction,
-            RemoveLiquidityInstruction, SetFundingRateInstruction,
+            RemoveLiquidityInstruction,
         },
         state::{Pool, Position},
         LpMintPda, VaultPda,
@@ -39,6 +40,11 @@ const ADMIN_COLLATERAL: Pubkey = Pubkey::new_from_array([11; 32]);
 const VICTIM: Pubkey = Pubkey::new_from_array([12; 32]);
 const VICTIM_COLLATERAL: Pubkey = Pubkey::new_from_array([13; 32]);
 const VICTIM_LP: Pubkey = Pubkey::new_from_array([14; 32]);
+const OPERATOR_WALLET: Pubkey = Pubkey::new_from_array([15; 32]);
+const OPERATOR_COLLATERAL: Pubkey = Pubkey::new_from_array([16; 32]);
+
+// Ten years, in seconds.
+const TEN_YEARS: i64 = 315_360_000;
 
 fn dollars(whole: i128) -> i128 {
     whole * 10i128.pow(ORACLE_SCALE)
@@ -276,8 +282,9 @@ fn remove_liquidity_round_trip_returns_the_deposit_less_the_minimum(test: &mut T
 /// in is spread across shares nobody can redeem.
 #[quasar_test]
 fn inflating_liquidity_through_own_trades_does_not_pay(test: &mut Test) {
-    // A steep funding rate: 1_000 of notional pays 1_000 USDC over 1_000 seconds.
-    let env = setup_with_funding(test, 1_000_000_000_000);
+    // The steepest rate a pool may have, held for ten years. The position is
+    // tiny because a pool holding 1_001 can back only 1_001 of notional.
+    let env = setup_with_funding(test, MAX_FUNDING_RATE_PER_SECOND);
     fund(test, PROVIDER, PROVIDER_COLLATERAL, 1_001);
     add_liquidity(test, &env, 1_001)
         .succeeds()
@@ -286,14 +293,15 @@ fn inflating_liquidity_through_own_trades_does_not_pay(test: &mut Test) {
     // The attacker's trading key: a 1_000 long, heavily collateralized.
     fund(test, TRADER, TRADER_COLLATERAL, 2_000 * ONE_USDC);
     open_position(test, &env, 0, 2_000 * ONE_USDC, 1_000).succeeds();
-    set_clock_at(test, 1_000 * SLOTS_PER_SECOND, 1_000);
-    set_feed_at_slot(test, dollars(100), 1_000 * SLOTS_PER_SECOND, 0);
+    let ten_years_slots = TEN_YEARS as u64 * SLOTS_PER_SECOND;
+    set_clock_at(test, ten_years_slots, TEN_YEARS);
+    set_feed_at_slot(test, dollars(100), ten_years_slots, 0);
     close_position(test, &env).succeeds();
     // Spent: the 1_001 deposit, the funding, and a 1-unit fee each way. All
     // but the two fees is now `liquidity`.
     let attacker_spent = 1_001 + 2_000 * ONE_USDC - test.tokens(TRADER_COLLATERAL);
     let pumped_liquidity = attacker_spent - 2;
-    assert!(pumped_liquidity > 1_000 * ONE_USDC);
+    assert!(pumped_liquidity > 50 * 1_001);
 
     // Just under twice the pumped liquidity: dividing by the bare supply of 1
     // would mint a single share, and the attacker's share would redeem half.
@@ -476,56 +484,6 @@ fn collect_fees_sweeps_the_open_fee_to_the_admin(test: &mut Test) {
 /// spanning position pays one window at the old rate plus one at the new (3
 /// window-rates), and the position opened afterwards pays one window wholly at
 /// the new rate (2 window-rates).
-#[quasar_test]
-fn set_funding_rate_settles_at_the_old_rate_first(test: &mut Test) {
-    let rate = 5_000;
-    let window = 2_000;
-    let size = 5_000 * ONE_USDC;
-    let collateral = 1_000 * ONE_USDC;
-    let fees = 2 * (size / 1_000); // open and close, 0.1% of notional each
-    let window_slots = window as u64 * SLOTS_PER_SECOND;
-
-    let env = setup_with_funding(test, rate);
-    fund(test, PROVIDER, PROVIDER_COLLATERAL, 100_000 * ONE_USDC);
-    add_liquidity(test, &env, 100_000 * ONE_USDC).succeeds();
-    fund(test, TRADER, TRADER_COLLATERAL, 10_000 * ONE_USDC);
-
-    // A position held across the retune: one window at `rate`, one at `rate * 2`.
-    let before_spanning = test.tokens(TRADER_COLLATERAL);
-    open_position(test, &env, 0, collateral, size).succeeds();
-    set_clock_at(test, window_slots, window);
-    test.send(SetFundingRateInstruction {
-        authority: ADMIN,
-        collateral_mint: COLLATERAL_MINT,
-        oracle_feed: FEED,
-        funding_rate_per_second: rate * 2,
-    })
-    .succeeds();
-    set_clock_at(test, 2 * window_slots, 2 * window);
-    set_feed_at_slot(test, dollars(100), 2 * window_slots, 0);
-    close_position(test, &env).succeeds();
-    let spanning = (before_spanning - test.tokens(TRADER_COLLATERAL)) - fees;
-
-    // A fresh position over one window, now wholly at the doubled rate.
-    let before_doubled = test.tokens(TRADER_COLLATERAL);
-    open_position(test, &env, 0, collateral, size).succeeds();
-    set_clock_at(test, 3 * window_slots, 3 * window);
-    set_feed_at_slot(test, dollars(100), 3 * window_slots, 0);
-    close_position(test, &env).succeeds();
-    let doubled = (before_doubled - test.tokens(TRADER_COLLATERAL)) - fees;
-
-    assert!(
-        doubled > 0,
-        "the doubled-rate window must charge some funding"
-    );
-    assert_eq!(
-        spanning * 2,
-        doubled * 3,
-        "a position spanning the retune should pay 1.5x one doubled window: \
-         spanning {spanning}, doubled {doubled}"
-    );
-}
-
 /// Funding is quoted per second of wall-clock time, so slots passing without
 /// the clock moving charge nothing. A million extra slots halfway through the
 /// window, as a much shorter slot would produce, leave the funding unchanged.
@@ -534,7 +492,7 @@ fn set_funding_rate_settles_at_the_old_rate_first(test: &mut Test) {
 /// so they must pay the same funding; only the second sees the extra slots.
 #[quasar_test]
 fn funding_follows_seconds_not_slots(test: &mut Test) {
-    let rate = 5_000;
+    let rate = MAX_FUNDING_RATE_PER_SECOND;
     let window = 2_000;
     let size = 5_000 * ONE_USDC;
     let collateral = 1_000 * ONE_USDC;
@@ -573,19 +531,72 @@ fn funding_follows_seconds_not_slots(test: &mut Test) {
 }
 
 #[quasar_test]
-fn only_the_authority_can_set_the_funding_rate(test: &mut Test) {
-    let env = setup_with_funding(test, 5_000);
-    let _ = env;
-    fund(test, TRADER, TRADER_COLLATERAL, ONE_USDC);
+fn initialize_pool_rejects_funding_rate_above_the_maximum(test: &mut Test) {
+    // The rate is fixed at creation, so this is the only place it is checked.
+    test.add(Wallet::new().at(ADMIN));
+    test.add(Mint::new(ADMIN).at(COLLATERAL_MINT).decimals(6));
+    set_feed(test, dollars(100), 0);
     assert!(
-        test.send(SetFundingRateInstruction {
-            authority: TRADER,
-            collateral_mint: COLLATERAL_MINT,
-            oracle_feed: FEED,
-            funding_rate_per_second: 1,
-        })
-        .is_err(),
-        "a non-authority must not be able to retune the funding rate"
+        init_pool_with_funding(test, 500, 10, MAX_FUNDING_RATE_PER_SECOND + 1).is_err(),
+        "a funding rate above the maximum must be rejected"
+    );
+    init_pool_with_funding(test, 500, 10, MAX_FUNDING_RATE_PER_SECOND).succeeds();
+}
+
+/// The pool operator trading against their own pool. The lighter side of open
+/// interest is paid funding out of `liquidity`, so an operator who could raise
+/// the rate at will could open a small position on the lighter side, raise the
+/// rate, and close it to take the liquidity providers' deposits. The rate is
+/// fixed when the pool is created and capped, so a wallet the operator
+/// controls earns exactly what any trader on that side would: at most the
+/// maximum rate, here just under 0.1% of the position's size over an hour.
+#[quasar_test]
+fn operator_on_the_lighter_side_earns_only_the_fixed_rate(test: &mut Test) {
+    let env = setup_with_funding(test, MAX_FUNDING_RATE_PER_SECOND);
+    fund(test, PROVIDER, PROVIDER_COLLATERAL, 100_000 * ONE_USDC);
+    add_liquidity(test, &env, 100_000 * ONE_USDC).succeeds();
+
+    // Longs are the heavier side, so they pay and shorts are paid.
+    fund(test, TRADER, TRADER_COLLATERAL, 2_000 * ONE_USDC);
+    open_position(test, &env, SIDE_LONG, 2_000 * ONE_USDC, 10_000 * ONE_USDC).succeeds();
+
+    let collateral = 200 * ONE_USDC;
+    let size = 1_000 * ONE_USDC;
+    fund(test, OPERATOR_WALLET, OPERATOR_COLLATERAL, collateral);
+    test.send(OpenPositionInstruction {
+        owner: OPERATOR_WALLET,
+        oracle_feed: FEED,
+        collateral_mint: COLLATERAL_MINT,
+        custody_vault: env.custody_vault,
+        trader_collateral: OPERATOR_COLLATERAL,
+        side: SIDE_SHORT,
+        collateral_amount: collateral,
+        size,
+        acceptable_price: 0,
+    })
+    .succeeds();
+
+    let one_hour = 3_600;
+    let one_hour_slots = one_hour as u64 * SLOTS_PER_SECOND;
+    set_clock_at(test, one_hour_slots, one_hour);
+    set_feed_at_slot(test, dollars(100), one_hour_slots, 0);
+    test.send(ClosePositionInstruction {
+        owner: OPERATOR_WALLET,
+        oracle_feed: FEED,
+        collateral_mint: COLLATERAL_MINT,
+        custody_vault: env.custody_vault,
+        trader_collateral: OPERATOR_COLLATERAL,
+        minimum_payout: 0,
+    })
+    .succeeds();
+
+    let fees = 2 * (size / 1_000); // open and close, 0.1% of notional each
+    let funding_received = test.tokens(OPERATOR_COLLATERAL) - (collateral - fees);
+    let expected = size * MAX_FUNDING_RATE_PER_SECOND * one_hour as u64 / 1_000_000_000;
+    assert_eq!(funding_received, expected);
+    assert!(
+        funding_received * 1_000 < size,
+        "under 0.1% of size in an hour"
     );
 }
 

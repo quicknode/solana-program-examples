@@ -1,6 +1,6 @@
 use {
     crate::{
-        constants::{BASIS_POINTS_DENOMINATOR, MAX_LEVERAGE_CEILING},
+        constants::{BASIS_POINTS_DENOMINATOR, MAX_FUNDING_RATE_PER_SECOND, MAX_LEVERAGE_CEILING},
         instructions::shared::{err, error},
         state::{Pool, PoolInner},
         LpMintPda, VaultPda,
@@ -62,6 +62,11 @@ pub fn handle_initialize_pool(
     bumps: &InitializePoolBumps,
 ) -> Result<(), ProgramError> {
     let denominator = BASIS_POINTS_DENOMINATOR as u16;
+    // The rate never changes after this, so bounding it here bounds it for the
+    // life of the pool.
+    if funding_rate_per_second > MAX_FUNDING_RATE_PER_SECOND {
+        return Err(err(error::INVALID_PARAMETER));
+    }
     if !(1..=MAX_LEVERAGE_CEILING).contains(&max_leverage) {
         return Err(err(error::INVALID_PARAMETER));
     }
