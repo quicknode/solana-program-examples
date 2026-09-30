@@ -50,7 +50,8 @@ fn raw_token_donation_does_not_inflate_exchange_rate() {
     env.supply(&first, &usdc, amount);
 
     // Attacker donates raw tokens straight into the reserve vault. available_liquidity
-    // is the source of truth, so this must NOT change the share exchange rate.
+    // is what the program prices shares from, so this must NOT change the share
+    // exchange rate.
     let owner = env.owner.insecure_clone();
     mint_tokens_to_token_account(
         &mut env.svm,

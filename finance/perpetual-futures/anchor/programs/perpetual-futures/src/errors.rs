@@ -53,7 +53,7 @@ pub enum PerpError {
     #[msg("Position equity is below maintenance margin; it must be liquidated, not closed")]
     PositionNotHealthy,
 
-    #[msg("No protocol fees are available to collect")]
+    #[msg("No program fees are available to collect")]
     NothingToClaim,
 
     #[msg("Oracle price is stale: it predates the last cluster restart")]

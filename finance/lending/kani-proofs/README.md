@@ -20,7 +20,7 @@ but everything else is pure integer arithmetic. This crate reproduces the
 formulas faithfully and checks their invariants:
 
 - `proof_mul_div_floor_ceil_correct`: `mul_div_floor`/`mul_div_ceil` are the true floor/ceil of `a·b/d`, differ by ≤ 1, and coincide iff the division is exact.
-- `proof_rounding_is_protocol_favourable`: `ceil ≥ floor` always, debt (rounded up) is never undercounted and a supplier claim (rounded down) never overcounted, so dust can't be extracted by round-trips.
+- `proof_rounding_is_program_favourable`: `ceil ≥ floor` always, debt (rounded up) is never undercounted and a supplier claim (rounded down) never overcounted, so dust can't be extracted by round-trips.
 - `proof_accumulation_factor_monotonic`: The borrow accumulation factor never decreases (`accrue_interest` multiplies by a factor ≥ 1), borrowers always owe ≥ principal.
 - `proof_utilization_in_range`: Utilization is always a valid `[0, 10000]` bps fraction (`borrowed ≤ gross`).
 - `proof_borrow_rate_within_bounds`: The kinked rate curve stays within `[min_rate, max_rate]` for every utilization, given the config ordering `min ≤ optimal ≤ max`.
@@ -47,7 +47,7 @@ so the harness can use a small one:
   property is identical at any scale).
 
 - `proof_mul_div_floor_ceil_correct`: `a, b, d <= 31`, ~37s
-- `proof_rounding_is_protocol_favourable`: `a, b, d <= 127`, ~29s
+- `proof_rounding_is_program_favourable`: `a, b, d <= 127`, ~29s
 - `proof_accumulation_factor_monotonic`: `old/accrued <= 255`, `scale <= 127`, ~5s
 - `proof_utilization_in_range`: `<= 4095`, ~1s
 - `proof_borrow_rate_within_bounds`: rates `<= 255`, `full_utilization <= 32`, ~25s

@@ -6,23 +6,23 @@ use anchor_spl::token_interface::{
 use crate::errors::LendingError;
 use crate::state::{reserve_signer_seeds, LendingMarket, Reserve};
 
-/// Withdraw the protocol fees accrued in a reserve to the market owner. This is
+/// Withdraw the program fees accrued in a reserve to the market owner. This is
 /// how the owner earns: `reserve_factor_bps` of every interest accrual is set
-/// aside in `accumulated_protocol_fees` (never credited to suppliers), and this
+/// aside in `accumulated_program_fees` (never credited to suppliers), and this
 /// handler pays it out, capped by the liquidity actually sitting in the vault.
-pub fn handle_collect_protocol_fees(context: &mut Context<CollectProtocolFees>) -> Result<()> {
+pub fn handle_collect_program_fees(context: &mut Context<CollectProgramFees>) -> Result<()> {
     context.accounts.reserve.require_refreshed()?;
 
     let reserve = &mut context.accounts.reserve;
     // Fees are a claim on liquidity; only what is currently un-borrowed can be paid
     // out right now. Any remainder stays owed until borrowers repay.
     let amount = reserve
-        .accumulated_protocol_fees
+        .accumulated_program_fees
         .min(reserve.available_liquidity);
     require!(amount > 0, LendingError::NothingToCollect);
 
-    reserve.accumulated_protocol_fees = reserve
-        .accumulated_protocol_fees
+    reserve.accumulated_program_fees = reserve
+        .accumulated_program_fees
         .checked_sub(amount)
         .ok_or(LendingError::MathOverflow)?;
     reserve.available_liquidity = reserve
@@ -61,7 +61,7 @@ pub fn handle_collect_protocol_fees(context: &mut Context<CollectProtocolFees>) 
 }
 
 #[derive(Accounts)]
-pub struct CollectProtocolFees {
+pub struct CollectProgramFees {
     // Identified by `address = reserve.lending_market`; we only prove the
     // signer owns it.
     #[account(address = reserve.lending_market)]

@@ -63,7 +63,7 @@ impl DepositReserveLiquidity {
             reserve.available_liquidity,
             reserve.borrowed_principal,
             reserve.borrow_accumulation_factor,
-            reserve.accumulated_protocol_fees,
+            reserve.accumulated_program_fees,
         )?;
         let shares = if reserve.share_mint_supply == 0 && total == 0 {
             // Bootstrap: shares track liquidity one-for-one, less the withheld
@@ -176,7 +176,7 @@ impl RedeemReserveCollateral {
             reserve.available_liquidity,
             reserve.borrowed_principal,
             reserve.borrow_accumulation_factor,
-            reserve.accumulated_protocol_fees,
+            reserve.accumulated_program_fees,
         )?;
         // The withheld minimum counts as shares nobody holds, as it does in
         // deposit_reserve_liquidity, so its slice of the pool never leaves.

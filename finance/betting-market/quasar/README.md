@@ -3,7 +3,7 @@
 A parimutuel betting market on Solana, written with Quasar. An admin creates events (markets), adds the possible
 outcomes, opens them to bets, and later settles or cancels each one. Bettors stake a fixed token on
 the outcome they think will happen; when the event is settled, the winners split
-the losing side's stakes in proportion to their own, after a protocol fee. This
+the losing side's stakes in proportion to their own, after a program fee. This
 is the same mechanism a racetrack tote board or a prediction market runs on.
 
 This is a [Quasar](https://github.com/blueshift-gg/quasar) port of the Anchor
@@ -31,7 +31,7 @@ result is known the winners divide the pool.
   naming the winning outcome. Bets are accepted only while `now <
   betting_closes_at` and settlement only once `now >= betting_closes_at`, so
   nobody can stake after the result could be known.
-  The protocol fee is charged only on the losing pool, so a winner can never
+  The program fee is charged only on the losing pool, so a winner can never
   receive less than they staked. The fee moves to the fee recipient immediately;
   the figures winners need are recorded on the event.
 - A winner calls `claim_winnings` to withdraw their stake plus their share of

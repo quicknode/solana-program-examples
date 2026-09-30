@@ -20,7 +20,7 @@ An **educational demo dApp** shipped alongside the `managed-fund` Solana program
 
 ## Positioning
 
-A **multi-asset** fund built from single-asset vaults, transparently priced on-chain. Unlike an ERC-4626-style single-asset vault, one "fund" owns one vault per asset plus a USDC vault, and every deposit is deployed across the basket at its target weights in the same transaction — there is no idle-cash mode. Deposit pricing, slippage floors, and fees are all derived on-chain from the Pyth oracle and the fund's own parameters rather than trusted from a caller, which is the truth the interface must make visible: the numbers a user sees are the numbers the program enforces.
+A **multi-asset** fund built from single-asset vaults, transparently priced on-chain. Unlike an ERC-4626-style single-asset vault, one "fund" owns one vault per asset plus a USDC vault, and every deposit is deployed across the basket at its target weights in the same transaction — there is no idle-cash mode. Deposit pricing, slippage floors, and fees are all derived on-chain from the Pyth oracle and the fund's own parameters rather than trusted from a caller, which is what the interface must make visible: the numbers a user sees are the numbers the program enforces.
 
 ## Operating Context
 

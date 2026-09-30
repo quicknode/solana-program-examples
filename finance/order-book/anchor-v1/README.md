@@ -506,7 +506,7 @@ them is:
 3. `place_order` (a user - as many times as they want)
 4. `cancel_order` (a user - to remove a resting order)
 5. `settle_funds` (a user - to collect winnings)
-6. `withdraw_fees` (market authority - to collect protocol revenue)
+6. `withdraw_fees` (market authority - to collect program revenue)
 
 For each, the shape is: who signs, what accounts go in, what PDAs get
 created, what token flows happen, what state mutates, what checks are
@@ -1488,8 +1488,8 @@ test initialize_market_rejects_zero_quote_lot_size ... ok
 test initialize_market_rejects_zero_tick_size ... ok
 test initialize_market_sets_market_and_order_book ... ok
 test initialize_market_user_tracks_market_and_owner ... ok
-test place_ask_locks_base_in_vault ... ok
-test place_bid_locks_quote_in_vault ... ok
+test place_ask_moves_base_into_vault ... ok
+test place_bid_moves_quote_into_vault ... ok
 test place_order_rejects_below_min_order_size ... ok
 test place_order_rejects_unaligned_tick ... ok
 test place_order_rejects_zero_price ... ok
@@ -1511,8 +1511,8 @@ test taker_partially_fills_resting_order_rest_stays_on_book ... ok
 
 - `initialize_market_sets_market_and_order_book`: PDA creation, vault setup, initial field values
 - `initialize_market_user_tracks_market_and_owner`: Per-user PDA derivation and zero-initialised counters
-- `place_bid_locks_quote_in_vault`: Fund lock on bid
-- `place_ask_locks_base_in_vault`: Fund lock on ask
+- `place_bid_moves_quote_into_vault`: Fund lock on bid
+- `place_ask_moves_base_into_vault`: Fund lock on ask
 - `settle_funds_moves_unsettled_base_to_user`: Vault → user ATA transfer via market PDA signer
 
 **Validation:**
@@ -1641,7 +1641,7 @@ Openbook v2 (`src/state/slab/`).
   in CU cost regardless of the taker's depth.
 
 - **Market-makers as CPI users.** Formalise the `remaining_accounts`
-  protocol so a market-making program can call `place_order` on
+  layout so a market-making program can call `place_order` on
   behalf of its users, pre-computing the crossings offchain and
   rewriting the book in one transaction.
 

@@ -132,13 +132,13 @@ pub fn handle_open_position(
         .ok_or(ProgramError::ArithmeticOverflow)?;
     accounts.pool.total_collateral.set(new_total_collateral);
 
-    let new_protocol_fees = accounts
+    let new_program_fees = accounts
         .pool
-        .protocol_fees
+        .program_fees
         .get()
         .checked_add(open_fee)
         .ok_or(ProgramError::ArithmeticOverflow)?;
-    accounts.pool.protocol_fees.set(new_protocol_fees);
+    accounts.pool.program_fees.set(new_program_fees);
 
     if side == SIDE_LONG {
         let long_size = accounts

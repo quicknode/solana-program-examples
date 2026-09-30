@@ -27,7 +27,7 @@ aggregator so the example is self-contained.
 
 ## How it works
 
-A separate protocol authority curates a registry of assets, binding each
+A separate registry authority curates a registry of assets, binding each
 approved mint to its official price feed. This authority is deliberately not the
 fund manager: it vets which real assets and feeds are safe, and the manager
 only chooses among them, so a manager can never list a token they mint

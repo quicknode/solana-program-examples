@@ -512,7 +512,7 @@ fn test_market_owns_both_vaults() {
 /// Alice writes 5 covered calls on her 5 NVDAx. The whole 5 NVDAx moves into
 /// the vault at once; the option is listed for a 25 USDC premium.
 #[test]
-fn test_write_call_locks_the_underlying() {
+fn test_write_call_moves_underlying_into_vault() {
     let mut venue = Venue::new();
     let alice = venue.person(FIVE_NVDAX, STANDARD_USDC);
 

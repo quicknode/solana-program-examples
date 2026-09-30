@@ -28,7 +28,7 @@ pub fn handle_initialize_reserve(
     let clock = Clock::get()?;
     reserve.last_update_slot = clock.slot;
     reserve.last_accrual_timestamp = clock.unix_timestamp;
-    reserve.accumulated_protocol_fees = 0;
+    reserve.accumulated_program_fees = 0;
     reserve.config = config;
     reserve.bump = context.bumps.reserve;
     Ok(())

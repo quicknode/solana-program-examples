@@ -60,7 +60,7 @@ Everything else mirrors the Anchor version.
   liquidator overpay.
 - **Share tokens**: supplying mints them, redeeming burns them; the exchange rate
   `total_liquidity / total_shares` rises as borrowers pay interest.
-  `available_liquidity` (not the vault's raw balance) is the source of truth, so a
+  Shares are priced from `available_liquidity`, not the vault's raw balance, so a
   token donation can't inflate the rate. That is not enough on its own, because
   total liquidity also counts interest owed on borrows and a supplier can borrow
   from their own reserve: a lone supplier can raise the value of their one share
@@ -69,13 +69,13 @@ Everything else mirrors the Anchor version.
   and `total_shares` (the share supply plus that minimum) is what every
   conversion between shares and liquidity divides by. The withheld shares
   belong to nobody, so the attacker's one share is 1 of 1,001.
-- **Protocol fees**: the reserve keeps `reserve_factor_bps` of each interest
-  accrual in `accumulated_protocol_fees` (carved out of total liquidity, so it
+- **Program fees**: the reserve keeps `reserve_factor_bps` of each interest
+  accrual in `accumulated_program_fees` (carved out of total liquidity, so it
   never lifts the supplier exchange rate); the market owner withdraws it with
-  `collect_protocol_fees`. That spread between the borrow and supply rates is how
+  `collect_program_fees`. That spread between the borrow and supply rates is how
   the owner earns.
 - **Integer-only math**: `u128`, scaled by `FIXED_POINT_SCALE` (10^18), every
-  conversion rounding in the protocol's favour.
+  conversion rounding in the program's favour.
 - **Interest on the wall clock**: a reserve's rate curve is annual, and the
   conversion to a per-second rate divides by `SECONDS_PER_YEAR`. Elapsed time is
   the Clock's `unix_timestamp` minus the reserve's `last_accrual_timestamp`, so a
@@ -94,7 +94,7 @@ Everything else mirrors the Anchor version.
 `initialize_obligation` (5), `deposit_obligation_collateral` (6),
 `withdraw_obligation_collateral` (7), `borrow_obligation_liquidity` (8),
 `repay_obligation_liquidity` (9), `liquidate_obligation` (10),
-`collect_protocol_fees` (11).
+`collect_program_fees` (11).
 
 ## Setup
 

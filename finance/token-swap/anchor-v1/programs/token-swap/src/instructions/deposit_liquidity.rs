@@ -151,7 +151,7 @@ pub fn handle_deposit_liquidity(
     // overflow `u64`, but `u128` absorbs it for any supply a real mint can
     // reach, and the checked multiply reports the rest. We multiply before
     // dividing to keep precision, then round down (floor) so the pool keeps
-    // any sub-unit rounding dust - protocol-favouring rounding, per the
+    // any sub-unit rounding dust - program-favouring rounding, per the
     // financial-math rules.
     let liquidity: u64 = if pool_creation {
         let product = (amount_a as u128)

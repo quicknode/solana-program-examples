@@ -97,7 +97,7 @@ pub fn handle_initialize_pool(
         liquidity: 0,
         reserved_liquidity: 0,
         total_collateral: 0,
-        protocol_fees: 0,
+        program_fees: 0,
         long_size: 0,
         short_size: 0,
         long_size_scaled: 0,

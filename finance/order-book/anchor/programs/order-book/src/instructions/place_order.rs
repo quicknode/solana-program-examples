@@ -251,7 +251,7 @@ pub fn handle_place_order(
             .try_into()
             .map_err(|_| ErrorCode::NumericalOverflow)?;
 
-        // Ceiling division: round the fee in the protocol's favour. Flooring
+        // Ceiling division: round the fee in the program's favour. Flooring
         // would leak up to 1 minor unit of quote per fill to the maker, which
         // an attacker could industrialise with many tiny fills.
         let fee_quote: u64 = (gross_quote as u128)

@@ -74,7 +74,7 @@ An [in-kind distribution](https://www.investopedia.com/terms/i/in-kind.asp) retu
 
 ### Participants
 
-- **Victor**, the registry authority: curates which assets, and which official Pyth feed, are safe to hold. A protocol role, not a manager.
+- **Victor**, the registry authority: curates which assets, and which official Pyth feed, are safe to hold. A role in the program, separate from the managers.
 - **Maria**, the fund manager: earns a 1% annual fee running a basket she has a thesis on.
 - **Alice**, the early depositor: wants diversified TSLAx and NVDAx exposure without managing positions.
 - **Bob**, the later depositor: joins the same fund after it has been running.
@@ -111,7 +111,7 @@ A price move pushes the basket off target. `rebalance(sell_amount, usdc_to_inves
 
 ### Alice withdraws in kind
 
-`withdraw(shares_to_burn, min_usdc_out)`, with each asset's `[asset_config, vault, mint, user_token_account]` as remaining accounts. Alice's shares burn and she receives her proportional slice of USDC and every asset. Amounts floor in the protocol's favour.
+`withdraw(shares_to_burn, min_usdc_out)`, with each asset's `[asset_config, vault, mint, user_token_account]` as remaining accounts. Alice's shares burn and she receives her proportional slice of USDC and every asset. Amounts floor in the program's favour.
 
 ---
 
@@ -142,7 +142,7 @@ What remains to trust: the honesty of the registered router and registry. With a
 ## Financial Math Implementation
 
 - Integer arithmetic only; intermediate products use `u128`; multiply before divide.
-- All arithmetic uses `checked_*`. Users receive floor division; the protocol keeps the remainder.
+- All arithmetic uses `checked_*`. Users receive floor division; the program keeps the remainder.
 - `transfer_checked` carries decimals through every token CPI.
 
 ---

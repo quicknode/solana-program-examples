@@ -61,8 +61,8 @@ pub fn handle_close_position(
     pool.liquidity = new_liquidity
         .try_into()
         .map_err(|_| PerpError::MathOverflow)?;
-    pool.protocol_fees = pool
-        .protocol_fees
+    pool.program_fees = pool
+        .program_fees
         .checked_add(close_fee)
         .ok_or(PerpError::MathOverflow)?;
 

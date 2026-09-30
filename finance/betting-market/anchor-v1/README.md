@@ -10,7 +10,7 @@ A parimutuel (pooled) betting market on Solana. An admin creates an **event**, a
 **outcomes**, and opens it to bets; bettors then stake a token on the outcome they think will win,
 until the event's betting close time. Every stake across
 every outcome goes into one pool. When the admin settles the event to the winning outcome, the
-losing stakes - minus a protocol fee - are split among the winners in proportion to their stake.
+losing stakes - minus a program fee - are split among the winners in proportion to their stake.
 
 This is the pooled model used by Solana prediction-market platforms such as Hedgehog Markets,
 where odds are set by the crowd's stakes rather than by an order book or a fixed-odds bookmaker.
@@ -155,7 +155,7 @@ anchor test
 
 ### How does a prediction market work on Solana?
 
-This example uses the parimutuel (pooled) model: an admin sets up an event with `initialize_event` and `add_outcome` and opens it with `open_betting`, and bettors stake tokens on an outcome with `place_bet` until betting closes. Every stake goes into one pool; after `settle_event` names the winning outcome, winners call `claim_winnings` to split the losing stakes, minus a protocol fee, in proportion to their own stake.
+This example uses the parimutuel (pooled) model: an admin sets up an event with `initialize_event` and `add_outcome` and opens it with `open_betting`, and bettors stake tokens on an outcome with `place_bet` until betting closes. Every stake goes into one pool; after `settle_event` names the winning outcome, winners call `claim_winnings` to split the losing stakes, minus a program fee, in proportion to their own stake.
 
 ### How are the odds set?
 

@@ -5,7 +5,7 @@ use crate::errors::LendingError;
 
 /// Which way to break ties when a division truncates. Deposits/redeems and
 /// collateral valuations round the user's favourable quantity DOWN; debt and
-/// protocol-owed quantities round UP. The protocol never loses a base unit to
+/// program-owed quantities round UP. The program never loses a base unit to
 /// rounding, so dust cannot be extracted by repeated round-trips.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Rounding {

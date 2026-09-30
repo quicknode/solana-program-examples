@@ -15,7 +15,7 @@ declare_id!("7LyqAeLR3mK9dfj9LqxWzfKH61VVHzuNpkgW5Y32De74");
 
 /// Parimutuel betting market. An admin creates events, adds outcomes, opens
 /// them to bets, and settles or cancels them; bettors stake a fixed token on an outcome, and winners
-/// share the losing pool (net of a protocol fee) pro-rata to their stake. See
+/// share the losing pool (net of a program fee) pro-rata to their stake. See
 /// README.md for the full walkthrough.
 #[program]
 mod quasar_betting_market {

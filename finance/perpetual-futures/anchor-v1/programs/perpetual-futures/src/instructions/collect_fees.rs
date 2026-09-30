@@ -10,11 +10,11 @@ use crate::state::Pool;
 
 pub fn handle_collect_fees(context: Context<CollectFeesAccountConstraints>) -> Result<()> {
     let pool = &mut context.accounts.pool;
-    let amount = pool.protocol_fees;
+    let amount = pool.program_fees;
     require!(amount > 0, PerpError::NothingToClaim);
 
     // Effects before interaction: zero the balance, then transfer.
-    pool.protocol_fees = 0;
+    pool.program_fees = 0;
 
     // The pool signs the CPI below with its own seeds.
     let pool_seeds: &[&[u8]] = &[

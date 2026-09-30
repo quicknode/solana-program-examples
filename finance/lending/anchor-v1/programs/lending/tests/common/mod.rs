@@ -2,7 +2,7 @@
 //! Shared LiteSVM harness for the lending program tests.
 //!
 //! Sets up a lending market with reserves, funds users, and exposes one method
-//! per protocol action. Actions that read value (deposit/redeem/borrow/withdraw/
+//! per program instruction. Actions that read value (deposit/redeem/borrow/withdraw/
 //! liquidate) bundle the required `refresh_reserve` / `refresh_obligation`
 //! instructions into the same transaction, exactly as a real client must.
 
@@ -782,10 +782,10 @@ impl Env {
         send(&mut self.svm, instructions, &[payer], &payer.pubkey()).unwrap();
     }
 
-    /// Market owner collects accrued protocol fees from a reserve to their own
+    /// Market owner collects accrued program fees from a reserve to their own
     /// token account. Bundles `refresh_reserve` so fees are current. Returns the
     /// owner's fee-receiving token account.
-    pub fn collect_protocol_fees(&mut self, handle: &ReserveHandle) -> Pubkey {
+    pub fn collect_program_fees(&mut self, handle: &ReserveHandle) -> Pubkey {
         let owner = self.owner.insecure_clone();
         let owner_liquidity = ata(&owner.pubkey(), &handle.mint);
         if self.svm.get_account(&owner_liquidity).is_none() {
@@ -795,7 +795,7 @@ impl Env {
         let refresh = self.refresh_reserve_ix(handle);
         let collect = Instruction {
             program_id: lending::id(),
-            accounts: lending::accounts::CollectProtocolFees {
+            accounts: lending::accounts::CollectProgramFees {
                 lending_market: self.market,
                 owner: owner.pubkey(),
                 reserve: handle.reserve,
@@ -805,7 +805,7 @@ impl Env {
                 token_program: TOKEN_PROGRAM_ID,
             }
             .to_account_metas(None),
-            data: lending::instruction::CollectProtocolFees {}.data(),
+            data: lending::instruction::CollectProgramFees {}.data(),
         };
         send(
             &mut self.svm,
@@ -835,7 +835,7 @@ impl Env {
 }
 
 /// A reasonable default reserve config: 75% LTV, 80% liquidation threshold,
-/// 5% bonus, 50% close factor, 10% reserve factor (protocol's cut of interest),
+/// 5% bonus, 50% close factor, 10% reserve factor (program's cut of interest),
 /// kink at 80% utilization, 2%/20%/150% APR curve.
 /// A tenth of a 365-day year, in seconds: long enough for interest to show.
 pub const TENTH_OF_A_YEAR: i64 = lending::constants::SECONDS_PER_YEAR as i64 / 10;

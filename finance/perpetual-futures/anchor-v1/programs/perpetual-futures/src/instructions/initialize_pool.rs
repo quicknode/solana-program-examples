@@ -84,7 +84,7 @@ pub fn handle_initialize_pool(
     pool.liquidity = 0;
     pool.reserved_liquidity = 0;
     pool.total_collateral = 0;
-    pool.protocol_fees = 0;
+    pool.program_fees = 0;
     pool.long_size = 0;
     pool.short_size = 0;
     pool.long_size_scaled = 0;
