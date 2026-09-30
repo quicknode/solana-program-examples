@@ -2,6 +2,7 @@
 
 use quasar_lang::prelude::*;
 
+mod error;
 pub mod instructions;
 use instructions::*;
 pub mod state;
@@ -24,6 +25,7 @@ mod quasar_escrow {
         deposit: u64,
         receive: u64,
     ) -> Result<(), ProgramError> {
+        instructions::make_offer::handle_validate_offer(deposit, receive)?;
         instructions::make_offer::handle_make_offer(&mut ctx.accounts, id, receive, &ctx.bumps)?;
         instructions::make_offer::handle_deposit_tokens(&mut ctx.accounts, deposit)
     }

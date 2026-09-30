@@ -490,3 +490,119 @@ fn test_cancel_offer_rejects_non_maker() {
         "Bob must not be able to cancel Alice's offer"
     );
 }
+
+// Anchor numbers a program's errors from 6000 in declaration order, and a
+// failed transaction reports the number as `Custom(n)`. Matching it shows the
+// transaction failed for the check under test, not for some unrelated reason.
+fn assert_fails_with(
+    result: Result<(), solana_kite::SolanaKiteError>,
+    expected: escrow::error::EscrowError,
+) {
+    let code = 6000 + expected as u32;
+    let error = format!("{:?}", result.expect_err("transaction should have failed"));
+    assert!(
+        error.contains(&format!("Custom({code})")),
+        "expected error {code}, got: {error}"
+    );
+}
+
+// Alice sends `make_offer` for the given amounts and wanted token, and the
+// result is returned rather than unwrapped so a test can check the refusal.
+fn try_make_offer(
+    es: &mut EscrowSetup,
+    offer_id: u64,
+    token_a_offered_amount: u64,
+    token_b_wanted_amount: u64,
+    token_mint_b: Pubkey,
+    maker_token_account_b: Pubkey,
+) -> Result<(), solana_kite::SolanaKiteError> {
+    let (offer_pda, _bump) = Pubkey::find_program_address(
+        &[
+            b"offer",
+            es.alice.pubkey().as_ref(),
+            &offer_id.to_le_bytes(),
+        ],
+        &es.program_id,
+    );
+    let vault = derive_ata(&offer_pda, &es.mint_a);
+    let make_offer_ix = Instruction::new_with_bytes(
+        es.program_id,
+        &escrow::instruction::MakeOffer {
+            id: offer_id,
+            token_a_offered_amount,
+            token_b_wanted_amount,
+        }
+        .data(),
+        escrow::accounts::MakeOfferAccountConstraints {
+            maker: es.alice.pubkey(),
+            token_mint_a: es.mint_a,
+            token_mint_b,
+            maker_token_account_a: es.alice_ata_a,
+            maker_token_account_b,
+            offer: offer_pda,
+            vault,
+            associated_token_program: ata_program_id(),
+            token_program: token_program_id(),
+            system_program: system_program::id(),
+        }
+        .to_account_metas(None),
+    );
+    send_transaction_from_instructions(
+        &mut es.svm,
+        vec![make_offer_ix],
+        &[&es.payer, &es.alice],
+        &es.payer.pubkey(),
+    )
+}
+
+#[test]
+fn test_make_offer_rejects_zero_offered_amount() {
+    let mut es = full_setup();
+    let (mint_b, alice_ata_b) = (es.mint_b, es.alice_ata_b);
+    let alice_balance_before = get_token_account_balance(&es.svm, &es.alice_ata_a).unwrap();
+
+    let result = try_make_offer(&mut es, 5, 0, 1_000_000, mint_b, alice_ata_b);
+
+    assert_fails_with(result, escrow::error::EscrowError::ZeroAmount);
+    assert_eq!(
+        get_token_account_balance(&es.svm, &es.alice_ata_a).unwrap(),
+        alice_balance_before
+    );
+}
+
+#[test]
+fn test_make_offer_rejects_zero_wanted_amount() {
+    let mut es = full_setup();
+    let (mint_b, alice_ata_b) = (es.mint_b, es.alice_ata_b);
+    let alice_balance_before = get_token_account_balance(&es.svm, &es.alice_ata_a).unwrap();
+
+    let result = try_make_offer(&mut es, 6, 1_000_000, 0, mint_b, alice_ata_b);
+
+    assert_fails_with(result, escrow::error::EscrowError::ZeroAmount);
+    assert_eq!(
+        get_token_account_balance(&es.svm, &es.alice_ata_a).unwrap(),
+        alice_balance_before
+    );
+}
+
+#[test]
+fn test_make_offer_rejects_same_mint() {
+    let mut es = full_setup();
+    // Alice asks for token A in return for token A, so her token-B account is
+    // her token-A account.
+    let (mint_a, alice_ata_a) = (es.mint_a, es.alice_ata_a);
+    let alice_balance_before = get_token_account_balance(&es.svm, &alice_ata_a).unwrap();
+
+    let result = try_make_offer(&mut es, 7, 1_000_000, 2_000_000, mint_a, alice_ata_a);
+
+    // Anchor refuses the same mutable account twice before the handler runs.
+    let error = format!("{:?}", result.expect_err("a same-token offer must fail"));
+    assert!(
+        error.contains("Custom(2040)"),
+        "expected ConstraintDuplicateMutableAccount (2040), got: {error}"
+    );
+    assert_eq!(
+        get_token_account_balance(&es.svm, &alice_ata_a).unwrap(),
+        alice_balance_before
+    );
+}

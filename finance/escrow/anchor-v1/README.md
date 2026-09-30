@@ -21,7 +21,7 @@ The maker pays the rent for the offer account and the vault, and every path that
 
 ## Lifecycle
 
-A maker opens an offer with `make_offer`, passing the `id`, `token_a_offered_amount`, and `token_b_wanted_amount`. The maker signs and pays all rent. The handler creates the offer PDA and the vault, creates the maker's token-B associated token account if needed (paid by the maker, so the eventual taker never funds a maker-owned account), moves the offered token A into the vault with `transfer_checked`, and records the offer state.
+A maker opens an offer with `make_offer`, passing the `id`, `token_a_offered_amount`, and `token_b_wanted_amount`. The maker signs and pays all rent. The handler creates the offer PDA and the vault, creates the maker's token-B associated token account if needed (paid by the maker, so the eventual taker never funds a maker-owned account), moves the offered token A into the vault with `transfer_checked`, and records the offer state. It refuses an offer with zero tokens on either side (`ZeroAmount`). An offer of a token for itself never reaches the handler: the maker's token-A and token-B accounts would be the same account, which Anchor refuses (`ConstraintDuplicateMutableAccount`).
 
 A taker settles the offer with `take_offer`. The taker signs. Anchor's constraints bind every account to the stored offer state (`has_one` on the maker and both mints, associated-token constraints on the vault and all token accounts, and the PDA seeds on the offer itself). The handler sends the wanted token B from the taker to the maker, releases the vault's token A to the taker signed by the offer PDA, and closes both the vault and the offer account back to the maker, who paid their rent. The taker's own token-A account is created on the fly if needed, paid by the taker.
 
@@ -45,7 +45,7 @@ The tests are Rust integration tests running against [LiteSVM](https://www.ancho
 cargo test
 ```
 
-(`anchor test` runs the same command, per `Anchor.toml`.) The tests cover the make/take flow, the make/cancel flow, rejection of a non-maker cancel, token balances on every leg, and the rent refunds (the maker's lamports recover the offer and vault rent after both take and cancel).
+(`anchor test` runs the same command, per `Anchor.toml`.) The tests cover the make/take flow, the make/cancel flow, rejection of a non-maker cancel, rejection of offers with zero tokens on either side or the same token on both, token balances on every leg, and the rent refunds (the maker's lamports recover the offer and vault rent after both take and cancel).
 
 ## FAQ
 

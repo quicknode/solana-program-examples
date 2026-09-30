@@ -1,5 +1,8 @@
 use {
-    crate::state::{Offer, OfferInner},
+    crate::{
+        error::EscrowError,
+        state::{Offer, OfferInner},
+    },
     quasar_lang::prelude::*,
     quasar_spl::prelude::*,
 };
@@ -32,6 +35,16 @@ pub struct MakeOfferAccountConstraints {
     pub rent: Sysvar<Rent>,
     pub token_program: Program<TokenProgram>,
     pub system_program: Program<SystemProgram>,
+}
+
+/// Refuse an offer with nothing on one side. An offer of a token for a
+/// different amount of itself never reaches this handler: both mint slots
+/// would hold the same account, and loading it twice fails with
+/// `AccountBorrowFailed`.
+#[inline(always)]
+pub fn handle_validate_offer(deposit: u64, receive: u64) -> Result<(), ProgramError> {
+    require!(deposit > 0 && receive > 0, EscrowError::ZeroAmount);
+    Ok(())
 }
 
 #[inline(always)]

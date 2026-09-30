@@ -19,6 +19,10 @@ pub mod escrow {
         token_a_offered_amount: u64,
         token_b_wanted_amount: u64,
     ) -> Result<()> {
+        instructions::make_offer::handle_validate_offer(
+            token_a_offered_amount,
+            token_b_wanted_amount,
+        )?;
         instructions::make_offer::handle_send_offered_tokens_to_vault(
             context,
             token_a_offered_amount,

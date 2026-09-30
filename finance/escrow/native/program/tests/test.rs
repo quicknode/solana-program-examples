@@ -168,19 +168,37 @@ fn setup() -> EscrowSetup {
 }
 
 fn make_offer_instruction(es: &EscrowSetup) -> Instruction {
+    make_offer_instruction_for(
+        es,
+        AMOUNT_A,
+        AMOUNT_B,
+        &es.mint_b.pubkey(),
+        &es.maker_account_b,
+    )
+}
+
+/// A `make_offer` instruction for the given amounts and wanted token, so a
+/// test can build an offer the program should refuse.
+fn make_offer_instruction_for(
+    es: &EscrowSetup,
+    token_a_offered_amount: u64,
+    token_b_wanted_amount: u64,
+    mint_b: &Pubkey,
+    maker_account_b: &Pubkey,
+) -> Instruction {
     let mut make_data = vec![MAKE_OFFER];
     make_data.extend_from_slice(&OFFER_ID.to_le_bytes());
-    make_data.extend_from_slice(&AMOUNT_A.to_le_bytes());
-    make_data.extend_from_slice(&AMOUNT_B.to_le_bytes());
+    make_data.extend_from_slice(&token_a_offered_amount.to_le_bytes());
+    make_data.extend_from_slice(&token_b_wanted_amount.to_le_bytes());
 
     Instruction {
         program_id: es.program_id,
         accounts: vec![
             AccountMeta::new(es.offer, false),
             AccountMeta::new_readonly(es.mint_a.pubkey(), false),
-            AccountMeta::new_readonly(es.mint_b.pubkey(), false),
+            AccountMeta::new_readonly(*mint_b, false),
             AccountMeta::new(es.maker_account_a, false),
-            AccountMeta::new(es.maker_account_b, false),
+            AccountMeta::new(*maker_account_b, false),
             AccountMeta::new(es.vault, false),
             AccountMeta::new(es.maker.pubkey(), true),
             AccountMeta::new_readonly(spl_token_interface::id(), false),
@@ -351,4 +369,59 @@ fn test_cancel_offer_rejects_non_maker() {
 
     // The vault still holds the offered tokens.
     assert_eq!(token_amount(&es.svm, &es.vault), AMOUNT_A);
+}
+
+// `EscrowError` variants in declaration order, as the program reports them in
+// `InstructionError::Custom`.
+const ZERO_AMOUNT: u32 = 7;
+const SAME_MINT: u32 = 8;
+
+/// Send a `make_offer` the program should refuse, and check it failed with
+/// `expected_code`, left the maker's tokens where they were, and created no
+/// offer account.
+fn assert_make_offer_refused(es: &mut EscrowSetup, instruction: Instruction, expected_code: u32) {
+    let payer = es.payer.insecure_clone();
+    let maker = es.maker.insecure_clone();
+    let result = try_send(&mut es.svm, &payer, &[instruction], &[&maker]);
+    let error = format!(
+        "{:?}",
+        result.expect_err("make_offer should have failed").err
+    );
+    assert!(
+        error.contains(&format!("Custom({expected_code})")),
+        "expected error {expected_code}, got: {error}"
+    );
+    assert_eq!(token_amount(&es.svm, &es.maker_account_a), MINTED_AMOUNT);
+    assert_eq!(lamports(&es.svm, &es.offer), 0);
+}
+
+#[test]
+fn test_make_offer_rejects_zero_offered_amount() {
+    let mut es = setup();
+    let instruction =
+        make_offer_instruction_for(&es, 0, AMOUNT_B, &es.mint_b.pubkey(), &es.maker_account_b);
+    assert_make_offer_refused(&mut es, instruction, ZERO_AMOUNT);
+}
+
+#[test]
+fn test_make_offer_rejects_zero_wanted_amount() {
+    let mut es = setup();
+    let instruction =
+        make_offer_instruction_for(&es, AMOUNT_A, 0, &es.mint_b.pubkey(), &es.maker_account_b);
+    assert_make_offer_refused(&mut es, instruction, ZERO_AMOUNT);
+}
+
+#[test]
+fn test_make_offer_rejects_same_mint() {
+    let mut es = setup();
+    // The maker asks for token A in return for token A, so their token-B
+    // account is their token-A account.
+    let instruction = make_offer_instruction_for(
+        &es,
+        AMOUNT_A,
+        AMOUNT_B,
+        &es.mint_a.pubkey(),
+        &es.maker_account_a,
+    );
+    assert_make_offer_refused(&mut es, instruction, SAME_MINT);
 }

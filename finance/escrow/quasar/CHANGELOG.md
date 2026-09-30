@@ -1,5 +1,15 @@
 # Changelog
 
+## [2026-09-29]
+
+### Changed
+
+- `make_offer` refuses an offer with zero tokens on either side (`ZeroAmount`).
+  An offer of a token for a different amount of itself was already refused
+  before the handler runs, because both mint slots would hold the same
+  account and loading it twice fails with `AccountBorrowFailed`; a test now
+  pins that.
+
 ## [2026-07-22]
 
 ### Changed

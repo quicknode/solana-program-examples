@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 
 #[error_code]
-pub enum ErrorCode {
-    #[msg("Custom error message")]
-    CustomError,
+pub enum EscrowError {
+    #[msg("An offer must offer and want more than zero tokens")]
+    ZeroAmount,
 }

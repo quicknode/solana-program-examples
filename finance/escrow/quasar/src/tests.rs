@@ -5,6 +5,7 @@
 use {
     crate::{
         cpi::{CancelOfferInstruction, MakeOfferInstruction, TakeOfferInstruction},
+        error::EscrowError,
         state::{Offer, OfferData},
     },
     quasar_test::prelude::*,
@@ -297,4 +298,50 @@ fn cancel_offer_rejects_a_signer_who_is_not_the_maker(test: &mut Test) {
         result.is_err(),
         "cancel_offer must reject a signer who is not the offer's maker"
     );
+}
+
+/// Send `make_offer` for the given amounts and wanted token, from a maker who
+/// holds token A.
+fn make_offer(test: &mut Test, deposit: u64, receive: u64, token_mint_b: Pubkey) -> Outcome {
+    test.send(MakeOfferInstruction {
+        maker: MAKER,
+        token_mint_a: TOKEN_MINT_A,
+        token_mint_b,
+        maker_token_account_a: MAKER_TOKEN_ACCOUNT_A,
+        maker_token_account_b: MAKER_TOKEN_ACCOUNT_B,
+        vault: VAULT,
+        id: OFFER_ID,
+        deposit,
+        receive,
+    })
+}
+
+fn maker_holding_token_a(test: &mut Test) {
+    base_world(test);
+    test.add(
+        TokenAccount::new(TOKEN_MINT_A, MAKER)
+            .at(MAKER_TOKEN_ACCOUNT_A)
+            .amount(1_000_000),
+    );
+}
+
+#[quasar_test]
+fn make_offer_rejects_a_zero_deposit(test: &mut Test) {
+    maker_holding_token_a(test);
+    make_offer(test, 0, RECEIVE_AMOUNT, TOKEN_MINT_B).fails_with(EscrowError::ZeroAmount);
+}
+
+#[quasar_test]
+fn make_offer_rejects_a_zero_receive_amount(test: &mut Test) {
+    maker_holding_token_a(test);
+    make_offer(test, DEPOSIT_AMOUNT, 0, TOKEN_MINT_B).fails_with(EscrowError::ZeroAmount);
+}
+
+#[quasar_test]
+fn make_offer_rejects_an_offer_of_a_token_for_itself(test: &mut Test) {
+    maker_holding_token_a(test);
+    // Both mint slots hold the same account, and loading it twice fails
+    // before the handler runs.
+    make_offer(test, DEPOSIT_AMOUNT, RECEIVE_AMOUNT, TOKEN_MINT_A)
+        .fails(ProgramError::Runtime("AccountBorrowFailed".into()));
 }

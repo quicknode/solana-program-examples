@@ -43,4 +43,4 @@ The Rust + [LiteSVM](https://www.anchor-lang.com/docs/testing/litesvm) tests loa
 cargo test --manifest-path=./program/Cargo.toml
 ```
 
-The tests cover the make/take flow, the make/cancel flow, rejection of a non-maker cancel, token balances on every leg, and the rent refunds (the maker's lamports recover the offer and vault rent after both take and cancel).
+The tests cover the make/take flow, the make/cancel flow, rejection of a non-maker cancel, rejection of offers with zero tokens on either side or the same token on both, token balances on every leg, and the rent refunds (the maker's lamports recover the offer and vault rent after both take and cancel).
