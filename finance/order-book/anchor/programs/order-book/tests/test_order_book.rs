@@ -2221,6 +2221,23 @@ fn send_and_measure(svm: &mut LiteSVM, instruction: Instruction, signer: &Keypai
         .compute_units_consumed
 }
 
+// Creating an order account makes Anchor search for its PDA bump, starting at
+// 255 and paying for every seed that lands on the curve. Tests running in
+// parallel draw their mints from shared key generation, so the market's
+// address, and with it how long that search takes, changes from run to run.
+// It has nothing to do with the book's depth, so the comparison takes it out.
+// Anchor v2 hashes each candidate with sol_sha256 and checks it against the
+// curve, which together cost this many units per rejected bump.
+const BUMP_ATTEMPT_UNITS: u64 = 334;
+
+fn order_bump_search_units(program_id: &Address, market: &Address, order_id: u64) -> u64 {
+    let (_, bump) = Address::find_program_address(
+        &[ORDER_SEED, market.as_ref(), &order_id.to_le_bytes()],
+        program_id,
+    );
+    (u8::MAX - bump) as u64 * BUMP_ATTEMPT_UNITS
+}
+
 // A fresh seller with base tokens and a market user account.
 fn add_funded_seller(sc: &mut Scenario) -> (Keypair, Address, Address, Address) {
     let seller = create_wallet(&mut sc.svm, 10_000_000_000).unwrap();
@@ -2250,6 +2267,8 @@ fn add_funded_seller(sc: &mut Scenario) -> (Keypair, Address, Address, Address) 
     (seller, base_ata, quote_ata, market_user)
 }
 
+// Insert and fill exclude the order PDA's bump search; see
+// order_bump_search_units.
 struct ProbeCosts {
     // Inner nodes above the second probe ask once it rests.
     depth: usize,
@@ -2310,7 +2329,8 @@ fn run_probes_at_bottom_of_book(build_chain: bool) -> ProbeCosts {
         PROBE_PRICE,
         MIN_ORDER_SIZE,
     );
-    let insert = send_and_measure(&mut sc.svm, instruction, &sc.seller);
+    let insert = send_and_measure(&mut sc.svm, instruction, &sc.seller)
+        - order_bump_search_units(&sc.program_id, &sc.market, first_probe_id);
 
     let second_probe_id = first_probe_id + 1;
     let instruction = build_place_order_ix(
@@ -2340,7 +2360,8 @@ fn run_probes_at_bottom_of_book(build_chain: bool) -> ProbeCosts {
         MIN_ORDER_SIZE,
         &[(first_probe_id, sc.seller_market_user)],
     );
-    let fill = send_and_measure(&mut sc.svm, instruction, &sc.buyer);
+    let fill = send_and_measure(&mut sc.svm, instruction, &sc.buyer)
+        - order_bump_search_units(&sc.program_id, &sc.market, taker_bid_id);
     let first_probe = order_pda(&sc.program_id, &sc.market, first_probe_id);
     assert_eq!(
         read_order_fill_and_status(&sc.svm, &first_probe).1,
