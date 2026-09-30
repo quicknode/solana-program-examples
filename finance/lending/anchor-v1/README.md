@@ -135,7 +135,7 @@ less, which would make the liquidator overpay.
 
 ### Fixed-point math
 
-All money math is integer-only `u128`: no floats, no fixed-point crates. Ratios
+All arithmetic is integer-only `u128`: no floats, no fixed-point crates. Ratios
 (rates, the index, the exchange rate, obligation values) are scaled by
 `FIXED_POINT_SCALE` (10^18). Every conversion rounds in the protocol's favour
 (user output floored, debt ceiled), so dust cannot be extracted by repeated
@@ -230,6 +230,6 @@ Through a cumulative accumulation factor: `refresh_reserve` advances a per-reser
 
 The admin `set_price` instruction handler stands in for an oracle feed in this example. `refresh_obligation` re-values collateral and debt at those prices before any borrow, withdraw, or liquidation is allowed, and stale reserves or prices are rejected.
 
-### How is this lending program tested and verified?
+### How is this lending program tested?
 
-`anchor build` then `cargo test` runs LiteSVM integration tests covering interest accrual, borrowing at the LTV limit, liquidation after a price move, and the share-inflation guard. The money math also has [Kani](https://github.com/model-checking/kani) proofs in [`../kani-proofs/`](../kani-proofs/).
+`anchor build` then `cargo test` runs LiteSVM integration tests covering interest accrual, borrowing at the LTV limit, liquidation after a price move, and the share-inflation guard. The arithmetic also has [Kani](https://github.com/model-checking/kani) model checks in [`../kani-proofs/`](../kani-proofs/).

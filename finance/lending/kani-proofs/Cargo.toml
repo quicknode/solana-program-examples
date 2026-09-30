@@ -1,8 +1,8 @@
 # Standalone workspace - intentionally NOT part of the root program-examples
 # workspace. Kani (https://github.com/model-checking/kani) proof harnesses that
-# model the lending program's pure money-math (mul_div floor/ceil with
+# model the lending program's pure arithmetic (mul_div floor/ceil with
 # directional rounding, the kinked interest-rate curve, index compounding, the
-# share exchange rate, and liquidation sizing) so the model checker can verify
+# share exchange rate, and liquidation sizing) so the model checker can check
 # the invariants without the Solana / SPL-token CPI machinery, which Kani
 # cannot symbolically execute.
 [workspace]

@@ -1,16 +1,21 @@
-# Managed-fund: Kani proofs
+# Managed-fund: Kani model checks
 
-Formal-verification harnesses for the ERC4626-style share vault, in the spirit
+Kani harnesses that model-check the ERC4626-style share vault, in the spirit
 of [`aeyakovenko/percolator`](https://github.com/aeyakovenko/percolator), which
-uses the [Kani](https://github.com/model-checking/kani) model checker to prove
-the mathematical correctness of a DeFi engine.
+uses the [Kani](https://github.com/model-checking/kani) model checker to check
+the arithmetic of a DeFi engine. Kani marks a harness with `#[kani::proof]`,
+which is why the crate is `kani-proofs` and the harnesses are named `proof_*`;
+each one is a model check: Kani tries every value of the inputs the harness
+declares and reports either that every assertion held or an input that breaks
+one.
 
-## What is verified
+## What is checked
 
 Depositors mint share tokens against the fund's net asset value; withdrawals
 burn shares for a proportional slice of every vault balance; a manager fee mints
 a small slice of shares over time. Token movement is via SPL CPIs Kani cannot
-symbolically execute, but the share math is pure integer arithmetic:
+symbolically execute, but the share math is pure integer arithmetic. For every
+input, the harnesses check:
 
 - `proof_withdraw_within_balance`: **Solvency**: a withdrawal never takes more of any vault balance than it holds (`floor(balance·shares/total) <= balance`, since `shares <= total`); burning the whole supply takes exactly the whole balance.
 - `proof_deposit_withdraw_cannot_extract`: A deposit→withdraw round-trip never returns more than was deposited, no rounding attack mints shares worth more than they cost.
@@ -20,7 +25,7 @@ symbolically execute, but the share math is pure integer arithmetic:
 
 ## Bounded model checking
 
-The nonlinear harnesses verify 128-bit arithmetic with a symbolic divisor (the share
+The nonlinear harnesses check 128-bit arithmetic with a symbolic divisor (the share
 supply / NAV), so (as percolator does) they bound their symbolic inputs to a
 representative range; the share identities are scale-invariant.
 
@@ -31,12 +36,12 @@ representative range; the share identities are scale-invariant.
 - `proof_fee_shares_bounded_by_supply`: `<= 255`, runs in ~4s
 
 Run weekly in CI (the `kani.yml` `verify` job), not on every push/PR, because
-the bounded nonlinear proofs are slow. A fast unit-test job runs per push/PR.
+the bounded nonlinear model checks are slow. A fast unit-test job runs per push/PR.
 
 ## Running
 
 ```bash
 cargo test                                                 # unit tests, no Kani
 cargo install --locked kani-verifier && cargo kani setup   # one-time
-cargo kani                                                  # formal verification
+cargo kani                                                  # Kani model checks
 ```

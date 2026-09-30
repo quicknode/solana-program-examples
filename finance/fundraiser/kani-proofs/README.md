@@ -1,33 +1,38 @@
-# Fundraiser: Kani proofs
+# Fundraiser: Kani model checks
 
-Formal-verification harnesses for the fundraiser program, in the spirit of
+Kani harnesses for the fundraiser program, in the spirit of
 [`aeyakovenko/percolator`](https://github.com/aeyakovenko/percolator), which
-uses the [Kani](https://github.com/model-checking/kani) model checker to prove
-the mathematical correctness of a DeFi engine.
+uses the [Kani](https://github.com/model-checking/kani) model checker to check
+the arithmetic of a DeFi engine. Kani marks a harness with `#[kani::proof]`,
+which is why the crate is `kani-proofs` and the harnesses are named `proof_*`;
+each one is a model check: Kani tries every value of the inputs the harness
+declares and reports either that every assertion held or the input that breaks
+one.
 
-## What is verified
+## What is checked
 
 The program collects contributions toward a goal; if the goal is not met by the
 deadline, every contributor reclaims their exact stake. Token movement is via
 SPL CPIs Kani cannot symbolically execute, but the accounting (`contribute`,
-`refund`) is pure integer arithmetic:
+`refund`) is pure integer arithmetic, and the harnesses check it for every input in the
+declared ranges:
 
 - `proof_contribution_cap_bounds`: The per-contributor cap never exceeds the goal, and the `cumulative <= cap` check keeps every contributor at or below it (and below the goal).
 - `proof_current_amount_is_sum_of_contributions`: `current_amount` always equals the sum of the contributions added to it, no accounting drift.
 - `proof_refunds_sum_to_current_amount`: On a failed raise, refunds sum back to `current_amount`; no contributor reclaims more than they put in.
 
-The cap proof verifies nonlinear arithmetic (`goal · pct / scaler`) and uses
-bounded model checking; the two accounting/refund proofs are pure linear logic
+The cap harness checks nonlinear arithmetic (`goal · pct / scaler`) over
+bounded inputs; the two accounting/refund harnesses are pure linear logic
 and run at full `u64` width (bounded only in the number of contributors). The
-whole suite verifies in under a second.
+whole suite finishes in under a second.
 
 Run weekly in CI (the `kani.yml` `verify` job), not on every push/PR, because
-the nonlinear proofs are slow. A fast unit-test job runs per push/PR.
+the nonlinear model checks are slow. A fast unit-test job runs per push/PR.
 
 ## Running
 
 ```bash
 cargo test                                                 # unit tests, no Kani
 cargo install --locked kani-verifier && cargo kani setup   # one-time
-cargo kani                                                  # formal verification
+cargo kani                                                  # model check
 ```

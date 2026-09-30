@@ -1,11 +1,15 @@
-# Prop AMM: Kani proofs
+# Prop AMM: Kani model checks
 
-Formal-verification harnesses for the oracle-quoted prop AMM, in the spirit of
+Kani harnesses for the oracle-quoted prop AMM, in the spirit of
 [`aeyakovenko/percolator`](https://github.com/aeyakovenko/percolator), which
-uses the [Kani](https://github.com/model-checking/kani) model checker to prove
-the mathematical correctness of a DeFi engine.
+uses the [Kani](https://github.com/model-checking/kani) model checker to check
+the arithmetic of a DeFi engine. Kani marks a harness with `#[kani::proof]`,
+which is why the crate is `kani-proofs` and the harnesses are named `proof_*`;
+each one is a model check: Kani tries every value of the inputs the harness
+declares and reports either that every assertion held or the input that breaks
+one.
 
-## What is verified
+## What is checked
 
 The on-chain instructions hand token movement to the SPL token program through
 CPIs that Kani cannot symbolically execute, but the *interesting* part — the
@@ -13,18 +17,19 @@ ask/bid construction, the amount conversion across oracle scale and token
 decimals, and the "never pay out more than oracle value" invariant — is pure
 integer arithmetic. This crate reproduces those formulas faithfully (same
 `u128` widening, multiply-before-divide, ask ceiled, bid and outputs floored;
-mirrors `prop_amm::quote_math`) and proves the invariants:
+mirrors `prop_amm::quote_math`) and checks the invariants for every input in
+the declared ranges:
 
 - `proof_quote_brackets_oracle`: `bid <= oracle <= ask` for every valid price
   and spread, and both roundings are *exact* (the ask is the smallest integer
   at or above the true ratio, the bid the largest at or below), so both
   under-rounding against the market and over-rounding against the trader fail
-  the proof.
+  the check.
 - `proof_buy_never_exceeds_oracle_value`: **The core safety property**, buy
   side: the base handed out is never worth more at the raw oracle price than
   the quote taken in. This is exactly the swap handler's post-math
-  `InvariantViolated` assert — the proof says it can never fire while the
-  quoting math is intact.
+  `InvariantViolated` assert; the model check shows it cannot fire for any
+  input in range while the quoting math is intact.
 - `proof_sell_never_exceeds_oracle_value`: the same property, sell side.
 - `proof_round_trip_never_profits_the_trader`: buying and immediately selling
   back returns no more quote than went in, for every price, spread, and
@@ -53,6 +58,6 @@ valid range (`1..10_000`).
 # tests and the book chapter use:
 cargo test
 
-# Full verification (requires cargo-kani):
+# Full model check (requires cargo-kani):
 cargo kani
 ```

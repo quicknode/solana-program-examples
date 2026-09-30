@@ -1,19 +1,23 @@
-//! Kani proof harnesses for the fundraiser program (`finance/fundraiser`).
+//! Kani harnesses for the fundraiser program (`finance/fundraiser`).
 //!
 //! Inspired by aeyakovenko/percolator, which uses the Kani model checker to
-//! prove the mathematical correctness of a DeFi engine's pure numeric core.
+//! check a DeFi engine's pure numeric core. Kani marks a harness with
+//! `#[kani::proof]`, which is why the crate is `kani-proofs` and the harnesses
+//! are named `proof_*`; each one is a model check: Kani tries every value of
+//! the inputs the harness declares and reports either that every assertion
+//! held or the input that breaks one.
 //!
 //! The program collects contributions into a vault toward a goal; if the goal
 //! is not met by the deadline, every contributor reclaims their exact stake.
 //! Token movement is via SPL CPIs Kani cannot symbolically execute, but the
 //! accounting (`contribute`, `refund`) is pure integer arithmetic. This crate
-//! reproduces it faithfully and proves the per-contributor cap, the running-
+//! reproduces it faithfully and checks the per-contributor cap, the running-
 //! total accounting, and refund conservation.
 
 #![cfg_attr(kani, allow(dead_code))]
 
 /// `contribute::MAX_CONTRIBUTION_PERCENTAGE` / `PERCENTAGE_SCALER`. The program
-/// ships these as a percentage cap; the exact values do not matter to the proof,
+/// ships these as a percentage cap; the exact values do not matter to the check,
 /// only that the cap is `goal * pct / scaler`.
 pub const MAX_CONTRIBUTION_PERCENTAGE: u128 = 10; // 10%
 pub const PERCENTAGE_SCALER: u128 = 100;

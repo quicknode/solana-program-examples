@@ -1,27 +1,30 @@
 name: Kani
 
-# Formal-verification proofs (https://github.com/model-checking/kani) for the
+# Kani model checks (https://github.com/model-checking/kani) for the
 # finance/ example programs. Each <program>/kani-proofs crate models its
-# program's pure money-math and lets the Kani model checker prove the invariants
-# exhaustively, in the spirit of aeyakovenko/percolator.
+# program's pure arithmetic and lets the Kani model checker check the invariants
+# exhaustively over each harness's declared inputs, in the spirit of
+# aeyakovenko/percolator. Kani marks a harness with #[kani::proof], which is why
+# the crates are named kani-proofs and the harnesses proof_*; each one is a
+# model check.
 #
 # WHY THIS RUNS ON A WEEKLY SCHEDULE, NOT ON EVERY PUSH/PR
 # -------------------------------------------------------
-# Most of the finance proofs verify NONLINEAR 128-bit arithmetic (constant-
+# Most of the finance harnesses check NONLINEAR 128-bit arithmetic (constant-
 # product curves, mul_div with a symbolic divisor, integer sqrt, pari-mutuel
 # payouts, share exchange rates). Kani is a bit-precise model checker: it
 # bit-blasts that arithmetic into SAT, and nonlinear / symbolic-divisor terms
 # are the worst case for the solver. Even with bounded inputs, individual
 # harnesses take tens of seconds and a full crate runs for minutes; the whole
 # finance suite is far too slow to gate every push/PR. So the heavy
-# `cargo kani` verification runs once a week (and on demand via
+# `cargo kani` model check runs once a week (and on demand via
 # workflow_dispatch), while a fast unit-test job still runs on every push/PR to
 # catch model regressions early. See each finance/<program>/kani-proofs/README.md
 # for the per-harness bounds and timings.
 
 on:
   schedule:
-    # Mondays at 06:00 UTC. Weekly because the proofs are slow (see header).
+    # Mondays at 06:00 UTC. Weekly because the model checks are slow (see header).
     - cron: "0 6 * * 1"
   workflow_dispatch: {}
   # Fast feedback only: the unit-test job below is gated to these events; the
@@ -43,9 +46,9 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  # Fast feedback on every push/PR: the proof crates compile and their plain
+  # Fast feedback on every push/PR: the Kani crates compile and their plain
   # unit tests pass on stable, independently of the (slow) Kani toolchain. This
-  # catches model regressions without paying for full verification.
+  # catches model regressions without paying for the full model check.
   unit-tests:
     name: Proof unit tests (${{ matrix.program }})
     runs-on: ubuntu-latest
@@ -67,7 +70,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-      # Each proof crate declares its own `[workspace]`, so the repository-wide
+      # Each Kani crate declares its own `[workspace]`, so the repository-wide
       # `cargo fmt` and `cargo clippy` jobs in rust.yml never see it. Lint here
       # instead, or these crates drift.
       - name: Enforce formatting
@@ -80,15 +83,15 @@ jobs:
         working-directory: finance/${{ matrix.program }}/kani-proofs
         run: cargo test
 
-  # The formal verification itself. SLOW (minutes per crate), so it only runs on
-  # the weekly schedule or when triggered manually — never on push/PR. The
-  # official Kani action installs the verifier + CBMC toolchain (with caching)
-  # and runs `cargo kani` in each proof crate; any failed proof fails the job.
+  # The model check itself. SLOW (minutes per crate), so it only runs on the
+  # weekly schedule or when triggered manually, never on push/PR. The official
+  # Kani action installs the model checker + CBMC toolchain (with caching) and
+  # runs `cargo kani` in each Kani crate; any failed harness fails the job.
   verify:
     name: Kani proofs (${{ matrix.program }})
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    # Every crate's proofs complete in under ~3 minutes. A harness whose bounds
+    # Every crate's harnesses complete in under ~3 minutes. A harness whose bounds
     # make the solver blow up otherwise runs into the runner's 6-hour hard
     # limit and surfaces as an easy-to-miss "cancelled" run (this happened:
     # prop-amm's quote-bracketing harness with an unbounded u64 price). Fail

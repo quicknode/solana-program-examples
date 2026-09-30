@@ -1,14 +1,18 @@
-//! Kani proof harnesses for the options venue (`finance/options`).
+//! Kani harnesses for the options venue (`finance/options`).
 //!
 //! Inspired by aeyakovenko/percolator, which uses the Kani model checker to
-//! prove the mathematical correctness of a DeFi engine's pure numeric core.
+//! check a DeFi engine's pure numeric core. Kani marks a harness with
+//! `#[kani::proof]`, which is why the crate is `kani-proofs` and the harnesses
+//! are named `proof_*`; each one is a model check: Kani tries every value of
+//! the inputs the harness declares and reports either that every assertion
+//! held or the input that breaks one.
 //!
 //! The on-chain instructions hand the actual token movement to the SPL token
 //! program via CPIs that Kani cannot symbolically execute. The arithmetic
 //! underneath is small and is reproduced here faithfully, mirroring
 //! `options::contract_math`: every settlement amount is a product of two
 //! integers, the only rounding is the floor in the fee split, and the expiry
-//! window is one comparison and its complement. The harnesses prove the
+//! window is one comparison and its complement. The harnesses check the
 //! invariants the program's custody accounting depends on, plus a bounded
 //! model of the vault ledger across an option's whole life.
 
@@ -150,9 +154,9 @@ pub fn split_premium(premium: u64, fee_bps: u16) -> Option<(u64, u64)> {
 
 /// The premium is conserved: fee plus the writer's share is exactly the
 /// premium, the fee never exceeds the premium, and the writer always gets
-/// something. Also proves the fee is the exact floor of `premium * bps /
+/// something. Also checks the fee is the exact floor of `premium * bps /
 /// 10_000`, so a refactor that rounds up against the writer, or drops below
-/// the floor against the venue, fails the proof.
+/// the floor against the venue, fails the check.
 #[cfg(kani)]
 #[kani::proof]
 #[kani::solver(cadical)]

@@ -7,7 +7,7 @@
 /// cumulative borrow-rate index, the share-token exchange rate, and obligation
 /// values. A ratio `r` is stored as the integer `r * FIXED_POINT_SCALE`.
 ///
-/// All money math is integer-only (no floats, no fixed-point crates). 10^18
+/// All arithmetic is integer-only (no floats, no fixed-point crates). 10^18
 /// keeps a single second's interest, which can be a tiny fraction of the index,
 /// from truncating to zero, while u128's ~3.4e38 ceiling leaves headroom for the
 /// index to grow and for intermediate products before the final narrowing cast.

@@ -21,7 +21,7 @@ A [perpetual future](https://www.investopedia.com/terms/f/futurescontract.asp) (
 - `perpetual-futures`: The exchange: pool creation, liquidity provision, opening/closing leveraged positions, funding, liquidation, and fee collection.
 - `mock-price-feed`: Test-only price feed. Stores a price, scale, last-update slot, and confidence band that tests write directly. Replaced in production by a Pyth `PriceUpdateV2` account, as read in [`basics/pyth`](../../../basics/pyth/).
 
-All money math is integer `u128` with `checked_*` operations, multiplying before dividing and rounding in the pool's favour: no floats, no fixed-point library.
+All arithmetic is integer `u128` with `checked_*` operations, multiplying before dividing and rounding in the pool's favour: no floats, no fixed-point library.
 
 ---
 
@@ -189,7 +189,7 @@ Carol burns her shares and redeems USDC. Her balance now reflects the fees the p
 
 ## Design notes and further reading
 
-The genuinely hard part of a perpetual-futures venue is keeping it solvent and permissionless *without* re-evaluating the entire market on every action. For a rigorous, formally-verified (Kani) treatment, see Anatoly Yakovenko's [percolator](https://github.com/aeyakovenko/percolator), an educational perp risk engine. It states three invariants this example also leans on, in simplified form:
+The genuinely hard part of a perpetual-futures venue is keeping it solvent and permissionless *without* re-evaluating the entire market on every action. For a rigorous, Kani-checked treatment, see Anatoly Yakovenko's [percolator](https://github.com/aeyakovenko/percolator), an educational perp risk engine. It states three invariants this example also leans on, in simplified form:
 
 - **Realizable credit**: "protected principal is senior, positive PnL is junior, and source-domain positive credit cannot exceed realizable backing reserved for that domain." Here, provider capital is senior and trader profit is a junior claim against it: shares are priced against marked assets-under-management, and the pool reserves each position's payout up front (capping recoverable profit at the reserve) so a winner's price profit can always be paid.
 - **Account-local safety**: "every favorable action refreshes the account's full active portfolio first; … stale … legs fail closed." Here, every position and liquidity action reads a fresh oracle (stale or wide-confidence prices are rejected) and recomputes pool exposure before any payout.

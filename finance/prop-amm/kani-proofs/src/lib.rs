@@ -1,7 +1,11 @@
-//! Kani proof harnesses for the prop AMM (`finance/prop-amm`).
+//! Kani harnesses for the prop AMM (`finance/prop-amm`).
 //!
 //! Inspired by aeyakovenko/percolator, which uses the Kani model checker to
-//! prove the mathematical correctness of a DeFi engine's pure numeric core.
+//! check a DeFi engine's pure numeric core. Kani marks a harness with
+//! `#[kani::proof]`, which is why the crate is `kani-proofs` and the harnesses
+//! are named `proof_*`; each one is a model check: Kani tries every value of
+//! the inputs the harness declares and reports either that every assertion
+//! held or the input that breaks one.
 //!
 //! The on-chain instructions hand the actual token movement to the SPL token
 //! program via CPIs that Kani cannot symbolically execute. But the
@@ -10,7 +14,7 @@
 //! "never pay out more than oracle value" invariant — is pure integer
 //! arithmetic. This crate reproduces those formulas faithfully (same `u128`
 //! widening, same multiply-before-divide, same rounding directions: ask ceils,
-//! bid floors, outputs floor) and proves the invariants the program depends
+//! bid floors, outputs floor) and checks the invariants the program depends
 //! on. Formulas mirror `prop_amm::quote_math`.
 
 #![cfg_attr(kani, allow(dead_code))]
@@ -39,10 +43,10 @@ pub fn bid_price(oracle_price: u64, spread_bps: u16) -> Option<u128> {
 }
 
 /// The quote brackets the oracle: `bid <= oracle <= ask`, with each side's
-/// rounding pointing away from the trader. Also proves the roundings are
+/// rounding pointing away from the trader. Also checks the roundings are
 /// exact: the ask is the *smallest* integer at or above the true ratio (ceil,
 /// not "add one"), so a refactor that over-rounds in the market's favor fails
-/// the proof too.
+/// the check too.
 #[cfg(kani)]
 #[kani::proof]
 #[kani::solver(cadical)]
@@ -126,8 +130,8 @@ pub fn quote_out_for_base_in(
 /// THE core prop-AMM safety property, buy side: the base handed out is never
 /// worth more, at the raw oracle price, than the quote taken in — for every
 /// price, spread, amount, and decimal configuration. This is exactly the
-/// `require!(respects_oracle_value)` assert in the swap handler; the proof
-/// says that assert can never fire while the math above it is intact.
+/// `require!(respects_oracle_value)` assert in the swap handler; the model
+/// check shows that assert can never fire while the math above it is intact.
 #[cfg(kani)]
 #[kani::proof]
 #[kani::solver(cadical)]
@@ -143,7 +147,7 @@ fn proof_buy_never_exceeds_oracle_value() {
     // part for the bit-precise solver, and its cost grows with the divisor's
     // bit-width (ask spans one more bit than price). Amounts and price are
     // capped at 8 bits — in line with the symbolic-divisor bounds the other
-    // finance proof crates stay tractable with — and the decimal exponents
+    // finance Kani crates stay tractable with — and the decimal exponents
     // are kept small (the identity is independent of the exponents' actual
     // values — they enter both sides of the comparison symmetrically — so
     // tiny exponents exercise the same rounding edges as scale 8 and 6/6

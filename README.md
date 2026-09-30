@@ -32,7 +32,7 @@ To deploy to mainnet or devnet you'll need an RPC endpoint. [Quicknode](https://
 
 ## Financial software ("DeFi")
 
-The programs are examples of common financial primitives on Solana. As well as tests these all have [formal verification using Kani](https://github.com/model-checking/kani). Every finance program ships with proofs that verify its money-math invariants exhaustively over all inputs. See each program's `kani-proofs/` directory for the harnesses and what they prove.
+The programs are examples of common financial primitives on Solana. As well as tests these all have [Kani](https://github.com/model-checking/kani) model checks. Every finance program ships with Kani harnesses that check its arithmetic invariants exhaustively over the inputs each harness declares. Kani marks a harness with `#[kani::proof]`, which is why each program's directory is `kani-proofs/` and the harnesses are named `proof_*`; each one is a model check. See each program's `kani-proofs/` directory for the harnesses and what they check.
 
 ### Escrow
 
@@ -427,7 +427,7 @@ Work through the [finance examples](#financial-software-defi) in order of comple
 
 ### Are these examples production-ready?
 
-They are teaching examples: every one builds and passes CI, and the finance programs additionally carry [Kani](https://github.com/model-checking/kani) formal-verification proofs of their money math. None are audited or deployed to mainnet, so treat them as reference implementations to learn from, not code to deploy as-is.
+They are teaching examples: every one builds and passes CI, and the finance programs additionally carry [Kani](https://github.com/model-checking/kani) model checks of their arithmetic. None are audited or deployed to mainnet, so treat them as reference implementations to learn from, not code to deploy as-is.
 
 ## Acknowledgements
 

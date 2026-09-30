@@ -1,11 +1,15 @@
-# Options: Kani proofs
+# Options: Kani model checks
 
-Formal-verification harnesses for the fully collateralized options venue, in
-the spirit of [`aeyakovenko/percolator`](https://github.com/aeyakovenko/percolator),
-which uses the [Kani](https://github.com/model-checking/kani) model checker to
-prove the mathematical correctness of a DeFi engine.
+Kani harnesses for the fully collateralized options venue, in the spirit of
+[`aeyakovenko/percolator`](https://github.com/aeyakovenko/percolator), which
+uses the [Kani](https://github.com/model-checking/kani) model checker to check
+the arithmetic of a DeFi engine. Kani marks a harness with `#[kani::proof]`,
+which is why the crate is `kani-proofs` and the harnesses are named `proof_*`;
+each one is a model check: Kani tries every value of the inputs the harness
+declares and reports either that every assertion held or the input that breaks
+one.
 
-## What is verified
+## What is checked
 
 The onchain instructions hand token movement to the SPL token program through
 CPIs that Kani cannot symbolically execute, but the arithmetic they rely on is
@@ -14,7 +18,8 @@ integers the writer chose, the only rounding in the program is the floor in
 the fee split, and the expiry window is one comparison and its complement.
 This crate reproduces those formulas (mirroring `options::contract_math`) and
 the handlers' custody accounting (mirroring the `underlying_locked`,
-`quote_locked` and `fees_owed` counters on the `Market` account) and proves:
+`quote_locked` and `fees_owed` counters on the `Market` account) and checks, for every input
+in the declared ranges:
 
 - `proof_exercise_moves_exactly_the_posted_terms`: for every option the program
   would accept, physical settlement hands the holder exactly the collateral
@@ -49,7 +54,7 @@ argued to be independent of the bound:
   product overflows, so the overflow refusal is pinned by a unit test.
 - `proof_premium_split_conserves_the_premium`: premium and fee rate each at
   most `0xFF`. The split is a 128-bit multiply followed by a 128-bit division,
-  and proving a divider exact against a multiplier is the hardest shape of
+  and checking a divider exact against a multiplier is the hardest shape of
   problem a SAT solver sees: a 16-bit premium against the full fee range runs
   for hours. Eight bits on each side finish in about a second, exercise the
   floor on both sides of every carry, and the fee-equals-premium edge at the
@@ -68,6 +73,6 @@ argued to be independent of the bound:
 # LiteSVM tests and the book chapter use:
 cargo test
 
-# Full verification (requires cargo-kani):
+# Full model check (requires cargo-kani):
 cargo kani
 ```

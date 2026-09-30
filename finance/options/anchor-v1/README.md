@@ -18,7 +18,7 @@ there is no margin, no liquidator, and no oracle. The venue that took the
 other road on Solana, cash settlement with margin and an oracle, is Zeta
 Markets.
 
-[⚓ Anchor v2](../anchor) · [⚓ Anchor v1](.) · [💫 Quasar](../quasar) · [Kani proofs](../kani-proofs)
+[⚓ Anchor v2](../anchor) · [⚓ Anchor v1](.) · [💫 Quasar](../quasar) · [Kani model checks](../kani-proofs)
 
 ## Programs
 
@@ -170,8 +170,8 @@ holders' deliveries awaiting collection), `quote_locked` (put collateral, plus
 call holders' strike payments awaiting collection) and `fees_owed`. Every
 handler that moves tokens updates the ledger before any transfer and then
 asserts that each vault still covers what it owes (`CustodyInvariantViolated`
-otherwise). The [Kani proofs](../kani-proofs) walk every path through an option's
-life and show the ledger returns to zero.
+otherwise). The [Kani model checks](../kani-proofs) walk every path through an option's
+life and check that the ledger returns to zero.
 
 ## Design notes and further reading
 
@@ -212,7 +212,7 @@ cargo test
 The LiteSVM suite (`programs/options/tests/test_options.rs`) walks the call
 from write to collected strike and the put from write to exercise and to
 expiry, pins every balance to the minor unit, checks the custody ledger
-against the vault balances after every step, and proves every gate shuts:
+against the vault balances after every step, and checks that every refusal holds:
 the expiry boundary from both sides, cancel after sale, buy after sale or
 expiry, exercise by a non-holder, collection by a non-writer or before
 exercise, reclaim after exercise, fee collection by a non-admin, and the
