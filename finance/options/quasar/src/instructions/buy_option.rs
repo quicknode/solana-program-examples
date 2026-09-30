@@ -2,7 +2,7 @@ use {
     crate::{
         constants::{STATUS_HELD, STATUS_LISTED},
         errors::OptionsError,
-        instructions::shared::{add_locked, check_custody, may_exercise, split_premium},
+        instructions::shared::{add_owed, check_custody, may_exercise, split_premium},
         state::{Market, OptionContract},
     },
     quasar_lang::{prelude::*, sysvars::Sysvar as _},
@@ -76,8 +76,8 @@ pub fn handle_buy_option(accounts: &mut BuyOptionAccountConstraints) -> Result<(
     accounts.option.holder = *accounts.buyer.address();
     accounts.option.status = STATUS_HELD;
     let mut quote_after = accounts.quote_vault.amount();
-    add_locked(&mut accounts.market.fees_owed, &mut quote_after, fee)?;
-    let underlying_after = accounts.market.underlying_locked.get();
+    add_owed(&mut accounts.market.fees_owed, &mut quote_after, fee)?;
+    let underlying_after = accounts.market.underlying_owed.get();
     check_custody(&accounts.market, underlying_after, quote_after)?;
 
     accounts

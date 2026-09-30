@@ -50,12 +50,12 @@ pub fn handle_exercise_option(
     let quote_before = context.accounts.quote_vault.amount();
     let (underlying_after, quote_after) = match kind {
         OptionKind::Call => {
-            market.underlying_locked = market
-                .underlying_locked
+            market.underlying_owed = market
+                .underlying_owed
                 .checked_sub(underlying_total)
                 .ok_or(OptionsError::MathOverflow)?;
-            market.quote_locked = market
-                .quote_locked
+            market.quote_owed = market
+                .quote_owed
                 .checked_add(strike_total)
                 .ok_or(OptionsError::MathOverflow)?;
             (
@@ -68,12 +68,12 @@ pub fn handle_exercise_option(
             )
         }
         OptionKind::Put => {
-            market.quote_locked = market
-                .quote_locked
+            market.quote_owed = market
+                .quote_owed
                 .checked_sub(strike_total)
                 .ok_or(OptionsError::MathOverflow)?;
-            market.underlying_locked = market
-                .underlying_locked
+            market.underlying_owed = market
+                .underlying_owed
                 .checked_add(underlying_total)
                 .ok_or(OptionsError::MathOverflow)?;
             (

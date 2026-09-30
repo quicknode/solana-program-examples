@@ -2,7 +2,7 @@ use {
     crate::{
         constants::STATUS_EXERCISED,
         errors::OptionsError,
-        instructions::shared::{check_custody, sub_locked, transfer_from_vault, Terms},
+        instructions::shared::{check_custody, sub_owed, transfer_from_vault, Terms},
         state::{Market, OptionContract},
     },
     quasar_lang::prelude::*,
@@ -64,15 +64,11 @@ pub fn handle_collect_proceeds(
     let mut quote_after = accounts.quote_vault.amount();
     if terms.is_call() {
         // A call's proceeds are the strike, in the quote token.
-        sub_locked(
-            &mut accounts.market.quote_locked,
-            &mut quote_after,
-            proceeds,
-        )?;
+        sub_owed(&mut accounts.market.quote_owed, &mut quote_after, proceeds)?;
     } else {
         // A put's proceeds are the delivered underlying.
-        sub_locked(
-            &mut accounts.market.underlying_locked,
+        sub_owed(
+            &mut accounts.market.underlying_owed,
             &mut underlying_after,
             proceeds,
         )?;

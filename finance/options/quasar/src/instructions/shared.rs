@@ -103,11 +103,11 @@ pub fn check_custody(
     quote_after: u64,
 ) -> Result<(), ProgramError> {
     require!(
-        underlying_after >= market.underlying_locked.get(),
+        underlying_after >= market.underlying_owed.get(),
         OptionsError::CustodyInvariantViolated
     );
     let quote_owed = market
-        .quote_locked
+        .quote_owed
         .get()
         .checked_add(market.fees_owed.get())
         .ok_or(OptionsError::MathOverflow)?;
@@ -119,11 +119,7 @@ pub fn check_custody(
 }
 
 /// Add `amount` to a ledger counter and to the matching projected balance.
-pub fn add_locked(
-    counter: &mut PodU64,
-    balance: &mut u64,
-    amount: u64,
-) -> Result<(), ProgramError> {
+pub fn add_owed(counter: &mut PodU64, balance: &mut u64, amount: u64) -> Result<(), ProgramError> {
     counter.set(
         counter
             .get()
@@ -138,11 +134,7 @@ pub fn add_locked(
 
 /// Subtract `amount` from a ledger counter and from the matching projected
 /// balance. A balance that cannot cover the subtraction is a custody failure.
-pub fn sub_locked(
-    counter: &mut PodU64,
-    balance: &mut u64,
-    amount: u64,
-) -> Result<(), ProgramError> {
+pub fn sub_owed(counter: &mut PodU64, balance: &mut u64, amount: u64) -> Result<(), ProgramError> {
     counter.set(
         counter
             .get()

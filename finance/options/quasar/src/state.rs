@@ -14,10 +14,10 @@ pub struct Market {
     pub quote_vault: Address,
     /// Underlying minor units the vault owes: call writers' collateral, plus
     /// put holders' deliveries awaiting the writer's `collect_proceeds`.
-    pub underlying_locked: u64,
+    pub underlying_owed: u64,
     /// Quote minor units the vault owes: put writers' collateral, plus call
     /// holders' strike payments awaiting the writer's `collect_proceeds`.
-    pub quote_locked: u64,
+    pub quote_owed: u64,
     /// Quote minor units held for the admin, swept by `collect_fees`.
     pub fees_owed: u64,
     /// Fee charged on each premium, in basis points.
