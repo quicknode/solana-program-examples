@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-09-30
+
+Remove `set_funding_rate`. The pool's authority could change the funding rate at
+any time, with no upper bound. The lighter side of open interest is paid funding
+out of `liquidity`, so the authority could hold a small position on that side
+from any wallet, raise the rate, and close it to take the liquidity providers'
+deposits. The rate is now fixed by `initialize_pool`, which refuses a rate above
+`MAX_FUNDING_RATE_PER_SECOND` (277, just under 0.1% of a position's size per
+hour) with `InvalidParameter`.
+
+Tested by `test_initialize_pool_rejects_funding_rate_above_the_maximum` and
+`test_operator_on_the_lighter_side_earns_only_the_fixed_rate`.
+`test_set_funding_rate_settles_at_the_old_rate_first` and
+`test_only_authority_can_set_funding_rate` are removed with the handler.
+
 ## 2026-09-23
 
 The mock oracle program is now `mock-price-feed` (library and program

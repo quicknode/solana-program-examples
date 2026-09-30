@@ -24,6 +24,13 @@ pub const MAX_PRICE_STALENESS_SLOTS: u64 = 150;
 /// Upper bound on a pool's configurable `max_leverage`.
 pub const MAX_LEVERAGE_CEILING: u16 = 100;
 
+/// Upper bound on a pool's `funding_rate_per_second`, in `FUNDING_PRECISION`
+/// units: 277 billionths of a position's size per second, just under 0.1% of
+/// its size per hour. The rate is fixed when the pool is created, so everyone
+/// who opens a position or deposits liquidity has seen it, and no position can
+/// be charged or paid funding faster than this.
+pub const MAX_FUNDING_RATE_PER_SECOND: u64 = 277;
+
 /// Long / short discriminants, used both as the position-PDA seed byte and the
 /// `side` instruction argument.
 pub const SIDE_LONG: u8 = 0;

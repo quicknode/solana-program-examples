@@ -122,12 +122,4 @@ mod quasar_perpetual_futures {
     pub fn collect_fees(ctx: Ctx<CollectFees>) -> Result<(), ProgramError> {
         instructions::handle_collect_fees(&mut ctx.accounts, &ctx.bumps)
     }
-
-    #[instruction(discriminator = 7)]
-    pub fn set_funding_rate(
-        ctx: Ctx<SetFundingRate>,
-        funding_rate_per_second: u64,
-    ) -> Result<(), ProgramError> {
-        instructions::handle_set_funding_rate(&mut ctx.accounts, funding_rate_per_second)
-    }
 }

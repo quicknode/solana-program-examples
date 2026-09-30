@@ -79,13 +79,4 @@ pub mod perpetual_futures {
     pub fn collect_fees(context: Context<CollectFeesAccountConstraints>) -> Result<()> {
         instructions::handle_collect_fees(context)
     }
-
-    /// The pool operator retunes the per-second funding rate, accruing at the
-    /// old rate first.
-    pub fn set_funding_rate(
-        context: Context<SetFundingRateAccountConstraints>,
-        funding_rate_per_second: u64,
-    ) -> Result<()> {
-        instructions::handle_set_funding_rate(context, funding_rate_per_second)
-    }
 }

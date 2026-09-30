@@ -14,6 +14,11 @@ use {
     solana_signer::Signer,
 };
 
+// Matches `MAX_FUNDING_RATE_PER_SECOND` in the program's constants: the
+// steepest funding rate `initialize_pool` accepts.
+const MAX_FUNDING_RATE_PER_SECOND: u64 = 277;
+// Ten years, in seconds.
+const TEN_YEARS: i64 = 315_360_000;
 // Collateral token has 6 decimals (like USDC), so one whole unit is 1_000_000
 // base units.
 const ONE_USDC: u64 = 1_000_000;
@@ -499,29 +504,6 @@ impl Market {
         .map_err(|_| ())
     }
 
-    fn set_funding_rate(&mut self, authority: &Keypair, rate: u64) -> Result<(), ()> {
-        let instruction = Instruction::new_with_bytes(
-            perpetual_futures::id(),
-            &perpetual_futures::instruction::SetFundingRate {
-                funding_rate_per_second: rate,
-            }
-            .data(),
-            perpetual_futures::accounts::SetFundingRateAccountConstraints {
-                authority: authority.pubkey(),
-                pool: self.pool,
-            }
-            .to_account_metas(None),
-        );
-        send_transaction_from_instructions(
-            &mut self.svm,
-            vec![instruction],
-            &[authority],
-            &authority.pubkey(),
-        )
-        .map(|_| ())
-        .map_err(|_| ())
-    }
-
     /// Deposit a large amount of liquidity so the pool can pay trader profits,
     /// returning the provider and its collateral account.
     fn seed_liquidity(&mut self, amount: u64) -> (Keypair, Pubkey) {
@@ -660,8 +642,9 @@ fn test_add_and_remove_liquidity_round_trip() {
 /// funding they paid in.
 #[test]
 fn test_inflating_liquidity_through_own_trades_does_not_pay() {
-    // A steep funding rate: 1_000 of notional pays 1_000 USDC over 1_000 seconds.
-    let mut market = Market::new(dollars(100), 1_000_000_000_000);
+    // The steepest rate a pool may have, held for ten years. The position is
+    // tiny because a pool holding 1_001 can back only 1_001 of notional.
+    let mut market = Market::new(dollars(100), MAX_FUNDING_RATE_PER_SECOND);
 
     let (attacker, attacker_collateral) = market.funded_trader(10_000 * ONE_USDC);
     market
@@ -686,13 +669,13 @@ fn test_inflating_liquidity_through_own_trades_does_not_pay() {
             0,
         )
         .unwrap();
-    market.pass_seconds(1_000);
+    market.pass_seconds(TEN_YEARS);
     market.set_price(dollars(100));
     market
         .close_position(&attacker, attacker_collateral, Side::Long, 0)
         .unwrap();
     let pumped_liquidity = market.pool_state().liquidity;
-    assert!(pumped_liquidity > 1_000 * ONE_USDC);
+    assert!(pumped_liquidity > 50 * 1_001);
     let attacker_spent =
         10_000 * ONE_USDC - get_token_account_balance(&market.svm, &attacker_collateral).unwrap();
 
@@ -997,7 +980,7 @@ fn test_wide_oracle_confidence_rejected() {
 #[test]
 fn test_funding_charged_to_long() {
     // Funding on: longs are the only side, so they pay funding to the pool.
-    let mut market = Market::new(dollars(100), 5_000);
+    let mut market = Market::new(dollars(100), MAX_FUNDING_RATE_PER_SECOND);
     market.seed_liquidity(100_000 * ONE_USDC);
 
     let collateral = 1_000 * ONE_USDC;
@@ -1059,42 +1042,12 @@ fn funding_paid_over(rate: u64, window: i64, between: impl Fn(&mut Market)) -> u
     (collateral - fee - fee) - payout
 }
 
-/// Retuning the rate settles the seconds already elapsed at the old rate
-/// rather than repricing them at the new one.
-#[test]
-fn test_set_funding_rate_settles_at_the_old_rate_first() {
-    let rate = 5_000;
-    let window = 2_000;
-
-    // Same position and the same total elapsed seconds in both runs. The only
-    // difference is that the second doubles the rate halfway through, so it
-    // should pay 1x for the first window and 2x for the second: 1.5x overall.
-    let flat = funding_paid_over(rate, window, |_| {});
-    let retuned = funding_paid_over(rate, window, |market| {
-        let admin = market.admin.insecure_clone();
-        market.set_funding_rate(&admin, rate * 2).unwrap();
-    });
-    assert!(
-        flat > 0,
-        "the flat run must pay some funding to compare against"
-    );
-
-    // Half the elapsed seconds at 1x and half at 2x is 1.5x the flat run. Had
-    // the handler skipped its accrual, the new rate would have applied to every
-    // second and this would be 2x.
-    assert_eq!(
-        retuned * 2,
-        flat * 3,
-        "retuning halfway should cost 1.5x the flat run: flat {flat}, retuned {retuned}"
-    );
-}
-
 /// Funding is quoted per second of wall-clock time, so slots passing without
 /// the clock moving charge nothing. A million extra slots halfway through the
 /// window, as a much shorter slot would produce, leave the funding unchanged.
 #[test]
 fn test_funding_follows_seconds_not_slots() {
-    let rate = 5_000;
+    let rate = MAX_FUNDING_RATE_PER_SECOND;
     let window = 2_000;
     let flat = funding_paid_over(rate, window, |_| {});
     let with_extra_slots = funding_paid_over(rate, window, |market| {
@@ -1106,12 +1059,81 @@ fn test_funding_follows_seconds_not_slots() {
 }
 
 #[test]
-fn test_only_authority_can_set_funding_rate() {
-    let mut market = Market::new(dollars(100), 5_000);
-    let (impostor, _) = market.funded_trader(ONE_USDC);
+fn test_initialize_pool_rejects_funding_rate_above_the_maximum() {
+    // The rate is fixed at creation, so this is the only place it is checked.
+    let parameters = |funding_rate_per_second| PoolParameters {
+        oracle_scale: ORACLE_SCALE,
+        funding_rate_per_second,
+        open_fee_bps: 10,
+        close_fee_bps: 10,
+        max_leverage: 10,
+        maintenance_margin_bps: 500,
+        liquidation_fee_bps: 100,
+        max_confidence_bps: 100,
+    };
+    assert!(Market::try_new(dollars(100), parameters(MAX_FUNDING_RATE_PER_SECOND + 1)).is_err());
+    assert!(Market::try_new(dollars(100), parameters(MAX_FUNDING_RATE_PER_SECOND)).is_ok());
+}
+
+/// The pool operator trading against their own pool. The lighter side of open
+/// interest is paid funding out of `liquidity`, so an operator who could raise
+/// the rate at will could open a small position on the lighter side, raise the
+/// rate, and close it to take the liquidity providers' deposits. The rate is
+/// fixed when the pool is created and capped, so a wallet the operator
+/// controls earns exactly what any trader on that side would: at most the
+/// maximum rate, here just under 0.1% of the position's size over an hour.
+#[test]
+fn test_operator_on_the_lighter_side_earns_only_the_fixed_rate() {
+    let mut market = Market::new(dollars(100), MAX_FUNDING_RATE_PER_SECOND);
+    market.seed_liquidity(100_000 * ONE_USDC);
+
+    // Longs are the heavier side, so they pay and shorts are paid.
+    let (trader, trader_collateral) = market.funded_trader(2_000 * ONE_USDC);
+    market
+        .open_position(
+            &trader,
+            trader_collateral,
+            Side::Long,
+            2_000 * ONE_USDC,
+            10_000 * ONE_USDC,
+            0,
+        )
+        .unwrap();
+
+    let collateral = 200 * ONE_USDC;
+    let size = 1_000 * ONE_USDC;
+    let (operator_wallet, operator_collateral) = market.funded_trader(collateral);
+    market
+        .open_position(
+            &operator_wallet,
+            operator_collateral,
+            Side::Short,
+            collateral,
+            size,
+            0,
+        )
+        .unwrap();
+    let liquidity_before = market.pool_state().liquidity;
+
+    let one_hour = 3_600;
+    market.pass_seconds(one_hour);
+    market.set_price(dollars(100));
+    market
+        .close_position(&operator_wallet, operator_collateral, Side::Short, 0)
+        .unwrap();
+
+    let fees = 2 * (size / 1_000); // open and close, 0.1% of notional each
+    let payout = get_token_account_balance(&market.svm, &operator_collateral).unwrap();
+    let funding_received = payout - (collateral - fees);
+    let expected = size * MAX_FUNDING_RATE_PER_SECOND * one_hour as u64 / 1_000_000_000;
+    assert_eq!(funding_received, expected);
     assert!(
-        market.set_funding_rate(&impostor, 1).is_err(),
-        "a non-authority must not be able to retune the funding rate"
+        funding_received * 1_000 < size,
+        "under 0.1% of size in an hour"
+    );
+    assert_eq!(
+        market.pool_state().liquidity,
+        liquidity_before - funding_received
     );
 }
 
