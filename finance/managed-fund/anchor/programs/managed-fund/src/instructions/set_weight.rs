@@ -23,10 +23,11 @@ pub struct SetWeightAccountConstraints {
 }
 
 /// Change an asset's target weight. Setting it to zero retires the asset: deposits
-/// stop allocating to it, and the manager sells its holdings out with `rebalance`,
-/// leaving an empty vault at the asset's index. The index is never reused, so the
-/// contiguous 0..asset_count range the valuation handlers depend on stays intact.
-/// Funds do not move here; this only edits the target the manager trades toward.
+/// stop allocating to it, and `rebalance` may sell all of its holdings whatever the
+/// fund's threshold, leaving an empty vault at the asset's index. The index is never
+/// reused, so the contiguous 0..asset_count range the valuation handlers depend on
+/// stays intact. Funds do not move here; this only edits the target that
+/// `rebalance` trades toward.
 pub fn handle_set_weight(
     context: &mut Context<SetWeightAccountConstraints>,
     weight_bps: u16,

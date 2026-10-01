@@ -4,6 +4,21 @@ All notable changes to this repository are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-10-01] - Managed Fund: decimal-aware valuation and permissionless rebalancing
+
+### Fixed
+
+- `finance/managed-fund` valued every asset as if it had six decimals and a
+  Pyth exponent of −8. It now reads each feed's exponent and records each
+  mint's decimals, in Anchor v2, Anchor v1 and Quasar.
+
+### Changed
+
+- `finance/managed-fund`'s `rebalance` is permissionless and computes its own
+  trade from oracle prices and target weights, once drift passes a threshold
+  fixed at fund creation, so no caller, the manager included, can churn the
+  fund. See the example's changelogs.
+
 ## [2026-09-28] - Token Fundraiser is renamed Fundraiser
 
 Contributors to the fundraiser receive no token, only a refund if the target is

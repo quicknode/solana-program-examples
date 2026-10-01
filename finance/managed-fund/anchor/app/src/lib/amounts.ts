@@ -22,7 +22,8 @@ export function estimateSharesOut(usdcMinor: bigint, navMinor: bigint, totalShar
 export interface RedeemLeg {
   index: number;
   mint: string;
-  amountMinor: bigint; // 6dp
+  decimals: number;
+  amountMinor: bigint; // in the asset's own decimals
 }
 
 export interface RedeemEstimate {
@@ -35,13 +36,19 @@ export function estimateRedeem(sharesMinor: bigint, view: FundView): RedeemEstim
   if (view.totalShares === 0n || sharesMinor <= 0n) {
     return {
       usdcMinor: 0n,
-      legs: view.assets.map((a) => ({ index: a.index, mint: a.mint.toBase58(), amountMinor: 0n })),
+      legs: view.assets.map((a) => ({
+        index: a.index,
+        mint: a.mint.toBase58(),
+        decimals: a.decimals,
+        amountMinor: 0n,
+      })),
     };
   }
   const usdcMinor = (view.usdcAmount * sharesMinor) / view.totalShares;
   const legs = view.assets.map((a) => ({
     index: a.index,
     mint: a.mint.toBase58(),
+    decimals: a.decimals,
     amountMinor: (a.vaultAmount * sharesMinor) / view.totalShares,
   }));
   return { usdcMinor, legs };

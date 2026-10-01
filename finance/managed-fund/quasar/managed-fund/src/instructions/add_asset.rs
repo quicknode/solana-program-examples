@@ -72,6 +72,7 @@ pub fn handle_add_asset(
         fund: *accounts.fund.address(),
         index,
         mint: *accounts.asset_mint.address(),
+        decimals: accounts.asset_mint.decimals,
         // Copied from the registry entry, never supplied by the manager.
         price_feed: accounts.approved_asset.price_feed,
         vault: *accounts.vault_asset.address(),

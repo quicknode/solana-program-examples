@@ -16,6 +16,11 @@ export function formatUnits(minor: bigint, decimals: number, frac = 2): string {
   return `${negative ? "-" : ""}${groupThousands(whole.toString())}${shownFrac}`;
 }
 
+/** A Pyth price (`price * 10^exponent` dollars) → "250.00". */
+export function formatPrice(price: bigint, exponent: number, frac = 2): string {
+  return exponent <= 0 ? formatUnits(price, -exponent, frac) : formatUnits(price * 10n ** BigInt(exponent), 0, frac);
+}
+
 /** USDC amount (6dp minor units) → "1,363.50". */
 export const formatUsdc = (minor: bigint, frac = 2): string => formatUnits(minor, 6, frac);
 

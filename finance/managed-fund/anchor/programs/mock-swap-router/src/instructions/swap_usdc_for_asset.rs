@@ -72,12 +72,18 @@ pub fn handle_swap_usdc_for_asset(
     let rate = context.accounts.asset_rate.usdc_per_token;
     require!(rate > 0, RouterError::ZeroRate);
 
-    // asset_out = usdc_amount_in / rate  (u128 intermediate, user gets floor)
+    // asset_out = usdc_amount_in * 10^asset_decimals / rate  (u128 intermediate,
+    // caller gets the floor)
+    let one_token = 10u128
+        .checked_pow(context.accounts.asset_mint.decimals() as u32)
+        .ok_or(RouterError::MathOverflow)?;
     let asset_out: u64 = (usdc_amount_in as u128)
-        .checked_mul(1u128)
+        .checked_mul(one_token)
         .ok_or(RouterError::MathOverflow)?
         .checked_div(rate as u128)
-        .ok_or(RouterError::MathOverflow)? as u64;
+        .ok_or(RouterError::MathOverflow)?
+        .try_into()
+        .map_err(|_| RouterError::MathOverflow)?;
 
     require!(
         asset_out >= minimum_asset_out,

@@ -21,6 +21,12 @@
 //! what that buys: payouts never exceed the real balance, and a donation cannot
 //! dilute the next depositor.
 //!
+//! Valuation converts between an asset's minor units and USDC minor units
+//! through the asset's decimals and the Pyth feed's exponent, and `rebalance`
+//! sizes its trade from those values. The harnesses check that the conversion
+//! never sells more than the trade it was asked for, and that a rebalance
+//! trade never pushes either asset past its target.
+//!
 //! Nonlinear 128-bit harnesses use bounded model checking (small symbolic
 //! inputs), as percolator does; the share identities are scale-invariant.
 
@@ -53,6 +59,61 @@ pub fn deposit_shares(usdc_amount: u64, total_shares: u64, nav: u64) -> Option<u
     mul_div_floor(usdc_amount as u128, total_shares as u128, nav as u128)?
         .try_into()
         .ok()
+}
+
+/// `numerator * 10^power / denominator`, floored, for a power of either sign
+/// (`mul_pow10_div` in `oracle.rs`).
+pub fn mul_pow10_div(numerator: u128, power: i32, denominator: u128) -> Option<u128> {
+    let scale = 10u128.checked_pow(power.unsigned_abs())?;
+    if power >= 0 {
+        numerator.checked_mul(scale)?.checked_div(denominator)
+    } else {
+        numerator.checked_div(denominator.checked_mul(scale)?)
+    }
+}
+
+/// USDC minor units that `amount` asset minor units are worth:
+/// `amount * price * 10^(usdc_decimals + exponent - asset_decimals)`, floored
+/// (`asset_value_in_usdc`).
+pub fn asset_value_in_usdc(
+    amount: u128,
+    price: u128,
+    exponent: i32,
+    asset_decimals: u8,
+    usdc_decimals: u8,
+) -> Option<u128> {
+    let power = usdc_decimals as i32 + exponent - asset_decimals as i32;
+    mul_pow10_div(amount.checked_mul(price)?, power, 1)
+}
+
+/// Asset minor units that `usdc_amount` USDC minor units buys at the oracle
+/// price, floored (`usdc_to_asset_amount`).
+pub fn usdc_to_asset_amount(
+    usdc_amount: u128,
+    price: u128,
+    exponent: i32,
+    asset_decimals: u8,
+    usdc_decimals: u8,
+) -> Option<u128> {
+    let power = asset_decimals as i32 - exponent - usdc_decimals as i32;
+    mul_pow10_div(usdc_amount, power, price)
+}
+
+/// The value `handle_rebalance` trades: the smaller of how far the sell asset
+/// sits above its target and how far the buy asset sits below its own.
+/// `None` when either gap is zero, where the handler refuses.
+pub fn rebalance_trade_value(
+    sell_value: u128,
+    sell_target: u128,
+    buy_value: u128,
+    buy_target: u128,
+) -> Option<u128> {
+    let excess = sell_value.saturating_sub(sell_target);
+    let shortfall = buy_target.saturating_sub(buy_value);
+    if excess == 0 || shortfall == 0 {
+        return None;
+    }
+    Some(excess.min(shortfall))
 }
 
 // ===========================================================================
@@ -224,6 +285,72 @@ fn proof_fee_shares_bounded_by_supply() {
 }
 
 // ===========================================================================
+// 6. Unit conversion never sells more than the trade
+// ===========================================================================
+
+/// `rebalance` converts its trade value into an amount of the sell asset, then
+/// floors the sale's minimum output by valuing that amount back. Across every
+/// combination of decimals and exponent in range, the amount sold is never
+/// worth more than the trade value, so flooring cannot make a rebalance sell
+/// past the asset's target.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::solver(cadical)]
+fn proof_sell_amount_never_worth_more_than_trade() {
+    let trade: u128 = kani::any();
+    let price: u128 = kani::any();
+    let exponent: i32 = kani::any();
+    let asset_decimals: u8 = kani::any();
+    let usdc_decimals: u8 = kani::any();
+
+    kani::assume(trade <= 255);
+    kani::assume(price >= 1 && price <= 255);
+    kani::assume(exponent >= -3 && exponent <= 0);
+    kani::assume(asset_decimals <= 3 && usdc_decimals <= 3);
+
+    let amount = usdc_to_asset_amount(trade, price, exponent, asset_decimals, usdc_decimals)
+        .expect("computes");
+    let worth = asset_value_in_usdc(amount, price, exponent, asset_decimals, usdc_decimals)
+        .expect("computes");
+    assert!(worth <= trade);
+}
+
+// ===========================================================================
+// 7. A rebalance trade never overshoots a target
+// ===========================================================================
+
+/// The trade is the smaller of the two gaps, so after it the sell asset is
+/// still at or above its target and the buy asset at or below its own, valued
+/// at the same prices. A rebalance therefore only ever closes gaps, and once it
+/// has closed one there is nothing left to trade on that side: a caller cannot
+/// trade the fund back and forth.
+#[cfg(kani)]
+#[kani::proof]
+fn proof_rebalance_trade_never_overshoots() {
+    let sell_value: u128 = kani::any();
+    let sell_target: u128 = kani::any();
+    let buy_value: u128 = kani::any();
+    let buy_target: u128 = kani::any();
+
+    kani::assume(sell_value <= u64::MAX as u128 && sell_target <= u64::MAX as u128);
+    kani::assume(buy_value <= u64::MAX as u128 && buy_target <= u64::MAX as u128);
+
+    if let Some(trade) = rebalance_trade_value(sell_value, sell_target, buy_value, buy_target) {
+        assert!(trade > 0);
+        assert!(sell_value - trade >= sell_target);
+        assert!(buy_value + trade <= buy_target);
+        // Valued again, at least one side has no gap left.
+        let again = rebalance_trade_value(
+            sell_value - trade,
+            sell_target,
+            buy_value + trade,
+            buy_target,
+        );
+        assert!(again.is_none());
+    }
+}
+
+// ===========================================================================
 // Plain unit tests.
 // ===========================================================================
 
@@ -253,6 +380,34 @@ mod tests {
         assert_eq!(victim, 1_000_000_000);
         let back = withdraw_amount(1 + 1_000_000_000, victim, attacker + victim).unwrap();
         assert_eq!(back, 1_000_000_000);
+    }
+
+    #[test]
+    fn valuation_scales_by_decimals_and_exponent() {
+        // 1.44 TSLAx at eight decimals, $250 on a Pyth equity feed (exponent -5),
+        // is 360 USDC.
+        assert_eq!(
+            asset_value_in_usdc(144_000_000, 25_000_000, -5, 8, 6).unwrap(),
+            360_000_000
+        );
+        // 3 NVDAx at six decimals, $180 at exponent -8, is 540 USDC.
+        assert_eq!(
+            asset_value_in_usdc(3_000_000, 18_000_000_000, -8, 6, 6).unwrap(),
+            540_000_000
+        );
+        // 24 USDC buys 0.096 TSLAx at eight decimals.
+        assert_eq!(
+            usdc_to_asset_amount(24_000_000, 25_000_000, -5, 8, 6).unwrap(),
+            9_600_000
+        );
+    }
+
+    #[test]
+    fn rebalance_trades_the_smaller_gap() {
+        // The book's rebalance: NVDAx $24 over its $576 target, TSLAx $24 under.
+        assert_eq!(rebalance_trade_value(600, 576, 360, 384), Some(24));
+        // A fund at target has nothing to trade.
+        assert_eq!(rebalance_trade_value(576, 576, 384, 384), None);
     }
 
     #[test]

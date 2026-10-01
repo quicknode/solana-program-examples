@@ -18,9 +18,13 @@ export interface FundAccount {
   registry: PublicKey;
   shareMint: PublicKey;
   usdcMint: PublicKey;
+  /** The USDC mint's decimals; valuation scales every asset into these minor units. */
+  usdcDecimals: number;
   swapRouter: PublicKey;
   feeBps: number;
   maxSlippageBps: number;
+  /** How far (bps of fund value) an asset must sit above target before rebalance may sell it. */
+  rebalanceThresholdBps: number;
   totalShares: BN;
   /** USDC the program has recorded in the USDC vault; excludes donations. */
   usdcHoldings: BN;
@@ -36,6 +40,8 @@ export interface AssetConfigAccount {
   fund: PublicKey;
   index: number;
   mint: PublicKey;
+  /** The asset mint's decimals. */
+  decimals: number;
   priceFeed: PublicKey;
   vault: PublicKey;
   weightBps: number;

@@ -5,13 +5,13 @@ use crate::{errors::FundError, last_restart::LastRestartSlot};
 // Byte offset of `price` (i64) inside a Pyth PriceUpdateV2 account:
 //   8 discriminator + 32 write_authority + 1 verification_level + 32 feed_id = 73
 const PYTH_PRICE_OFFSET: usize = 73;
-// Byte offset of `publish_time` (i64): price(8) + conf(8) + exponent(4) after price.
+/// Byte offset of `exponent` (i32): price(8) + conf(8) = +16 bytes after price.
+const PYTH_EXPONENT_OFFSET: usize = PYTH_PRICE_OFFSET + 8 + 8; // 89
+/// Byte offset of `publish_time` (i64): price(8) + conf(8) + exponent(4) after price.
 const PYTH_PUBLISH_TIME_OFFSET: usize = PYTH_PRICE_OFFSET + 8 + 8 + 4; // 93
 /// Byte offset of `posted_slot` (u64), the slot the update was posted in:
 /// publish_time(8) + prev_publish_time(8) + ema_price(8) + ema_conf(8) after publish_time.
 const PYTH_POSTED_SLOT_OFFSET: usize = PYTH_PUBLISH_TIME_OFFSET + 8 + 8 + 8 + 8; // 125
-/// Pyth USD pairs use exponent -8 (price * 10^-8 = dollars per token).
-pub const PYTH_PRICE_PRECISION: u128 = 100_000_000; // 10^8
 /// Prices older than this (seconds) are rejected.
 const MAX_PRICE_AGE_SECONDS: i64 = 60;
 
@@ -38,6 +38,14 @@ fn read_i64(data: &[u8], offset: usize) -> Result<i64, ProgramError> {
     Ok(i64::from_le_bytes(bytes))
 }
 
+fn read_i32(data: &[u8], offset: usize) -> Result<i32, ProgramError> {
+    let bytes: [u8; 4] = data
+        .get(offset..offset + 4)
+        .and_then(|slice| slice.try_into().ok())
+        .ok_or(FundError::InvalidPriceFeed)?;
+    Ok(i32::from_le_bytes(bytes))
+}
+
 fn read_u64(data: &[u8], offset: usize) -> Result<u64, ProgramError> {
     let bytes: [u8; 8] = data
         .get(offset..offset + 8)
@@ -46,14 +54,23 @@ fn read_u64(data: &[u8], offset: usize) -> Result<u64, ProgramError> {
     Ok(u64::from_le_bytes(bytes))
 }
 
+/// A positive Pyth price: `price * 10^exponent` dollars per whole token.
+/// Crypto USD feeds use exponent -8 and US equity feeds -5, so the exponent is
+/// read from the feed rather than assumed.
+#[derive(Clone, Copy)]
+pub struct OraclePrice {
+    pub price: u128,
+    pub exponent: i32,
+}
+
 /// Validate a price feed account against the one the fund registered, then
-/// return its positive, fresh price as u128. `now` is the current unix timestamp.
+/// return its positive, fresh price. `now` is the current unix timestamp.
 /// A price posted at or before the last cluster restart is rejected too.
 pub fn load_price(
     price_feed: &AccountView,
     expected_key: &Address,
     now: i64,
-) -> Result<u128, ProgramError> {
+) -> Result<OraclePrice, ProgramError> {
     if price_feed.address() != expected_key {
         return Err(FundError::InvalidPriceFeed.into());
     }
@@ -63,6 +80,7 @@ pub fn load_price(
         return Err(FundError::InvalidPriceFeed.into());
     }
     let price = read_i64(data, PYTH_PRICE_OFFSET)?;
+    let exponent = read_i32(data, PYTH_EXPONENT_OFFSET)?;
     let publish_time = read_i64(data, PYTH_PUBLISH_TIME_OFFSET)?;
     let posted_slot = read_u64(data, PYTH_POSTED_SLOT_OFFSET)?;
 
@@ -88,7 +106,10 @@ pub fn load_price(
         FundError::PricePredatesRestart
     );
 
-    Ok(price as u128)
+    Ok(OraclePrice {
+        price: price as u128,
+        exponent,
+    })
 }
 
 /// Read the `amount` field of a token account from its raw data.
@@ -124,13 +145,54 @@ pub fn read_token_mint_and_owner(
     Ok((Address::from(mint), Address::from(owner)))
 }
 
-/// Value of `amount` token minor units in USDC minor units, given a Pyth price.
-/// Both USDC and the basket assets use 6 decimals, so the only scaling is the
-/// Pyth exponent: value = amount * price / 10^8. Multiply before divide.
-pub fn asset_value_in_usdc(amount: u64, price: u128) -> Result<u128, ProgramError> {
-    (amount as u128)
-        .checked_mul(price)
+/// `numerator * 10^power / denominator`, floored, for a power of either sign:
+/// a negative power divides by `10^-power` instead. Multiplies before dividing.
+fn mul_pow10_div(numerator: u128, power: i32, denominator: u128) -> Result<u128, ProgramError> {
+    let scale = 10u128
+        .checked_pow(power.unsigned_abs())
+        .ok_or(FundError::MathOverflow)?;
+    let (numerator, denominator) = if power >= 0 {
+        (numerator.checked_mul(scale), Some(denominator))
+    } else {
+        (Some(numerator), denominator.checked_mul(scale))
+    };
+    numerator
         .ok_or(FundError::MathOverflow)?
-        .checked_div(PYTH_PRICE_PRECISION)
+        .checked_div(denominator.ok_or(FundError::MathOverflow)?)
         .ok_or_else(|| FundError::MathOverflow.into())
+}
+
+/// Value of `amount` asset minor units in USDC minor units. The asset has
+/// `asset_decimals`, USDC has `usdc_decimals`, and a whole asset is worth
+/// `price * 10^exponent` dollars, so
+/// value = amount * price * 10^(usdc_decimals + exponent - asset_decimals).
+/// With six-decimal USDC, an eight-decimal asset and an exponent of -8, that is
+/// amount * price / 10^10. Floored.
+pub fn asset_value_in_usdc(
+    amount: u128,
+    price: OraclePrice,
+    asset_decimals: u8,
+    usdc_decimals: u8,
+) -> Result<u128, ProgramError> {
+    let power = usdc_decimals as i32 + price.exponent - asset_decimals as i32;
+    mul_pow10_div(
+        amount
+            .checked_mul(price.price)
+            .ok_or(FundError::MathOverflow)?,
+        power,
+        1,
+    )
+}
+
+/// The inverse of `asset_value_in_usdc`: how many asset minor units
+/// `usdc_amount` USDC minor units buys at the oracle price,
+/// usdc_amount * 10^(asset_decimals - exponent - usdc_decimals) / price. Floored.
+pub fn usdc_to_asset_amount(
+    usdc_amount: u128,
+    price: OraclePrice,
+    asset_decimals: u8,
+    usdc_decimals: u8,
+) -> Result<u128, ProgramError> {
+    let power = asset_decimals as i32 - price.exponent - usdc_decimals as i32;
+    mul_pow10_div(usdc_amount, power, price.price)
 }

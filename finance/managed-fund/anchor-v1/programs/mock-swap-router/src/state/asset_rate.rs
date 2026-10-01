@@ -4,9 +4,9 @@ use anchor_lang::prelude::*;
 #[derive(InitSpace)]
 pub struct AssetRate {
     pub mint: Pubkey,
-    /// USDC base units per token base unit.
-    /// e.g. 250 means 1 token base unit = 250 USDC base units
-    /// (so 1.0 TSLAx = $250 when both have 6 decimals)
+    /// USDC base units per whole token, e.g. 250_000_000 means 1.0 TSLAx = $250
+    /// with six-decimal USDC. The swaps scale by the asset mint's decimals, so the
+    /// rate means the same thing whatever precision the asset has.
     pub usdc_per_token: u64,
     pub bump: u8,
 }

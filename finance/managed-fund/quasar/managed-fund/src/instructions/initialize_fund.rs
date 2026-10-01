@@ -14,6 +14,15 @@ pub const MAX_FEE_BPS: u16 = 1_000;
 /// oracle-anchored swap bound in deposit/rebalance can be made.
 pub const MAX_SLIPPAGE_BPS: u16 = 1_000;
 
+/// Lowest rebalance threshold a manager may set, in basis points of the fund's
+/// value (one percentage point). Every rebalance pays slippage, so a threshold
+/// near zero would let anyone trade the fund on every small price move.
+pub const MIN_REBALANCE_THRESHOLD_BPS: u16 = 100;
+
+/// Highest rebalance threshold a manager may set (twenty percentage points).
+/// Past that, the target weights stop describing what the fund holds.
+pub const MAX_REBALANCE_THRESHOLD_BPS: u16 = 2_000;
+
 #[derive(Accounts)]
 #[instruction(index: u64)]
 pub struct InitializeFundAccountConstraints {
@@ -54,6 +63,7 @@ pub fn handle_initialize_fund(
     index: u64,
     fee_bps: u16,
     max_slippage_bps: u16,
+    rebalance_threshold_bps: u16,
     swap_router: Address,
     bumps: &InitializeFundAccountConstraintsBumps,
 ) -> Result<(), ProgramError> {
@@ -61,6 +71,11 @@ pub fn handle_initialize_fund(
     require!(
         max_slippage_bps <= MAX_SLIPPAGE_BPS,
         FundError::SlippageConfigTooHigh
+    );
+    require!(
+        (MIN_REBALANCE_THRESHOLD_BPS..=MAX_REBALANCE_THRESHOLD_BPS)
+            .contains(&rebalance_threshold_bps),
+        FundError::RebalanceThresholdOutOfRange
     );
 
     let now = i64::from(Clock::get()?.unix_timestamp);
@@ -71,9 +86,11 @@ pub fn handle_initialize_fund(
         registry: *accounts.registry.address(),
         share_mint: *accounts.share_mint.address(),
         usdc_mint: *accounts.usdc_mint.address(),
+        usdc_decimals: accounts.usdc_mint.decimals,
         swap_router,
         fee_bps,
         max_slippage_bps,
+        rebalance_threshold_bps,
         total_shares: 0,
         usdc_holdings: 0,
         asset_holdings: [0; ASSET_HOLDINGS_BYTES],
