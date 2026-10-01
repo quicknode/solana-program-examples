@@ -10,8 +10,12 @@ use {
 
 #[derive(Accounts)]
 pub struct RefundAccountConstraints {
+    /// Not a signer: the tokens go to the contributor's token account and the
+    /// rent to the contributor, whoever sends the transaction. So a maker can
+    /// refund every contributor and close a failed fundraiser without waiting
+    /// on any of them.
     #[account(mut)]
-    pub contributor: Signer,
+    pub contributor: SystemAccount,
 
     pub maker: UncheckedAccount,
 
@@ -31,7 +35,12 @@ pub struct RefundAccountConstraints {
     )]
     pub contributor_account: Account<Contributor>,
 
-    #[account(mut)]
+    // Bound to the contributor: since anyone may send a refund, the tokens
+    // must go to a token account the contributor owns, in the raised mint.
+    #[account(
+        mut,
+        token(mint = mint_to_raise, authority = contributor, token_program = token_program),
+    )]
     pub contributor_ta: Account<Token>,
 
     #[account(mut)]
@@ -72,6 +81,12 @@ pub fn handle_refund(
             .ok_or(FundraiserError::MathOverflow)?,
     );
     accounts.contributor_account.amount = PodU64::from(0);
+    let open_contributor_accounts: u32 = accounts.fundraiser.open_contributor_accounts.into();
+    accounts.fundraiser.open_contributor_accounts = PodU32::from(
+        open_contributor_accounts
+            .checked_sub(1)
+            .ok_or(FundraiserError::MathOverflow)?,
+    );
 
     // Fundraiser PDA signer seeds: ["fundraiser", maker, bump].
     let bump = [bumps.fundraiser];

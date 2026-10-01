@@ -14,6 +14,7 @@ declare_id!("Eoiuq1dXvHxh6dLx3wh9gj8kSAUpga11krTrbfF5XYsC");
 /// Token crowdfunding program: a maker creates a fundraiser targeting a specific
 /// SPL token. Contributors deposit tokens into a vault. If the target is met,
 /// the maker withdraws everything. If not, contributors can reclaim their funds.
+/// Once every contributor account is closed, the maker closes the fundraiser.
 #[program]
 mod quasar_fundraiser {
     use super::*;
@@ -43,7 +44,9 @@ mod quasar_fundraiser {
         instructions::handle_contribute(&mut ctx.accounts, amount, &ctx.bumps)
     }
 
-    /// Maker withdraws all funds once the target is met.
+    /// Maker withdraws all funds once the target is met, marking the
+    /// fundraiser claimed. The fundraiser and the vault stay open until every
+    /// contributor account is closed.
     #[instruction(discriminator = 2)]
     pub fn check_contributions(
         ctx: Ctx<CheckContributionsAccountConstraints>,
@@ -51,20 +54,28 @@ mod quasar_fundraiser {
         instructions::handle_check_contributions(&mut ctx.accounts, &ctx.bumps)
     }
 
-    /// Contributors reclaim their tokens after the deadline if the target
-    /// was not met.
+    /// Return a contributor's tokens after the deadline if the target was not
+    /// met. Anyone may send it; the tokens and the rent go to the contributor.
     #[instruction(discriminator = 3)]
     pub fn refund(ctx: Ctx<RefundAccountConstraints>) -> Result<(), ProgramError> {
         instructions::handle_refund(&mut ctx.accounts, &ctx.bumps)
     }
 
-    /// A contributor closes their contributor account once the fundraiser is
-    /// gone, taking back its rent. A successful raise closes the fundraiser
-    /// without touching the contributor accounts, so this is their exit.
+    /// Close a contributor account once its fundraiser has been claimed,
+    /// returning the rent to the contributor. Anyone may send it.
     #[instruction(discriminator = 4)]
     pub fn close_contributor(
         ctx: Ctx<CloseContributorAccountConstraints>,
     ) -> Result<(), ProgramError> {
         instructions::handle_close_contributor(&mut ctx.accounts)
+    }
+
+    /// Maker closes a finished fundraiser and its vault once no contributor
+    /// account is open, so they can raise again at the same address.
+    #[instruction(discriminator = 5)]
+    pub fn close_fundraiser(
+        ctx: Ctx<CloseFundraiserAccountConstraints>,
+    ) -> Result<(), ProgramError> {
+        instructions::handle_close_fundraiser(&mut ctx.accounts, &ctx.bumps)
     }
 }

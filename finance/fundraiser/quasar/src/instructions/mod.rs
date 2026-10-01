@@ -12,3 +12,6 @@ pub use refund::*;
 
 pub mod close_contributor;
 pub use close_contributor::*;
+
+pub mod close_fundraiser;
+pub use close_fundraiser::*;

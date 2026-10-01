@@ -1,5 +1,37 @@
 # Changelog
 
+## [2026-10-01]
+
+### Fixed
+
+- A Contributor account could outlive its fundraiser and count toward the
+  next one. `check_contributions` closed the Fundraiser account while the
+  Contributor accounts derived from its address stayed open, so the maker
+  could initialize a new fundraiser at the same address and `refund` would pay
+  a leftover account's old amount out of the new contributors' tokens.
+  `check_contributions` now sets a new `claimed` flag and leaves the Fundraiser
+  and vault open, and the Fundraiser counts `open_contributor_accounts`.
+
+### Added
+
+- `close_fundraiser` (discriminator 5): closes the vault and the Fundraiser
+  once no Contributor account is open (`ContributorAccountsOpen`), and on an
+  unclaimed fundraiser only after the deadline, with the target missed and
+  every contribution refunded (`FundraiserNotEnded`, `TargetMet`, the new
+  `RefundsOutstanding`). Any tokens left in the vault go to the maker.
+- `FundraiserClaimed`: `contribute` and `check_contributions` refuse a claimed
+  fundraiser.
+
+### Changed
+
+- `close_contributor` requires the fundraiser to be claimed
+  (`FundraiserNotClaimed`, replacing `FundraiserStillOpen`).
+- `refund` and `close_contributor` no longer require the contributor's
+  signature, so the maker can close every Contributor account. `refund`
+  checks that the destination token account belongs to the contributor.
+  `quasar build` reports P006 (instruction missing signer) for both; that is
+  intended.
+
 ## [2026-09-28]
 
 ### Changed
