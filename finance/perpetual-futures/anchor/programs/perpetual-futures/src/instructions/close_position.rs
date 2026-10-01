@@ -6,7 +6,9 @@ use anchor_spl::{
 
 use crate::constants::{POOL_SEED, POSITION_SEED, VAULT_SEED};
 use crate::errors::PerpError;
-use crate::instructions::shared::{basis_points_of, refresh_price_and_funding, settle_position};
+use crate::instructions::shared::{
+    basis_points_of, refresh_price_and_funding_within_band, settle_position,
+};
 use crate::state::{Pool, Position};
 
 pub fn handle_close_position(
@@ -14,7 +16,7 @@ pub fn handle_close_position(
     minimum_payout: u64,
 ) -> Result<()> {
     let pool = &mut context.accounts.pool;
-    let price = refresh_price_and_funding(pool, &context.accounts.oracle_feed)?;
+    let price = refresh_price_and_funding_within_band(pool, &context.accounts.oracle_feed)?;
 
     let position = &context.accounts.position;
     let position_size = position.size;

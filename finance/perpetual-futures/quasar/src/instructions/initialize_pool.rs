@@ -1,7 +1,7 @@
 use {
     crate::{
-        constants::{BASIS_POINTS_DENOMINATOR, MAX_FUNDING_RATE_PER_SECOND, MAX_LEVERAGE_CEILING},
-        instructions::shared::{err, error},
+        constants::{BASIS_POINTS_DENOMINATOR, MAX_FUNDING_RATE_PER_SECOND},
+        instructions::shared::{err, error, read_feed_price},
         state::{Pool, PoolInner},
         LpMintPda, VaultPda,
     },
@@ -21,7 +21,8 @@ pub struct InitializePool {
     )]
     pub pool: Account<Pool>,
     pub collateral_mint: Account<Mint>,
-    /// CHECK: stored on the pool; every read validates layout, scale, freshness.
+    /// CHECK: stored on the pool; every read, including the one here that seeds
+    /// the average price, validates layout, scale, freshness.
     pub oracle_feed: UncheckedAccount,
     /// Liquidity-provider share mint; the pool account is its mint authority.
     #[account(
@@ -55,19 +56,17 @@ pub fn handle_initialize_pool(
     funding_rate_per_second: u64,
     open_fee_bps: u16,
     close_fee_bps: u16,
-    max_leverage: u16,
+    initial_margin_bps: u16,
     maintenance_margin_bps: u16,
     liquidation_fee_bps: u16,
     max_confidence_bps: u16,
+    max_price_deviation_bps: u16,
     bumps: &InitializePoolBumps,
 ) -> Result<(), ProgramError> {
     let denominator = BASIS_POINTS_DENOMINATOR as u16;
     // The rate never changes after this, so bounding it here bounds it for the
     // life of the pool.
     if funding_rate_per_second > MAX_FUNDING_RATE_PER_SECOND {
-        return Err(err(error::INVALID_PARAMETER));
-    }
-    if !(1..=MAX_LEVERAGE_CEILING).contains(&max_leverage) {
         return Err(err(error::INVALID_PARAMETER));
     }
     if open_fee_bps >= denominator
@@ -87,10 +86,34 @@ pub fn handle_initialize_pool(
     if maintenance_margin_bps <= close_fee_bps {
         return Err(err(error::INVALID_PARAMETER));
     }
+    // A position must open with more margin than it is liquidated at, or it
+    // could be liquidated in the same slot it opened. At most 100% of
+    // notional: more than that would demand collateral above the position's
+    // size.
+    if initial_margin_bps <= maintenance_margin_bps {
+        return Err(err(error::INITIAL_MARGIN_NOT_ABOVE_MAINTENANCE));
+    }
+    if initial_margin_bps > denominator {
+        return Err(err(error::INVALID_PARAMETER));
+    }
     if max_confidence_bps == 0 || max_confidence_bps >= denominator {
         return Err(err(error::INVALID_PARAMETER));
     }
+    // Zero would refuse every price move, however small. At 100% or more the
+    // band could never refuse a fall, since the oracle price is always
+    // positive.
+    if max_price_deviation_bps == 0 || max_price_deviation_bps >= denominator {
+        return Err(err(error::INVALID_PRICE_DEVIATION));
+    }
 
+    // Seed the average with a validated oracle price, so the band is in force
+    // from the first trade.
+    let initial_price = read_feed_price(
+        &accounts.oracle_feed,
+        oracle_scale,
+        accounts.clock.slot.get(),
+        max_confidence_bps,
+    )?;
     let unix_timestamp = accounts.clock.unix_timestamp.get();
     accounts.pool.set_inner(PoolInner {
         authority: *accounts.authority.address(),
@@ -109,13 +132,17 @@ pub fn handle_initialize_pool(
         short_size_scaled: 0,
         cumulative_funding: 0,
         last_funding_timestamp: unix_timestamp,
+        average_price: initial_price,
+        last_oracle_price: initial_price,
+        average_price_timestamp: unix_timestamp,
         funding_rate_per_second,
         open_fee_bps,
         close_fee_bps,
-        max_leverage,
+        initial_margin_bps,
         maintenance_margin_bps,
         liquidation_fee_bps,
         max_confidence_bps,
+        max_price_deviation_bps,
         bump: bumps.pool,
     });
     Ok(())

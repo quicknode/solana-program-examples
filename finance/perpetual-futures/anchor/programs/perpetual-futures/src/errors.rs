@@ -14,8 +14,8 @@ pub enum PerpError {
     #[msg("Arithmetic overflow")]
     MathOverflow,
 
-    #[msg("Requested leverage exceeds the pool maximum")]
-    LeverageTooHigh,
+    #[msg("Position is too large for its collateral: net collateral is below the pool's initial margin")]
+    InitialMarginNotMet,
 
     #[msg("Pool parameter is outside the allowed range")]
     InvalidParameter,
@@ -58,4 +58,13 @@ pub enum PerpError {
 
     #[msg("Oracle price is stale: it predates the last cluster restart")]
     PricePredatesRestart,
+
+    #[msg("Initial margin is at or below the maintenance margin: positions could open already liquidatable")]
+    InitialMarginNotAboveMaintenance,
+
+    #[msg("Maximum price deviation is outside the allowed range: it must be above zero and below 10,000 basis points")]
+    InvalidPriceDeviation,
+
+    #[msg("Oracle price is too far from the pool's average price: trading pauses until the average catches up")]
+    PriceOutsideBand,
 }

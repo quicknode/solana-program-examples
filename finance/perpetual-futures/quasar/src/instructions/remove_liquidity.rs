@@ -1,7 +1,9 @@
 use {
     crate::{
         constants::MINIMUM_LIQUIDITY,
-        instructions::shared::{err, error, refresh_price_and_funding, traders_unrealized_pnl},
+        instructions::shared::{
+            err, error, refresh_price_and_funding_within_band, traders_unrealized_pnl,
+        },
         state::Pool,
         LpMintPda,
     },
@@ -54,7 +56,7 @@ pub fn handle_remove_liquidity(
 
     let slot = accounts.clock.slot.get();
     let unix_timestamp = accounts.clock.unix_timestamp.get();
-    let price = refresh_price_and_funding(
+    let price = refresh_price_and_funding_within_band(
         &mut accounts.pool,
         &accounts.oracle_feed,
         slot,
