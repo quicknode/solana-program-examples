@@ -45,6 +45,8 @@ mod quasar_perpetual_futures {
         liquidation_fee_bps: u16,
         max_confidence_bps: u16,
         max_price_deviation_bps: u16,
+        insurance_fee_bps: u16,
+        profit_warmup_slots: u64,
     ) -> Result<(), ProgramError> {
         instructions::handle_initialize_pool(
             &mut ctx.accounts,
@@ -57,6 +59,8 @@ mod quasar_perpetual_futures {
             liquidation_fee_bps,
             max_confidence_bps,
             max_price_deviation_bps,
+            insurance_fee_bps,
+            profit_warmup_slots,
             &ctx.bumps,
         )
     }

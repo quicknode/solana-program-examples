@@ -15,14 +15,20 @@ pub struct Pool {
     pub custody_vault: Address,
     pub lp_mint: Address,
     pub oracle_scale: u32,
+    /// Liquidity-provider-owned tokens. Together with `insurance_fund` it backs
+    /// trader profit: when the two cannot cover the profit traders are owed,
+    /// every closing winner is paid the same fraction of their profit (see
+    /// `instructions::shared::haircut_ratio`).
     pub liquidity: u64,
-    /// Portion of `liquidity` reserved to cover open positions' maximum
-    /// recoverable profit (one notional `size` each). Withdrawals can only take
-    /// the free remainder, and a position can open only while
-    /// `reserved + size <= liquidity`.
-    pub reserved_liquidity: u64,
     pub total_collateral: u64,
     pub program_fees: u64,
+    /// Funded by `insurance_fee_bps` of every open and close fee. It pays a
+    /// bankrupt position's deficit (its loss beyond its collateral) before
+    /// liquidity providers bear any of it, pays a winner's profit once
+    /// `liquidity` is exhausted, and counts alongside `liquidity` as backing in
+    /// the haircut. The vault holds `liquidity + total_collateral +
+    /// program_fees + insurance_fund`, plus any tokens sent to it directly.
+    pub insurance_fund: u64,
     pub long_size: u128,
     pub short_size: u128,
     pub long_size_scaled: u128,
@@ -63,6 +69,15 @@ pub struct Pool {
     /// Widest gap the pool trades across between the oracle price and
     /// `average_price`, in basis points of `average_price`.
     pub max_price_deviation_bps: u16,
+    /// Fraction of each open and close fee, in basis points, paid into
+    /// `insurance_fund`; the rest goes to `program_fees`.
+    pub insurance_fee_bps: u16,
+    /// Slots a position must stay open before `close_position` will pay it a
+    /// profit. Someone who pushes the oracle to a false price cannot open a
+    /// position and take its profit less than this many slots apart; by then the
+    /// price has had that long to correct. A losing position can close, and an
+    /// under-margined one be liquidated, at any time.
+    pub profit_warmup_slots: u64,
     pub bump: u8,
 }
 
@@ -82,5 +97,8 @@ pub struct Position {
     pub entry_price: u64,
     pub size_scaled: u128,
     pub entry_funding: i128,
+    /// Slot the position opened in. `close_position` pays a profit only from
+    /// slot `entry_slot + pool.profit_warmup_slots` on.
+    pub entry_slot: u64,
     pub bump: u8,
 }

@@ -10,6 +10,11 @@ pub const FUNDING_PRECISION: i128 = 1_000_000_000;
 /// Fixed-point precision for the per-side `size / entry_price` accumulators.
 pub const SIZE_PRECISION: u128 = 1_000_000_000;
 
+/// Fixed-point precision for the haircut ratio `h`, the fraction of their
+/// profit every closing winner is paid. `HAIRCUT_PRECISION` is `h = 1` (profit
+/// paid in full); a smaller value pays that fraction of it.
+pub const HAIRCUT_PRECISION: u128 = 1_000_000_000;
+
 /// Liquidity-provider shares withheld from the first deposit so the share
 /// supply never starts at a dust amount. Both `add_liquidity` and
 /// `remove_liquidity` divide by the share supply plus this minimum, so the

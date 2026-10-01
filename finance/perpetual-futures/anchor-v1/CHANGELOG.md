@@ -54,9 +54,68 @@ Tested by `test_open_rejects_position_below_initial_margin` (formerly
 `test_single_update_moves_average_by_elapsed_fraction` and
 `test_one_manipulated_read_after_idle_does_not_move_average`. The default test market
 uses a 1,000 basis point initial margin and a 2,000 basis point band;
-`test_profit_capped_at_reserved_notional` triples the price, far outside the
+`test_profit_runs_uncapped_when_backed` triples the price, far outside the
 band, so it now calls `update_price_average` to record the new price, lets a
 full window pass, and calls it again before closing.
+
+Replace reserved liquidity with the haircut risk model from
+[Percolator](https://github.com/aeyakovenko/percolator): trader collateral is
+senior, and trader profit is junior, paid only as far as the pool can back it.
+`Pool.reserved_liquidity` is removed, and with it `open_position`'s
+`reserved + size <= liquidity` check, which failed with `InsufficientLiquidity`,
+and `close_position`'s cap on profit at the position's size. A position opens
+whatever the pool's liquidity, and profit has no cap. `close_position` computes
+the haircut ratio `h = min(1, (liquidity + insurance_fund) /
+max(0, traders' aggregate unrealized profit, closing position's profit))` from
+the per-side accumulators, before the closing position leaves them, and pays a
+winning position `profit * h / HAIRCUT_PRECISION`, rounded down, with the new
+constant at 10^9, so every winner closing at the same moment is paid the same
+fraction; a loss settles in full. A winner who closes while open losers still
+offset them is paid at most the pool's backing rather than refused, and every
+other winner's fraction is unchanged. The profit is paid from `liquidity` first
+and from the insurance fund for the rest; `PoolInsolvent` remains as a
+defensive check.
+`remove_liquidity` caps a withdrawal at `liquidity` rather than `liquidity -
+reserved_liquidity`, still failing with `InsufficientLiquidity`, whose message
+now says the withdrawal is larger than the pool's liquidity. `shared.rs` has
+the new `haircut_ratio` and `apply_haircut`.
+
+Add an insurance fund. `Pool.insurance_fund` is new, and so is
+`PoolParameters.insurance_fee_bps`, which `initialize_pool` requires to be below
+10,000 or fails with `InvalidParameter`. That fraction of every open and close
+fee goes to the fund, rounded down, and the rest to `program_fees`, through the
+new `split_fee` and `credit_fee` in `shared.rs`. `liquidate_position` takes a
+position's deficit, its loss beyond its collateral, from the fund first and
+credits what the fund pays to `liquidity`; the providers bear the rest. The
+liquidation fee is still paid only out of the position's remaining equity: the
+part the equity cannot cover is forgiven, as in Percolator, and neither the
+insurance fund nor `liquidity` pays it. The vault holds `liquidity +
+total_collateral + program_fees + insurance_fund`, plus any tokens sent to it
+directly.
+
+Add a profit warm-up. `PoolParameters.profit_warmup_slots` and
+`Position.entry_slot`, which `open_position` sets to the current slot, are new.
+`close_position` refuses to pay a profit before slot `entry_slot +
+profit_warmup_slots` with the new `ProfitNotMatured` (6022). A losing position
+closes at any time, and liquidation is not delayed.
+
+Tested by `test_open_allowed_without_full_backing`,
+`test_profit_runs_uncapped_when_backed`,
+`test_haircut_scales_profit_when_pool_stressed`,
+`test_insurance_pays_profit_beyond_liquidity`,
+`test_winner_offset_by_open_loser_is_paid_not_refused`,
+`test_remove_liquidity_capped_at_liquidity`,
+`test_profit_blocked_before_maturation`,
+`test_profit_realized_after_maturation`, `test_loss_not_gated_by_maturation`,
+`test_insurance_fund_funded_by_fees`, `test_insurance_absorbs_bankruptcy_deficit`,
+`test_liquidation_of_bankrupt_position_charges_insurance_before_liquidity` and
+`test_initialize_pool_rejects_insurance_fee_at_or_above_full_fee`. They replace
+`test_open_rejects_when_pool_cannot_back_it`,
+`test_profit_capped_at_reserved_notional` and
+`test_remove_liquidity_blocked_by_reserved`. The default test market pays half
+of each fee into the insurance fund and has a 10-slot warm-up, so the tests that
+close at a profit first let the warm-up pass, and `test_open_long_updates_pool`
+checks the fee split.
 
 ## 2026-09-30
 

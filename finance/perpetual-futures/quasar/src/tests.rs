@@ -1,7 +1,7 @@
 //! quasar-test integration tests. They exercise the full lifecycle: pool
 //! initialization, liquidity add/remove, opening/closing/liquidating leveraged
-//! positions, fee collection, the price average and its band, and the
-//! oracle/margin/reserve checks.
+//! positions, fee collection, the price average and its band, the
+//! oracle/margin checks, and the haircut, profit warm-up and insurance fund.
 
 use {
     crate::{
@@ -45,6 +45,8 @@ const VICTIM_LP: Pubkey = Pubkey::new_from_array([14; 32]);
 const OPERATOR_WALLET: Pubkey = Pubkey::new_from_array([15; 32]);
 const OPERATOR_COLLATERAL: Pubkey = Pubkey::new_from_array([16; 32]);
 const KEEPER: Pubkey = Pubkey::new_from_array([17; 32]);
+const SECOND_TRADER: Pubkey = Pubkey::new_from_array([18; 32]);
+const SECOND_TRADER_COLLATERAL: Pubkey = Pubkey::new_from_array([19; 32]);
 
 // Matches `PRICE_AVERAGE_WINDOW_SECONDS`: one fold after this many seconds
 // replaces the pool's average price with the oracle price.
@@ -52,6 +54,13 @@ const PRICE_AVERAGE_WINDOW_SECONDS: i64 = 600;
 
 // Ten years, in seconds.
 const TEN_YEARS: i64 = 315_360_000;
+
+// The test pool's profit warm-up: a position can be closed at a profit from
+// this many slots after it opened.
+const PROFIT_WARMUP_SLOTS: u64 = 10;
+
+// Matches `HAIRCUT_PRECISION`: a haircut ratio of one.
+const HAIRCUT_PRECISION: u64 = 1_000_000_000;
 
 fn dollars(whole: i128) -> i128 {
     whole * 10i128.pow(ORACLE_SCALE)
@@ -84,13 +93,36 @@ fn set_clock_at(test: &mut Test, slot: u64, unix_timestamp: i64) {
     data.extend_from_slice(&0u64.to_le_bytes());
     data.extend_from_slice(&0u64.to_le_bytes());
     data.extend_from_slice(&unix_timestamp.to_le_bytes());
-    let clock_id: Pubkey = "SysvarC1ock11111111111111111111111111111111"
-        .parse()
-        .unwrap();
     let sysvar_owner: Pubkey = "Sysvar1111111111111111111111111111111111111"
         .parse()
         .unwrap();
-    test.set_account(Account::new(clock_id, sysvar_owner, 1_169_280, data));
+    test.set_account(Account::new(clock_id(), sysvar_owner, 1_169_280, data));
+}
+
+fn clock_id() -> Pubkey {
+    "SysvarC1ock11111111111111111111111111111111"
+        .parse()
+        .unwrap()
+}
+
+/// The Clock's `(slot, unix_timestamp)`, as `set_clock_at` last pinned them;
+/// the world's default of slot 0 and timestamp 0 before that.
+fn clock(test: &Test) -> (u64, i64) {
+    match test.account(clock_id()) {
+        Some(account) if account.data.len() >= 40 => (
+            u64::from_le_bytes(account.data[0..8].try_into().unwrap()),
+            i64::from_le_bytes(account.data[32..40].try_into().unwrap()),
+        ),
+        _ => (0, 0),
+    }
+}
+
+/// Move the slot forward by the profit warm-up, leaving the timestamp where it
+/// is, so a position opened in the current slot can be closed at a profit.
+/// The feed stays fresh: it is far fewer slots than the staleness bound.
+fn pass_warmup(test: &mut Test) {
+    let (slot, unix_timestamp) = clock(test);
+    set_clock_at(test, slot + PROFIT_WARMUP_SLOTS, unix_timestamp);
 }
 
 /// Pin the LastRestartSlot sysvar account, simulating a cluster restart at
@@ -130,9 +162,10 @@ fn init_pool_with_funding(
 }
 
 /// The pool every test uses unless it overrides a parameter: 0.1% open and
-/// close fees, a 10% initial margin (10x leverage), a 5% maintenance margin, a
-/// 1% liquidation fee, a 1% maximum confidence band, a 20% price band around
-/// the pool's average price, and no funding.
+/// close fees, half of each fee paid into the insurance fund, a 10% initial
+/// margin (10x leverage), a 5% maintenance margin, a 1% liquidation fee, a 1%
+/// maximum confidence band, a 20% price band around the pool's average price,
+/// a 10-slot profit warm-up, and no funding.
 fn default_initialize_pool() -> InitializePoolInstruction {
     InitializePoolInstruction {
         authority: ADMIN,
@@ -147,6 +180,8 @@ fn default_initialize_pool() -> InitializePoolInstruction {
         liquidation_fee_bps: 100,
         max_confidence_bps: 100,
         max_price_deviation_bps: 2_000,
+        insurance_fee_bps: 5_000,
+        profit_warmup_slots: PROFIT_WARMUP_SLOTS,
     }
 }
 
@@ -174,8 +209,19 @@ fn setup(test: &mut Test) -> Env {
 /// Like `setup`, but with a non-zero per-second funding rate so funding accrues
 /// as time passes.
 fn setup_with_funding(test: &mut Test, funding_rate_per_second: u64) -> Env {
+    setup_with(
+        test,
+        InitializePoolInstruction {
+            funding_rate_per_second,
+            ..default_initialize_pool()
+        },
+    )
+}
+
+/// Like `setup`, but initializing the pool with `instruction`.
+fn setup_with(test: &mut Test, instruction: InitializePoolInstruction) -> Env {
     add_pool_prerequisites(test);
-    init_pool_with_funding(test, 500, 10, funding_rate_per_second).succeeds();
+    test.send(instruction).succeeds();
 
     let pool = test.derive_pda(Pool::seeds(&COLLATERAL_MINT, &FEED));
     Env {
@@ -222,17 +268,59 @@ fn remove_liquidity(test: &mut Test, env: &Env, shares: u64) -> Outcome {
 }
 
 fn open_position(test: &mut Test, env: &Env, side: u8, collateral: u64, size: u64) -> Outcome {
+    open_position_for(test, env, TRADER, TRADER_COLLATERAL, side, collateral, size)
+}
+
+fn open_position_for(
+    test: &mut Test,
+    env: &Env,
+    owner: Pubkey,
+    owner_collateral: Pubkey,
+    side: u8,
+    collateral: u64,
+    size: u64,
+) -> Outcome {
     test.send(OpenPositionInstruction {
-        owner: TRADER,
+        owner,
         oracle_feed: FEED,
         collateral_mint: COLLATERAL_MINT,
         custody_vault: env.custody_vault,
-        trader_collateral: TRADER_COLLATERAL,
+        trader_collateral: owner_collateral,
         side,
         collateral_amount: collateral,
         size,
         acceptable_price: 0,
     })
+}
+
+/// `LIQUIDATOR` liquidates `TRADER`'s position.
+fn liquidate(test: &mut Test, env: &Env) -> Outcome {
+    if test.account(LIQUIDATOR).is_none() {
+        test.add(Wallet::new().at(LIQUIDATOR));
+    }
+    test.send(LiquidatePositionInstruction {
+        liquidator: LIQUIDATOR,
+        owner: TRADER,
+        oracle_feed: FEED,
+        collateral_mint: COLLATERAL_MINT,
+        custody_vault: env.custody_vault,
+        trader_collateral: TRADER_COLLATERAL,
+        liquidator_collateral: LIQUIDATOR_COLLATERAL,
+    })
+}
+
+/// Assert the custody vault holds exactly what the pool's ledger says it
+/// does: liquidity, open positions' collateral, program fees and the
+/// insurance fund.
+fn assert_vault_matches_ledger(test: &Test, env: &Env) {
+    let pool = test.read::<Pool>(env.pool);
+    assert_eq!(
+        test.tokens(env.custody_vault),
+        u64::from(pool.liquidity)
+            + u64::from(pool.total_collateral)
+            + u64::from(pool.program_fees)
+            + u64::from(pool.insurance_fund)
+    );
 }
 
 /// The pool's `(average_price, last_oracle_price, average_price_timestamp)`.
@@ -265,12 +353,21 @@ fn update_average_after(test: &mut Test, env: &Env, seconds: i64, price: i128) -
 }
 
 fn close_position(test: &mut Test, env: &Env) -> Outcome {
+    close_position_for(test, env, TRADER, TRADER_COLLATERAL)
+}
+
+fn close_position_for(
+    test: &mut Test,
+    env: &Env,
+    owner: Pubkey,
+    owner_collateral: Pubkey,
+) -> Outcome {
     test.send(ClosePositionInstruction {
-        owner: TRADER,
+        owner,
         oracle_feed: FEED,
         collateral_mint: COLLATERAL_MINT,
         custody_vault: env.custody_vault,
-        trader_collateral: TRADER_COLLATERAL,
+        trader_collateral: owner_collateral,
         minimum_payout: 0,
     })
 }
@@ -337,8 +434,7 @@ fn remove_liquidity_round_trip_returns_the_deposit_less_the_minimum(test: &mut T
 /// in is spread across shares nobody can redeem.
 #[quasar_test]
 fn inflating_liquidity_through_own_trades_does_not_pay(test: &mut Test) {
-    // The steepest rate a pool may have, held for ten years. The position is
-    // tiny because a pool holding 1_001 can back only 1_001 of notional.
+    // The steepest rate a pool may have, held for ten years.
     let env = setup_with_funding(test, MAX_FUNDING_RATE_PER_SECOND);
     fund(test, PROVIDER, PROVIDER_COLLATERAL, 1_001);
     add_liquidity(test, &env, 1_001)
@@ -450,7 +546,9 @@ fn close_long_in_profit_pays_collateral_plus_pnl_minus_fees(test: &mut Test) {
     let size = 5_000 * ONE_USDC;
     open_position(test, &env, 0, 1_000 * ONE_USDC, size).succeeds();
 
-    // Price rises 20%: a $5,000 long earns $1,000.
+    // Price rises 20%: a $5,000 long earns $1,000, paid once the warm-up has
+    // passed.
+    pass_warmup(test);
     set_feed(test, dollars(120), 0);
 
     let open_fee = size / 1_000;
@@ -540,8 +638,12 @@ fn collect_fees_sweeps_the_open_fee_to_the_admin(test: &mut Test) {
         authority_collateral: ADMIN_COLLATERAL,
     })
     .succeeds()
-    // The open fee (0.1% of notional) was swept to the admin.
-    .has_tokens(ADMIN_COLLATERAL, size / 1_000);
+    // The program's half of the open fee (0.1% of notional) was swept to the
+    // admin; the other half is in the insurance fund.
+    .has_tokens(ADMIN_COLLATERAL, size / 1_000 / 2);
+    let pool = test.read::<Pool>(env.pool);
+    assert_eq!(u64::from(pool.program_fees), 0);
+    assert_eq!(u64::from(pool.insurance_fund), size / 1_000 / 2);
 }
 
 /// Funding is quoted per second of wall-clock time, so slots passing without
@@ -672,21 +774,26 @@ fn wide_oracle_confidence_is_rejected(test: &mut Test) {
     );
 }
 
+/// Nothing is set aside to back a position's profit, so a position can open
+/// against a pool that could not pay its full winnings: here a $10,000 long
+/// against $6,000 of liquidity.
 #[quasar_test]
-fn open_rejects_when_pool_cannot_back_it(test: &mut Test) {
+fn open_allowed_without_full_backing(test: &mut Test) {
     let env = setup(test);
-    fund(test, PROVIDER, PROVIDER_COLLATERAL, 3_000 * ONE_USDC);
-    add_liquidity(test, &env, 3_000 * ONE_USDC).succeeds();
-    fund(test, TRADER, TRADER_COLLATERAL, 1_000 * ONE_USDC);
-    // A 5,000 position must reserve 5,000, but the pool only holds 3,000.
-    assert!(
-        open_position(test, &env, 0, 1_000 * ONE_USDC, 5_000 * ONE_USDC).is_err(),
-        "a position larger than the pool's free liquidity must be rejected"
-    );
+    fund(test, PROVIDER, PROVIDER_COLLATERAL, 6_000 * ONE_USDC);
+    add_liquidity(test, &env, 6_000 * ONE_USDC).succeeds();
+    fund(test, TRADER, TRADER_COLLATERAL, 1_100 * ONE_USDC);
+    let size = 10_000 * ONE_USDC;
+    open_position(test, &env, SIDE_LONG, 1_100 * ONE_USDC, size).succeeds();
+
+    let pool = test.read::<Pool>(env.pool);
+    assert_eq!(u128::from(pool.long_size), size as u128);
+    assert_eq!(u64::from(pool.liquidity), 6_000 * ONE_USDC);
+    assert_vault_matches_ledger(test, &env);
 }
 
 #[quasar_test]
-fn profit_is_capped_at_the_reserved_notional(test: &mut Test) {
+fn profit_runs_uncapped_when_backed(test: &mut Test) {
     let env = setup(test);
     fund(test, PROVIDER, PROVIDER_COLLATERAL, 100_000 * ONE_USDC);
     add_liquidity(test, &env, 100_000 * ONE_USDC).succeeds();
@@ -694,13 +801,14 @@ fn profit_is_capped_at_the_reserved_notional(test: &mut Test) {
     let collateral = 2_000 * ONE_USDC;
     let size = 5_000 * ONE_USDC;
     fund(test, TRADER, TRADER_COLLATERAL, collateral);
-    open_position(test, &env, 0, collateral, size).succeeds();
+    open_position(test, &env, SIDE_LONG, collateral, size).succeeds();
 
-    // Price triples: uncapped profit would be 2x the notional, but recoverable
-    // profit is capped at the reserved notional (`size`). A move this large is
-    // far outside the price band, so the average has to catch up before the
-    // position can close: one update records $300, and a second a full window
-    // later credits that window to $300, replacing the average.
+    // Price triples, so the long's profit is twice its size. A move this
+    // large is far outside the price band, so the average has to catch up
+    // before the position can close: one update records $300, and a second a
+    // full window later credits that window to $300, replacing the average.
+    // That also passes the warm-up. The $100,000 pool backs the whole $10,000
+    // profit, so it is paid in full.
     set_feed(test, dollars(300), 0);
     update_average_after(test, &env, 0, dollars(300)).succeeds();
     update_average_after(test, &env, PRICE_AVERAGE_WINDOW_SECONDS, dollars(300)).succeeds();
@@ -708,28 +816,431 @@ fn profit_is_capped_at_the_reserved_notional(test: &mut Test) {
     let open_fee = size / 1_000;
     let close_fee = size / 1_000;
     let net_collateral = collateral - open_fee;
-    let expected = net_collateral + size - close_fee;
+    let profit = 2 * size;
     close_position(test, &env)
         .succeeds()
-        .has_tokens(TRADER_COLLATERAL, expected);
+        .has_tokens(TRADER_COLLATERAL, net_collateral + profit - close_fee);
+    assert_eq!(
+        u64::from(test.read::<Pool>(env.pool).liquidity),
+        100_000 * ONE_USDC - profit
+    );
+    assert_vault_matches_ledger(test, &env);
 }
 
+/// Two longs are owed $1,800 of profit between them, and the pool holds only
+/// $900 to pay it with, so each is paid half of their profit: the first to
+/// close is paid half of theirs, and the second, closing against what is left,
+/// is paid half of theirs too.
 #[quasar_test]
-fn remove_liquidity_is_blocked_by_reserved_notional(test: &mut Test) {
+fn haircut_scales_profit_when_pool_stressed(test: &mut Test) {
+    // No fee goes to the insurance fund here, so the only backing is the $900
+    // of liquidity and the first close adds nothing to it.
+    let env = setup_with(
+        test,
+        InitializePoolInstruction {
+            insurance_fee_bps: 0,
+            ..default_initialize_pool()
+        },
+    );
+    fund(test, PROVIDER, PROVIDER_COLLATERAL, 900 * ONE_USDC);
+    add_liquidity(test, &env, 900 * ONE_USDC).succeeds();
+
+    let first_collateral = 1_000 * ONE_USDC;
+    let first_size = 6_000 * ONE_USDC;
+    fund(test, TRADER, TRADER_COLLATERAL, first_collateral);
+    open_position(test, &env, SIDE_LONG, first_collateral, first_size).succeeds();
+    let second_collateral = 800 * ONE_USDC;
+    let second_size = 4_000 * ONE_USDC;
+    fund(
+        test,
+        SECOND_TRADER,
+        SECOND_TRADER_COLLATERAL,
+        second_collateral,
+    );
+    open_position_for(
+        test,
+        &env,
+        SECOND_TRADER,
+        SECOND_TRADER_COLLATERAL,
+        SIDE_LONG,
+        second_collateral,
+        second_size,
+    )
+    .succeeds();
+
+    // At $118 the first long is up $1,080 and the second $720: $1,800 owed
+    // against $900 of backing, so h = 900 / 1,800 = 0.5.
+    pass_warmup(test);
+    set_feed(test, dollars(118), 0);
+    let half = HAIRCUT_PRECISION / 2;
+    let first_paid = (first_size * 18 / 100) * half / HAIRCUT_PRECISION;
+    assert_eq!(first_paid, 540 * ONE_USDC);
+    close_position(test, &env).succeeds().has_tokens(
+        TRADER_COLLATERAL,
+        first_collateral - first_size / 1_000 + first_paid - first_size / 1_000,
+    );
+    // The $540 withheld from the first long stays with the providers.
+    assert_eq!(
+        u64::from(test.read::<Pool>(env.pool).liquidity),
+        360 * ONE_USDC
+    );
+
+    // The second long is now owed $720 against $360: h is still 0.5.
+    let second_paid = (second_size * 18 / 100) * half / HAIRCUT_PRECISION;
+    assert_eq!(second_paid, 360 * ONE_USDC);
+    close_position_for(test, &env, SECOND_TRADER, SECOND_TRADER_COLLATERAL)
+        .succeeds()
+        .has_tokens(
+            SECOND_TRADER_COLLATERAL,
+            second_collateral - second_size / 1_000 + second_paid - second_size / 1_000,
+        );
+    assert_eq!(u64::from(test.read::<Pool>(env.pool).liquidity), 0);
+    assert_vault_matches_ledger(test, &env);
+}
+
+/// Alice's long is up $1,000 while Bob's short, still open and healthy, is
+/// down $900, so traders are owed only $100 in aggregate, and the pool's
+/// backing is $300. Sized against the $100 alone the haircut would be one and
+/// Alice's $1,000 would exceed the backing; it is sized against her $1,000
+/// instead, so she is paid exactly the $300 and the close goes through. Bob's
+/// later close settles his loss into the pool in full.
+#[quasar_test]
+fn winner_offset_by_open_loser_is_paid_not_refused(test: &mut Test) {
+    let env = setup(test);
+    // $290.50 of liquidity plus the $9.50 the two open fees put in the
+    // insurance fund is $300 of backing.
+    fund(test, PROVIDER, PROVIDER_COLLATERAL, 290_500_000);
+    add_liquidity(test, &env, 290_500_000).succeeds();
+
+    let alice_collateral = 1_100 * ONE_USDC;
+    let alice_size = 10_000 * ONE_USDC;
+    fund(test, TRADER, TRADER_COLLATERAL, alice_collateral);
+    open_position(test, &env, SIDE_LONG, alice_collateral, alice_size).succeeds();
+    let bob_collateral = 2_000 * ONE_USDC;
+    let bob_size = 9_000 * ONE_USDC;
+    fund(
+        test,
+        SECOND_TRADER,
+        SECOND_TRADER_COLLATERAL,
+        bob_collateral,
+    );
+    open_position_for(
+        test,
+        &env,
+        SECOND_TRADER,
+        SECOND_TRADER_COLLATERAL,
+        SIDE_SHORT,
+        bob_collateral,
+        bob_size,
+    )
+    .succeeds();
+    let pool = test.read::<Pool>(env.pool);
+    assert_eq!(
+        u64::from(pool.liquidity) + u64::from(pool.insurance_fund),
+        300 * ONE_USDC
+    );
+
+    // At $110 Alice is up $1,000 and Bob down $900: h = 300 / 1,000 = 0.3.
+    pass_warmup(test);
+    set_feed(test, dollars(110), 0);
+    let alice_paid = 1_000 * ONE_USDC * (3 * HAIRCUT_PRECISION / 10) / HAIRCUT_PRECISION;
+    assert_eq!(alice_paid, 300 * ONE_USDC);
+    let alice_fee = alice_size / 1_000;
+    close_position(test, &env).succeeds().has_tokens(
+        TRADER_COLLATERAL,
+        alice_collateral - alice_fee + alice_paid - alice_fee,
+    );
+    // The whole backing was paid out; the fund then took half of Alice's
+    // close fee.
+    let pool = test.read::<Pool>(env.pool);
+    assert_eq!(u64::from(pool.liquidity), 0);
+    assert_eq!(u64::from(pool.insurance_fund), alice_fee / 2);
+    assert_vault_matches_ledger(test, &env);
+
+    // Bob closes at the same price, losing $900 into the pool.
+    let bob_fee = bob_size / 1_000;
+    let bob_loss = 900 * ONE_USDC;
+    close_position_for(test, &env, SECOND_TRADER, SECOND_TRADER_COLLATERAL)
+        .succeeds()
+        .has_tokens(
+            SECOND_TRADER_COLLATERAL,
+            bob_collateral - bob_fee - bob_loss - bob_fee,
+        );
+    let pool = test.read::<Pool>(env.pool);
+    assert_eq!(u64::from(pool.liquidity), bob_loss);
+    assert_eq!(u64::from(pool.insurance_fund), (alice_fee + bob_fee) / 2);
+    assert_eq!(u64::from(pool.total_collateral), 0);
+    assert_vault_matches_ledger(test, &env);
+}
+
+/// The haircut counts the insurance fund as backing, so a profit larger than
+/// `liquidity` but within `liquidity + insurance_fund` is paid in full: the
+/// pool's liquidity first, the insurance fund for the rest.
+#[quasar_test]
+fn insurance_pays_profit_beyond_liquidity(test: &mut Test) {
+    // A 5% open fee, half of which goes to the insurance fund.
+    let env = setup_with(
+        test,
+        InitializePoolInstruction {
+            open_fee_bps: 500,
+            ..default_initialize_pool()
+        },
+    );
+    fund(test, PROVIDER, PROVIDER_COLLATERAL, 1_700 * ONE_USDC);
+    add_liquidity(test, &env, 1_700 * ONE_USDC).succeeds();
+
+    // $500 open fee: $250 to the insurance fund, $1,100 of net collateral.
+    let size = 10_000 * ONE_USDC;
+    fund(test, TRADER, TRADER_COLLATERAL, 1_600 * ONE_USDC);
+    open_position(test, &env, SIDE_LONG, 1_600 * ONE_USDC, size).succeeds();
+    assert_eq!(
+        u64::from(test.read::<Pool>(env.pool).insurance_fund),
+        250 * ONE_USDC
+    );
+
+    // At $118 the long is up $1,800: more than the $1,700 of liquidity, within
+    // the $1,950 of liquidity plus insurance, so h = 1.
+    pass_warmup(test);
+    set_feed(test, dollars(118), 0);
+    let profit = 1_800 * ONE_USDC;
+    let close_fee = size / 1_000;
+    close_position(test, &env)
+        .succeeds()
+        .has_tokens(TRADER_COLLATERAL, 1_100 * ONE_USDC + profit - close_fee);
+
+    let pool = test.read::<Pool>(env.pool);
+    assert_eq!(u64::from(pool.liquidity), 0);
+    // $100 of the profit came from the insurance fund, which then took half
+    // of the $10 close fee.
+    assert_eq!(
+        u64::from(pool.insurance_fund),
+        150 * ONE_USDC + close_fee / 2
+    );
+    assert_vault_matches_ledger(test, &env);
+}
+
+/// Shares are priced against assets-under-management, which counts a
+/// trader's unrealized loss as the providers' gain, but that loss is still in
+/// the trader's collateral. A withdrawal is capped at `liquidity`.
+#[quasar_test]
+fn remove_liquidity_capped_at_liquidity(test: &mut Test) {
     let env = setup(test);
     fund(test, PROVIDER, PROVIDER_COLLATERAL, 10_000 * ONE_USDC);
     add_liquidity(test, &env, 10_000 * ONE_USDC).succeeds();
     fund(test, TRADER, TRADER_COLLATERAL, 1_000 * ONE_USDC);
-    open_position(test, &env, 0, 1_000 * ONE_USDC, 5_000 * ONE_USDC).succeeds();
+    open_position(test, &env, SIDE_LONG, 1_000 * ONE_USDC, 5_000 * ONE_USDC).succeeds();
 
-    // 5,000 of the 10,000 liquidity is reserved: pulling everything fails, but
-    // withdrawing within the free half succeeds.
-    let shares = test.tokens(PROVIDER_LP);
-    assert!(
-        remove_liquidity(test, &env, shares).is_err(),
-        "withdrawing reserved liquidity must fail"
+    // At $80 the long is down $1,000, so assets-under-management is $11,000
+    // against $10,000 of liquidity, and each share redeems 1.1 minor units
+    // (the provider's shares plus the withheld minimum are 10,000 USDC of
+    // shares). 9,090,909,092 shares would redeem 10,000,000,001, one minor
+    // unit more than `liquidity`, and are refused.
+    set_feed(test, dollars(80), 0);
+    remove_liquidity(test, &env, 9_090_909_092).fails_with(error::INSUFFICIENT_LIQUIDITY);
+
+    // One share fewer redeems exactly the pool's liquidity.
+    remove_liquidity(test, &env, 9_090_909_091)
+        .succeeds()
+        .has_tokens(PROVIDER_COLLATERAL, 10_000 * ONE_USDC);
+    assert_eq!(u64::from(test.read::<Pool>(env.pool).liquidity), 0);
+    assert_vault_matches_ledger(test, &env);
+}
+
+/// Open a $5,000 long with $1,000 of collateral against a $100,000 pool and
+/// return the slot it opened in.
+fn open_long_against_deep_pool(test: &mut Test, env: &Env) -> u64 {
+    fund(test, PROVIDER, PROVIDER_COLLATERAL, 100_000 * ONE_USDC);
+    add_liquidity(test, env, 100_000 * ONE_USDC).succeeds();
+    fund(test, TRADER, TRADER_COLLATERAL, 1_000 * ONE_USDC);
+    open_position(test, env, SIDE_LONG, 1_000 * ONE_USDC, 5_000 * ONE_USDC).succeeds();
+    let position = test.read::<Position>(test.derive_pda(Position::seeds(&env.pool, &TRADER)));
+    u64::from(position.entry_slot)
+}
+
+/// One slot short of the warm-up, a profitable close is refused and the
+/// position stays open.
+#[quasar_test]
+fn profit_blocked_before_maturation(test: &mut Test) {
+    let env = setup(test);
+    let entry_slot = open_long_against_deep_pool(test, &env);
+
+    let (_, unix_timestamp) = clock(test);
+    set_clock_at(test, entry_slot + PROFIT_WARMUP_SLOTS - 1, unix_timestamp);
+    set_feed(test, dollars(110), 0);
+    close_position(test, &env).fails_with(error::PROFIT_NOT_MATURED);
+    assert_eq!(
+        u128::from(test.read::<Pool>(env.pool).long_size),
+        (5_000 * ONE_USDC) as u128
     );
-    remove_liquidity(test, &env, shares / 2).succeeds();
+    assert_eq!(test.tokens(TRADER_COLLATERAL), 0);
+}
+
+/// From exactly `entry_slot + profit_warmup_slots`, the profit is paid.
+#[quasar_test]
+fn profit_realized_after_maturation(test: &mut Test) {
+    let env = setup(test);
+    let entry_slot = open_long_against_deep_pool(test, &env);
+
+    let (_, unix_timestamp) = clock(test);
+    set_clock_at(test, entry_slot + PROFIT_WARMUP_SLOTS, unix_timestamp);
+    set_feed(test, dollars(110), 0);
+    let size = 5_000 * ONE_USDC;
+    let fee = size / 1_000;
+    close_position(test, &env)
+        .succeeds()
+        .has_tokens(TRADER_COLLATERAL, 1_000 * ONE_USDC - fee + size / 10 - fee);
+}
+
+/// The warm-up holds back profit only: a losing position closes in the slot
+/// it opened.
+#[quasar_test]
+fn loss_not_gated_by_maturation(test: &mut Test) {
+    let env = setup(test);
+    let entry_slot = open_long_against_deep_pool(test, &env);
+
+    // Price falls 10% within the same slot: a $500 loss.
+    set_feed(test, dollars(90), 0);
+    assert_eq!(clock(test).0, entry_slot);
+    let size = 5_000 * ONE_USDC;
+    let fee = size / 1_000;
+    let loss = size / 10;
+    close_position(test, &env)
+        .succeeds()
+        .has_tokens(TRADER_COLLATERAL, 1_000 * ONE_USDC - fee - loss - fee);
+    assert_eq!(
+        u64::from(test.read::<Pool>(env.pool).liquidity),
+        100_000 * ONE_USDC + loss
+    );
+}
+
+/// `insurance_fee_bps` of each open and close fee goes to the insurance fund,
+/// rounded down, and the program keeps the rest, so no minor unit is lost.
+#[quasar_test]
+fn insurance_fund_funded_by_fees(test: &mut Test) {
+    let env = setup_with(
+        test,
+        InitializePoolInstruction {
+            insurance_fee_bps: 3_333,
+            ..default_initialize_pool()
+        },
+    );
+    fund(test, PROVIDER, PROVIDER_COLLATERAL, 100_000 * ONE_USDC);
+    add_liquidity(test, &env, 100_000 * ONE_USDC).succeeds();
+
+    // A size whose 0.1% fee is 1,234,567 minor units: 3,333 basis points of
+    // that is 411,481.18, so the insurance fund gets 411,481 and the program
+    // the other 823,086.
+    let size = 1_234_567_890;
+    let fee = 1_234_567;
+    let insurance_cut = 411_481;
+    assert_eq!(size / 1_000, fee);
+    fund(test, TRADER, TRADER_COLLATERAL, 200 * ONE_USDC);
+    open_position(test, &env, SIDE_LONG, 200 * ONE_USDC, size).succeeds();
+    let pool = test.read::<Pool>(env.pool);
+    assert_eq!(u64::from(pool.insurance_fund), insurance_cut);
+    assert_eq!(u64::from(pool.program_fees), fee - insurance_cut);
+
+    // Closing at the open price charges the same fee again.
+    close_position(test, &env).succeeds();
+    let pool = test.read::<Pool>(env.pool);
+    assert_eq!(u64::from(pool.insurance_fund), 2 * insurance_cut);
+    assert_eq!(u64::from(pool.program_fees), 2 * (fee - insurance_cut));
+    assert_vault_matches_ledger(test, &env);
+}
+
+/// A $1,000 long with $110 of net collateral, liquidated after a 15% fall:
+/// its $150 loss leaves equity at -$40.
+fn open_long_and_gap_through_zero(test: &mut Test, env: &Env) {
+    fund(test, PROVIDER, PROVIDER_COLLATERAL, 100_000 * ONE_USDC);
+    add_liquidity(test, env, 100_000 * ONE_USDC).succeeds();
+    fund(test, TRADER, TRADER_COLLATERAL, 160 * ONE_USDC);
+    open_position(test, env, SIDE_LONG, 160 * ONE_USDC, 1_000 * ONE_USDC).succeeds();
+    set_feed(test, dollars(85), 0);
+}
+
+/// A bankrupt position's deficit, its loss beyond its collateral, is paid by
+/// the insurance fund when the fund holds enough.
+#[quasar_test]
+fn insurance_absorbs_bankruptcy_deficit(test: &mut Test) {
+    // A 5% open fee, 90% of which goes to the insurance fund: $45 of the $50.
+    let env = setup_with(
+        test,
+        InitializePoolInstruction {
+            open_fee_bps: 500,
+            insurance_fee_bps: 9_000,
+            ..default_initialize_pool()
+        },
+    );
+    open_long_and_gap_through_zero(test, &env);
+    assert_eq!(
+        u64::from(test.read::<Pool>(env.pool).insurance_fund),
+        45 * ONE_USDC
+    );
+    let liquidity_before = u64::from(test.read::<Pool>(env.pool).liquidity);
+
+    liquidate(test, &env)
+        .succeeds()
+        .has_tokens(LIQUIDATOR_COLLATERAL, 0);
+
+    // The fund pays the $40 deficit, so the providers keep the $110 of
+    // collateral and are credited the full $150 loss.
+    let pool = test.read::<Pool>(env.pool);
+    assert_eq!(u64::from(pool.insurance_fund), 5 * ONE_USDC);
+    assert_eq!(u64::from(pool.liquidity), liquidity_before + 150 * ONE_USDC);
+    assert_vault_matches_ledger(test, &env);
+}
+
+/// A position already below zero equity can still be liquidated by anyone.
+/// Its equity cannot pay the liquidation fee, so the fee is forgiven and the
+/// liquidator receives nothing. The insurance fund pays as much of the deficit
+/// as it holds, and the liquidity providers bear only the rest.
+#[quasar_test]
+fn liquidation_of_bankrupt_position_charges_insurance_before_liquidity(test: &mut Test) {
+    // A 5% open fee, half of which goes to the insurance fund: $25 of the $50.
+    let env = setup_with(
+        test,
+        InitializePoolInstruction {
+            open_fee_bps: 500,
+            ..default_initialize_pool()
+        },
+    );
+    open_long_and_gap_through_zero(test, &env);
+    assert_eq!(
+        u64::from(test.read::<Pool>(env.pool).insurance_fund),
+        25 * ONE_USDC
+    );
+    let liquidity_before = u64::from(test.read::<Pool>(env.pool).liquidity);
+
+    let position = test.derive_pda(Position::seeds(&env.pool, &TRADER));
+    liquidate(test, &env)
+        .succeeds()
+        .is_closed(position)
+        .has_tokens(LIQUIDATOR_COLLATERAL, 0)
+        .has_tokens(TRADER_COLLATERAL, 0);
+
+    // The $40 deficit: $25 from the insurance fund, $15 borne by the
+    // providers, who keep the $110 of collateral plus the fund's $25.
+    let pool = test.read::<Pool>(env.pool);
+    assert_eq!(u64::from(pool.insurance_fund), 0);
+    assert_eq!(u64::from(pool.liquidity), liquidity_before + 135 * ONE_USDC);
+    assert_eq!(u128::from(pool.long_size), 0);
+    assert_eq!(u64::from(pool.total_collateral), 0);
+    assert_vault_matches_ledger(test, &env);
+}
+
+#[quasar_test]
+fn initialize_pool_rejects_insurance_fee_at_or_above_full_fee(test: &mut Test) {
+    add_pool_prerequisites(test);
+    test.send(InitializePoolInstruction {
+        insurance_fee_bps: 10_000,
+        ..default_initialize_pool()
+    })
+    .fails_with(error::INVALID_PARAMETER);
+    test.send(InitializePoolInstruction {
+        insurance_fee_bps: 9_999,
+        ..default_initialize_pool()
+    })
+    .succeeds();
 }
 
 #[quasar_test]
@@ -835,7 +1346,9 @@ fn close_rejected_when_oracle_jumps_outside_band(test: &mut Test) {
     set_feed(test, dollars(125), 0);
     close_position(test, &env).fails_with(error::PRICE_OUTSIDE_BAND);
 
-    // At $115, inside the band, the close goes through and pays the 15% gain.
+    // At $115, inside the band and after the warm-up, the close goes through
+    // and pays the 15% gain.
+    pass_warmup(test);
     set_feed(test, dollars(115), 0);
     let fee = size / 1_000;
     let profit = size * 15 / 100;

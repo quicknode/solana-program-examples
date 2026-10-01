@@ -2,7 +2,8 @@ use {
     crate::{
         constants::{BASIS_POINTS_DENOMINATOR, SIDE_LONG, SIDE_SHORT},
         instructions::shared::{
-            basis_points_of, err, error, refresh_price_and_funding_within_band, scale_size,
+            basis_points_of, credit_fee, err, error, refresh_price_and_funding_within_band,
+            scale_size,
         },
         state::{Pool, Position, PositionInner},
     },
@@ -101,20 +102,9 @@ pub fn handle_open_position(
         return Err(err(error::INITIAL_MARGIN_NOT_MET));
     }
 
-    // Reserve liquidity to cover this position's maximum recoverable profit
-    // (its notional `size`), backed by liquidity-provider capital. This also
-    // caps total open interest at the pool's liquidity.
-    let new_reserved = accounts
-        .pool
-        .reserved_liquidity
-        .get()
-        .checked_add(size)
-        .ok_or(ProgramError::ArithmeticOverflow)?;
-    if new_reserved > accounts.pool.liquidity.get() {
-        return Err(err(error::INSUFFICIENT_LIQUIDITY));
-    }
-    accounts.pool.reserved_liquidity.set(new_reserved);
-
+    // Nothing is set aside to back this position's profit, and the pool's
+    // liquidity does not limit its size: `close_position` pays each winner the
+    // fraction of their profit the pool can back (see `haircut_ratio`).
     let size_scaled = scale_size(size, price)?;
 
     accounts.position.set_inner(PositionInner {
@@ -126,6 +116,7 @@ pub fn handle_open_position(
         entry_price: price,
         size_scaled,
         entry_funding: accounts.pool.cumulative_funding.get(),
+        entry_slot: slot,
         bump: bumps.position,
     });
 
@@ -137,13 +128,7 @@ pub fn handle_open_position(
         .ok_or(ProgramError::ArithmeticOverflow)?;
     accounts.pool.total_collateral.set(new_total_collateral);
 
-    let new_program_fees = accounts
-        .pool
-        .program_fees
-        .get()
-        .checked_add(open_fee)
-        .ok_or(ProgramError::ArithmeticOverflow)?;
-    accounts.pool.program_fees.set(new_program_fees);
+    credit_fee(&mut accounts.pool, open_fee)?;
 
     if side == SIDE_LONG {
         let long_size = accounts

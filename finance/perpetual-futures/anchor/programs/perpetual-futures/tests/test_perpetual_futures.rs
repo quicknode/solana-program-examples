@@ -24,6 +24,11 @@ const MAX_FUNDING_RATE_PER_SECOND: u64 = 277;
 const PRICE_AVERAGE_WINDOW_SECONDS: i64 = 600;
 // Ten years, in seconds.
 const TEN_YEARS: i64 = 315_360_000;
+// The test market's profit warm-up: a position can be closed at a profit from
+// this many slots after it opened.
+const PROFIT_WARMUP_SLOTS: u64 = 10;
+// Matches `HAIRCUT_PRECISION`: a haircut ratio of one.
+const HAIRCUT_PRECISION: u64 = 1_000_000_000;
 // Collateral token has 6 decimals (like USDC), so one whole unit is 1_000_000
 // base units.
 const ONE_USDC: u64 = 1_000_000;
@@ -58,9 +63,10 @@ fn dollars(whole: i128) -> i128 {
 }
 
 /// The parameters every test market uses unless a test overrides one: 0.1%
-/// open and close fees, a 10% initial margin (10x leverage), a 5% maintenance
-/// margin, a 1% liquidation fee, a 1% maximum confidence band, and a 20% price
-/// band around the pool's average price.
+/// open and close fees, half of each fee paid into the insurance fund, a 10%
+/// initial margin (10x leverage), a 5% maintenance margin, a 1% liquidation
+/// fee, a 1% maximum confidence band, a 20% price band around the pool's
+/// average price, and a 10-slot profit warm-up.
 fn default_parameters(funding_rate_per_second: u64) -> PoolParameters {
     PoolParameters {
         oracle_scale: ORACLE_SCALE,
@@ -72,6 +78,8 @@ fn default_parameters(funding_rate_per_second: u64) -> PoolParameters {
         liquidation_fee_bps: 100,
         max_confidence_bps: 100,
         max_price_deviation_bps: 2_000,
+        insurance_fee_bps: 5_000,
+        profit_warmup_slots: PROFIT_WARMUP_SLOTS,
     }
 }
 
@@ -263,6 +271,45 @@ impl Market {
 
     fn current_slot(&self) -> u64 {
         self.svm.get_sysvar::<solana_clock::Clock>().slot
+    }
+
+    /// Let the profit warm-up pass, so a position opened in the current slot
+    /// can be closed at a profit. The caller republishes the price after.
+    fn pass_warmup(&mut self) {
+        let slot = self.current_slot();
+        self.warp(slot + PROFIT_WARMUP_SLOTS);
+    }
+
+    fn position_state(&self, owner: &Address, side: Side) -> Position {
+        let account = self
+            .svm
+            .get_account(&self.position_pda(owner, side))
+            .unwrap();
+        Position::try_deserialize(&mut account.data.as_slice()).unwrap()
+    }
+
+    /// Assert the custody vault holds exactly what the pool's ledger says it
+    /// does: liquidity, open positions' collateral, program fees and the
+    /// insurance fund.
+    fn assert_vault_matches_ledger(&self) {
+        let pool = self.pool_state();
+        assert_eq!(
+            get_token_account_balance(&self.svm, &self.custody_vault).unwrap(),
+            pool.liquidity + pool.total_collateral + pool.program_fees + pool.insurance_fund
+        );
+    }
+
+    /// A wallet with an empty collateral token account, to liquidate from.
+    fn liquidator(&mut self) -> (Keypair, Address) {
+        let liquidator = create_wallet(&mut self.svm, 100_000_000_000).unwrap();
+        let liquidator_collateral = create_associated_token_account(
+            &mut self.svm,
+            &liquidator.pubkey(),
+            &self.collateral_mint,
+            &self.payer,
+        )
+        .unwrap();
+        (liquidator, liquidator_collateral)
     }
 
     /// Simulate a cluster restart at `slot`: prices stamped at or before it
@@ -706,8 +753,7 @@ fn test_add_and_remove_liquidity_round_trip() {
 /// funding they paid in.
 #[test]
 fn test_inflating_liquidity_through_own_trades_does_not_pay() {
-    // The steepest rate a pool may have, held for ten years. The position is
-    // tiny because a pool holding 1_001 can back only 1_001 of notional.
+    // The steepest rate a pool may have, held for ten years.
     let mut market = Market::new(dollars(100), MAX_FUNDING_RATE_PER_SECOND);
 
     let (attacker, attacker_collateral) = market.funded_trader(10_000 * ONE_USDC);
@@ -720,9 +766,8 @@ fn test_inflating_liquidity_through_own_trades_does_not_pay() {
         1
     );
 
-    // The pool holds 1_001, so it can back a position of up to 1_001 notional.
-    // Heavy collateral keeps the position far from liquidation while funding
-    // drains it into `liquidity`.
+    // A 1_000 long. Heavy collateral keeps the position far from liquidation
+    // while funding drains it into `liquidity`.
     market
         .open_position(
             &attacker,
@@ -792,10 +837,17 @@ fn test_open_long_updates_pool() {
     let pool = market.pool_state();
     assert_eq!(pool.long_size, size as u128);
     assert_eq!(pool.short_size, 0);
-    // Collateral minus the 0.1% open fee is now tracked as trader collateral.
+    // Collateral minus the 0.1% open fee is now tracked as trader collateral,
+    // and the fee is split evenly between the insurance fund and the program.
     let open_fee = size / 1_000;
     assert_eq!(pool.total_collateral, collateral - open_fee);
-    assert_eq!(pool.program_fees, open_fee);
+    assert_eq!(pool.insurance_fund, open_fee / 2);
+    assert_eq!(pool.program_fees, open_fee / 2);
+    // Nothing is set aside from liquidity for the position.
+    assert_eq!(pool.liquidity, 100_000 * ONE_USDC);
+    let position = market.position_state(&trader.pubkey(), Side::Long);
+    assert_eq!(position.entry_slot, market.current_slot());
+    market.assert_vault_matches_ledger();
 }
 
 #[test]
@@ -810,7 +862,9 @@ fn test_close_long_in_profit() {
         .open_position(&trader, trader_collateral, Side::Long, collateral, size, 0)
         .unwrap();
 
-    // Price rises 20%: a $5,000 long earns $1,000.
+    // Price rises 20%: a $5,000 long earns $1,000, paid once the warm-up has
+    // passed.
+    market.pass_warmup();
     market.set_price(dollars(120));
     market
         .close_position(&trader, trader_collateral, Side::Long, 0)
@@ -870,6 +924,7 @@ fn test_close_short_in_profit() {
         .unwrap();
 
     // Price falls 10%: a $5,000 short earns $500.
+    market.pass_warmup();
     market.set_price(dollars(90));
     market
         .close_position(&trader, trader_collateral, Side::Short, 0)
@@ -1367,26 +1422,28 @@ fn test_collect_fees_requires_authority() {
     assert!(market.collect_fees(&imposter).is_err());
 }
 
+/// Nothing is set aside to back a position's profit, so a position can open
+/// against a pool that could not pay its full winnings: here a $10,000 long
+/// against $6,000 of liquidity.
 #[test]
-fn test_open_rejects_when_pool_cannot_back_it() {
+fn test_open_allowed_without_full_backing() {
     let mut market = Market::default_market();
-    // Only 3,000 of liquidity, but a 5,000 position must reserve 5,000.
-    market.seed_liquidity(3_000 * ONE_USDC);
-    let (trader, trader_collateral) = market.funded_trader(1_000 * ONE_USDC);
-    assert!(market
-        .open_position(
-            &trader,
-            trader_collateral,
-            Side::Long,
-            1_000 * ONE_USDC,
-            5_000 * ONE_USDC,
-            0
-        )
-        .is_err());
+    market.seed_liquidity(6_000 * ONE_USDC);
+    let collateral = 1_100 * ONE_USDC;
+    let size = 10_000 * ONE_USDC;
+    let (trader, trader_collateral) = market.funded_trader(collateral);
+    market
+        .open_position(&trader, trader_collateral, Side::Long, collateral, size, 0)
+        .unwrap();
+
+    let pool = market.pool_state();
+    assert_eq!(pool.long_size, size as u128);
+    assert_eq!(pool.liquidity, 6_000 * ONE_USDC);
+    market.assert_vault_matches_ledger();
 }
 
 #[test]
-fn test_profit_capped_at_reserved_notional() {
+fn test_profit_runs_uncapped_when_backed() {
     let mut market = Market::default_market();
     market.seed_liquidity(100_000 * ONE_USDC);
     let collateral = 2_000 * ONE_USDC;
@@ -1396,10 +1453,10 @@ fn test_profit_capped_at_reserved_notional() {
         .open_position(&trader, trader_collateral, Side::Long, collateral, size, 0)
         .unwrap();
 
-    // Price triples: uncapped profit would be 2x the notional, but recoverable
-    // profit is capped at the reserved notional (`size`). A move this large is
-    // far outside the price band, so the average has to catch up before the
-    // position can close.
+    // Price triples, so the long's profit is twice its size. A move this
+    // large is far outside the price band, so the average has to catch up
+    // before the position can close, which also passes the warm-up. The
+    // $100,000 pool backs the whole $10,000 profit, so it is paid in full.
     market.set_price(dollars(300));
     market.settle_average_at(dollars(300));
     market
@@ -1409,15 +1466,218 @@ fn test_profit_capped_at_reserved_notional() {
     let open_fee = size / 1_000;
     let close_fee = size / 1_000;
     let net_collateral = collateral - open_fee;
-    let expected = net_collateral + size - close_fee;
+    let profit = 2 * size;
     assert_eq!(
         get_token_account_balance(&market.svm, &trader_collateral).unwrap(),
-        expected
+        net_collateral + profit - close_fee
     );
+    assert_eq!(market.pool_state().liquidity, 100_000 * ONE_USDC - profit);
+    market.assert_vault_matches_ledger();
 }
 
+/// Two longs are owed $1,800 of profit between them, and the pool holds only
+/// $900 to pay it with, so each is paid half of their profit: the first to
+/// close is paid half of theirs, and the second, closing against what is left,
+/// is paid half of theirs too.
 #[test]
-fn test_remove_liquidity_blocked_by_reserved() {
+fn test_haircut_scales_profit_when_pool_stressed() {
+    // No fee goes to the insurance fund here, so the only backing is the $900
+    // of liquidity and the first close adds nothing to it.
+    let mut market = Market::try_new(
+        dollars(100),
+        PoolParameters {
+            insurance_fee_bps: 0,
+            ..default_parameters(0)
+        },
+    )
+    .unwrap();
+    market.seed_liquidity(900 * ONE_USDC);
+
+    let first_collateral = 1_000 * ONE_USDC;
+    let first_size = 6_000 * ONE_USDC;
+    let (first, first_account) = market.funded_trader(first_collateral);
+    market
+        .open_position(
+            &first,
+            first_account,
+            Side::Long,
+            first_collateral,
+            first_size,
+            0,
+        )
+        .unwrap();
+    let second_collateral = 800 * ONE_USDC;
+    let second_size = 4_000 * ONE_USDC;
+    let (second, second_account) = market.funded_trader(second_collateral);
+    market
+        .open_position(
+            &second,
+            second_account,
+            Side::Long,
+            second_collateral,
+            second_size,
+            0,
+        )
+        .unwrap();
+
+    // At $118 the first long is up $1,080 and the second $720: $1,800 owed
+    // against $900 of backing, so h = 900 / 1,800 = 0.5.
+    market.pass_warmup();
+    market.set_price(dollars(118));
+    let half = HAIRCUT_PRECISION / 2;
+    let first_profit = first_size * 18 / 100;
+    let second_profit = second_size * 18 / 100;
+
+    market
+        .close_position(&first, first_account, Side::Long, 0)
+        .unwrap();
+    let first_paid = first_profit * half / HAIRCUT_PRECISION;
+    assert_eq!(first_paid, 540 * ONE_USDC);
+    assert_eq!(
+        get_token_account_balance(&market.svm, &first_account).unwrap(),
+        first_collateral - first_size / 1_000 + first_paid - first_size / 1_000
+    );
+    // The $540 withheld from the first long stays with the providers.
+    assert_eq!(market.pool_state().liquidity, 360 * ONE_USDC);
+
+    // The second long is now owed $720 against $360: h is still 0.5.
+    market
+        .close_position(&second, second_account, Side::Long, 0)
+        .unwrap();
+    let second_paid = second_profit * half / HAIRCUT_PRECISION;
+    assert_eq!(second_paid, 360 * ONE_USDC);
+    assert_eq!(
+        get_token_account_balance(&market.svm, &second_account).unwrap(),
+        second_collateral - second_size / 1_000 + second_paid - second_size / 1_000
+    );
+    assert_eq!(market.pool_state().liquidity, 0);
+    market.assert_vault_matches_ledger();
+}
+
+/// Alice's long is up $1,000 while Bob's short, still open and healthy, is
+/// down $900, so traders are owed only $100 in aggregate, and the pool's
+/// backing is $300. Sized against the $100 alone the haircut would be one and
+/// Alice's $1,000 would exceed the backing; it is sized against her $1,000
+/// instead, so she is paid exactly the $300 and the close goes through. Bob's
+/// later close settles his loss into the pool in full.
+#[test]
+fn test_winner_offset_by_open_loser_is_paid_not_refused() {
+    let mut market = Market::default_market();
+    // $290.50 of liquidity plus the $9.50 the two open fees put in the
+    // insurance fund is $300 of backing.
+    market.seed_liquidity(290_500_000);
+
+    let alice_collateral = 1_100 * ONE_USDC;
+    let alice_size = 10_000 * ONE_USDC;
+    let (alice, alice_account) = market.funded_trader(alice_collateral);
+    market
+        .open_position(
+            &alice,
+            alice_account,
+            Side::Long,
+            alice_collateral,
+            alice_size,
+            0,
+        )
+        .unwrap();
+    let bob_collateral = 2_000 * ONE_USDC;
+    let bob_size = 9_000 * ONE_USDC;
+    let (bob, bob_account) = market.funded_trader(bob_collateral);
+    market
+        .open_position(&bob, bob_account, Side::Short, bob_collateral, bob_size, 0)
+        .unwrap();
+    let pool = market.pool_state();
+    assert_eq!(pool.liquidity + pool.insurance_fund, 300 * ONE_USDC);
+
+    // At $110 Alice is up $1,000 and Bob down $900: h = 300 / 1,000 = 0.3.
+    market.pass_warmup();
+    market.set_price(dollars(110));
+    market
+        .close_position(&alice, alice_account, Side::Long, 0)
+        .unwrap();
+    let alice_paid = 1_000 * ONE_USDC * (3 * HAIRCUT_PRECISION / 10) / HAIRCUT_PRECISION;
+    assert_eq!(alice_paid, 300 * ONE_USDC);
+    let alice_fee = alice_size / 1_000;
+    assert_eq!(
+        get_token_account_balance(&market.svm, &alice_account).unwrap(),
+        alice_collateral - alice_fee + alice_paid - alice_fee
+    );
+    // The whole backing was paid out; the fund then took half of Alice's
+    // close fee.
+    let pool = market.pool_state();
+    assert_eq!(pool.liquidity, 0);
+    assert_eq!(pool.insurance_fund, alice_fee / 2);
+    market.assert_vault_matches_ledger();
+
+    // Bob closes at the same price, losing $900 into the pool.
+    market
+        .close_position(&bob, bob_account, Side::Short, 0)
+        .unwrap();
+    let bob_fee = bob_size / 1_000;
+    let bob_loss = 900 * ONE_USDC;
+    assert_eq!(
+        get_token_account_balance(&market.svm, &bob_account).unwrap(),
+        bob_collateral - bob_fee - bob_loss - bob_fee
+    );
+    let pool = market.pool_state();
+    assert_eq!(pool.liquidity, bob_loss);
+    assert_eq!(pool.insurance_fund, (alice_fee + bob_fee) / 2);
+    assert_eq!(pool.total_collateral, 0);
+    market.assert_vault_matches_ledger();
+}
+
+/// The haircut counts the insurance fund as backing, so a profit larger than
+/// `liquidity` but within `liquidity + insurance_fund` is paid in full: the
+/// pool's liquidity first, the insurance fund for the rest.
+#[test]
+fn test_insurance_pays_profit_beyond_liquidity() {
+    // A 5% open fee, half of which goes to the insurance fund.
+    let mut market = Market::try_new(
+        dollars(100),
+        PoolParameters {
+            open_fee_bps: 500,
+            ..default_parameters(0)
+        },
+    )
+    .unwrap();
+    market.seed_liquidity(1_700 * ONE_USDC);
+
+    // $500 open fee: $250 to the insurance fund, $1,100 of net collateral.
+    let collateral = 1_600 * ONE_USDC;
+    let size = 10_000 * ONE_USDC;
+    let (trader, trader_collateral) = market.funded_trader(collateral);
+    market
+        .open_position(&trader, trader_collateral, Side::Long, collateral, size, 0)
+        .unwrap();
+    assert_eq!(market.pool_state().insurance_fund, 250 * ONE_USDC);
+
+    // At $118 the long is up $1,800: more than the $1,700 of liquidity, within
+    // the $1,950 of liquidity plus insurance, so h = 1.
+    market.pass_warmup();
+    market.set_price(dollars(118));
+    market
+        .close_position(&trader, trader_collateral, Side::Long, 0)
+        .unwrap();
+
+    let profit = 1_800 * ONE_USDC;
+    let close_fee = size / 1_000;
+    assert_eq!(
+        get_token_account_balance(&market.svm, &trader_collateral).unwrap(),
+        1_100 * ONE_USDC + profit - close_fee
+    );
+    let pool = market.pool_state();
+    assert_eq!(pool.liquidity, 0);
+    // $100 of the profit came from the insurance fund, which then took half
+    // of the $10 close fee.
+    assert_eq!(pool.insurance_fund, 150 * ONE_USDC + close_fee / 2);
+    market.assert_vault_matches_ledger();
+}
+
+/// Shares are priced against assets-under-management, which counts a
+/// trader's unrealized loss as the providers' gain, but that loss is still in
+/// the trader's collateral. A withdrawal is capped at `liquidity`.
+#[test]
+fn test_remove_liquidity_capped_at_liquidity() {
     let mut market = Market::default_market();
     let (provider, provider_collateral) = market.seed_liquidity(10_000 * ONE_USDC);
     let (trader, trader_collateral) = market.funded_trader(1_000 * ONE_USDC);
@@ -1432,16 +1692,265 @@ fn test_remove_liquidity_blocked_by_reserved() {
         )
         .unwrap();
 
-    // 5,000 of the 10,000 liquidity is now reserved. Pulling everything fails,
-    // but withdrawing within the free half succeeds.
-    let provider_lp = derive_ata(&provider.pubkey(), &market.lp_mint);
-    let shares = get_token_account_balance(&market.svm, &provider_lp).unwrap();
+    // At $80 the long is down $1,000, so assets-under-management is $11,000
+    // against $10,000 of liquidity, and each share redeems 1.1 minor units
+    // (the provider's shares plus the withheld minimum are 10,000 USDC of
+    // shares). 9,090,909,092 shares would redeem 10,000,000,001, one minor
+    // unit more than `liquidity`, and are refused.
+    market.set_price(dollars(80));
+    assert_fails_with(
+        market.remove_liquidity(&provider, provider_collateral, 9_090_909_092, 0),
+        PerpError::InsufficientLiquidity,
+    );
+
+    // One share fewer redeems exactly the pool's liquidity.
+    market
+        .remove_liquidity(&provider, provider_collateral, 9_090_909_091, 0)
+        .unwrap();
+    assert_eq!(
+        get_token_account_balance(&market.svm, &provider_collateral).unwrap(),
+        10_000 * ONE_USDC
+    );
+    assert_eq!(market.pool_state().liquidity, 0);
+    market.assert_vault_matches_ledger();
+}
+
+/// One slot short of the warm-up, a profitable close is refused and the
+/// position stays open.
+#[test]
+fn test_profit_blocked_before_maturation() {
+    let mut market = Market::default_market();
+    market.seed_liquidity(100_000 * ONE_USDC);
+    let collateral = 1_000 * ONE_USDC;
+    let size = 5_000 * ONE_USDC;
+    let (trader, trader_collateral) = market.funded_trader(collateral);
+    market
+        .open_position(&trader, trader_collateral, Side::Long, collateral, size, 0)
+        .unwrap();
+    let entry_slot = market
+        .position_state(&trader.pubkey(), Side::Long)
+        .entry_slot;
+
+    market.warp(entry_slot + PROFIT_WARMUP_SLOTS - 1);
+    market.set_price(dollars(110));
+    assert_fails_with(
+        market.close_position(&trader, trader_collateral, Side::Long, 0),
+        PerpError::ProfitNotMatured,
+    );
+    assert_eq!(market.pool_state().long_size, size as u128);
+    assert_eq!(
+        get_token_account_balance(&market.svm, &trader_collateral).unwrap(),
+        0
+    );
+}
+
+/// From exactly `entry_slot + profit_warmup_slots`, the profit is paid.
+#[test]
+fn test_profit_realized_after_maturation() {
+    let mut market = Market::default_market();
+    market.seed_liquidity(100_000 * ONE_USDC);
+    let collateral = 1_000 * ONE_USDC;
+    let size = 5_000 * ONE_USDC;
+    let (trader, trader_collateral) = market.funded_trader(collateral);
+    market
+        .open_position(&trader, trader_collateral, Side::Long, collateral, size, 0)
+        .unwrap();
+    let entry_slot = market
+        .position_state(&trader.pubkey(), Side::Long)
+        .entry_slot;
+
+    market.warp(entry_slot + PROFIT_WARMUP_SLOTS);
+    market.set_price(dollars(110));
+    market
+        .close_position(&trader, trader_collateral, Side::Long, 0)
+        .unwrap();
+
+    let fee = size / 1_000;
+    let profit = size / 10;
+    assert_eq!(
+        get_token_account_balance(&market.svm, &trader_collateral).unwrap(),
+        collateral - fee + profit - fee
+    );
+}
+
+/// The warm-up holds back profit only: a losing position closes in the slot
+/// it opened.
+#[test]
+fn test_loss_not_gated_by_maturation() {
+    let mut market = Market::default_market();
+    market.seed_liquidity(100_000 * ONE_USDC);
+    let collateral = 1_000 * ONE_USDC;
+    let size = 5_000 * ONE_USDC;
+    let (trader, trader_collateral) = market.funded_trader(collateral);
+    market
+        .open_position(&trader, trader_collateral, Side::Long, collateral, size, 0)
+        .unwrap();
+    let entry_slot = market
+        .position_state(&trader.pubkey(), Side::Long)
+        .entry_slot;
+
+    // Price falls 10% within the same slot: a $500 loss.
+    market.set_price(dollars(90));
+    assert_eq!(market.current_slot(), entry_slot);
+    market
+        .close_position(&trader, trader_collateral, Side::Long, 0)
+        .unwrap();
+
+    let fee = size / 1_000;
+    let loss = size / 10;
+    assert_eq!(
+        get_token_account_balance(&market.svm, &trader_collateral).unwrap(),
+        collateral - fee - loss - fee
+    );
+    assert_eq!(market.pool_state().liquidity, 100_000 * ONE_USDC + loss);
+}
+
+/// `insurance_fee_bps` of each open and close fee goes to the insurance fund,
+/// rounded down, and the program keeps the rest, so no minor unit is lost.
+#[test]
+fn test_insurance_fund_funded_by_fees() {
+    let mut market = Market::try_new(
+        dollars(100),
+        PoolParameters {
+            insurance_fee_bps: 3_333,
+            ..default_parameters(0)
+        },
+    )
+    .unwrap();
+    market.seed_liquidity(100_000 * ONE_USDC);
+
+    // A size whose 0.1% fee is 1,234,567 minor units: 3,333 basis points of
+    // that is 411,481.18, so the insurance fund gets 411,481 and the program
+    // the other 823,086.
+    let size = 1_234_567_890;
+    let fee = 1_234_567;
+    let insurance_cut = 411_481;
+    assert_eq!(size / 1_000, fee);
+    let collateral = 200 * ONE_USDC;
+    let (trader, trader_collateral) = market.funded_trader(collateral);
+    market
+        .open_position(&trader, trader_collateral, Side::Long, collateral, size, 0)
+        .unwrap();
+    let pool = market.pool_state();
+    assert_eq!(pool.insurance_fund, insurance_cut);
+    assert_eq!(pool.program_fees, fee - insurance_cut);
+
+    // Closing at the open price charges the same fee again.
+    market
+        .close_position(&trader, trader_collateral, Side::Long, 0)
+        .unwrap();
+    let pool = market.pool_state();
+    assert_eq!(pool.insurance_fund, 2 * insurance_cut);
+    assert_eq!(pool.program_fees, 2 * (fee - insurance_cut));
+    market.assert_vault_matches_ledger();
+}
+
+/// A $1,000 long with $110 of net collateral, liquidated after a 15% fall:
+/// its $150 loss leaves equity at -$40.
+fn open_long_and_gap_through_zero(market: &mut Market) -> (Keypair, Address) {
+    market.seed_liquidity(100_000 * ONE_USDC);
+    let collateral = 160 * ONE_USDC;
+    let size = 1_000 * ONE_USDC;
+    let (trader, trader_collateral) = market.funded_trader(collateral);
+    market
+        .open_position(&trader, trader_collateral, Side::Long, collateral, size, 0)
+        .unwrap();
+    market.set_price(dollars(85));
+    (trader, trader_collateral)
+}
+
+/// A bankrupt position's deficit, its loss beyond its collateral, is paid by
+/// the insurance fund when the fund holds enough.
+#[test]
+fn test_insurance_absorbs_bankruptcy_deficit() {
+    // A 5% open fee, 90% of which goes to the insurance fund: $45 of the $50.
+    let mut market = Market::try_new(
+        dollars(100),
+        PoolParameters {
+            open_fee_bps: 500,
+            insurance_fee_bps: 9_000,
+            ..default_parameters(0)
+        },
+    )
+    .unwrap();
+    let (trader, trader_collateral) = open_long_and_gap_through_zero(&mut market);
+    assert_eq!(market.pool_state().insurance_fund, 45 * ONE_USDC);
+    let liquidity_before = market.pool_state().liquidity;
+
+    let (liquidator, liquidator_collateral) = market.liquidator();
+    market
+        .liquidate(&liquidator, &trader.pubkey(), trader_collateral, Side::Long)
+        .unwrap();
+
+    // The fund pays the $40 deficit, so the providers keep the $110 of
+    // collateral and are credited the full $150 loss.
+    let pool = market.pool_state();
+    assert_eq!(pool.insurance_fund, 5 * ONE_USDC);
+    assert_eq!(pool.liquidity, liquidity_before + 150 * ONE_USDC);
+    assert_eq!(
+        get_token_account_balance(&market.svm, &liquidator_collateral).unwrap(),
+        0
+    );
+    market.assert_vault_matches_ledger();
+}
+
+/// A position already below zero equity can still be liquidated by anyone.
+/// Its equity cannot pay the liquidation fee, so the fee is forgiven and the
+/// liquidator receives nothing. The insurance fund pays as much of the deficit
+/// as it holds, and the liquidity providers bear only the rest.
+#[test]
+fn test_liquidation_of_bankrupt_position_charges_insurance_before_liquidity() {
+    // A 5% open fee, half of which goes to the insurance fund: $25 of the $50.
+    let mut market = Market::try_new(
+        dollars(100),
+        PoolParameters {
+            open_fee_bps: 500,
+            ..default_parameters(0)
+        },
+    )
+    .unwrap();
+    let (trader, trader_collateral) = open_long_and_gap_through_zero(&mut market);
+    assert_eq!(market.pool_state().insurance_fund, 25 * ONE_USDC);
+    let liquidity_before = market.pool_state().liquidity;
+
+    let (liquidator, liquidator_collateral) = market.liquidator();
+    market
+        .liquidate(&liquidator, &trader.pubkey(), trader_collateral, Side::Long)
+        .unwrap();
+
+    // The $40 deficit: $25 from the insurance fund, $15 borne by the
+    // providers, who keep the $110 of collateral plus the fund's $25.
+    let pool = market.pool_state();
+    assert_eq!(pool.insurance_fund, 0);
+    assert_eq!(pool.liquidity, liquidity_before + 135 * ONE_USDC);
+    assert_eq!(pool.long_size, 0);
+    assert_eq!(pool.total_collateral, 0);
+    assert_eq!(
+        get_token_account_balance(&market.svm, &liquidator_collateral).unwrap(),
+        0
+    );
+    assert_eq!(
+        get_token_account_balance(&market.svm, &trader_collateral).unwrap(),
+        0
+    );
     assert!(market
-        .remove_liquidity(&provider, provider_collateral, shares, 0)
-        .is_err());
-    assert!(market
-        .remove_liquidity(&provider, provider_collateral, shares / 2, 0)
-        .is_ok());
+        .svm
+        .get_account(&market.position_pda(&trader.pubkey(), Side::Long))
+        .is_none());
+    market.assert_vault_matches_ledger();
+}
+
+#[test]
+fn test_initialize_pool_rejects_insurance_fee_at_or_above_full_fee() {
+    let with_insurance_fee = |insurance_fee_bps| PoolParameters {
+        insurance_fee_bps,
+        ..default_parameters(0)
+    };
+    assert_fails_with(
+        Market::try_new(dollars(100), with_insurance_fee(10_000)),
+        PerpError::InvalidParameter,
+    );
+    assert!(Market::try_new(dollars(100), with_insurance_fee(9_999)).is_ok());
 }
 
 #[test]
@@ -1558,7 +2067,9 @@ fn test_close_rejected_when_oracle_jumps_outside_band() {
         PerpError::PriceOutsideBand,
     );
 
-    // At $115, inside the band, the close goes through and pays the 15% gain.
+    // At $115, inside the band and after the warm-up, the close goes through
+    // and pays the 15% gain.
+    market.pass_warmup();
     market.set_price(dollars(115));
     market.svm.expire_blockhash();
     market

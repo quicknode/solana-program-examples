@@ -61,6 +61,8 @@ pub fn handle_initialize_pool(
     liquidation_fee_bps: u16,
     max_confidence_bps: u16,
     max_price_deviation_bps: u16,
+    insurance_fee_bps: u16,
+    profit_warmup_slots: u64,
     bumps: &InitializePoolBumps,
 ) -> Result<(), ProgramError> {
     let denominator = BASIS_POINTS_DENOMINATOR as u16;
@@ -99,6 +101,11 @@ pub fn handle_initialize_pool(
     if max_confidence_bps == 0 || max_confidence_bps >= denominator {
         return Err(err(error::INVALID_PARAMETER));
     }
+    // At 10_000 every fee would go to the insurance fund and none to the
+    // program.
+    if insurance_fee_bps >= denominator {
+        return Err(err(error::INVALID_PARAMETER));
+    }
     // Zero would refuse every price move, however small. At 100% or more the
     // band could never refuse a fall, since the oracle price is always
     // positive.
@@ -123,9 +130,9 @@ pub fn handle_initialize_pool(
         lp_mint: *accounts.lp_mint.address(),
         oracle_scale,
         liquidity: 0,
-        reserved_liquidity: 0,
         total_collateral: 0,
         program_fees: 0,
+        insurance_fund: 0,
         long_size: 0,
         short_size: 0,
         long_size_scaled: 0,
@@ -143,6 +150,8 @@ pub fn handle_initialize_pool(
         liquidation_fee_bps,
         max_confidence_bps,
         max_price_deviation_bps,
+        insurance_fee_bps,
+        profit_warmup_slots,
         bump: bumps.pool,
     });
     Ok(())

@@ -40,15 +40,14 @@ pub fn handle_remove_liquidity(
         .map_err(|_| PerpError::MathOverflow)?;
 
     require!(amount_out > 0, PerpError::AmountRoundsToZero);
-    // Only free liquidity can leave: the portion reserved to cover open
-    // positions' payouts stays put, so a winning trader can always be paid. A
-    // provider wanting more must wait for positions to close.
-    let free_liquidity = pool
-        .liquidity
-        .checked_sub(pool.reserved_liquidity)
-        .ok_or(PerpError::MathOverflow)?;
+    // Shares are priced against assets-under-management, which counts traders'
+    // unrealized losses as the providers' gain. Those losses are still in the
+    // traders' collateral until their positions close, so a withdrawal is
+    // capped at `liquidity`, the tokens the providers own now. While traders
+    // are up instead, the pricing already keeps a withdrawal below `liquidity`
+    // minus their profit, leaving that profit's backing in the pool.
     require!(
-        amount_out <= free_liquidity,
+        amount_out <= pool.liquidity,
         PerpError::InsufficientLiquidity
     );
     require!(

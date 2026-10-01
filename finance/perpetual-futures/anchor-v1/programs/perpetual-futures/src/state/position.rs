@@ -48,5 +48,9 @@ pub struct Position {
     /// Pool `cumulative_funding` at open. Funding owed is the change since.
     pub entry_funding: i128,
 
+    /// Slot the position opened in. `close_position` pays a profit only from
+    /// slot `entry_slot + pool.profit_warmup_slots` on.
+    pub entry_slot: u64,
+
     pub bump: u8,
 }

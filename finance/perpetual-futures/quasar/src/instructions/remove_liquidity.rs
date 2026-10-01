@@ -93,14 +93,13 @@ pub fn handle_remove_liquidity(
     if amount_out == 0 {
         return Err(err(error::AMOUNT_ROUNDS_TO_ZERO));
     }
-    // Only free liquidity can leave; the reserved portion backs open positions.
-    let free_liquidity = accounts
-        .pool
-        .liquidity
-        .get()
-        .checked_sub(accounts.pool.reserved_liquidity.get())
-        .ok_or(ProgramError::ArithmeticOverflow)?;
-    if amount_out > free_liquidity {
+    // Shares are priced against assets-under-management, which counts traders'
+    // unrealized losses as the providers' gain. Those losses are still in the
+    // traders' collateral until their positions close, so a withdrawal is
+    // capped at `liquidity`, the tokens the providers own now. While traders
+    // are up instead, the pricing already keeps a withdrawal below `liquidity`
+    // minus their profit, leaving that profit's backing in the pool.
+    if amount_out > accounts.pool.liquidity.get() {
         return Err(err(error::INSUFFICIENT_LIQUIDITY));
     }
     if amount_out < minimum_amount_out {
