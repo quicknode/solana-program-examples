@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { ActionTicket } from "../components/ActionTicket";
 import { AllocationPanel } from "../components/Allocation";
 import { Addr, Field } from "../components/atoms";
+import { RebalancePanel } from "../components/ManagerView";
 import type { FundState } from "../hooks/useFund";
 import { FUND_PROGRAM_ID } from "../solana/config";
 import { formatRatioPct, formatShares, formatUnits, formatUsdc } from "../solana/format";
@@ -115,6 +116,12 @@ export function InvestorView({ fund }: { fund: FundState }) {
             onDeposit={fund.deposit}
             onRedeem={fund.redeem}
           />
+          {/* rebalance is permissionless; the manager reaches it from the Manager tab */}
+          {fund.connected && !fund.isManager && (
+            <div className="mt-6">
+              <RebalancePanel view={view} onRebalance={fund.rebalance} />
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -38,6 +38,7 @@ pub mod managed_fund {
         index: u64,
         fee_bps: u16,
         max_slippage_bps: u16,
+        rebalance_threshold_bps: u16,
         swap_router: Address,
     ) -> Result<()> {
         instructions::initialize_fund::handle_initialize_fund(
@@ -45,6 +46,7 @@ pub mod managed_fund {
             index,
             fee_bps,
             max_slippage_bps,
+            rebalance_threshold_bps,
             swap_router,
         )
     }
@@ -85,11 +87,14 @@ pub mod managed_fund {
         instructions::withdraw::handle_withdraw(context, shares_to_burn, min_usdc_out)
     }
 
+    /// Sell an asset that has drifted above its target weight and buy one below
+    /// its target. Anyone may call it: the program computes the trade, so the
+    /// caller chooses only which pair to restore.
     pub fn rebalance(
         context: &mut Context<RebalanceAccountConstraints>,
-        sell_amount: u64,
-        usdc_to_invest: u64,
+        sell_index: u8,
+        buy_index: u8,
     ) -> Result<()> {
-        instructions::rebalance::handle_rebalance(context, sell_amount, usdc_to_invest)
+        instructions::rebalance::handle_rebalance(context, sell_index, buy_index)
     }
 }

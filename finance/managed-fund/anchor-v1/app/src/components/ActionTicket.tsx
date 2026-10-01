@@ -183,7 +183,9 @@ export function ActionTicket({ view, connected, walletUsdc, position, onDeposit,
                     <span className="text-muted">
                       #{leg.index} · {shortAddress(leg.mint)}
                     </span>
-                    <span className="tabular-nums text-ink">{formatUnits(leg.amountMinor, 6, 6)}</span>
+                    <span className="tabular-nums text-ink">
+                      {formatUnits(leg.amountMinor, leg.decimals, leg.decimals)}
+                    </span>
                   </div>
                 ))}
                 <div className="flex justify-between border-t border-line pt-1.5">

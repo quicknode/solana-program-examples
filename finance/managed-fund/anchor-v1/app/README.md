@@ -2,8 +2,10 @@
 
 A small, data-forward frontend for the [`managed-fund`](../README.md) Solana program:
 an educational demo of a manager-run investment fund. Investors deposit USDC and hold
-shares priced at net asset value; a manager allocates the pooled USDC across a basket and
-rebalances it. Every number on screen is a real on-chain account read.
+shares priced at net asset value; a manager sets the basket's target weights, and anyone can
+rebalance it once an asset drifts past the fund's threshold (the program sizes the trade, so
+the caller only picks which asset to sell and which to buy). Every number on screen is a real
+on-chain account read.
 
 Stack: **Vite + React + TypeScript + Tailwind**, `@solana/wallet-adapter`, `@coral-xyz/anchor`.
 Target cluster: **devnet**.
@@ -54,7 +56,8 @@ so the client is **verified offline** (`pnpm verify`) rather than against a live
 To bring the demo up you need `solana` + `anchor` (or `cargo build-sbf`) to:
 
 1. Build & deploy both programs to devnet (you'll get **new** program ids — put them in `.env.local`).
-2. Create a 6-decimal mock USDC + the basket mints; init the router, set rates, fund its treasury.
+2. Create a 6-decimal mock USDC + the basket mints; init the router, set rates (USDC minor units
+   per whole token, e.g. `250_000_000` for $250), fund its treasury.
 3. Create a registry, approve the basket assets (bound to Pyth `PriceUpdateV2` feeds), init a
    fund, and add the assets to 100% weight.
 

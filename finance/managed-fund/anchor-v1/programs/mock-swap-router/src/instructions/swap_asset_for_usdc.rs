@@ -73,10 +73,18 @@ pub fn handle_swap_asset_for_usdc(
     require!(rate > 0, RouterError::ZeroRate);
     require!(asset_amount_in > 0, RouterError::ZeroAmount);
 
-    // usdc_out = asset_amount_in * rate  (u128 intermediate, program gets ceil on sell)
+    // usdc_out = asset_amount_in * rate / 10^asset_decimals  (u128 intermediate,
+    // caller gets the floor)
+    let one_token = 10u128
+        .checked_pow(context.accounts.asset_mint.decimals as u32)
+        .ok_or(RouterError::MathOverflow)?;
     let usdc_out: u64 = (asset_amount_in as u128)
         .checked_mul(rate as u128)
-        .ok_or(RouterError::MathOverflow)? as u64;
+        .ok_or(RouterError::MathOverflow)?
+        .checked_div(one_token)
+        .ok_or(RouterError::MathOverflow)?
+        .try_into()
+        .map_err(|_| RouterError::MathOverflow)?;
 
     require!(usdc_out >= minimum_usdc_out, RouterError::SlippageExceeded);
 

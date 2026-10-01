@@ -15,13 +15,14 @@ pub struct RouterConfig {
     pub bump: u8,
 }
 
-/// A fixed price for one asset. PDA: `["rate", mint]`. `usdc_per_token` is USDC
-/// base units per token base unit (e.g. 250 means 1 token = 250 USDC when both
-/// have 6 decimals).
+/// A fixed price for one asset. PDA: `["rate", mint]`.
 #[account(discriminator = 2, set_inner)]
 #[seeds(b"rate", mint: Address)]
 pub struct AssetRate {
     pub mint: Address,
+    /// USDC base units per whole token, e.g. 250_000_000 means 1.0 TSLAx = $250
+    /// with six-decimal USDC. The swaps scale by the asset mint's decimals, so the
+    /// rate means the same thing whatever precision the asset has.
     pub usdc_per_token: u64,
     pub bump: u8,
 }

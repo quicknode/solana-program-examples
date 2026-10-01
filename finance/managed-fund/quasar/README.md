@@ -54,16 +54,27 @@ themselves or pair a real mint with a feed they control.
   cannot inflate the share price, the first-depositor attack.
 - `withdraw` burns shares and pays out a proportional slice of the USDC vault and
   every asset vault, in kind.
-- `rebalance` lets the manager sell one asset for USDC and buy another with it,
-  keeping holdings near their targets as prices drift. Both legs are floored to
-  the oracle price so a bad swap route reverts, and neither can sell or spend
-  more than the recorded holdings (`InsufficientHoldings`).
+- `rebalance(sell_index, buy_index)` sells one asset for USDC and buys another
+  with it, restoring the target weights as prices drift. Anyone may call it,
+  because the program sizes the trade: it values every asset (the same five
+  accounts per asset as `deposit`), requires the asset sold to sit above its
+  target by at least the fund's `rebalance_threshold_bps` of the fund's value
+  (`DriftBelowThreshold`; a retired asset may always be sold) and the asset
+  bought to sit below its own (`NotUnderweight`), and trades the smaller of the
+  two gaps. A fund at its targets has no trade to make, so nobody can churn it.
+  The threshold is set at creation between 100 and 2,000 basis points
+  (`RebalanceThresholdOutOfRange`) and never changes. Both legs are floored to
+  the oracle price so a bad swap route reverts, and the buy leg spends only what
+  the sale brought in.
 - `collect_fees` accrues the time-based management fee by minting fresh shares to
   the manager, diluting holders at the configured annual rate.
 
 Every swap and rebalance leg is bounded by the registered price feed: the
 program computes the oracle-implied output and rejects any swap that falls short
-by more than the fund's slippage tolerance.
+by more than the fund's slippage tolerance. Values scale by each asset's mint
+decimals, recorded when the asset is added, and by the exponent each Pyth feed
+reports (−8 for crypto USD feeds, −5 for US equities), so a basket can mix
+assets of any precision.
 
 ## Accounts and PDAs
 
@@ -90,7 +101,7 @@ withdraw), in index order.
 - Deposited USDC and every asset sit in program-owned vaults whose authority is
   the Fund PDA; only the deployed program can move them, and it does so only
   along deposit, withdraw, and rebalance. There is no manager path to withdraw
-  holdings, only to trade them within the basket or collect the configured fee.
+  holdings, nor to choose a trade: rebalancing is sized by the program.
 - The share supply is updated before any mint or burn (checks-effects-
   interactions), and value computations use u128 intermediates with checked
   arithmetic, flooring in the fund's favour.
@@ -143,7 +154,12 @@ and a USDC-for-asset swap. The fund suite (`managed-fund/src/tests.rs`) drives
 the manager setup (registry, approve asset, fund, add asset) and a two-program
 deposit that deploys USDC into the basket through the router CPI, asserting share
 minting, vault balances, and treasury flow. A second deposit test shows a price
-posted before a cluster restart is rejected until Pyth posts again.
+posted before a cluster restart is rejected until Pyth posts again. The
+rebalance tests sign as a stranger and check that a fund at its targets, within
+its threshold, or just rebalanced cannot be traded
+(`test_rebalance_cannot_churn` and its neighbors), and
+`test_valuation_scales_by_decimals_and_exponent` runs the story with an
+eight-decimal asset on an exponent −5 feed.
 
 ## Extending
 
@@ -151,4 +167,3 @@ posted before a cluster restart is rejected until Pyth posts again.
   an Address Lookup Table for the larger account list.
 - A real AMM or aggregator in place of the mock router.
 - Deposit and withdraw fees in addition to the time-based management fee.
-- Rebalance automation driven by weight drift beyond a threshold.

@@ -26,12 +26,20 @@ pub struct Fund {
     pub registry: Pubkey,
     pub share_mint: Pubkey,
     pub usdc_mint: Pubkey,
+    /// The USDC mint's decimals, read from the mint at creation. Valuation
+    /// scales every asset into these minor units.
+    pub usdc_decimals: u8,
     pub swap_router: Pubkey,
     /// Annual management fee in basis points (e.g. 100 = 1%).
     pub fee_bps: u16,
     /// Maximum tolerated deviation, in basis points, between a swap's output and
     /// the Pyth-implied amount on deposit/rebalance. Bounded by MAX_SLIPPAGE_BPS.
     pub max_slippage_bps: u16,
+    /// How far, in basis points of the fund's value, an asset must sit above its
+    /// target weight before `rebalance` may sell it. Set at creation within
+    /// MIN/MAX_REBALANCE_THRESHOLD_BPS and never changed, so nobody can lower it
+    /// later to trade the fund on every small price move.
+    pub rebalance_threshold_bps: u16,
     pub total_shares: u64,
     /// USDC the program has accounted for in the USDC vault: deposits in, swap
     /// spending and withdrawals out. Share prices and payouts use this, never the
@@ -61,14 +69,17 @@ pub struct AssetConfig {
     pub fund: Pubkey,
     pub index: u8,
     pub mint: Pubkey,
+    /// The asset mint's decimals, read from the mint when the asset is added.
+    /// Valuation scales by them, so a basket can mix assets of any precision.
+    pub decimals: u8,
     /// Pyth PriceUpdateV2 account, copied from the registry's ApprovedAsset at
     /// add time so the manager cannot substitute a feed they control.
     pub price_feed: Pubkey,
     /// Fund-owned associated token account holding this asset.
     pub vault: Pubkey,
     /// Target share of the fund's value in basis points. deposit deploys at these
-    /// weights (the sum across assets must reach 10000 before deposits open), and the
-    /// manager maintains them against price drift with rebalance.
+    /// weights (the sum across assets must reach 10000 before deposits open), and
+    /// rebalance restores them once prices drift past the fund's threshold.
     pub weight_bps: u16,
     pub bump: u8,
 }

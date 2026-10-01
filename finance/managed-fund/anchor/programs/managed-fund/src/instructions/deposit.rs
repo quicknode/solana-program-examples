@@ -8,7 +8,7 @@ use anchor_spl::{
 use mock_swap_router::cpi::accounts::SwapUsdcForAssetAccountConstraints as RouterSwapAccounts;
 
 use crate::error::FundError;
-use crate::oracle::{asset_value_in_usdc, load_price, read_token_amount, PYTH_PRICE_PRECISION};
+use crate::oracle::{asset_value_in_usdc, load_price, read_token_amount, usdc_to_asset_amount};
 use crate::state::{AssetConfig, Fund};
 
 #[derive(Accounts)]
@@ -145,7 +145,12 @@ pub fn handle_deposit(
         let price = load_price(feed_account, &config.price_feed, now)?;
         let amount = asset_holdings[index];
         nav = nav
-            .checked_add(asset_value_in_usdc(amount, price)?)
+            .checked_add(asset_value_in_usdc(
+                amount as u128,
+                price,
+                config.decimals,
+                usdc_decimals,
+            )?)
             .ok_or(FundError::MathOverflow)?;
     }
 
@@ -221,14 +226,11 @@ pub fn handle_deposit(
             continue;
         }
 
-        // Slippage floor anchored to the oracle: expected_out = deploy_usdc * 10^8 /
-        // price, allowed to fall short by at most max_slippage_bps.
+        // Slippage floor anchored to the oracle: expected_out is what deploy_usdc
+        // buys at the Pyth price, allowed to fall short by at most max_slippage_bps.
         let price = load_price(feed_account, &config.price_feed, now)?;
-        let expected_out = (deploy_usdc as u128)
-            .checked_mul(PYTH_PRICE_PRECISION)
-            .ok_or(FundError::MathOverflow)?
-            .checked_div(price)
-            .ok_or(FundError::MathOverflow)?;
+        let expected_out =
+            usdc_to_asset_amount(deploy_usdc as u128, price, config.decimals, usdc_decimals)?;
         let minimum_asset_out: u64 = expected_out
             .checked_mul((10_000 - max_slippage_bps) as u128)
             .ok_or(FundError::MathOverflow)?

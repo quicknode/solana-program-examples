@@ -1,4 +1,4 @@
-import { formatBps, formatRatioPct, formatUnits, formatUsdc } from "../solana/format";
+import { formatBps, formatPrice, formatRatioPct, formatUnits, formatUsdc } from "../solana/format";
 import type { FundView } from "../solana/fund";
 import { Addr } from "./atoms";
 
@@ -40,8 +40,8 @@ function buildSegments(view: FundView): Segment[] {
   return segments;
 }
 
-function priceUsd(price: bigint | null): string {
-  return price === null ? "—" : `$${formatUnits(price, 8, 2)}`;
+function priceUsd(price: bigint | null, exponent: number | null): string {
+  return price === null || exponent === null ? "—" : `$${formatPrice(price, exponent)}`;
 }
 
 export function AllocationPanel({ view }: { view: FundView }) {
@@ -54,7 +54,8 @@ export function AllocationPanel({ view }: { view: FundView }) {
       <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
         <h2 className="font-sans text-[13px] font-semibold uppercase tracking-widest text-muted">Allocation</h2>
         <span className="font-mono text-[12px] text-faint">
-          fee {formatBps(s.feeBps)} / yr · slippage {formatBps(s.maxSlippageBps)}
+          fee {formatBps(s.feeBps)} / yr · slippage {formatBps(s.maxSlippageBps)} · rebalance threshold{" "}
+          {formatBps(s.rebalanceThresholdBps)}
         </span>
       </div>
 
@@ -106,9 +107,9 @@ export function AllocationPanel({ view }: { view: FundView }) {
                   <td className="py-2.5 text-right text-ink">
                     {a.actualWeight === null ? "—" : formatRatioPct(a.actualWeight)}
                   </td>
-                  <td className="py-2.5 text-right text-ink">{formatUnits(a.vaultAmount, 6, 6)}</td>
+                  <td className="py-2.5 text-right text-ink">{formatUnits(a.vaultAmount, a.decimals, a.decimals)}</td>
                   <td className="py-2.5 text-right">
-                    <span className="text-ink">{priceUsd(a.price)}</span>
+                    <span className="text-ink">{priceUsd(a.price, a.exponent)}</span>
                     {a.stale && <span className="ml-2 text-[10px] uppercase tracking-widest text-loss">stale</span>}
                   </td>
                   <td className="py-2.5 text-right text-ink">

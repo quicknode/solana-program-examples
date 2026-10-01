@@ -11,7 +11,7 @@ web
 The frontend serves two roles first; a third exists in the program and is secondary for now.
 
 - **Depositor (primary):** a retail user who deposits USDC into a manager-run fund, receives shares representing proportional ownership of the whole basket, watches their position's value track the portfolio, and withdraws their slice in kind when they choose. Highest-volume, lowest-expertise surface.
-- **Manager (primary):** a power user who creates and operates a fund — registers curator-approved assets, sets target weights, rebalances as prices drift, and collects the management fee. An operations surface where correctness and confirmation matter more than reach.
+- **Manager (primary):** a power user who creates and operates a fund — registers curator-approved assets, sets target weights, and collects the management fee. An operations surface where correctness and confirmation matter more than reach.
 - **Curator (secondary, not yet in scope):** governs the approved-asset registry that bounds what managers may hold. Low-frequency, high-trust. Recorded so future work does not treat the manager as the only privileged role.
 
 ## Product Purpose
@@ -35,14 +35,15 @@ A **multi-asset** fund built from single-asset vaults, transparently priced on-c
 Program instructions the frontend can surface:
 
 - **Registry / curator:** `initialize_registry`, `approve_asset` (whitelist of assets managers may use).
-- **Manager:** `initialize_fund`, `add_asset`, `set_weight` (including set-to-zero to retire an asset), `rebalance`, `collect_fees`.
+- **Manager:** `initialize_fund` (fee, slippage tolerance, and rebalance threshold, all fixed at creation), `add_asset`, `set_weight` (including set-to-zero to retire an asset), `collect_fees`.
+- **Anyone:** `rebalance(sell_index, buy_index)`. The program sizes the trade from oracle prices and target weights, and refuses unless the asset sold is over its target by at least the fund's threshold and the asset bought is under its own (`DriftBelowThreshold`, `NotUnderweight`).
 - **Depositor:** `deposit` (USDC → minted shares), `withdraw` (burn shares → in-kind slice of every vault).
 
 Rules the UI must respect and reflect:
 
 - Deposits are accepted only when target weights sum to **exactly 10,000 bps**; a fund is either still being configured or fully allocated and live (`FundNotFullyAllocated` otherwise).
 - Shares: first deposit is 1:1 with USDC minor units; later deposits mint `deposit_usdc × total_shares / NAV`. Share mint is a PDA owned by the fund PDA.
-- NAV and withdrawals use the fund's recorded holdings (`usdc_holdings`, `asset_holdings`), not vault token balances. Tokens sent straight to a vault are not part of the fund and should not be shown as fund value. A deposit too small to buy any of an asset is rejected (`DepositTooSmall`); a rebalance cannot sell or spend more than the recorded holdings (`InsufficientHoldings`).
+- NAV and withdrawals use the fund's recorded holdings (`usdc_holdings`, `asset_holdings`), not vault token balances. Tokens sent straight to a vault are not part of the fund and should not be shown as fund value. A deposit too small to buy any of an asset is rejected (`DepositTooSmall`); a rebalance cannot sell more than the recorded holdings (`InsufficientHoldings`), spends only what its sale brought in, and values assets from the recorded holdings, so a donation cannot force one.
 - Management fee is charged by minting new shares to the manager (dilution), fixed at creation, capped at `MAX_FEE_BPS` = 1,000 bps (10%), no setter to raise it. `collect_fees` is permissionless.
 - Slippage floors are computed on-chain from the Pyth price and `max_slippage_bps` (capped at 1,000 bps); a manager-supplied minimum is not trusted.
 - `MAX_ASSETS` = 16. `deposit` re-derives the full `0..asset_count` PDA range and refuses to run if any asset account is missing (`IncompleteAssetAccounts`), so NAV can't be understated.

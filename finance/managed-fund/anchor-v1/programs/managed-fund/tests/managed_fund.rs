@@ -77,7 +77,12 @@ fn set_price_feed(svm: &mut LiteSVM, key: Pubkey, price: i64) {
 
 /// Write a Pyth feed as if Pyth posted it in `posted_slot`.
 fn set_price_feed_posted_at(svm: &mut LiteSVM, key: Pubkey, price: i64, posted_slot: u64) {
-    let data = build_mock_price_update_account(price, -8, PUBLISH_TIME, posted_slot);
+    write_price_feed(svm, key, price, -8, posted_slot);
+}
+
+/// Write a Pyth feed with its own exponent: Pyth's US equity feeds use -5.
+fn write_price_feed(svm: &mut LiteSVM, key: Pubkey, price: i64, exponent: i32, posted_slot: u64) {
+    let data = build_mock_price_update_account(price, exponent, PUBLISH_TIME, posted_slot);
     let rent = svm.minimum_balance_for_rent_exemption(data.len());
     svm.set_account(
         key,
@@ -98,11 +103,12 @@ const SECONDS_PER_YEAR: i64 = 31_536_000;
 
 const TSLA_PRICE: i64 = 25_000_000_000; // $250
 const NVDA_PRICE: i64 = 18_000_000_000; // $180
-const TSLA_RATE: u64 = 250; // router usdc per token
-const NVDA_RATE: u64 = 180;
+const TSLA_RATE: u64 = 250_000_000; // router USDC minor units per whole token
+const NVDA_RATE: u64 = 180_000_000;
 
 const FEE_BPS: u16 = 100; // 1%
 const SLIPPAGE_BPS: u16 = 100; // 1%
+const REBALANCE_THRESHOLD_BPS: u16 = 200; // two percentage points
 const FUND_INDEX: u64 = 0; // fund PDA seed: "fund" + 0
 
 struct TestContext {
@@ -143,6 +149,11 @@ impl TestContext {
 /// Mints, router (config + rates + treasury), Pyth feeds, a registry with TSLAx
 /// and NVDAx approved, and all derived PDAs. Does not create the fund.
 fn setup_full() -> TestContext {
+    setup_with_tsla_decimals(TOKEN_DECIMALS)
+}
+
+/// `setup_full`, with TSLAx minted at `tsla_decimals` instead of six.
+fn setup_with_tsla_decimals(tsla_decimals: u8) -> TestContext {
     let fund_program_id = managed_fund::id();
     let router_program_id = mock_swap_router::id();
 
@@ -175,7 +186,7 @@ fn setup_full() -> TestContext {
     let manager = create_wallet(&mut svm, 10_000_000_000).unwrap();
 
     let usdc_mint = create_token_mint(&mut svm, &payer, TOKEN_DECIMALS, None).unwrap();
-    let tsla_mint = create_token_mint(&mut svm, &payer, TOKEN_DECIMALS, None).unwrap();
+    let tsla_mint = create_token_mint(&mut svm, &payer, tsla_decimals, None).unwrap();
     let nvda_mint = create_token_mint(&mut svm, &payer, TOKEN_DECIMALS, None).unwrap();
 
     let (router_config_pda, _) =
@@ -343,13 +354,20 @@ fn setup_full() -> TestContext {
     }
 }
 
-fn init_fund(ctx: &mut TestContext, fee_bps: u16, slippage_bps: u16, router: Pubkey) {
-    let ix = Instruction::new_with_bytes(
+fn initialize_fund_instruction(
+    ctx: &TestContext,
+    fee_bps: u16,
+    max_slippage_bps: u16,
+    rebalance_threshold_bps: u16,
+    router: Pubkey,
+) -> Instruction {
+    Instruction::new_with_bytes(
         ctx.fund_program_id,
         &managed_fund::instruction::InitializeFund {
             index: FUND_INDEX,
             fee_bps,
-            max_slippage_bps: slippage_bps,
+            max_slippage_bps,
+            rebalance_threshold_bps,
             swap_router: router,
         }
         .data(),
@@ -365,7 +383,12 @@ fn init_fund(ctx: &mut TestContext, fee_bps: u16, slippage_bps: u16, router: Pub
             system_program: system_program::id(),
         }
         .to_account_metas(None),
-    );
+    )
+}
+
+fn init_fund(ctx: &mut TestContext, fee_bps: u16, slippage_bps: u16, router: Pubkey) {
+    let ix =
+        initialize_fund_instruction(ctx, fee_bps, slippage_bps, REBALANCE_THRESHOLD_BPS, router);
     send_transaction_from_instructions(
         &mut ctx.svm,
         vec![ix],
@@ -656,76 +679,74 @@ fn read_asset_config(ctx: &TestContext, index: u8) -> managed_fund::state::Asset
     managed_fund::state::AssetConfig::try_deserialize(&mut &account.data[..]).unwrap()
 }
 
-/// (mint, asset_config, price_feed, vault, rate_pda) for an asset in the two-asset
-/// standard fund: index 0 is TSLAx, index 1 is NVDAx.
-fn asset_accounts(ctx: &TestContext, index: u8) -> (Pubkey, Pubkey, Pubkey, Pubkey, Pubkey) {
-    match index {
-        0 => (
-            ctx.tsla_mint,
-            ctx.asset_config(0),
-            ctx.price_feed_tsla,
-            ctx.vault_tsla,
-            ctx.tsla_rate_pda,
-        ),
-        1 => (
-            ctx.nvda_mint,
-            ctx.asset_config(1),
-            ctx.price_feed_nvda,
-            ctx.vault_nvda,
-            ctx.nvda_rate_pda,
-        ),
-        _ => panic!("unknown asset index {index}"),
-    }
+/// A rebalance of the standard fund, signed by `caller`: the program computes
+/// the trade, so the caller names only the pair. The remaining accounts are the
+/// same five per asset that a deposit takes.
+fn rebalance_instruction(
+    ctx: &TestContext,
+    caller: &Keypair,
+    sell_index: u8,
+    buy_index: u8,
+) -> Instruction {
+    rebalance_instruction_with(ctx, caller, sell_index, buy_index, deposit_remaining(ctx))
 }
 
-fn do_rebalance(
+fn rebalance_instruction_with(
+    ctx: &TestContext,
+    caller: &Keypair,
+    sell_index: u8,
+    buy_index: u8,
+    remaining: Vec<AccountMeta>,
+) -> Instruction {
+    let mut metas = managed_fund::accounts::RebalanceAccountConstraints {
+        caller: caller.pubkey(),
+        fund: ctx.fund_pda,
+        usdc_mint: ctx.usdc_mint,
+        vault_usdc: ctx.vault_usdc,
+        router_config: ctx.router_config_pda,
+        router_usdc_treasury: ctx.router_usdc_treasury,
+        swap_router_program: ctx.router_program_id,
+        associated_token_program: ata_program_id(),
+        token_program: token_program_id(),
+        system_program: system_program::id(),
+    }
+    .to_account_metas(None);
+    metas.extend(remaining);
+    Instruction::new_with_bytes(
+        ctx.fund_program_id,
+        &managed_fund::instruction::Rebalance {
+            sell_index,
+            buy_index,
+        }
+        .data(),
+        metas,
+    )
+}
+
+/// Rebalance the standard fund, signed by a fresh wallet that is neither the
+/// manager nor a depositor.
+fn try_rebalance(
     ctx: &mut TestContext,
     sell_index: u8,
     buy_index: u8,
-    sell_amount: u64,
-    usdc_to_invest: u64,
+) -> Result<(), solana_kite::SolanaKiteError> {
+    let stranger = create_wallet(&mut ctx.svm, 1_000_000_000).unwrap();
+    let ix = rebalance_instruction(ctx, &stranger, sell_index, buy_index);
+    send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[&stranger], &stranger.pubkey())
+}
+
+fn do_rebalance(ctx: &mut TestContext, sell_index: u8, buy_index: u8) {
+    try_rebalance(ctx, sell_index, buy_index).unwrap();
+}
+
+/// Assert that a transaction failed with one of the program's errors.
+fn assert_program_error(
+    result: Result<(), solana_kite::SolanaKiteError>,
+    error: FundError,
+    why: &str,
 ) {
-    let (sell_mint, sell_config, sell_feed, vault_sell, sell_rate) =
-        asset_accounts(ctx, sell_index);
-    let (buy_mint, buy_config, buy_feed, vault_buy, buy_rate) = asset_accounts(ctx, buy_index);
-    let ix = Instruction::new_with_bytes(
-        ctx.fund_program_id,
-        &managed_fund::instruction::Rebalance {
-            sell_amount,
-            usdc_to_invest,
-        }
-        .data(),
-        managed_fund::accounts::RebalanceAccountConstraints {
-            manager: ctx.manager.pubkey(),
-            fund: ctx.fund_pda,
-            usdc_mint: ctx.usdc_mint,
-            sell_mint,
-            buy_mint,
-            sell_config,
-            buy_config,
-            sell_price_feed: sell_feed,
-            buy_price_feed: buy_feed,
-            vault_sell,
-            vault_buy,
-            vault_usdc: ctx.vault_usdc,
-            sell_rate,
-            buy_rate,
-            router_config: ctx.router_config_pda,
-            router_usdc_treasury: ctx.router_usdc_treasury,
-            swap_router_program: ctx.router_program_id,
-            associated_token_program: ata_program_id(),
-            token_program: token_program_id(),
-            system_program: system_program::id(),
-        }
-        .to_account_metas(None),
-    );
-    send_transaction_from_instructions(
-        &mut ctx.svm,
-        vec![ix],
-        &[&ctx.manager],
-        &ctx.manager.pubkey(),
-    )
-    .unwrap();
+    let err = format!("{:?}", result.expect_err(why));
+    assert!(err.contains(&program_error(error)), "{why}: {err}");
 }
 
 fn advance_one_year(ctx: &mut TestContext) {
@@ -896,6 +917,7 @@ fn test_initialize_rejects_excessive_fee() {
             index: FUND_INDEX,
             fee_bps: excessive,
             max_slippage_bps: SLIPPAGE_BPS,
+            rebalance_threshold_bps: REBALANCE_THRESHOLD_BPS,
             swap_router: ctx.router_program_id,
         }
         .data(),
@@ -931,6 +953,7 @@ fn test_initialize_rejects_excessive_slippage() {
             index: FUND_INDEX,
             fee_bps: FEE_BPS,
             max_slippage_bps: excessive,
+            rebalance_threshold_bps: REBALANCE_THRESHOLD_BPS,
             swap_router: ctx.router_program_id,
         }
         .data(),
@@ -1028,7 +1051,7 @@ fn test_deposit_rejects_slippage() {
     // Router rate for TSLAx far worse than the oracle: a deposit's TSLAx deploy leg
     // must revert, taking the whole deposit with it.
     let (tsla_mint, tsla_rate_pda) = (ctx.tsla_mint, ctx.tsla_rate_pda);
-    set_router_rate(&mut ctx, tsla_mint, 300, tsla_rate_pda);
+    set_router_rate(&mut ctx, tsla_mint, 300_000_000, tsla_rate_pda);
 
     let user = fund_user(&mut ctx, 10_000_000);
     let ix = deposit_instruction(&ctx, &user, 10_000_000, 1, deposit_remaining(&ctx));
@@ -1125,7 +1148,7 @@ fn test_deposit_fair_pricing() {
     );
 
     // NVDAx rises 180 -> 200. NAV rises to 0 + 1.44*250 + 3.0*200 = 960 USDC.
-    set_nvda_price(&mut ctx, 20_000_000_000, 200);
+    set_nvda_price(&mut ctx, 20_000_000_000, 200_000_000);
 
     // Bob deposits 480 USDC at the higher NAV: shares = 480 * 900 / 960 = 450,000,000.
     // He pays today's price, so he does not dilute Alice's gain.
@@ -1155,10 +1178,13 @@ fn test_rebalance() {
     do_deposit(&mut ctx, &alice, 900_000_000, 1);
 
     // NVDAx rises 180 -> 200, pushing the basket to 37.5 / 62.5 by value.
-    set_nvda_price(&mut ctx, 20_000_000_000, 200);
+    set_nvda_price(&mut ctx, 20_000_000_000, 200_000_000);
 
-    // Rebalance back toward 40/60: sell 0.12 NVDAx for 24 USDC, buy 0.096 TSLAx with it.
-    do_rebalance(&mut ctx, 1, 0, 120_000, 24_000_000);
+    // A stranger, neither the manager nor a depositor, rebalances. The program
+    // computes the trade back to 40/60: NVDAx is $24 over its $576 target and
+    // TSLAx $24 under its $384 target, so it sells 0.12 NVDAx for 24 USDC and
+    // buys 0.096 TSLAx with it.
+    do_rebalance(&mut ctx, 1, 0);
 
     // 1.44 + 0.096 = 1.536 TSLAx; 3.0 - 0.12 = 2.88 NVDAx. Now 384 / 576 = 40 / 60.
     // The USDC vault nets to zero across the two legs.
@@ -1459,8 +1485,8 @@ fn test_full_lifecycle() {
     assert_holdings_match_vaults(&ctx);
 
     // NVDAx 180 -> 200; basket drifts to 37.5 / 62.5. Rebalance back to 40/60.
-    set_nvda_price(&mut ctx, 20_000_000_000, 200);
-    do_rebalance(&mut ctx, 1, 0, 120_000, 24_000_000);
+    set_nvda_price(&mut ctx, 20_000_000_000, 200_000_000);
+    do_rebalance(&mut ctx, 1, 0);
     assert_holdings_match_vaults(&ctx);
     assert_eq!(
         get_token_account_balance(&ctx.svm, &ctx.vault_tsla).unwrap(),
@@ -1620,79 +1646,327 @@ fn test_deposit_rejects_leg_that_buys_nothing() {
     assert_eq!(read_fund(&ctx).asset_holdings[0], 4_000);
 }
 
-/// Donated USDC is outside the fund, so a rebalance cannot spend it: the buy leg
-/// may spend at most the recorded USDC, which after the sell leg is what the
-/// sale brought in.
+/// Transfer `amount` of `mint` from the donor's token account straight into a
+/// fund vault, never calling a handler.
+fn donate_token(
+    ctx: &mut TestContext,
+    donor: &Keypair,
+    mint: &Pubkey,
+    vault: &Pubkey,
+    amount: u64,
+) {
+    let ix = spl_token::instruction::transfer(
+        &spl_token::ID,
+        &derive_ata(&donor.pubkey(), mint),
+        vault,
+        &donor.pubkey(),
+        &[],
+        amount,
+    )
+    .unwrap();
+    send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[donor], &donor.pubkey()).unwrap();
+}
+
+/// A fund sitting at its target weights has nothing to rebalance, in either
+/// direction, so nobody can trade it.
 #[test]
-fn test_rebalance_cannot_spend_donated_usdc() {
+fn test_rebalance_refuses_fund_at_target() {
     let mut ctx = setup_full();
     standard_fund(&mut ctx);
-
-    // Alice's 900 USDC is fully deployed; the recorded USDC is zero.
     let alice = fund_user(&mut ctx, 900_000_000);
     do_deposit(&mut ctx, &alice, 900_000_000, 1);
-    assert_eq!(read_fund(&ctx).usdc_holdings, 0);
 
-    let donor = fund_user(&mut ctx, 100_000_000);
-    donate_usdc(&mut ctx, &donor, 100_000_000);
+    assert_program_error(
+        try_rebalance(&mut ctx, 1, 0),
+        FundError::DriftBelowThreshold,
+        "a fund at target must not sell NVDAx",
+    );
+    assert_program_error(
+        try_rebalance(&mut ctx, 0, 1),
+        FundError::DriftBelowThreshold,
+        "a fund at target must not sell TSLAx",
+    );
+}
 
-    // Selling 0.1 NVDAx at $180 brings in 18 USDC; investing 50 would need 32 USDC
-    // of the donation.
-    let (sell_mint, sell_config, sell_feed, vault_sell, sell_rate) = asset_accounts(&ctx, 1);
-    let (buy_mint, buy_config, buy_feed, vault_buy, buy_rate) = asset_accounts(&ctx, 0);
-    let rebalance = |sell_amount: u64, usdc_to_invest: u64| {
-        Instruction::new_with_bytes(
-            ctx.fund_program_id,
-            &managed_fund::instruction::Rebalance {
-                sell_amount,
-                usdc_to_invest,
-            }
-            .data(),
-            managed_fund::accounts::RebalanceAccountConstraints {
-                manager: ctx.manager.pubkey(),
-                fund: ctx.fund_pda,
-                usdc_mint: ctx.usdc_mint,
-                sell_mint,
-                buy_mint,
-                sell_config,
-                buy_config,
-                sell_price_feed: sell_feed,
-                buy_price_feed: buy_feed,
-                vault_sell,
-                vault_buy,
-                vault_usdc: ctx.vault_usdc,
-                sell_rate,
-                buy_rate,
-                router_config: ctx.router_config_pda,
-                router_usdc_treasury: ctx.router_usdc_treasury,
-                swap_router_program: ctx.router_program_id,
-                associated_token_program: ata_program_id(),
-                token_program: token_program_id(),
-                system_program: system_program::id(),
-            }
-            .to_account_metas(None),
-        )
-    };
-    let too_much = rebalance(100_000, 50_000_000);
+/// Drift smaller than the fund's threshold is not worth the slippage of a
+/// trade, so the rebalance is refused.
+#[test]
+fn test_rebalance_refuses_drift_below_threshold() {
+    let mut ctx = setup_full();
+    standard_fund(&mut ctx);
+    let alice = fund_user(&mut ctx, 900_000_000);
+    do_deposit(&mut ctx, &alice, 900_000_000, 1);
+
+    // NVDAx 180 -> 185: 555 of a 915 fund is 60.66%, 0.66 points over its 60%
+    // target and under the two-point threshold.
+    set_nvda_price(&mut ctx, 18_500_000_000, 185_000_000);
+    assert_program_error(
+        try_rebalance(&mut ctx, 1, 0),
+        FundError::DriftBelowThreshold,
+        "drift under the threshold must not trade",
+    );
+    assert_eq!(read_fund(&ctx).asset_holdings[1], 3_000_000);
+}
+
+/// Churn: once a rebalance has restored the weights, calling it again, in
+/// either direction, finds nothing to do. Nobody can trade the fund back and
+/// forth to bleed it through slippage.
+#[test]
+fn test_rebalance_cannot_churn() {
+    let mut ctx = setup_full();
+    standard_fund(&mut ctx);
+    let alice = fund_user(&mut ctx, 900_000_000);
+    do_deposit(&mut ctx, &alice, 900_000_000, 1);
+
+    set_nvda_price(&mut ctx, 20_000_000_000, 200_000_000);
+    do_rebalance(&mut ctx, 1, 0);
+    let after_first = read_fund(&ctx);
+
+    ctx.svm.expire_blockhash();
+    assert_program_error(
+        try_rebalance(&mut ctx, 1, 0),
+        FundError::DriftBelowThreshold,
+        "a second rebalance must find nothing to sell",
+    );
+    assert_program_error(
+        try_rebalance(&mut ctx, 0, 1),
+        FundError::DriftBelowThreshold,
+        "rebalancing back the other way must be refused",
+    );
+    let after_retries = read_fund(&ctx);
+    assert_eq!(after_retries.asset_holdings, after_first.asset_holdings);
+    assert_eq!(after_retries.usdc_holdings, after_first.usdc_holdings);
+}
+
+/// A third basket asset the router can trade: its own mint (the router holds
+/// the mint authority), router rate, Pyth feed, and registry approval.
+struct ExtraAsset {
+    mint: Pubkey,
+    approved: Pubkey,
+    vault: Pubkey,
+    rate_pda: Pubkey,
+    feed: Pubkey,
+}
+
+fn create_routable_asset(ctx: &mut TestContext, price: i64, rate: u64) -> ExtraAsset {
+    let mint = create_token_mint(&mut ctx.svm, &ctx.payer, TOKEN_DECIMALS, None).unwrap();
+    let ix = spl_token::instruction::set_authority(
+        &spl_token::ID,
+        &mint,
+        Some(&ctx.router_config_pda),
+        spl_token::instruction::AuthorityType::MintTokens,
+        &ctx.payer.pubkey(),
+        &[],
+    )
+    .unwrap();
+    send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[&ctx.payer], &ctx.payer.pubkey())
+        .unwrap();
+    let (rate_pda, _) =
+        Pubkey::find_program_address(&[b"rate", mint.as_ref()], &ctx.router_program_id);
+    set_router_rate(ctx, mint, rate, rate_pda);
+    let feed = Keypair::new().pubkey();
+    set_price_feed(&mut ctx.svm, feed, price);
+    let (approved, _) = Pubkey::find_program_address(
+        &[b"approved_asset", ctx.registry_pda.as_ref(), mint.as_ref()],
+        &ctx.fund_program_id,
+    );
+    let ix = Instruction::new_with_bytes(
+        ctx.fund_program_id,
+        &managed_fund::instruction::ApproveAsset { price_feed: feed }.data(),
+        managed_fund::accounts::ApproveAssetAccountConstraints {
+            authority: ctx.payer.pubkey(),
+            registry: ctx.registry_pda,
+            asset_mint: mint,
+            approved_asset: approved,
+            system_program: system_program::id(),
+        }
+        .to_account_metas(None),
+    );
+    send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[&ctx.payer], &ctx.payer.pubkey())
+        .unwrap();
+    let vault = derive_ata(&ctx.fund_pda, &mint);
+    ExtraAsset {
+        mint,
+        approved,
+        vault,
+        rate_pda,
+        feed,
+    }
+}
+
+/// The buy side must be under its target: a rebalance cannot pour the sale into
+/// an asset already at or over its weight. Two assets cannot show this, since
+/// when one is over its target the other is under by the same amount, so the
+/// fund here holds a third, at 40/40/20.
+#[test]
+fn test_rebalance_refuses_buying_overweight_asset() {
+    let mut ctx = setup_full();
+    let router = ctx.router_program_id;
+    init_fund(&mut ctx, FEE_BPS, SLIPPAGE_BPS, router);
+    let third = create_routable_asset(&mut ctx, 10_000_000_000, 100_000_000); // $100
+    let (tm, wt, vt) = (ctx.tsla_mint, ctx.approved_tsla, ctx.vault_tsla);
+    add_asset(&mut ctx, 0, tm, wt, vt, 4000).unwrap();
+    let (nm, wn, vn) = (ctx.nvda_mint, ctx.approved_nvda, ctx.vault_nvda);
+    add_asset(&mut ctx, 1, nm, wn, vn, 4000).unwrap();
+    add_asset(&mut ctx, 2, third.mint, third.approved, third.vault, 2000).unwrap();
+
+    let mut remaining = deposit_remaining(&ctx);
+    remaining.extend(asset_deposit_metas(
+        ctx.asset_config(2),
+        third.vault,
+        third.mint,
+        third.rate_pda,
+        third.feed,
+    ));
+    let alice = fund_user(&mut ctx, 1_000_000_000);
+    let ix = deposit_instruction(&ctx, &alice, 1_000_000_000, 1, remaining.clone());
+    send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[&alice], &alice.pubkey()).unwrap();
+
+    // NVDAx and the third asset both rise 30%. NVDAx is about $520 of $1,180
+    // against a $472 target; the third asset $260 against $236; TSLAx $400
+    // against $472. NVDAx is over by more than the threshold, the third asset
+    // is over too, and only TSLAx is under.
+    set_nvda_price(&mut ctx, 23_400_000_000, 234_000_000);
+    set_price_feed(&mut ctx.svm, third.feed, 13_000_000_000);
+    set_router_rate(&mut ctx, third.mint, 130_000_000, third.rate_pda);
+
+    let stranger = create_wallet(&mut ctx.svm, 1_000_000_000).unwrap();
+    let into_third = rebalance_instruction_with(&ctx, &stranger, 1, 2, remaining.clone());
     let r = send_transaction_from_instructions(
         &mut ctx.svm,
-        vec![too_much],
-        &[&ctx.manager],
-        &ctx.manager.pubkey(),
+        vec![into_third],
+        &[&stranger],
+        &stranger.pubkey(),
     );
-    let err = format!(
-        "{:?}",
-        r.expect_err("a rebalance must not spend donated USDC")
-    );
-    assert!(
-        err.contains(&program_error(FundError::InsufficientHoldings)),
-        "{err}"
+    assert_program_error(
+        r,
+        FundError::NotUnderweight,
+        "an over-weight asset must not be bought",
     );
 
-    // Investing only what the sale brought in goes through, and the donation is
-    // still outside the recorded holdings.
+    // Naming the same asset on both sides is refused outright.
+    let into_itself = rebalance_instruction_with(&ctx, &stranger, 1, 1, remaining.clone());
+    let r = send_transaction_from_instructions(
+        &mut ctx.svm,
+        vec![into_itself],
+        &[&stranger],
+        &stranger.pubkey(),
+    );
+    assert_program_error(
+        r,
+        FundError::SameMint,
+        "an asset must not be sold into itself",
+    );
+
+    // Selling NVDAx into TSLAx, the asset that is under, goes through.
+    let into_tsla = rebalance_instruction_with(&ctx, &stranger, 1, 0, remaining);
+    send_transaction_from_instructions(
+        &mut ctx.svm,
+        vec![into_tsla],
+        &[&stranger],
+        &stranger.pubkey(),
+    )
+    .unwrap();
+    assert!(read_fund(&ctx).asset_holdings[0] > 1_600_000);
+}
+
+/// A rebalance values every asset, so it needs every asset's accounts, as a
+/// deposit does.
+#[test]
+fn test_rebalance_rejects_incomplete_assets() {
+    let mut ctx = setup_full();
+    standard_fund(&mut ctx);
+    let alice = fund_user(&mut ctx, 900_000_000);
+    do_deposit(&mut ctx, &alice, 900_000_000, 1);
+    set_nvda_price(&mut ctx, 20_000_000_000, 200_000_000);
+
+    let stranger = create_wallet(&mut ctx.svm, 1_000_000_000).unwrap();
+    let mut ix = rebalance_instruction(&ctx, &stranger, 1, 0);
+    ix.accounts.truncate(ix.accounts.len() - 5);
+    let r = send_transaction_from_instructions(
+        &mut ctx.svm,
+        vec![ix],
+        &[&stranger],
+        &stranger.pubkey(),
+    );
+    assert_program_error(
+        r,
+        FundError::IncompleteAssetAccounts,
+        "a rebalance missing an asset must revert",
+    );
+}
+
+/// Setting a weight to zero retires an asset, and a rebalance then sells all of
+/// it, however little is left: a retired asset needs no threshold, because
+/// selling it to zero is a trade that can happen only once.
+#[test]
+fn test_rebalance_sells_retired_asset() {
+    let mut ctx = setup_full();
+    standard_fund(&mut ctx);
+    let alice = fund_user(&mut ctx, 900_000_000);
+    do_deposit(&mut ctx, &alice, 900_000_000, 1);
+
+    // Maria retires NVDAx and moves its weight to TSLAx.
+    set_weight(&mut ctx, 1, 0).unwrap();
+    set_weight(&mut ctx, 0, 10_000).unwrap();
+
+    // NVDAx falls to $1, so the 3 NVDAx left are $3 of a $363 fund: under one
+    // percentage point, below the two-point threshold.
+    set_nvda_price(&mut ctx, 100_000_000, 1_000_000);
+    do_rebalance(&mut ctx, 1, 0);
+
+    // All 3 NVDAx sold for 3 USDC, which bought 0.012 TSLAx.
+    let fund = read_fund(&ctx);
+    assert_eq!(fund.asset_holdings[1], 0);
+    assert_eq!(fund.asset_holdings[0], 1_452_000);
+    assert_eq!(fund.usdc_holdings, 0);
+    assert_holdings_match_vaults(&ctx);
+
     ctx.svm.expire_blockhash();
-    do_rebalance(&mut ctx, 1, 0, 100_000, 18_000_000);
+    assert_program_error(
+        try_rebalance(&mut ctx, 1, 0),
+        FundError::DriftBelowThreshold,
+        "a retired asset already sold has nothing left to sell",
+    );
+}
+
+/// Donations can neither force a rebalance nor pay for one. Donated NVDAx is not
+/// recorded, so it cannot push NVDAx over its target; donated USDC is never
+/// spent, because the buy leg invests only what the sale brought in.
+#[test]
+fn test_rebalance_ignores_donations() {
+    let mut ctx = setup_full();
+    standard_fund(&mut ctx);
+    let alice = fund_user(&mut ctx, 900_000_000);
+    do_deposit(&mut ctx, &alice, 900_000_000, 1);
+
+    // The donor gets NVDAx the way anyone can: deposit, then withdraw in kind.
+    let donor = fund_user(&mut ctx, 200_000_000);
+    let donor_share = do_deposit(&mut ctx, &donor, 100_000_000, 1);
+    let donor_shares = get_token_account_balance(&ctx.svm, &donor_share).unwrap();
+    do_withdraw(&mut ctx, &donor, donor_shares, 0);
+    let donated_nvda =
+        get_token_account_balance(&ctx.svm, &derive_ata(&donor.pubkey(), &ctx.nvda_mint)).unwrap();
+    assert!(donated_nvda > 0);
+    let (nvda_mint, vault_nvda, usdc_mint, vault_usdc) =
+        (ctx.nvda_mint, ctx.vault_nvda, ctx.usdc_mint, ctx.vault_usdc);
+    donate_token(&mut ctx, &donor, &nvda_mint, &vault_nvda, donated_nvda);
+    donate_token(&mut ctx, &donor, &usdc_mint, &vault_usdc, 100_000_000);
+
+    // Counted, the donated NVDAx would put NVDAx far over its target. Recorded
+    // holdings are still 40/60, so there is nothing to rebalance.
+    assert_program_error(
+        try_rebalance(&mut ctx, 1, 0),
+        FundError::DriftBelowThreshold,
+        "donated NVDAx must not force a trade",
+    );
+
+    // A real price move does drift the fund, and the rebalance spends only
+    // what its sale brought in: the donated USDC is still in the vault, outside
+    // the recorded holdings.
+    set_nvda_price(&mut ctx, 20_000_000_000, 200_000_000);
+    ctx.svm.expire_blockhash();
+    do_rebalance(&mut ctx, 1, 0);
     let fund = read_fund(&ctx);
     assert_eq!(fund.usdc_holdings, 0);
     assert_eq!(
@@ -1700,7 +1974,86 @@ fn test_rebalance_cannot_spend_donated_usdc() {
         100_000_000
     );
     assert_eq!(
-        fund.asset_holdings[1],
+        fund.asset_holdings[1] + donated_nvda,
         get_token_account_balance(&ctx.svm, &ctx.vault_nvda).unwrap()
     );
+}
+
+/// The threshold is fixed at creation, within bounds: a manager cannot set it
+/// near zero, where the fund would trade on every small move, or so high that
+/// the target weights stop describing the fund.
+#[test]
+fn test_initialize_rejects_threshold_out_of_range() {
+    use managed_fund::instructions::initialize_fund::{
+        MAX_REBALANCE_THRESHOLD_BPS, MIN_REBALANCE_THRESHOLD_BPS,
+    };
+    let mut ctx = setup_full();
+    let router = ctx.router_program_id;
+    for threshold in [
+        0,
+        MIN_REBALANCE_THRESHOLD_BPS - 1,
+        MAX_REBALANCE_THRESHOLD_BPS + 1,
+    ] {
+        let ix = initialize_fund_instruction(&ctx, FEE_BPS, SLIPPAGE_BPS, threshold, router);
+        let r = send_transaction_from_instructions(
+            &mut ctx.svm,
+            vec![ix],
+            &[&ctx.manager],
+            &ctx.manager.pubkey(),
+        );
+        assert_program_error(
+            r,
+            FundError::RebalanceThresholdOutOfRange,
+            "a threshold outside the bounds must be rejected",
+        );
+        ctx.svm.expire_blockhash();
+    }
+    init_fund(&mut ctx, FEE_BPS, SLIPPAGE_BPS, router);
+    assert_eq!(
+        read_fund(&ctx).rebalance_threshold_bps,
+        REBALANCE_THRESHOLD_BPS
+    );
+}
+
+/// Valuation scales by each asset's decimals and each feed's exponent. TSLAx
+/// here has eight decimals and a Pyth equity feed with exponent -5, while USDC
+/// and NVDAx keep six decimals and NVDAx's feed keeps -8. Assuming six decimals
+/// and -8 would value Alice's 1.44 TSLAx at $360 * 100 * 1,000, and Bob's
+/// deposit would buy almost no shares. Scaled correctly, every figure matches
+/// the six-decimal story.
+#[test]
+fn test_valuation_scales_by_decimals_and_exponent() {
+    let mut ctx = setup_with_tsla_decimals(8);
+    write_price_feed(&mut ctx.svm, ctx.price_feed_tsla, 25_000_000, -5, 1); // $250
+    standard_fund(&mut ctx);
+    assert_eq!(read_asset_config(&ctx, 0).decimals, 8);
+    assert_eq!(read_asset_config(&ctx, 1).decimals, 6);
+
+    // Alice's 900 USDC deploys to 1.44 TSLAx (eight decimals) and 3 NVDAx.
+    let alice = fund_user(&mut ctx, 900_000_000);
+    let alice_share = do_deposit(&mut ctx, &alice, 900_000_000, 1);
+    assert_eq!(
+        get_token_account_balance(&ctx.svm, &alice_share).unwrap(),
+        900_000_000
+    );
+    assert_eq!(read_fund(&ctx).asset_holdings[0], 144_000_000);
+    assert_eq!(read_fund(&ctx).asset_holdings[1], 3_000_000);
+
+    // NVDAx to $200. The rebalance computes its trade in the same units: 0.12
+    // NVDAx sold for 24 USDC, which buys 0.096 TSLAx, back to 40/60.
+    set_nvda_price(&mut ctx, 20_000_000_000, 200_000_000);
+    do_rebalance(&mut ctx, 1, 0);
+    assert_eq!(read_fund(&ctx).asset_holdings[0], 153_600_000);
+    assert_eq!(read_fund(&ctx).asset_holdings[1], 2_880_000);
+
+    // The fund is worth $960, so Bob's 480 USDC buys 450 shares.
+    let bob = fund_user(&mut ctx, 480_000_000);
+    let bob_share = do_deposit(&mut ctx, &bob, 480_000_000, 1);
+    assert_eq!(
+        get_token_account_balance(&ctx.svm, &bob_share).unwrap(),
+        450_000_000
+    );
+    assert_eq!(read_fund(&ctx).asset_holdings[0], 230_400_000);
+    assert_eq!(read_fund(&ctx).asset_holdings[1], 4_320_000);
+    assert_holdings_match_vaults(&ctx);
 }

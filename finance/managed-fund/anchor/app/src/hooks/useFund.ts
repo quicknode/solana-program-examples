@@ -32,8 +32,9 @@ export interface FundState extends Data {
   // depositor
   deposit: (usdcMinor: bigint, minShares: bigint) => Promise<string>;
   redeem: (sharesMinor: bigint, minUsdcOut: bigint) => Promise<string>;
+  // anyone: the program sizes the trade, the caller only names the pair
+  rebalance: (sellIndex: number, buyIndex: number) => Promise<string>;
   // manager
-  rebalance: (sellIndex: number, buyIndex: number, sellAmount: bigint, usdcToInvest: bigint) => Promise<string>;
   setWeight: (assetIndex: number, weightBps: number) => Promise<string>;
   addAsset: (mint: PublicKey, weightBps: number) => Promise<string>;
   collectFees: () => Promise<string>;
@@ -94,7 +95,7 @@ export function useFund(): FundState {
   // All senders rebuild against a freshly-loaded view so account derivations (asset
   // count, mints, router) reflect the latest chain state, then refresh the UI.
   const withFreshView = useCallback(
-    async (send: (view: FundView, manager: PublicKey) => Promise<string>) => {
+    async (send: (view: FundView, wallet: PublicKey) => Promise<string>) => {
       if (!anchorWallet) throw new Error("Connect a wallet first.");
       const view = await loadFundView(connection, program);
       if (!view.exists) throw new Error("Fund not found on this cluster.");
@@ -122,11 +123,9 @@ export function useFund(): FundState {
   );
 
   const rebalance = useCallback(
-    (sellIndex: number, buyIndex: number, sellAmount: bigint, usdcToInvest: bigint) =>
+    (sellIndex: number, buyIndex: number) =>
       withFreshView(async (view, wallet) =>
-        sendIxs(program, [
-          await buildRebalanceIx(program, view, wallet, sellIndex, buyIndex, sellAmount, usdcToInvest),
-        ]),
+        sendIxs(program, [await buildRebalanceIx(program, view, wallet, sellIndex, buyIndex)]),
       ),
     [program, withFreshView],
   );

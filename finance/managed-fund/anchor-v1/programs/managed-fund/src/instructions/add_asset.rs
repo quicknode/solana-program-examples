@@ -76,6 +76,7 @@ pub fn handle_add_asset(
         fund: fund.key(),
         index,
         mint: context.accounts.asset_mint.key(),
+        decimals: context.accounts.asset_mint.decimals,
         // Copied from the registry entry, never supplied by the manager.
         price_feed: context.accounts.approved_asset.price_feed,
         vault: context.accounts.vault_asset.key(),

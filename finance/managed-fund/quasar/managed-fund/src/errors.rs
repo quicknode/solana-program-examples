@@ -34,4 +34,10 @@ pub enum FundError {
     DepositTooSmall,
     /// A rebalance would sell or spend more than the recorded holdings.
     InsufficientHoldings,
+    /// Rebalance threshold is outside the allowed range.
+    RebalanceThresholdOutOfRange,
+    /// The asset to sell is not far enough above its target weight to rebalance.
+    DriftBelowThreshold,
+    /// The asset to buy is not below its target weight.
+    NotUnderweight,
 }

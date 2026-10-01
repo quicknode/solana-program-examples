@@ -47,9 +47,17 @@ pub struct Fund {
     pub registry: Address,
     pub share_mint: Address,
     pub usdc_mint: Address,
+    /// The USDC mint's decimals, read from the mint at creation. Valuation
+    /// scales every asset into these minor units.
+    pub usdc_decimals: u8,
     pub swap_router: Address,
     pub fee_bps: u16,
     pub max_slippage_bps: u16,
+    /// How far, in basis points of the fund's value, an asset must sit above its
+    /// target weight before `rebalance` may sell it. Set at creation within
+    /// MIN/MAX_REBALANCE_THRESHOLD_BPS and never changed, so nobody can lower it
+    /// later to trade the fund on every small price move.
+    pub rebalance_threshold_bps: u16,
     pub total_shares: u64,
     /// USDC the program has accounted for in the USDC vault: deposits in, swap
     /// spending and withdrawals out. Share prices and payouts use this, never the
@@ -78,11 +86,17 @@ pub struct AssetConfig {
     pub fund: Address,
     pub index: u8,
     pub mint: Address,
+    /// The asset mint's decimals, read from the mint when the asset is added.
+    /// Valuation scales by them, so a basket can mix assets of any precision.
+    pub decimals: u8,
     /// Price feed account, copied from the registry's ApprovedAsset at add time
     /// so the manager cannot substitute a feed they control.
     pub price_feed: Address,
     /// Fund-owned token account holding this asset.
     pub vault: Address,
+    /// Target share of the fund's value in basis points. deposit deploys at these
+    /// weights (the sum across assets must reach 10000 before deposits open), and
+    /// rebalance restores them once prices drift past the fund's threshold.
     pub weight_bps: u16,
     pub bump: u8,
 }
@@ -109,9 +123,11 @@ pub fn snapshot_fund(fund: &Account<Fund>) -> FundInner {
         registry: fund.registry,
         share_mint: fund.share_mint,
         usdc_mint: fund.usdc_mint,
+        usdc_decimals: fund.usdc_decimals,
         swap_router: fund.swap_router,
         fee_bps: u16::from(fund.fee_bps),
         max_slippage_bps: u16::from(fund.max_slippage_bps),
+        rebalance_threshold_bps: u16::from(fund.rebalance_threshold_bps),
         total_shares: u64::from(fund.total_shares),
         usdc_holdings: u64::from(fund.usdc_holdings),
         asset_holdings: fund.asset_holdings,
@@ -128,6 +144,7 @@ pub struct AssetConfigView {
     pub fund: Address,
     pub index: u8,
     pub mint: Address,
+    pub decimals: u8,
     pub price_feed: Address,
     pub vault: Address,
     pub weight_bps: u16,
@@ -142,6 +159,7 @@ pub fn load_asset_config(view: &AccountView) -> Result<AssetConfigView, ProgramE
         fund: account.fund,
         index: account.index,
         mint: account.mint,
+        decimals: account.decimals,
         price_feed: account.price_feed,
         vault: account.vault,
         weight_bps: u16::from(account.weight_bps),

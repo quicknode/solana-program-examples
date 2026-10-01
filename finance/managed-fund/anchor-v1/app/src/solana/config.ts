@@ -32,6 +32,7 @@ export const MAX_ASSETS = 16;
 export const MAX_FEE_BPS = 1_000; // 10%
 export const MAX_SLIPPAGE_BPS = 1_000; // 10%
 export const BPS_DENOMINATOR = 10_000;
-export const PYTH_PRICE_PRECISION = 100_000_000n; // 10^8, Pyth exponent -8
+export const MIN_REBALANCE_THRESHOLD_BPS = 100; // 1%
+export const MAX_REBALANCE_THRESHOLD_BPS = 2_000; // 20%
 export const MAX_PRICE_AGE_SECONDS = 60;
 export const SHARE_DECIMALS = 6; // share_mint is created with mint::decimals = 6

@@ -46,7 +46,7 @@ pub enum FundError {
     NegativePrice,
     #[msg("Pyth price feed is stale")]
     StalePriceFeed,
-    #[msg("Sell and buy mints must be different")]
+    #[msg("Sell and buy assets must be different")]
     SameMint,
     #[msg("USDC mint does not match the fund's registered USDC mint")]
     InvalidUsdcMint,
@@ -60,4 +60,10 @@ pub enum FundError {
     DepositTooSmall,
     #[msg("Rebalance spends more than the fund's recorded holdings")]
     InsufficientHoldings,
+    #[msg("Rebalance threshold is outside the allowed range")]
+    RebalanceThresholdOutOfRange,
+    #[msg("The asset to sell is not far enough above its target weight to rebalance")]
+    DriftBelowThreshold,
+    #[msg("The asset to buy is not below its target weight")]
+    NotUnderweight,
 }
