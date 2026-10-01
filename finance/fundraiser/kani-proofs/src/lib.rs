@@ -10,58 +10,83 @@
 //! The program collects contributions into a vault toward a goal; if the goal
 //! is not met by the deadline, every contributor reclaims their exact stake.
 //! Token movement is via SPL CPIs Kani cannot symbolically execute, but the
-//! accounting (`contribute`, `refund`) is pure integer arithmetic. This crate
-//! reproduces it faithfully and checks the per-contributor cap, the running-
-//! total accounting, and refund conservation.
+//! accounting (`contribute`, `refund`, `close_contributor`) is pure integer
+//! arithmetic. This crate reproduces it faithfully and checks the contributor
+//! account counter, the running-total accounting, and refund conservation.
 
 #![cfg_attr(kani, allow(dead_code))]
 
-/// `contribute::MAX_CONTRIBUTION_PERCENTAGE` / `PERCENTAGE_SCALER`. The program
-/// ships these as a percentage cap; the exact values do not matter to the check,
-/// only that the cap is `goal * pct / scaler`.
-pub const MAX_CONTRIBUTION_PERCENTAGE: u128 = 10; // 10%
-pub const PERCENTAGE_SCALER: u128 = 100;
+/// How many contributors the counter harness tracks.
+pub const CONTRIBUTORS: usize = 3;
 
-/// `calculate_max_contribution`: the per-contributor cap is a fixed percentage
-/// of the goal.
-pub fn max_contribution(amount_to_raise: u64) -> Option<u64> {
-    ((amount_to_raise as u128) * MAX_CONTRIBUTION_PERCENTAGE / PERCENTAGE_SCALER)
-        .try_into()
-        .ok()
+/// One step of a fundraiser's life, as it affects contributor accounts.
+#[derive(Clone, Copy)]
+pub enum ContributorAccountStep {
+    /// `contribute` from this contributor: creates their account on the first
+    /// call and adds to it on later ones.
+    Contribute(usize),
+    /// `refund` or `close_contributor` for this contributor: both close the
+    /// account, and both fail if it does not exist.
+    Close(usize),
+}
+
+/// Replays `contribute`, `refund` and `close_contributor`'s bookkeeping on
+/// `open_contributor_accounts`. Returns `None` where the program would reject
+/// the step, as it does when the account to close does not exist.
+pub fn apply_step(
+    open_accounts: &mut [bool; CONTRIBUTORS],
+    open_contributor_accounts: u32,
+    step: ContributorAccountStep,
+) -> Option<u32> {
+    match step {
+        ContributorAccountStep::Contribute(contributor) => {
+            if open_accounts[contributor] {
+                Some(open_contributor_accounts)
+            } else {
+                open_accounts[contributor] = true;
+                open_contributor_accounts.checked_add(1)
+            }
+        }
+        ContributorAccountStep::Close(contributor) => {
+            if !open_accounts[contributor] {
+                return None;
+            }
+            open_accounts[contributor] = false;
+            open_contributor_accounts.checked_sub(1)
+        }
+    }
 }
 
 // ===========================================================================
-// 1. Per-contributor cap
+// 1. Contributor account counter
 // ===========================================================================
 
-/// The cap is never more than the goal itself, and `contribute`'s
-/// `cumulative <= max_contribution` check keeps every contributor's running
-/// total within it (so `checked_add` of a new contribution onto an at-cap
-/// balance can only succeed below the cap). Captures the bound the on-chain
-/// `MaximumContributionsReached` guard enforces.
+/// `fundraiser.open_contributor_accounts` always equals the number of
+/// contributor accounts that exist for the fundraiser, whatever order
+/// contributions, refunds and closes arrive in. `close_fundraiser` requires
+/// the counter to be zero, so this is what guarantees no contributor account
+/// outlives its fundraiser and carries over into the next raise at the same
+/// address.
 #[cfg(kani)]
 #[kani::proof]
-#[kani::solver(cadical)]
-fn proof_contribution_cap_bounds() {
-    let amount_to_raise: u64 = kani::any();
-    let prior: u64 = kani::any(); // contributor's existing cumulative total
-    let amount: u64 = kani::any(); // new contribution
+#[kani::unwind(9)]
+fn proof_open_contributor_accounts_counts_open_accounts() {
+    let mut open_accounts = [false; CONTRIBUTORS];
+    let mut open_contributor_accounts: u32 = 0;
 
-    kani::assume(amount_to_raise as u128 <= 4095);
-
-    let cap = max_contribution(amount_to_raise).expect("computes");
-    // The cap never exceeds the goal (10% <= 100%).
-    assert!(cap as u128 <= amount_to_raise as u128);
-
-    // The on-chain check: a contribution is accepted only if the new cumulative
-    // stays within the cap.
-    kani::assume(prior <= cap);
-    if let Some(cumulative) = prior.checked_add(amount) {
-        if cumulative <= cap {
-            // Accepted contributions keep the contributor at or below the cap.
-            assert!(cumulative <= cap);
-            assert!(cumulative <= amount_to_raise); // ...and below the goal
+    for _ in 0..8 {
+        let contributor: usize = kani::any();
+        kani::assume(contributor < CONTRIBUTORS);
+        let step = if kani::any() {
+            ContributorAccountStep::Contribute(contributor)
+        } else {
+            ContributorAccountStep::Close(contributor)
+        };
+        if let Some(updated) = apply_step(&mut open_accounts, open_contributor_accounts, step) {
+            open_contributor_accounts = updated;
         }
+        let actually_open = open_accounts.iter().filter(|open| **open).count() as u32;
+        assert_eq!(open_contributor_accounts, actually_open);
     }
 }
 
@@ -131,9 +156,24 @@ mod tests {
     use super::*;
 
     #[test]
-    fn cap_is_ten_percent() {
-        assert_eq!(max_contribution(1000).unwrap(), 100);
-        assert!(max_contribution(1000).unwrap() <= 1000);
+    fn counter_tracks_contributor_accounts() {
+        let mut open_accounts = [false; CONTRIBUTORS];
+        let mut counter = 0u32;
+        for step in [
+            ContributorAccountStep::Contribute(0),
+            ContributorAccountStep::Contribute(0),
+            ContributorAccountStep::Contribute(2),
+            ContributorAccountStep::Close(0),
+        ] {
+            counter = apply_step(&mut open_accounts, counter, step).unwrap();
+        }
+        assert_eq!(counter, 1);
+        assert!(apply_step(
+            &mut open_accounts,
+            counter,
+            ContributorAccountStep::Close(1)
+        )
+        .is_none());
     }
 
     #[test]

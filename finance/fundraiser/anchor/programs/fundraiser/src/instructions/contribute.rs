@@ -5,7 +5,7 @@ use anchor_spl::token_interface::{
 
 use crate::{
     state::{Contributor, Fundraiser},
-    FundraiserError, MAX_CONTRIBUTION_PERCENTAGE, PERCENTAGE_SCALER, SECONDS_TO_DAYS,
+    FundraiserError, SECONDS_TO_DAYS,
 };
 
 #[derive(Accounts)]
@@ -53,18 +53,6 @@ pub struct ContributeAccountConstraints {
     pub system_program: Program<System>,
 }
 
-/// Caps a single contributor at MAX_CONTRIBUTION_PERCENTAGE percent of the
-/// target. Multiplies in u128 so the product cannot overflow u64.
-fn calculate_max_contribution(amount_to_raise: u64) -> Result<u64> {
-    (amount_to_raise as u128)
-        .checked_mul(MAX_CONTRIBUTION_PERCENTAGE as u128)
-        .ok_or(FundraiserError::MathOverflow)?
-        .checked_div(PERCENTAGE_SCALER as u128)
-        .ok_or(FundraiserError::MathOverflow)?
-        .try_into()
-        .map_err(|_| FundraiserError::MathOverflow.into())
-}
-
 pub fn handle_contribute(
     accounts: &mut ContributeAccountConstraints,
     amount: u64,
@@ -79,13 +67,13 @@ pub fn handle_contribute(
         FundraiserError::ContributionTooSmall
     );
 
-    let max_contribution = calculate_max_contribution(accounts.fundraiser.amount_to_raise)?;
+    // A claimed fundraiser has paid its vault out to the maker, so a later
+    // contribution would go to the maker with no refund path.
     require!(
-        amount <= max_contribution,
-        FundraiserError::ContributionTooBig
+        !accounts.fundraiser.claimed,
+        FundraiserError::FundraiserClaimed
     );
 
-    // Contributions are allowed while elapsed_days < duration.
     let current_time = Clock::get()?.unix_timestamp;
     let elapsed_days = current_time
         .checked_sub(accounts.fundraiser.time_started)
@@ -97,16 +85,11 @@ pub fn handle_contribute(
         FundraiserError::FundraiserEnded
     );
 
-    // The contributor's cumulative total must also stay within the cap.
     let cumulative_contribution = accounts
         .contributor_account
         .amount
         .checked_add(amount)
         .ok_or(FundraiserError::MathOverflow)?;
-    require!(
-        cumulative_contribution <= max_contribution,
-        FundraiserError::MaximumContributionsReached
-    );
 
     // Checks-effects-interactions: update state before the transfer CPI.
     accounts.fundraiser.current_amount = accounts
@@ -116,10 +99,16 @@ pub fn handle_contribute(
         .ok_or(FundraiserError::MathOverflow)?;
     accounts.contributor_account.amount = cumulative_contribution;
 
-    // Save the contributor PDA bump on first init (init_if_needed only
-    // runs the init branch once; stored bump is zero until set).
+    // On first init (init_if_needed only runs the init branch once; the
+    // stored bump is zero until set), save the contributor PDA bump and count
+    // the new contributor account against the fundraiser.
     if accounts.contributor_account.bump == 0 {
         accounts.contributor_account.bump = bumps.contributor_account;
+        accounts.fundraiser.open_contributor_accounts = accounts
+            .fundraiser
+            .open_contributor_accounts
+            .checked_add(1)
+            .ok_or(FundraiserError::MathOverflow)?;
     }
 
     // Transfer the funds from the contributor to the vault.
