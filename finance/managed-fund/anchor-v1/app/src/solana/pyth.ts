@@ -3,13 +3,16 @@
 // dodge borsh/SDK version drift; the client must read them the same way to agree on NAV.
 
 const PYTH_PRICE_OFFSET = 73; // i64 price
+const PYTH_EXPONENT_OFFSET = 89; // i32 exponent (after price and conf)
 const PYTH_PUBLISH_TIME_OFFSET = 93; // i64 publish_time
 const TOKEN_AMOUNT_OFFSET = 64; // u64 amount in an SPL token account
 const MINT_DECIMALS_OFFSET = 44; // u8 decimals in an SPL mint account
 
 export interface PythPrice {
-  /** Price as an integer at exponent -8 (Pyth USD pairs). Divide by 10^8 for dollars. */
+  /** Price as an integer: `price * 10^exponent` dollars per whole token. */
   price: bigint;
+  /** Read from the feed, never assumed: crypto USD feeds use -8, US equity feeds -5. */
+  exponent: number;
   /** Unix seconds of the last update. */
   publishTime: number;
 }
@@ -25,6 +28,7 @@ export function parsePriceUpdateV2(data: Uint8Array): PythPrice {
   const dv = view(data);
   return {
     price: dv.getBigInt64(PYTH_PRICE_OFFSET, true),
+    exponent: dv.getInt32(PYTH_EXPONENT_OFFSET, true),
     publishTime: Number(dv.getBigInt64(PYTH_PUBLISH_TIME_OFFSET, true)),
   };
 }

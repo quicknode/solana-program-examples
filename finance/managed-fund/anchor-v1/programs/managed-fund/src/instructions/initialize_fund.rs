@@ -19,6 +19,15 @@ pub const MAX_FEE_BPS: u16 = 1_000;
 /// that the bound is meaningless.
 pub const MAX_SLIPPAGE_BPS: u16 = 1_000;
 
+/// Lowest rebalance threshold a manager may set, in basis points of the fund's
+/// value (one percentage point). Every rebalance pays slippage, so a threshold
+/// near zero would let anyone trade the fund on every small price move.
+pub const MIN_REBALANCE_THRESHOLD_BPS: u16 = 100;
+
+/// Highest rebalance threshold a manager may set (twenty percentage points).
+/// Past that, the target weights stop describing what the fund holds.
+pub const MAX_REBALANCE_THRESHOLD_BPS: u16 = 2_000;
+
 #[derive(Accounts)]
 #[instruction(index: u64)]
 pub struct InitializeFundAccountConstraints<'info> {
@@ -71,12 +80,18 @@ pub fn handle_initialize_fund(
     index: u64,
     fee_bps: u16,
     max_slippage_bps: u16,
+    rebalance_threshold_bps: u16,
     swap_router: Pubkey,
 ) -> Result<()> {
     require!(fee_bps <= MAX_FEE_BPS, FundError::FeeTooHigh);
     require!(
         max_slippage_bps <= MAX_SLIPPAGE_BPS,
         FundError::SlippageConfigTooHigh
+    );
+    require!(
+        (MIN_REBALANCE_THRESHOLD_BPS..=MAX_REBALANCE_THRESHOLD_BPS)
+            .contains(&rebalance_threshold_bps),
+        FundError::RebalanceThresholdOutOfRange
     );
 
     let clock = Clock::get()?;
@@ -87,9 +102,11 @@ pub fn handle_initialize_fund(
         registry: context.accounts.registry.key(),
         share_mint: context.accounts.share_mint.key(),
         usdc_mint: context.accounts.usdc_mint.key(),
+        usdc_decimals: context.accounts.usdc_mint.decimals,
         swap_router,
         fee_bps,
         max_slippage_bps,
+        rebalance_threshold_bps,
         total_shares: 0,
         usdc_holdings: 0,
         asset_holdings: [0; MAX_ASSETS as usize],

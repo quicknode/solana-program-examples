@@ -51,6 +51,7 @@ mod quasar_managed_fund {
         index: u64,
         fee_bps: u16,
         max_slippage_bps: u16,
+        rebalance_threshold_bps: u16,
         swap_router: Address,
     ) -> Result<(), ProgramError> {
         instructions::initialize_fund::handle_initialize_fund(
@@ -58,6 +59,7 @@ mod quasar_managed_fund {
             index,
             fee_bps,
             max_slippage_bps,
+            rebalance_threshold_bps,
             swap_router,
             &ctx.bumps,
         )
@@ -122,14 +124,21 @@ mod quasar_managed_fund {
         )
     }
 
-    /// Sell one basket asset for USDC and buy another with it, keeping the
-    /// basket near its target weights. Manager only.
+    /// Sell an asset that has drifted above its target weight and buy one below
+    /// its target. Anyone may call it: the program computes the trade, so the
+    /// caller chooses only which pair to restore.
     #[instruction(discriminator = 8)]
     pub fn rebalance(
-        ctx: Ctx<RebalanceAccountConstraints>,
-        sell_amount: u64,
-        usdc_to_invest: u64,
+        ctx: CtxWithRemaining<RebalanceAccountConstraints>,
+        sell_index: u8,
+        buy_index: u8,
     ) -> Result<(), ProgramError> {
-        instructions::rebalance::handle_rebalance(&mut ctx.accounts, sell_amount, usdc_to_invest)
+        let remaining = ctx.remaining_accounts();
+        instructions::rebalance::handle_rebalance(
+            &mut ctx.accounts,
+            remaining,
+            sell_index,
+            buy_index,
+        )
     }
 }

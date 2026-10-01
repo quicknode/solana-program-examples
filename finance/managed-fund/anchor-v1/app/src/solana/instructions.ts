@@ -117,43 +117,38 @@ export async function buildWithdrawIxs(
 
 // ---- manager ---------------------------------------------------------------
 
-/** rebalance(sell_amount, usdc_to_invest): sell one asset for USDC, buy another. */
+/**
+ * rebalance(sell_index, buy_index): permissionless. The program values every asset and
+ * sizes the trade itself, so it takes the same remaining_accounts as deposit, per asset:
+ * [asset_config(ro), vault(rw), mint(rw), rate(ro), price_feed(ro)].
+ */
 export function buildRebalanceIx(
   program: FundProgram,
   view: FundView,
-  manager: PublicKey,
+  caller: PublicKey,
   sellIndex: number,
   buyIndex: number,
-  sellAmount: bigint,
-  usdcToInvest: bigint,
 ): Promise<TransactionInstruction> {
   const s = requireAccount(view);
   const router = s.swapRouter;
-  const sell = view.assets[sellIndex];
-  const buy = view.assets[buyIndex];
-  if (!sell || !buy) throw new Error("sell/buy asset index out of range");
+  if (!view.assets[sellIndex] || !view.assets[buyIndex]) throw new Error("sell/buy asset index out of range");
+  const remaining: AccountMeta[] = [];
+  for (const a of view.assets) {
+    remaining.push(ro(a.config), rw(a.vault), rw(a.mint), ro(assetRatePda(a.mint, router)), ro(a.priceFeed));
+  }
   return program.methods
-    .rebalance(bn(sellAmount), bn(usdcToInvest))
+    .rebalance(sellIndex, buyIndex)
     .accountsStrict({
-      manager,
+      caller,
       fund: view.fund,
       usdcMint: s.usdcMint,
-      sellMint: sell.mint,
-      buyMint: buy.mint,
-      sellConfig: sell.config,
-      buyConfig: buy.config,
-      sellPriceFeed: sell.priceFeed,
-      buyPriceFeed: buy.priceFeed,
-      vaultSell: sell.vault,
-      vaultBuy: buy.vault,
       vaultUsdc: view.usdcVault,
-      sellRate: assetRatePda(sell.mint, router),
-      buyRate: assetRatePda(buy.mint, router),
       routerConfig: routerConfigPda(router),
       routerUsdcTreasury: routerUsdcTreasury(s.usdcMint, router),
       swapRouterProgram: router,
       ...TOKEN_PROGRAMS,
     })
+    .remainingAccounts(remaining)
     .instruction();
 }
 
@@ -227,14 +222,15 @@ export interface InitializeFundParams {
   index: bigint;
   feeBps: number;
   maxSlippageBps: number;
+  rebalanceThresholdBps: number;
   swapRouter: PublicKey;
 }
 
-/** initialize_fund(index, fee_bps, max_slippage_bps, swap_router). */
+/** initialize_fund(index, fee_bps, max_slippage_bps, rebalance_threshold_bps, swap_router). */
 export function buildInitializeFundIx(program: FundProgram, p: InitializeFundParams): Promise<TransactionInstruction> {
   const fund = fundPda(p.index);
   return program.methods
-    .initializeFund(bn(p.index), p.feeBps, p.maxSlippageBps, p.swapRouter)
+    .initializeFund(bn(p.index), p.feeBps, p.maxSlippageBps, p.rebalanceThresholdBps, p.swapRouter)
     .accountsStrict({
       manager: p.manager,
       usdcMint: p.usdcMint,

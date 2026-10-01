@@ -94,9 +94,11 @@ if (program) {
       registry: PublicKey.default,
       shareMint: PublicKey.default,
       usdcMint: PublicKey.default,
+      usdcDecimals: 6,
       swapRouter: PublicKey.default,
       feeBps: 100,
       maxSlippageBps: 250,
+      rebalanceThresholdBps: 500,
       totalShares: new BN("1350000000"),
       usdcHoldings: new BN("1000"),
       assetHoldings: Array.from({ length: 16 }, (_, i) => new BN(i === 1 ? 2880000 : 0)),
@@ -111,7 +113,9 @@ if (program) {
     const good =
       decoded.index.toString() === "7" &&
       decoded.feeBps === 100 &&
+      decoded.usdcDecimals === 6 &&
       decoded.maxSlippageBps === 250 &&
+      decoded.rebalanceThresholdBps === 500 &&
       decoded.assetCount === 2 &&
       decoded.totalWeightBps === 10000 &&
       decoded.totalShares.toString() === "1350000000" &&
@@ -121,9 +125,29 @@ if (program) {
   } catch (e) {
     fail("Fund round-trip", e.message);
   }
+
+  // 5. Round-trip an AssetConfig, whose decimals the client valuation depends on.
+  try {
+    const sample = {
+      fund: PublicKey.default,
+      index: 1,
+      mint: PublicKey.default,
+      decimals: 8,
+      priceFeed: PublicKey.default,
+      vault: PublicKey.default,
+      weightBps: 4000,
+      bump: 253,
+    };
+    const encoded = await program.coder.accounts.encode("assetConfig", sample);
+    const decoded = program.coder.accounts.decode("assetConfig", encoded);
+    const good = decoded.index === 1 && decoded.decimals === 8 && decoded.weightBps === 4000 && decoded.bump === 253;
+    good ? ok("AssetConfig encode/decode round-trip") : fail("AssetConfig round-trip", JSON.stringify(decoded));
+  } catch (e) {
+    fail("AssetConfig round-trip", e.message);
+  }
 }
 
-// 5. Derive the key PDAs (sanity + reference values).
+// 6. Derive the key PDAs (sanity + reference values).
 console.log("PDAs (index 0)");
 const u64le = (n) => {
   const b = Buffer.alloc(8);

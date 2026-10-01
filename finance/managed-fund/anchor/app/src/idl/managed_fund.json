@@ -569,6 +569,10 @@
           "type": "u16"
         },
         {
+          "name": "rebalance_threshold_bps",
+          "type": "u16"
+        },
+        {
           "name": "swap_router",
           "type": "pubkey"
         }
@@ -576,12 +580,21 @@
     },
     {
       "name": "rebalance",
+      "docs": [
+        "Sell an asset that has drifted above its target weight and buy one below",
+        "its target. Anyone may call it: the program computes the trade, so the",
+        "caller chooses only which pair to restore."
+      ],
       "discriminator": [108, 158, 77, 9, 210, 52, 88, 62],
       "accounts": [
         {
-          "name": "manager",
-          "signer": true,
-          "relations": ["fund"]
+          "name": "caller",
+          "docs": [
+            "Anyone. The program computes the trade from the oracle and the target",
+            "weights, so the caller chooses nothing but which pair to restore, and",
+            "pays the transaction fee."
+          ],
+          "signer": true
         },
         {
           "name": "fund",
@@ -603,80 +616,6 @@
         {
           "name": "usdc_mint",
           "relations": ["fund"]
-        },
-        {
-          "name": "sell_mint",
-          "writable": true
-        },
-        {
-          "name": "buy_mint",
-          "writable": true
-        },
-        {
-          "name": "sell_config"
-        },
-        {
-          "name": "buy_config"
-        },
-        {
-          "name": "sell_price_feed"
-        },
-        {
-          "name": "buy_price_feed"
-        },
-        {
-          "name": "vault_sell",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "account",
-                "path": "fund"
-              },
-              {
-                "kind": "account",
-                "path": "token_program"
-              },
-              {
-                "kind": "account",
-                "path": "sell_mint"
-              }
-            ],
-            "program": {
-              "kind": "const",
-              "value": [
-                140, 151, 37, 143, 78, 36, 137, 241, 187, 61, 16, 41, 20, 142, 13, 131, 11, 90, 19, 153, 218, 255, 16,
-                132, 4, 142, 123, 216, 219, 233, 248, 89
-              ]
-            }
-          }
-        },
-        {
-          "name": "vault_buy",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "account",
-                "path": "fund"
-              },
-              {
-                "kind": "account",
-                "path": "token_program"
-              },
-              {
-                "kind": "account",
-                "path": "buy_mint"
-              }
-            ],
-            "program": {
-              "kind": "const",
-              "value": [
-                140, 151, 37, 143, 78, 36, 137, 241, 187, 61, 16, 41, 20, 142, 13, 131, 11, 90, 19, 153, 218, 255, 16,
-                132, 4, 142, 123, 216, 219, 233, 248, 89
-              ]
-            }
-          }
         },
         {
           "name": "vault_usdc",
@@ -706,12 +645,6 @@
           }
         },
         {
-          "name": "sell_rate"
-        },
-        {
-          "name": "buy_rate"
-        },
-        {
           "name": "router_config",
           "writable": true
         },
@@ -737,12 +670,12 @@
       ],
       "args": [
         {
-          "name": "sell_amount",
-          "type": "u64"
+          "name": "sell_index",
+          "type": "u8"
         },
         {
-          "name": "usdc_to_invest",
-          "type": "u64"
+          "name": "buy_index",
+          "type": "u8"
         }
       ]
     },
@@ -1068,7 +1001,7 @@
     {
       "code": 6022,
       "name": "SameMint",
-      "msg": "Sell and buy mints must be different"
+      "msg": "Sell and buy assets must be different"
     },
     {
       "code": 6023,
@@ -1099,6 +1032,21 @@
       "code": 6028,
       "name": "InsufficientHoldings",
       "msg": "Rebalance spends more than the fund's recorded holdings"
+    },
+    {
+      "code": 6029,
+      "name": "RebalanceThresholdOutOfRange",
+      "msg": "Rebalance threshold is outside the allowed range"
+    },
+    {
+      "code": 6030,
+      "name": "DriftBelowThreshold",
+      "msg": "The asset to sell is not far enough above its target weight to rebalance"
+    },
+    {
+      "code": 6031,
+      "name": "NotUnderweight",
+      "msg": "The asset to buy is not below its target weight"
     }
   ],
   "types": [
@@ -1158,6 +1106,14 @@
             "type": "pubkey"
           },
           {
+            "name": "decimals",
+            "docs": [
+              "The asset mint's decimals, read from the mint when the asset is added.",
+              "Valuation scales by them, so a basket can mix assets of any precision."
+            ],
+            "type": "u8"
+          },
+          {
             "name": "price_feed",
             "docs": [
               "Pyth PriceUpdateV2 account, copied from the registry's ApprovedAsset at",
@@ -1174,35 +1130,10 @@
             "name": "weight_bps",
             "docs": [
               "Target share of the fund's value in basis points. deposit deploys at these",
-              "weights (the sum across assets must reach 10000 before deposits open), and the",
-              "manager maintains them against price drift with rebalance."
+              "weights (the sum across assets must reach 10000 before deposits open), and",
+              "rebalance restores them once prices drift past the fund's threshold."
             ],
             "type": "u16"
-          },
-          {
-            "name": "bump",
-            "type": "u8"
-          }
-        ]
-      }
-    },
-    {
-      "name": "AssetRate",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "mint",
-            "type": "pubkey"
-          },
-          {
-            "name": "usdc_per_token",
-            "docs": [
-              "USDC base units per token base unit.",
-              "e.g. 250 means 1 token base unit = 250 USDC base units",
-              "(so 1.0 TSLAx = $250 when both have 6 decimals)"
-            ],
-            "type": "u64"
           },
           {
             "name": "bump",
@@ -1275,6 +1206,14 @@
             "type": "pubkey"
           },
           {
+            "name": "usdc_decimals",
+            "docs": [
+              "The USDC mint's decimals, read from the mint at creation. Valuation",
+              "scales every asset into these minor units."
+            ],
+            "type": "u8"
+          },
+          {
             "name": "swap_router",
             "type": "pubkey"
           },
@@ -1288,6 +1227,16 @@
             "docs": [
               "Maximum tolerated deviation, in basis points, between a swap's output and",
               "the Pyth-implied amount on deposit/rebalance. Bounded by MAX_SLIPPAGE_BPS."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "rebalance_threshold_bps",
+            "docs": [
+              "How far, in basis points of the fund's value, an asset must sit above its",
+              "target weight before `rebalance` may sell it. Set at creation within",
+              "MIN/MAX_REBALANCE_THRESHOLD_BPS and never changed, so nobody can lower it",
+              "later to trade the fund on every small price move."
             ],
             "type": "u16"
           },

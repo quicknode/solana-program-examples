@@ -3,19 +3,23 @@ use anchor_spl::{
     associated_token::AssociatedToken,
     token_interface::{Mint, TokenAccount, TokenInterface},
 };
-use mock_swap_router::{
-    cpi::accounts::SwapAssetForUsdcAccountConstraints as RouterSellAccounts,
-    cpi::accounts::SwapUsdcForAssetAccountConstraints as RouterBuyAccounts, state::AssetRate,
+use mock_swap_router::cpi::accounts::{
+    SwapAssetForUsdcAccountConstraints as RouterSellAccounts,
+    SwapUsdcForAssetAccountConstraints as RouterBuyAccounts,
 };
 
 use crate::error::FundError;
-use crate::oracle::{load_price, PYTH_PRICE_PRECISION};
-use crate::state::{AssetConfig, Fund};
+use crate::oracle::{
+    asset_value_in_usdc, load_price, read_token_amount, usdc_to_asset_amount, OraclePrice,
+};
+use crate::state::{AssetConfig, Fund, MAX_ASSETS};
 
 #[derive(Accounts)]
 pub struct RebalanceAccountConstraints {
-    #[account(address = fund.manager)]
-    pub manager: Signer,
+    /// Anyone. The program computes the trade from the oracle and the target
+    /// weights, so the caller chooses nothing but which pair to restore, and
+    /// pays the transaction fee.
+    pub caller: Signer,
 
     #[account(
         mut,
@@ -27,50 +31,6 @@ pub struct RebalanceAccountConstraints {
     #[account(address = fund.usdc_mint @ FundError::InvalidUsdcMint)]
     pub usdc_mint: Box<InterfaceAccount<Mint>>,
 
-    #[account(mut)]
-    pub sell_mint: Box<InterfaceAccount<Mint>>,
-
-    #[account(mut)]
-    pub buy_mint: Box<InterfaceAccount<Mint>>,
-
-    #[account(
-        constraint = sell_config.fund == *fund.address() @ FundError::InvalidAssetAccount,
-        constraint = sell_config.mint == *sell_mint.address() @ FundError::AssetNotFound,
-        constraint = sell_config.vault == *vault_sell.address() @ FundError::InvalidAssetAccount,
-    )]
-    pub sell_config: Box<BorshAccount<AssetConfig>>,
-
-    #[account(
-        constraint = buy_config.fund == *fund.address() @ FundError::InvalidAssetAccount,
-        constraint = buy_config.mint == *buy_mint.address() @ FundError::AssetNotFound,
-        constraint = buy_config.vault == *vault_buy.address() @ FundError::InvalidAssetAccount,
-    )]
-    pub buy_config: Box<BorshAccount<AssetConfig>>,
-
-    /// CHECK: Pyth feed - validated against sell asset's registered feed
-    #[account(constraint = *sell_price_feed.address() == sell_config.price_feed @ FundError::InvalidPriceFeed)]
-    pub sell_price_feed: UncheckedAccount,
-
-    /// CHECK: Pyth feed - validated against buy asset's registered feed
-    #[account(constraint = *buy_price_feed.address() == buy_config.price_feed @ FundError::InvalidPriceFeed)]
-    pub buy_price_feed: UncheckedAccount,
-
-    #[account(
-        mut,
-        associated_token::mint = sell_mint,
-        associated_token::authority = fund,
-        associated_token::token_program = token_program
-    )]
-    pub vault_sell: Box<InterfaceAccount<TokenAccount>>,
-
-    #[account(
-        mut,
-        associated_token::mint = buy_mint,
-        associated_token::authority = fund,
-        associated_token::token_program = token_program
-    )]
-    pub vault_buy: Box<InterfaceAccount<TokenAccount>>,
-
     #[account(
         mut,
         associated_token::mint = usdc_mint,
@@ -78,10 +38,6 @@ pub struct RebalanceAccountConstraints {
         associated_token::token_program = token_program
     )]
     pub vault_usdc: Box<InterfaceAccount<TokenAccount>>,
-
-    pub sell_rate: BorshAccount<AssetRate>,
-
-    pub buy_rate: BorshAccount<AssetRate>,
 
     /// CHECK: Router config PDA
     #[account(mut)]
@@ -100,94 +56,175 @@ pub struct RebalanceAccountConstraints {
     pub associated_token_program: Program<AssociatedToken>,
     pub token_program: Interface<'static, TokenInterface>,
     pub system_program: Program<System>,
+    // remaining_accounts: for each asset index 0..asset_count, in order:
+    //   [asset_config, vault, asset_mint, asset_rate, price_feed]
+    // the same layout as deposit. Every asset is valued, so the targets are
+    // shares of the whole fund.
 }
 
+/// Restore one pair of assets toward their target weights. The asset at
+/// `sell_index` must sit above its target by at least the fund's
+/// `rebalance_threshold_bps` of the fund's value (or be retired, at weight zero,
+/// and still held); the asset at `buy_index` must sit below its target. The
+/// trade is the smaller of the two gaps, so it never pushes either asset past
+/// its target, and a second call straight after finds nothing to do. That is
+/// what lets anyone call it: no caller can choose a trade size, and none can
+/// trade a fund that has not drifted.
 pub fn handle_rebalance(
     context: &mut Context<RebalanceAccountConstraints>,
-    sell_amount: u64,
-    usdc_to_invest: u64,
+    sell_index: u8,
+    buy_index: u8,
 ) -> Result<()> {
-    require!(
-        context.accounts.sell_mint.address() != context.accounts.buy_mint.address(),
-        FundError::SameMint
-    );
+    require!(sell_index != buy_index, FundError::SameMint);
 
     let fund = &context.accounts.fund;
+    let fund_key = *fund.address();
     let fund_index = fund.index;
     let fund_bump = fund.bump;
     let slip = (10_000 - fund.max_slippage_bps) as u128;
+    let threshold_bps = fund.rebalance_threshold_bps as u128;
+    let usdc_decimals = fund.usdc_decimals;
+    let asset_count = fund.asset_count as usize;
+    // Recorded holdings, never vault balances: tokens donated into a vault
+    // cannot make an asset look over its target and force a trade.
+    let mut usdc_holdings = fund.usdc_holdings;
+    let mut asset_holdings = fund.asset_holdings;
+
+    let sell = sell_index as usize;
+    let buy = buy_index as usize;
+    require!(
+        sell < asset_count && buy < asset_count,
+        FundError::InvalidAssetAccount
+    );
+
+    let remaining = context.remaining_accounts()?;
+    require!(
+        remaining.len() == asset_count * 5,
+        FundError::IncompleteAssetAccounts
+    );
 
     let now = Clock::get()?.unix_timestamp;
-    let price_sell = load_price(
-        &context.accounts.sell_price_feed,
-        &context.accounts.sell_config.price_feed,
-        now,
-    )?;
-    let price_buy = load_price(
-        &context.accounts.buy_price_feed,
-        &context.accounts.buy_config.price_feed,
-        now,
-    )?;
 
-    // Sell leg floor: USDC out must be within slippage of the oracle value of what we sell.
-    let expected_usdc = (sell_amount as u128)
-        .checked_mul(price_sell)
-        .ok_or(FundError::MathOverflow)?
-        .checked_div(PYTH_PRICE_PRECISION)
-        .ok_or(FundError::MathOverflow)?;
-    let minimum_usdc_from_sell: u64 = expected_usdc
-        .checked_mul(slip)
+    // Value every asset, exactly as deposit does.
+    let mut nav: u128 = usdc_holdings as u128;
+    let mut values = [0u128; MAX_ASSETS as usize];
+    let mut sell_asset: Option<(AssetConfig, OraclePrice)> = None;
+    let mut buy_asset: Option<(AssetConfig, OraclePrice)> = None;
+    for index in 0..asset_count {
+        let config = AssetConfig::load_checked(&remaining[index * 5])?;
+        require_keys_eq!(config.fund, fund_key, FundError::InvalidAssetAccount);
+        require!(
+            config.index as usize == index,
+            FundError::InvalidAssetAccount
+        );
+        require_keys_eq!(
+            *remaining[index * 5 + 1].address(),
+            config.vault,
+            FundError::InvalidAssetAccount
+        );
+        require_keys_eq!(
+            *remaining[index * 5 + 2].address(),
+            config.mint,
+            FundError::InvalidAssetAccount
+        );
+
+        let price = load_price(&remaining[index * 5 + 4], &config.price_feed, now)?;
+        values[index] = asset_value_in_usdc(
+            asset_holdings[index] as u128,
+            price,
+            config.decimals,
+            usdc_decimals,
+        )?;
+        nav = nav
+            .checked_add(values[index])
+            .ok_or(FundError::MathOverflow)?;
+
+        if index == sell {
+            sell_asset = Some((config, price));
+        } else if index == buy {
+            buy_asset = Some((config, price));
+        }
+    }
+    let (sell_config, sell_price) = sell_asset.ok_or(FundError::InvalidAssetAccount)?;
+    let (buy_config, buy_price) = buy_asset.ok_or(FundError::InvalidAssetAccount)?;
+
+    let target = |weight_bps: u16| -> Result<u128> {
+        nav.checked_mul(weight_bps as u128)
+            .ok_or(FundError::MathOverflow)?
+            .checked_div(10_000)
+            .ok_or(FundError::MathOverflow.into())
+    };
+
+    // The sell side: how far above its target the asset sits. A retired asset
+    // may always be sold down; any other only once the gap reaches the
+    // threshold, so the fund does not trade on every small price move.
+    let excess = values[sell].saturating_sub(target(sell_config.weight_bps)?);
+    let threshold_value = nav
+        .checked_mul(threshold_bps)
         .ok_or(FundError::MathOverflow)?
         .checked_div(10_000)
-        .ok_or(FundError::MathOverflow)?
-        .try_into()
-        .map_err(|_| FundError::MathOverflow)?;
-
-    // Buy leg floor: asset out must be within slippage of the oracle-implied amount.
-    let expected_buy = (usdc_to_invest as u128)
-        .checked_mul(PYTH_PRICE_PRECISION)
-        .ok_or(FundError::MathOverflow)?
-        .checked_div(price_buy)
         .ok_or(FundError::MathOverflow)?;
-    let minimum_buy_amount: u64 = expected_buy
-        .checked_mul(slip)
-        .ok_or(FundError::MathOverflow)?
-        .checked_div(10_000)
-        .ok_or(FundError::MathOverflow)?
-        .try_into()
-        .map_err(|_| FundError::MathOverflow)?;
-
-    // Rebalancing may only trade what the program has accounted for: tokens
-    // donated into a vault are outside the fund, so they can be neither sold nor
-    // spent. The legs below record what each swap actually moved.
-    let sell_index = context.accounts.sell_config.index as usize;
-    let buy_index = context.accounts.buy_config.index as usize;
-    let mut usdc_holdings = context.accounts.fund.usdc_holdings;
-    let mut asset_holdings = context.accounts.fund.asset_holdings;
     require!(
-        sell_amount <= asset_holdings[sell_index],
+        excess > 0 && (sell_config.weight_bps == 0 || excess >= threshold_value),
+        FundError::DriftBelowThreshold
+    );
+
+    // The buy side: how far below its target the asset sits.
+    let shortfall = target(buy_config.weight_bps)?.saturating_sub(values[buy]);
+    require!(shortfall > 0, FundError::NotUnderweight);
+
+    // Trade the smaller gap, so neither asset ends up past its target.
+    let trade_value = excess.min(shortfall);
+    let sell_amount: u64 =
+        usdc_to_asset_amount(trade_value, sell_price, sell_config.decimals, usdc_decimals)?
+            .try_into()
+            .map_err(|_| FundError::MathOverflow)?;
+    require!(sell_amount > 0, FundError::DriftBelowThreshold);
+    require!(
+        sell_amount <= asset_holdings[sell],
         FundError::InsufficientHoldings
     );
+
+    // Sell leg floor: USDC out within slippage of the oracle value of what is sold.
+    let minimum_usdc_from_sell: u64 = asset_value_in_usdc(
+        sell_amount as u128,
+        sell_price,
+        sell_config.decimals,
+        usdc_decimals,
+    )?
+    .checked_mul(slip)
+    .ok_or(FundError::MathOverflow)?
+    .checked_div(10_000)
+    .ok_or(FundError::MathOverflow)?
+    .try_into()
+    .map_err(|_| FundError::MathOverflow)?;
 
     let index_bytes = fund_index.to_le_bytes();
     let signer_seeds: &[&[&[u8]]] = &[&[b"fund", index_bytes.as_ref(), &[fund_bump]]];
 
-    // `fund` signs the CPI(s) below. It is a data account holding a live
+    // `fund` signs the CPIs below. It is a data account holding a live
     // borrow on its buffer, which the runtime would reject when the CPI borrows
     // the same account, so hand the borrow back for the duration.
     context.accounts.fund.release_borrow()?;
 
-    let sell_before = context.accounts.vault_sell.amount();
+    let mut vault_sell = remaining[sell * 5 + 1];
+    let mut mint_sell = remaining[sell * 5 + 2];
+    let rate_sell = &remaining[sell * 5 + 3];
+    let mut vault_buy = remaining[buy * 5 + 1];
+    let mut mint_buy = remaining[buy * 5 + 2];
+    let rate_buy = &remaining[buy * 5 + 3];
+
+    let sell_before = read_token_amount(&vault_sell)?;
     let usdc_before_sell = context.accounts.vault_usdc.amount();
 
-    // Step 1: sell basket token -> USDC
+    // Step 1: sell the over-weight asset for USDC.
     let sell_cpi_accounts = RouterSellAccounts {
         caller: context.accounts.fund.to_cpi_handle(),
         router_config: context.accounts.router_config.cpi_handle(),
-        asset_rate: context.accounts.sell_rate.cpi_handle(),
+        asset_rate: CpiHandle::readonly(rate_sell),
         usdc_mint: context.accounts.usdc_mint.to_cpi_handle(),
-        asset_mint: context.accounts.sell_mint.to_cpi_handle_mut(),
-        caller_asset_account: context.accounts.vault_sell.to_cpi_handle_mut(),
+        asset_mint: CpiHandleMut::writable(&mut mint_sell),
+        caller_asset_account: CpiHandleMut::writable(&mut vault_sell),
         caller_usdc_account: context.accounts.vault_usdc.to_cpi_handle_mut(),
         router_usdc_treasury: context.accounts.router_usdc_treasury.cpi_handle_mut(),
         associated_token_program: context.accounts.associated_token_program.cpi_handle(),
@@ -204,34 +241,48 @@ pub fn handle_rebalance(
         minimum_usdc_from_sell,
     )?;
 
+    // Record what the swap actually moved, measured on the vaults.
     let sold = sell_before
-        .checked_sub(context.accounts.vault_sell.amount())
+        .checked_sub(read_token_amount(&vault_sell)?)
         .ok_or(FundError::MathOverflow)?;
     let usdc_after_sell = context.accounts.vault_usdc.amount();
     let usdc_received = usdc_after_sell
         .checked_sub(usdc_before_sell)
         .ok_or(FundError::MathOverflow)?;
-    asset_holdings[sell_index] = asset_holdings[sell_index]
+    asset_holdings[sell] = asset_holdings[sell]
         .checked_sub(sold)
         .ok_or(FundError::InsufficientHoldings)?;
     usdc_holdings = usdc_holdings
         .checked_add(usdc_received)
         .ok_or(FundError::MathOverflow)?;
-    require!(
-        usdc_to_invest <= usdc_holdings,
-        FundError::InsufficientHoldings
-    );
-    let buy_before = context.accounts.vault_buy.amount();
 
-    // Step 2: buy basket token with USDC
+    // Step 2: spend exactly what the sale brought in on the under-weight asset.
+    // Donated USDC in the vault is never spent, because only the sale's proceeds
+    // are invested.
+    let usdc_to_invest = usdc_received;
+    let minimum_buy_amount: u64 = usdc_to_asset_amount(
+        usdc_to_invest as u128,
+        buy_price,
+        buy_config.decimals,
+        usdc_decimals,
+    )?
+    .checked_mul(slip)
+    .ok_or(FundError::MathOverflow)?
+    .checked_div(10_000)
+    .ok_or(FundError::MathOverflow)?
+    .try_into()
+    .map_err(|_| FundError::MathOverflow)?;
+
+    let buy_before = read_token_amount(&vault_buy)?;
+
     let buy_cpi_accounts = RouterBuyAccounts {
         caller: context.accounts.fund.to_cpi_handle(),
         router_config: context.accounts.router_config.cpi_handle(),
-        asset_rate: context.accounts.buy_rate.cpi_handle(),
+        asset_rate: CpiHandle::readonly(rate_buy),
         usdc_mint: context.accounts.usdc_mint.to_cpi_handle(),
-        asset_mint: context.accounts.buy_mint.to_cpi_handle_mut(),
+        asset_mint: CpiHandleMut::writable(&mut mint_buy),
         caller_usdc_account: context.accounts.vault_usdc.to_cpi_handle_mut(),
-        caller_asset_account: context.accounts.vault_buy.to_cpi_handle_mut(),
+        caller_asset_account: CpiHandleMut::writable(&mut vault_buy),
         router_usdc_treasury: context.accounts.router_usdc_treasury.cpi_handle_mut(),
         associated_token_program: context.accounts.associated_token_program.cpi_handle(),
         token_program: context.accounts.token_program.cpi_handle(),
@@ -247,16 +298,13 @@ pub fn handle_rebalance(
         minimum_buy_amount,
     )?;
 
-    let bought = context
-        .accounts
-        .vault_buy
-        .amount()
+    let bought = read_token_amount(&vault_buy)?
         .checked_sub(buy_before)
         .ok_or(FundError::MathOverflow)?;
     let usdc_spent = usdc_after_sell
         .checked_sub(context.accounts.vault_usdc.amount())
         .ok_or(FundError::MathOverflow)?;
-    asset_holdings[buy_index] = asset_holdings[buy_index]
+    asset_holdings[buy] = asset_holdings[buy]
         .checked_add(bought)
         .ok_or(FundError::MathOverflow)?;
     usdc_holdings = usdc_holdings

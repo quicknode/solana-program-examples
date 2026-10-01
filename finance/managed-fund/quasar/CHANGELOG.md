@@ -1,5 +1,29 @@
 # Changelog
 
+## [2026-10-01]
+
+### Fixed
+
+- Valuation scales by each asset's decimals and each Pyth feed's exponent. It
+  assumed six decimals and an exponent of −8, so an eight-decimal asset was
+  valued 100 times too high. `load_price` reads the exponent at offset 89,
+  `AssetConfig` records `decimals` and `Fund` records `usdc_decimals`, and
+  `deposit` and `rebalance` use `asset_value_in_usdc` and
+  `usdc_to_asset_amount`. The mock router's `usdc_per_token` is now USDC minor
+  units per whole token. Tested by
+  `test_valuation_scales_by_decimals_and_exponent`.
+
+### Changed
+
+- `rebalance(sell_index, buy_index)` is permissionless and sizes its own trade
+  from oracle prices and target weights, once the asset sold is above its
+  target by the fund's `rebalance_threshold_bps`, a new `initialize_fund`
+  argument bounded to 100..=2,000 with no setter. New errors
+  `RebalanceThresholdOutOfRange`, `DriftBelowThreshold` and `NotUnderweight`.
+  Before, the manager chose both legs' amounts and could churn a balanced fund
+  through slippage. Tested by `test_rebalance_cannot_churn` and the other
+  `test_rebalance_*` tests.
+
 ## [2026-09-28]
 
 ### Changed

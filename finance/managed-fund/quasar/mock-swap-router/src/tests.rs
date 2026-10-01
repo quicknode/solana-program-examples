@@ -11,7 +11,7 @@ use {
 };
 
 const DECIMALS: u8 = 6;
-const RATE: u64 = 250; // 250 USDC base units per asset base unit
+const RATE: u64 = 250_000_000; // USDC minor units per whole asset token ($250)
 
 // Deterministic addresses.
 const AUTHORITY: Pubkey = Pubkey::new_from_array([1; 32]);
@@ -27,7 +27,8 @@ fn initialize_and_swap_usdc_for_asset(test: &mut Test) {
     let rate = test.derive_pda(AssetRate::seeds(&ASSET_MINT));
 
     const USDC_IN: u64 = 1_000;
-    const ASSET_OUT: u64 = USDC_IN / RATE; // 4
+    // 1,000 USDC minor units buy 1,000 * 10^6 / 250,000,000 = 4 asset minor units.
+    const ASSET_OUT: u64 = USDC_IN * 10u64.pow(DECIMALS as u32) / RATE; // 4
 
     test.add(Wallet::new().at(AUTHORITY));
     test.add(Mint::new(AUTHORITY).at(USDC_MINT).decimals(DECIMALS));
