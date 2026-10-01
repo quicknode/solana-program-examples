@@ -1,8 +1,6 @@
 use anchor_lang::prelude::*;
 
-use crate::constants::{
-    BASIS_POINTS_DENOMINATOR, FUNDING_PRECISION, PRICE_AVERAGE_WINDOW_SECONDS, SIZE_PRECISION,
-};
+use crate::constants::{BASIS_POINTS_DENOMINATOR, FUNDING_PRECISION, SIZE_PRECISION};
 use crate::errors::PerpError;
 use crate::state::{Pool, Position, Side};
 
@@ -218,102 +216,16 @@ pub fn basis_points_of(amount: u64, basis_points: u16) -> Result<u64> {
         .map_err(|_| PerpError::MathOverflow.into())
 }
 
-/// Fold the elapsed interval into the pool's `average_price`, then record
-/// `price` as the latest observation.
-///
-/// The interval since the last fold is credited to the price observed at
-/// that fold, `last_oracle_price`, on the assumption that it held throughout:
-///
-/// `average += (last_oracle_price - average) * min(elapsed, PRICE_AVERAGE_WINDOW_SECONDS) / PRICE_AVERAGE_WINDOW_SECONDS`
-///
-/// The price read now only starts counting from now, so it moves the average
-/// only if it is still the oracle's price at a later read, weighted by the
-/// seconds between the two reads; a read of a different price in between
-/// replaces it. A pool left idle for a window or more therefore cannot have
-/// its average set by one read. As with funding, a timestamp at or before the
-/// stored one is treated as no time elapsed: the average and the stored stamp
-/// stay where they are, and only `last_oracle_price` is updated.
-pub fn fold_price_into_average(pool: &mut Pool, price: u64, current_timestamp: i64) -> Result<()> {
-    if current_timestamp <= pool.average_price_timestamp {
-        pool.last_oracle_price = price;
-        return Ok(());
-    }
-    let elapsed = current_timestamp
-        .checked_sub(pool.average_price_timestamp)
-        .ok_or(PerpError::MathOverflow)?;
-    let weight = elapsed.min(PRICE_AVERAGE_WINDOW_SECONDS);
-
-    let average = pool.average_price as i128;
-    // Multiply before dividing; the gap is signed, so the average moves down
-    // as readily as up.
-    let movement = (pool.last_oracle_price as i128)
-        .checked_sub(average)
-        .ok_or(PerpError::MathOverflow)?
-        .checked_mul(weight as i128)
-        .ok_or(PerpError::MathOverflow)?
-        .checked_div(PRICE_AVERAGE_WINDOW_SECONDS as i128)
-        .ok_or(PerpError::MathOverflow)?;
-    pool.average_price = average
-        .checked_add(movement)
-        .ok_or(PerpError::MathOverflow)?
-        .try_into()
-        .map_err(|_| PerpError::MathOverflow)?;
-    pool.last_oracle_price = price;
-    pool.average_price_timestamp = current_timestamp;
-    Ok(())
-}
-
-/// Refuse an oracle `price` more than `max_price_deviation_bps` away from the
-/// pool's stored `average_price`:
-/// `|price - average_price| * 10_000 <= average_price * max_price_deviation_bps`.
-pub fn require_price_within_band(pool: &Pool, price: u64) -> Result<()> {
-    let deviation_scaled = (price.abs_diff(pool.average_price) as u128)
-        .checked_mul(BASIS_POINTS_DENOMINATOR as u128)
-        .ok_or(PerpError::MathOverflow)?;
-    let band_scaled = (pool.average_price as u128)
-        .checked_mul(pool.max_price_deviation_bps as u128)
-        .ok_or(PerpError::MathOverflow)?;
-    require!(deviation_scaled <= band_scaled, PerpError::PriceOutsideBand);
-    Ok(())
-}
-
-/// The preamble `liquidate_position` and `update_price_average` run: read a
-/// validated oracle price, bring the pool's funding index up to the current
-/// time, and fold the interval since the previous read into the pool's average
-/// (see `fold_price_into_average`), so the settlement that follows uses fresh
-/// numbers. Centralized so no handler can settle a position
-/// against a stale funding index.
-///
-/// No band check: liquidation has to keep working through a genuine price
-/// move, because that is when positions go underwater, and
-/// `update_price_average` is how the average catches up with one.
+/// The preamble every price-sensitive handler runs: read a validated oracle
+/// price, then bring the pool's funding index up to the current time, so the
+/// settlement that follows uses fresh numbers for both. Centralized so no
+/// handler can settle a position against a stale funding index.
 pub fn refresh_price_and_funding(pool: &mut Pool, oracle_feed: &AccountView) -> Result<u64> {
-    let price = read_pool_oracle_price(pool, oracle_feed)?;
-    apply_price_and_funding(pool, price)?;
+    let price = crate::state::oracle::read_oracle_price(
+        oracle_feed,
+        pool.oracle_scale,
+        pool.max_confidence_bps,
+    )?;
+    accrue_funding(pool, Clock::get()?.unix_timestamp)?;
     Ok(price)
-}
-
-/// The preamble for every handler that opens or closes a position or moves
-/// liquidity: the same as `refresh_price_and_funding`, but first refuses a
-/// price outside the band around the stored average, before anything is
-/// folded in or the price is recorded. A single oracle print far from the
-/// average therefore cannot open, close, deposit, or withdraw at that price.
-pub fn refresh_price_and_funding_within_band(
-    pool: &mut Pool,
-    oracle_feed: &AccountView,
-) -> Result<u64> {
-    let price = read_pool_oracle_price(pool, oracle_feed)?;
-    require_price_within_band(pool, price)?;
-    apply_price_and_funding(pool, price)?;
-    Ok(price)
-}
-
-fn read_pool_oracle_price(pool: &Pool, oracle_feed: &AccountView) -> Result<u64> {
-    crate::state::oracle::read_oracle_price(oracle_feed, pool.oracle_scale, pool.max_confidence_bps)
-}
-
-fn apply_price_and_funding(pool: &mut Pool, price: u64) -> Result<()> {
-    let current_timestamp = Clock::get()?.unix_timestamp;
-    accrue_funding(pool, current_timestamp)?;
-    fold_price_into_average(pool, price, current_timestamp)
 }

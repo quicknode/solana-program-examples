@@ -2,8 +2,7 @@ use {
     crate::{
         constants::SIDE_LONG,
         instructions::shared::{
-            basis_points_of, err, error, position_funding, position_pnl,
-            refresh_price_and_funding_within_band,
+            basis_points_of, err, error, position_funding, position_pnl, refresh_price_and_funding,
         },
         state::{Pool, Position},
     },
@@ -49,7 +48,7 @@ pub fn handle_close_position(
 ) -> Result<(), ProgramError> {
     let slot = accounts.clock.slot.get();
     let unix_timestamp = accounts.clock.unix_timestamp.get();
-    let price = refresh_price_and_funding_within_band(
+    let price = refresh_price_and_funding(
         &mut accounts.pool,
         &accounts.oracle_feed,
         slot,

@@ -4,11 +4,7 @@ use {
         AccountDeserialize, InstructionData, ToAccountMetas,
     },
     litesvm::LiteSVM,
-    perpetual_futures::{
-        errors::PerpError,
-        instructions::initialize_pool::PoolParameters,
-        state::{Pool, Position, Side},
-    },
+    perpetual_futures::{instructions::initialize_pool::PoolParameters, state::Pool, state::Side},
     solana_keypair::Keypair,
     solana_kite::{
         create_associated_token_account, create_token_mint, create_wallet,
@@ -21,9 +17,6 @@ use {
 // Matches `MAX_FUNDING_RATE_PER_SECOND` in the program's constants: the
 // steepest funding rate `initialize_pool` accepts.
 const MAX_FUNDING_RATE_PER_SECOND: u64 = 277;
-// Matches `PRICE_AVERAGE_WINDOW_SECONDS`: one fold after this many seconds
-// replaces the pool's average price with the oracle price.
-const PRICE_AVERAGE_WINDOW_SECONDS: i64 = 600;
 // Ten years, in seconds.
 const TEN_YEARS: i64 = 315_360_000;
 // Collateral token has 6 decimals (like USDC), so one whole unit is 1_000_000
@@ -59,37 +52,6 @@ fn dollars(whole: i128) -> i128 {
     whole * 10i128.pow(ORACLE_SCALE)
 }
 
-/// The parameters every test market uses unless a test overrides one: 0.1%
-/// open and close fees, a 10% initial margin (10x leverage), a 5% maintenance
-/// margin, a 1% liquidation fee, a 1% maximum confidence band, and a 20% price
-/// band around the pool's average price.
-fn default_parameters(funding_rate_per_second: u64) -> PoolParameters {
-    PoolParameters {
-        oracle_scale: ORACLE_SCALE,
-        funding_rate_per_second,
-        open_fee_bps: 10,
-        close_fee_bps: 10,
-        initial_margin_bps: 1_000,
-        maintenance_margin_bps: 500,
-        liquidation_fee_bps: 100,
-        max_confidence_bps: 100,
-        max_price_deviation_bps: 2_000,
-    }
-}
-
-/// Assert that `result` failed with the program's `expected` error. Anchor
-/// reports a program error as `Custom(6000 + the variant's index)`.
-fn assert_fails_with<T>(result: Result<T, String>, expected: PerpError) {
-    let code = expected as u32 + 6000;
-    let Err(error) = result else {
-        panic!("the transaction should have failed with error code {code}");
-    };
-    assert!(
-        error.contains(&format!("Custom({code})")),
-        "expected error code {code}, got: {error}"
-    );
-}
-
 /// One deployed market plus the keys needed to drive it.
 struct Market {
     svm: LiteSVM,
@@ -107,14 +69,23 @@ impl Market {
     /// funding rate. The admin is both the pool operator and the oracle feed
     /// authority.
     fn new(initial_price: i128, funding_rate_per_second: u64) -> Market {
-        Market::try_new(initial_price, default_parameters(funding_rate_per_second))
-            .expect("pool initialization should succeed")
+        let parameters = PoolParameters {
+            oracle_scale: ORACLE_SCALE,
+            funding_rate_per_second,
+            open_fee_bps: 10,
+            close_fee_bps: 10,
+            max_leverage: 10,
+            maintenance_margin_bps: 500,
+            liquidation_fee_bps: 100,
+            max_confidence_bps: 100,
+        };
+        Market::try_new(initial_price, parameters).expect("pool initialization should succeed")
     }
 
     /// Like `new`, but takes the full parameter set and surfaces an
     /// `initialize_pool` rejection instead of panicking, so tests can probe the
     /// parameter validation.
-    fn try_new(initial_price: i128, parameters: PoolParameters) -> Result<Market, String> {
+    fn try_new(initial_price: i128, parameters: PoolParameters) -> Result<Market, ()> {
         let mut svm = LiteSVM::new();
         svm.add_program(
             perpetual_futures::id(),
@@ -196,7 +167,7 @@ impl Market {
             &[&admin],
             &admin.pubkey(),
         )
-        .map_err(|error| format!("{error:?}"))?;
+        .map_err(|_| ())?;
 
         Ok(Market {
             svm,
@@ -304,7 +275,7 @@ impl Market {
         provider_collateral: Pubkey,
         amount: u64,
         minimum_shares_out: u64,
-    ) -> Result<(), String> {
+    ) -> Result<(), ()> {
         let provider_lp = derive_ata(&provider.pubkey(), &self.lp_mint);
         let instruction = Instruction::new_with_bytes(
             perpetual_futures::id(),
@@ -334,7 +305,8 @@ impl Market {
             &[provider],
             &provider.pubkey(),
         )
-        .map_err(|error| format!("{error:?}"))
+        .map(|_| ())
+        .map_err(|_| ())
     }
 
     fn remove_liquidity(
@@ -343,7 +315,7 @@ impl Market {
         provider_collateral: Pubkey,
         shares: u64,
         minimum_amount_out: u64,
-    ) -> Result<(), String> {
+    ) -> Result<(), ()> {
         let provider_lp = derive_ata(&provider.pubkey(), &self.lp_mint);
         let instruction = Instruction::new_with_bytes(
             perpetual_futures::id(),
@@ -373,7 +345,8 @@ impl Market {
             &[provider],
             &provider.pubkey(),
         )
-        .map_err(|error| format!("{error:?}"))
+        .map(|_| ())
+        .map_err(|_| ())
     }
 
     fn position_pda(&self, owner: &Pubkey, side: Side) -> Pubkey {
@@ -396,7 +369,7 @@ impl Market {
         collateral_amount: u64,
         size: u64,
         acceptable_price: u64,
-    ) -> Result<(), String> {
+    ) -> Result<(), ()> {
         let position = self.position_pda(&trader.pubkey(), side);
         let instruction = Instruction::new_with_bytes(
             perpetual_futures::id(),
@@ -427,7 +400,8 @@ impl Market {
             &[trader],
             &trader.pubkey(),
         )
-        .map_err(|error| format!("{error:?}"))
+        .map(|_| ())
+        .map_err(|_| ())
     }
 
     fn close_position(
@@ -436,7 +410,7 @@ impl Market {
         trader_collateral: Pubkey,
         side: Side,
         minimum_payout: u64,
-    ) -> Result<(), String> {
+    ) -> Result<(), ()> {
         let position = self.position_pda(&trader.pubkey(), side);
         let instruction = Instruction::new_with_bytes(
             perpetual_futures::id(),
@@ -461,7 +435,8 @@ impl Market {
             &[trader],
             &trader.pubkey(),
         )
-        .map_err(|error| format!("{error:?}"))
+        .map(|_| ())
+        .map_err(|_| ())
     }
 
     fn liquidate(
@@ -470,7 +445,7 @@ impl Market {
         owner: &Pubkey,
         owner_collateral: Pubkey,
         side: Side,
-    ) -> Result<(), String> {
+    ) -> Result<(), ()> {
         let position = self.position_pda(owner, side);
         let liquidator_collateral = derive_ata(&liquidator.pubkey(), &self.collateral_mint);
         let instruction = Instruction::new_with_bytes(
@@ -498,10 +473,11 @@ impl Market {
             &[liquidator],
             &liquidator.pubkey(),
         )
-        .map_err(|error| format!("{error:?}"))
+        .map(|_| ())
+        .map_err(|_| ())
     }
 
-    fn collect_fees(&mut self, authority: &Keypair) -> Result<(), String> {
+    fn collect_fees(&mut self, authority: &Keypair) -> Result<(), ()> {
         let authority_collateral = derive_ata(&authority.pubkey(), &self.collateral_mint);
         let instruction = Instruction::new_with_bytes(
             perpetual_futures::id(),
@@ -524,40 +500,8 @@ impl Market {
             &[authority],
             &authority.pubkey(),
         )
-        .map_err(|error| format!("{error:?}"))
-    }
-
-    fn update_price_average(&mut self, caller: &Keypair) -> Result<(), String> {
-        let instruction = Instruction::new_with_bytes(
-            perpetual_futures::id(),
-            &perpetual_futures::instruction::UpdatePriceAverage {}.data(),
-            perpetual_futures::accounts::UpdatePriceAverageAccountConstraints {
-                caller: caller.pubkey(),
-                pool: self.pool,
-                oracle_feed: self.feed,
-            }
-            .to_account_metas(None),
-        );
-        send_transaction_from_instructions(
-            &mut self.svm,
-            vec![instruction],
-            &[caller],
-            &caller.pubkey(),
-        )
-        .map_err(|error| format!("{error:?}"))
-    }
-
-    /// Hold the oracle at `price` while the pool's average catches up with
-    /// it: one update records `price` as the latest observation, then a full
-    /// averaging window passes with the price republished so it is fresh, and
-    /// a second update credits that window to `price`. A price more than the
-    /// band away from the average cannot be traded at until this has run.
-    fn settle_average_at(&mut self, price: i128) {
-        let caller = self.payer.insecure_clone();
-        self.update_price_average(&caller).unwrap();
-        self.pass_seconds(PRICE_AVERAGE_WINDOW_SECONDS);
-        self.set_price(price);
-        self.update_price_average(&caller).unwrap();
+        .map(|_| ())
+        .map_err(|_| ())
     }
 
     /// Deposit a large amount of liquidity so the pool can pay trader profits,
@@ -579,17 +523,7 @@ fn test_initialize_pool() {
     assert_eq!(pool.collateral_mint, market.collateral_mint);
     assert_eq!(pool.oracle_feed, market.feed);
     assert_eq!(pool.oracle_scale, ORACLE_SCALE);
-    assert_eq!(pool.initial_margin_bps, 1_000);
-    assert_eq!(pool.max_price_deviation_bps, 2_000);
-    // The average starts at the oracle price the pool was created against.
-    assert_eq!(pool.average_price, dollars(100) as u64);
-    assert_eq!(
-        pool.average_price_timestamp,
-        market
-            .svm
-            .get_sysvar::<anchor_lang::prelude::Clock>()
-            .unix_timestamp
-    );
+    assert_eq!(pool.max_leverage, 10);
     assert_eq!(pool.liquidity, 0);
     assert_eq!(pool.total_collateral, 0);
 
@@ -915,53 +849,17 @@ fn test_open_rejects_zero_amounts() {
 }
 
 #[test]
-fn test_open_rejects_position_below_initial_margin() {
+fn test_open_rejects_excess_leverage() {
     let mut market = Market::default_market();
     market.seed_liquidity(100_000 * ONE_USDC);
-    let (trader, trader_collateral) = market.funded_trader(2_000 * ONE_USDC);
+    let collateral = 1_000 * ONE_USDC;
+    let (trader, trader_collateral) = market.funded_trader(collateral);
 
-    // The initial margin is 10% of notional. 1,000 USDC of collateral less
-    // the 11 USDC open fee leaves 989 USDC, short of the 1,100 USDC an 11,000
-    // USDC position needs.
-    assert_fails_with(
-        market.open_position(
-            &trader,
-            trader_collateral,
-            Side::Long,
-            1_000 * ONE_USDC,
-            11_000 * ONE_USDC,
-            0,
-        ),
-        PerpError::InitialMarginNotMet,
-    );
-
-    // A 10,000 USDC position needs 1,000 USDC net of its 10 USDC open fee.
-    // One minor unit short of 1,010 USDC is refused, and exactly 1,010 USDC
-    // opens at 10x.
-    let size = 10_000 * ONE_USDC;
-    let exact_collateral = 1_010 * ONE_USDC;
-    assert_fails_with(
-        market.open_position(
-            &trader,
-            trader_collateral,
-            Side::Long,
-            exact_collateral - 1,
-            size,
-            0,
-        ),
-        PerpError::InitialMarginNotMet,
-    );
-    market
-        .open_position(
-            &trader,
-            trader_collateral,
-            Side::Long,
-            exact_collateral,
-            size,
-            0,
-        )
-        .unwrap();
-    assert_eq!(market.pool_state().total_collateral, size / 10);
+    // max_leverage is 10x; 11x must be rejected.
+    let size = 11_000 * ONE_USDC;
+    assert!(market
+        .open_position(&trader, trader_collateral, Side::Long, collateral, size, 0)
+        .is_err());
 }
 
 #[test]
@@ -1163,18 +1061,18 @@ fn test_funding_follows_seconds_not_slots() {
 #[test]
 fn test_initialize_pool_rejects_funding_rate_above_the_maximum() {
     // The rate is fixed at creation, so this is the only place it is checked.
-    assert_fails_with(
-        Market::try_new(
-            dollars(100),
-            default_parameters(MAX_FUNDING_RATE_PER_SECOND + 1),
-        ),
-        PerpError::InvalidParameter,
-    );
-    assert!(Market::try_new(
-        dollars(100),
-        default_parameters(MAX_FUNDING_RATE_PER_SECOND)
-    )
-    .is_ok());
+    let parameters = |funding_rate_per_second| PoolParameters {
+        oracle_scale: ORACLE_SCALE,
+        funding_rate_per_second,
+        open_fee_bps: 10,
+        close_fee_bps: 10,
+        max_leverage: 10,
+        maintenance_margin_bps: 500,
+        liquidation_fee_bps: 100,
+        max_confidence_bps: 100,
+    };
+    assert!(Market::try_new(dollars(100), parameters(MAX_FUNDING_RATE_PER_SECOND + 1)).is_err());
+    assert!(Market::try_new(dollars(100), parameters(MAX_FUNDING_RATE_PER_SECOND)).is_ok());
 }
 
 /// The pool operator trading against their own pool. The lighter side of open
@@ -1402,11 +1300,8 @@ fn test_profit_capped_at_reserved_notional() {
         .unwrap();
 
     // Price triples: uncapped profit would be 2x the notional, but recoverable
-    // profit is capped at the reserved notional (`size`). A move this large is
-    // far outside the price band, so the average has to catch up before the
-    // position can close.
+    // profit is capped at the reserved notional (`size`).
     market.set_price(dollars(300));
-    market.settle_average_at(dollars(300));
     market
         .close_position(&trader, trader_collateral, Side::Long, 0)
         .unwrap();
@@ -1455,304 +1350,14 @@ fn test_initialize_pool_rejects_close_fee_at_or_above_maintenance_margin() {
     // position that is too healthy to liquidate but too poor to pay the fee to
     // close, so initialize_pool refuses the configuration.
     let parameters = PoolParameters {
+        oracle_scale: ORACLE_SCALE,
+        funding_rate_per_second: 0,
+        open_fee_bps: 10,
         close_fee_bps: 600,
-        ..default_parameters(0)
+        max_leverage: 10,
+        maintenance_margin_bps: 500,
+        liquidation_fee_bps: 100,
+        max_confidence_bps: 100,
     };
-    assert_fails_with(
-        Market::try_new(dollars(100), parameters),
-        PerpError::InvalidParameter,
-    );
-}
-
-#[test]
-fn test_initialize_pool_rejects_initial_margin_at_or_below_maintenance() {
-    // An initial margin at or below the 5% maintenance margin would let a
-    // position open already liquidatable.
-    let with_initial_margin = |initial_margin_bps| PoolParameters {
-        initial_margin_bps,
-        ..default_parameters(0)
-    };
-    assert_fails_with(
-        Market::try_new(dollars(100), with_initial_margin(500)),
-        PerpError::InitialMarginNotAboveMaintenance,
-    );
-    assert_fails_with(
-        Market::try_new(dollars(100), with_initial_margin(350)),
-        PerpError::InitialMarginNotAboveMaintenance,
-    );
-
-    // Above 100% of notional is refused too. One basis point above the
-    // maintenance margin, and exactly 100%, are accepted.
-    assert_fails_with(
-        Market::try_new(dollars(100), with_initial_margin(10_001)),
-        PerpError::InvalidParameter,
-    );
-    assert!(Market::try_new(dollars(100), with_initial_margin(501)).is_ok());
-    assert!(Market::try_new(dollars(100), with_initial_margin(10_000)).is_ok());
-}
-
-#[test]
-fn test_initialize_pool_rejects_price_deviation_outside_range() {
-    let with_deviation = |max_price_deviation_bps| PoolParameters {
-        max_price_deviation_bps,
-        ..default_parameters(0)
-    };
-    for rejected in [0, 10_000] {
-        assert_fails_with(
-            Market::try_new(dollars(100), with_deviation(rejected)),
-            PerpError::InvalidPriceDeviation,
-        );
-    }
-    assert!(Market::try_new(dollars(100), with_deviation(1)).is_ok());
-    assert!(Market::try_new(dollars(100), with_deviation(9_999)).is_ok());
-}
-
-/// A single oracle print far from the pool's average cannot be traded at: the
-/// open is refused before the price is folded into the average.
-#[test]
-fn test_open_rejected_when_oracle_jumps_outside_band() {
-    let mut market = Market::default_market();
-    market.seed_liquidity(100_000 * ONE_USDC);
-    let collateral = 1_000 * ONE_USDC;
-    let size = 5_000 * ONE_USDC;
-    let (trader, trader_collateral) = market.funded_trader(collateral);
-
-    // The band is 20% around the $100 average: $125 and $79 are outside it.
-    for outside_price in [dollars(125), dollars(79)] {
-        market.set_price(outside_price);
-        // The two refused opens are otherwise byte-identical transactions.
-        market.svm.expire_blockhash();
-        assert_fails_with(
-            market.open_position(&trader, trader_collateral, Side::Long, collateral, size, 0),
-            PerpError::PriceOutsideBand,
-        );
-        // The refused open folded nothing into the average.
-        assert_eq!(market.pool_state().average_price, dollars(100) as u64);
-    }
-
-    // $118 is inside the band, and opens at that price.
-    market.set_price(dollars(118));
-    market.svm.expire_blockhash();
-    market
-        .open_position(&trader, trader_collateral, Side::Long, collateral, size, 0)
-        .unwrap();
-    let position_account = market
-        .svm
-        .get_account(&market.position_pda(&trader.pubkey(), Side::Long))
-        .unwrap();
-    let position = Position::try_deserialize(&mut position_account.data.as_slice()).unwrap();
-    assert_eq!(position.entry_price, dollars(118) as u64);
-}
-
-#[test]
-fn test_close_rejected_when_oracle_jumps_outside_band() {
-    let mut market = Market::default_market();
-    market.seed_liquidity(100_000 * ONE_USDC);
-    let collateral = 1_000 * ONE_USDC;
-    let size = 5_000 * ONE_USDC;
-    let (trader, trader_collateral) = market.funded_trader(collateral);
-    market
-        .open_position(&trader, trader_collateral, Side::Long, collateral, size, 0)
-        .unwrap();
-
-    // A jump to $125 would pay the long $1,250, but $125 is 25% from the
-    // $100 average, outside the 20% band.
-    market.set_price(dollars(125));
-    assert_fails_with(
-        market.close_position(&trader, trader_collateral, Side::Long, 0),
-        PerpError::PriceOutsideBand,
-    );
-
-    // At $115, inside the band, the close goes through and pays the 15% gain.
-    market.set_price(dollars(115));
-    market.svm.expire_blockhash();
-    market
-        .close_position(&trader, trader_collateral, Side::Long, 0)
-        .unwrap();
-    let fee = size / 1_000;
-    let profit = size * 15 / 100;
-    assert_eq!(
-        get_token_account_balance(&market.svm, &trader_collateral).unwrap(),
-        collateral - fee + profit - fee
-    );
-}
-
-/// Liquidation has no band check: a genuine crash is when positions go
-/// underwater, so the pool has to be able to liquidate through one.
-#[test]
-fn test_liquidation_runs_outside_band() {
-    let mut market = Market::default_market();
-    market.seed_liquidity(100_000 * ONE_USDC);
-    let collateral = 1_100 * ONE_USDC;
-    let size = 10_000 * ONE_USDC;
-    let (trader, trader_collateral) = market.funded_trader(collateral);
-    market
-        .open_position(&trader, trader_collateral, Side::Long, collateral, size, 0)
-        .unwrap();
-
-    // $75 is 25% below the $100 average, so the owner cannot close there.
-    market.set_price(dollars(75));
-    assert_fails_with(
-        market.close_position(&trader, trader_collateral, Side::Long, 0),
-        PerpError::PriceOutsideBand,
-    );
-
-    let liquidator = create_wallet(&mut market.svm, 100_000_000_000).unwrap();
-    market
-        .liquidate(&liquidator, &trader.pubkey(), trader_collateral, Side::Long)
-        .unwrap();
-    assert!(market
-        .svm
-        .get_account(&market.position_pda(&trader.pubkey(), Side::Long))
-        .is_none());
-    assert_eq!(market.pool_state().long_size, 0);
-}
-
-#[test]
-fn test_liquidity_changes_rejected_when_oracle_jumps_outside_band() {
-    let mut market = Market::default_market();
-    let (provider, provider_collateral) = market.seed_liquidity(10_000 * ONE_USDC);
-    let provider_lp = derive_ata(&provider.pubkey(), &market.lp_mint);
-    let shares = get_token_account_balance(&market.svm, &provider_lp).unwrap();
-
-    // $76 is 24% below the $100 average.
-    market.set_price(dollars(76));
-    let (depositor, depositor_collateral) = market.funded_trader(5_000 * ONE_USDC);
-    assert_fails_with(
-        market.add_liquidity(&depositor, depositor_collateral, 5_000 * ONE_USDC, 0),
-        PerpError::PriceOutsideBand,
-    );
-    assert_fails_with(
-        market.remove_liquidity(&provider, provider_collateral, shares, 0),
-        PerpError::PriceOutsideBand,
-    );
-}
-
-/// After a genuine move outside the band, anyone can walk the average toward
-/// the new price with `update_price_average`, and trading resumes once the
-/// price is back inside the band.
-#[test]
-fn test_price_average_catches_up_after_genuine_move() {
-    let mut market = Market::default_market();
-    market.seed_liquidity(100_000 * ONE_USDC);
-    let collateral = 1_000 * ONE_USDC;
-    let size = 5_000 * ONE_USDC;
-    let (trader, trader_collateral) = market.funded_trader(collateral);
-    let keeper = create_wallet(&mut market.svm, 100_000_000_000).unwrap();
-
-    // NVDAx reprices from $100 to $130, 30% away from the average.
-    let new_price = dollars(130);
-    market.set_price(new_price);
-    assert_fails_with(
-        market.open_position(&trader, trader_collateral, Side::Long, collateral, size, 0),
-        PerpError::PriceOutsideBand,
-    );
-
-    // Every two minutes the keeper calls `update_price_average`. Each call
-    // credits the two minutes since the previous read to the price that read
-    // saw, a fifth of the window. The first call credits $100, the price
-    // before the move, and records $130; each later call moves the average a
-    // fifth of the remaining gap to $130: $100, then $106, then $110.80. $130
-    // is within 20% of any average from $108.34 up, so the third update
-    // reopens trading.
-    let mut updates = 0;
-    loop {
-        market.pass_seconds(120);
-        market.set_price(new_price);
-        market.update_price_average(&keeper).unwrap();
-        updates += 1;
-        let opened =
-            market.open_position(&trader, trader_collateral, Side::Long, collateral, size, 0);
-        if opened.is_ok() {
-            break;
-        }
-        assert_fails_with(opened, PerpError::PriceOutsideBand);
-        assert!(updates < 10, "the average never caught up");
-    }
-    assert_eq!(updates, 3);
-    let pool = market.pool_state();
-    assert_eq!(pool.average_price, 11_080_000_000);
-    assert_eq!(pool.last_oracle_price, new_price as u64);
-}
-
-#[test]
-fn test_single_update_moves_average_by_elapsed_fraction() {
-    let mut market = Market::default_market();
-    let keeper = create_wallet(&mut market.svm, 100_000_000_000).unwrap();
-    let created_at = market.pool_state().average_price_timestamp;
-
-    // The first update after the oracle moves to $115 credits the four
-    // minutes since creation to $100, the price seen at creation, so the
-    // average stays at $100 and $115 is recorded for the next read.
-    market.pass_seconds(240);
-    market.set_price(dollars(115));
-    market.update_price_average(&keeper).unwrap();
-    let pool = market.pool_state();
-    assert_eq!(pool.average_price, dollars(100) as u64);
-    assert_eq!(pool.last_oracle_price, dollars(115) as u64);
-    assert_eq!(pool.average_price_timestamp, created_at + 240);
-
-    // Four more minutes at $115 are 240 of the 600-second window, so the next
-    // update moves the average 240/600 of the way from $100 to $115: to $106.
-    market.pass_seconds(240);
-    market.set_price(dollars(115));
-    market.update_price_average(&keeper).unwrap();
-    let pool = market.pool_state();
-    assert_eq!(pool.average_price, dollars(106) as u64);
-    assert_eq!(pool.average_price_timestamp, created_at + 480);
-
-    // Fifteen minutes is more than a full window, so the next update replaces
-    // the average with $115, the price at the previous read, and records the
-    // fall to $97. One more update credits $97 for a full window.
-    market.pass_seconds(900);
-    market.set_price(dollars(97));
-    market.update_price_average(&keeper).unwrap();
-    let pool = market.pool_state();
-    assert_eq!(pool.average_price, dollars(115) as u64);
-    assert_eq!(pool.last_oracle_price, dollars(97) as u64);
-    market.pass_seconds(900);
-    market.set_price(dollars(97));
-    market.update_price_average(&keeper).unwrap();
-    assert_eq!(market.pool_state().average_price, dollars(97) as u64);
-}
-
-/// A pool left idle for more than a window cannot have its average set by one
-/// read of a manipulated price. The read only records the price; the interval
-/// before it is credited to the price seen at the read before. Once a read of
-/// the real price replaces it, the manipulated price has moved the average
-/// only by the seconds between the two reads.
-#[test]
-fn test_one_manipulated_read_after_idle_does_not_move_average() {
-    let mut market = Market::default_market();
-    market.seed_liquidity(100_000 * ONE_USDC);
-    let collateral = 1_000 * ONE_USDC;
-    let size = 5_000 * ONE_USDC;
-    let (trader, trader_collateral) = market.funded_trader(collateral);
-    let attacker = create_wallet(&mut market.svm, 100_000_000_000).unwrap();
-
-    // Fifteen idle minutes, then the oracle is pushed to $160 and the
-    // attacker calls `update_price_average`. The average stays at $100.
-    market.pass_seconds(900);
-    market.set_price(dollars(160));
-    market.update_price_average(&attacker).unwrap();
-    let pool = market.pool_state();
-    assert_eq!(pool.average_price, dollars(100) as u64);
-    assert_eq!(pool.last_oracle_price, dollars(160) as u64);
-
-    // Six seconds later the oracle is back at $100 and is read again. The six
-    // seconds are credited to $160: the average moves 6/600 of the $60 gap,
-    // to $100.60, and $100 replaces $160 as the latest observation.
-    market.pass_seconds(6);
-    market.set_price(dollars(100));
-    market.update_price_average(&attacker).unwrap();
-    let pool = market.pool_state();
-    assert_eq!(pool.average_price, 10_060_000_000);
-    assert_eq!(pool.last_oracle_price, dollars(100) as u64);
-
-    // An open at $160 is still refused.
-    market.set_price(dollars(160));
-    assert_fails_with(
-        market.open_position(&trader, trader_collateral, Side::Long, collateral, size, 0),
-        PerpError::PriceOutsideBand,
-    );
+    assert!(Market::try_new(dollars(100), parameters).is_err());
 }

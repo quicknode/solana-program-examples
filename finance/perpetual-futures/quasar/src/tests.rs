@@ -1,7 +1,6 @@
 //! quasar-test integration tests. They exercise the full lifecycle: pool
 //! initialization, liquidity add/remove, opening/closing/liquidating leveraged
-//! positions, fee collection, the price average and its band, and the
-//! oracle/margin/reserve checks.
+//! positions, fee collection, and the oracle/leverage/reserve guard rails.
 
 use {
     crate::{
@@ -9,9 +8,8 @@ use {
         cpi::{
             AddLiquidityInstruction, ClosePositionInstruction, CollectFeesInstruction,
             InitializePoolInstruction, LiquidatePositionInstruction, OpenPositionInstruction,
-            RemoveLiquidityInstruction, UpdatePriceAverageInstruction,
+            RemoveLiquidityInstruction,
         },
-        instructions::shared::error,
         state::{Pool, Position},
         LpMintPda, VaultPda,
     },
@@ -44,11 +42,6 @@ const VICTIM_COLLATERAL: Pubkey = Pubkey::new_from_array([13; 32]);
 const VICTIM_LP: Pubkey = Pubkey::new_from_array([14; 32]);
 const OPERATOR_WALLET: Pubkey = Pubkey::new_from_array([15; 32]);
 const OPERATOR_COLLATERAL: Pubkey = Pubkey::new_from_array([16; 32]);
-const KEEPER: Pubkey = Pubkey::new_from_array([17; 32]);
-
-// Matches `PRICE_AVERAGE_WINDOW_SECONDS`: one fold after this many seconds
-// replaces the pool's average price with the oracle price.
-const PRICE_AVERAGE_WINDOW_SECONDS: i64 = 600;
 
 // Ten years, in seconds.
 const TEN_YEARS: i64 = 315_360_000;
@@ -122,40 +115,18 @@ fn init_pool_with_funding(
     funding_rate_per_second: u64,
 ) -> Outcome {
     test.send(InitializePoolInstruction {
-        maintenance_margin_bps,
-        close_fee_bps,
-        funding_rate_per_second,
-        ..default_initialize_pool()
-    })
-}
-
-/// The pool every test uses unless it overrides a parameter: 0.1% open and
-/// close fees, a 10% initial margin (10x leverage), a 5% maintenance margin, a
-/// 1% liquidation fee, a 1% maximum confidence band, a 20% price band around
-/// the pool's average price, and no funding.
-fn default_initialize_pool() -> InitializePoolInstruction {
-    InitializePoolInstruction {
         authority: ADMIN,
         collateral_mint: COLLATERAL_MINT,
         oracle_feed: FEED,
         oracle_scale: ORACLE_SCALE,
-        funding_rate_per_second: 0,
+        funding_rate_per_second,
         open_fee_bps: 10,
-        close_fee_bps: 10,
-        initial_margin_bps: 1_000,
-        maintenance_margin_bps: 500,
+        close_fee_bps,
+        max_leverage: 10,
+        maintenance_margin_bps,
         liquidation_fee_bps: 100,
         max_confidence_bps: 100,
-        max_price_deviation_bps: 2_000,
-    }
-}
-
-/// The world `initialize_pool` needs: the admin, the collateral mint, and a
-/// feed at $100.
-fn add_pool_prerequisites(test: &mut Test) {
-    test.add(Wallet::new().at(ADMIN));
-    test.add(Mint::new(ADMIN).at(COLLATERAL_MINT).decimals(6));
-    set_feed(test, dollars(100), 0);
+    })
 }
 
 /// The pool and its derived PDAs.
@@ -166,7 +137,8 @@ struct Env {
 }
 
 /// Build a world with a collateral mint, an oracle feed at $100, and an
-/// initialized pool with the parameters in `default_initialize_pool`.
+/// initialized pool (0.1% open/close fees, 10x max leverage, 5% maintenance
+/// margin, 1% liquidation fee, 1% max confidence).
 fn setup(test: &mut Test) -> Env {
     setup_with_funding(test, 0)
 }
@@ -174,7 +146,9 @@ fn setup(test: &mut Test) -> Env {
 /// Like `setup`, but with a non-zero per-second funding rate so funding accrues
 /// as time passes.
 fn setup_with_funding(test: &mut Test, funding_rate_per_second: u64) -> Env {
-    add_pool_prerequisites(test);
+    test.add(Wallet::new().at(ADMIN));
+    test.add(Mint::new(ADMIN).at(COLLATERAL_MINT).decimals(6));
+    set_feed(test, dollars(100), 0);
     init_pool_with_funding(test, 500, 10, funding_rate_per_second).succeeds();
 
     let pool = test.derive_pda(Pool::seeds(&COLLATERAL_MINT, &FEED));
@@ -232,35 +206,6 @@ fn open_position(test: &mut Test, env: &Env, side: u8, collateral: u64, size: u6
         collateral_amount: collateral,
         size,
         acceptable_price: 0,
-    })
-}
-
-/// The pool's `(average_price, last_oracle_price, average_price_timestamp)`.
-fn pool_state(test: &Test, env: &Env) -> (u64, u64, i64) {
-    let pool = test.read::<Pool>(env.pool);
-    (
-        u64::from(pool.average_price),
-        u64::from(pool.last_oracle_price),
-        i64::from(pool.average_price_timestamp),
-    )
-}
-
-/// Move the clock `seconds` past the pool's last average fold, publish `price`
-/// at the new slot, and call `update_price_average`, which credits those
-/// seconds to the price seen at the previous read and records `price`.
-fn update_average_after(test: &mut Test, env: &Env, seconds: i64, price: i128) -> Outcome {
-    let (_, _, last_fold) = pool_state(test, env);
-    let timestamp = last_fold + seconds;
-    let slot = timestamp as u64 * SLOTS_PER_SECOND;
-    set_clock_at(test, slot, timestamp);
-    set_feed_at_slot(test, price, slot, 0);
-    if test.account(KEEPER).is_none() {
-        test.add(Wallet::new().at(KEEPER));
-    }
-    test.send(UpdatePriceAverageInstruction {
-        caller: KEEPER,
-        oracle_feed: FEED,
-        collateral_mint: COLLATERAL_MINT,
     })
 }
 
@@ -464,29 +409,16 @@ fn close_long_in_profit_pays_collateral_plus_pnl_minus_fees(test: &mut Test) {
 }
 
 #[quasar_test]
-fn open_rejects_position_below_initial_margin(test: &mut Test) {
+fn open_rejects_excess_leverage(test: &mut Test) {
     let env = setup(test);
     fund(test, PROVIDER, PROVIDER_COLLATERAL, 100_000 * ONE_USDC);
     add_liquidity(test, &env, 100_000 * ONE_USDC).succeeds();
-    fund(test, TRADER, TRADER_COLLATERAL, 2_000 * ONE_USDC);
 
-    // The initial margin is 10% of notional. 1,000 USDC of collateral less
-    // the 11 USDC open fee leaves 989 USDC, short of the 1,100 USDC an 11,000
-    // USDC position needs.
-    open_position(test, &env, SIDE_LONG, 1_000 * ONE_USDC, 11_000 * ONE_USDC)
-        .fails_with(error::INITIAL_MARGIN_NOT_MET);
-
-    // A 10,000 USDC position needs 1,000 USDC net of its 10 USDC open fee.
-    // One minor unit short of 1,010 USDC is refused, and exactly 1,010 USDC
-    // opens at 10x.
-    let size = 10_000 * ONE_USDC;
-    let exact_collateral = 1_010 * ONE_USDC;
-    open_position(test, &env, SIDE_LONG, exact_collateral - 1, size)
-        .fails_with(error::INITIAL_MARGIN_NOT_MET);
-    open_position(test, &env, SIDE_LONG, exact_collateral, size).succeeds();
-    assert_eq!(
-        u64::from(test.read::<Pool>(env.pool).total_collateral),
-        size / 10
+    fund(test, TRADER, TRADER_COLLATERAL, 1_000 * ONE_USDC);
+    // 11x exceeds the 10x maximum.
+    assert!(
+        open_position(test, &env, 0, 1_000 * ONE_USDC, 11_000 * ONE_USDC).is_err(),
+        "11x leverage must be rejected"
     );
 }
 
@@ -544,6 +476,14 @@ fn collect_fees_sweeps_the_open_fee_to_the_admin(test: &mut Test) {
     .has_tokens(ADMIN_COLLATERAL, size / 1_000);
 }
 
+/// Retuning the rate settles the seconds already elapsed at the old rate
+/// rather than repricing them at the new one.
+///
+/// Both halves below hold the same position for the same seconds at the same
+/// price, so the size and price scaling cancels and only the rates differ: the
+/// spanning position pays one window at the old rate plus one at the new (3
+/// window-rates), and the position opened afterwards pays one window wholly at
+/// the new rate (2 window-rates).
 /// Funding is quoted per second of wall-clock time, so slots passing without
 /// the clock moving charge nothing. A million extra slots halfway through the
 /// window, as a much shorter slot would produce, leave the funding unchanged.
@@ -593,9 +533,13 @@ fn funding_follows_seconds_not_slots(test: &mut Test) {
 #[quasar_test]
 fn initialize_pool_rejects_funding_rate_above_the_maximum(test: &mut Test) {
     // The rate is fixed at creation, so this is the only place it is checked.
-    add_pool_prerequisites(test);
-    init_pool_with_funding(test, 500, 10, MAX_FUNDING_RATE_PER_SECOND + 1)
-        .fails_with(error::INVALID_PARAMETER);
+    test.add(Wallet::new().at(ADMIN));
+    test.add(Mint::new(ADMIN).at(COLLATERAL_MINT).decimals(6));
+    set_feed(test, dollars(100), 0);
+    assert!(
+        init_pool_with_funding(test, 500, 10, MAX_FUNDING_RATE_PER_SECOND + 1).is_err(),
+        "a funding rate above the maximum must be rejected"
+    );
     init_pool_with_funding(test, 500, 10, MAX_FUNDING_RATE_PER_SECOND).succeeds();
 }
 
@@ -697,13 +641,8 @@ fn profit_is_capped_at_the_reserved_notional(test: &mut Test) {
     open_position(test, &env, 0, collateral, size).succeeds();
 
     // Price triples: uncapped profit would be 2x the notional, but recoverable
-    // profit is capped at the reserved notional (`size`). A move this large is
-    // far outside the price band, so the average has to catch up before the
-    // position can close: one update records $300, and a second a full window
-    // later credits that window to $300, replacing the average.
+    // profit is capped at the reserved notional (`size`).
     set_feed(test, dollars(300), 0);
-    update_average_after(test, &env, 0, dollars(300)).succeeds();
-    update_average_after(test, &env, PRICE_AVERAGE_WINDOW_SECONDS, dollars(300)).succeeds();
 
     let open_fee = size / 1_000;
     let close_fee = size / 1_000;
@@ -737,261 +676,11 @@ fn initialize_pool_rejects_close_fee_at_or_above_maintenance_margin(test: &mut T
     // A pool whose close fee reached the maintenance margin could strand a
     // position that is too healthy to liquidate but too poor to pay the fee to
     // close, so initialize_pool refuses the configuration.
-    add_pool_prerequisites(test);
-    init_pool(test, 500, 600).fails_with(error::INVALID_PARAMETER);
-}
-
-#[quasar_test]
-fn initialize_pool_records_the_margins_band_and_average(test: &mut Test) {
-    let env = setup(test);
-    let pool = test.read::<Pool>(env.pool);
-    assert_eq!(u16::from(pool.initial_margin_bps), 1_000);
-    assert_eq!(u16::from(pool.max_price_deviation_bps), 2_000);
-    // The average starts at the oracle price the pool was created against.
-    assert_eq!(u64::from(pool.average_price), dollars(100) as u64);
-}
-
-#[quasar_test]
-fn initialize_pool_rejects_initial_margin_at_or_below_maintenance(test: &mut Test) {
-    // An initial margin at or below the 5% maintenance margin would let a
-    // position open already liquidatable.
-    add_pool_prerequisites(test);
-    for initial_margin_bps in [500, 350] {
-        test.send(InitializePoolInstruction {
-            initial_margin_bps,
-            ..default_initialize_pool()
-        })
-        .fails_with(error::INITIAL_MARGIN_NOT_ABOVE_MAINTENANCE);
-    }
-    // Above 100% of notional is refused too.
-    test.send(InitializePoolInstruction {
-        initial_margin_bps: 10_001,
-        ..default_initialize_pool()
-    })
-    .fails_with(error::INVALID_PARAMETER);
-    // One basis point above the maintenance margin is accepted.
-    test.send(InitializePoolInstruction {
-        initial_margin_bps: 501,
-        ..default_initialize_pool()
-    })
-    .succeeds();
-}
-
-#[quasar_test]
-fn initialize_pool_rejects_price_deviation_outside_range(test: &mut Test) {
-    add_pool_prerequisites(test);
-    for max_price_deviation_bps in [0, 10_000] {
-        test.send(InitializePoolInstruction {
-            max_price_deviation_bps,
-            ..default_initialize_pool()
-        })
-        .fails_with(error::INVALID_PRICE_DEVIATION);
-    }
-    test.send(InitializePoolInstruction {
-        max_price_deviation_bps: 9_999,
-        ..default_initialize_pool()
-    })
-    .succeeds();
-}
-
-/// A single oracle print far from the pool's average cannot be traded at: the
-/// open is refused before the price is folded into the average.
-#[quasar_test]
-fn open_rejected_when_oracle_jumps_outside_band(test: &mut Test) {
-    let env = setup(test);
-    fund(test, PROVIDER, PROVIDER_COLLATERAL, 100_000 * ONE_USDC);
-    add_liquidity(test, &env, 100_000 * ONE_USDC).succeeds();
-    fund(test, TRADER, TRADER_COLLATERAL, 1_000 * ONE_USDC);
-    let size = 5_000 * ONE_USDC;
-
-    // The band is 20% around the $100 average: $125 and $79 are outside it.
-    for outside_price in [dollars(125), dollars(79)] {
-        set_feed(test, outside_price, 0);
-        open_position(test, &env, SIDE_LONG, 1_000 * ONE_USDC, size)
-            .fails_with(error::PRICE_OUTSIDE_BAND);
-        // The refused open folded nothing into the average.
-        assert_eq!(pool_state(test, &env).0, dollars(100) as u64);
-    }
-
-    // $118 is inside the band, and opens at that price.
-    set_feed(test, dollars(118), 0);
-    open_position(test, &env, SIDE_LONG, 1_000 * ONE_USDC, size).succeeds();
-    let position = test.read::<Position>(test.derive_pda(Position::seeds(&env.pool, &TRADER)));
-    assert_eq!(u64::from(position.entry_price), dollars(118) as u64);
-}
-
-#[quasar_test]
-fn close_rejected_when_oracle_jumps_outside_band(test: &mut Test) {
-    let env = setup(test);
-    fund(test, PROVIDER, PROVIDER_COLLATERAL, 100_000 * ONE_USDC);
-    add_liquidity(test, &env, 100_000 * ONE_USDC).succeeds();
-    let collateral = 1_000 * ONE_USDC;
-    let size = 5_000 * ONE_USDC;
-    fund(test, TRADER, TRADER_COLLATERAL, collateral);
-    open_position(test, &env, SIDE_LONG, collateral, size).succeeds();
-
-    // A jump to $125 would pay the long $1,250, but $125 is 25% from the
-    // $100 average, outside the 20% band.
-    set_feed(test, dollars(125), 0);
-    close_position(test, &env).fails_with(error::PRICE_OUTSIDE_BAND);
-
-    // At $115, inside the band, the close goes through and pays the 15% gain.
-    set_feed(test, dollars(115), 0);
-    let fee = size / 1_000;
-    let profit = size * 15 / 100;
-    close_position(test, &env)
-        .succeeds()
-        .has_tokens(TRADER_COLLATERAL, collateral - fee + profit - fee);
-}
-
-/// Liquidation has no band check: a genuine crash is when positions go
-/// underwater, so the pool has to be able to liquidate through one.
-#[quasar_test]
-fn liquidation_runs_outside_band(test: &mut Test) {
-    let env = setup(test);
-    fund(test, PROVIDER, PROVIDER_COLLATERAL, 100_000 * ONE_USDC);
-    add_liquidity(test, &env, 100_000 * ONE_USDC).succeeds();
-    fund(test, TRADER, TRADER_COLLATERAL, 1_100 * ONE_USDC);
-    open_position(test, &env, SIDE_LONG, 1_100 * ONE_USDC, 10_000 * ONE_USDC).succeeds();
-
-    // $75 is 25% below the $100 average, so the owner cannot close there.
-    set_feed(test, dollars(75), 0);
-    close_position(test, &env).fails_with(error::PRICE_OUTSIDE_BAND);
-
-    test.add(Wallet::new().at(LIQUIDATOR));
-    let position = test.derive_pda(Position::seeds(&env.pool, &TRADER));
-    test.send(LiquidatePositionInstruction {
-        liquidator: LIQUIDATOR,
-        owner: TRADER,
-        oracle_feed: FEED,
-        collateral_mint: COLLATERAL_MINT,
-        custody_vault: env.custody_vault,
-        trader_collateral: TRADER_COLLATERAL,
-        liquidator_collateral: LIQUIDATOR_COLLATERAL,
-    })
-    .succeeds()
-    .is_closed(position);
-    assert_eq!(u128::from(test.read::<Pool>(env.pool).long_size), 0);
-}
-
-#[quasar_test]
-fn liquidity_changes_rejected_when_oracle_jumps_outside_band(test: &mut Test) {
-    let env = setup(test);
-    fund(test, PROVIDER, PROVIDER_COLLATERAL, 15_000 * ONE_USDC);
-    add_liquidity(test, &env, 10_000 * ONE_USDC).succeeds();
-    let shares = test.tokens(PROVIDER_LP);
-
-    // $76 is 24% below the $100 average.
-    set_feed(test, dollars(76), 0);
-    add_liquidity(test, &env, 5_000 * ONE_USDC).fails_with(error::PRICE_OUTSIDE_BAND);
-    remove_liquidity(test, &env, shares).fails_with(error::PRICE_OUTSIDE_BAND);
-}
-
-/// After a genuine move outside the band, anyone can walk the average toward
-/// the new price with `update_price_average`, and trading resumes once the
-/// price is back inside the band.
-#[quasar_test]
-fn price_average_catches_up_after_genuine_move(test: &mut Test) {
-    let env = setup(test);
-    fund(test, PROVIDER, PROVIDER_COLLATERAL, 100_000 * ONE_USDC);
-    add_liquidity(test, &env, 100_000 * ONE_USDC).succeeds();
-    let collateral = 1_000 * ONE_USDC;
-    let size = 5_000 * ONE_USDC;
-    fund(test, TRADER, TRADER_COLLATERAL, collateral);
-
-    // NVDAx reprices from $100 to $130, 30% away from the average.
-    let new_price = dollars(130);
-    set_feed(test, new_price, 0);
-    open_position(test, &env, SIDE_LONG, collateral, size).fails_with(error::PRICE_OUTSIDE_BAND);
-
-    // Every two minutes the keeper calls `update_price_average`. Each call
-    // credits the two minutes since the previous read to the price that read
-    // saw, a fifth of the window. The first call credits $100, the price
-    // before the move, and records $130; each later call moves the average a
-    // fifth of the remaining gap to $130: $100, then $106, then $110.80. $130
-    // is within 20% of any average from $108.34 up, so the third update
-    // reopens trading.
-    let mut updates = 0;
-    loop {
-        update_average_after(test, &env, 120, new_price).succeeds();
-        updates += 1;
-        let opened = open_position(test, &env, SIDE_LONG, collateral, size);
-        if opened.is_ok() {
-            break;
-        }
-        opened.fails_with(error::PRICE_OUTSIDE_BAND);
-        assert!(updates < 10, "the average never caught up");
-    }
-    assert_eq!(updates, 3);
-    let (average_price, last_oracle_price, _) = pool_state(test, &env);
-    assert_eq!(average_price, 11_080_000_000);
-    assert_eq!(last_oracle_price, new_price as u64);
-}
-
-#[quasar_test]
-fn single_update_moves_average_by_elapsed_fraction(test: &mut Test) {
-    let env = setup(test);
-    let (_, _, created_at) = pool_state(test, &env);
-
-    // The first update after the oracle moves to $115 credits the four
-    // minutes since creation to $100, the price seen at creation, so the
-    // average stays at $100 and $115 is recorded for the next read.
-    update_average_after(test, &env, 240, dollars(115)).succeeds();
-    assert_eq!(
-        pool_state(test, &env),
-        (dollars(100) as u64, dollars(115) as u64, created_at + 240)
+    test.add(Wallet::new().at(ADMIN));
+    test.add(Mint::new(ADMIN).at(COLLATERAL_MINT).decimals(6));
+    set_feed(test, dollars(100), 0);
+    assert!(
+        init_pool(test, 500, 600).is_err(),
+        "close_fee_bps >= maintenance_margin_bps must be rejected"
     );
-
-    // Four more minutes at $115 are 240 of the 600-second window, so the next
-    // update moves the average 240/600 of the way from $100 to $115: to $106.
-    update_average_after(test, &env, 240, dollars(115)).succeeds();
-    assert_eq!(
-        pool_state(test, &env),
-        (dollars(106) as u64, dollars(115) as u64, created_at + 480)
-    );
-
-    // Fifteen minutes is more than a full window, so the next update replaces
-    // the average with $115, the price at the previous read, and records the
-    // fall to $97. One more update credits $97 for a full window.
-    update_average_after(test, &env, 900, dollars(97)).succeeds();
-    assert_eq!(
-        pool_state(test, &env),
-        (dollars(115) as u64, dollars(97) as u64, created_at + 1_380)
-    );
-    update_average_after(test, &env, 900, dollars(97)).succeeds();
-    assert_eq!(pool_state(test, &env).0, dollars(97) as u64);
-}
-
-/// A pool left idle for more than a window cannot have its average set by one
-/// read of a manipulated price. The read only records the price; the interval
-/// before it is credited to the price seen at the read before. Once a read of
-/// the real price replaces it, the manipulated price has moved the average
-/// only by the seconds between the two reads.
-#[quasar_test]
-fn one_manipulated_read_after_idle_does_not_move_average(test: &mut Test) {
-    let env = setup(test);
-    fund(test, PROVIDER, PROVIDER_COLLATERAL, 100_000 * ONE_USDC);
-    add_liquidity(test, &env, 100_000 * ONE_USDC).succeeds();
-    let collateral = 1_000 * ONE_USDC;
-    fund(test, TRADER, TRADER_COLLATERAL, collateral);
-
-    // Fifteen idle minutes, then the oracle is pushed to $160 and
-    // `update_price_average` is called. The average stays at $100.
-    update_average_after(test, &env, 900, dollars(160)).succeeds();
-    let (average_price, last_oracle_price, _) = pool_state(test, &env);
-    assert_eq!(average_price, dollars(100) as u64);
-    assert_eq!(last_oracle_price, dollars(160) as u64);
-
-    // Six seconds later the oracle is back at $100 and is read again. The six
-    // seconds are credited to $160: the average moves 6/600 of the $60 gap,
-    // to $100.60, and $100 replaces $160 as the latest observation.
-    update_average_after(test, &env, 6, dollars(100)).succeeds();
-    let (average_price, last_oracle_price, last_fold) = pool_state(test, &env);
-    assert_eq!(average_price, 10_060_000_000);
-    assert_eq!(last_oracle_price, dollars(100) as u64);
-
-    // An open at $160 is still refused.
-    set_feed_at_slot(test, dollars(160), last_fold as u64 * SLOTS_PER_SECOND, 0);
-    open_position(test, &env, SIDE_LONG, collateral, 5_000 * ONE_USDC)
-        .fails_with(error::PRICE_OUTSIDE_BAND);
 }
