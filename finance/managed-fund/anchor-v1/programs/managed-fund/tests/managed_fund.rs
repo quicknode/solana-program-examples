@@ -1432,7 +1432,7 @@ fn test_set_weight_rejects_non_manager() {
     assert!(r.is_err(), "only the manager may set weights");
 }
 
-/// The whole lifecycle with the exact figures the video script narrates: deposit and
+/// The whole lifecycle with the exact figures the book's Managed Fund chapter narrates: deposit and
 /// auto-deploy, a price move, a rebalance back to target, a second depositor priced at
 /// the new NAV, a year's fee, and an in-kind withdrawal.
 #[test]

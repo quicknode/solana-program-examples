@@ -4,6 +4,17 @@ All notable changes to this repository are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-10-01] - Managed Fund's video script is removed
+
+### Removed
+
+- `finance/managed-fund/VIDEO_SCRIPT.md`, the only video script in the
+  repository. It narrated an older version of the program: an `invest`
+  handler that no longer exists, whitelisting, idle USDC in the fund, and
+  figures that no test checks. The `PRODUCT.md` files no longer list it, and
+  `test_full_lifecycle`'s doc comment points at the book's Managed Fund
+  chapter, which narrates the same figures.
+
 ## [2026-09-28] - Token Fundraiser is renamed Fundraiser
 
 Contributors to the fundraiser receive no token, only a refund if the target is
