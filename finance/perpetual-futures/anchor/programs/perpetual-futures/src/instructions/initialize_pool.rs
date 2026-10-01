@@ -7,10 +7,10 @@ use anchor_spl::{
 };
 
 use crate::constants::{
-    BASIS_POINTS_DENOMINATOR, LP_MINT_SEED, MAX_FUNDING_RATE_PER_SECOND, MAX_LEVERAGE_CEILING,
-    POOL_SEED, VAULT_SEED,
+    BASIS_POINTS_DENOMINATOR, LP_MINT_SEED, MAX_FUNDING_RATE_PER_SECOND, POOL_SEED, VAULT_SEED,
 };
 use crate::errors::PerpError;
+use crate::state::oracle::read_oracle_price;
 use crate::state::Pool;
 
 /// Trading parameters set once at pool creation. None of them can be changed
@@ -27,12 +27,22 @@ pub struct PoolParameters {
 
     pub open_fee_bps: u16,
     pub close_fee_bps: u16,
-    pub max_leverage: u16,
+
+    /// Net collateral a position must post to open, in basis points of its
+    /// notional size. Must be above `maintenance_margin_bps` and at most
+    /// 10_000 (no leverage).
+    pub initial_margin_bps: u16,
+
     pub maintenance_margin_bps: u16,
     pub liquidation_fee_bps: u16,
 
     /// Maximum oracle confidence band tolerated, in basis points of the price.
     pub max_confidence_bps: u16,
+
+    /// Widest gap, in basis points of the pool's average price, between the
+    /// oracle price and that average at which positions may still open or
+    /// close and liquidity may still move.
+    pub max_price_deviation_bps: u16,
 }
 
 pub fn handle_initialize_pool(
@@ -40,10 +50,6 @@ pub fn handle_initialize_pool(
     parameters: PoolParameters,
 ) -> Result<()> {
     let denominator = BASIS_POINTS_DENOMINATOR as u16;
-    require!(
-        parameters.max_leverage >= 1 && parameters.max_leverage <= MAX_LEVERAGE_CEILING,
-        PerpError::InvalidParameter
-    );
     // The rate never changes after this, so bounding it here bounds it for the
     // life of the pool.
     require!(
@@ -77,12 +83,40 @@ pub fn handle_initialize_pool(
         parameters.maintenance_margin_bps > parameters.close_fee_bps,
         PerpError::InvalidParameter
     );
+    // A position must open with more margin than it is liquidated at, or it
+    // could be liquidated in the same slot it opened. At most 100% of
+    // notional: more than that would demand collateral above the position's
+    // size.
+    require!(
+        parameters.initial_margin_bps > parameters.maintenance_margin_bps,
+        PerpError::InitialMarginNotAboveMaintenance
+    );
+    require!(
+        parameters.initial_margin_bps <= denominator,
+        PerpError::InvalidParameter
+    );
     // Zero would reject every real feed (which always reports some uncertainty);
     // above 100% is meaningless. Anything in between is a valid risk choice.
     require!(
         parameters.max_confidence_bps > 0 && parameters.max_confidence_bps < denominator,
         PerpError::InvalidParameter
     );
+    // Zero would refuse every price move, however small. At 100% or more the
+    // band could never refuse a fall, since the oracle price is always
+    // positive.
+    require!(
+        parameters.max_price_deviation_bps > 0 && parameters.max_price_deviation_bps < denominator,
+        PerpError::InvalidPriceDeviation
+    );
+
+    // Seed the average with a validated oracle price, so the band is in force
+    // from the first trade.
+    let initial_price = read_oracle_price(
+        &context.accounts.oracle_feed,
+        parameters.oracle_scale,
+        parameters.max_confidence_bps,
+    )?;
+    let current_timestamp = Clock::get()?.unix_timestamp;
 
     let pool = &mut context.accounts.pool;
     pool.authority = *context.accounts.authority.address();
@@ -100,14 +134,18 @@ pub fn handle_initialize_pool(
     pool.long_size_scaled = 0;
     pool.short_size_scaled = 0;
     pool.cumulative_funding = 0;
-    pool.last_funding_timestamp = Clock::get()?.unix_timestamp;
+    pool.last_funding_timestamp = current_timestamp;
+    pool.average_price = initial_price;
+    pool.last_oracle_price = initial_price;
+    pool.average_price_timestamp = current_timestamp;
     pool.funding_rate_per_second = parameters.funding_rate_per_second;
     pool.open_fee_bps = parameters.open_fee_bps;
     pool.close_fee_bps = parameters.close_fee_bps;
-    pool.max_leverage = parameters.max_leverage;
+    pool.initial_margin_bps = parameters.initial_margin_bps;
     pool.maintenance_margin_bps = parameters.maintenance_margin_bps;
     pool.liquidation_fee_bps = parameters.liquidation_fee_bps;
     pool.max_confidence_bps = parameters.max_confidence_bps;
+    pool.max_price_deviation_bps = parameters.max_price_deviation_bps;
     pool.bump = context.bumps.pool;
 
     Ok(())
@@ -130,8 +168,9 @@ pub struct InitializePoolAccountConstraints {
     pub collateral_mint: Box<InterfaceAccount<Mint>>,
 
     /// CHECK: The oracle feed account. Its key is stored on the pool and every
-    /// read validates the layout, scale, and freshness; it is never trusted by
-    /// type. Swap for a real Pyth price feed in production.
+    /// read, including the one here that seeds the average price, validates
+    /// the layout, scale, and freshness; it is never trusted by type. Swap for
+    /// a real Pyth price feed in production.
     pub oracle_feed: UncheckedAccount,
 
     /// Liquidity-provider share mint. The pool account is its mint authority

@@ -33,10 +33,18 @@ pub const MINIMUM_LIQUIDITY: u64 = 1_000;
 /// lowers over time, so the window tightens on its own and never loosens.
 pub const MAX_PRICE_STALENESS_SLOTS: u64 = 150;
 
-/// Upper bound on the per-pool `max_leverage` parameter, so a pool cannot be
-/// configured with an absurd leverage that makes every position instantly
-/// liquidatable on the smallest price move.
-pub const MAX_LEVERAGE_CEILING: u16 = 100;
+/// How many seconds of oracle prices the pool's `average_price` follows. Each
+/// fold moves the average toward the price seen at the previous read by
+/// `elapsed / window` of the gap between them, and an interval of a full window
+/// or more replaces the average with that price. Ten minutes is long enough
+/// that a price seen at two reads six seconds apart, about as long as a faulty
+/// or manipulated oracle print lasts, moves the average by one percent of its
+/// jump, and short enough that a genuine move is back inside the band within
+/// minutes of repeated reads. Counted on the Clock's `unix_timestamp`,
+/// like funding: it is a span of wall-clock time, and the second or two of
+/// leader drift changes a fold's weight by well under one percent.
+#[constant]
+pub const PRICE_AVERAGE_WINDOW_SECONDS: i64 = 600;
 
 /// Upper bound on the per-pool `funding_rate_per_second` parameter, in
 /// `FUNDING_PRECISION` units: 277 billionths of a position's size per second,

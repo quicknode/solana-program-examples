@@ -7,14 +7,14 @@ use quasar_lang::{prelude::*, sysvars::Sysvar};
 use crate::last_restart::LastRestartSlot;
 
 use crate::constants::{
-    BASIS_POINTS_DENOMINATOR, FUNDING_PRECISION, MAX_PRICE_STALENESS_SLOTS, SIDE_LONG,
-    SIZE_PRECISION,
+    BASIS_POINTS_DENOMINATOR, FUNDING_PRECISION, MAX_PRICE_STALENESS_SLOTS,
+    PRICE_AVERAGE_WINDOW_SECONDS, SIDE_LONG, SIZE_PRECISION,
 };
 use crate::state::Pool;
 
 pub mod error {
     pub const ZERO_AMOUNT: u32 = 0;
-    pub const LEVERAGE_TOO_HIGH: u32 = 2;
+    pub const INITIAL_MARGIN_NOT_MET: u32 = 2;
     pub const INVALID_PARAMETER: u32 = 3;
     pub const STALE_PRICE: u32 = 4;
     pub const NON_POSITIVE_PRICE: u32 = 5;
@@ -31,6 +31,9 @@ pub mod error {
     pub const ORACLE_CONFIDENCE_TOO_WIDE: u32 = 16;
     pub const INSUFFICIENT_COLLATERAL: u32 = 17;
     pub const PRICE_PREDATES_RESTART: u32 = 18;
+    pub const INITIAL_MARGIN_NOT_ABOVE_MAINTENANCE: u32 = 19;
+    pub const INVALID_PRICE_DEVIATION: u32 = 20;
+    pub const PRICE_OUTSIDE_BAND: u32 = 21;
 }
 
 #[inline(always)]
@@ -267,30 +270,136 @@ pub fn basis_points_of(amount: u64, basis_points: u16) -> Result<u64, ProgramErr
     u64::try_from(fraction).map_err(|_| overflow())
 }
 
-/// The preamble every price-sensitive handler runs: read a validated oracle
-/// price from the feed, checked for freshness against `slot`, then bring the
-/// pool's funding index up to the current time, `unix_timestamp`, so the
-/// settlement that follows uses fresh numbers for both. Centralized so no
-/// handler can settle a position against a stale funding index.
+/// Fold the elapsed interval into the pool's `average_price`, then record
+/// `price` as the latest observation.
+///
+/// The interval since the last fold is credited to the price observed at
+/// that fold, `last_oracle_price`, on the assumption that it held throughout:
+///
+/// `average += (last_oracle_price - average) * min(elapsed, PRICE_AVERAGE_WINDOW_SECONDS) / PRICE_AVERAGE_WINDOW_SECONDS`
+///
+/// The price read now only starts counting from now, so it moves the average
+/// only if it is still the oracle's price at a later read, weighted by the
+/// seconds between the two reads; a read of a different price in between
+/// replaces it. A pool left idle for a window or more therefore cannot have
+/// its average set by one read. As with funding, a timestamp at or before the
+/// stored one is treated as no time elapsed: the average and the stored stamp
+/// stay where they are, and only `last_oracle_price` is updated.
+pub fn fold_price_into_average(
+    pool: &mut Account<Pool>,
+    price: u64,
+    current_timestamp: i64,
+) -> Result<(), ProgramError> {
+    let average_price_timestamp = pool.average_price_timestamp.get();
+    if current_timestamp <= average_price_timestamp {
+        pool.last_oracle_price.set(price);
+        return Ok(());
+    }
+    let elapsed = current_timestamp
+        .checked_sub(average_price_timestamp)
+        .ok_or_else(overflow)?;
+    let weight = elapsed.min(PRICE_AVERAGE_WINDOW_SECONDS);
+
+    let average = pool.average_price.get() as i128;
+    // Multiply before dividing; the gap is signed, so the average moves down
+    // as readily as up.
+    let movement = (pool.last_oracle_price.get() as i128)
+        .checked_sub(average)
+        .ok_or_else(overflow)?
+        .checked_mul(weight as i128)
+        .ok_or_else(overflow)?
+        .checked_div(PRICE_AVERAGE_WINDOW_SECONDS as i128)
+        .ok_or_else(overflow)?;
+    let new_average = average.checked_add(movement).ok_or_else(overflow)?;
+    pool.average_price
+        .set(u64::try_from(new_average).map_err(|_| overflow())?);
+    pool.last_oracle_price.set(price);
+    pool.average_price_timestamp.set(current_timestamp);
+    Ok(())
+}
+
+/// Refuse an oracle `price` more than `max_price_deviation_bps` away from the
+/// pool's stored `average_price`:
+/// `|price - average_price| * 10_000 <= average_price * max_price_deviation_bps`.
+pub fn require_price_within_band(pool: &Account<Pool>, price: u64) -> Result<(), ProgramError> {
+    let average_price = pool.average_price.get();
+    let deviation_scaled = (price.abs_diff(average_price) as u128)
+        .checked_mul(BASIS_POINTS_DENOMINATOR as u128)
+        .ok_or_else(overflow)?;
+    let band_scaled = (average_price as u128)
+        .checked_mul(pool.max_price_deviation_bps.get() as u128)
+        .ok_or_else(overflow)?;
+    if deviation_scaled > band_scaled {
+        return Err(err(error::PRICE_OUTSIDE_BAND));
+    }
+    Ok(())
+}
+
+/// Read and validate the oracle price from the feed account, checked for
+/// freshness against `slot`.
+pub fn read_feed_price(
+    oracle_feed: &UncheckedAccount,
+    expected_scale: u32,
+    slot: u64,
+    max_confidence_bps: u16,
+) -> Result<u64, ProgramError> {
+    let view = oracle_feed.to_account_view();
+    let data = view
+        .try_borrow()
+        .map_err(|_| err(error::ORACLE_DATA_TOO_SHORT))?;
+    read_oracle_price(&data, expected_scale, slot, max_confidence_bps)
+}
+
+/// The preamble `liquidate_position` and `update_price_average` run: read a
+/// validated oracle price, checked for freshness against `slot`, bring the
+/// pool's funding index up to `unix_timestamp`, and fold the interval since the
+/// previous read into the pool's average (see `fold_price_into_average`), so
+/// the settlement that follows uses fresh numbers.
+/// Centralized so no handler can settle a position against a stale funding
+/// index.
+///
+/// No band check: liquidation has to keep working through a genuine price
+/// move, because that is when positions go underwater, and
+/// `update_price_average` is how the average catches up with one.
 pub fn refresh_price_and_funding(
     pool: &mut Account<Pool>,
     oracle_feed: &UncheckedAccount,
     slot: u64,
     unix_timestamp: i64,
 ) -> Result<u64, ProgramError> {
-    let price = {
-        let view = oracle_feed.to_account_view();
-        let data = view
-            .try_borrow()
-            .map_err(|_| err(error::ORACLE_DATA_TOO_SHORT))?;
-        read_oracle_price(
-            &data,
-            pool.oracle_scale.get(),
-            slot,
-            pool.max_confidence_bps.get(),
-        )?
-    };
-
+    let price = read_pool_oracle_price(pool, oracle_feed, slot)?;
     accrue_funding(pool, unix_timestamp)?;
+    fold_price_into_average(pool, price, unix_timestamp)?;
     Ok(price)
+}
+
+/// The preamble for every handler that opens or closes a position or moves
+/// liquidity: the same as `refresh_price_and_funding`, but first refuses a
+/// price outside the band around the stored average, before anything is
+/// folded in or the price is recorded. A single oracle print far from the
+/// average therefore cannot open, close, deposit, or withdraw at that price.
+pub fn refresh_price_and_funding_within_band(
+    pool: &mut Account<Pool>,
+    oracle_feed: &UncheckedAccount,
+    slot: u64,
+    unix_timestamp: i64,
+) -> Result<u64, ProgramError> {
+    let price = read_pool_oracle_price(pool, oracle_feed, slot)?;
+    require_price_within_band(pool, price)?;
+    accrue_funding(pool, unix_timestamp)?;
+    fold_price_into_average(pool, price, unix_timestamp)?;
+    Ok(price)
+}
+
+fn read_pool_oracle_price(
+    pool: &Account<Pool>,
+    oracle_feed: &UncheckedAccount,
+    slot: u64,
+) -> Result<u64, ProgramError> {
+    read_feed_price(
+        oracle_feed,
+        pool.oracle_scale.get(),
+        slot,
+        pool.max_confidence_bps.get(),
+    )
 }
