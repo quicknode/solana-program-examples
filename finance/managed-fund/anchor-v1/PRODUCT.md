@@ -58,7 +58,6 @@ Existing name: **Managed Fund** (the on-chain construct is a "fund" built from s
 ## Evidence on Hand
 
 - `anchor/README.md` — thorough product and financial-concept documentation (NAV, shares, fees, weights, slippage, in-kind withdrawal, transaction-size limits).
-- `VIDEO_SCRIPT.md` at the `managed-fund` root — an existing narrative walkthrough of the product.
 - `anchor/CHANGELOG.md`, `quasar/CHANGELOG.md` — history.
 - Program source and tests under `anchor/programs/` and `quasar/`.
 - No real users, testimonials, deployment addresses, or production metrics exist; the demo runs on devnet with mock tokens. Future work must not fabricate mainnet deployment claims, real AUM, or user counts.
