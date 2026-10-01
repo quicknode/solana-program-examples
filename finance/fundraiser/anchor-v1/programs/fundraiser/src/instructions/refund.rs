@@ -10,8 +10,12 @@ use crate::{
 
 #[derive(Accounts)]
 pub struct RefundAccountConstraints<'info> {
+    /// Not a signer: the tokens go to the contributor's token account and the
+    /// rent to the contributor, whoever sends the transaction. So a maker can
+    /// refund every contributor and close a failed fundraiser without waiting
+    /// on any of them.
     #[account(mut)]
-    pub contributor: Signer<'info>,
+    pub contributor: SystemAccount<'info>,
 
     pub maker: SystemAccount<'info>,
 
@@ -84,6 +88,11 @@ pub fn handle_refund(accounts: &mut RefundAccountConstraints) -> Result<()> {
         .checked_sub(refund_amount)
         .ok_or(FundraiserError::MathOverflow)?;
     accounts.contributor_account.amount = 0;
+    accounts.fundraiser.open_contributor_accounts = accounts
+        .fundraiser
+        .open_contributor_accounts
+        .checked_sub(1)
+        .ok_or(FundraiserError::MathOverflow)?;
 
     // Transfer the funds from the vault back to the contributor. The vault is
     // owned by the fundraiser PDA, so the CPI is signed with its seeds.
