@@ -1,7 +1,7 @@
 use {
     crate::{
         state::{Config, PoolConfig, PoolConfigInner},
-        ConfigPda, LiquidityMintPda, PoolPda,
+        ConfigPda, LiquidityMintPda, PoolAPda, PoolBPda, PoolPda,
     },
     quasar_lang::prelude::*,
     quasar_spl::prelude::*,
@@ -10,6 +10,7 @@ use {
 /// Seeds:
 /// - `pool_config = [config, mint_a, mint_b]`
 /// - `liquidity_provider_mint = [b"liquidity", config, mint_a, mint_b]`
+/// - `pool_a = [b"pool_a", pool_config]`, `pool_b = [b"pool_b", pool_config]`
 ///
 /// `pool_config` owns both reserves and is the LP mint's mint authority; it
 /// signs for them with its own seeds. `liquidity_provider_mint` derives at a
@@ -39,19 +40,21 @@ pub struct InitializePoolAccountConstraints {
     pub liquidity_provider_mint: Account<Mint>,
     pub mint_a: Account<Mint>,
     pub mint_b: Account<Mint>,
-    /// Pool's token A reserve, owned by `pool_config`.
+    /// Pool's token A reserve, owned by `pool_config`, at a PDA of the pool.
     #[account(
         mut,
-        init(idempotent),
+        init,
         payer = payer,
+        address = PoolAPda::seeds(pool_config.address()),
         token(mint = mint_a, authority = pool_config, token_program = token_program),
     )]
     pub pool_a: Account<Token>,
-    /// Pool's token B reserve, owned by `pool_config`.
+    /// Pool's token B reserve, owned by `pool_config`, at a PDA of the pool.
     #[account(
         mut,
-        init(idempotent),
+        init,
         payer = payer,
+        address = PoolBPda::seeds(pool_config.address()),
         token(mint = mint_b, authority = pool_config, token_program = token_program),
     )]
     pub pool_b: Account<Token>,

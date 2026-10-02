@@ -45,6 +45,20 @@ pub struct PoolPda;
 #[seeds(b"liquidity", config: Address, mint_a: Address, mint_b: Address)]
 pub struct LiquidityMintPda;
 
+/// The pool's token A reserve, a PDA of the pool at seeds = [b"pool_a",
+/// pool_config], so any client can derive where a pool keeps its tokens
+/// without being told. `PoolConfig` also records the address, and every
+/// handler that touches the reserve checks it with `has_one(pool_a)`.
+#[derive(Seeds)]
+#[seeds(b"pool_a", pool_config: Address)]
+pub struct PoolAPda;
+
+/// The pool's token B reserve, at seeds = [b"pool_b", pool_config], recorded
+/// and checked as `pool_a` is.
+#[derive(Seeds)]
+#[seeds(b"pool_b", pool_config: Address)]
+pub struct PoolBPda;
+
 /// Simple constant-product AMM (token swap).
 ///
 /// Six instructions:
