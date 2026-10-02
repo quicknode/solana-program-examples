@@ -42,4 +42,7 @@ pub enum AmmError {
     MathOverflow,
     /// The signer of `claim_admin_fees` does not match `Config.admin`.
     Unauthorized,
+    /// A `pool_a` or `pool_b` account is not the reserve recorded on the
+    /// pool's `PoolConfig`.
+    InvalidPoolVault,
 }

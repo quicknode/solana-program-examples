@@ -4,6 +4,20 @@ All notable changes to this repository are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-10-02] - Token Swap (Quasar): reserves are bound to the pool
+
+### Fixed
+
+- `finance/token-swap/quasar` accepted any token accounts as `pool_a` and
+  `pool_b` in `deposit_liquidity`, `withdraw_liquidity`, `swap_tokens` and
+  `claim_admin_fees`, so a trader could price a swap from a token account of
+  their own and drain the real reserve on the other side. `PoolConfig` now
+  records both reserves and every handler checks them (`InvalidPoolVault`).
+  The Anchor v1 and v2 versions already bound them as associated token
+  accounts of the pool.
+- `finance/token-swap/quasar`'s `swap_tokens` re-checks the invariant against
+  the vault balances after its transfers, rather than against computed ones.
+
 ## [2026-10-01] - Managed Fund's video script is removed
 
 ### Removed

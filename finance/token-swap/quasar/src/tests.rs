@@ -800,6 +800,98 @@ fn swap_slippage_rejected(test: &mut Test) {
     );
 }
 
+/// A swap that names a token account of its own as `pool_a` must be refused.
+/// Without the `has_one(pool_a)` check the handler would price the trade from
+/// that account's one-unit balance, send the trader's input into it (back to
+/// the trader), and pay out nearly all of `pool_b` from the real reserve.
+#[quasar_test]
+fn swap_rejects_substituted_pool_vault(test: &mut Test) {
+    setup_pool(test);
+    seed_pool(test, 10_000_000, 10_000_000);
+
+    test.add(Wallet::new().at(BAD_ACTOR));
+    test.add(
+        TokenAccount::new(MINT_A, BAD_ACTOR)
+            .at(BAD_TOKEN_A)
+            .amount(1_000_001),
+    );
+    // A second mint-A account the attacker owns, holding one unit, passed as
+    // the pool's token A reserve.
+    let fake_pool_a = Pubkey::new_from_array([25; 32]);
+    test.add(
+        TokenAccount::new(MINT_A, BAD_ACTOR)
+            .at(fake_pool_a)
+            .amount(1),
+    );
+
+    test.send(SwapTokensInstruction {
+        trader: BAD_ACTOR,
+        mint_a: MINT_A,
+        mint_b: MINT_B,
+        pool_a: fake_pool_a,
+        pool_b: POOL_B,
+        token_a: BAD_TOKEN_A,
+        token_b: BAD_TOKEN_B,
+        payer: PAYER,
+        input_is_token_a: true,
+        input_amount: 1_000_000,
+        min_output_amount: 1,
+    })
+    .fails_with(AmmError::InvalidPoolVault);
+
+    assert_eq!(
+        test.tokens(POOL_B),
+        10_000_000,
+        "pool_b must be untouched after the refused swap"
+    );
+}
+
+/// A deposit that names the depositor's own token accounts as the reserves
+/// must be refused. Without the `has_one` checks the LP tokens minted would be
+/// priced from those accounts' balances, and the deposit would land in them.
+#[quasar_test]
+fn deposit_rejects_substituted_pool_vaults(test: &mut Test) {
+    setup_pool(test);
+    seed_pool(test, 10_000_000, 10_000_000);
+
+    fund(
+        test,
+        BAD_ACTOR,
+        BAD_TOKEN_A,
+        BAD_TOKEN_B,
+        1_000_000,
+        1_000_000,
+    );
+    let fake_pool_a = Pubkey::new_from_array([25; 32]);
+    let fake_pool_b = Pubkey::new_from_array([26; 32]);
+    test.add(
+        TokenAccount::new(MINT_A, BAD_ACTOR)
+            .at(fake_pool_a)
+            .amount(1),
+    );
+    test.add(
+        TokenAccount::new(MINT_B, BAD_ACTOR)
+            .at(fake_pool_b)
+            .amount(1),
+    );
+
+    test.send(DepositLiquidityInstruction {
+        depositor: BAD_ACTOR,
+        mint_a: MINT_A,
+        mint_b: MINT_B,
+        pool_a: fake_pool_a,
+        pool_b: fake_pool_b,
+        liquidity_provider_token: Pubkey::new_from_array([27; 32]),
+        token_a: BAD_TOKEN_A,
+        token_b: BAD_TOKEN_B,
+        payer: PAYER,
+        amount_a: 1_000_000,
+        amount_b: 1_000_000,
+        minimum_lp_tokens_out: 0,
+    })
+    .fails_with(AmmError::InvalidPoolVault);
+}
+
 // ─── claim_admin_fees ────────────────────────────────────────────────────────
 
 #[quasar_test]

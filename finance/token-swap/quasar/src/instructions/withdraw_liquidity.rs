@@ -14,7 +14,11 @@ pub struct WithdrawLiquidityAccountConstraints {
     #[account(address = ConfigPda::seeds())]
     pub config: Account<Config>,
     /// Owns both reserves and signs the transfers out of them.
-    #[account(address = PoolPda::seeds(config.address(), mint_a.address(), mint_b.address()))]
+    #[account(
+        address = PoolPda::seeds(config.address(), mint_a.address(), mint_b.address()),
+        has_one(pool_a) @ AmmError::InvalidPoolVault,
+        has_one(pool_b) @ AmmError::InvalidPoolVault,
+    )]
     pub pool_config: Account<PoolConfig>,
     pub depositor: Signer,
     /// LP mint at the LiquidityMintPda.

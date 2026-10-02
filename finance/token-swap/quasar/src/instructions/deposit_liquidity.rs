@@ -16,7 +16,11 @@ pub struct DepositLiquidityAccountConstraints {
     #[account(address = ConfigPda::seeds())]
     pub config: Account<Config>,
     /// Owns both reserves and is the LP mint's authority; signs the mint_to.
-    #[account(address = PoolPda::seeds(config.address(), mint_a.address(), mint_b.address()))]
+    #[account(
+        address = PoolPda::seeds(config.address(), mint_a.address(), mint_b.address()),
+        has_one(pool_a) @ AmmError::InvalidPoolVault,
+        has_one(pool_b) @ AmmError::InvalidPoolVault,
+    )]
     pub pool_config: Account<PoolConfig>,
     /// Depositor (must be signer to authorise transfers).
     pub depositor: Signer,

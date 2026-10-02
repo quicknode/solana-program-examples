@@ -19,6 +19,8 @@ pub struct SwapTokensAccountConstraints {
     #[account(
         mut,
         address = PoolPda::seeds(config.address(), mint_a.address(), mint_b.address()),
+        has_one(pool_a) @ AmmError::InvalidPoolVault,
+        has_one(pool_b) @ AmmError::InvalidPoolVault,
     )]
     pub pool_config: Account<PoolConfig>,
     pub trader: Signer,
@@ -171,10 +173,14 @@ pub fn handle_swap_tokens(
     let config_addr = *accounts.pool_config.config();
     let mint_a_addr = *accounts.pool_config.mint_a();
     let mint_b_addr = *accounts.pool_config.mint_b();
+    let pool_a_addr = *accounts.pool_config.pool_a();
+    let pool_b_addr = *accounts.pool_config.pool_b();
     accounts.pool_config.set_inner(PoolConfigInner {
         config: config_addr,
         mint_a: mint_a_addr,
         mint_b: mint_b_addr,
+        pool_a: pool_a_addr,
+        pool_b: pool_b_addr,
         admin_fees_owed_a: new_owed_a,
         admin_fees_owed_b: new_owed_b,
     });
@@ -242,22 +248,18 @@ pub fn handle_swap_tokens(
             .invoke()?;
     }
 
-    // Verify invariant holds on the LP-claimable (effective) reserves.
-    // u128 + checked throughout - a raw `+`/`-` could wrap on extreme values.
-    let new_pool_a_raw = (pool_a_raw as u128)
-        .checked_add(if input_is_token_a { input as u128 } else { 0 })
-        .ok_or(AmmError::MathOverflow)?
-        .checked_sub(if !input_is_token_a { output as u128 } else { 0 })
-        .ok_or(AmmError::MathOverflow)?;
-    let new_pool_b_raw = (pool_b_raw as u128)
-        .checked_add(if !input_is_token_a { input as u128 } else { 0 })
-        .ok_or(AmmError::MathOverflow)?
-        .checked_sub(if input_is_token_a { output as u128 } else { 0 })
-        .ok_or(AmmError::MathOverflow)?;
-    let new_effective_a = new_pool_a_raw
+    // Verify invariant holds on the LP-claimable (effective) reserves, read
+    // from the vaults after the transfers have landed rather than computed
+    // from the amounts this handler meant to move. A check on computed figures
+    // only re-runs the math above; reading the vaults also catches a transfer
+    // that moved something other than what the math said. Quasar token
+    // accounts are zero-copy, so `amount()` reads the runtime buffer the CPIs
+    // just wrote and there is nothing to reload.
+    // u128 + checked throughout - a raw `-` could wrap on extreme values.
+    let new_effective_a = (accounts.pool_a.amount() as u128)
         .checked_sub(new_owed_a as u128)
         .ok_or(AmmError::MathOverflow)?;
-    let new_effective_b = new_pool_b_raw
+    let new_effective_b = (accounts.pool_b.amount() as u128)
         .checked_sub(new_owed_b as u128)
         .ok_or(AmmError::MathOverflow)?;
     let new_invariant = new_effective_a
