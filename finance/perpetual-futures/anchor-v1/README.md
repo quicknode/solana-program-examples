@@ -29,7 +29,7 @@ All arithmetic is integer `u128` with `checked_*` operations, multiplying before
 
 ### Long and short, leverage, collateral
 
-A trader goes [long](https://www.investopedia.com/terms/l/long.asp) if they think the price will rise or [short](https://www.investopedia.com/terms/s/short.asp) if they think it will fall. They post [collateral](https://www.investopedia.com/terms/c/collateral.asp) and choose a position size up to the pool's maximum [leverage](https://www.investopedia.com/terms/l/leverage.asp) (borrowing power). The [notional size](https://www.investopedia.com/terms/n/notionalvalue.asp) is the full exposure (e.g. $5,000 even if only $1,000 of collateral was posted) and profit or loss is the notional times the percentage change in price:
+A trader goes [long](https://www.investopedia.com/terms/l/long.asp) if they think the price will rise or [short](https://www.investopedia.com/terms/s/short.asp) if they think it will fall. They post [collateral](https://www.investopedia.com/terms/c/collateral.asp) and choose a position size, and the pool's [initial margin](https://www.investopedia.com/terms/i/initialmargin.asp) caps their [leverage](https://www.investopedia.com/terms/l/leverage.asp) (borrowing power): `open_position` requires the collateral left after the open fee to be at least `initial_margin_bps` of the size, checked as `net_collateral * 10_000 >= size * initial_margin_bps`, and fails with `InitialMarginNotMet` otherwise. An initial margin of 1,000 basis points (10%) allows at most 10× leverage. The [notional size](https://www.investopedia.com/terms/n/notionalvalue.asp) is the full exposure (e.g. $5,000 even if only $1,000 of collateral was posted) and profit or loss is the notional times the percentage change in price:
 
 ```
 long  profit/loss = size * (price - entry_price) / entry_price
@@ -54,9 +54,24 @@ Funding runs on the wall clock rather than the slot count, so what a position co
 
 A position's *equity* is its net collateral plus profit/loss minus funding. Once equity falls to or below the [maintenance margin](https://www.investopedia.com/terms/m/maintenancemargin.asp) (`maintenance_margin_bps` of notional), the position can be [liquidated](https://www.investopedia.com/terms/l/liquidation.asp). Liquidation is permissionless: anyone can crank it and earn the liquidation fee.
 
+`initialize_pool` requires `maintenance_margin_bps < initial_margin_bps <= 10_000` and refuses anything else with `InitialMarginNotAboveMaintenance` (or `InvalidParameter` above 10,000). Every position therefore opens with more margin than it is liquidated at, so none can be liquidated in the slot it opened.
+
 ### Oracle
 
 The mark price comes from an oracle feed. This example validates the price for staleness (by slot), publication after the most recent cluster restart (the `LastRestartSlot` sysvar, because a halt passes hours of wall-clock time in zero slots), positivity, scale, and a [confidence band](https://docs.pyth.network/price-feeds/best-practices#confidence-intervals) that must stay within `max_confidence_bps` of the price: rejecting an uncertain price is one of the most common oracle-safety checks.
+
+### Price band
+
+A single oracle print can be wrong while still being fresh, positive and confident: a publisher fault, or a thin market moved for a few seconds. To stop anyone trading against such a print, the pool keeps its own time-weighted moving average of the oracle price, `Pool.average_price`, and refuses prices too far from it.
+
+- `initialize_pool` reads the oracle and seeds both `average_price` and `last_oracle_price` with its price, stamping `average_price_timestamp` with the Clock's `unix_timestamp`.
+- Every handler that reads the oracle credits the seconds since the previous read to the price that read saw, `last_oracle_price`, on the assumption that it held throughout: `average += (last_oracle_price - average) * min(elapsed, PRICE_AVERAGE_WINDOW_SECONDS) / PRICE_AVERAGE_WINDOW_SECONDS`. It then records the price it read as the new `last_oracle_price`. The window is 600 seconds, so a price seen at two reads six seconds apart moves the average by 1% of its gap from the average, and an interval of ten minutes or more replaces the average with the price seen at its start.
+- The price read now only starts counting from now. A manipulated price moves the average only if the oracle still shows it at a later read, and only by the seconds between the two reads; a read of the real price in between replaces it. A pool left idle for longer than the window therefore cannot have its average set by a single read.
+- `open_position`, `close_position`, `add_liquidity` and `remove_liquidity` first check the price against the stored average, before anything is folded in: `|price - average_price| * 10_000 <= average_price * max_price_deviation_bps`. A price outside that band fails with `PriceOutsideBand`, and the pool is left unchanged.
+- `liquidate_position` folds and records without the band check. A genuine crash is when positions go underwater, so liquidation keeps working through one.
+- `update_price_average()` is permissionless: any signer passes the pool and its oracle feed, and the handler reads and validates the oracle with the same checks, accrues funding, folds the elapsed interval in and records the price, with no band check. After a genuine move takes the oracle outside the band, keepers call it repeatedly as time passes: the first call records the new price, and each later call credits the time since the previous one to it, until the average is close enough to the price for trading to resume.
+
+`max_price_deviation_bps` is fixed by `initialize_pool`, which refuses zero (every move would be refused) and 10,000 or more (a fall could never be refused, since prices are positive) with `InvalidPriceDeviation`.
 
 ### Fees and slippage
 
@@ -74,7 +89,7 @@ Open and close fees are charged in [basis points](https://www.investopedia.com/t
 - **Bob** (Short trader): He thinks NVDA will fall and wants to profit from the downside.
 - **Dave** (Liquidator): Runs a bot that closes under-margined positions to earn the liquidation fee.
 
-Amounts below are shown in whole USDC; onchain they are base units (× 10⁶). The pool is configured with 10× max leverage, 0.1% open/close fees, a 5% maintenance margin, a 1% liquidation fee, and a 1% maximum oracle confidence band.
+Amounts below are shown in whole USDC; onchain they are base units (× 10⁶). The pool is configured with a 10% initial margin (10× leverage), 0.1% open/close fees, a 5% maintenance margin, a 1% liquidation fee, a 1% maximum oracle confidence band, and a 20% price band around its average price.
 
 ---
 
@@ -82,9 +97,11 @@ Amounts below are shown in whole USDC; onchain they are base units (× 10⁶). T
 
 **Instruction:** `initialize_pool(parameters)`
 
+The handler validates the parameters, then reads the oracle once to seed the pool's average price at $100.
+
 **Accounts created:**
 
-- `Pool` [PDA](https://solana.com/docs/terminology#program-derived-address-pda), seeds `["pool", collateral_mint, oracle_feed]`: parameters, liquidity, reserved liquidity, collateral total, per-side open-interest accumulators, funding index, program fees. The pool owns the vault and is the LP mint's authority, and signs vault transfers and mint/burn CPIs with its own seeds; there is no separate signing PDA
+- `Pool` [PDA](https://solana.com/docs/terminology#program-derived-address-pda), seeds `["pool", collateral_mint, oracle_feed]`: parameters, liquidity, reserved liquidity, collateral total, per-side open-interest accumulators, funding index, average oracle price, program fees. The pool owns the vault and is the LP mint's authority, and signs vault transfers and mint/burn CPIs with its own seeds; there is no separate signing PDA
 - `custody_vault` [token account](https://solana.com/docs/terminology#token-account) PDA, seeds `["vault", pool]`: all USDC, both provider liquidity and trader collateral; `pool` is its owner
 - `lp_mint` PDA, seeds `["lp_mint", pool]`: the share [mint](https://solana.com/docs/terminology#mint-account); `pool` is the mint authority
 
@@ -137,7 +154,7 @@ While both are open, **funding** accrues to the pool from the heavier side; it i
 
 **Instruction:** `close_position(minimum_payout)`
 
-Her profit is `5,000 × (116 − 100) / 100 = $800` (well under the $5,000 reserve cap), minus the $5 close fee.
+$116 is 16% above the pool's $100 average price, inside the 20% band, so the close goes through. Her profit is `5,000 × (116 − 100) / 100 = $800` (well under the $5,000 reserve cap), minus the $5 close fee.
 
 **Accounts modified:**
 
@@ -145,6 +162,8 @@ Her profit is `5,000 × (116 − 100) / 100 = $800` (well under the $5,000 reser
 - `Pool.reserved_liquidity`: −$5,000 (reserve released)
 - `Pool.total_collateral`: −$995
 - `Pool.program_fees`: +$5
+- `Pool.average_price`: credits the time since the last read to $100, the price that read saw, so it stays at $100
+- `Pool.last_oracle_price`: $100 → $116, which the next read credits for the time in between
 - long open-interest accumulators: −= this position
 - `custody_vault` → `alice_usdc`: pays out $1,790 (net collateral + profit − close fee)
 - `Position` (Alice): closed; rent returned to Alice
@@ -195,7 +214,7 @@ The genuinely hard part of a perpetual-futures venue is keeping it solvent and p
 - **Account-local safety**: "every favorable action refreshes the account's full active portfolio first; … stale … legs fail closed." Here, every position and liquidity action reads a fresh oracle (stale or wide-confidence prices are rejected) and recomputes pool exposure before any payout.
 - **Bounded progress**: "no public instruction needs to evaluate the whole market." Here, assets-under-management comes from running per-side accumulators, and liquidation acts on one position at a time, so no handler's cost grows with the number of open positions.
 
-What production pool-perps (`solana-labs/perpetuals`) add that this example still leaves out: multi-asset custody with reserves in the payout token, utilization-based borrow fees, auto-deleveraging (ADL) and an insurance fund for the bad-debt tail, and using the oracle's EMA for a less manipulable mark.
+What production pool-perps (`solana-labs/perpetuals`) add that this example still leaves out: multi-asset custody with reserves in the payout token, utilization-based borrow fees, auto-deleveraging (ADL) and an insurance fund for the bad-debt tail, and valuing positions at the oracle's EMA rather than its spot price. This example keeps its own average only to decide when to refuse trading, and values positions at the spot price.
 
 ---
 
@@ -212,7 +231,18 @@ This is a teaching example, not an audited exchange. Notably:
 
 ## Testing
 
-The tests run in-process with [LiteSVM](https://www.anchor-lang.com/docs/testing/litesvm) and [solana-kite](https://solanakite.org); no local validator is needed. They deploy both programs, drive the mock oracle, and cover liquidity round-trips, opening and closing longs and shorts in profit and loss, leverage and slippage rejection, stale-price, pre-restart-price, and wide-confidence rejection, funding accrual, funding-rate retuning (including that it settles elapsed seconds at the old rate, and that only the authority may call it), funding that follows seconds rather than slots, liquidation (and the refusal to liquidate a healthy position), reserved-liquidity behaviour (profit capped at the reserve, opens rejected when the pool can't back them, withdrawals blocked by reserved liquidity), and fee collection.
+The tests run in-process with [LiteSVM](https://www.anchor-lang.com/docs/testing/litesvm) and [solana-kite](https://solanakite.org); no local validator is needed. They deploy both programs, drive the mock oracle, and cover:
+
+- liquidity round-trips, and share inflation through a provider's own trades
+- opening and closing longs and shorts in profit and loss
+- the initial margin on both sides of its boundary, and slippage rejection
+- stale-price, pre-restart-price, and wide-confidence rejection
+- funding accrual, the funding-rate maximum, an operator's wallet on the lighter side earning only the fixed rate, and funding that follows seconds rather than slots
+- the price band: opens, closes, deposits and withdrawals refused when the oracle jumps outside it (`test_open_rejected_when_oracle_jumps_outside_band`, `test_close_rejected_when_oracle_jumps_outside_band`, `test_liquidity_changes_rejected_when_oracle_jumps_outside_band`), liquidation running outside it (`test_liquidation_runs_outside_band`), the exact average after each `update_price_average` (`test_single_update_moves_average_by_elapsed_fraction`), repeated updates walking the average to a genuine move until trading resumes (`test_price_average_catches_up_after_genuine_move`), and one manipulated read after an idle window leaving the average where it was (`test_one_manipulated_read_after_idle_does_not_move_average`)
+- liquidation, and the refusal to liquidate a healthy position
+- reserved-liquidity behaviour: profit capped at the reserve, opens rejected when the pool can't back them, withdrawals blocked by reserved liquidity
+- `initialize_pool`'s parameter checks, including an initial margin at or below the maintenance margin and a price band outside its range
+- fee collection
 
 ```bash
 anchor build

@@ -1,8 +1,8 @@
 use {
     crate::{
-        constants::{SIDE_LONG, SIDE_SHORT},
+        constants::{BASIS_POINTS_DENOMINATOR, SIDE_LONG, SIDE_SHORT},
         instructions::shared::{
-            basis_points_of, err, error, refresh_price_and_funding, scale_size,
+            basis_points_of, err, error, refresh_price_and_funding_within_band, scale_size,
         },
         state::{Pool, Position, PositionInner},
     },
@@ -58,7 +58,7 @@ pub fn handle_open_position(
 
     let slot = accounts.clock.slot.get();
     let unix_timestamp = accounts.clock.unix_timestamp.get();
-    let price = refresh_price_and_funding(
+    let price = refresh_price_and_funding_within_band(
         &mut accounts.pool,
         &accounts.oracle_feed,
         slot,
@@ -76,24 +76,29 @@ pub fn handle_open_position(
         }
     }
 
+    // The open fee is taken out of the posted collateral; the rest backs the
+    // position, and the initial margin is measured against this net collateral.
     let open_fee = basis_points_of(size, accounts.pool.open_fee_bps.get())?;
     let net_collateral = collateral_amount
         .checked_sub(open_fee)
-        .ok_or_else(|| err(error::INSUFFICIENT_LIQUIDITY))?;
+        .ok_or_else(|| err(error::INSUFFICIENT_COLLATERAL))?;
     if net_collateral == 0 {
         return Err(err(error::ZERO_AMOUNT));
     }
 
-    let max_notional = (net_collateral as u128)
-        .checked_mul(accounts.pool.max_leverage.get() as u128)
+    // Initial margin: net collateral must be at least `initial_margin_bps` of
+    // the notional size, compared as `net_collateral * 10_000 >= size * bps`
+    // so nothing is rounded. `initialize_pool` keeps the initial margin above
+    // the maintenance margin, so a position that passes this check opens with
+    // equity above the liquidation threshold.
+    let collateral_scaled = (net_collateral as u128)
+        .checked_mul(BASIS_POINTS_DENOMINATOR as u128)
         .ok_or(ProgramError::ArithmeticOverflow)?;
-    if size as u128 > max_notional {
-        return Err(err(error::LEVERAGE_TOO_HIGH));
-    }
-
-    let maintenance = basis_points_of(size, accounts.pool.maintenance_margin_bps.get())?;
-    if net_collateral <= maintenance {
-        return Err(err(error::POSITION_NOT_HEALTHY));
+    let required_scaled = (size as u128)
+        .checked_mul(accounts.pool.initial_margin_bps.get() as u128)
+        .ok_or(ProgramError::ArithmeticOverflow)?;
+    if collateral_scaled < required_scaled {
+        return Err(err(error::INITIAL_MARGIN_NOT_MET));
     }
 
     // Reserve liquidity to cover this position's maximum recoverable profit

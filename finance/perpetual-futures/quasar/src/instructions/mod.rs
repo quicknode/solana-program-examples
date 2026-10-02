@@ -6,6 +6,7 @@ mod liquidate_position;
 mod open_position;
 mod remove_liquidity;
 pub mod shared;
+mod update_price_average;
 
 pub use add_liquidity::*;
 pub use close_position::*;
@@ -14,3 +15,4 @@ pub use initialize_pool::*;
 pub use liquidate_position::*;
 pub use open_position::*;
 pub use remove_liquidity::*;
+pub use update_price_average::*;

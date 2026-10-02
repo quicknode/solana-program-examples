@@ -4,9 +4,11 @@ use anchor_spl::{
     token_interface::{transfer_checked, Mint, TokenAccount, TokenInterface, TransferChecked},
 };
 
-use crate::constants::{POOL_SEED, POSITION_SEED, VAULT_SEED};
+use crate::constants::{BASIS_POINTS_DENOMINATOR, POOL_SEED, POSITION_SEED, VAULT_SEED};
 use crate::errors::PerpError;
-use crate::instructions::shared::{basis_points_of, refresh_price_and_funding, scale_size};
+use crate::instructions::shared::{
+    basis_points_of, refresh_price_and_funding_within_band, scale_size,
+};
 use crate::state::{Pool, Position, Side};
 
 pub fn handle_open_position(
@@ -19,7 +21,7 @@ pub fn handle_open_position(
     require!(collateral_amount > 0 && size > 0, PerpError::ZeroAmount);
 
     let pool = &mut context.accounts.pool;
-    let price = refresh_price_and_funding(pool, &context.accounts.oracle_feed)?;
+    let price = refresh_price_and_funding_within_band(pool, &context.accounts.oracle_feed)?;
 
     // Slippage: a long must not fill above the caller's limit, a short not
     // below it. `0` opts out.
@@ -32,21 +34,28 @@ pub fn handle_open_position(
     }
 
     // The open fee is taken out of the posted collateral; the rest backs the
-    // position. Leverage and margin are measured against this net collateral.
+    // position, and the initial margin is measured against this net collateral.
     let open_fee = basis_points_of(size, pool.open_fee_bps)?;
     let net_collateral = collateral_amount
         .checked_sub(open_fee)
         .ok_or(PerpError::InsufficientCollateral)?;
     require!(net_collateral > 0, PerpError::ZeroAmount);
 
-    let max_notional = (net_collateral as u128)
-        .checked_mul(pool.max_leverage as u128)
+    // Initial margin: net collateral must be at least `initial_margin_bps` of
+    // the notional size, compared as `net_collateral * 10_000 >= size * bps`
+    // so nothing is rounded. `initialize_pool` keeps the initial margin above
+    // the maintenance margin, so a position that passes this check opens with
+    // equity above the liquidation threshold.
+    let collateral_scaled = (net_collateral as u128)
+        .checked_mul(BASIS_POINTS_DENOMINATOR as u128)
         .ok_or(PerpError::MathOverflow)?;
-    require!(size as u128 <= max_notional, PerpError::LeverageTooHigh);
-
-    // Refuse a position that would open already inside the liquidation band.
-    let maintenance = basis_points_of(size, pool.maintenance_margin_bps)?;
-    require!(net_collateral > maintenance, PerpError::PositionNotHealthy);
+    let required_scaled = (size as u128)
+        .checked_mul(pool.initial_margin_bps as u128)
+        .ok_or(PerpError::MathOverflow)?;
+    require!(
+        collateral_scaled >= required_scaled,
+        PerpError::InitialMarginNotMet
+    );
 
     // Reserve liquidity to cover this position's maximum recoverable profit
     // (its notional `size`). The reserve must be backed by liquidity-provider
