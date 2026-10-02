@@ -10,7 +10,7 @@ use {
         },
         error::AmmError,
         state::Config,
-        ConfigPda, LiquidityMintPda, PoolPda,
+        ConfigPda, LiquidityMintPda, PoolAPda, PoolBPda, PoolPda,
     },
     quasar_test::prelude::*,
 };
@@ -48,8 +48,6 @@ const ADMIN: Pubkey = Pubkey::new_from_array([1; 32]);
 const PAYER: Pubkey = Pubkey::new_from_array([2; 32]);
 const MINT_A: Pubkey = Pubkey::new_from_array([3; 32]);
 const MINT_B: Pubkey = Pubkey::new_from_array([4; 32]);
-const POOL_A: Pubkey = Pubkey::new_from_array([5; 32]);
-const POOL_B: Pubkey = Pubkey::new_from_array([6; 32]);
 // The pool-seeding depositor.
 const SEEDER: Pubkey = Pubkey::new_from_array([7; 32]);
 const SEEDER_TOKEN_A: Pubkey = Pubkey::new_from_array([8; 32]);
@@ -71,6 +69,22 @@ const ADMIN_TOKEN_B: Pubkey = Pubkey::new_from_array([21; 32]);
 const BAD_ACTOR: Pubkey = Pubkey::new_from_array([22; 32]);
 const BAD_TOKEN_A: Pubkey = Pubkey::new_from_array([23; 32]);
 const BAD_TOKEN_B: Pubkey = Pubkey::new_from_array([24; 32]);
+
+/// The pool's address, derived as the program derives it.
+fn pool_config_address(test: &Test) -> Pubkey {
+    let config = test.derive_pda(ConfigPda::seeds());
+    test.derive_pda(PoolPda::seeds(&config, &MINT_A, &MINT_B))
+}
+
+/// The pool's token A reserve, a PDA of the pool.
+fn pool_a(test: &Test) -> Pubkey {
+    test.derive_pda(PoolAPda::seeds(&pool_config_address(test)))
+}
+
+/// The pool's token B reserve, a PDA of the pool.
+fn pool_b(test: &Test) -> Pubkey {
+    test.derive_pda(PoolBPda::seeds(&pool_config_address(test)))
+}
 
 struct PoolEnv {
     pool_config: Pubkey,
@@ -95,14 +109,11 @@ fn setup_pool(test: &mut Test) -> PoolEnv {
     test.add(Mint::new(PAYER).at(MINT_A).decimals(6));
     test.add(Mint::new(PAYER).at(MINT_B).decimals(6));
 
-    // initialize_pool: the pool_config and LP-mint PDAs are derived by the
-    // builder; pool_a/pool_b are non-PDA token accounts the program creates
-    // at the given addresses, owned by pool_config.
+    // initialize_pool: the pool_config, LP-mint and reserve PDAs are all
+    // derived by the builder; the reserves are owned by pool_config.
     test.send(InitializePoolInstruction {
         mint_a: MINT_A,
         mint_b: MINT_B,
-        pool_a: POOL_A,
-        pool_b: POOL_B,
         payer: PAYER,
     })
     .succeeds();
@@ -151,8 +162,8 @@ fn deposit(
         depositor,
         mint_a: MINT_A,
         mint_b: MINT_B,
-        pool_a: POOL_A,
-        pool_b: POOL_B,
+        pool_a: pool_a(test),
+        pool_b: pool_b(test),
         liquidity_provider_token: lp_token,
         token_a,
         token_b,
@@ -201,8 +212,8 @@ fn swap(
         trader,
         mint_a: MINT_A,
         mint_b: MINT_B,
-        pool_a: POOL_A,
-        pool_b: POOL_B,
+        pool_a: pool_a(test),
+        pool_b: pool_b(test),
         token_a,
         token_b,
         payer: PAYER,
@@ -221,8 +232,8 @@ fn claim_fees(
     test.send(ClaimAdminFeesInstruction {
         mint_a: MINT_A,
         mint_b: MINT_B,
-        pool_a: POOL_A,
-        pool_b: POOL_B,
+        pool_a: pool_a(test),
+        pool_b: pool_b(test),
         admin,
         admin_token_a,
         admin_token_b,
@@ -291,7 +302,7 @@ fn initialize_pool_creates_pool_config_and_lp_mint(test: &mut Test) {
         expected,
         "LP mint authority must be pool_config"
     );
-    for reserve in [POOL_A, POOL_B] {
+    for reserve in [pool_a(test), pool_b(test)] {
         let account = test.account(reserve).expect("reserve missing");
         assert_eq!(
             &account.data[32..64],
@@ -314,8 +325,8 @@ fn deposit_liquidity_initial(test: &mut Test) {
     // LP token account must exist with a non-zero balance, and the pool
     // reserves must have received the tokens.
     assert!(lp_balance > 0, "expected LP tokens, got 0");
-    assert_eq!(test.tokens(POOL_A), amount_a);
-    assert_eq!(test.tokens(POOL_B), amount_b);
+    assert_eq!(test.tokens(pool_a(test)), amount_a);
+    assert_eq!(test.tokens(pool_b(test)), amount_b);
 }
 
 #[quasar_test]
@@ -367,8 +378,8 @@ fn deposit_after_every_lp_token_is_burned(test: &mut Test) {
     // of each side stays.
     withdraw(test, SEEDER, SEEDER_LP, RECV_A, RECV_B, lp_balance, 0, 0)
         .succeeds()
-        .has_tokens(POOL_A, crate::MINIMUM_LIQUIDITY)
-        .has_tokens(POOL_B, crate::MINIMUM_LIQUIDITY);
+        .has_tokens(pool_a(test), crate::MINIMUM_LIQUIDITY)
+        .has_tokens(pool_b(test), crate::MINIMUM_LIQUIDITY);
 
     // 1_000_000 * (0 + 100) / 100 = 1_000_000 LP tokens.
     fund(
@@ -463,8 +474,8 @@ fn deposit_clamps_down_never_up(test: &mut Test) {
     // Exact amounts pulled: all of A, ratio-clamped B, nothing more.
     .has_tokens(DEPOSITOR_TOKEN_A, 0)
     .has_tokens(DEPOSITOR_TOKEN_B, stated_b - expected_b_pulled)
-    .has_tokens(POOL_A, pool_seed_a + stated_a)
-    .has_tokens(POOL_B, pool_seed_b + expected_b_pulled)
+    .has_tokens(pool_a(test), pool_seed_a + stated_a)
+    .has_tokens(pool_b(test), pool_seed_b + expected_b_pulled)
     // LP mint must be proportional.
     .has_tokens(DEPOSITOR_LP, expected_lp);
 }
@@ -509,8 +520,8 @@ fn deposit_clamps_down_other_side(test: &mut Test) {
     .succeeds()
     .has_tokens(DEPOSITOR_TOKEN_A, stated_a - expected_a_pulled)
     .has_tokens(DEPOSITOR_TOKEN_B, 0)
-    .has_tokens(POOL_A, pool_seed_a + expected_a_pulled)
-    .has_tokens(POOL_B, pool_seed_b + stated_b)
+    .has_tokens(pool_a(test), pool_seed_a + expected_a_pulled)
+    .has_tokens(pool_b(test), pool_seed_b + stated_b)
     // LP mint must be proportional.
     .has_tokens(DEPOSITOR_LP, expected_lp);
 }
@@ -559,12 +570,12 @@ fn deposit_slippage_rejected(test: &mut Test) {
         "token B must be untouched after revert"
     );
     assert_eq!(
-        test.tokens(POOL_A),
+        test.tokens(pool_a(test)),
         pool_seed_a,
         "pool_a must be untouched after revert"
     );
     assert_eq!(
-        test.tokens(POOL_B),
+        test.tokens(pool_b(test)),
         pool_seed_b,
         "pool_b must be untouched after revert"
     );
@@ -587,8 +598,8 @@ fn withdraw(
         depositor,
         mint_a: MINT_A,
         mint_b: MINT_B,
-        pool_a: POOL_A,
-        pool_b: POOL_B,
+        pool_a: pool_a(test),
+        pool_b: pool_b(test),
         liquidity_provider_token: lp_token,
         token_a: recv_a,
         token_b: recv_b,
@@ -666,12 +677,12 @@ fn withdraw_slippage_rejected(test: &mut Test) {
 
     // Nothing moved: pool reserves and the LP balance are unchanged.
     assert_eq!(
-        test.tokens(POOL_A),
+        test.tokens(pool_a(test)),
         2_000_000,
         "pool_a must be untouched after revert"
     );
     assert_eq!(
-        test.tokens(POOL_B),
+        test.tokens(pool_b(test)),
         2_000_000,
         "pool_b must be untouched after revert"
     );
@@ -719,8 +730,8 @@ fn swap_a_to_b_conserves_balances(test: &mut Test) {
     // what the pool sent; nothing is minted or lost in transit.
     .has_tokens(TRADER_TOKEN_A, trader_funding - input)
     .has_tokens(TRADER_TOKEN_B, expected_output)
-    .has_tokens(POOL_A, pool_seed_a + input)
-    .has_tokens(POOL_B, pool_seed_b - expected_output);
+    .has_tokens(pool_a(test), pool_seed_a + input)
+    .has_tokens(pool_b(test), pool_seed_b - expected_output);
 }
 
 #[quasar_test]
@@ -752,8 +763,8 @@ fn swap_b_to_a_conserves_balances(test: &mut Test) {
     .succeeds()
     .has_tokens(TRADER_TOKEN_B, trader_funding - input)
     .has_tokens(TRADER_TOKEN_A, expected_output)
-    .has_tokens(POOL_B, pool_seed_b + input)
-    .has_tokens(POOL_A, pool_seed_a - expected_output);
+    .has_tokens(pool_b(test), pool_seed_b + input)
+    .has_tokens(pool_a(test), pool_seed_a - expected_output);
 }
 
 #[quasar_test]
@@ -789,12 +800,12 @@ fn swap_slippage_rejected(test: &mut Test) {
         "trader balance must be untouched after revert"
     );
     assert_eq!(
-        test.tokens(POOL_A),
+        test.tokens(pool_a(test)),
         10_000_000,
         "pool_a must be untouched after revert"
     );
     assert_eq!(
-        test.tokens(POOL_B),
+        test.tokens(pool_b(test)),
         10_000_000,
         "pool_b must be untouched after revert"
     );
@@ -829,7 +840,7 @@ fn swap_rejects_substituted_pool_vault(test: &mut Test) {
         mint_a: MINT_A,
         mint_b: MINT_B,
         pool_a: fake_pool_a,
-        pool_b: POOL_B,
+        pool_b: pool_b(test),
         token_a: BAD_TOKEN_A,
         token_b: BAD_TOKEN_B,
         payer: PAYER,
@@ -840,7 +851,7 @@ fn swap_rejects_substituted_pool_vault(test: &mut Test) {
     .fails_with(AmmError::InvalidPoolVault);
 
     assert_eq!(
-        test.tokens(POOL_B),
+        test.tokens(pool_b(test)),
         10_000_000,
         "pool_b must be untouched after the refused swap"
     );

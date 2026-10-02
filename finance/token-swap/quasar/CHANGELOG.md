@@ -1,5 +1,17 @@
 # Changelog
 
+## [2026-10-02] - Reserves at PDAs
+
+### Changed
+
+- `pool_a` and `pool_b` are PDAs of the pool, at seeds `[b"pool_a",
+  pool_config]` and `[b"pool_b", pool_config]` (`PoolAPda`, `PoolBPda`), where
+  before they were token accounts at addresses the client chose.
+  `initialize_pool` creates them there with `init` rather than
+  `init(idempotent)`, so a client finds a pool's reserves from the pool's
+  address alone, and the instruction builder derives them. `PoolConfig` still
+  records both addresses and every handler still checks them with `has_one`.
+
 ## [2026-10-02]
 
 ### Fixed

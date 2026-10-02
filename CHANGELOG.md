@@ -4,6 +4,15 @@ All notable changes to this repository are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-10-02] - Token Swap (Quasar): reserves live at PDAs of the pool
+
+### Changed
+
+- `finance/token-swap/quasar` creates `pool_a` and `pool_b` at PDAs of the
+  pool (`[b"pool_a", pool_config]`, `[b"pool_b", pool_config]`) instead of at
+  addresses the client chose, as the order book's Quasar version does for its
+  vaults. Clients no longer pass the reserves to `initialize_pool`.
+
 ## [2026-10-02] - Token Swap (Quasar): reserves are bound to the pool
 
 ### Fixed
