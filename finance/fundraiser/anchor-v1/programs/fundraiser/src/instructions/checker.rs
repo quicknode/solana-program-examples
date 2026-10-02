@@ -1,10 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::{
     associated_token::AssociatedToken,
-    token_interface::{
-        close_account, transfer_checked, CloseAccount, Mint, TokenAccount, TokenInterface,
-        TransferChecked,
-    },
+    token_interface::{transfer_checked, Mint, TokenAccount, TokenInterface, TransferChecked},
 };
 
 use crate::{state::Fundraiser, FundraiserError};
@@ -20,7 +17,6 @@ pub struct CheckContributionsAccountConstraints<'info> {
         mut,
         seeds = [b"fundraiser".as_ref(), maker.key().as_ref()],
         bump = fundraiser.bump,
-        close = maker,
     )]
     pub fundraiser: Account<'info, Fundraiser>,
 
@@ -48,9 +44,23 @@ pub struct CheckContributionsAccountConstraints<'info> {
     pub associated_token_program: Program<'info, AssociatedToken>,
 }
 
+/// Pays the vault out to the maker once the target is met, and marks the
+/// fundraiser claimed.
+///
+/// The fundraiser account and the vault stay open: contributor accounts are
+/// derived from the fundraiser's address, so the fundraiser must outlive every
+/// one of them. Otherwise the maker could initialize a new fundraiser at the
+/// same address, and contributor accounts left over from this raise would
+/// count as contributions to the new one. `close_contributor` closes them,
+/// then `close_fundraiser` closes the fundraiser and the vault.
 pub fn handle_check_contributions(
     accounts: &mut CheckContributionsAccountConstraints,
 ) -> Result<()> {
+    require!(
+        !accounts.fundraiser.claimed,
+        FundraiserError::FundraiserClaimed
+    );
+
     // Compare the state-tracked total, not the vault balance, so tokens
     // donated directly to the vault cannot trigger an early release.
     require!(
@@ -58,15 +68,17 @@ pub fn handle_check_contributions(
         FundraiserError::TargetNotMet
     );
 
-    // The vault is owned by the fundraiser PDA, so both CPIs are signed with
-    // its seeds.
+    accounts.fundraiser.claimed = true;
+
+    // The vault is owned by the fundraiser PDA, so the CPI is signed with its
+    // seeds.
     let signer_seeds: [&[&[u8]]; 1] = [&[
         b"fundraiser".as_ref(),
         accounts.maker.to_account_info().key.as_ref(),
         &[accounts.fundraiser.bump],
     ]];
 
-    // Drain the whole vault (including any direct donations) to the maker.
+    // Pay the whole vault (including any direct donations) to the maker.
     let transfer_accounts = TransferChecked {
         from: accounts.vault.to_account_info(),
         mint: accounts.mint_to_raise.to_account_info(),
@@ -83,16 +95,6 @@ pub fn handle_check_contributions(
         accounts.vault.amount,
         accounts.mint_to_raise.decimals,
     )?;
-
-    // Close the empty vault so its rent goes back to the maker.
-    let close_accounts = CloseAccount {
-        account: accounts.vault.to_account_info(),
-        destination: accounts.maker.to_account_info(),
-        authority: accounts.fundraiser.to_account_info(),
-    };
-    let close_context =
-        CpiContext::new_with_signer(accounts.token_program.key(), close_accounts, &signer_seeds);
-    close_account(close_context)?;
 
     Ok(())
 }

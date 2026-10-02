@@ -22,7 +22,15 @@ pub enum FundraiserError {
     MathOverflow,
     /// A token balance after a transfer did not match the expected value.
     BalanceMismatch,
-    /// The fundraiser account still exists, so the contribution is live and
-    /// its contributor account closes through refund, not here.
-    FundraiserStillOpen,
+    /// The fundraiser has already been claimed.
+    FundraiserClaimed,
+    /// The fundraiser has not been claimed, so the contributor account closes
+    /// through refund.
+    FundraiserNotClaimed,
+    /// Contributor accounts for this fundraiser are still open, so it cannot
+    /// close yet.
+    ContributorAccountsOpen,
+    /// Contributions to an unclaimed fundraiser have not all been refunded,
+    /// so closing its vault would strand them.
+    RefundsOutstanding,
 }

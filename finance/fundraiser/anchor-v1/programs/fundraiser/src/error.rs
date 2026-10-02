@@ -6,12 +6,8 @@ pub enum FundraiserError {
     TargetNotMet,
     #[msg("The amount to raise has been achieved")]
     TargetMet,
-    #[msg("The contribution is too big")]
-    ContributionTooBig,
     #[msg("The contribution is too small")]
     ContributionTooSmall,
-    #[msg("The maximum amount to contribute has been reached")]
-    MaximumContributionsReached,
     #[msg("The fundraiser has not ended yet")]
     FundraiserNotEnded,
     #[msg("The fundraiser has ended")]
@@ -22,6 +18,10 @@ pub enum FundraiserError {
     RefundsOutstanding,
     #[msg("Arithmetic overflow")]
     MathOverflow,
-    #[msg("The fundraiser still exists, so the contributor account closes through refund")]
-    FundraiserStillOpen,
+    #[msg("The fundraiser has already been claimed")]
+    FundraiserClaimed,
+    #[msg("The fundraiser has not been claimed, so the contributor account closes through refund")]
+    FundraiserNotClaimed,
+    #[msg("Contributor accounts for this fundraiser are still open, so it cannot close yet")]
+    ContributorAccountsOpen,
 }

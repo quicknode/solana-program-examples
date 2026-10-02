@@ -7,7 +7,6 @@ use {
 
 #[derive(Accounts)]
 pub struct CheckContributionsAccountConstraints {
-    #[account(mut)]
     pub maker: Signer,
 
     #[account(
@@ -15,7 +14,6 @@ pub struct CheckContributionsAccountConstraints {
         has_one(maker),
         has_one(vault),
         has_one(mint_to_raise),
-        close(dest = maker),
         address = Fundraiser::seeds(maker.address()),
     )]
     pub fundraiser: Account<Fundraiser>,
@@ -33,17 +31,36 @@ pub struct CheckContributionsAccountConstraints {
     pub token_program: Program<TokenProgram>,
 }
 
+/// Pays the vault out to the maker once the target is met, and marks the
+/// fundraiser claimed.
+///
+/// The fundraiser account and the vault stay open: contributor accounts are
+/// derived from the fundraiser's address, so the fundraiser must outlive every
+/// one of them. Otherwise the maker could initialize a new fundraiser at the
+/// same address, and contributor accounts left over from this raise would
+/// count as contributions to the new one. `close_contributor` closes them,
+/// then `close_fundraiser` closes the fundraiser and the vault.
 #[inline(always)]
 pub fn handle_check_contributions(
     accounts: &mut CheckContributionsAccountConstraints,
     bumps: &CheckContributionsAccountConstraintsBumps,
 ) -> Result<(), ProgramError> {
+    require!(
+        !bool::from(accounts.fundraiser.claimed),
+        FundraiserError::FundraiserClaimed
+    );
+
+    // Compare the state-tracked total, not the vault balance, so tokens
+    // donated directly to the vault cannot trigger an early release.
     let current_amount: u64 = accounts.fundraiser.current_amount.into();
     let amount_to_raise: u64 = accounts.fundraiser.amount_to_raise.into();
     require!(
         current_amount >= amount_to_raise,
         FundraiserError::TargetNotMet
     );
+
+    // Update state before the transfer CPI (checks-effects-interactions).
+    accounts.fundraiser.claimed = PodBool::from(true);
 
     // Fundraiser PDA signer seeds: ["fundraiser", maker, bump].
     let bump = [bumps.fundraiser];
@@ -53,7 +70,7 @@ pub fn handle_check_contributions(
         Seed::from(bump.as_ref()),
     ];
 
-    // Transfer all vault funds to the maker.
+    // Pay the whole vault (including any direct donations) to the maker.
     let vault_amount = accounts.vault.amount();
     accounts
         .token_program
@@ -67,17 +84,11 @@ pub fn handle_check_contributions(
         )
         .invoke_signed(&seeds)?;
 
-    // Token conservation: the vault was fully drained.
+    // Token conservation: the vault was fully paid out.
     require!(
         accounts.vault.amount() == 0,
         FundraiserError::BalanceMismatch
     );
-
-    // Close the vault token account, returning its rent to the maker.
-    accounts
-        .token_program
-        .close_account(&accounts.vault, &accounts.maker, &accounts.fundraiser)
-        .invoke_signed(&seeds)?;
 
     Ok(())
 }

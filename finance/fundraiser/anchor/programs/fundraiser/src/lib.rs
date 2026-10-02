@@ -8,7 +8,7 @@ mod instructions;
 mod state;
 
 pub use constants::*;
-use error::*;
+pub use error::*;
 use instructions::*;
 
 #[program]

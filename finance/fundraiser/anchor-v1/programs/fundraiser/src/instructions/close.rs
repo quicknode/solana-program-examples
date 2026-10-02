@@ -49,38 +49,47 @@ pub struct CloseFundraiserAccountConstraints<'info> {
     pub associated_token_program: Program<'info, AssociatedToken>,
 }
 
-/// Retires a failed fundraiser so the maker can raise again.
+/// Closes a finished fundraiser and its vault so the maker can raise again.
 ///
-/// The fundraiser PDA is derived from the maker's key alone, so while a
-/// failed fundraiser's account exists the maker can never initialize
-/// another one. This handler closes it once the deadline has passed, the
-/// target was missed, and every contribution has been refunded.
+/// The fundraiser PDA is derived from the maker's public key alone, so while
+/// a fundraiser account exists the maker cannot initialize another one. It
+/// closes once no contributor account written for it is still open: after a
+/// claim, once `close_contributor` has closed each one; after a failed raise,
+/// once the deadline has passed and `refund` has closed each one.
 pub fn handle_close_fundraiser(accounts: &mut CloseFundraiserAccountConstraints) -> Result<()> {
-    // Closing is allowed only after the fundraiser has ended:
-    // elapsed_days >= duration.
-    let current_time = Clock::get()?.unix_timestamp;
-    let elapsed_days = current_time
-        .checked_sub(accounts.fundraiser.time_started)
-        .ok_or(FundraiserError::MathOverflow)?
-        .checked_div(SECONDS_TO_DAYS)
-        .ok_or(FundraiserError::MathOverflow)?;
-    require!(
-        elapsed_days >= accounts.fundraiser.duration as i64,
-        FundraiserError::FundraiserNotEnded
-    );
+    if !accounts.fundraiser.claimed {
+        // Closing an unclaimed fundraiser is allowed only after it has ended:
+        // elapsed_days >= duration.
+        let current_time = Clock::get()?.unix_timestamp;
+        let elapsed_days = current_time
+            .checked_sub(accounts.fundraiser.time_started)
+            .ok_or(FundraiserError::MathOverflow)?
+            .checked_div(SECONDS_TO_DAYS)
+            .ok_or(FundraiserError::MathOverflow)?;
+        require!(
+            elapsed_days >= accounts.fundraiser.duration as i64,
+            FundraiserError::FundraiserNotEnded
+        );
 
-    // A successful fundraiser exits through check_contributions, which
-    // already closes these accounts.
-    require!(
-        accounts.fundraiser.current_amount < accounts.fundraiser.amount_to_raise,
-        FundraiserError::TargetMet
-    );
+        // A raise that met its target closes after the maker claims it.
+        require!(
+            accounts.fundraiser.current_amount < accounts.fundraiser.amount_to_raise,
+            FundraiserError::TargetMet
+        );
 
-    // Closing the vault while contributions remain would strand the
-    // refunds, so every contributor must have taken theirs first.
+        // Closing the vault while contributions remain would strand the
+        // refunds, so every contributor must have been refunded first.
+        require!(
+            accounts.fundraiser.current_amount == 0,
+            FundraiserError::RefundsOutstanding
+        );
+    }
+
+    // A contributor account left open would be read as a contribution to the
+    // next fundraiser at this address.
     require!(
-        accounts.fundraiser.current_amount == 0,
-        FundraiserError::RefundsOutstanding
+        accounts.fundraiser.open_contributor_accounts == 0,
+        FundraiserError::ContributorAccountsOpen
     );
 
     // The vault is owned by the fundraiser PDA, so both CPIs are signed with
@@ -91,9 +100,9 @@ pub fn handle_close_fundraiser(accounts: &mut CloseFundraiserAccountConstraints)
         &[accounts.fundraiser.bump],
     ]];
 
-    // Refunds have already drained every tracked contribution, so anything
-    // left in the vault is a direct donation; sweep it to the maker rather
-    // than burn it with the account.
+    // The claim or the refunds have already paid out every tracked
+    // contribution, so anything left in the vault is a direct donation; pay
+    // it to the maker rather than burn it with the account.
     if accounts.vault.amount > 0 {
         let transfer_accounts = TransferChecked {
             from: accounts.vault.to_account_info(),

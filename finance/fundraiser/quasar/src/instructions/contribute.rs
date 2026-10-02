@@ -54,6 +54,13 @@ pub fn handle_contribute(
 ) -> Result<(), ProgramError> {
     require!(amount > 0, FundraiserError::InvalidAmount);
 
+    // A claimed fundraiser has paid its vault out to the maker, so a later
+    // contribution would go to the maker with no refund path.
+    require!(
+        !bool::from(accounts.fundraiser.claimed),
+        FundraiserError::FundraiserClaimed
+    );
+
     // Contributions are allowed while now < start + duration.
     let now: i64 = Clock::get()?.unix_timestamp.into();
     let deadline = fundraiser_deadline(
@@ -76,7 +83,20 @@ pub fn handle_contribute(
             .checked_add(amount)
             .ok_or(FundraiserError::MathOverflow)?,
     );
-    accounts.contributor_account.bump = bumps.contributor_account;
+
+    // `init(idempotent)` creates the contributor account zeroed and reuses it
+    // on later contributions. Every contribution is nonzero, so a recorded
+    // amount of zero means the account was created by this instruction: save
+    // its bump and count it against the fundraiser.
+    if contributed_so_far == 0 {
+        accounts.contributor_account.bump = bumps.contributor_account;
+        let open_contributor_accounts: u32 = accounts.fundraiser.open_contributor_accounts.into();
+        accounts.fundraiser.open_contributor_accounts = PodU32::from(
+            open_contributor_accounts
+                .checked_add(1)
+                .ok_or(FundraiserError::MathOverflow)?,
+        );
+    }
 
     let vault_balance_before = accounts.vault.amount();
 
