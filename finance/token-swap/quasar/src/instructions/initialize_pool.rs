@@ -70,6 +70,10 @@ pub fn handle_initialize_pool(
         config: *accounts.config.address(),
         mint_a: *accounts.mint_a.address(),
         mint_b: *accounts.mint_b.address(),
+        // Recorded so every later handler can check the reserves it is
+        // handed are these two (`has_one(pool_a)`, `has_one(pool_b)`).
+        pool_a: *accounts.pool_a.address(),
+        pool_b: *accounts.pool_b.address(),
         // No swaps have happened yet, so the admin has no fee claim. These
         // accumulators are written by `swap_tokens` and zeroed by
         // `claim_admin_fees`.

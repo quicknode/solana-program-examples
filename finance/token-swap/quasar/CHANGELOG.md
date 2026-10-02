@@ -1,5 +1,23 @@
 # Changelog
 
+## [2026-10-02]
+
+### Fixed
+
+- `deposit_liquidity`, `withdraw_liquidity`, `swap_tokens` and
+  `claim_admin_fees` took `pool_a` and `pool_b` with no check that they were
+  the pool's reserves. A swap could name any mint-A token account the trader
+  owned as `pool_a`: the handler priced the trade from that account's balance,
+  sent the input into it, and paid out of the real `pool_b`. `PoolConfig` now
+  records both reserve addresses at `initialize_pool`, and the four handlers
+  check them with `has_one(pool_a)` and `has_one(pool_b)`, failing with the new
+  `InvalidPoolVault` error. `swap_rejects_substituted_pool_vault` and
+  `deposit_rejects_substituted_pool_vaults` run the attack. `PoolConfig` grows
+  by 64 bytes, so pools created before this change cannot be read by it.
+- `swap_tokens` re-checked the constant-product invariant against reserves it
+  computed from the amounts it meant to transfer. It now reads both vaults'
+  balances after the transfers land, as the Anchor versions do.
+
 ## [2026-09-22]
 
 ### Fixed
