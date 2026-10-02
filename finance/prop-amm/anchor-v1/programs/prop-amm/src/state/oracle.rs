@@ -14,7 +14,7 @@ use crate::errors::PropAmmError;
 // account as a `PriceUpdateV2` instead of reading offsets: from the
 // `pyth-solana-receiver-sdk` crate, or the vendored copy in `basics/pyth` on
 // Anchor 2. The Pyth Receiver program writes that account only after checking
-// the Wormhole guardian signatures over the update, and the account type's
+// the Pyth guardian set's signatures over the update, and the account type's
 // owner check rejects any account that program does not own. Map
 // `price_message.price`, `exponent` (the scale is its negation), `conf`, and
 // `publish_time` or `posted_slot` onto the checks below, and also check
