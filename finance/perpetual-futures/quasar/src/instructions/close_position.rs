@@ -2,8 +2,8 @@ use {
     crate::{
         constants::SIDE_LONG,
         instructions::shared::{
-            basis_points_of, err, error, position_funding, position_pnl,
-            refresh_price_and_funding_within_band,
+            apply_haircut, basis_points_of, credit_fee, err, error, haircut_ratio,
+            position_funding, position_pnl, refresh_price_and_funding_within_band,
         },
         state::{Pool, Position},
     },
@@ -62,17 +62,36 @@ pub fn handle_close_position(
     let collateral = accounts.position.collateral.get();
     let size_scaled = accounts.position.size_scaled.get();
     let entry_funding = accounts.position.entry_funding.get();
+    let entry_slot = accounts.position.entry_slot.get();
 
     let pnl = position_pnl(side, size, entry_price, price)?;
+    // The haircut is computed while this position is still in the per-side
+    // accumulators, so its own profit counts toward the liability and it is
+    // paid the same fraction as any other winner closing at this price. Its
+    // own profit is passed too: if open losers offset it in the aggregate,
+    // the haircut is sized against that profit, so the payout is at most the
+    // backing and the close is never refused for lack of it.
+    let haircut = haircut_ratio(&accounts.pool, price, pnl)?;
     let funding = position_funding(
         side,
         size,
         entry_funding,
         accounts.pool.cumulative_funding.get(),
     )?;
-    // Recoverable profit is capped at the reserved amount (the notional `size`),
-    // so the pool can always cover a winner. Losses are not capped.
-    let realized_pnl = pnl.min(size as i128);
+    // A profit is paid only once the position has been open for the pool's
+    // warm-up, and then only the haircut fraction of it. A loss settles in
+    // full, at any time.
+    let realized_pnl = if pnl > 0 {
+        let matured_at = entry_slot
+            .checked_add(accounts.pool.profit_warmup_slots.get())
+            .ok_or(ProgramError::ArithmeticOverflow)?;
+        if slot < matured_at {
+            return Err(err(error::PROFIT_NOT_MATURED));
+        }
+        apply_haircut(pnl, haircut)?
+    } else {
+        pnl
+    };
     let equity = (collateral as i128)
         .checked_add(realized_pnl)
         .ok_or(ProgramError::ArithmeticOverflow)?
@@ -93,15 +112,6 @@ pub fn handle_close_position(
 
     remove_open_interest(&mut accounts.pool, side, size, size_scaled)?;
 
-    // Release the position's reserved liquidity now that it is closing.
-    let new_reserved = accounts
-        .pool
-        .reserved_liquidity
-        .get()
-        .checked_sub(size)
-        .ok_or(ProgramError::ArithmeticOverflow)?;
-    accounts.pool.reserved_liquidity.set(new_reserved);
-
     let new_total_collateral = accounts
         .pool
         .total_collateral
@@ -110,6 +120,12 @@ pub fn handle_close_position(
         .ok_or(ProgramError::ArithmeticOverflow)?;
     accounts.pool.total_collateral.set(new_total_collateral);
 
+    // Liquidity providers are the counterparty: they pay the trader's
+    // haircut profit and receive their loss, and collect the funding the
+    // trader owed. The part of a profit the haircut withholds stays in
+    // `liquidity`. A payment larger than `liquidity` takes the rest from the
+    // insurance fund, which the haircut counted as backing. The haircut keeps
+    // the profit within both; `POOL_INSOLVENT` remains as a defensive check.
     let liquidity_delta = funding
         .checked_sub(realized_pnl)
         .ok_or(ProgramError::ArithmeticOverflow)?;
@@ -117,20 +133,23 @@ pub fn handle_close_position(
         .checked_add(liquidity_delta)
         .ok_or(ProgramError::ArithmeticOverflow)?;
     if new_liquidity < 0 {
-        return Err(err(error::POOL_INSOLVENT));
+        let shortfall = u64::try_from(new_liquidity.unsigned_abs())
+            .map_err(|_| ProgramError::ArithmeticOverflow)?;
+        let new_insurance_fund = accounts
+            .pool
+            .insurance_fund
+            .get()
+            .checked_sub(shortfall)
+            .ok_or_else(|| err(error::POOL_INSOLVENT))?;
+        accounts.pool.insurance_fund.set(new_insurance_fund);
+        accounts.pool.liquidity.set(0);
+    } else {
+        accounts
+            .pool
+            .liquidity
+            .set(u64::try_from(new_liquidity).map_err(|_| ProgramError::ArithmeticOverflow)?);
     }
-    accounts
-        .pool
-        .liquidity
-        .set(u64::try_from(new_liquidity).map_err(|_| ProgramError::ArithmeticOverflow)?);
-
-    let new_program_fees = accounts
-        .pool
-        .program_fees
-        .get()
-        .checked_add(close_fee)
-        .ok_or(ProgramError::ArithmeticOverflow)?;
-    accounts.pool.program_fees.set(new_program_fees);
+    credit_fee(&mut accounts.pool, close_fee)?;
 
     // The pool signs the CPI below with its own seeds.
     let bump = [bumps.pool];

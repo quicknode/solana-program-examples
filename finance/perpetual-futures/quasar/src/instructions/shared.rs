@@ -7,7 +7,7 @@ use quasar_lang::{prelude::*, sysvars::Sysvar};
 use crate::last_restart::LastRestartSlot;
 
 use crate::constants::{
-    BASIS_POINTS_DENOMINATOR, FUNDING_PRECISION, MAX_PRICE_STALENESS_SLOTS,
+    BASIS_POINTS_DENOMINATOR, FUNDING_PRECISION, HAIRCUT_PRECISION, MAX_PRICE_STALENESS_SLOTS,
     PRICE_AVERAGE_WINDOW_SECONDS, SIDE_LONG, SIZE_PRECISION,
 };
 use crate::state::Pool;
@@ -34,6 +34,7 @@ pub mod error {
     pub const INITIAL_MARGIN_NOT_ABOVE_MAINTENANCE: u32 = 19;
     pub const INVALID_PRICE_DEVIATION: u32 = 20;
     pub const PRICE_OUTSIDE_BAND: u32 = 21;
+    pub const PROFIT_NOT_MATURED: u32 = 22;
 }
 
 #[inline(always)]
@@ -236,6 +237,94 @@ pub fn traders_unrealized_pnl(
         .ok_or_else(overflow)?;
 
     long_pnl.checked_add(short_pnl).ok_or_else(overflow)
+}
+
+/// The haircut ratio `h` at `price`, scaled by `HAIRCUT_PRECISION`: the
+/// fraction of its profit a winning position is paid when it closes.
+///
+/// `h = min(1, (liquidity + insurance_fund) / max(liability, closing_profit))`
+///
+/// The liability is the traders' aggregate unrealized profit from the per-side
+/// accumulators, floored at zero, so the caller computes `h` before the closing
+/// position leaves them, and every winner closing at that moment is paid the
+/// same fraction. While the backing covers it `h` is one. When a move leaves
+/// traders owed more than the backing, `h` is the backing divided by the
+/// liability, floored, and rises again as losing positions settle into
+/// `liquidity`.
+///
+/// Open losing positions offset winners in the aggregate, so one winner's
+/// `closing_profit` can be larger than the liability. Dividing by the larger of
+/// the two means a winner who closes while open losers still offset them is
+/// paid at most the pool's backing, and is never refused; when the liability is
+/// the larger, every other winner's fraction is unchanged.
+pub fn haircut_ratio(
+    pool: &Account<Pool>,
+    price: u64,
+    closing_profit: i128,
+) -> Result<u128, ProgramError> {
+    let traders = traders_unrealized_pnl(
+        pool.long_size.get(),
+        pool.long_size_scaled.get(),
+        pool.short_size.get(),
+        pool.short_size_scaled.get(),
+        price,
+    )?;
+    let liability = u128::try_from(traders.max(closing_profit).max(0)).map_err(|_| overflow())?;
+    if liability == 0 {
+        return Ok(HAIRCUT_PRECISION);
+    }
+    let backing = (pool.liquidity.get() as u128)
+        .checked_add(pool.insurance_fund.get() as u128)
+        .ok_or_else(overflow)?;
+    if backing >= liability {
+        return Ok(HAIRCUT_PRECISION);
+    }
+    backing
+        .checked_mul(HAIRCUT_PRECISION)
+        .ok_or_else(overflow)?
+        .checked_div(liability)
+        .ok_or_else(overflow)
+}
+
+/// `profit * haircut / HAIRCUT_PRECISION`, rounded down: the part of a
+/// winning position's profit the pool pays. `profit` is positive; a loss is
+/// never haircut.
+pub fn apply_haircut(profit: i128, haircut: u128) -> Result<i128, ProgramError> {
+    let profit = u128::try_from(profit).map_err(|_| overflow())?;
+    let paid = profit
+        .checked_mul(haircut)
+        .ok_or_else(overflow)?
+        .checked_div(HAIRCUT_PRECISION)
+        .ok_or_else(overflow)?;
+    i128::try_from(paid).map_err(|_| overflow())
+}
+
+/// Split an open or close fee into `(insurance_cut, program_cut)`. The
+/// insurance cut is `insurance_fee_bps` of the fee, rounded down, and the
+/// program keeps the rest, so the two always add up to the whole fee.
+pub fn split_fee(fee: u64, insurance_fee_bps: u16) -> Result<(u64, u64), ProgramError> {
+    let insurance_cut = basis_points_of(fee, insurance_fee_bps)?;
+    let program_cut = fee.checked_sub(insurance_cut).ok_or_else(overflow)?;
+    Ok((insurance_cut, program_cut))
+}
+
+/// Credit an open or close fee: `insurance_fee_bps` of it to the insurance
+/// fund and the rest to program fees.
+pub fn credit_fee(pool: &mut Account<Pool>, fee: u64) -> Result<(), ProgramError> {
+    let (insurance_cut, program_cut) = split_fee(fee, pool.insurance_fee_bps.get())?;
+    let insurance_fund = pool
+        .insurance_fund
+        .get()
+        .checked_add(insurance_cut)
+        .ok_or_else(overflow)?;
+    pool.insurance_fund.set(insurance_fund);
+    let program_fees = pool
+        .program_fees
+        .get()
+        .checked_add(program_cut)
+        .ok_or_else(overflow)?;
+    pool.program_fees.set(program_fees);
+    Ok(())
 }
 
 pub fn position_funding(

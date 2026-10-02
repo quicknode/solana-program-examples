@@ -15,6 +15,13 @@ pub const FUNDING_PRECISION: i128 = 1_000_000_000;
 /// from two running sums instead of iterating every open position.
 pub const SIZE_PRECISION: u128 = 1_000_000_000;
 
+/// Fixed-point precision for the haircut ratio `h`, the fraction of their
+/// profit every closing winner is paid. `HAIRCUT_PRECISION` is `h = 1` (profit
+/// paid in full); a smaller value pays that fraction of it. A winner's profit is
+/// multiplied by `h` and divided by this, rounding down, so rounding never pays
+/// a winner more than that fraction.
+pub const HAIRCUT_PRECISION: u128 = 1_000_000_000;
+
 /// Liquidity-provider shares withheld from the first deposit. The first
 /// depositor receives `deposit - MINIMUM_LIQUIDITY` shares rather than the full
 /// amount, the same convention Uniswap V2 uses, and both `add_liquidity` and

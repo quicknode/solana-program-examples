@@ -56,9 +56,66 @@ Tested by `open_rejects_position_below_initial_margin` (formerly
 `single_update_moves_average_by_elapsed_fraction` and
 `one_manipulated_read_after_idle_does_not_move_average`. The default test pool
 uses a 1,000 basis point initial margin and a 2,000 basis point band;
-`profit_is_capped_at_the_reserved_notional` triples the price, far outside the
+`profit_runs_uncapped_when_backed` triples the price, far outside the
 band, so it now calls `update_price_average` to record the new price, lets a
 full window pass, and calls it again before closing.
+
+Replace reserved liquidity with the haircut risk model from
+[Percolator](https://github.com/aeyakovenko/percolator): trader collateral is
+senior, and trader profit is junior, paid only as far as the pool can back it.
+`Pool::reserved_liquidity` is removed, and with it `open_position`'s
+`reserved + size <= liquidity` check, which failed with
+`INSUFFICIENT_LIQUIDITY`, and `close_position`'s cap on profit at the
+position's size. A position opens whatever the pool's liquidity, and profit has
+no cap. `close_position` computes the haircut ratio `h = min(1, (liquidity +
+insurance_fund) / max(0, traders' aggregate unrealized profit, closing
+position's profit))` from the per-side accumulators, before the closing
+position leaves them, and pays a winning position `profit * h /
+HAIRCUT_PRECISION`, rounded down, with the new constant at 10^9, so every
+winner closing at the same moment is paid the same fraction; a loss settles in
+full. A winner who closes while open losers still offset them is paid at most
+the pool's backing rather than refused, and every other winner's fraction is
+unchanged. The profit is paid from `liquidity` first and from the insurance
+fund for the rest; `POOL_INSOLVENT` remains as a defensive check. `remove_liquidity` caps a withdrawal at `liquidity` rather
+than `liquidity - reserved_liquidity`, still failing with
+`INSUFFICIENT_LIQUIDITY`. `shared.rs` has the new `haircut_ratio` and
+`apply_haircut`.
+
+Add an insurance fund. `Pool::insurance_fund` is new, and so is the
+`initialize_pool` argument `insurance_fee_bps`, which must be below 10,000 or
+the handler fails with `INVALID_PARAMETER`. That fraction of every open and
+close fee goes to the fund, rounded down, and the rest to `program_fees`,
+through the new `split_fee` and `credit_fee` in `shared.rs`.
+`liquidate_position` takes a position's deficit, its loss beyond its
+collateral, from the fund first and credits what the fund pays to `liquidity`;
+the providers bear the rest. The liquidation fee is still paid only out of the
+position's remaining equity: the part the equity cannot cover is forgiven, as
+in Percolator, and neither the insurance fund nor `liquidity` pays it. The
+vault holds `liquidity + total_collateral + program_fees + insurance_fund`,
+plus any tokens sent to it directly.
+
+Add a profit warm-up. The `initialize_pool` argument `profit_warmup_slots`,
+after `insurance_fee_bps`, and `Position::entry_slot`, which `open_position`
+sets to the current slot, are new. `close_position` refuses to pay a profit
+before slot `entry_slot + profit_warmup_slots` with the new
+`PROFIT_NOT_MATURED` (22). A losing position closes at any time, and
+liquidation is not delayed.
+
+Tested by `open_allowed_without_full_backing`,
+`profit_runs_uncapped_when_backed`, `haircut_scales_profit_when_pool_stressed`,
+`insurance_pays_profit_beyond_liquidity`,
+`winner_offset_by_open_loser_is_paid_not_refused`,
+`remove_liquidity_capped_at_liquidity`, `profit_blocked_before_maturation`,
+`profit_realized_after_maturation`, `loss_not_gated_by_maturation`,
+`insurance_fund_funded_by_fees`, `insurance_absorbs_bankruptcy_deficit`,
+`liquidation_of_bankrupt_position_charges_insurance_before_liquidity` and
+`initialize_pool_rejects_insurance_fee_at_or_above_full_fee`. They replace
+`open_rejects_when_pool_cannot_back_it`,
+`profit_is_capped_at_the_reserved_notional` and
+`remove_liquidity_is_blocked_by_reserved_notional`. The default test pool pays
+half of each fee into the insurance fund and has a 10-slot warm-up, so the
+tests that close at a profit first let the warm-up pass, and
+`collect_fees_sweeps_the_open_fee_to_the_admin` sweeps the program's half.
 
 ## 2026-09-30
 

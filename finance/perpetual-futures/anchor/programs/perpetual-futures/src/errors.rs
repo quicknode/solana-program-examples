@@ -38,7 +38,7 @@ pub enum PerpError {
     #[msg("Fill price is worse than the caller's acceptable price")]
     SlippageExceeded,
 
-    #[msg("Pool does not have enough free liquidity to satisfy this request")]
+    #[msg("Withdrawal is larger than the pool's liquidity: part of the shares' value is still in open positions")]
     InsufficientLiquidity,
 
     #[msg("Posted collateral does not cover the open fee")]
@@ -67,4 +67,9 @@ pub enum PerpError {
 
     #[msg("Oracle price is too far from the pool's average price: trading pauses until the average catches up")]
     PriceOutsideBand,
+
+    #[msg(
+        "Profit cannot be taken yet: the position has not been open for the pool's profit warm-up"
+    )]
+    ProfitNotMatured,
 }

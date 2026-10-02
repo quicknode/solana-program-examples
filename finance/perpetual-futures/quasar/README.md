@@ -49,13 +49,31 @@ wallets, then exercise:
   (`price_average_catches_up_after_genuine_move`), and one manipulated read
   after an idle window leaving the average where it was
   (`one_manipulated_read_after_idle_does_not_move_average`)
-- liquidation, reserved liquidity, and fee collection
+- liquidation, and fee collection
+- the haircut: a position opening without full backing, profit paid in full
+  while the pool backs it, two winners each paid exactly half when the pool is
+  stressed (`haircut_scales_profit_when_pool_stressed`), the insurance fund
+  paying a profit beyond `liquidity`, and a winner offset by an open loser paid
+  the pool's whole backing rather than refused
+  (`winner_offset_by_open_loser_is_paid_not_refused`)
+- the profit warm-up on both sides of its boundary
+  (`profit_blocked_before_maturation`, `profit_realized_after_maturation`),
+  and a loss closing in the slot it opened
+- the insurance fund: its exact share of each fee, a bankrupt position's
+  deficit paid by the fund, and a bankrupt position liquidated for no fee with
+  the fund paying before the providers
+  (`liquidation_of_bankrupt_position_charges_insurance_before_liquidity`)
+- withdrawals capped at `liquidity` while traders are down
+  (`remove_liquidity_capped_at_liquidity`)
 
 Program errors are `ProgramError::Custom` codes listed in
 `instructions/shared.rs`, with the same names as the Anchor version's
 `PerpError` variants in upper snake case: `INITIAL_MARGIN_NOT_MET` (2),
-`INITIAL_MARGIN_NOT_ABOVE_MAINTENANCE` (19), `INVALID_PRICE_DEVIATION` (20) and
-`PRICE_OUTSIDE_BAND` (21) among them. `update_price_average` is discriminator 7.
+`INITIAL_MARGIN_NOT_ABOVE_MAINTENANCE` (19), `INVALID_PRICE_DEVIATION` (20),
+`PRICE_OUTSIDE_BAND` (21) and `PROFIT_NOT_MATURED` (22) among them.
+`update_price_average` is discriminator 7. `initialize_pool` takes the Anchor
+version's `PoolParameters` fields as separate arguments, ending with
+`insurance_fee_bps` and `profit_warmup_slots`.
 
 ```bash
 cargo build-sbf

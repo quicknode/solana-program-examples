@@ -41,6 +41,13 @@ pub struct PoolParameters {
     /// oracle price and that average at which positions may still open or
     /// close and liquidity may still move.
     pub max_price_deviation_bps: u16,
+
+    /// Fraction of each open and close fee, in basis points, paid into the
+    /// insurance fund; the rest goes to program fees. Must be below 10_000.
+    pub insurance_fee_bps: u16,
+
+    /// Slots a position must stay open before it can be closed at a profit.
+    pub profit_warmup_slots: u64,
 }
 
 pub fn handle_initialize_pool(
@@ -99,6 +106,12 @@ pub fn handle_initialize_pool(
         parameters.max_confidence_bps > 0 && parameters.max_confidence_bps < denominator,
         PerpError::InvalidParameter
     );
+    // At 10_000 every fee would go to the insurance fund and none to the
+    // program.
+    require!(
+        parameters.insurance_fee_bps < denominator,
+        PerpError::InvalidParameter
+    );
     // Zero would refuse every price move, however small. At 100% or more the
     // band could never refuse a fall, since the oracle price is always
     // positive.
@@ -124,9 +137,9 @@ pub fn handle_initialize_pool(
     pool.custody_vault = context.accounts.custody_vault.key();
     pool.lp_mint = context.accounts.lp_mint.key();
     pool.liquidity = 0;
-    pool.reserved_liquidity = 0;
     pool.total_collateral = 0;
     pool.program_fees = 0;
+    pool.insurance_fund = 0;
     pool.long_size = 0;
     pool.short_size = 0;
     pool.long_size_scaled = 0;
@@ -144,6 +157,8 @@ pub fn handle_initialize_pool(
     pool.liquidation_fee_bps = parameters.liquidation_fee_bps;
     pool.max_confidence_bps = parameters.max_confidence_bps;
     pool.max_price_deviation_bps = parameters.max_price_deviation_bps;
+    pool.insurance_fee_bps = parameters.insurance_fee_bps;
+    pool.profit_warmup_slots = parameters.profit_warmup_slots;
     pool.bump = context.bumps.pool;
 
     Ok(())

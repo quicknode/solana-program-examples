@@ -1,7 +1,8 @@
 use anchor_lang::prelude::*;
 
 use crate::constants::{
-    BASIS_POINTS_DENOMINATOR, FUNDING_PRECISION, PRICE_AVERAGE_WINDOW_SECONDS, SIZE_PRECISION,
+    BASIS_POINTS_DENOMINATOR, FUNDING_PRECISION, HAIRCUT_PRECISION, PRICE_AVERAGE_WINDOW_SECONDS,
+    SIZE_PRECISION,
 };
 use crate::errors::PerpError;
 use crate::state::{Pool, Position, Side};
@@ -141,9 +142,9 @@ pub fn position_pnl(side: Side, size: u64, entry_price: u64, price: u64) -> Resu
 /// from the pool's running accumulators rather than iterating positions.
 /// Positive means traders are collectively up (and the pool is down).
 ///
-/// Profit is marked uncapped here: a position already past the reserved-profit
-/// cap is carried at more than the pool will actually pay out, so
-/// assets-under-management reads slightly low until that position closes.
+/// Profit is marked in full, before any haircut: while `haircut_ratio` is
+/// below one, winners will be paid less than this, so assets-under-management
+/// reads low by the withheld part until they close.
 pub fn traders_unrealized_pnl(pool: &Pool, price: u64) -> Result<i128> {
     let price = price as i128;
     let size_precision = SIZE_PRECISION as i128;
@@ -180,6 +181,86 @@ pub fn liquidity_provider_aum(pool: &Pool, price: u64) -> Result<i128> {
     (pool.liquidity as i128)
         .checked_sub(traders)
         .ok_or(PerpError::MathOverflow.into())
+}
+
+/// The haircut ratio `h` at `price`, scaled by `HAIRCUT_PRECISION`: the
+/// fraction of its profit a winning position is paid when it closes.
+///
+/// `h = min(1, (liquidity + insurance_fund) / max(liability, closing_profit))`
+///
+/// The liability is the traders' aggregate unrealized profit from the per-side
+/// accumulators, floored at zero, so the caller computes `h` before the closing
+/// position leaves them, and every winner closing at that moment is paid the
+/// same fraction. While the backing covers it `h` is one. When a move leaves
+/// traders owed more than the backing, `h` is the backing divided by the
+/// liability, floored, and rises again as losing positions settle into
+/// `liquidity`.
+///
+/// Open losing positions offset winners in the aggregate, so one winner's
+/// `closing_profit` can be larger than the liability. Dividing by the larger of
+/// the two means a winner who closes while open losers still offset them is
+/// paid at most the pool's backing, and is never refused; when the liability is
+/// the larger, every other winner's fraction is unchanged.
+pub fn haircut_ratio(pool: &Pool, price: u64, closing_profit: i128) -> Result<u128> {
+    let liability: u128 = traders_unrealized_pnl(pool, price)?
+        .max(closing_profit)
+        .max(0)
+        .try_into()
+        .map_err(|_| PerpError::MathOverflow)?;
+    if liability == 0 {
+        return Ok(HAIRCUT_PRECISION);
+    }
+    let backing = (pool.liquidity as u128)
+        .checked_add(pool.insurance_fund as u128)
+        .ok_or(PerpError::MathOverflow)?;
+    if backing >= liability {
+        return Ok(HAIRCUT_PRECISION);
+    }
+    backing
+        .checked_mul(HAIRCUT_PRECISION)
+        .ok_or(PerpError::MathOverflow)?
+        .checked_div(liability)
+        .ok_or(PerpError::MathOverflow.into())
+}
+
+/// `profit * haircut / HAIRCUT_PRECISION`, rounded down: the part of a
+/// winning position's profit the pool pays. `profit` is positive; a loss is
+/// never haircut.
+pub fn apply_haircut(profit: i128, haircut: u128) -> Result<i128> {
+    let profit: u128 = profit.try_into().map_err(|_| PerpError::MathOverflow)?;
+    profit
+        .checked_mul(haircut)
+        .ok_or(PerpError::MathOverflow)?
+        .checked_div(HAIRCUT_PRECISION)
+        .ok_or(PerpError::MathOverflow)?
+        .try_into()
+        .map_err(|_| PerpError::MathOverflow.into())
+}
+
+/// Split an open or close fee into `(insurance_cut, program_cut)`. The
+/// insurance cut is `insurance_fee_bps` of the fee, rounded down, and the
+/// program keeps the rest, so the two always add up to the whole fee.
+pub fn split_fee(fee: u64, insurance_fee_bps: u16) -> Result<(u64, u64)> {
+    let insurance_cut = basis_points_of(fee, insurance_fee_bps)?;
+    let program_cut = fee
+        .checked_sub(insurance_cut)
+        .ok_or(PerpError::MathOverflow)?;
+    Ok((insurance_cut, program_cut))
+}
+
+/// Credit an open or close fee: `insurance_fee_bps` of it to the insurance
+/// fund and the rest to program fees.
+pub fn credit_fee(pool: &mut Pool, fee: u64) -> Result<()> {
+    let (insurance_cut, program_cut) = split_fee(fee, pool.insurance_fee_bps)?;
+    pool.insurance_fund = pool
+        .insurance_fund
+        .checked_add(insurance_cut)
+        .ok_or(PerpError::MathOverflow)?;
+    pool.program_fees = pool
+        .program_fees
+        .checked_add(program_cut)
+        .ok_or(PerpError::MathOverflow)?;
+    Ok(())
 }
 
 /// Funding a position owes since it opened, in collateral base units. Positive

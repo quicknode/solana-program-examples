@@ -30,21 +30,25 @@ pub struct Pool {
     /// Liquidity-provider-owned assets, in collateral base units. Grows with
     /// deposits, trader losses, fees-to-LPs; shrinks with withdrawals and
     /// trader profits. Trader collateral is tracked separately in
-    /// `total_collateral` and is not part of this figure.
+    /// `total_collateral` and is not part of this figure. Together with
+    /// `insurance_fund` it backs trader profit: when the two cannot cover the
+    /// profit traders are owed, every closing winner is paid the same fraction
+    /// of their profit (see `instructions::shared::haircut_ratio`).
     pub liquidity: u64,
-
-    /// Portion of `liquidity` reserved to cover open positions' maximum
-    /// recoverable profit (one notional `size` per position). Liquidity-provider
-    /// withdrawals can only take the free remainder (`liquidity - reserved`), so
-    /// a winning trader can always be paid. Also caps total exposure: a position
-    /// can only open while `reserved + size <= liquidity`.
-    pub reserved_liquidity: u64,
 
     /// Sum of every open position's posted collateral, held in the same vault.
     pub total_collateral: u64,
 
     /// Program fees accrued from open/close fees, awaiting `collect_fees`.
     pub program_fees: u64,
+
+    /// Funded by `insurance_fee_bps` of every open and close fee. It pays a
+    /// bankrupt position's deficit (its loss beyond its collateral) before
+    /// liquidity providers bear any of it, pays a winner's profit once
+    /// `liquidity` is exhausted, and counts alongside `liquidity` as backing in
+    /// the haircut. The vault holds `liquidity + total_collateral +
+    /// program_fees + insurance_fund`, plus any tokens sent to it directly.
+    pub insurance_fund: u64,
 
     /// Aggregate long open interest (sum of position `size`), in collateral
     /// base units of notional.
@@ -116,6 +120,17 @@ pub struct Pool {
     /// Widest gap the pool trades across between the oracle price and
     /// `average_price`, in basis points of `average_price`.
     pub max_price_deviation_bps: u16,
+
+    /// Fraction of each open and close fee, in basis points, paid into
+    /// `insurance_fund`; the rest goes to `program_fees`.
+    pub insurance_fee_bps: u16,
+
+    /// Slots a position must stay open before `close_position` will pay it a
+    /// profit. Someone who pushes the oracle to a false price cannot open a
+    /// position and take its profit less than this many slots apart; by then the
+    /// price has had that long to correct. A losing position can close, and an
+    /// under-margined one be liquidated, at any time.
+    pub profit_warmup_slots: u64,
 
     /// Bump of this account's own address. The pool owns the custody vault
     /// and is the LP mint's authority, so it signs vault transfers and

@@ -7,7 +7,7 @@ use anchor_spl::{
 use crate::constants::{BASIS_POINTS_DENOMINATOR, POOL_SEED, POSITION_SEED, VAULT_SEED};
 use crate::errors::PerpError;
 use crate::instructions::shared::{
-    basis_points_of, refresh_price_and_funding_within_band, scale_size,
+    basis_points_of, credit_fee, refresh_price_and_funding_within_band, scale_size,
 };
 use crate::state::{Pool, Position, Side};
 
@@ -57,19 +57,9 @@ pub fn handle_open_position(
         PerpError::InitialMarginNotMet
     );
 
-    // Reserve liquidity to cover this position's maximum recoverable profit
-    // (its notional `size`). The reserve must be backed by liquidity-provider
-    // capital, which also caps total open interest at the pool's liquidity.
-    let new_reserved = pool
-        .reserved_liquidity
-        .checked_add(size)
-        .ok_or(PerpError::MathOverflow)?;
-    require!(
-        new_reserved <= pool.liquidity,
-        PerpError::InsufficientLiquidity
-    );
-    pool.reserved_liquidity = new_reserved;
-
+    // Nothing is set aside to back this position's profit, and the pool's
+    // liquidity does not limit its size: `close_position` pays each winner the
+    // fraction of their profit the pool can back (see `haircut_ratio`).
     let size_scaled = scale_size(size, price)?;
 
     // Effects: record the position and the pool's new aggregates before moving
@@ -83,16 +73,14 @@ pub fn handle_open_position(
     position.entry_price = price;
     position.size_scaled = size_scaled;
     position.entry_funding = pool.cumulative_funding;
+    position.entry_slot = Clock::get()?.slot;
     position.bump = context.bumps.position;
 
     pool.total_collateral = pool
         .total_collateral
         .checked_add(net_collateral)
         .ok_or(PerpError::MathOverflow)?;
-    pool.program_fees = pool
-        .program_fees
-        .checked_add(open_fee)
-        .ok_or(PerpError::MathOverflow)?;
+    credit_fee(pool, open_fee)?;
 
     match side {
         Side::Long => {

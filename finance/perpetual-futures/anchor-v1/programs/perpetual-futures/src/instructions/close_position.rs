@@ -7,7 +7,8 @@ use anchor_spl::{
 use crate::constants::{POOL_SEED, POSITION_SEED, VAULT_SEED};
 use crate::errors::PerpError;
 use crate::instructions::shared::{
-    basis_points_of, refresh_price_and_funding_within_band, settle_position,
+    apply_haircut, basis_points_of, credit_fee, haircut_ratio, position_pnl,
+    refresh_price_and_funding_within_band, settle_position,
 };
 use crate::state::{Pool, Position};
 
@@ -18,15 +19,36 @@ pub fn handle_close_position(
     let pool = &mut context.accounts.pool;
     let price = refresh_price_and_funding_within_band(pool, &context.accounts.oracle_feed)?;
 
+    // The haircut is computed while this position is still in the per-side
+    // accumulators, so its own profit counts toward the liability and it is
+    // paid the same fraction as any other winner closing at this price. Its
+    // own profit is passed too: if open losers offset it in the aggregate,
+    // the haircut is sized against that profit, so the payout is at most the
+    // backing and the close is never refused for lack of it.
     let position = &context.accounts.position;
+    let closing_profit = position_pnl(position.side, position.size, position.entry_price, price)?;
+    let haircut = haircut_ratio(pool, price, closing_profit)?;
+
     let position_size = position.size;
+    let entry_slot = position.entry_slot;
     let settlement = settle_position(pool, position, price)?;
     let close_fee = basis_points_of(position_size, pool.close_fee_bps)?;
 
-    // Recoverable profit is capped at the reserved amount (the position's
-    // notional `size`), so the pool can always cover a winner. Losses are not
-    // capped.
-    let realized_pnl = settlement.profit_and_loss.min(position_size as i128);
+    // A profit is paid only once the position has been open for the pool's
+    // warm-up, and then only the haircut fraction of it. A loss settles in
+    // full, at any time.
+    let realized_pnl = if settlement.profit_and_loss > 0 {
+        let matured_at = entry_slot
+            .checked_add(pool.profit_warmup_slots)
+            .ok_or(PerpError::MathOverflow)?;
+        require!(
+            Clock::get()?.slot >= matured_at,
+            PerpError::ProfitNotMatured
+        );
+        apply_haircut(settlement.profit_and_loss, haircut)?
+    } else {
+        settlement.profit_and_loss
+    };
     let equity = settlement
         .equity
         .checked_sub(settlement.profit_and_loss)
@@ -44,14 +66,12 @@ pub fn handle_close_position(
     let payout: u64 = payout.try_into().map_err(|_| PerpError::MathOverflow)?;
     require!(payout >= minimum_payout, PerpError::SlippageExceeded);
 
-    // Release the position's reserved liquidity now that it is closing.
-    pool.reserved_liquidity = pool
-        .reserved_liquidity
-        .checked_sub(position_size)
-        .ok_or(PerpError::MathOverflow)?;
-
-    // Liquidity providers are the counterparty: they pay the trader's (capped)
-    // profit and receive their loss, and collect the funding the trader owed.
+    // Liquidity providers are the counterparty: they pay the trader's
+    // haircut profit and receive their loss, and collect the funding the
+    // trader owed. The part of a profit the haircut withholds stays in
+    // `liquidity`. A payment larger than `liquidity` takes the rest from the
+    // insurance fund, which the haircut counted as backing. The haircut keeps
+    // the profit within both; `PoolInsolvent` remains as a defensive check.
     let liquidity_delta = settlement
         .funding
         .checked_sub(realized_pnl)
@@ -59,14 +79,22 @@ pub fn handle_close_position(
     let new_liquidity = (pool.liquidity as i128)
         .checked_add(liquidity_delta)
         .ok_or(PerpError::MathOverflow)?;
-    require!(new_liquidity >= 0, PerpError::PoolInsolvent);
-    pool.liquidity = new_liquidity
-        .try_into()
-        .map_err(|_| PerpError::MathOverflow)?;
-    pool.program_fees = pool
-        .program_fees
-        .checked_add(close_fee)
-        .ok_or(PerpError::MathOverflow)?;
+    if new_liquidity < 0 {
+        let shortfall: u64 = new_liquidity
+            .unsigned_abs()
+            .try_into()
+            .map_err(|_| PerpError::MathOverflow)?;
+        pool.insurance_fund = pool
+            .insurance_fund
+            .checked_sub(shortfall)
+            .ok_or(PerpError::PoolInsolvent)?;
+        pool.liquidity = 0;
+    } else {
+        pool.liquidity = new_liquidity
+            .try_into()
+            .map_err(|_| PerpError::MathOverflow)?;
+    }
+    credit_fee(pool, close_fee)?;
 
     // The pool signs the CPI below with its own seeds.
     let pool_seeds: &[&[u8]] = &[

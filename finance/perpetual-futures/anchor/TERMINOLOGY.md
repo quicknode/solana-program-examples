@@ -22,7 +22,25 @@ Terms used in this example, in the sense they carry here.
 - **Maintenance margin**: the minimum equity, as a fraction of notional size,
   a position must keep to avoid liquidation.
 - **Liquidation**: closing an under-margined position. Permissionless here: any
-  caller can trigger it and earns the liquidation fee.
+  caller can trigger it and earns the liquidation fee out of the position's
+  remaining equity. The part of the fee the equity cannot cover is forgiven.
+- **Deficit**: what a liquidated position lost beyond its collateral, when its
+  equity is below zero. The insurance fund pays it first, and the liquidity
+  providers bear what the fund cannot.
+- **Insurance fund**: the tokens the pool holds, in `insurance_fund`, from
+  `insurance_fee_bps` of every open and close fee. It pays deficits, pays a
+  winner's profit once `liquidity` is exhausted, and never pays a fee.
+- **Senior / junior**: a trader's collateral is senior, always theirs to
+  reclaim less their losses. Their profit is junior: paid only as far as the
+  pool's liquidity and insurance fund can back it.
+- **Haircut ratio (`h`)**: the fraction of their profit every winner closing at
+  a given moment is paid: one while `liquidity + insurance_fund` covers the
+  profit owed, and that backing divided by the profit owed when it does not.
+  The profit owed is the larger of traders' aggregate profit and the closing
+  position's own, so a winner who closes while open losers still offset them
+  is paid at most the backing, and never refused.
+- **Profit warm-up**: the `profit_warmup_slots` a position must stay open before
+  it can be closed at a profit. A loss is never held back.
 - **Funding**: a periodic payment that anchors the pool's risk. The heavier
   side of open interest pays funding to the pool over time.
 - **Open interest**: the total notional size currently open on a side.
