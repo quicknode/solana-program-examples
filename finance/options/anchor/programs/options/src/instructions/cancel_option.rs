@@ -19,11 +19,9 @@ pub fn handle_cancel_option(context: &mut Context<CancelOptionAccountConstraints
 
     let collateral = contract_math::collateral_amount(
         option.kind,
-        option.contracts,
-        option.underlying_per_contract,
-        option.strike_per_contract,
-    )
-    .ok_or(OptionsError::MathOverflow)?;
+        option.underlying_amount,
+        option.strike_amount,
+    );
     let kind = option.kind;
 
     let market = &mut context.accounts.market;

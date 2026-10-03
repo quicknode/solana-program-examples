@@ -26,14 +26,15 @@ const DECIMALS: u8 = 6;
 // The venue charges 1% of every premium.
 const FEE_BPS: u16 = 100;
 
-// The walkthrough's call: 5 contracts, each on 1 NVDAx, strike 180 USDC,
-// asking 25 USDC for the option, expiring a week out.
-const CONTRACTS: u64 = 5;
-const ONE_NVDAX_PER_CONTRACT: u64 = ONE_TOKEN;
-const CALL_STRIKE: u64 = 180 * ONE_TOKEN;
+// The walkthrough's call: 5 NVDAx at a strike of 180 USDC each, 900 USDC in
+// all, asking 25 USDC for the option, expiring a week out.
+const CALL_UNDERLYING: u64 = 5 * ONE_TOKEN;
+const CALL_STRIKE_AMOUNT: u64 = 900 * ONE_TOKEN;
 const CALL_PREMIUM: u64 = 25 * ONE_TOKEN;
-// And the put: 5 contracts, strike 150 USDC, asking 20 USDC.
-const PUT_STRIKE: u64 = 150 * ONE_TOKEN;
+// And the put: 5 NVDAx at a strike of 150 USDC each, 750 USDC in all, asking
+// 20 USDC.
+const PUT_UNDERLYING: u64 = 5 * ONE_TOKEN;
+const PUT_STRIKE_AMOUNT: u64 = 750 * ONE_TOKEN;
 const PUT_PREMIUM: u64 = 20 * ONE_TOKEN;
 
 const SECONDS_PER_DAY: i64 = 24 * 60 * 60;
@@ -68,9 +69,8 @@ fn derive_ata(wallet: &Pubkey, mint: &Pubkey) -> Pubkey {
 fn call_terms(expiry: i64) -> OptionTerms {
     OptionTerms {
         kind: OptionKind::Call,
-        contracts: CONTRACTS,
-        underlying_per_contract: ONE_NVDAX_PER_CONTRACT,
-        strike_per_contract: CALL_STRIKE,
+        underlying_amount: CALL_UNDERLYING,
+        strike_amount: CALL_STRIKE_AMOUNT,
         premium: CALL_PREMIUM,
         expiry,
     }
@@ -321,9 +321,8 @@ impl Venue {
             2,
             OptionTerms {
                 kind: OptionKind::Put,
-                contracts: CONTRACTS,
-                underlying_per_contract: ONE_NVDAX_PER_CONTRACT,
-                strike_per_contract: PUT_STRIKE,
+                underlying_amount: PUT_UNDERLYING,
+                strike_amount: PUT_STRIKE_AMOUNT,
                 premium: PUT_PREMIUM,
                 expiry,
             },
@@ -502,7 +501,7 @@ fn test_market_owns_both_vaults() {
     assert_eq!(venue.token_authority(&venue.quote_vault), venue.market);
 }
 
-/// Alice writes 5 covered calls on her 5 NVDAx. The whole 5 NVDAx moves into
+/// Alice writes a covered call on her 5 NVDAx. The whole 5 NVDAx moves into
 /// the vault at once; the option is listed for a 25 USDC premium.
 #[test]
 fn test_write_call_moves_underlying_into_vault() {
@@ -518,8 +517,8 @@ fn test_write_call_moves_underlying_into_vault() {
     assert_eq!(state.holder, Pubkey::default());
     assert_eq!(state.kind, OptionKind::Call);
     assert_eq!(state.status, OptionStatus::Listed);
-    assert_eq!(state.contracts, CONTRACTS);
-    assert_eq!(state.strike_per_contract, CALL_STRIKE);
+    assert_eq!(state.underlying_amount, CALL_UNDERLYING);
+    assert_eq!(state.strike_amount, CALL_STRIKE_AMOUNT);
     assert_eq!(state.premium, CALL_PREMIUM);
     assert_eq!(venue.market_state().underlying_owed, FIVE_NVDAX);
     venue.assert_vaults_match_ledger();
@@ -566,17 +565,19 @@ fn test_exercise_call_swaps_the_strike_for_the_underlying() {
         .exercise_option(&bob, &alice.pubkey(), &option)
         .unwrap();
 
-    let strike_total = 900 * ONE_TOKEN;
     assert_eq!(venue.balance(&bob.underlying), FIVE_NVDAX);
     assert_eq!(
         venue.balance(&bob.quote),
-        STANDARD_USDC - CALL_PREMIUM - strike_total
+        STANDARD_USDC - CALL_PREMIUM - CALL_STRIKE_AMOUNT
     );
     assert_eq!(venue.balance(&venue.underlying_vault), 0);
-    assert_eq!(venue.balance(&venue.quote_vault), strike_total + 250_000);
+    assert_eq!(
+        venue.balance(&venue.quote_vault),
+        CALL_STRIKE_AMOUNT + 250_000
+    );
     let market = venue.market_state();
     assert_eq!(market.underlying_owed, 0);
-    assert_eq!(market.quote_owed, strike_total);
+    assert_eq!(market.quote_owed, CALL_STRIKE_AMOUNT);
     assert_eq!(venue.option_state(&option).status, OptionStatus::Exercised);
     venue.assert_vaults_match_ledger();
 }
@@ -643,10 +644,10 @@ fn test_collect_fees_pays_only_the_fees_owed() {
 // The put, and the option that expires unexercised
 // ===========================================================================
 
-/// Carol writes 5 cash-secured puts at a 150 strike: 750 USDC of collateral.
-/// Dave buys them for 20 USDC. NVIDIA falls below the strike offchain, so
-/// Dave delivers his 5 NVDAx and takes the 750 USDC; Carol collects the
-/// shares. Every amount is a product of two of the option's integers.
+/// Carol writes a cash-secured put on 5 NVDAx at a 150 strike: 750 USDC of
+/// collateral. Dave buys it for 20 USDC. NVIDIA falls below the strike
+/// offchain, so Dave delivers his 5 NVDAx and takes the 750 USDC; Carol
+/// collects the shares. Every amount is one the option stores.
 #[test]
 fn test_put_lifecycle_delivers_the_underlying_for_the_strike() {
     let mut venue = Venue::new();
@@ -935,25 +936,21 @@ fn test_collect_fees_is_refused_for_anyone_but_the_admin() {
 // ===========================================================================
 
 #[test]
-fn test_write_option_rejects_zero_quantities_and_a_free_premium() {
+fn test_write_option_rejects_zero_amounts_and_a_free_premium() {
     let mut venue = Venue::new();
     let alice = venue.person(FIVE_NVDAX, STANDARD_USDC);
     let expiry = venue.now() + ONE_WEEK;
 
     let attempts = [
-        (0, ONE_NVDAX_PER_CONTRACT, CALL_STRIKE, CALL_PREMIUM),
-        (CONTRACTS, 0, CALL_STRIKE, CALL_PREMIUM),
-        (CONTRACTS, ONE_NVDAX_PER_CONTRACT, 0, CALL_PREMIUM),
-        (CONTRACTS, ONE_NVDAX_PER_CONTRACT, CALL_STRIKE, 0),
+        (0, CALL_STRIKE_AMOUNT, CALL_PREMIUM),
+        (CALL_UNDERLYING, 0, CALL_PREMIUM),
+        (CALL_UNDERLYING, CALL_STRIKE_AMOUNT, 0),
     ];
-    for (id, (contracts, underlying_per_contract, strike_per_contract, premium)) in
-        attempts.into_iter().enumerate()
-    {
+    for (id, (underlying_amount, strike_amount, premium)) in attempts.into_iter().enumerate() {
         let terms = OptionTerms {
             kind: OptionKind::Call,
-            contracts,
-            underlying_per_contract,
-            strike_per_contract,
+            underlying_amount,
+            strike_amount,
             premium,
             expiry,
         };
@@ -976,22 +973,6 @@ fn test_write_option_rejects_an_expiry_that_has_passed() {
     for expiry in [now, now - SECONDS_PER_DAY] {
         assert!(venue.write_option(&alice, 20, call_terms(expiry)).is_err());
     }
-}
-
-/// An option whose collateral would overflow is refused before anyone pays for
-/// it, rather than failing at exercise.
-#[test]
-fn test_write_option_rejects_a_lot_whose_collateral_overflows() {
-    let mut venue = Venue::new();
-    let alice = venue.person(FIVE_NVDAX, STANDARD_USDC);
-    let expiry = venue.now() + ONE_WEEK;
-
-    let terms = OptionTerms {
-        contracts: u64::MAX,
-        underlying_per_contract: 2,
-        ..call_terms(expiry)
-    };
-    assert!(venue.write_option(&alice, 30, terms).is_err());
 }
 
 #[test]

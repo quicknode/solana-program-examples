@@ -23,13 +23,8 @@ pub fn handle_collect_proceeds(
     );
 
     let kind = option.kind;
-    let proceeds = contract_math::exercise_payment(
-        kind,
-        option.contracts,
-        option.underlying_per_contract,
-        option.strike_per_contract,
-    )
-    .ok_or(OptionsError::MathOverflow)?;
+    let proceeds =
+        contract_math::exercise_payment(kind, option.underlying_amount, option.strike_amount);
 
     let market = &mut context.accounts.market;
     let mut underlying_after = context.accounts.underlying_vault.amount();

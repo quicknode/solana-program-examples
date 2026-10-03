@@ -27,13 +27,8 @@ pub fn handle_reclaim_collateral(
     );
 
     let kind = option.kind;
-    let collateral = contract_math::collateral_amount(
-        kind,
-        option.contracts,
-        option.underlying_per_contract,
-        option.strike_per_contract,
-    )
-    .ok_or(OptionsError::MathOverflow)?;
+    let collateral =
+        contract_math::collateral_amount(kind, option.underlying_amount, option.strike_amount);
 
     let market = &mut context.accounts.market;
     let mut underlying_after = context.accounts.underlying_vault.amount;

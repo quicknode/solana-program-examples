@@ -23,13 +23,14 @@ const ONE_TOKEN: u64 = 1_000_000;
 // The venue charges 1% of every premium.
 const FEE_BPS: u16 = 100;
 
-// The walkthrough's call: 5 contracts, each on 1 NVDAx, strike 180 USDC,
-// asking 25 USDC for the option. And the put: strike 150 USDC, asking 20 USDC.
-const CONTRACTS: u64 = 5;
-const ONE_NVDAX_PER_CONTRACT: u64 = ONE_TOKEN;
-const CALL_STRIKE: u64 = 180 * ONE_TOKEN;
+// The walkthrough's call: 5 NVDAx at a 180 USDC strike per share, so the
+// holder pays 5 x 180 = 900 USDC on exercise, asking 25 USDC for the option.
+// And the put: 5 NVDAx at 150 USDC, so 750 USDC, asking 20 USDC.
+const CALL_UNDERLYING: u64 = 5 * ONE_TOKEN;
+const CALL_STRIKE_AMOUNT: u64 = 900 * ONE_TOKEN;
 const CALL_PREMIUM: u64 = 25 * ONE_TOKEN;
-const PUT_STRIKE: u64 = 150 * ONE_TOKEN;
+const PUT_UNDERLYING: u64 = 5 * ONE_TOKEN;
+const PUT_STRIKE_AMOUNT: u64 = 750 * ONE_TOKEN;
 const PUT_PREMIUM: u64 = 20 * ONE_TOKEN;
 const CALL_ID: u64 = 1;
 const PUT_ID: u64 = 2;
@@ -151,9 +152,8 @@ fn write_option(
     writer: &Person,
     id: u64,
     kind: u8,
-    contracts: u64,
-    underlying_per_contract: u64,
-    strike_per_contract: u64,
+    underlying_amount: u64,
+    strike_amount: u64,
     premium: u64,
     expiry: i64,
 ) -> Outcome {
@@ -167,9 +167,8 @@ fn write_option(
         writer_quote: writer.usdc,
         id,
         kind,
-        contracts,
-        underlying_per_contract,
-        strike_per_contract,
+        underlying_amount,
+        strike_amount,
         premium,
         expiry,
     })
@@ -187,9 +186,8 @@ fn write_call(test: &mut Test, env: &Env) -> Pubkey {
         &ALICE_P,
         CALL_ID,
         KIND_CALL,
-        CONTRACTS,
-        ONE_NVDAX_PER_CONTRACT,
-        CALL_STRIKE,
+        CALL_UNDERLYING,
+        CALL_STRIKE_AMOUNT,
         CALL_PREMIUM,
         EXPIRY,
     )
@@ -205,9 +203,8 @@ fn write_put(test: &mut Test, env: &Env) -> Pubkey {
         &CAROL_P,
         PUT_ID,
         KIND_PUT,
-        CONTRACTS,
-        ONE_NVDAX_PER_CONTRACT,
-        PUT_STRIKE,
+        PUT_UNDERLYING,
+        PUT_STRIKE_AMOUNT,
         PUT_PREMIUM,
         EXPIRY,
     )
@@ -334,7 +331,7 @@ fn market_owns_both_vaults(test: &mut Test) {
     assert_eq!(token_authority(test, env.quote_vault), env.market);
 }
 
-/// Alice writes 5 covered calls on her 5 NVDAx. The whole 5 NVDAx moves into
+/// Alice writes a covered call on her 5 NVDAx. The whole 5 NVDAx moves into
 /// the vault at once; the option is listed for a 25 USDC premium.
 #[quasar_test]
 fn write_call_moves_underlying_into_vault(test: &mut Test) {
@@ -348,8 +345,8 @@ fn write_call_moves_underlying_into_vault(test: &mut Test) {
     assert_eq!(state.holder, Pubkey::default());
     assert_eq!(state.kind, KIND_CALL);
     assert_eq!(state.status, STATUS_LISTED);
-    assert_eq!(u64::from(state.contracts), CONTRACTS);
-    assert_eq!(u64::from(state.strike_per_contract), CALL_STRIKE);
+    assert_eq!(u64::from(state.underlying_amount), CALL_UNDERLYING);
+    assert_eq!(u64::from(state.strike_amount), CALL_STRIKE_AMOUNT);
     assert_eq!(u64::from(state.premium), CALL_PREMIUM);
     assert_eq!(i64::from(state.expiry), EXPIRY);
     assert_eq!(
@@ -390,17 +387,16 @@ fn exercise_call_swaps_the_strike_for_the_underlying(test: &mut Test) {
     let option = write_call(test, &env);
     buy_option(test, &env, &BOB_P, &ALICE_P, CALL_ID).succeeds();
 
-    let strike_total = 900 * ONE_TOKEN;
     exercise_option(test, &env, &BOB_P, &ALICE_P, CALL_ID)
         .succeeds()
         .has_tokens(BOB_NVDAX, FIVE_NVDAX)
-        .has_tokens(BOB_USDC, STANDARD_USDC - CALL_PREMIUM - strike_total)
+        .has_tokens(BOB_USDC, STANDARD_USDC - CALL_PREMIUM - CALL_STRIKE_AMOUNT)
         .has_tokens(env.underlying_vault, 0)
-        .has_tokens(env.quote_vault, strike_total + 250_000);
+        .has_tokens(env.quote_vault, CALL_STRIKE_AMOUNT + 250_000);
 
     let market = test.read::<Market>(env.market);
     assert_eq!(u64::from(market.underlying_owed), 0);
-    assert_eq!(u64::from(market.quote_owed), strike_total);
+    assert_eq!(u64::from(market.quote_owed), CALL_STRIKE_AMOUNT);
     assert_eq!(test.read::<OptionContract>(option).status, STATUS_EXERCISED);
     assert_vaults_match_ledger(test, &env);
 }
@@ -417,7 +413,7 @@ fn collect_proceeds_pays_the_writer_and_closes_the_option(test: &mut Test) {
         .succeeds()
         .has_tokens(
             ALICE_USDC,
-            STANDARD_USDC + 900 * ONE_TOKEN + CALL_PREMIUM - 250_000,
+            STANDARD_USDC + CALL_STRIKE_AMOUNT + CALL_PREMIUM - 250_000,
         )
         .has_tokens(ALICE_NVDAX, 0)
         .is_closed(option);
@@ -440,7 +436,7 @@ fn collect_fees_pays_only_the_fees_owed(test: &mut Test) {
     collect_fees(test, &env, MARIA, MARIA_USDC)
         .succeeds()
         .has_tokens(MARIA_USDC, 250_000)
-        .has_tokens(env.quote_vault, 900 * ONE_TOKEN);
+        .has_tokens(env.quote_vault, CALL_STRIKE_AMOUNT);
     assert_eq!(u64::from(test.read::<Market>(env.market).fees_owed), 0);
     assert_vaults_match_ledger(test, &env);
 
@@ -452,13 +448,13 @@ fn collect_fees_pays_only_the_fees_owed(test: &mut Test) {
 // The put, and the option that expires unexercised
 // ===========================================================================
 
-/// Carol writes 5 cash-secured puts at a 150 strike: 750 USDC of collateral.
-/// Dave buys them for 20 USDC, then delivers his 5 NVDAx for the 750 USDC.
+/// Carol writes a cash-secured put on 5 NVDAx at a 150 strike: 750 USDC of
+/// collateral. Dave buys it for 20 USDC, then delivers his 5 NVDAx for the 750 USDC.
 #[quasar_test]
 fn put_lifecycle_delivers_the_underlying_for_the_strike(test: &mut Test) {
     let env = setup(test);
     let option = write_put(test, &env);
-    let collateral = 750 * ONE_TOKEN;
+    let collateral = PUT_STRIKE_AMOUNT;
     assert_eq!(test.tokens(CAROL_USDC), STANDARD_USDC - collateral);
     assert_eq!(test.tokens(env.quote_vault), collateral);
     assert_vaults_match_ledger(test, &env);
@@ -684,7 +680,7 @@ fn collect_proceeds_needs_an_exercised_option_and_the_writer(test: &mut Test) {
     // A non-writer's signature derives a different option PDA, so the
     // account check fails before the handler runs.
     assert!(collect_proceeds(test, &env, &BOB_P, CALL_ID).is_err());
-    assert_eq!(test.tokens(env.quote_vault), 900 * ONE_TOKEN + 250_000);
+    assert_eq!(test.tokens(env.quote_vault), CALL_STRIKE_AMOUNT + 250_000);
 }
 
 /// An exercised option has no collateral left to reclaim, whatever the clock
@@ -716,24 +712,22 @@ fn collect_fees_is_refused_for_anyone_but_the_admin(test: &mut Test) {
 // ===========================================================================
 
 #[quasar_test]
-fn write_option_rejects_zero_quantities_and_a_free_premium(test: &mut Test) {
+fn write_option_rejects_zero_amounts_and_a_free_premium(test: &mut Test) {
     let env = setup(test);
     let attempts = [
-        (0, ONE_NVDAX_PER_CONTRACT, CALL_STRIKE, CALL_PREMIUM),
-        (CONTRACTS, 0, CALL_STRIKE, CALL_PREMIUM),
-        (CONTRACTS, ONE_NVDAX_PER_CONTRACT, 0, CALL_PREMIUM),
-        (CONTRACTS, ONE_NVDAX_PER_CONTRACT, CALL_STRIKE, 0),
+        (0, CALL_STRIKE_AMOUNT, CALL_PREMIUM),
+        (CALL_UNDERLYING, 0, CALL_PREMIUM),
+        (CALL_UNDERLYING, CALL_STRIKE_AMOUNT, 0),
     ];
-    for (offset, (contracts, per_contract, strike, premium)) in attempts.into_iter().enumerate() {
+    for (offset, (underlying_amount, strike_amount, premium)) in attempts.into_iter().enumerate() {
         write_option(
             test,
             &env,
             &ALICE_P,
             10 + offset as u64,
             KIND_CALL,
-            contracts,
-            per_contract,
-            strike,
+            underlying_amount,
+            strike_amount,
             premium,
             EXPIRY,
         )
@@ -751,9 +745,8 @@ fn write_option_rejects_an_unknown_kind(test: &mut Test) {
         &ALICE_P,
         20,
         2,
-        CONTRACTS,
-        ONE_NVDAX_PER_CONTRACT,
-        CALL_STRIKE,
+        CALL_UNDERLYING,
+        CALL_STRIKE_AMOUNT,
         CALL_PREMIUM,
         EXPIRY,
     )
@@ -771,33 +764,13 @@ fn write_option_rejects_an_expiry_that_has_passed(test: &mut Test) {
             &ALICE_P,
             30,
             KIND_CALL,
-            CONTRACTS,
-            ONE_NVDAX_PER_CONTRACT,
-            CALL_STRIKE,
+            CALL_UNDERLYING,
+            CALL_STRIKE_AMOUNT,
             CALL_PREMIUM,
             expiry,
         )
         .fails_with(OptionsError::ExpiryInPast);
     }
-}
-
-/// An option whose collateral would overflow is refused before anyone pays for it.
-#[quasar_test]
-fn write_option_rejects_a_lot_whose_collateral_overflows(test: &mut Test) {
-    let env = setup(test);
-    write_option(
-        test,
-        &env,
-        &ALICE_P,
-        40,
-        KIND_CALL,
-        u64::MAX,
-        2,
-        CALL_STRIKE,
-        CALL_PREMIUM,
-        EXPIRY,
-    )
-    .fails_with(OptionsError::MathOverflow);
 }
 
 #[quasar_test]

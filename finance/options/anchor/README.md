@@ -47,11 +47,11 @@ call) or buy it at the strike (a put) if the holder asks.
 ### Covered and cash-secured: the collateral is the whole obligation
 
 A writer's obligation is bounded and known at write time, so this venue simply
-takes all of it into custody. A call writer posts `contracts *
-underlying_per_contract` of the underlying: the call is **covered**, and the
-writer cannot fail to deliver because the shares are already in the vault. A
-put writer posts `contracts * strike_per_contract` of the quote token: the put
-is **cash-secured**, and the writer cannot fail to pay. Nothing is ever
+takes all of it into custody. A call writer posts the option's
+`underlying_amount` of the underlying: the call is **covered**, and the writer
+cannot fail to deliver because the shares are already in the vault. A put
+writer posts its `strike_amount` of the quote token: the put is
+**cash-secured**, and the writer cannot fail to pay. Nothing is ever
 undercollateralized, which is why the program has no health check, no
 liquidation, and no need to know the price.
 
@@ -66,14 +66,15 @@ program enforces the terms and nothing else. A cash-settled venue, which pays
 the holder the difference between the market price and the strike, would need
 a price feed and every check the *Offchain Truth* material describes.
 
-### Every amount is a product of two integers
+### The option stores the amounts that change hands
 
-An option is defined by `contracts`, `underlying_per_contract` and
-`strike_per_contract`, all minor-unit integers the writer chooses. The
-collateral, the exercise payment and the proceeds are each one checked
-multiplication of two of them. There is no division anywhere in settlement, so
-there is no rounding to decide a direction for; the only rounding in the
-program is the floor in the venue's fee.
+An option stores two minor-unit amounts the writer chooses: `underlying_amount`,
+the underlying it covers, and `strike_amount`, the quote paid for that
+underlying on exercise (the strike for the whole option, as an amount rather
+than a price). The collateral, the exercise payment and the proceeds are each
+one of those two amounts, moved as stored. Settlement neither multiplies,
+divides, nor rounds, so there is no rounding to decide a direction for; the
+only rounding in the program is the floor in the venue's fee.
 
 ### Expiry is one comparison and its complement
 
@@ -108,11 +109,11 @@ both vaults: it owns them and signs every transfer out of them with its own
 seeds. Maria's key is recorded as `admin`: it can sweep fees and do nothing
 else.
 
-### Step 2: Alice writes 5 covered calls
+### Step 2: Alice writes a covered call on 5 NVDAx
 
-`write_option(id = 1, kind = Call, contracts = 5, underlying_per_contract =
-1 NVDAx, strike_per_contract = 180 USDC, premium = 25 USDC, expiry = a week
-out)` moves her 5 NVDAx into the underlying vault and creates the
+`write_option(id = 1, kind = Call, underlying_amount = 5 NVDAx, strike_amount
+= 900 USDC, premium = 25 USDC, expiry = a week out)`, a strike of 180 USDC a
+share, moves her 5 NVDAx into the underlying vault and creates the
 `OptionContract` account (a PDA of the market, Alice, and her `id`) with
 status `Listed`. Nobody has paid anything yet; Alice can `cancel_option` at
 any time until someone does.
@@ -126,7 +127,7 @@ is fixed at the 25 USDC he just paid.
 
 ### Step 4: NVIDIA rallies to $200 and Bob exercises
 
-`exercise_option`, called by Bob before expiry, moves 5 × 180 = 900 USDC from
+`exercise_option`, called by Bob before expiry, moves the 900 USDC strike from
 Bob into the quote vault and 5 NVDAx from the underlying vault to Bob. He now
 holds 5 NVDAx worth about $1,000, having spent 925 USDC in total. The status is
 `Exercised`, and the 900 USDC sits in the vault owed to Alice.
@@ -137,12 +138,12 @@ holds 5 NVDAx worth about $1,000, having spent 925 USDC in total. The status is
 back to her. She sold her 5 NVDAx for 900 USDC plus the 24.75 USDC premium she
 already had, and gave up everything above $180.
 
-### Step 6: Carol writes 5 cash-secured puts, and Dave buys them
+### Step 6: Carol writes a cash-secured put on 5 NVDAx, and Dave buys it
 
-Carol's `write_option(id = 2, kind = Put, contracts = 5, underlying_per_contract
-= 1 NVDAx, strike_per_contract = 150 USDC, premium = 20 USDC)` moves 5 × 150 =
-750 USDC into the quote vault. Dave's `buy_option` pays 19.80 USDC to Carol
-and 0.20 USDC to the vault for Maria.
+Carol's `write_option(id = 2, kind = Put, underlying_amount = 5 NVDAx,
+strike_amount = 750 USDC, premium = 20 USDC)`, a strike of 150 USDC a share,
+moves the 750 USDC into the quote vault. Dave's `buy_option` pays 19.80 USDC
+to Carol and 0.20 USDC to the vault for Maria.
 
 ### Step 7: The week passes above $150, and Carol reclaims her collateral
 

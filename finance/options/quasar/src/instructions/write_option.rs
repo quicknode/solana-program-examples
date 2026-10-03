@@ -15,9 +15,8 @@ use {
 pub struct WriteOptionArguments {
     pub id: u64,
     pub kind: u8,
-    pub contracts: u64,
-    pub underlying_per_contract: u64,
-    pub strike_per_contract: u64,
+    pub underlying_amount: u64,
+    pub strike_amount: u64,
     pub premium: u64,
     pub expiry: i64,
 }
@@ -71,14 +70,11 @@ pub fn handle_write_option(
     bumps: &WriteOptionAccountConstraintsBumps,
 ) -> Result<(), ProgramError> {
     require_valid_kind(arguments.kind)?;
-    // Every quantity is a multiplier in the settlement math, so a zero in any
-    // of them is an option that delivers nothing or costs nothing to exercise. A
-    // zero premium is a gift rather than a sale, and is refused as a mistake.
+    // A zero underlying amount is an option that delivers nothing, and a zero
+    // strike amount is one that costs nothing to exercise. A zero premium is a
+    // gift rather than a sale, and is refused as a mistake.
     require!(
-        arguments.contracts > 0
-            && arguments.underlying_per_contract > 0
-            && arguments.strike_per_contract > 0
-            && arguments.premium > 0,
+        arguments.underlying_amount > 0 && arguments.strike_amount > 0 && arguments.premium > 0,
         OptionsError::InvalidParameter
     );
     // Written in words: the holder may exercise while now < expiry. An expiry
@@ -88,15 +84,10 @@ pub fn handle_write_option(
 
     let terms = Terms {
         kind: arguments.kind,
-        contracts: arguments.contracts,
-        underlying_per_contract: arguments.underlying_per_contract,
-        strike_per_contract: arguments.strike_per_contract,
+        underlying_amount: arguments.underlying_amount,
+        strike_amount: arguments.strike_amount,
     };
-    // Both settlement amounts are computed here, at write time, so an option
-    // whose exercise would overflow is refused before anyone pays for it.
-    terms.underlying_total()?;
-    terms.strike_total()?;
-    let collateral = terms.collateral_amount()?;
+    let collateral = terms.collateral_amount();
 
     // Effects before the transfer: record the option and what the vault now owes.
     accounts.option.set_inner(OptionContractInner {
@@ -104,9 +95,8 @@ pub fn handle_write_option(
         market: *accounts.market.address(),
         writer: *accounts.writer.address(),
         holder: Address::default(),
-        contracts: arguments.contracts,
-        underlying_per_contract: arguments.underlying_per_contract,
-        strike_per_contract: arguments.strike_per_contract,
+        underlying_amount: arguments.underlying_amount,
+        strike_amount: arguments.strike_amount,
         premium: arguments.premium,
         expiry: arguments.expiry,
         kind: arguments.kind,

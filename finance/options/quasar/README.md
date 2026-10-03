@@ -14,8 +14,8 @@ differs in the Quasar version.
   `KIND_CALL` / `KIND_PUT` and `STATUS_LISTED` / `STATUS_HELD` /
   `STATUS_EXERCISED`.
 - **`write_option` takes its terms as separate arguments** (`kind`,
-  `contracts`, `underlying_per_contract`, `strike_per_contract`, `premium`,
-  `expiry`) rather than the Anchor sibling's `OptionTerms` struct.
+  `underlying_amount`, `strike_amount`, `premium`, `expiry`) rather than the
+  Anchor sibling's `OptionTerms` struct.
 - **Every party's token accounts must already exist.** The Anchor version
   uses `init_if_needed` to create a call holder's underlying account and a
   put writer's underlying account at the moment they are first paid in that
