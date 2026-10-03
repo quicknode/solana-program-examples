@@ -66,4 +66,6 @@ pub enum FundError {
     DriftBelowThreshold,
     #[msg("The asset to buy is not below its target weight")]
     NotUnderweight,
+    #[msg("Pyth price confidence interval is too wide to trust")]
+    OracleConfidenceTooWide,
 }

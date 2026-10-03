@@ -5,6 +5,8 @@ use crate::{errors::FundError, last_restart::LastRestartSlot};
 // Byte offset of `price` (i64) inside a Pyth PriceUpdateV2 account:
 //   8 discriminator + 32 write_authority + 1 verification_level + 32 feed_id = 73
 const PYTH_PRICE_OFFSET: usize = 73;
+/// Byte offset of `conf` (u64), the confidence interval: +8 bytes after price.
+const PYTH_CONF_OFFSET: usize = PYTH_PRICE_OFFSET + 8; // 81
 /// Byte offset of `exponent` (i32): price(8) + conf(8) = +16 bytes after price.
 const PYTH_EXPONENT_OFFSET: usize = PYTH_PRICE_OFFSET + 8 + 8; // 89
 /// Byte offset of `publish_time` (i64): price(8) + conf(8) + exponent(4) after price.
@@ -14,6 +16,12 @@ const PYTH_PUBLISH_TIME_OFFSET: usize = PYTH_PRICE_OFFSET + 8 + 8 + 4; // 93
 const PYTH_POSTED_SLOT_OFFSET: usize = PYTH_PUBLISH_TIME_OFFSET + 8 + 8 + 8 + 8; // 125
 /// Prices older than this (seconds) are rejected.
 const MAX_PRICE_AGE_SECONDS: i64 = 60;
+/// Widest confidence interval accepted, in basis points of the price (1%).
+/// Deposits price shares and rebalance sets its swap floor from the Pyth
+/// price, so a price that may be off by more than a typical 1% slippage
+/// tolerance would quietly widen that tolerance. Major feeds usually quote
+/// well under 0.1%; a band past 1% means the publishers disagree.
+const MAX_CONFIDENCE_BPS: u128 = 100;
 
 // SPL token account layout, shared by the Classic and Extensions token programs.
 const TOKEN_MINT_OFFSET: usize = 0; // mint: Pubkey [0..32]
@@ -65,6 +73,7 @@ pub struct OraclePrice {
 
 /// Validate a price feed account against the one the fund registered, then
 /// return its positive, fresh price. `now` is the current unix timestamp.
+/// A price whose confidence interval exceeds `MAX_CONFIDENCE_BPS` is rejected.
 /// A price posted at or before the last cluster restart is rejected too.
 pub fn load_price(
     price_feed: &AccountView,
@@ -80,11 +89,22 @@ pub fn load_price(
         return Err(FundError::InvalidPriceFeed.into());
     }
     let price = read_i64(data, PYTH_PRICE_OFFSET)?;
+    let conf = read_u64(data, PYTH_CONF_OFFSET)?;
     let exponent = read_i32(data, PYTH_EXPONENT_OFFSET)?;
     let publish_time = read_i64(data, PYTH_PUBLISH_TIME_OFFSET)?;
     let posted_slot = read_u64(data, PYTH_POSTED_SLOT_OFFSET)?;
 
     require!(price > 0, FundError::NegativePrice);
+
+    // Reject a price the oracle itself is unsure of: the confidence interval,
+    // as a fraction of the price, must not exceed MAX_CONFIDENCE_BPS. `conf`
+    // shares the price's exponent, so the ratio needs no scaling, and in u128
+    // neither product can overflow.
+    require!(
+        (conf as u128) * 10_000 <= (price as u128) * MAX_CONFIDENCE_BPS,
+        FundError::OracleConfidenceTooWide
+    );
+
     require!(
         now.checked_sub(publish_time)
             .ok_or(FundError::MathOverflow)?

@@ -1,5 +1,16 @@
 # Changelog
 
+## [2026-10-03]
+
+### Fixed
+
+- Prices with a wide confidence interval are rejected. `load_price` reads the
+  Pyth `conf` field (offset 81) and fails with the new
+  `OracleConfidenceTooWide` error when it exceeds `MAX_CONFIDENCE_BPS` (100
+  bps, 1% of the price). Deposit and rebalance are refused; withdraw reads no
+  price and still pays out in kind. Tested by
+  `test_wide_confidence_price_rejected`.
+
 ## [2026-10-01]
 
 ### Fixed
