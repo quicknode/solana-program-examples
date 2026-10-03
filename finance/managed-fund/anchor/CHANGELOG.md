@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-10-03
+
+- **Prices with a wide confidence interval are rejected.** Pyth reports each price with a confidence interval (`conf`, offset 81), and `load_price` ignored it, so a price the publishers disagreed on by several percent was used as if it were exact. Deposits price shares from that price and rebalance sets its swap floor from it, so a wide band moves value between depositors or loosens the floor by the same amount. `load_price` now rejects a price whose interval exceeds `MAX_CONFIDENCE_BPS` (100 bps, 1% of the price) with the new `OracleConfidenceTooWide` error. `withdraw` reads no price and is unaffected, so investors can still leave in kind. The limit is a program constant, like the 60-second staleness window; prop-amm and perpetual-futures store theirs per market. Tested by `test_wide_confidence_price_rejected`. The web app's IDL gains the error.
+
 ## 2026-10-01
 
 - **Valuation scales by each asset's decimals and each feed's exponent.** The fund valued an asset as `amount × price / 10⁸`, which is right only when the asset has USDC's 6 decimals and its Pyth feed has exponent −8, and nothing checked either. An eight-decimal asset would have been valued 100 times too high, so a later depositor would have bought almost no shares; Pyth's US equity feeds use exponent −5, a further factor of 1,000. `load_price` now reads the exponent (offset 89) and returns an `OraclePrice`, `AssetConfig` records the mint's `decimals` and `Fund` the USDC mint's `usdc_decimals`, and `deposit` and `rebalance` value and size swaps with `asset_value_in_usdc` and `usdc_to_asset_amount`, which scale by `10^(usdc_decimals + exponent − asset_decimals)`. `PYTH_PRICE_PRECISION` is removed. The mock router's `usdc_per_token` is now USDC minor units per whole token, and its swaps scale by the asset mint's decimals. Tested by `test_valuation_scales_by_decimals_and_exponent`, which runs the story with an eight-decimal TSLAx on an exponent −5 feed.
