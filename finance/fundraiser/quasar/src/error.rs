@@ -24,12 +24,12 @@ pub enum FundraiserError {
     BalanceMismatch,
     /// The fundraiser has already been claimed.
     FundraiserClaimed,
-    /// The fundraiser has not been claimed, so the contributor account closes
+    /// The fundraiser has not been claimed, so the contribution account closes
     /// through refund.
     FundraiserNotClaimed,
-    /// Contributor accounts for this fundraiser are still open, so it cannot
+    /// Contribution accounts for this fundraiser are still open, so it cannot
     /// close yet.
-    ContributorAccountsOpen,
+    ContributionsOpen,
     /// Contributions to an unclaimed fundraiser have not all been refunded,
     /// so closing its vault would strand them.
     RefundsOutstanding,

@@ -1,14 +1,14 @@
 use anchor_lang::prelude::*;
 
 use crate::{
-    state::{Contributor, Fundraiser},
+    state::{Contribution, Fundraiser},
     FundraiserError,
 };
 
 #[derive(Accounts)]
-pub struct CloseContributorAccountConstraints<'info> {
+pub struct CloseContributionAccountConstraints<'info> {
     /// Not a signer: the rent goes to the contributor, whoever sends the
-    /// transaction. So a maker can close every contributor account and then
+    /// transaction. So a maker can close every contribution account and then
     /// the fundraiser without waiting on any contributor.
     #[account(mut)]
     pub contributor: SystemAccount<'info>,
@@ -21,25 +21,25 @@ pub struct CloseContributorAccountConstraints<'info> {
 
     #[account(
         mut,
-        seeds = [b"contributor", fundraiser.key().as_ref(), contributor.key().as_ref()],
-        bump = contributor_account.bump,
+        seeds = [b"contribution", fundraiser.key().as_ref(), contributor.key().as_ref()],
+        bump = contribution.bump,
         close = contributor,
     )]
-    pub contributor_account: Account<'info, Contributor>,
+    pub contribution: Account<'info, Contribution>,
 }
 
-/// Closes a contributor account once its fundraiser has been claimed,
+/// Closes a contribution account once its fundraiser has been claimed,
 /// returning the rent to the contributor.
 ///
-/// `refund` closes contributor accounts on a failed raise. On a successful
+/// `refund` closes contribution accounts on a failed raise. On a successful
 /// one the contribution has been paid out to the maker, so the account only
 /// holds rent, and `close_fundraiser` cannot run until every one of them is
 /// closed. While the fundraiser is unclaimed the contribution can still be
 /// refunded, so this handler refuses with `FundraiserNotClaimed`.
-pub fn handle_close_contributor(accounts: &mut CloseContributorAccountConstraints) -> Result<()> {
-    accounts.fundraiser.open_contributor_accounts = accounts
+pub fn handle_close_contribution(accounts: &mut CloseContributionAccountConstraints) -> Result<()> {
+    accounts.fundraiser.open_contributions = accounts
         .fundraiser
-        .open_contributor_accounts
+        .open_contributions
         .checked_sub(1)
         .ok_or(FundraiserError::MathOverflow)?;
 

@@ -20,8 +20,10 @@ pub enum FundraiserError {
     MathOverflow,
     #[msg("The fundraiser has already been claimed")]
     FundraiserClaimed,
-    #[msg("The fundraiser has not been claimed, so the contributor account closes through refund")]
+    #[msg(
+        "The fundraiser has not been claimed, so the contribution account closes through refund"
+    )]
     FundraiserNotClaimed,
-    #[msg("Contributor accounts for this fundraiser are still open, so it cannot close yet")]
-    ContributorAccountsOpen,
+    #[msg("Contribution accounts for this fundraiser are still open, so it cannot close yet")]
+    ContributionsOpen,
 }

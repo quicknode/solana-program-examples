@@ -14,10 +14,10 @@ one.
 The program collects contributions toward a goal; if the goal is not met by the
 deadline, every contributor reclaims their exact stake. Token movement is via
 SPL CPIs Kani cannot symbolically execute, but the accounting (`contribute`,
-`refund`, `close_contributor`) is pure integer arithmetic, and the harnesses check it for every input in the
+`refund`, `close_contribution`) is pure integer arithmetic, and the harnesses check it for every input in the
 declared ranges:
 
-- `proof_open_contributor_accounts_counts_open_accounts`: `open_contributor_accounts` always equals the number of contributor accounts that exist, over every sequence of eight contributions, refunds and closes among three contributors. `close_fundraiser` requires it to be zero, so no contributor account carries over into the next raise at the same address.
+- `proof_open_contributions_counts_open_accounts`: `open_contributions` always equals the number of contribution accounts that exist, over every sequence of eight contributions, refunds and closes among three contributors. `close_fundraiser` requires it to be zero, so no contribution account carries over into the next raise at the same address.
 - `proof_current_amount_is_sum_of_contributions`: `current_amount` always equals the sum of the contributions added to it, no accounting drift.
 - `proof_refunds_sum_to_current_amount`: On a failed raise, refunds sum back to `current_amount`; no contributor reclaims more than they put in.
 

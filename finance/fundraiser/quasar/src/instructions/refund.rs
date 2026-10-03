@@ -2,7 +2,7 @@ use quasar_lang::cpi::Seed;
 use {
     crate::{
         error::FundraiserError,
-        state::{fundraiser_deadline, Contributor, Fundraiser},
+        state::{fundraiser_deadline, Contribution, Fundraiser},
     },
     quasar_lang::{prelude::*, sysvars::Sysvar as _},
     quasar_spl::prelude::*,
@@ -31,9 +31,9 @@ pub struct RefundAccountConstraints {
     #[account(
         mut,
         close(dest = contributor),
-        address = Contributor::seeds(fundraiser.address(), contributor.address()),
+        address = Contribution::seeds(fundraiser.address(), contributor.address()),
     )]
-    pub contributor_account: Account<Contributor>,
+    pub contribution: Account<Contribution>,
 
     // Bound to the contributor: since anyone may send a refund, the tokens
     // must go to a token account the contributor owns, in the raised mint.
@@ -72,7 +72,7 @@ pub fn handle_refund(
     let amount_to_raise: u64 = accounts.fundraiser.amount_to_raise.into();
     require!(current_amount < amount_to_raise, FundraiserError::TargetMet);
 
-    let refund_amount: u64 = accounts.contributor_account.amount.into();
+    let refund_amount: u64 = accounts.contribution.amount.into();
 
     // Update state before the transfer CPI (checks-effects-interactions).
     accounts.fundraiser.current_amount = PodU64::from(
@@ -80,10 +80,10 @@ pub fn handle_refund(
             .checked_sub(refund_amount)
             .ok_or(FundraiserError::MathOverflow)?,
     );
-    accounts.contributor_account.amount = PodU64::from(0);
-    let open_contributor_accounts: u32 = accounts.fundraiser.open_contributor_accounts.into();
-    accounts.fundraiser.open_contributor_accounts = PodU32::from(
-        open_contributor_accounts
+    accounts.contribution.amount = PodU64::from(0);
+    let open_contributions: u32 = accounts.fundraiser.open_contributions.into();
+    accounts.fundraiser.open_contributions = PodU32::from(
+        open_contributions
             .checked_sub(1)
             .ok_or(FundraiserError::MathOverflow)?,
     );

@@ -60,13 +60,13 @@ struct FundraiserState {
     _time_started: i64,
     duration: u16,
     claimed: bool,
-    open_contributor_accounts: u32,
+    open_contributions: u32,
     _bump: u8,
 }
 
-/// Mirror of the onchain Contributor struct.
+/// Mirror of the onchain Contribution struct.
 #[derive(BorshDeserialize)]
-struct ContributorState {
+struct ContributionState {
     amount: u64,
     _bump: u8,
 }
@@ -78,9 +78,9 @@ fn read_fundraiser_state(svm: &LiteSVM, fundraiser_pda: &Pubkey) -> FundraiserSt
     FundraiserState::try_from_slice(&account.data[ANCHOR_DISCRIMINATOR_LENGTH..]).unwrap()
 }
 
-fn read_contributor_state(svm: &LiteSVM, contributor_pda: &Pubkey) -> ContributorState {
-    let account = svm.get_account(contributor_pda).unwrap();
-    ContributorState::try_from_slice(&account.data[ANCHOR_DISCRIMINATOR_LENGTH..]).unwrap()
+fn read_contribution_state(svm: &LiteSVM, contribution_pda: &Pubkey) -> ContributionState {
+    let account = svm.get_account(contribution_pda).unwrap();
+    ContributionState::try_from_slice(&account.data[ANCHOR_DISCRIMINATOR_LENGTH..]).unwrap()
 }
 
 /// Moves the LiteSVM clock forward by the given number of days.
@@ -155,7 +155,7 @@ fn initialize_fundraiser(setup: &mut FundraiserSetup, amount: u64, duration: u16
 }
 
 /// Creates a contributor wallet with a funded ATA and returns
-/// (contributor keypair, contributor ATA, contributor account PDA).
+/// (contributor keypair, contributor ATA, contribution PDA).
 fn create_funded_contributor(setup: &mut FundraiserSetup) -> (Keypair, Pubkey, Pubkey) {
     let contributor = create_wallet(&mut setup.svm, 10_000_000_000).unwrap();
 
@@ -176,23 +176,23 @@ fn create_funded_contributor(setup: &mut FundraiserSetup) -> (Keypair, Pubkey, P
     )
     .unwrap();
 
-    let (contributor_account_pda, _bump) = Pubkey::find_program_address(
+    let (contribution_pda, _bump) = Pubkey::find_program_address(
         &[
-            b"contributor",
+            b"contribution",
             setup.fundraiser_pda.as_ref(),
             contributor.pubkey().as_ref(),
         ],
         &setup.program_id,
     );
 
-    (contributor, contributor_ata, contributor_account_pda)
+    (contributor, contributor_ata, contribution_pda)
 }
 
 fn build_contribute_instruction(
     setup: &FundraiserSetup,
     contributor: &Pubkey,
     contributor_ata: &Pubkey,
-    contributor_account_pda: &Pubkey,
+    contribution_pda: &Pubkey,
     amount: u64,
 ) -> Instruction {
     Instruction::new_with_bytes(
@@ -202,7 +202,7 @@ fn build_contribute_instruction(
             contributor: *contributor,
             mint_to_raise: setup.mint,
             fundraiser: setup.fundraiser_pda,
-            contributor_account: *contributor_account_pda,
+            contribution: *contribution_pda,
             contributor_ata: *contributor_ata,
             vault: setup.vault,
             token_program: token_program_id(),
@@ -216,7 +216,7 @@ fn build_refund_instruction(
     setup: &FundraiserSetup,
     contributor: &Pubkey,
     contributor_ata: &Pubkey,
-    contributor_account_pda: &Pubkey,
+    contribution_pda: &Pubkey,
 ) -> Instruction {
     Instruction::new_with_bytes(
         setup.program_id,
@@ -226,7 +226,7 @@ fn build_refund_instruction(
             maker: setup.maker.pubkey(),
             mint_to_raise: setup.mint,
             fundraiser: setup.fundraiser_pda,
-            contributor_account: *contributor_account_pda,
+            contribution: *contribution_pda,
             contributor_ata: *contributor_ata,
             vault: setup.vault,
             token_program: token_program_id(),
@@ -257,18 +257,18 @@ fn build_check_contributions_instruction(
     )
 }
 
-fn build_close_contributor_instruction(
+fn build_close_contribution_instruction(
     setup: &FundraiserSetup,
     contributor: &Pubkey,
-    contributor_account_pda: &Pubkey,
+    contribution_pda: &Pubkey,
 ) -> Instruction {
     Instruction::new_with_bytes(
         setup.program_id,
-        &fundraiser::instruction::CloseContributor {}.data(),
-        fundraiser::accounts::CloseContributorAccountConstraints {
+        &fundraiser::instruction::CloseContribution {}.data(),
+        fundraiser::accounts::CloseContributionAccountConstraints {
             contributor: *contributor,
             fundraiser: setup.fundraiser_pda,
-            contributor_account: *contributor_account_pda,
+            contribution: *contribution_pda,
         }
         .to_account_metas(None),
     )
@@ -295,7 +295,7 @@ fn build_close_fundraiser_instruction(setup: &FundraiserSetup, maker_ata: &Pubke
 struct FundedContributor {
     keypair: Keypair,
     ata: Pubkey,
-    contributor_account_pda: Pubkey,
+    contribution_pda: Pubkey,
 }
 
 /// Sends `contribute` for the given contributor and amount, signed by the
@@ -309,7 +309,7 @@ fn contribute(
         setup,
         &contributor.keypair.pubkey(),
         &contributor.ata,
-        &contributor.contributor_account_pda,
+        &contributor.contribution_pda,
         amount,
     );
     send_transaction_from_instructions(
@@ -323,11 +323,11 @@ fn contribute(
 }
 
 fn new_contributor(setup: &mut FundraiserSetup) -> FundedContributor {
-    let (keypair, ata, contributor_account_pda) = create_funded_contributor(setup);
+    let (keypair, ata, contribution_pda) = create_funded_contributor(setup);
     FundedContributor {
         keypair,
         ata,
-        contributor_account_pda,
+        contribution_pda,
     }
 }
 
@@ -353,7 +353,7 @@ fn refund(
         setup,
         &contributor.keypair.pubkey(),
         &contributor.ata,
-        &contributor.contributor_account_pda,
+        &contributor.contribution_pda,
     );
     send_transaction_from_instructions(
         &mut setup.svm,
@@ -380,17 +380,17 @@ fn claim(setup: &mut FundraiserSetup) -> Result<Pubkey, String> {
     .map_err(|error| format!("{error:?}"))
 }
 
-/// Sends `close_contributor` for `contributor`, signed and paid for by
+/// Sends `close_contribution` for `contributor`, signed and paid for by
 /// `fee_payer`.
-fn close_contributor(
+fn close_contribution(
     setup: &mut FundraiserSetup,
     fee_payer: &Keypair,
     contributor: &FundedContributor,
 ) -> Result<(), String> {
-    let close_instruction = build_close_contributor_instruction(
+    let close_instruction = build_close_contribution_instruction(
         setup,
         &contributor.keypair.pubkey(),
-        &contributor.contributor_account_pda,
+        &contributor.contribution_pda,
     );
     send_transaction_from_instructions(
         &mut setup.svm,
@@ -451,7 +451,7 @@ fn test_initialize_fundraiser() {
     assert_eq!(fundraiser_state.current_amount, 0);
     assert_eq!(fundraiser_state.duration, DURATION_DAYS);
     assert!(!fundraiser_state.claimed);
-    assert_eq!(fundraiser_state.open_contributor_accounts, 0);
+    assert_eq!(fundraiser_state.open_contributions, 0);
 
     assert_eq!(
         get_token_account_balance(&setup.svm, &setup.vault).unwrap(),
@@ -518,15 +518,14 @@ fn test_contribute_inside_window_succeeds() {
 
     let fundraiser_state = read_fundraiser_state(&setup.svm, &setup.fundraiser_pda);
     assert_eq!(fundraiser_state.current_amount, CONTRIBUTION);
-    assert_eq!(fundraiser_state.open_contributor_accounts, 1);
+    assert_eq!(fundraiser_state.open_contributions, 1);
 
-    let contributor_state =
-        read_contributor_state(&setup.svm, &contributor.contributor_account_pda);
-    assert_eq!(contributor_state.amount, CONTRIBUTION);
+    let contribution_state = read_contribution_state(&setup.svm, &contributor.contribution_pda);
+    assert_eq!(contribution_state.amount, CONTRIBUTION);
 }
 
 #[test]
-fn test_contributions_accumulate_in_one_contributor_account() {
+fn test_contributions_accumulate_in_one_contribution() {
     let mut setup = full_setup();
     initialize_fundraiser(&mut setup, AMOUNT_TO_RAISE, DURATION_DAYS);
     let contributor = new_contributor(&mut setup);
@@ -537,10 +536,9 @@ fn test_contributions_accumulate_in_one_contributor_account() {
     warp_days_forward(&mut setup.svm, 1);
     contribute(&mut setup, &contributor, second_contribution).unwrap();
 
-    let contributor_state =
-        read_contributor_state(&setup.svm, &contributor.contributor_account_pda);
+    let contribution_state = read_contribution_state(&setup.svm, &contributor.contribution_pda);
     assert_eq!(
-        contributor_state.amount,
+        contribution_state.amount,
         first_contribution + second_contribution
     );
 
@@ -551,7 +549,7 @@ fn test_contributions_accumulate_in_one_contributor_account() {
         fundraiser_state.current_amount,
         first_contribution + second_contribution
     );
-    assert_eq!(fundraiser_state.open_contributor_accounts, 1);
+    assert_eq!(fundraiser_state.open_contributions, 1);
 }
 
 #[test]
@@ -640,14 +638,14 @@ fn test_refund_after_deadline_target_not_met_succeeds() {
 
     let fundraiser_state = read_fundraiser_state(&setup.svm, &setup.fundraiser_pda);
     assert_eq!(fundraiser_state.current_amount, 0);
-    assert_eq!(fundraiser_state.open_contributor_accounts, 0);
+    assert_eq!(fundraiser_state.open_contributions, 0);
 
     assert!(
         setup
             .svm
-            .get_account(&contributor.contributor_account_pda)
+            .get_account(&contributor.contribution_pda)
             .is_none(),
-        "Contributor account must be closed after refund"
+        "Contribution account must be closed after refund"
     );
 }
 
@@ -661,7 +659,7 @@ fn test_anyone_can_refund_a_contributor() {
 
     // The maker sends the refund. The tokens and the rent still go to the
     // contributor, who signs nothing.
-    let rent = lamports(&setup, &contributor.contributor_account_pda);
+    let rent = lamports(&setup, &contributor.contribution_pda);
     let contributor_lamports_before = lamports(&setup, &contributor.keypair.pubkey());
     let maker = setup.maker.insecure_clone();
     refund(&mut setup, &maker, &contributor).unwrap();
@@ -717,7 +715,7 @@ fn test_check_contributions_success_pays_maker_and_marks_claimed() {
     let fundraiser_state = read_fundraiser_state(&setup.svm, &setup.fundraiser_pda);
     assert!(fundraiser_state.claimed);
     assert_eq!(
-        fundraiser_state.open_contributor_accounts,
+        fundraiser_state.open_contributions,
         CONTRIBUTIONS_REACHING_TARGET.len() as u32
     );
 }
@@ -790,25 +788,25 @@ fn test_check_contributions_ignores_direct_vault_donations() {
 }
 
 #[test]
-fn test_close_contributor_after_claim_returns_rent() {
+fn test_close_contribution_after_claim_returns_rent() {
     let mut setup = full_setup();
     initialize_fundraiser(&mut setup, AMOUNT_TO_RAISE, DURATION_DAYS);
     let contributors = fund_to_target(&mut setup);
     claim(&mut setup).unwrap();
 
     let contributor = &contributors[0];
-    let rent = lamports(&setup, &contributor.contributor_account_pda);
+    let rent = lamports(&setup, &contributor.contribution_pda);
     let lamports_before = lamports(&setup, &contributor.keypair.pubkey());
 
     let fee_payer = contributor.keypair.insecure_clone();
-    close_contributor(&mut setup, &fee_payer, contributor).unwrap();
+    close_contribution(&mut setup, &fee_payer, contributor).unwrap();
 
     assert!(
         setup
             .svm
-            .get_account(&contributor.contributor_account_pda)
+            .get_account(&contributor.contribution_pda)
             .is_none(),
-        "Contributor account must be closed"
+        "Contribution account must be closed"
     );
     // The contributor paid the transaction fee out of the same balance, so
     // the rent came back less that fee.
@@ -818,25 +816,25 @@ fn test_close_contributor_after_claim_returns_rent() {
     );
     let fundraiser_state = read_fundraiser_state(&setup.svm, &setup.fundraiser_pda);
     assert_eq!(
-        fundraiser_state.open_contributor_accounts,
+        fundraiser_state.open_contributions,
         CONTRIBUTIONS_REACHING_TARGET.len() as u32 - 1
     );
 }
 
 #[test]
-fn test_anyone_can_close_contributor_accounts_after_claim() {
+fn test_anyone_can_close_contribution_accounts_after_claim() {
     let mut setup = full_setup();
     initialize_fundraiser(&mut setup, AMOUNT_TO_RAISE, DURATION_DAYS);
     let contributors = fund_to_target(&mut setup);
     claim(&mut setup).unwrap();
 
-    // The maker closes every contributor account; each rent deposit goes to
+    // The maker closes every contribution account; each rent deposit goes to
     // its contributor, who signs nothing.
     let maker = setup.maker.insecure_clone();
     for contributor in &contributors {
-        let rent = lamports(&setup, &contributor.contributor_account_pda);
+        let rent = lamports(&setup, &contributor.contribution_pda);
         let lamports_before = lamports(&setup, &contributor.keypair.pubkey());
-        close_contributor(&mut setup, &maker, contributor).unwrap();
+        close_contribution(&mut setup, &maker, contributor).unwrap();
         assert_eq!(
             lamports(&setup, &contributor.keypair.pubkey()),
             lamports_before + rent
@@ -844,11 +842,11 @@ fn test_anyone_can_close_contributor_accounts_after_claim() {
     }
 
     let fundraiser_state = read_fundraiser_state(&setup.svm, &setup.fundraiser_pda);
-    assert_eq!(fundraiser_state.open_contributor_accounts, 0);
+    assert_eq!(fundraiser_state.open_contributions, 0);
 }
 
 #[test]
-fn test_close_contributor_before_claim_fails() {
+fn test_close_contribution_before_claim_fails() {
     let mut setup = full_setup();
     initialize_fundraiser(&mut setup, AMOUNT_TO_RAISE, DURATION_DAYS);
     let contributor = new_contributor(&mut setup);
@@ -858,12 +856,11 @@ fn test_close_contributor_before_claim_fails() {
     // refunded: closing the account now would erase what the vault owes.
     let fee_payer = contributor.keypair.insecure_clone();
     assert_error(
-        close_contributor(&mut setup, &fee_payer, &contributor),
+        close_contribution(&mut setup, &fee_payer, &contributor),
         FundraiserError::FundraiserNotClaimed,
     );
-    let contributor_state =
-        read_contributor_state(&setup.svm, &contributor.contributor_account_pda);
-    assert_eq!(contributor_state.amount, CONTRIBUTION);
+    let contribution_state = read_contribution_state(&setup.svm, &contributor.contribution_pda);
+    assert_eq!(contribution_state.amount, CONTRIBUTION);
 }
 
 #[test]
@@ -959,27 +956,27 @@ fn test_close_fundraiser_when_target_met_but_unclaimed_fails() {
 }
 
 #[test]
-fn test_close_fundraiser_with_open_contributor_accounts_fails() {
+fn test_close_fundraiser_with_open_contributions_fails() {
     let mut setup = full_setup();
     initialize_fundraiser(&mut setup, AMOUNT_TO_RAISE, DURATION_DAYS);
     let contributors = fund_to_target(&mut setup);
     claim(&mut setup).unwrap();
 
-    // Close all but one contributor account.
+    // Close all but one contribution account.
     let maker = setup.maker.insecure_clone();
     for contributor in &contributors[1..] {
-        close_contributor(&mut setup, &maker, contributor).unwrap();
+        close_contribution(&mut setup, &maker, contributor).unwrap();
     }
 
     assert_error(
         close_fundraiser(&mut setup),
-        FundraiserError::ContributorAccountsOpen,
+        FundraiserError::ContributionsOpen,
     );
     assert!(setup.svm.get_account(&setup.fundraiser_pda).is_some());
 }
 
 #[test]
-fn test_reinitialize_with_open_contributor_accounts_fails() {
+fn test_reinitialize_with_open_contributions_fails() {
     let mut setup = full_setup();
     initialize_fundraiser(&mut setup, AMOUNT_TO_RAISE, DURATION_DAYS);
     fund_to_target(&mut setup);
@@ -1021,7 +1018,7 @@ fn test_reinitialize_with_open_contributor_accounts_fails() {
 }
 
 #[test]
-fn test_stale_contributor_account_cannot_refund_from_next_raise() {
+fn test_stale_contribution_cannot_refund_from_next_raise() {
     let mut setup = full_setup();
 
     // Raise one succeeds and the maker claims it.
@@ -1029,11 +1026,11 @@ fn test_stale_contributor_account_cannot_refund_from_next_raise() {
     let first_raise_contributors = fund_to_target(&mut setup);
     claim(&mut setup).unwrap();
 
-    // The maker closes every contributor account from raise one, then the
+    // The maker closes every contribution account from raise one, then the
     // fundraiser, and starts raise two at the same address.
     let maker = setup.maker.insecure_clone();
     for contributor in &first_raise_contributors {
-        close_contributor(&mut setup, &maker, contributor).unwrap();
+        close_contribution(&mut setup, &maker, contributor).unwrap();
     }
     close_fundraiser(&mut setup).unwrap();
     setup.svm.expire_blockhash();
@@ -1050,7 +1047,7 @@ fn test_stale_contributor_account_cannot_refund_from_next_raise() {
     warp_days_forward(&mut setup.svm, DURATION_DAYS as i64);
 
     // A raise-one contributor tries to take a refund from raise two. Their
-    // contributor account was closed with raise one, so there is nothing to
+    // contribution account was closed with raise one, so there is nothing to
     // refund.
     let stale_contributor = &first_raise_contributors[0];
     let fee_payer = stale_contributor.keypair.insecure_clone();
@@ -1071,7 +1068,7 @@ fn test_stale_contributor_account_cannot_refund_from_next_raise() {
     }
     let fundraiser_state = read_fundraiser_state(&setup.svm, &setup.fundraiser_pda);
     assert_eq!(fundraiser_state.current_amount, 0);
-    assert_eq!(fundraiser_state.open_contributor_accounts, 0);
+    assert_eq!(fundraiser_state.open_contributions, 0);
 }
 
 #[test]
@@ -1083,7 +1080,7 @@ fn test_close_fundraiser_after_claim_allows_a_new_raise() {
 
     let maker = setup.maker.insecure_clone();
     for contributor in &contributors {
-        close_contributor(&mut setup, &maker, contributor).unwrap();
+        close_contribution(&mut setup, &maker, contributor).unwrap();
     }
     close_fundraiser(&mut setup).unwrap();
     assert!(setup.svm.get_account(&setup.fundraiser_pda).is_none());

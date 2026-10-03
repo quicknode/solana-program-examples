@@ -54,7 +54,7 @@ pub fn handle_initialize_fundraiser(
         time_started,
         duration,
         claimed: PodBool::from(false),
-        open_contributor_accounts: 0,
+        open_contributions: 0,
         bump,
     });
     Ok(())

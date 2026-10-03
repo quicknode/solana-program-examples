@@ -4,7 +4,7 @@ use anchor_spl::token_interface::{
 };
 
 use crate::{
-    state::{Contributor, Fundraiser},
+    state::{Contribution, Fundraiser},
     FundraiserError, SECONDS_TO_DAYS,
 };
 
@@ -26,11 +26,11 @@ pub struct ContributeAccountConstraints<'info> {
     #[account(
         init_if_needed,
         payer = contributor,
-        seeds = [b"contributor", fundraiser.key().as_ref(), contributor.key().as_ref()],
+        seeds = [b"contribution", fundraiser.key().as_ref(), contributor.key().as_ref()],
         bump,
-        space = Contributor::DISCRIMINATOR.len() + Contributor::INIT_SPACE,
+        space = Contribution::DISCRIMINATOR.len() + Contribution::INIT_SPACE,
     )]
-    pub contributor_account: Account<'info, Contributor>,
+    pub contribution: Account<'info, Contribution>,
 
     #[account(
         mut,
@@ -86,7 +86,7 @@ pub fn handle_contribute(
     );
 
     let cumulative_contribution = accounts
-        .contributor_account
+        .contribution
         .amount
         .checked_add(amount)
         .ok_or(FundraiserError::MathOverflow)?;
@@ -97,16 +97,16 @@ pub fn handle_contribute(
         .current_amount
         .checked_add(amount)
         .ok_or(FundraiserError::MathOverflow)?;
-    accounts.contributor_account.amount = cumulative_contribution;
+    accounts.contribution.amount = cumulative_contribution;
 
     // On first init (init_if_needed only runs the init branch once; the
     // stored bump is zero until set), save the contributor PDA bump and count
-    // the new contributor account against the fundraiser.
-    if accounts.contributor_account.bump == 0 {
-        accounts.contributor_account.bump = bumps.contributor_account;
-        accounts.fundraiser.open_contributor_accounts = accounts
+    // the new contribution account against the fundraiser.
+    if accounts.contribution.bump == 0 {
+        accounts.contribution.bump = bumps.contribution;
+        accounts.fundraiser.open_contributions = accounts
             .fundraiser
-            .open_contributor_accounts
+            .open_contributions
             .checked_add(1)
             .ok_or(FundraiserError::MathOverflow)?;
     }
