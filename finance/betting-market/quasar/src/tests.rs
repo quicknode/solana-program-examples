@@ -12,7 +12,7 @@ use {
             SettleEventInstruction,
         },
         errors::BettingError,
-        state::{Bet, Config, Event, EventStatus, EventVaultPda, Outcome, User},
+        state::{Bet, Config, Event, EventStatus, EventVaultPda, Outcome},
     },
     quasar_test::prelude::*,
 };
@@ -96,8 +96,6 @@ fn full_lifecycle_settles_and_pays_the_winner(test: &mut Test) {
     let outcome1 = test.derive_pda(Outcome::seeds(&event, 1));
     let bet_a = test.derive_pda(Bet::seeds(&outcome0, &BETTOR_A));
     let bet_b = test.derive_pda(Bet::seeds(&outcome1, &BETTOR_B));
-    let user_a = test.derive_pda(User::seeds(&BETTOR_A));
-    let user_b = test.derive_pda(User::seeds(&BETTOR_B));
 
     const STAKE_A: u64 = 100;
     const STAKE_B: u64 = 300;
@@ -196,10 +194,6 @@ fn full_lifecycle_settles_and_pays_the_winner(test: &mut Test) {
     assert_eq!(test.tokens(TOKEN_B), STARTING_TOKENS - STAKE_B + PAYOUT_B);
     assert_eq!(test.tokens(TOKEN_A), STARTING_TOKENS - STAKE_A);
     assert_eq!(test.tokens(vault), 0, "vault drained");
-
-    // Both bets closed; user indexes emptied.
-    assert_eq!(test.read::<User>(user_a).bet_count, 0);
-    assert_eq!(test.read::<User>(user_b).bet_count, 0);
 }
 
 /// A cancelled event refunds each bettor their exact stake.
@@ -362,7 +356,7 @@ fn open_betting(admin: Pubkey) -> OpenBettingInstruction {
 fn outcomes_lock_when_betting_opens(test: &mut Test) {
     base_world(test);
     add_bettor(test, BETTOR_A, TOKEN_A);
-    draft_event(test, &["Toy Story 5"]);
+    draft_event(test, &["Glowbugs 3"]);
 
     test.send(bet(BETTOR_A, TOKEN_A, 0, 100))
         .fails_with(BettingError::EventNotOpen);
@@ -371,7 +365,7 @@ fn outcomes_lock_when_betting_opens(test: &mut Test) {
         admin: ADMIN,
         event_event_id_seed: EVENT_ID,
         event_outcome_count_seed: 1,
-        label: "Backrooms".to_string().into(),
+        label: "The Quiet Floor".to_string().into(),
     })
     .succeeds();
     test.send(open_betting(ADMIN)).succeeds();
@@ -448,4 +442,33 @@ fn initialize_event_rejects_a_close_time_in_the_past(test: &mut Test) {
         description: "Already over".to_string().into(),
     })
     .fails_with(BettingError::CloseTimeInPast);
+}
+
+/// A wallet can hold as many open positions as it likes: forty bets across
+/// forty outcomes all land. The program keeps no per-wallet index of open bets,
+/// so there is no list to fill.
+#[quasar_test]
+fn no_cap_on_open_bets_per_wallet(test: &mut Test) {
+    const OUTCOME_COUNT: u8 = 40;
+    const STAKE: u64 = 10;
+    base_world(test);
+    add_bettor(test, BETTOR_A, TOKEN_A);
+    let labels: Vec<String> = (0..OUTCOME_COUNT)
+        .map(|index| format!("Runner {index}"))
+        .collect();
+    let label_refs: Vec<&str> = labels.iter().map(String::as_str).collect();
+    draft_event(test, &label_refs);
+    test.send(open_betting(ADMIN)).succeeds();
+
+    let event = test.derive_pda(Event::seeds(EVENT_ID));
+    for index in 0..OUTCOME_COUNT {
+        test.send(bet(BETTOR_A, TOKEN_A, index, STAKE)).succeeds();
+        let outcome = test.derive_pda(Outcome::seeds(&event, index));
+        let bet_state = test.read::<Bet>(test.derive_pda(Bet::seeds(&outcome, &BETTOR_A)));
+        assert_eq!(bet_state.bettor, BETTOR_A, "bet {index} records its bettor");
+    }
+    assert_eq!(
+        test.tokens(TOKEN_A),
+        STARTING_TOKENS - OUTCOME_COUNT as u64 * STAKE
+    );
 }

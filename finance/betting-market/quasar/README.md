@@ -37,7 +37,7 @@ result is known the winners divide the pool.
 - A winner calls `claim_winnings` to withdraw their stake plus their share of
   the losing pool (their stake divided by the total winning stake, times the
   distributable losing pool). A loser calls `close_losing_bet` to reclaim their
-  Bet account's rent and free a slot in their position index.
+  Bet account's rent.
 - If a market cannot be resolved, the admin calls `cancel_event` (on a draft or
   an open event), and every
   bettor reclaims their exact stake with `claim_refund`. No fee is taken.
@@ -62,10 +62,9 @@ exists.
   pro-rata payouts when it wins.
 - **Bet**, PDA `["bet", outcome, bettor]`. One bettor's total stake on one
   outcome. Exactly one per (outcome, bettor); it closes on claim, refund, or
-  loser-close.
-- **User**, PDA `["user", bettor]`. A per-wallet index of a bettor's open Bet
-  accounts, so a client can list a wallet's positions without scanning every Bet
-  on the program. Capped at 32 concurrent positions.
+  loser-close. `bettor` is the first field after the 1-byte discriminator, so a
+  client lists a wallet's open positions with `getProgramAccounts` and a
+  `memcmp` filter at offset 1; there is no per-wallet index and no cap.
 - **Pool vault**, PDA `["vault", event]`. One token account per event, holding
   every stake across all outcomes, with the Event PDA as its authority.
 
@@ -87,11 +86,9 @@ exists.
 The mechanics, fee model, and payout math are identical to the Anchor build. The
 differences follow from Quasar being zero-copy and fixed-layout:
 
-- **Variable-length text and the position index are fixed-capacity.** The Anchor
-  build stores `Event.description` and `Outcome.label` as borsh `String`s and
-  `User.bets` as a `Vec<Pubkey>`. This port stores them as fixed byte buffers
-  plus a length (`[u8; 200]`, `[u8; 64]`, and a packed `[u8; 1024]` of up to 32
-  addresses). Keeping every account fixed-size makes each mutation a plain
+- **Variable-length text is fixed-capacity.** The Anchor build stores
+  `Event.description` and `Outcome.label` as borsh `String`s. This port stores
+  them as fixed byte buffers plus a length (`[u8; 200]` and `[u8; 64]`). Keeping every account fixed-size makes each mutation a plain
   in-place write, with no reallocation and no read-your-own-buffer aliasing when
   an account is updated after creation.
 - **The pool vault is a program-derived token account** (`["vault", event]`)
