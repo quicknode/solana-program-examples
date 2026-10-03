@@ -1,5 +1,18 @@
 # Changelog
 
+## [2026-10-03]
+
+### Removed
+
+- The per-wallet `User` index account (`seeds = [b"user", wallet]`), its
+  `MAX_BETS_PER_USER` cap of 32 open positions, and the `TooManyBets` and
+  `BetNotInUserIndex` errors. `place_bet`, `claim_winnings`, `claim_refund` and
+  `close_losing_bet` no longer take a `user` account. A client lists a wallet's
+  open bets with `getProgramAccounts` and a `memcmp` filter on `Bet.bettor` at
+  offset 8, so a wallet can hold any number of open positions
+  (`test_no_cap_on_open_bets_per_wallet`). Error codes after `ZeroAmount` move down by two.
+- Outcome labels in the tests are invented film titles.
+
 ## [2026-09-22]
 
 ### Changed

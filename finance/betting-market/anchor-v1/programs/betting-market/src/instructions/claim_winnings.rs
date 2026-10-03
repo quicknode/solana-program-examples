@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
 
-use crate::{error::BettingError, Bet, Event, EventStatus, User};
+use crate::{error::BettingError, Bet, Event, EventStatus};
 
 use super::transfer_tokens_from_vault;
 
@@ -30,13 +30,6 @@ pub struct ClaimWinningsAccountConstraints<'info> {
         bump = bet.bump,
     )]
     pub bet: Account<'info, Bet>,
-
-    #[account(
-        mut,
-        seeds = [b"user", bettor.key().as_ref()],
-        bump = user.bump,
-    )]
-    pub user: Account<'info, User>,
 
     #[account(
         mut,
@@ -89,12 +82,6 @@ pub fn handle_claim_winnings(context: Context<ClaimWinningsAccountConstraints>) 
     let payout = stake
         .checked_add(winnings)
         .ok_or(BettingError::MathOverflow)?;
-
-    // The position is over, so drop the Bet from the bettor's index before the
-    // transfer (effects before interactions); the Bet account itself closes
-    // when the instruction finishes.
-    let bet_key = context.accounts.bet.key();
-    context.accounts.user.remove_bet(&bet_key)?;
 
     let event_id = context.accounts.event.event_id;
     let event_bump = context.accounts.event.bump;

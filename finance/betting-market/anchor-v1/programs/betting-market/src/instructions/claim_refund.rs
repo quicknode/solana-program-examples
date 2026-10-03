@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
 
-use crate::{error::BettingError, Bet, Event, EventStatus, User};
+use crate::{error::BettingError, Bet, Event, EventStatus};
 
 use super::transfer_tokens_from_vault;
 
@@ -33,13 +33,6 @@ pub struct ClaimRefundAccountConstraints<'info> {
 
     #[account(
         mut,
-        seeds = [b"user", bettor.key().as_ref()],
-        bump = user.bump,
-    )]
-    pub user: Account<'info, User>,
-
-    #[account(
-        mut,
         associated_token::mint = token_mint,
         associated_token::authority = bettor,
         associated_token::token_program = token_program,
@@ -64,12 +57,6 @@ pub fn handle_claim_refund(context: Context<ClaimRefundAccountConstraints>) -> R
     );
 
     let stake = context.accounts.bet.amount;
-
-    // The position is over, so drop the Bet from the bettor's index before the
-    // transfer (effects before interactions); the Bet account itself closes
-    // when the instruction finishes.
-    let bet_key = context.accounts.bet.key();
-    context.accounts.user.remove_bet(&bet_key)?;
 
     let event_id = context.accounts.event.event_id;
     let event_bump = context.accounts.event.bump;

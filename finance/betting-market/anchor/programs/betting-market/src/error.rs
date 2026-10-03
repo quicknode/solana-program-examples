@@ -22,10 +22,6 @@ pub enum BettingError {
     BetWon,
     #[msg("The bet amount must be greater than zero")]
     ZeroAmount,
-    #[msg("This bettor already holds the maximum number of open positions")]
-    TooManyBets,
-    #[msg("This bet is not in the bettor's User index")]
-    BetNotInUserIndex,
     #[msg("Arithmetic overflow")]
     MathOverflow,
     #[msg("Outcomes can only be added, and betting opened, while the event is a draft")]

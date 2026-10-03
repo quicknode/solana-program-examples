@@ -22,7 +22,7 @@ custom-panic = []
 profile = ["anchor-v2-testing/profile"]
 
 [dependencies]
-# init-if-needed: place_bet and the lazy User index create accounts only on first use.
+# init-if-needed: place_bet creates the Bet account only on a bettor's first bet on an outcome.
 anchor-lang = "2.0.0-rc.1"
 # The `#[program]` macro expands to `wincode` paths for instruction-data
 # (de)serialization, so the crate has to be a direct dependency.

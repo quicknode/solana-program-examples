@@ -44,12 +44,9 @@ cancelling).
   the same outcome adds to the existing Bet, so there is exactly one per (outcome, bettor). The
   account exists only while the position is open: it closes (rent back to the bettor) via
   `claim_winnings`, `claim_refund`, or `close_losing_bet`, which is also what makes a second claim
-  impossible.
-- **User** (`seeds = [b"user", wallet]`) - a per-wallet index listing the bettor's open Bet
-  addresses, so a client can find someone's positions without scanning every Bet on the program.
-  `place_bet` adds an entry and every instruction that closes a Bet removes it, so the cap (see
-  `MAX_BETS_PER_USER`) limits concurrent open positions, not lifetime bets. The fixed cap keeps the
-  account a constant size; the Bet accounts are the authoritative stake record.
+  impossible. `bettor` is the first field after the 8-byte discriminator, so a client lists a
+  wallet's open positions with `getProgramAccounts` and a `memcmp` filter on the wallet's address at
+  offset 8. The program keeps no per-wallet index, so a wallet can hold any number of open bets.
 
 ### The vault
 
@@ -91,17 +88,14 @@ division floors each share, leaving at most a few minor units of dust in the vau
 - `open_betting` - admin. Moves a `Draft` with at least two outcomes to `Open`, which fixes the
   outcome list.
 - `place_bet` - bettor. Stakes tokens on one outcome of an `Open` event, before
-  `betting_closes_at`; updates the pools and adds the Bet to the user's index (rejected with
-  `TooManyBets` if all `MAX_BETS_PER_USER` slots hold open positions).
+  `betting_closes_at`; creates or tops up the Bet and updates the pools.
 - `settle_event` - admin. Once `betting_closes_at` has passed, resolves to a winning outcome, takes
   the fee, records the payout figures.
 - `claim_winnings` - winning bettor. Withdraws stake plus pro-rata share of the losing pool, then
-  closes the Bet account and removes it from the user's index.
-- `close_losing_bet` - losing bettor. After settlement, closes a worthless Bet to reclaim its rent
-  and free the slot in the user's index.
+  closes the Bet account.
+- `close_losing_bet` - losing bettor. After settlement, closes a worthless Bet to reclaim its rent.
 - `cancel_event` - admin. Voids a draft or unresolved market.
-- `claim_refund` - bettor. After a cancellation, reclaims the exact stake; the Bet account closes
-  and leaves the user's index.
+- `claim_refund` - bettor. After a cancellation, reclaims the exact stake; the Bet account closes.
 
 ### Lifecycle
 
@@ -142,8 +136,8 @@ Tests are Rust integration tests running against
 settle → claim with exact payout and fee assertions), admin authorization, the bet-after-settle and
 double-claim guards, the outcome list locking when betting opens, the two-outcome minimum, both
 edges of the betting close time, settling an outcome with no bets, the cancel/refund path, the
-`close_losing_bet` guards, and the User index: claims, refunds, and losing-bet closes remove the
-Bet's entry, and a wallet whose index is full can bet again after closing a position.
+`close_losing_bet` guards, and a wallet holding forty open bets at once, which shows there is no
+per-wallet cap.
 
 ```sh
 anchor test

@@ -3,8 +3,8 @@ use quasar_spl::prelude::*;
 
 use crate::errors::BettingError;
 use crate::state::{
-    add_bet, betting_is_open, snapshot_event, snapshot_outcome, snapshot_user, Bet, BetInner,
-    Config, Event, EventStatus, EventVaultPda, Outcome, User,
+    betting_is_open, snapshot_event, snapshot_outcome, Bet, BetInner, Config, Event, EventStatus,
+    EventVaultPda, Outcome,
 };
 
 use super::transfer_to_vault;
@@ -44,13 +44,6 @@ pub struct PlaceBetAccountConstraints {
     )]
     pub bet: Account<Bet>,
 
-    #[account(
-        init(idempotent),
-        payer = bettor,
-        address = User::seeds(bettor.address()),
-    )]
-    pub user: Account<User>,
-
     pub rent: Sysvar<Rent>,
     pub token_program: Program<TokenProgram>,
     pub system_program: Program<SystemProgram>,
@@ -87,11 +80,10 @@ pub fn handle_place_bet(
     let event_key = *accounts.event.address();
     let outcome_key = *accounts.outcome.address();
     let outcome_index = accounts.outcome.index;
-    let bet_key = *accounts.bet.address();
 
     // A fresh init(idempotent) Bet has amount 0; that is how we tell a first
-    // bet on this outcome from a top-up, and it gates the per-outcome and
-    // per-user bookkeeping.
+    // bet on this outcome from a top-up, and it gates the per-outcome
+    // bookkeeping.
     let current_amount = u64::from(accounts.bet.amount);
     let is_new_bet = current_amount == 0;
     let new_amount = current_amount
@@ -126,16 +118,6 @@ pub fn handle_place_bet(
         .checked_add(amount)
         .ok_or(BettingError::MathOverflow)?;
     accounts.event.set_inner(event);
-
-    let mut user = snapshot_user(&accounts.user);
-    if user.authority == Address::default() {
-        user.authority = bettor_key;
-        user.bump = bumps.user;
-    }
-    if is_new_bet {
-        add_bet(&mut user.bets, &mut user.bet_count, &bet_key)?;
-    }
-    accounts.user.set_inner(user);
 
     Ok(())
 }
