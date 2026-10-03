@@ -362,7 +362,7 @@ fn open_betting(admin: Pubkey) -> OpenBettingInstruction {
 fn outcomes_lock_when_betting_opens(test: &mut Test) {
     base_world(test);
     add_bettor(test, BETTOR_A, TOKEN_A);
-    draft_event(test, &["Toy Story 5"]);
+    draft_event(test, &["Glowbugs 3"]);
 
     test.send(bet(BETTOR_A, TOKEN_A, 0, 100))
         .fails_with(BettingError::EventNotOpen);
@@ -371,7 +371,7 @@ fn outcomes_lock_when_betting_opens(test: &mut Test) {
         admin: ADMIN,
         event_event_id_seed: EVENT_ID,
         event_outcome_count_seed: 1,
-        label: "Backrooms".to_string().into(),
+        label: "The Quiet Floor".to_string().into(),
     })
     .succeeds();
     test.send(open_betting(ADMIN)).succeeds();

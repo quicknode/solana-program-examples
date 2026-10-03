@@ -1236,7 +1236,7 @@ fn test_outcomes_lock_when_betting_opens() {
         &mut market.svm,
         vec![
             initialize_event_ix(admin, mint, event_id, "Top-grossing film"),
-            add_outcome_ix(admin, event_id, 0, "Toy Story 5"),
+            add_outcome_ix(admin, event_id, 0, "Glowbugs 3"),
         ],
         &[&market.admin],
         &admin,
@@ -1263,7 +1263,7 @@ fn test_outcomes_lock_when_betting_opens() {
     send_transaction_from_instructions(
         &mut market.svm,
         vec![
-            add_outcome_ix(admin, event_id, 1, "Backrooms"),
+            add_outcome_ix(admin, event_id, 1, "The Quiet Floor"),
             open_betting_ix(admin, event_id),
         ],
         &[&market.admin],
