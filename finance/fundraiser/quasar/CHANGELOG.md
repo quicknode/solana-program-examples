@@ -1,5 +1,20 @@
 # Changelog
 
+## [2026-10-03]
+
+### Changed
+
+- The per-contributor account is `Contribution`, closed by
+  `close_contribution`. The handler named `close_contributor` closed the
+  account recording one contributor's contributions, not the contributor, so
+  it is now `close_contribution` (account constraints
+  `CloseContributionAccountConstraints`). The account struct `Contributor` is
+  now `Contribution`, its handler field `contributor_account` is
+  `contribution`, and its PDA seed prefix is `"contribution"` instead of
+  `"contributor"`. The Fundraiser's `open_contributor_accounts` count is
+  `open_contributions`, and the error `ContributorAccountsOpen` is
+  `ContributionsOpen`. No behavior changes.
+
 ## [2026-10-01]
 
 ### Fixed

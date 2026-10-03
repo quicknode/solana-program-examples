@@ -4,6 +4,19 @@ All notable changes to this repository are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-10-03] - Fundraiser: `close_contributor` is `close_contribution`
+
+### Changed
+
+- `finance/fundraiser` (Anchor v2, Anchor v1, Quasar) renames the account that
+  records one contributor's contributions from `Contributor` to
+  `Contribution`, and its closing handler from `close_contributor` to
+  `close_contribution`: the handler closes that account, not the contributor.
+  The PDA seed prefix becomes `"contribution"`, the Fundraiser's
+  `open_contributor_accounts` becomes `open_contributions`, and the
+  `ContributorAccountsOpen` error becomes `ContributionsOpen`. No behavior
+  changes.
+
 ## [2026-10-03] - Order book tests cover the costliest cancel
 
 `cancel_order` finds an order's place in the tree by walking its side from the

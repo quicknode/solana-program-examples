@@ -65,7 +65,7 @@ pub fn handle_initialize_fundraiser(
         time_started: Clock::get()?.unix_timestamp,
         duration,
         claimed: false,
-        open_contributor_accounts: 0,
+        open_contributions: 0,
         bump: bumps.fundraiser,
     };
 

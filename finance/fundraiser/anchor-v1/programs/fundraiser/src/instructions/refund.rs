@@ -4,7 +4,7 @@ use anchor_spl::token_interface::{
 };
 
 use crate::{
-    state::{Contributor, Fundraiser},
+    state::{Contribution, Fundraiser},
     FundraiserError, SECONDS_TO_DAYS,
 };
 
@@ -31,11 +31,11 @@ pub struct RefundAccountConstraints<'info> {
 
     #[account(
         mut,
-        seeds = [b"contributor", fundraiser.key().as_ref(), contributor.key().as_ref()],
-        bump = contributor_account.bump,
+        seeds = [b"contribution", fundraiser.key().as_ref(), contributor.key().as_ref()],
+        bump = contribution.bump,
         close = contributor,
     )]
-    pub contributor_account: Account<'info, Contributor>,
+    pub contribution: Account<'info, Contribution>,
 
     #[account(
         mut,
@@ -81,16 +81,16 @@ pub fn handle_refund(accounts: &mut RefundAccountConstraints) -> Result<()> {
     );
 
     // Checks-effects-interactions: update state before the transfer CPI.
-    let refund_amount = accounts.contributor_account.amount;
+    let refund_amount = accounts.contribution.amount;
     accounts.fundraiser.current_amount = accounts
         .fundraiser
         .current_amount
         .checked_sub(refund_amount)
         .ok_or(FundraiserError::MathOverflow)?;
-    accounts.contributor_account.amount = 0;
-    accounts.fundraiser.open_contributor_accounts = accounts
+    accounts.contribution.amount = 0;
+    accounts.fundraiser.open_contributions = accounts
         .fundraiser
-        .open_contributor_accounts
+        .open_contributions
         .checked_sub(1)
         .ok_or(FundraiserError::MathOverflow)?;
 

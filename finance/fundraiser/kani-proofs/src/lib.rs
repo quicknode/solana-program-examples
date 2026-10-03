@@ -10,7 +10,7 @@
 //! The program collects contributions into a vault toward a goal; if the goal
 //! is not met by the deadline, every contributor reclaims their exact stake.
 //! Token movement is via SPL CPIs Kani cannot symbolically execute, but the
-//! accounting (`contribute`, `refund`, `close_contributor`) is pure integer
+//! accounting (`contribute`, `refund`, `close_contribution`) is pure integer
 //! arithmetic. This crate reproduces it faithfully and checks the contributor
 //! account counter, the running-total accounting, and refund conservation.
 
@@ -19,74 +19,74 @@
 /// How many contributors the counter harness tracks.
 pub const CONTRIBUTORS: usize = 3;
 
-/// One step of a fundraiser's life, as it affects contributor accounts.
+/// One step of a fundraiser's life, as it affects contribution accounts.
 #[derive(Clone, Copy)]
-pub enum ContributorAccountStep {
+pub enum ContributionAccountStep {
     /// `contribute` from this contributor: creates their account on the first
     /// call and adds to it on later ones.
     Contribute(usize),
-    /// `refund` or `close_contributor` for this contributor: both close the
+    /// `refund` or `close_contribution` for this contributor: both close the
     /// account, and both fail if it does not exist.
     Close(usize),
 }
 
-/// Replays `contribute`, `refund` and `close_contributor`'s bookkeeping on
-/// `open_contributor_accounts`. Returns `None` where the program would reject
+/// Replays `contribute`, `refund` and `close_contribution`'s bookkeeping on
+/// `open_contributions`. Returns `None` where the program would reject
 /// the step, as it does when the account to close does not exist.
 pub fn apply_step(
     open_accounts: &mut [bool; CONTRIBUTORS],
-    open_contributor_accounts: u32,
-    step: ContributorAccountStep,
+    open_contributions: u32,
+    step: ContributionAccountStep,
 ) -> Option<u32> {
     match step {
-        ContributorAccountStep::Contribute(contributor) => {
+        ContributionAccountStep::Contribute(contributor) => {
             if open_accounts[contributor] {
-                Some(open_contributor_accounts)
+                Some(open_contributions)
             } else {
                 open_accounts[contributor] = true;
-                open_contributor_accounts.checked_add(1)
+                open_contributions.checked_add(1)
             }
         }
-        ContributorAccountStep::Close(contributor) => {
+        ContributionAccountStep::Close(contributor) => {
             if !open_accounts[contributor] {
                 return None;
             }
             open_accounts[contributor] = false;
-            open_contributor_accounts.checked_sub(1)
+            open_contributions.checked_sub(1)
         }
     }
 }
 
 // ===========================================================================
-// 1. Contributor account counter
+// 1. Contribution account counter
 // ===========================================================================
 
-/// `fundraiser.open_contributor_accounts` always equals the number of
-/// contributor accounts that exist for the fundraiser, whatever order
+/// `fundraiser.open_contributions` always equals the number of
+/// contribution accounts that exist for the fundraiser, whatever order
 /// contributions, refunds and closes arrive in. `close_fundraiser` requires
-/// the counter to be zero, so this is what guarantees no contributor account
+/// the counter to be zero, so this is what guarantees no contribution account
 /// outlives its fundraiser and carries over into the next raise at the same
 /// address.
 #[cfg(kani)]
 #[kani::proof]
 #[kani::unwind(9)]
-fn proof_open_contributor_accounts_counts_open_accounts() {
+fn proof_open_contributions_counts_open_accounts() {
     let mut open_accounts = [false; CONTRIBUTORS];
-    let mut open_contributor_accounts: u32 = 0;
+    let mut open_contributions: u32 = 0;
 
     for _ in 0..8 {
         let contributor: usize = kani::any();
         kani::assume(contributor < CONTRIBUTORS);
         let step = if kani::any() {
-            ContributorAccountStep::Contribute(contributor)
+            ContributionAccountStep::Contribute(contributor)
         } else {
-            ContributorAccountStep::Close(contributor)
+            ContributionAccountStep::Close(contributor)
         };
-        if let Some(updated) = apply_step(&mut open_accounts, open_contributor_accounts, step) {
-            open_contributor_accounts = updated;
+        if let Some(updated) = apply_step(&mut open_accounts, open_contributions, step) {
+            open_contributions = updated;
         }
         let actually_open = open_accounts.iter().filter(|open| **open).count() as u32;
-        assert_eq!(open_contributor_accounts, actually_open);
+        assert_eq!(open_contributions, actually_open);
     }
 }
 
@@ -156,14 +156,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn counter_tracks_contributor_accounts() {
+    fn counter_tracks_contributions() {
         let mut open_accounts = [false; CONTRIBUTORS];
         let mut counter = 0u32;
         for step in [
-            ContributorAccountStep::Contribute(0),
-            ContributorAccountStep::Contribute(0),
-            ContributorAccountStep::Contribute(2),
-            ContributorAccountStep::Close(0),
+            ContributionAccountStep::Contribute(0),
+            ContributionAccountStep::Contribute(0),
+            ContributionAccountStep::Contribute(2),
+            ContributionAccountStep::Close(0),
         ] {
             counter = apply_step(&mut open_accounts, counter, step).unwrap();
         }
@@ -171,7 +171,7 @@ mod tests {
         assert!(apply_step(
             &mut open_accounts,
             counter,
-            ContributorAccountStep::Close(1)
+            ContributionAccountStep::Close(1)
         )
         .is_none());
     }

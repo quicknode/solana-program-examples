@@ -53,8 +53,8 @@ pub struct CloseFundraiserAccountConstraints {
 ///
 /// The fundraiser PDA is derived from the maker's public key alone, so while
 /// a fundraiser account exists the maker cannot initialize another one. It
-/// closes once no contributor account written for it is still open: after a
-/// claim, once `close_contributor` has closed each one; after a failed raise,
+/// closes once no contribution account written for it is still open: after a
+/// claim, once `close_contribution` has closed each one; after a failed raise,
 /// once the deadline has passed and `refund` has closed each one.
 pub fn handle_close_fundraiser(accounts: &mut CloseFundraiserAccountConstraints) -> Result<()> {
     if !accounts.fundraiser.claimed {
@@ -85,11 +85,11 @@ pub fn handle_close_fundraiser(accounts: &mut CloseFundraiserAccountConstraints)
         );
     }
 
-    // A contributor account left open would be read as a contribution to the
+    // A contribution account left open would be read as a contribution to the
     // next fundraiser at this address.
     require!(
-        accounts.fundraiser.open_contributor_accounts == 0,
-        FundraiserError::ContributorAccountsOpen
+        accounts.fundraiser.open_contributions == 0,
+        FundraiserError::ContributionsOpen
     );
 
     // Read these before any of the CPI handles below take their borrows.

@@ -1,7 +1,7 @@
 use {
     crate::{
         error::FundraiserError,
-        state::{fundraiser_deadline, Contributor, Fundraiser},
+        state::{fundraiser_deadline, Contribution, Fundraiser},
     },
     quasar_lang::{prelude::*, sysvars::Sysvar as _},
     quasar_spl::prelude::*,
@@ -27,9 +27,9 @@ pub struct ContributeAccountConstraints {
         mut,
         init(idempotent),
         payer = contributor,
-        address = Contributor::seeds(fundraiser.address(), contributor.address()),
+        address = Contribution::seeds(fundraiser.address(), contributor.address()),
     )]
-    pub contributor_account: Account<Contributor>,
+    pub contribution: Account<Contribution>,
 
     #[account(mut)]
     pub contributor_ta: Account<Token>,
@@ -77,22 +77,22 @@ pub fn handle_contribute(
             .ok_or(FundraiserError::MathOverflow)?,
     );
 
-    let contributed_so_far: u64 = accounts.contributor_account.amount.into();
-    accounts.contributor_account.amount = PodU64::from(
+    let contributed_so_far: u64 = accounts.contribution.amount.into();
+    accounts.contribution.amount = PodU64::from(
         contributed_so_far
             .checked_add(amount)
             .ok_or(FundraiserError::MathOverflow)?,
     );
 
-    // `init(idempotent)` creates the contributor account zeroed and reuses it
+    // `init(idempotent)` creates the contribution account zeroed and reuses it
     // on later contributions. Every contribution is nonzero, so a recorded
     // amount of zero means the account was created by this instruction: save
     // its bump and count it against the fundraiser.
     if contributed_so_far == 0 {
-        accounts.contributor_account.bump = bumps.contributor_account;
-        let open_contributor_accounts: u32 = accounts.fundraiser.open_contributor_accounts.into();
-        accounts.fundraiser.open_contributor_accounts = PodU32::from(
-            open_contributor_accounts
+        accounts.contribution.bump = bumps.contribution;
+        let open_contributions: u32 = accounts.fundraiser.open_contributions.into();
+        accounts.fundraiser.open_contributions = PodU32::from(
+            open_contributions
                 .checked_add(1)
                 .ok_or(FundraiserError::MathOverflow)?,
         );

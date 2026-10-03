@@ -14,7 +14,7 @@ declare_id!("Eoiuq1dXvHxh6dLx3wh9gj8kSAUpga11krTrbfF5XYsC");
 /// Token crowdfunding program: a maker creates a fundraiser targeting a specific
 /// SPL token. Contributors deposit tokens into a vault. If the target is met,
 /// the maker withdraws everything. If not, contributors can reclaim their funds.
-/// Once every contributor account is closed, the maker closes the fundraiser.
+/// Once every contribution account is closed, the maker closes the fundraiser.
 #[program]
 mod quasar_fundraiser {
     use super::*;
@@ -46,7 +46,7 @@ mod quasar_fundraiser {
 
     /// Maker withdraws all funds once the target is met, marking the
     /// fundraiser claimed. The fundraiser and the vault stay open until every
-    /// contributor account is closed.
+    /// contribution account is closed.
     #[instruction(discriminator = 2)]
     pub fn check_contributions(
         ctx: Ctx<CheckContributionsAccountConstraints>,
@@ -61,13 +61,13 @@ mod quasar_fundraiser {
         instructions::handle_refund(&mut ctx.accounts, &ctx.bumps)
     }
 
-    /// Close a contributor account once its fundraiser has been claimed,
+    /// Close a contribution account once its fundraiser has been claimed,
     /// returning the rent to the contributor. Anyone may send it.
     #[instruction(discriminator = 4)]
-    pub fn close_contributor(
-        ctx: Ctx<CloseContributorAccountConstraints>,
+    pub fn close_contribution(
+        ctx: Ctx<CloseContributionAccountConstraints>,
     ) -> Result<(), ProgramError> {
-        instructions::handle_close_contributor(&mut ctx.accounts)
+        instructions::handle_close_contribution(&mut ctx.accounts)
     }
 
     /// Maker closes a finished fundraiser and its vault once no contributor

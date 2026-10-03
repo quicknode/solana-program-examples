@@ -1,17 +1,18 @@
 //! quasar-test integration tests: create a fundraiser, contribute inside the
 //! window, refund after a failed raise, pay the maker after a successful one,
-//! close every contributor account and then the fundraiser, and raise again
+//! close every contribution account and then the fundraiser, and raise again
 //! at the same address — plus the deadline, target, claim, and
 //! account-binding guard rails.
 
 use {
     crate::{
         cpi::{
-            CheckContributionsInstruction, CloseContributorInstruction, CloseFundraiserInstruction,
-            ContributeInstruction, InitializeFundraiserInstruction, RefundInstruction,
+            CheckContributionsInstruction, CloseContributionInstruction,
+            CloseFundraiserInstruction, ContributeInstruction, InitializeFundraiserInstruction,
+            RefundInstruction,
         },
         error::FundraiserError,
-        state::{Contributor, Fundraiser, SECONDS_PER_DAY},
+        state::{Contribution, Fundraiser, SECONDS_PER_DAY},
     },
     quasar_lang::error::QuasarError,
     quasar_test::prelude::*,
@@ -128,8 +129,8 @@ fn initialized_world(test: &mut Test) -> Pubkey {
     test.derive_pda(Fundraiser::seeds(&MAKER))
 }
 
-fn contributor_account(test: &Test, fundraiser: Pubkey, contributor: ContributorKeys) -> Pubkey {
-    test.derive_pda(Contributor::seeds(&fundraiser, &contributor.wallet))
+fn contribution(test: &Test, fundraiser: Pubkey, contributor: ContributorKeys) -> Pubkey {
+    test.derive_pda(Contribution::seeds(&fundraiser, &contributor.wallet))
 }
 
 fn contribute_from(test: &mut Test, contributor: ContributorKeys, amount: u64) -> Outcome {
@@ -188,24 +189,24 @@ fn check_contributions(test: &mut Test) -> Outcome {
     })
 }
 
-fn close_contributor_instruction(contributor: ContributorKeys, fundraiser: Pubkey) -> Instruction {
-    CloseContributorInstruction {
+fn close_contribution_instruction(contributor: ContributorKeys, fundraiser: Pubkey) -> Instruction {
+    CloseContributionInstruction {
         contributor: contributor.wallet,
         fundraiser,
     }
     .into()
 }
 
-fn close_contributor_for(
+fn close_contribution_for(
     test: &mut Test,
     contributor: ContributorKeys,
     fundraiser: Pubkey,
 ) -> Outcome {
-    test.send(close_contributor_instruction(contributor, fundraiser))
+    test.send(close_contribution_instruction(contributor, fundraiser))
 }
 
-fn close_contributor(test: &mut Test, fundraiser: Pubkey) -> Outcome {
-    close_contributor_for(test, FIRST_CONTRIBUTOR, fundraiser)
+fn close_contribution(test: &mut Test, fundraiser: Pubkey) -> Outcome {
+    close_contribution_for(test, FIRST_CONTRIBUTOR, fundraiser)
 }
 
 fn close_fundraiser(test: &mut Test) -> Outcome {
@@ -228,11 +229,8 @@ fn donate_to_vault(test: &mut Test, fundraiser: Pubkey, amount: u64) {
     );
 }
 
-fn open_contributor_accounts(test: &Test, fundraiser: Pubkey) -> u32 {
-    u32::from(
-        test.read::<Fundraiser>(fundraiser)
-            .open_contributor_accounts,
-    )
+fn open_contributions(test: &Test, fundraiser: Pubkey) -> u32 {
+    u32::from(test.read::<Fundraiser>(fundraiser).open_contributions)
 }
 
 fn is_claimed(test: &Test, fundraiser: Pubkey) -> bool {
@@ -256,7 +254,7 @@ fn initialize_records_state_and_clock_time(test: &mut Test) {
     assert_eq!(i64::from(state.time_started), START_TIME);
     assert_eq!(u16::from(state.duration), DURATION_DAYS);
     assert!(!bool::from(state.claimed));
-    assert_eq!(u32::from(state.open_contributor_accounts), 0);
+    assert_eq!(u32::from(state.open_contributions), 0);
     assert_eq!(state.bump, expected_bump);
 }
 
@@ -273,7 +271,7 @@ fn initialize_rejects_zero_duration(test: &mut Test) {
 }
 
 #[quasar_test]
-fn contribute_creates_contributor_account_and_moves_tokens(test: &mut Test) {
+fn contribute_creates_contribution_and_moves_tokens(test: &mut Test) {
     let fundraiser = initialized_world(test);
 
     contribute(test, PARTIAL_CONTRIBUTION)
@@ -289,37 +287,37 @@ fn contribute_creates_contributor_account_and_moves_tokens(test: &mut Test) {
         u64::from(fundraiser_state.current_amount),
         PARTIAL_CONTRIBUTION
     );
-    assert_eq!(u32::from(fundraiser_state.open_contributor_accounts), 1);
+    assert_eq!(u32::from(fundraiser_state.open_contributions), 1);
 
-    let (contributor_account, expected_bump) =
-        test.derive_pda_with_bump(Contributor::seeds(&fundraiser, &CONTRIBUTOR));
-    let contributor_state = test.read::<Contributor>(contributor_account);
-    assert_eq!(u64::from(contributor_state.amount), PARTIAL_CONTRIBUTION);
-    assert_eq!(contributor_state.bump, expected_bump);
+    let (contribution, expected_bump) =
+        test.derive_pda_with_bump(Contribution::seeds(&fundraiser, &CONTRIBUTOR));
+    let contribution_state = test.read::<Contribution>(contribution);
+    assert_eq!(u64::from(contribution_state.amount), PARTIAL_CONTRIBUTION);
+    assert_eq!(contribution_state.bump, expected_bump);
 }
 
 #[quasar_test]
-fn contributions_accumulate_in_one_contributor_account(test: &mut Test) {
+fn contributions_accumulate_in_one_contribution(test: &mut Test) {
     let fundraiser = initialized_world(test);
     contribute(test, PARTIAL_CONTRIBUTION).succeeds();
 
-    // The second contribution reuses the contributor account created by the
-    // first, so the fundraiser still counts one open contributor account.
+    // The second contribution reuses the contribution account created by the
+    // first, so the fundraiser still counts one open contribution account.
     let expected_total = PARTIAL_CONTRIBUTION + SECOND_PARTIAL_CONTRIBUTION;
     contribute(test, SECOND_PARTIAL_CONTRIBUTION)
         .succeeds()
         .has_tokens(VAULT, expected_total);
 
-    let contributor_account = contributor_account(test, fundraiser, FIRST_CONTRIBUTOR);
+    let contribution = contribution(test, fundraiser, FIRST_CONTRIBUTOR);
     assert_eq!(
-        u64::from(test.read::<Contributor>(contributor_account).amount),
+        u64::from(test.read::<Contribution>(contribution).amount),
         expected_total
     );
     assert_eq!(
         u64::from(test.read::<Fundraiser>(fundraiser).current_amount),
         expected_total
     );
-    assert_eq!(open_contributor_accounts(test, fundraiser), 1);
+    assert_eq!(open_contributions(test, fundraiser), 1);
 }
 
 #[quasar_test]
@@ -380,7 +378,7 @@ fn contribute_after_claim_fails(test: &mut Test) {
         CONTRIBUTOR_STARTING_BALANCE
     );
     assert_eq!(
-        open_contributor_accounts(test, fundraiser),
+        open_contributions(test, fundraiser),
         TARGET_CONTRIBUTORS.len() as u32
     );
 }
@@ -392,17 +390,17 @@ fn refund_returns_tokens_after_failed_fundraiser(test: &mut Test) {
 
     test.warp_to_timestamp(DEADLINE);
 
-    let contributor_account = contributor_account(test, fundraiser, FIRST_CONTRIBUTOR);
+    let contribution = contribution(test, fundraiser, FIRST_CONTRIBUTOR);
     refund(test)
         .succeeds()
         .has_tokens(VAULT, 0)
         .has_tokens(CONTRIBUTOR_TA, CONTRIBUTOR_STARTING_BALANCE)
-        // The contributor account was closed and its rent returned.
-        .is_closed(contributor_account);
+        // The contribution account was closed and its rent returned.
+        .is_closed(contribution);
 
     let fundraiser_state = test.read::<Fundraiser>(fundraiser);
     assert_eq!(u64::from(fundraiser_state.current_amount), 0);
-    assert_eq!(u32::from(fundraiser_state.open_contributor_accounts), 0);
+    assert_eq!(u32::from(fundraiser_state.open_contributions), 0);
 }
 
 #[quasar_test]
@@ -419,14 +417,14 @@ fn anyone_can_refund_a_contributor(test: &mut Test) {
         "refund must not require any signature"
     );
 
-    let contributor_account = contributor_account(test, fundraiser, FIRST_CONTRIBUTOR);
-    let rent = test.lamports(contributor_account);
+    let contribution = contribution(test, fundraiser, FIRST_CONTRIBUTOR);
+    let rent = test.lamports(contribution);
     let contributor_lamports_before = test.lamports(CONTRIBUTOR);
 
     test.send(instruction)
         .succeeds()
         .has_tokens(CONTRIBUTOR_TA, CONTRIBUTOR_STARTING_BALANCE)
-        .is_closed(contributor_account);
+        .is_closed(contribution);
     assert_eq!(
         test.lamports(CONTRIBUTOR),
         contributor_lamports_before + rent
@@ -467,14 +465,14 @@ fn refund_rejects_another_contributors_account(test: &mut Test) {
     // destination must be owned by the contributor.
     let mut instruction = refund_instruction(FIRST_CONTRIBUTOR);
     // Account indices follow the accounts-struct field order:
-    // 0 contributor, 3 contributor_account, 4 contributor_ta.
+    // 0 contributor, 3 contribution, 4 contributor_ta.
     instruction.accounts[4].pubkey = ATTACKER_TA;
     test.send(instruction)
         .fails(ProgramError::InvalidAccountData);
 
     // The attacker names themselves as the contributor, with their own token
     // account, against the victim's contributor record. The record's PDA is
-    // derived from ["contributor", fundraiser, attacker], which does not
+    // derived from ["contribution", fundraiser, attacker], which does not
     // match.
     let mut instruction = refund_instruction(FIRST_CONTRIBUTOR);
     instruction.accounts[0].pubkey = ATTACKER;
@@ -498,14 +496,14 @@ fn check_contributions_pays_maker_and_marks_claimed(test: &mut Test) {
         .has_tokens(VAULT, 0);
 
     // The fundraiser and the vault stay open, the fundraiser marked claimed,
-    // until every contributor account written for it is closed.
+    // until every contribution account written for it is closed.
     assert!(
         test.account(VAULT).is_some(),
         "the vault survives the claim"
     );
     assert!(is_claimed(test, fundraiser));
     assert_eq!(
-        open_contributor_accounts(test, fundraiser),
+        open_contributions(test, fundraiser),
         TARGET_CONTRIBUTORS.len() as u32
     );
 }
@@ -546,33 +544,33 @@ fn second_claim_fails(test: &mut Test) {
 }
 
 #[quasar_test]
-fn close_contributor_returns_rent_after_successful_raise(test: &mut Test) {
+fn close_contribution_returns_rent_after_successful_raise(test: &mut Test) {
     let fundraiser = initialized_world(test);
     fund_to_target(test);
     check_contributions(test).succeeds();
 
-    // The claim leaves the contributor account open with its rent inside.
-    let contributor_account = contributor_account(test, fundraiser, FIRST_CONTRIBUTOR);
-    let rent = test.lamports(contributor_account);
-    assert!(rent > 0, "the contributor account survives the claim");
+    // The claim leaves the contribution account open with its rent inside.
+    let contribution = contribution(test, fundraiser, FIRST_CONTRIBUTOR);
+    let rent = test.lamports(contribution);
+    assert!(rent > 0, "the contribution account survives the claim");
     let lamports_before = test.lamports(CONTRIBUTOR);
 
-    close_contributor(test, fundraiser)
+    close_contribution(test, fundraiser)
         .succeeds()
-        .is_closed(contributor_account);
+        .is_closed(contribution);
     assert_eq!(
         test.lamports(CONTRIBUTOR),
         lamports_before + rent,
-        "the contributor account's rent returns to the contributor"
+        "the contribution account's rent returns to the contributor"
     );
     assert_eq!(
-        open_contributor_accounts(test, fundraiser),
+        open_contributions(test, fundraiser),
         TARGET_CONTRIBUTORS.len() as u32 - 1
     );
 }
 
 #[quasar_test]
-fn anyone_can_close_contributor_accounts_after_claim(test: &mut Test) {
+fn anyone_can_close_contribution_accounts_after_claim(test: &mut Test) {
     let fundraiser = initialized_world(test);
     fund_to_target(test);
     check_contributions(test).succeeds();
@@ -580,39 +578,37 @@ fn anyone_can_close_contributor_accounts_after_claim(test: &mut Test) {
     // Whoever sends it, each rent deposit goes to its contributor, who signs
     // nothing.
     for contributor in TARGET_CONTRIBUTORS {
-        let instruction = close_contributor_instruction(contributor, fundraiser);
+        let instruction = close_contribution_instruction(contributor, fundraiser);
         assert!(
             instruction.accounts.iter().all(|meta| !meta.is_signer),
-            "close_contributor must not require any signature"
+            "close_contribution must not require any signature"
         );
 
-        let contributor_account = contributor_account(test, fundraiser, contributor);
-        let rent = test.lamports(contributor_account);
+        let contribution = contribution(test, fundraiser, contributor);
+        let rent = test.lamports(contribution);
         let lamports_before = test.lamports(contributor.wallet);
-        test.send(instruction)
-            .succeeds()
-            .is_closed(contributor_account);
+        test.send(instruction).succeeds().is_closed(contribution);
         assert_eq!(test.lamports(contributor.wallet), lamports_before + rent);
     }
 
-    assert_eq!(open_contributor_accounts(test, fundraiser), 0);
+    assert_eq!(open_contributions(test, fundraiser), 0);
 }
 
 #[quasar_test]
-fn close_contributor_before_claim_fails(test: &mut Test) {
+fn close_contribution_before_claim_fails(test: &mut Test) {
     let fundraiser = initialized_world(test);
     contribute(test, PARTIAL_CONTRIBUTION).succeeds();
 
     // The fundraiser is unclaimed, so the contribution can still be
     // refunded: closing the record now would erase what the vault owes.
-    close_contributor(test, fundraiser).fails_with(FundraiserError::FundraiserNotClaimed);
+    close_contribution(test, fundraiser).fails_with(FundraiserError::FundraiserNotClaimed);
 
-    let contributor_account = contributor_account(test, fundraiser, FIRST_CONTRIBUTOR);
+    let contribution = contribution(test, fundraiser, FIRST_CONTRIBUTOR);
     assert_eq!(
-        u64::from(test.read::<Contributor>(contributor_account).amount),
+        u64::from(test.read::<Contribution>(contribution).amount),
         PARTIAL_CONTRIBUTION
     );
-    assert_eq!(open_contributor_accounts(test, fundraiser), 1);
+    assert_eq!(open_contributions(test, fundraiser), 1);
 }
 
 #[quasar_test]
@@ -645,7 +641,7 @@ fn close_fundraiser_after_claim_allows_a_new_raise(test: &mut Test) {
     check_contributions(test).succeeds();
 
     for contributor in TARGET_CONTRIBUTORS {
-        close_contributor_for(test, contributor, fundraiser).succeeds();
+        close_contribution_for(test, contributor, fundraiser).succeeds();
     }
     // A claimed fundraiser closes without waiting for its deadline.
     close_fundraiser(test)
@@ -698,23 +694,23 @@ fn close_fundraiser_when_target_met_but_unclaimed_fails(test: &mut Test) {
 }
 
 #[quasar_test]
-fn close_fundraiser_with_open_contributor_accounts_fails(test: &mut Test) {
+fn close_fundraiser_with_open_contributions_fails(test: &mut Test) {
     let fundraiser = initialized_world(test);
     fund_to_target(test);
     check_contributions(test).succeeds();
 
-    // Close all but the first contributor account.
+    // Close all but the first contribution account.
     for contributor in &TARGET_CONTRIBUTORS[1..] {
-        close_contributor_for(test, *contributor, fundraiser).succeeds();
+        close_contribution_for(test, *contributor, fundraiser).succeeds();
     }
 
-    close_fundraiser(test).fails_with(FundraiserError::ContributorAccountsOpen);
+    close_fundraiser(test).fails_with(FundraiserError::ContributionsOpen);
     assert!(test.account(fundraiser).is_some());
-    assert_eq!(open_contributor_accounts(test, fundraiser), 1);
+    assert_eq!(open_contributions(test, fundraiser), 1);
 }
 
 #[quasar_test]
-fn reinitialize_with_open_contributor_accounts_fails(test: &mut Test) {
+fn reinitialize_with_open_contributions_fails(test: &mut Test) {
     let fundraiser = initialized_world(test);
     fund_to_target(test);
     check_contributions(test).succeeds();
@@ -725,23 +721,23 @@ fn reinitialize_with_open_contributor_accounts_fails(test: &mut Test) {
         .fails(ProgramError::AccountAlreadyInitialized);
     assert!(is_claimed(test, fundraiser));
     assert_eq!(
-        open_contributor_accounts(test, fundraiser),
+        open_contributions(test, fundraiser),
         TARGET_CONTRIBUTORS.len() as u32
     );
 }
 
 #[quasar_test]
-fn stale_contributor_account_cannot_refund_from_next_raise(test: &mut Test) {
+fn stale_contribution_cannot_refund_from_next_raise(test: &mut Test) {
     let fundraiser = initialized_world(test);
 
     // Raise one succeeds and the maker claims it.
     fund_to_target(test);
     check_contributions(test).succeeds();
 
-    // The maker closes every contributor account from raise one, then the
+    // The maker closes every contribution account from raise one, then the
     // fundraiser, and starts raise two at the same address.
     for contributor in TARGET_CONTRIBUTORS {
-        close_contributor_for(test, contributor, fundraiser).succeeds();
+        close_contribution_for(test, contributor, fundraiser).succeeds();
     }
     close_fundraiser(test).succeeds();
     initialize_fundraiser(test, TARGET_AMOUNT, DURATION_DAYS).succeeds();
@@ -753,11 +749,11 @@ fn stale_contributor_account_cannot_refund_from_next_raise(test: &mut Test) {
         contribute_from(test, *contributor, amount).succeeds();
     }
     let raise_two_total = PARTIAL_CONTRIBUTION + SECOND_PARTIAL_CONTRIBUTION;
-    assert_eq!(open_contributor_accounts(test, fundraiser), 2);
+    assert_eq!(open_contributions(test, fundraiser), 2);
     test.warp_to_timestamp(DEADLINE);
 
     // A raise-one contributor tries to take a refund from raise two. Their
-    // contributor account was closed with raise one, so the address is a
+    // contribution account was closed with raise one, so the address is a
     // system-owned empty account, not a contributor record: there is nothing
     // to refund.
     let stale_contributor = FIRST_CONTRIBUTOR;
@@ -776,7 +772,7 @@ fn stale_contributor_account_cannot_refund_from_next_raise(test: &mut Test) {
     }
     let state = test.read::<Fundraiser>(fundraiser);
     assert_eq!(u64::from(state.current_amount), 0);
-    assert_eq!(u32::from(state.open_contributor_accounts), 0);
+    assert_eq!(u32::from(state.open_contributions), 0);
     assert_eq!(test.tokens(VAULT), 0);
 }
 

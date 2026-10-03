@@ -47,11 +47,11 @@ pub struct CheckContributionsAccountConstraints<'info> {
 /// Pays the vault out to the maker once the target is met, and marks the
 /// fundraiser claimed.
 ///
-/// The fundraiser account and the vault stay open: contributor accounts are
+/// The fundraiser account and the vault stay open: contribution accounts are
 /// derived from the fundraiser's address, so the fundraiser must outlive every
 /// one of them. Otherwise the maker could initialize a new fundraiser at the
-/// same address, and contributor accounts left over from this raise would
-/// count as contributions to the new one. `close_contributor` closes them,
+/// same address, and contribution accounts left over from this raise would
+/// count as contributions to the new one. `close_contribution` closes them,
 /// then `close_fundraiser` closes the fundraiser and the vault.
 pub fn handle_check_contributions(
     accounts: &mut CheckContributionsAccountConstraints,

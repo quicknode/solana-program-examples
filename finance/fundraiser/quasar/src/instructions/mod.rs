@@ -10,8 +10,8 @@ pub use check_contributions::*;
 pub mod refund;
 pub use refund::*;
 
-pub mod close_contributor;
-pub use close_contributor::*;
+pub mod close_contribution;
+pub use close_contribution::*;
 
 pub mod close_fundraiser;
 pub use close_fundraiser::*;
