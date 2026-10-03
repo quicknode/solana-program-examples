@@ -1,7 +1,7 @@
 //! The pure contract math and the custody check, ported from the Anchor
-//! sibling (`options::contract_math` and `instructions::shared`). There is no
-//! division anywhere in settlement: every amount is a product of two of the
-//! option's integers, and the only rounding is the floor in the fee split.
+//! sibling (`options::contract_math` and `instructions::shared`). Settlement
+//! does no arithmetic at all: the option stores the two amounts that change
+//! hands, and the only rounding is the floor in the fee split.
 
 use {
     crate::{
@@ -17,9 +17,8 @@ use {
 #[derive(Clone, Copy)]
 pub struct Terms {
     pub kind: u8,
-    pub contracts: u64,
-    pub underlying_per_contract: u64,
-    pub strike_per_contract: u64,
+    pub underlying_amount: u64,
+    pub strike_amount: u64,
 }
 
 impl Terms {
@@ -27,36 +26,22 @@ impl Terms {
         self.kind == KIND_CALL
     }
 
-    /// `contracts * underlying_per_contract`.
-    pub fn underlying_total(&self) -> Result<u64, ProgramError> {
-        self.contracts
-            .checked_mul(self.underlying_per_contract)
-            .ok_or_else(|| OptionsError::MathOverflow.into())
-    }
-
-    /// `contracts * strike_per_contract`.
-    pub fn strike_total(&self) -> Result<u64, ProgramError> {
-        self.contracts
-            .checked_mul(self.strike_per_contract)
-            .ok_or_else(|| OptionsError::MathOverflow.into())
-    }
-
     /// What the writer posts: the underlying for a call, the strike for a put.
-    pub fn collateral_amount(&self) -> Result<u64, ProgramError> {
+    pub fn collateral_amount(&self) -> u64 {
         if self.is_call() {
-            self.underlying_total()
+            self.underlying_amount
         } else {
-            self.strike_total()
+            self.strike_amount
         }
     }
 
     /// What the holder pays at exercise and the writer later collects: the
     /// mirror of `collateral_amount`, in the other token.
-    pub fn exercise_payment(&self) -> Result<u64, ProgramError> {
+    pub fn exercise_payment(&self) -> u64 {
         if self.is_call() {
-            self.strike_total()
+            self.strike_amount
         } else {
-            self.underlying_total()
+            self.underlying_amount
         }
     }
 }

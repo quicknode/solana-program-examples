@@ -62,11 +62,10 @@ pub fn handle_reclaim_collateral(
 
     let terms = Terms {
         kind: accounts.option.kind,
-        contracts: accounts.option.contracts.get(),
-        underlying_per_contract: accounts.option.underlying_per_contract.get(),
-        strike_per_contract: accounts.option.strike_per_contract.get(),
+        underlying_amount: accounts.option.underlying_amount.get(),
+        strike_amount: accounts.option.strike_amount.get(),
     };
-    let collateral = terms.collateral_amount()?;
+    let collateral = terms.collateral_amount();
 
     let mut underlying_after = accounts.underlying_vault.amount();
     let mut quote_after = accounts.quote_vault.amount();

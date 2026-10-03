@@ -54,11 +54,10 @@ pub fn handle_collect_proceeds(
     );
     let terms = Terms {
         kind: accounts.option.kind,
-        contracts: accounts.option.contracts.get(),
-        underlying_per_contract: accounts.option.underlying_per_contract.get(),
-        strike_per_contract: accounts.option.strike_per_contract.get(),
+        underlying_amount: accounts.option.underlying_amount.get(),
+        strike_amount: accounts.option.strike_amount.get(),
     };
-    let proceeds = terms.exercise_payment()?;
+    let proceeds = terms.exercise_payment();
 
     let mut underlying_after = accounts.underlying_vault.amount();
     let mut quote_after = accounts.quote_vault.amount();

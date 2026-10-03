@@ -1,55 +1,35 @@
-//! The pure arithmetic of one option, separated from account handling so it
-//! can be unit-tested and model-checked (see `finance/options/kani-proofs`)
+//! The pure logic of one option, separated from account handling so it can
+//! be unit-tested and model-checked (see `finance/options/kani-proofs`)
 //! without the Solana machinery.
 //!
-//! There is no division anywhere: every settlement amount is the product of
-//! two integers the writer chose, and the only rounding in the program is the
-//! floor in the fee split. Every function returns `None` on the paths the
-//! program maps to `OptionsError::MathOverflow`.
+//! There is no arithmetic in settlement at all: the option stores the two
+//! amounts that change hands, and settlement moves them as they are. The only
+//! rounding in the program is the floor in the fee split, and `split_premium`
+//! returns `None` on the paths the program maps to `OptionsError::MathOverflow`.
 
 use crate::state::OptionKind;
 
 /// Basis-point denominator, mirroring `constants::BASIS_POINTS_DENOMINATOR`.
 const BASIS_POINTS: u128 = 10_000;
 
-/// The underlying side of an option: `contracts * underlying_per_contract`.
-pub fn underlying_total(contracts: u64, underlying_per_contract: u64) -> Option<u64> {
-    contracts.checked_mul(underlying_per_contract)
-}
-
-/// The quote side of an option: `contracts * strike_per_contract`.
-pub fn strike_total(contracts: u64, strike_per_contract: u64) -> Option<u64> {
-    contracts.checked_mul(strike_per_contract)
-}
-
 /// What the writer posts, in the collateral token's minor units: the
 /// underlying for a call, the strike for a put. Whatever the holder is
 /// entitled to at exercise is sitting in the vault from the moment the option
 /// exists, which is what makes the option fully collateralized.
-pub fn collateral_amount(
-    kind: OptionKind,
-    contracts: u64,
-    underlying_per_contract: u64,
-    strike_per_contract: u64,
-) -> Option<u64> {
+pub fn collateral_amount(kind: OptionKind, underlying_amount: u64, strike_amount: u64) -> u64 {
     match kind {
-        OptionKind::Call => underlying_total(contracts, underlying_per_contract),
-        OptionKind::Put => strike_total(contracts, strike_per_contract),
+        OptionKind::Call => underlying_amount,
+        OptionKind::Put => strike_amount,
     }
 }
 
 /// What the holder pays at exercise, and the writer later collects: the
 /// strike for a call, the underlying for a put. The mirror of
 /// `collateral_amount`, in the other token.
-pub fn exercise_payment(
-    kind: OptionKind,
-    contracts: u64,
-    underlying_per_contract: u64,
-    strike_per_contract: u64,
-) -> Option<u64> {
+pub fn exercise_payment(kind: OptionKind, underlying_amount: u64, strike_amount: u64) -> u64 {
     match kind {
-        OptionKind::Call => strike_total(contracts, strike_per_contract),
-        OptionKind::Put => underlying_total(contracts, underlying_per_contract),
+        OptionKind::Call => strike_amount,
+        OptionKind::Put => underlying_amount,
     }
 }
 

@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-10-03
+
+The option now stores `underlying_amount` and `strike_amount`, the two amounts
+that change hands, instead of `contracts`, `underlying_per_contract` and
+`strike_per_contract`, which the program only ever multiplied together.
+`write_option` takes the two amounts as arguments in place of the three
+quantities. Settlement does no arithmetic: the collateral is one stored amount
+and the exercise payment is the other. The write-time overflow check, and the
+test that wrote an option whose collateral overflowed, are gone. The account
+layout changes.
+
 ## 2026-09-30
 
 Rename the market's `underlying_locked` and `quote_locked` to `underlying_owed`
