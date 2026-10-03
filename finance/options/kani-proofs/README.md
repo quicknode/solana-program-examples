@@ -13,8 +13,8 @@ one.
 
 The onchain instructions hand token movement to the SPL token program through
 CPIs that Kani cannot symbolically execute, but the arithmetic they rely on is
-pure integer math, and small: every settlement amount is a product of two
-integers the writer chose, the only rounding in the program is the floor in
+pure integer math, and small: settlement moves the two amounts the writer
+chose and the option stores, the only rounding in the program is the floor in
 the fee split, and the expiry window is one comparison and its complement.
 This crate reproduces those formulas (mirroring `options::contract_math`) and
 the handlers' custody accounting (mirroring the `underlying_owed`,
@@ -25,7 +25,8 @@ in the declared ranges:
   would accept, physical settlement hands the holder exactly the collateral
   the writer posted and hands the writer exactly the mirrored payment, both
   positive, with a call's payment equal to a put's collateral on the same
-  terms. No division means no rounding gap between posted and delivered.
+  terms. Settlement does no arithmetic, so nothing can open a gap between
+  posted and delivered.
 - `proof_premium_split_conserves_the_premium`: fee plus the writer's share is
   exactly the premium, the fee never exceeds it, the writer always receives
   something while the fee is under 100%, and the fee is the exact floor of
@@ -42,16 +43,13 @@ in the declared ranges:
 
 ## Bounded model checking
 
-Every product in these harnesses multiplies two symbolic values, which is
-nonlinear arithmetic and the worst case for a bit-precise model checker.
-Following percolator's practice, the terms are bounded and the identities are
-argued to be independent of the bound:
+A product of two symbolic values is nonlinear arithmetic and the worst case
+for a bit-precise model checker. Following percolator's practice, harnesses
+that multiply bound their terms and argue the identities are independent of
+the bound:
 
-- `proof_exercise_moves_exactly_the_posted_terms`: contracts and per-contract
-  amounts at most `0xFF`. An 8-bit multiplication exercises every carry
-  pattern and finishes in under a minute, where 16-bit terms run for tens of
-  minutes; larger terms add magnitude, not behavior. Within the bound no
-  product overflows, so the overflow refusal is pinned by a unit test.
+- `proof_exercise_moves_exactly_the_posted_terms`: fully symbolic; the
+  amounts are any nonzero u64, since settlement does no arithmetic.
 - `proof_premium_split_conserves_the_premium`: premium and fee rate each at
   most `0xFF`. The split is a 128-bit multiply followed by a 128-bit division,
   and checking a divider exact against a multiplier is the hardest shape of
@@ -62,7 +60,7 @@ argued to be independent of the bound:
 - `proof_exercise_and_reclaim_windows_partition_time`: fully symbolic; it is
   one comparison.
 - `proof_vault_ledger_stays_consistent_across_every_lifecycle`: each option's
-  terms at most 15, premiums and fee rates at most 255. The ledger arithmetic
+  amounts, premiums and fee rates at most 255. The ledger arithmetic
   it exercises is additions and subtractions whose behavior does not depend on
   the magnitudes.
 
