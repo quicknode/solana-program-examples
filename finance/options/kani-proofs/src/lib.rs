@@ -10,8 +10,8 @@
 //! The on-chain instructions hand the actual token movement to the SPL token
 //! program via CPIs that Kani cannot symbolically execute. The arithmetic
 //! underneath is small and is reproduced here faithfully, mirroring
-//! `options::contract_math`: every settlement amount is a product of two
-//! integers, the only rounding is the floor in the fee split, and the expiry
+//! `options::contract_math`: settlement moves the two amounts the option
+//! stores, the only rounding is the floor in the fee split, and the expiry
 //! window is one comparison and its complement. The harnesses check the
 //! invariants the program's custody accounting depends on, plus a bounded
 //! model of the vault ledger across an option's whole life.
@@ -31,87 +31,44 @@ pub enum OptionKind {
 // 1. Settlement amounts  (contract_math.rs)
 // ===========================================================================
 
-/// `contracts * underlying_per_contract`. Mirrors `contract_math::underlying_total`.
-pub fn underlying_total(contracts: u64, underlying_per_contract: u64) -> Option<u64> {
-    contracts.checked_mul(underlying_per_contract)
-}
-
-/// `contracts * strike_per_contract`. Mirrors `contract_math::strike_total`.
-pub fn strike_total(contracts: u64, strike_per_contract: u64) -> Option<u64> {
-    contracts.checked_mul(strike_per_contract)
-}
-
-/// What the writer posts. Mirrors `contract_math::collateral_amount`.
-pub fn collateral_amount(
-    kind: OptionKind,
-    contracts: u64,
-    underlying_per_contract: u64,
-    strike_per_contract: u64,
-) -> Option<u64> {
+/// What the writer posts: the underlying for a call, the strike for a put.
+/// Mirrors `contract_math::collateral_amount`.
+pub fn collateral_amount(kind: OptionKind, underlying_amount: u64, strike_amount: u64) -> u64 {
     match kind {
-        OptionKind::Call => underlying_total(contracts, underlying_per_contract),
-        OptionKind::Put => strike_total(contracts, strike_per_contract),
+        OptionKind::Call => underlying_amount,
+        OptionKind::Put => strike_amount,
     }
 }
 
 /// What the holder pays at exercise and the writer later collects. Mirrors
 /// `contract_math::exercise_payment`.
-pub fn exercise_payment(
-    kind: OptionKind,
-    contracts: u64,
-    underlying_per_contract: u64,
-    strike_per_contract: u64,
-) -> Option<u64> {
+pub fn exercise_payment(kind: OptionKind, underlying_amount: u64, strike_amount: u64) -> u64 {
     match kind {
-        OptionKind::Call => strike_total(contracts, strike_per_contract),
-        OptionKind::Put => underlying_total(contracts, underlying_per_contract),
+        OptionKind::Call => strike_amount,
+        OptionKind::Put => underlying_amount,
     }
 }
 
 /// Physical settlement moves exactly the posted collateral to the holder and
 /// exactly the mirrored payment to the writer, for every option the program
 /// would accept: the holder's payment for a call is a put's collateral on the
-/// same terms, and the other way round. There is no division in either
-/// formula, so no rounding can open a gap between what was posted and what
-/// is delivered.
+/// same terms, and the other way round. Settlement does no arithmetic, so
+/// nothing can open a gap between what was posted and what is delivered, and
+/// the harness needs no bound on the amounts.
 #[cfg(kani)]
 #[kani::proof]
 fn proof_exercise_moves_exactly_the_posted_terms() {
-    let contracts: u64 = kani::any();
-    let underlying_per_contract: u64 = kani::any();
-    let strike_per_contract: u64 = kani::any();
-    // write_option refuses a zero in any term. Bounded model checking: the
-    // two products multiply symbolic values, nonlinear arithmetic that the
-    // bit-precise solver pays for exponentially by the bit (16-bit terms run
-    // for tens of minutes; 8-bit terms finish in under a minute). 8-bit terms
-    // exercise every carry pattern of the multiplication, and larger terms
-    // add magnitude rather than new behavior. Within the bound no product
-    // overflows, so the overflow refusal is pinned by the unit test below.
-    kani::assume(contracts >= 1 && contracts <= 0xFF);
-    kani::assume(underlying_per_contract >= 1 && underlying_per_contract <= 0xFF);
-    kani::assume(strike_per_contract >= 1 && strike_per_contract <= 0xFF);
-    let underlying =
-        underlying_total(contracts, underlying_per_contract).expect("within the bound");
-    let strike = strike_total(contracts, strike_per_contract).expect("within the bound");
+    let underlying_amount: u64 = kani::any();
+    let strike_amount: u64 = kani::any();
+    // write_option refuses a zero amount.
+    kani::assume(underlying_amount >= 1 && strike_amount >= 1);
 
     for kind in [OptionKind::Call, OptionKind::Put] {
-        let collateral = collateral_amount(
-            kind,
-            contracts,
-            underlying_per_contract,
-            strike_per_contract,
-        )
-        .expect("write_option checked both totals");
-        let payment = exercise_payment(
-            kind,
-            contracts,
-            underlying_per_contract,
-            strike_per_contract,
-        )
-        .expect("write_option checked both totals");
+        let collateral = collateral_amount(kind, underlying_amount, strike_amount);
+        let payment = exercise_payment(kind, underlying_amount, strike_amount);
         let (expected_collateral, expected_payment) = match kind {
-            OptionKind::Call => (underlying, strike),
-            OptionKind::Put => (strike, underlying),
+            OptionKind::Call => (underlying_amount, strike_amount),
+            OptionKind::Put => (strike_amount, underlying_amount),
         };
         assert_eq!(collateral, expected_collateral);
         assert_eq!(payment, expected_payment);
@@ -126,13 +83,7 @@ fn proof_exercise_moves_exactly_the_posted_terms() {
         };
         assert_eq!(
             payment,
-            collateral_amount(
-                mirror,
-                contracts,
-                underlying_per_contract,
-                strike_per_contract
-            )
-            .unwrap()
+            collateral_amount(mirror, underlying_amount, strike_amount)
         );
     }
 }
@@ -330,20 +281,18 @@ impl Ledger {
 fn proof_vault_ledger_stays_consistent_across_every_lifecycle() {
     let mut ledger = Ledger::default();
 
-    // Two options with symbolic terms. Bounded so the multiplications stay
-    // tractable; the ledger arithmetic is additions and subtractions whose
-    // behaviour does not depend on the magnitudes.
+    // Two options with symbolic terms. Bounded so the premium split's
+    // multiplication stays tractable; the ledger arithmetic is additions and
+    // subtractions whose behaviour does not depend on the magnitudes.
     let mut options = [(OptionKind::Call, 0u64, 0u64, 0u64); 2];
     for option in options.iter_mut() {
         let kind: bool = kani::any();
-        let contracts: u64 = kani::any();
-        let underlying_per_contract: u64 = kani::any();
-        let strike_per_contract: u64 = kani::any();
+        let underlying_amount: u64 = kani::any();
+        let strike_amount: u64 = kani::any();
         let premium: u64 = kani::any();
         let fee_bps: u16 = kani::any();
-        kani::assume(contracts >= 1 && contracts <= 15);
-        kani::assume(underlying_per_contract >= 1 && underlying_per_contract <= 15);
-        kani::assume(strike_per_contract >= 1 && strike_per_contract <= 15);
+        kani::assume(underlying_amount >= 1 && underlying_amount <= 255);
+        kani::assume(strike_amount >= 1 && strike_amount <= 255);
         kani::assume(premium >= 1 && premium <= 255);
         kani::assume(fee_bps <= 255);
         let kind = if kind {
@@ -351,20 +300,8 @@ fn proof_vault_ledger_stays_consistent_across_every_lifecycle() {
         } else {
             OptionKind::Put
         };
-        let collateral = collateral_amount(
-            kind,
-            contracts,
-            underlying_per_contract,
-            strike_per_contract,
-        )
-        .unwrap();
-        let payment = exercise_payment(
-            kind,
-            contracts,
-            underlying_per_contract,
-            strike_per_contract,
-        )
-        .unwrap();
+        let collateral = collateral_amount(kind, underlying_amount, strike_amount);
+        let payment = exercise_payment(kind, underlying_amount, strike_amount);
         let (fee, _) = split_premium(premium, fee_bps).unwrap();
         *option = (kind, collateral, payment, fee);
     }
@@ -428,19 +365,18 @@ mod tests {
 
     #[test]
     fn the_call_posts_five_nvdax_and_settles_for_nine_hundred_usdc() {
-        // 5 contracts, each on 1 NVDAx, strike 180 USDC.
-        let collateral =
-            collateral_amount(OptionKind::Call, 5, ONE_TOKEN, 180 * ONE_TOKEN).unwrap();
-        let payment = exercise_payment(OptionKind::Call, 5, ONE_TOKEN, 180 * ONE_TOKEN).unwrap();
+        // 5 NVDAx at a strike of 180 USDC each, 900 USDC in all.
+        let collateral = collateral_amount(OptionKind::Call, 5 * ONE_TOKEN, 900 * ONE_TOKEN);
+        let payment = exercise_payment(OptionKind::Call, 5 * ONE_TOKEN, 900 * ONE_TOKEN);
         assert_eq!(collateral, 5 * ONE_TOKEN);
         assert_eq!(payment, 900 * ONE_TOKEN);
     }
 
     #[test]
     fn the_put_posts_seven_fifty_usdc_and_settles_for_five_nvdax() {
-        // 5 contracts, each on 1 NVDAx, strike 150 USDC.
-        let collateral = collateral_amount(OptionKind::Put, 5, ONE_TOKEN, 150 * ONE_TOKEN).unwrap();
-        let payment = exercise_payment(OptionKind::Put, 5, ONE_TOKEN, 150 * ONE_TOKEN).unwrap();
+        // 5 NVDAx at a strike of 150 USDC each, 750 USDC in all.
+        let collateral = collateral_amount(OptionKind::Put, 5 * ONE_TOKEN, 750 * ONE_TOKEN);
+        let payment = exercise_payment(OptionKind::Put, 5 * ONE_TOKEN, 750 * ONE_TOKEN);
         assert_eq!(collateral, 750 * ONE_TOKEN);
         assert_eq!(payment, 5 * ONE_TOKEN);
     }
@@ -484,12 +420,6 @@ mod tests {
         assert!(!may_exercise(expiry, expiry));
         assert!(!may_reclaim(expiry - 1, expiry));
         assert!(may_reclaim(expiry, expiry));
-    }
-
-    #[test]
-    fn a_lot_that_overflows_is_refused_at_write_time() {
-        assert_eq!(underlying_total(u64::MAX, 2), None);
-        assert_eq!(strike_total(u64::MAX, 2), None);
     }
 
     #[test]
