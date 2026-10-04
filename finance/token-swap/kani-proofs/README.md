@@ -14,9 +14,9 @@ assertion held or the input that breaks one.
 
 The on-chain instructions hand token movement to the SPL token program through
 CPIs that Kani cannot symbolically execute, but the *interesting* part, the
-constant-product curve, the fee split, the integer square root used for the
-initial LP mint, and the proportional deposit and withdraw math, is pure integer
-arithmetic. This crate reproduces those formulas faithfully (same `u128`
+constant-product curve, the fee split, the integer square root `initialize_pool`
+uses for the creator's LP mint, and the proportional deposit and withdraw math,
+is pure integer arithmetic. This crate reproduces those formulas faithfully (same `u128`
 widening, multiply-before-divide, floor rounding) and checks their invariants:
 
 - `proof_fee_split_bounds`: `fee <= input`, `admin_portion <= fee`, and `taxed_input + fee == input`.
@@ -27,7 +27,7 @@ widening, multiply-before-divide, floor rounding) and checks their invariants:
 - `proof_withdraw_never_exceeds_reserve`: An LP can never withdraw more than the reserve holds (the `MINIMUM_LIQUIDITY` floor guarantees it).
 - `proof_deposit_withdraw_round_trip_is_fair`: Burning the LP tokens a deposit just minted returns at most the deposit, and less than one minor unit plus one LP token's worth short of it. The lower bound holds only because deposit and withdraw both divide by `lp_supply + MINIMUM_LIQUIDITY`; a deposit divided by the bare supply fails it.
 - `proof_rounding_a_deposit_to_zero_needs_floor_times_donation`: For a later deposit to mint zero LP tokens, the reserve must exceed the deposit times `attacker_lp + MINIMUM_LIQUIDITY`, so an attacker holding one LP token must donate about `MINIMUM_LIQUIDITY + 1` times the victim's deposit.
-- `proof_deposit_clamp_never_exceeds_request`: The ratio clamp never spends more of either token than the caller offered.
+- `proof_deposit_clamp_never_exceeds_request`: The ratio clamp never spends more of either token than the caller offered. The model refuses an empty reserve as `deposit_liquidity` does with `EmptyPoolReserve`; every pool opens with its creator's deposit in `initialize_pool`.
 
 ## Bounded model checking
 
@@ -77,7 +77,8 @@ require!(
 
 so the drained state is unreachable on-chain regardless of any reachability
 argument. Reaching `effective_reserve == 0` was already a degenerate state the
-deposit path prevents (the `MINIMUM_LIQUIDITY` floor keeps the bootstrap product
+rest of the program prevents (`initialize_pool` opens every pool with both
+reserves positive, the `MINIMUM_LIQUIDITY` floor keeps the bootstrap product
 positive, and `proof_swap_preserves_constant_product` shows ordinary swaps keep
 both sides positive), so this was a latent edge, not a live exploit, but the
 guard means solvency no longer *depends* on that argument.

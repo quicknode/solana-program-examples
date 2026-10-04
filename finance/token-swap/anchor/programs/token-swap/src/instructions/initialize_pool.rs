@@ -8,18 +8,60 @@ use anchor_spl::{
 use crate::{
     constants::{CONFIG_SEED, LIQUIDITY_SEED},
     errors::AmmError,
+    liquidity::{deposit_and_mint_lp_tokens, initial_lp_amount, LiquidityDepositAccounts},
     state::{Config, PoolConfig},
 };
 
+/// Creates the pool and takes the creator's first deposit in the same
+/// instruction. The first deposit sets the pool's price (the ratio of its
+/// reserves), so a pool that existed empty between two transactions would let
+/// whoever deposited first set the price for its creator. Taking the deposit
+/// here means every pool has both reserves positive from the moment it
+/// exists, and `deposit_liquidity` only ever clamps to a price the creator
+/// chose.
 pub fn handle_initialize_pool(
     context: &mut Context<InitializePoolAccountConstraints>,
+    amount_a: u64,
+    amount_b: u64,
 ) -> Result<()> {
+    require!(amount_a > 0 && amount_b > 0, AmmError::EmptyInitialDeposit);
+    if amount_a > context.accounts.creator_token_a.amount()
+        || amount_b > context.accounts.creator_token_b.amount()
+    {
+        return err!(AmmError::InsufficientBalance);
+    }
+    let lp_amount = initial_lp_amount(amount_a, amount_b)?;
+
     let bump = context.bumps.pool_config;
     let pool_config = &mut context.accounts.pool_config;
     pool_config.config = *context.accounts.config.address();
     pool_config.mint_a = *context.accounts.mint_a.address();
     pool_config.mint_b = *context.accounts.mint_b.address();
     pool_config.bump = bump;
+
+    deposit_and_mint_lp_tokens(
+        LiquidityDepositAccounts {
+            token_program: &context.accounts.token_program,
+            pool_config: &mut context.accounts.pool_config,
+            mint_a: &context.accounts.mint_a,
+            mint_b: &context.accounts.mint_b,
+            pool_a: &mut context.accounts.pool_a,
+            pool_b: &mut context.accounts.pool_b,
+            depositor: &context.accounts.creator,
+            depositor_token_a: &mut context.accounts.creator_token_a,
+            depositor_token_b: &mut context.accounts.creator_token_b,
+            liquidity_provider_mint: &mut context.accounts.liquidity_provider_mint,
+            liquidity_provider_token: &mut context.accounts.liquidity_provider_token,
+        },
+        amount_a,
+        amount_b,
+        lp_amount,
+    )?;
+
+    // `pool_config` was created here, so it is loaded mutably and the derive
+    // writes it back when the handler returns: take the borrow the mint
+    // released back before then.
+    context.accounts.pool_config.reacquire_borrow_mut()?;
 
     Ok(())
 }
@@ -90,6 +132,36 @@ pub struct InitializePoolAccountConstraints {
         associated_token::token_program = token_program,
     )]
     pub pool_b: Box<InterfaceAccount<TokenAccount>>,
+
+    /// Makes the first deposit and receives the first LP tokens.
+    pub creator: Signer,
+
+    #[account(
+        mut,
+        associated_token::mint = mint_a,
+        associated_token::authority = creator,
+        associated_token::token_program = token_program,
+    )]
+    pub creator_token_a: Box<InterfaceAccount<TokenAccount>>,
+
+    #[account(
+        mut,
+        associated_token::mint = mint_b,
+        associated_token::authority = creator,
+        associated_token::token_program = token_program,
+    )]
+    pub creator_token_b: Box<InterfaceAccount<TokenAccount>>,
+
+    /// The creator's LP token account, created here because the LP mint did
+    /// not exist before this instruction.
+    #[account(
+        init,
+        payer = payer,
+        associated_token::mint = liquidity_provider_mint,
+        associated_token::authority = creator,
+        associated_token::token_program = token_program,
+    )]
+    pub liquidity_provider_token: Box<InterfaceAccount<TokenAccount>>,
 
     /// The account paying for all rents
     #[account(mut)]

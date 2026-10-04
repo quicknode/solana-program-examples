@@ -12,8 +12,11 @@ pub enum AmmError {
     /// share is a basis-points fraction of the trading fee, so the admin
     /// cannot take more than the whole fee.
     AdminShareTooHigh,
-    /// The initial deposit's geometric mean is below `MINIMUM_LIQUIDITY`, or a
-    /// subsequent deposit is too small to mint any LP tokens.
+    /// Depositing too little liquidity. Returned by `initialize_pool` when
+    /// `sqrt(amount_a * amount_b)` is below `MINIMUM_LIQUIDITY`, so withholding
+    /// the floor would leave the creator nothing, and by `deposit_liquidity`
+    /// when a later deposit is too small a share of the pool to mint a single
+    /// LP token.
     DepositTooSmall,
     /// Clamping the caller's amounts to the current pool ratio rounded one
     /// side down to zero; the pool cannot issue meaningful LP shares.
@@ -50,9 +53,17 @@ pub enum AmmError {
     /// pool PDA; without it an (X, Y) pool and a (Y, X) pool would both be
     /// valid, fragmenting liquidity.
     InvalidMintOrder,
-    /// `swap_tokens` found an LP-claimable (effective) reserve of zero.
-    /// Swapping against an empty reserve would let the constant-product curve
-    /// pay out the whole opposite side while the invariant check passes
-    /// vacuously (k = 0 >= 0), so the swap is rejected outright.
+    /// `swap_tokens` or `deposit_liquidity` found an LP-claimable (effective)
+    /// reserve of zero. Swapping against an empty reserve would let the
+    /// constant-product curve pay out the whole opposite side while the
+    /// invariant check passes vacuously (k = 0 >= 0), and a deposit into an
+    /// empty pool would set its price, so both are rejected outright. Every
+    /// pool opens with its creator's deposit, and neither a withdrawal nor a
+    /// swap can empty a reserve, so the state is not reachable.
     EmptyPoolReserve,
+    /// A pool cannot open empty: the first deposit sets its price. Returned
+    /// by `initialize_pool` when either amount is zero. The deposit that opens
+    /// a pool sets its price (the ratio of its reserves), so a pool is never
+    /// created without one.
+    EmptyInitialDeposit,
 }

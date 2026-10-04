@@ -43,8 +43,9 @@ the runtime hands the program the second slot as a duplicate of the first.
 failing with `EmptyPoolReserve`. Against an empty input side the
 constant-product formula pays out the whole opposite reserve, and the
 invariant check cannot catch it because the pre-trade product is zero.
-`swap_rejects_empty_reserve` runs that swap against a pool whose `pool_b` was
-funded directly before any deposit.
+`swap_rejects_empty_reserve` runs that swap against a pool whose `pool_a` was
+emptied by hand, a state no instruction produces now that every pool opens
+with its creator's deposit.
 
 ## Setup
 

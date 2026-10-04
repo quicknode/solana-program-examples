@@ -3,6 +3,7 @@ use anchor_lang::prelude::*;
 mod constants;
 mod errors;
 mod instructions;
+mod liquidity;
 mod state;
 
 declare_id!("GahM6PrXesrBkHiGJ5no4EskLNnVBCaSwVKbM4UtzyK6");
@@ -20,8 +21,12 @@ pub mod swap_example {
         instructions::handle_initialize_config(context, fee, admin_share_bps)
     }
 
-    pub fn initialize_pool(context: Context<InitializePoolAccountConstraints>) -> Result<()> {
-        instructions::handle_initialize_pool(context)
+    pub fn initialize_pool(
+        context: Context<InitializePoolAccountConstraints>,
+        amount_a: u64,
+        amount_b: u64,
+    ) -> Result<()> {
+        instructions::handle_initialize_pool(context, amount_a, amount_b)
     }
 
     pub fn deposit_liquidity(

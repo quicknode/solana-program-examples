@@ -3,6 +3,7 @@ use anchor_lang::prelude::*;
 mod constants;
 pub mod errors;
 pub mod instructions;
+mod liquidity;
 mod state;
 
 // The `#[derive(Accounts)]` client modules are generated beside their structs,
@@ -24,8 +25,12 @@ pub mod swap_example {
         instructions::handle_initialize_config(context, fee, admin_share_bps)
     }
 
-    pub fn initialize_pool(context: &mut Context<InitializePoolAccountConstraints>) -> Result<()> {
-        instructions::handle_initialize_pool(context)
+    pub fn initialize_pool(
+        context: &mut Context<InitializePoolAccountConstraints>,
+        amount_a: u64,
+        amount_b: u64,
+    ) -> Result<()> {
+        instructions::handle_initialize_pool(context, amount_a, amount_b)
     }
 
     pub fn deposit_liquidity(
