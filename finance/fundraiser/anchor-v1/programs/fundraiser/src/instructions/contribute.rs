@@ -91,7 +91,6 @@ pub fn handle_contribute(
         .checked_add(amount)
         .ok_or(FundraiserError::MathOverflow)?;
 
-    // Checks-effects-interactions: update state before the transfer CPI.
     accounts.fundraiser.current_amount = accounts
         .fundraiser
         .current_amount

@@ -149,12 +149,10 @@ pub fn handle_swap_tokens(
         .checked_mul(effective_pool_b as u128)
         .ok_or(AmmError::MathOverflow)?;
 
-    // Effects (Checks-Effects-Interactions): accumulate the admin's slice on
-    // the *input* side before any transfer CPI. The fee always comes off the
-    // input, so the admin's claim grows in the input token. Writing state
-    // before the interactions is the safe ordering - a failed CPI reverts the
-    // whole transaction, so the accumulator update can never outlive a failed
-    // transfer.
+    // Accumulate the admin's slice on the *input* side. The fee always comes
+    // off the input, so the admin's claim grows in the input token. A failed
+    // transfer reverts the whole transaction, so the accumulator update can
+    // never outlive a failed transfer.
     let (new_owed_a, new_owed_b) = if input_is_token_a {
         (
             owed_a

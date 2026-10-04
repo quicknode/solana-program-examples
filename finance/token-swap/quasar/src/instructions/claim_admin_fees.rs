@@ -73,9 +73,8 @@ pub fn handle_claim_admin_fees(
         Seed::from(&bump as &[u8]),
     ];
 
-    // Effects: zero the accumulators before the transfer CPIs
-    // (Checks-Effects-Interactions). If a CPI fails the whole transaction
-    // reverts, so resetting the onchain bookkeeping first is safe.
+    // Zero the accumulators. If a transfer below fails, the whole transaction
+    // reverts, so the accumulators keep their values.
     let config_addr = *accounts.pool_config.config();
     let mint_a_addr = *accounts.pool_config.mint_a();
     let mint_b_addr = *accounts.pool_config.mint_b();

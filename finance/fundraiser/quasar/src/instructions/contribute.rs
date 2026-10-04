@@ -69,7 +69,6 @@ pub fn handle_contribute(
     )?;
     require!(now < deadline, FundraiserError::FundraiserEnded);
 
-    // Update state before the transfer CPI (checks-effects-interactions).
     let current_amount: u64 = accounts.fundraiser.current_amount.into();
     accounts.fundraiser.current_amount = PodU64::from(
         current_amount

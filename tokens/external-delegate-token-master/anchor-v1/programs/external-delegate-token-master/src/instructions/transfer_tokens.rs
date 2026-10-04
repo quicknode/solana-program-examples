@@ -53,8 +53,8 @@ pub fn handler(
         ErrorCode::InvalidSignature
     );
 
-    // Consume the nonce before the transfer CPI (checks-effects-interactions),
-    // so this signature can never authorize a second execution.
+    // Consume the nonce, so this signature can never authorize a second
+    // execution.
     let user_account = &mut context.accounts.user_account;
     user_account.nonce = user_account
         .nonce

@@ -116,8 +116,8 @@ are all consequences of Quasar being zero-copy, `no_std`, and zero-allocation:
 
 - Every vault transfer out is signed by the **market PDA** via `invoke_signed`; only the deployed program can
   move locked funds.
-- `settle_funds` zeroes a user's `unsettled_*` **before** transferring (checks-effects-interactions), so no
-  token-hook re-entry could double-withdraw.
+- `settle_funds` zeroes a user's `unsettled_*` counters and pays out the amounts they held, so a second call has
+  nothing to pay.
 - `place_order` binds every market-owned account (`base_vault`, `quote_vault`, `fee_vault`, both mints, the
   order book) to the addresses stored on the `Market` PDA with `has_one`, so a caller can't substitute the fee
   vault for a user vault and drain fees.

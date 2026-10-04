@@ -102,9 +102,8 @@ withdraw), in index order.
   the Fund PDA; only the deployed program can move them, and it does so only
   along deposit, withdraw, and rebalance. There is no manager path to withdraw
   holdings, nor to choose a trade: rebalancing is sized by the program.
-- The share supply is updated before any mint or burn (checks-effects-
-  interactions), and value computations use u128 intermediates with checked
-  arithmetic, flooring in the fund's favour.
+- Value computations use u128 intermediates with checked arithmetic, flooring
+  in the fund's favour.
 - The management fee is capped (10% per year) and the slippage tolerance is
   capped (10%), so neither can be configured to drain the fund.
 - Price feeds are validated against the address recorded on the asset config and

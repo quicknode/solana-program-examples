@@ -107,7 +107,7 @@ pub fn handle_withdraw(
         *amount = proportion(context.accounts.fund.asset_holdings[index])?;
     }
 
-    // Checks-effects-interactions: shrink supply and holdings before any transfer.
+    // Shrink the share supply and the recorded holdings by the withdrawn slice.
     let fund = &mut context.accounts.fund;
     fund.total_shares = total_shares
         .checked_sub(shares_to_burn)

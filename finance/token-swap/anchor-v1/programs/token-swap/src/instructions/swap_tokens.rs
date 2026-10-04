@@ -145,8 +145,8 @@ pub fn handle_swap_tokens(
     let mint_a_bytes = context.accounts.mint_a.key().to_bytes();
     let mint_b_bytes = context.accounts.mint_b.key().to_bytes();
 
-    // Effects: update admin_fees before CPIs (Checks-Effects-Interactions).
-    // The fee always comes off the input side, so the admin's claim accumulates
+    // Add the admin's slice of the fee to what the pool owes them. The fee
+    // always comes off the input side, so the admin's claim accumulates
     // in the same token.
     {
         let pool_config = &mut context.accounts.pool_config;

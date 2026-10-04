@@ -839,12 +839,12 @@ mint checks on token accounts, PDA seeds).
 Both transfers are CPIs to the Token program, signed by the
 `Market` PDA using seeds `["market", base_mint, quote_mint, bump]`.
 
-Order of operations is checks-effects-interactions: the
-`unsettled_*` counters are zeroed *before* the transfer CPIs, then
-the transfers run. Solana CPIs aren't reentrant in the EVM sense,
-but zeroing state first means no future token-program extension or
-transfer hook can observe stale unsettled balances mid-CPI and
-double-withdraw.
+The handler zeroes the `unsettled_*` counters and the transfers pay
+out the amounts they held. If a transfer fails, the whole transaction
+reverts, zeroing included. Neither the token program nor a transfer
+hook can call back into this program during the transfer: Solana's
+runtime rejects a call into a program already on the call stack with
+`ReentrancyNotAllowed`, unless the program is calling itself directly.
 
 **State changes:**
 

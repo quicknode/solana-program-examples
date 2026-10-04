@@ -43,8 +43,8 @@ pub fn handle_claim_admin_fees(
     let mint_a_bytes = context.accounts.mint_a.address().to_bytes();
     let mint_b_bytes = context.accounts.mint_b.address().to_bytes();
 
-    // Effects: zero the accumulators before the CPIs (Checks-Effects-Interactions).
-    // If a CPI fails the whole transaction reverts, so the state reset is safe.
+    // Zero the accumulators. If a transfer below fails, the whole transaction
+    // reverts, so the accumulators keep their values.
     {
         let pool_config = &mut context.accounts.pool_config;
         pool_config.admin_fees_owed_a = 0;
