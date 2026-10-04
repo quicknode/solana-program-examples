@@ -12,8 +12,11 @@ pub enum AmmError {
     /// share is a basis-points fraction of the trading fee, so the admin
     /// cannot take more than the whole fee.
     AdminShareTooHigh,
-    /// The initial deposit's geometric mean is below `MINIMUM_LIQUIDITY`, or a
-    /// subsequent deposit is too small to mint any LP tokens.
+    /// Depositing too little liquidity. Returned by `initialize_pool` when
+    /// `sqrt(amount_a * amount_b)` is below `MINIMUM_LIQUIDITY`, so withholding
+    /// the floor would leave the creator nothing, and by `deposit_liquidity`
+    /// when a later deposit is too small a share of the pool to mint a single
+    /// LP token.
     DepositTooSmall,
     /// Clamping the caller's amounts to the current pool ratio rounded one
     /// side down to zero; the pool cannot issue meaningful LP shares.
@@ -45,4 +48,18 @@ pub enum AmmError {
     /// A `pool_a` or `pool_b` account is not the reserve recorded on the
     /// pool's `PoolConfig`.
     InvalidPoolVault,
+    /// Pool reserves must both be positive to deposit or swap. Returned by
+    /// `swap_tokens` and `deposit_liquidity` when either LP-claimable
+    /// (effective) reserve is zero. Swapping against an empty reserve would
+    /// let the constant-product curve drain the opposite side while the
+    /// invariant check passes vacuously (k = 0 >= 0), and a deposit into an
+    /// empty pool would set its price, so both are rejected outright. Every
+    /// pool opens with its creator's deposit, and neither a withdrawal nor a
+    /// swap can empty a reserve, so the state is not reachable.
+    EmptyPoolReserve,
+    /// A pool cannot open empty: the first deposit sets its price. Returned
+    /// by `initialize_pool` when either amount is zero. The deposit that opens
+    /// a pool sets its price (the ratio of its reserves), so a pool is never
+    /// created without one.
+    EmptyInitialDeposit,
 }

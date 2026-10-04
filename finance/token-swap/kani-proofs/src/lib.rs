@@ -8,12 +8,12 @@
 //! `kani-proofs` and the harnesses are named `proof_*`; each one is a model
 //! check, which tries every value of its declared inputs, not a formal proof.
 //!
-//! The on-chain instructions (`swap_tokens`, `deposit_liquidity`,
-//! `withdraw_liquidity`) hand the actual token movement to the SPL token
-//! program via CPIs that Kani cannot symbolically execute. But the *interesting*
-//! part — the constant-product curve, the fee split, the integer square root
-//! used for the initial LP mint, and the proportional deposit and withdraw
-//! math — is pure integer arithmetic. This crate reproduces those formulas
+//! The on-chain instructions (`initialize_pool`, `swap_tokens`,
+//! `deposit_liquidity`, `withdraw_liquidity`) hand the actual token movement
+//! to the SPL token program via CPIs that Kani cannot symbolically execute.
+//! But the *interesting* part — the constant-product curve, the fee split, the
+//! integer square root `initialize_pool` uses for the creator's LP mint, and
+//! the proportional deposit and withdraw math — is pure integer arithmetic. This crate reproduces those formulas
 //! faithfully (same `u128` widening, same multiply-before-divide, same floor
 //! rounding) and checks the invariants the program depends on.
 //!
@@ -205,10 +205,12 @@ fn proof_swap_at_zero_reserve_drains_whole_pool() {
 }
 
 // ===========================================================================
-// 3. Integer square root  (deposit_liquidity.rs :: integer_sqrt)
+// 3. Integer square root  (liquidity.rs :: integer_sqrt)
 // ===========================================================================
 
-/// Verbatim copy of `deposit_liquidity::integer_sqrt` (Newton's method, floor).
+/// Verbatim copy of `liquidity::integer_sqrt` (Newton's method, floor), which
+/// `liquidity::initial_lp_amount` calls for the deposit that opens a pool in
+/// `initialize_pool`.
 ///
 /// Only the `#[cfg(kani)]` harness and the unit tests call it, so a plain
 /// `cargo build` of the library sees no caller.
@@ -227,8 +229,9 @@ fn integer_sqrt(n: u128) -> u128 {
 }
 
 /// `integer_sqrt` returns the exact floor of the real square root:
-/// `r*r <= n < (r+1)*(r+1)`. This is what makes the initial-deposit LP mint
-/// (`sqrt(a*b) - MINIMUM_LIQUIDITY`) correct and program-favouring.
+/// `r*r <= n < (r+1)*(r+1)`. This is what makes the creator's LP mint in
+/// `initialize_pool` (`sqrt(a*b) - MINIMUM_LIQUIDITY`, in
+/// `liquidity::initial_lp_amount`) correct and program-favouring.
 ///
 /// `n` is bounded so `(r+1)^2` cannot overflow `u128` and so the Newton
 /// iteration's unwind stays tractable; the property is value-general within the
@@ -388,15 +391,17 @@ fn proof_rounding_a_deposit_to_zero_needs_floor_times_donation() {
 /// Models the Uniswap-V2 ratio clamp in `handle_deposit_liquidity`: given the
 /// caller's upper-bound `(amount_a, amount_b)` and the current effective
 /// reserves, return the clamped pair actually deposited. `None` on the overflow
-/// paths.
+/// paths and, as the program's `EmptyPoolReserve` check, on an empty reserve:
+/// every pool opens with its creator's deposit in `initialize_pool`, so
+/// `deposit_liquidity` never sets a price.
 pub fn clamp_to_ratio(
     amount_a: u64,
     amount_b: u64,
     effective_pool_a: u64,
     effective_pool_b: u64,
 ) -> Option<(u64, u64)> {
-    if effective_pool_a == 0 && effective_pool_b == 0 {
-        return Some((amount_a, amount_b)); // pool creation: take as-is
+    if effective_pool_a == 0 || effective_pool_b == 0 {
+        return None;
     }
     let amount_b_required = (amount_a as u128)
         .checked_mul(effective_pool_b as u128)?
@@ -429,8 +434,8 @@ fn proof_deposit_clamp_never_exceeds_request() {
     // i.e. symbolic-÷-symbolic 128-bit division, over four symbolic variables.
     // Bound them tightly to stay tractable; the clamp identity is scale-free.
     kani::assume(amount_a <= 31 && amount_b <= 31);
-    // Existing pool: both reserves non-zero (the pool-creation branch is the
-    // trivial identity, so this harness does not check it).
+    // Both reserves non-zero, as they are in every pool `initialize_pool`
+    // opened.
     kani::assume(pool_a >= 1 && pool_a <= 31);
     kani::assume(pool_b >= 1 && pool_b <= 31);
 
@@ -516,5 +521,11 @@ mod tests {
     fn clamp_basic() {
         // Pool 1:2, offer (10, 100) -> needs 20 B for 10 A; B is plentiful.
         assert_eq!(clamp_to_ratio(10, 100, 1_000, 2_000).unwrap(), (10, 20));
+    }
+
+    #[test]
+    fn clamp_refuses_an_empty_reserve() {
+        assert_eq!(clamp_to_ratio(10, 100, 0, 2_000), None);
+        assert_eq!(clamp_to_ratio(10, 100, 1_000, 0), None);
     }
 }

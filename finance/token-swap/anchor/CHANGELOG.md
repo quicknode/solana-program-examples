@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased (2026-10-04)
+
+`initialize_pool` now takes the creator's first deposit: it gains `amount_a`
+and `amount_b` arguments and the `creator`, `creator_token_a`,
+`creator_token_b` and `liquidity_provider_token` accounts, moves both amounts
+into the reserves it creates, and mints the creator
+`sqrt(amount_a * amount_b) - MINIMUM_LIQUIDITY` LP tokens. A zero on either
+side fails with the new `EmptyInitialDeposit`. A pool created empty let
+whoever deposited first set its price, and clamped the creator's own deposit
+to that ratio. `deposit_liquidity` no longer has a pool-creation branch: it
+refuses an empty effective reserve with `EmptyPoolReserve`, whose message now
+reads "Pool reserves must both be positive to deposit or swap". The
+square-root arithmetic (`initial_lp_amount`) and the transfers and LP mint
+both handlers end with (`deposit_and_mint_lp_tokens`) live in the new
+`liquidity` module, so there is one copy of each. New tests:
+`test_initialize_pool_takes_first_deposit`,
+`test_initialize_pool_rejects_zero_amount_a`,
+`test_initialize_pool_rejects_zero_amount_b` and
+`test_pool_creation_cannot_be_front_run`, which runs the front-run (a hostile
+ratio deposited right after the pool opens is clamped to the creator's price)
+and checks that a deposit against an empty reserve is refused; every other
+test opens its pool through `initialize_pool`.
+
 ## 2026-09-22
 
 `deposit_liquidity` now mints later deposits against the LP supply plus

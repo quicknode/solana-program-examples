@@ -115,6 +115,16 @@ pub fn handle_swap_tokens(
         .checked_sub(owed_b)
         .ok_or(AmmError::MathOverflow)?;
 
+    // An empty effective reserve has no price: the curve below would pay out
+    // the whole opposite side and the invariant check would pass vacuously
+    // (k = 0 >= 0). Every pool opens funded in `initialize_pool` and no swap
+    // or withdrawal empties a reserve, so this is not reachable; the check
+    // keeps that from depending on the arithmetic.
+    require!(
+        effective_pool_a > 0 && effective_pool_b > 0,
+        AmmError::EmptyPoolReserve
+    );
+
     let output_u128 = if input_is_token_a {
         (taxed_input as u128)
             .checked_mul(effective_pool_b as u128)
