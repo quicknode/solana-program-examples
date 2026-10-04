@@ -4,6 +4,18 @@ All notable changes to this repository are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-10-03] - Managed Fund rejects wide-confidence prices
+
+### Fixed
+
+- `finance/managed-fund` (Anchor v2, Anchor v1, Quasar) ignored the
+  confidence interval on its Pyth prices. `load_price` now rejects a price
+  whose interval exceeds 1% of the price (`MAX_CONFIDENCE_BPS`, new
+  `OracleConfidenceTooWide` error), so deposit and rebalance are refused while
+  publishers disagree; withdraw reads no price and still pays out in kind.
+  Tested by `test_wide_confidence_price_rejected` in each copy. The web apps'
+  IDLs gain the error.
+
 ## [2026-10-03] - Fundraiser: `close_contributor` is `close_contribution`
 
 ### Changed

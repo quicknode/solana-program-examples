@@ -15,7 +15,9 @@
 //! tokens are all refused, while a retired asset is sold out.
 //! `test_initialize_rejects_threshold_out_of_range` bounds the threshold, and
 //! `test_valuation_scales_by_decimals_and_exponent` values an eight-decimal
-//! asset priced by an exponent -5 feed.
+//! asset priced by an exponent -5 feed, and
+//! `test_wide_confidence_price_rejected` shows a feed whose confidence interval
+//! is past 1% of its price stops deposit and rebalance but not withdraw.
 
 use {
     crate::{
@@ -81,10 +83,11 @@ fn router_rate_pda(mint: &Pubkey) -> Pubkey {
     Pubkey::find_program_address(&[b"rate", mint.as_ref()], &router_id()).0
 }
 
-// A Pyth PriceUpdateV2-shaped account: `price` (i64) at offset 73,
-// `exponent` (i32) at offset 89, `publish_time` (i64) at offset 93,
-// `posted_slot` (u64) at offset 125. The program reads only those four fields.
-// Posted at slot 1, with the -8 exponent of Pyth's crypto USD feeds.
+// A Pyth PriceUpdateV2-shaped account: `price` (i64) at offset 73, `conf`
+// (u64) at offset 81, `exponent` (i32) at offset 89, `publish_time` (i64) at
+// offset 93, `posted_slot` (u64) at offset 125. The program reads only those
+// five fields. Posted at slot 1, with the -8 exponent of Pyth's crypto USD
+// feeds and a zero confidence interval.
 fn add_pyth_feed(test: &mut Test, price: i64, publish_time: i64) {
     add_pyth_feed_posted_at(test, price, publish_time, 1);
 }
@@ -103,8 +106,22 @@ fn write_price_feed(
     publish_time: i64,
     posted_slot: u64,
 ) {
+    write_price_feed_with_confidence(test, feed, price, 0, exponent, publish_time, posted_slot);
+}
+
+/// Write a Pyth feed with its own confidence interval, in the price's units.
+fn write_price_feed_with_confidence(
+    test: &mut Test,
+    feed: Pubkey,
+    price: i64,
+    confidence: u64,
+    exponent: i32,
+    publish_time: i64,
+    posted_slot: u64,
+) {
     let mut data = vec![0u8; 200];
     data[73..81].copy_from_slice(&price.to_le_bytes());
+    data[81..89].copy_from_slice(&confidence.to_le_bytes());
     data[89..93].copy_from_slice(&exponent.to_le_bytes());
     data[93..101].copy_from_slice(&publish_time.to_le_bytes());
     data[125..133].copy_from_slice(&posted_slot.to_le_bytes());
@@ -1188,5 +1205,43 @@ fn test_valuation_scales_by_decimals_and_exponent(test: &mut Test) {
     assert_eq!(test.tokens(bob.share), 450_000_000);
     assert_eq!(read_holdings(test).1[0], 230_400_000);
     assert_eq!(read_holdings(test).1[1], 4_320_000);
+    assert_holdings_match_vaults(test);
+}
+
+/// A price the oracle is unsure of is not traded on. With NVDAx's confidence
+/// interval at 2% of its price, past the 1% limit, deposit and rebalance both
+/// refuse, but withdraw still pays out in kind: it reads no price, so investors
+/// can always leave. A band of exactly 1% is accepted.
+#[quasar_test]
+fn test_wide_confidence_price_rejected(test: &mut Test) {
+    setup_full(test);
+    standard_fund(test);
+
+    // Alice deposits 900 USDC: 1.44 TSLAx + 3.0 NVDAx at 40/60.
+    let alice = fund_user(test, 900_000_000);
+    do_deposit(test, &alice, 900_000_000);
+
+    // NVDAx rises to $200, so the fund has drifted and needs a rebalance. Then
+    // its feed reports a $4 confidence interval: 2% of the price.
+    set_nvda_price(test, 20_000_000_000, 200_000_000);
+    write_price_feed_with_confidence(test, NVDA_FEED, 20_000_000_000, 400_000_000, -8, NOW, 1);
+
+    let bob = fund_user(test, 480_000_000);
+    let ix = deposit_instruction(&bob, 480_000_000, deposit_remaining(test));
+    test.send(ix).fails_with(FundError::OracleConfidenceTooWide);
+    try_rebalance(test, 1, 0).fails_with(FundError::OracleConfidenceTooWide);
+
+    // Withdraw reads no price: Alice takes half her shares out in kind.
+    do_withdraw(test, &alice, 450_000_000);
+    assert_eq!(test.tokens(alice.tsla), 720_000);
+    assert_eq!(test.tokens(alice.nvda), 1_500_000);
+
+    // A $2 interval is exactly 1% of the price, which is accepted: the
+    // rebalance sells 0.06 NVDAx for 12 USDC and buys 0.048 TSLAx.
+    write_price_feed_with_confidence(test, NVDA_FEED, 20_000_000_000, 200_000_000, -8, NOW, 1);
+    do_rebalance(test, 1, 0);
+    let (_, holdings) = read_holdings(test);
+    assert_eq!(holdings[0], 768_000);
+    assert_eq!(holdings[1], 1_440_000);
     assert_holdings_match_vaults(test);
 }

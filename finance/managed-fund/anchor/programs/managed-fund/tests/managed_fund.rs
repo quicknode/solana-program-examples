@@ -44,9 +44,10 @@ fn derive_ata(wallet: &Address, mint: &Address) -> Address {
 }
 
 /// Mock PriceUpdateV2 layout (see pyth-solana-receiver-sdk): price i64 at 73,
-/// publish_time i64 at 93, posted_slot u64 at 125. Exponent -8.
+/// conf u64 at 81, publish_time i64 at 93, posted_slot u64 at 125. Exponent -8.
 fn build_mock_price_update_account(
     price: i64,
+    confidence: u64,
     exponent: i32,
     publish_time: i64,
     posted_slot: u64,
@@ -58,7 +59,7 @@ fn build_mock_price_update_account(
     data.push(1u8);
     data.extend_from_slice(&[0xEFu8; 32]);
     data.extend_from_slice(&price.to_le_bytes());
-    data.extend_from_slice(&100_000u64.to_le_bytes());
+    data.extend_from_slice(&confidence.to_le_bytes());
     data.extend_from_slice(&exponent.to_le_bytes());
     data.extend_from_slice(&publish_time.to_le_bytes());
     data.extend_from_slice(&(publish_time - 1).to_le_bytes());
@@ -79,7 +80,20 @@ fn set_price_feed_posted_at(svm: &mut LiteSVM, key: Address, price: i64, posted_
 
 /// Write a Pyth feed with its own exponent: Pyth's US equity feeds use -5.
 fn write_price_feed(svm: &mut LiteSVM, key: Address, price: i64, exponent: i32, posted_slot: u64) {
-    let data = build_mock_price_update_account(price, exponent, PUBLISH_TIME, posted_slot);
+    write_price_feed_with_confidence(svm, key, price, DEFAULT_CONFIDENCE, exponent, posted_slot);
+}
+
+/// Write a Pyth feed with its own confidence interval, in the price's units.
+fn write_price_feed_with_confidence(
+    svm: &mut LiteSVM,
+    key: Address,
+    price: i64,
+    confidence: u64,
+    exponent: i32,
+    posted_slot: u64,
+) {
+    let data =
+        build_mock_price_update_account(price, confidence, exponent, PUBLISH_TIME, posted_slot);
     let rent = svm.minimum_balance_for_rent_exemption(data.len());
     svm.set_account(
         key,
@@ -95,6 +109,8 @@ fn write_price_feed(svm: &mut LiteSVM, key: Address, price: i64, exponent: i32, 
 }
 
 const PUBLISH_TIME: i64 = 1_700_000_000;
+/// A tight confidence interval, $0.001 at exponent -8, far inside the 1% limit.
+const DEFAULT_CONFIDENCE: u64 = 100_000;
 const TOKEN_DECIMALS: u8 = 6;
 const SECONDS_PER_YEAR: i64 = 31_536_000;
 
@@ -2052,5 +2068,70 @@ fn test_valuation_scales_by_decimals_and_exponent() {
     );
     assert_eq!(read_fund(&ctx).asset_holdings[0], 230_400_000);
     assert_eq!(read_fund(&ctx).asset_holdings[1], 4_320_000);
+    assert_holdings_match_vaults(&ctx);
+}
+
+/// A price the oracle is unsure of is not traded on. With NVDAx's confidence
+/// interval at 2% of its price, past the 1% limit, deposit and rebalance both
+/// refuse, but withdraw still pays out in kind: it reads no price, so investors
+/// can always leave. A band of exactly 1% is accepted.
+#[test]
+fn test_wide_confidence_price_rejected() {
+    let mut ctx = setup_full();
+    standard_fund(&mut ctx);
+
+    // Alice deposits 900 USDC: 1.44 TSLAx + 3.0 NVDAx at 40/60.
+    let alice = fund_user(&mut ctx, 900_000_000);
+    do_deposit(&mut ctx, &alice, 900_000_000, 1);
+
+    // NVDAx rises to $200, so the fund has drifted and needs a rebalance. Then
+    // its feed reports a $4 confidence interval: 2% of the price.
+    set_nvda_price(&mut ctx, 20_000_000_000, 200_000_000);
+    write_price_feed_with_confidence(
+        &mut ctx.svm,
+        ctx.price_feed_nvda,
+        20_000_000_000,
+        400_000_000,
+        -8,
+        1,
+    );
+
+    let bob = fund_user(&mut ctx, 480_000_000);
+    let ix = deposit_instruction(&ctx, &bob, 480_000_000, 1, deposit_remaining(&ctx));
+    assert_program_error(
+        send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[&bob], &bob.pubkey()),
+        FundError::OracleConfidenceTooWide,
+        "a deposit priced from a wide-confidence feed must fail",
+    );
+    assert_program_error(
+        try_rebalance(&mut ctx, 1, 0),
+        FundError::OracleConfidenceTooWide,
+        "a rebalance priced from a wide-confidence feed must fail",
+    );
+
+    // Withdraw reads no price: Alice takes half her shares out in kind.
+    do_withdraw(&mut ctx, &alice, 450_000_000, 0);
+    assert_eq!(
+        get_token_account_balance(&ctx.svm, &derive_ata(&alice.pubkey(), &ctx.tsla_mint)).unwrap(),
+        720_000
+    );
+    assert_eq!(
+        get_token_account_balance(&ctx.svm, &derive_ata(&alice.pubkey(), &ctx.nvda_mint)).unwrap(),
+        1_500_000
+    );
+
+    // A $2 interval is exactly 1% of the price, which is accepted: the
+    // rebalance sells 0.06 NVDAx for 12 USDC and buys 0.048 TSLAx.
+    write_price_feed_with_confidence(
+        &mut ctx.svm,
+        ctx.price_feed_nvda,
+        20_000_000_000,
+        200_000_000,
+        -8,
+        1,
+    );
+    do_rebalance(&mut ctx, 1, 0);
+    assert_eq!(read_fund(&ctx).asset_holdings[0], 768_000);
+    assert_eq!(read_fund(&ctx).asset_holdings[1], 1_440_000);
     assert_holdings_match_vaults(&ctx);
 }

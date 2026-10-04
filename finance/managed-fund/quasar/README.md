@@ -112,7 +112,10 @@ withdraw), in index order.
   restart. Under Alpenglow the Clock's timestamp trails real time after a halt,
   so a pre-halt price can still pass the 60-second check; `load_price` also
   requires the update's `posted_slot` to be after the `LastRestartSlot`
-  sysvar's slot (`PricePredatesRestart`).
+  sysvar's slot (`PricePredatesRestart`). A price whose confidence interval is
+  wider than 1% of the price (`MAX_CONFIDENCE_BPS`) is rejected too
+  (`OracleConfidenceTooWide`). `withdraw` reads no price, so investors can
+  always leave in kind.
 
 ## What the Quasar port does differently
 
@@ -159,7 +162,10 @@ rebalance tests sign as a stranger and check that a fund at its targets, within
 its threshold, or just rebalanced cannot be traded
 (`test_rebalance_cannot_churn` and its neighbors), and
 `test_valuation_scales_by_decimals_and_exponent` runs the story with an
-eight-decimal asset on an exponent −5 feed.
+eight-decimal asset on an exponent −5 feed. `test_wide_confidence_price_rejected`
+widens NVDAx's confidence interval to 2% of its price and checks that deposit
+and rebalance are refused while withdraw still pays out, and that a band of
+exactly 1% is accepted.
 
 ## Extending
 

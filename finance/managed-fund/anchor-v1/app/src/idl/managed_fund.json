@@ -1047,6 +1047,11 @@
       "code": 6031,
       "name": "NotUnderweight",
       "msg": "The asset to buy is not below its target weight"
+    },
+    {
+      "code": 6032,
+      "name": "OracleConfidenceTooWide",
+      "msg": "Pyth price confidence interval is too wide to trust"
     }
   ],
   "types": [
