@@ -1,7 +1,7 @@
 use {
     crate::{
         error::FundraiserError,
-        state::{fundraiser_deadline, Contribution, Fundraiser},
+        state::{fundraiser_deadline, one_major_unit, Contribution, Fundraiser},
     },
     quasar_lang::{prelude::*, sysvars::Sysvar as _},
     quasar_spl::prelude::*,
@@ -52,7 +52,12 @@ pub fn handle_contribute(
     amount: u64,
     bumps: &ContributeAccountConstraintsBumps,
 ) -> Result<(), ProgramError> {
-    require!(amount > 0, FundraiserError::InvalidAmount);
+    // The minimum contribution is one major unit, which is 10^decimals minor
+    // units.
+    require!(
+        amount >= one_major_unit(accounts.mint_to_raise.decimals())?,
+        FundraiserError::ContributionTooSmall
+    );
 
     // A claimed fundraiser has paid its vault out to the maker, so a later
     // contribution would go to the maker with no refund path.
@@ -84,7 +89,7 @@ pub fn handle_contribute(
     );
 
     // `init(idempotent)` creates the contribution account zeroed and reuses it
-    // on later contributions. Every contribution is nonzero, so a recorded
+    // on later contributions. Every contribution is at least one major unit, so a recorded
     // amount of zero means the account was created by this instruction: save
     // its bump and count it against the fundraiser.
     if contributed_so_far == 0 {
