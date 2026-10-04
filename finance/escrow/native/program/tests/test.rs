@@ -210,6 +210,20 @@ fn make_offer_instruction_for(
 }
 
 fn take_offer_instruction(es: &EscrowSetup) -> Instruction {
+    take_offer_instruction_for(es, AMOUNT_A, AMOUNT_B)
+}
+
+/// A `take_offer` instruction signed for the given terms: the least token A
+/// the taker accepts and the most token B the taker pays.
+fn take_offer_instruction_for(
+    es: &EscrowSetup,
+    minimum_token_a_out: u64,
+    maximum_token_b_in: u64,
+) -> Instruction {
+    let mut take_data = vec![TAKE_OFFER];
+    take_data.extend_from_slice(&minimum_token_a_out.to_le_bytes());
+    take_data.extend_from_slice(&maximum_token_b_in.to_le_bytes());
+
     Instruction {
         program_id: es.program_id,
         accounts: vec![
@@ -226,7 +240,7 @@ fn take_offer_instruction(es: &EscrowSetup) -> Instruction {
             AccountMeta::new_readonly(spl_associated_token_account_interface::program::id(), false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
-        data: vec![TAKE_OFFER],
+        data: take_data,
     }
 }
 
@@ -375,6 +389,7 @@ fn test_cancel_offer_rejects_non_maker() {
 // `InstructionError::Custom`.
 const ZERO_AMOUNT: u32 = 7;
 const SAME_MINT: u32 = 8;
+const OFFER_TERMS_CHANGED: u32 = 9;
 
 /// Send a `make_offer` the program should refuse, and check it failed with
 /// `expected_code`, left the maker's tokens where they were, and created no
@@ -424,4 +439,70 @@ fn test_make_offer_rejects_same_mint() {
         &es.maker_account_a,
     );
     assert_make_offer_refused(&mut es, instruction, SAME_MINT);
+}
+
+/// The bait and switch: the maker makes an offer, the taker signs a
+/// `take_offer` for its terms, and before the taker's transaction lands the
+/// maker cancels and re-makes the same id at the switched terms. The offer is
+/// at the same address, so the taker's transaction reaches the new offer; it
+/// must fail with `OfferTermsChanged` and leave the taker's tokens where they
+/// were.
+fn assert_switched_offer_refused(switched_a_offered: u64, switched_b_wanted: u64) {
+    let mut es = setup();
+    let payer = es.payer.insecure_clone();
+    let maker = es.maker.insecure_clone();
+    let taker = es.taker.insecure_clone();
+
+    let make_ix = make_offer_instruction(&es);
+    send(&mut es.svm, &payer, &[make_ix], &[&maker]);
+
+    // The taker signs for the terms they saw.
+    let take_ix = take_offer_instruction_for(&es, AMOUNT_A, AMOUNT_B);
+
+    // The maker switches the offer before the taker's transaction lands.
+    let cancel_ix = cancel_offer_instruction(&es, &es.maker.pubkey());
+    send(&mut es.svm, &payer, &[cancel_ix], &[&maker]);
+    let switched_make_ix = make_offer_instruction_for(
+        &es,
+        switched_a_offered,
+        switched_b_wanted,
+        &es.mint_b.pubkey(),
+        &es.maker_account_b,
+    );
+    send(&mut es.svm, &payer, &[switched_make_ix], &[&maker]);
+
+    let result = try_send(&mut es.svm, &payer, &[take_ix], &[&taker]);
+    let error = format!(
+        "{:?}",
+        result.expect_err("take_offer should have failed").err
+    );
+    assert!(
+        error.contains(&format!("Custom({OFFER_TERMS_CHANGED})")),
+        "expected error {OFFER_TERMS_CHANGED}, got: {error}"
+    );
+
+    assert_eq!(
+        token_amount(&es.svm, &es.taker_account_b),
+        MINTED_AMOUNT,
+        "the taker must not pay token B for a switched offer"
+    );
+    assert_eq!(
+        lamports(&es.svm, &es.taker_account_a),
+        0,
+        "the taker must receive no token A from a switched offer"
+    );
+    assert_eq!(token_amount(&es.svm, &es.maker_account_b), 0);
+    assert_eq!(token_amount(&es.svm, &es.vault), switched_a_offered);
+}
+
+#[test]
+fn test_take_offer_rejects_switched_offer() {
+    // The maker re-makes the offer with a thousandth of the token A.
+    assert_switched_offer_refused(AMOUNT_A / 1_000, AMOUNT_B);
+}
+
+#[test]
+fn test_take_offer_rejects_switched_offer_wanting_more_token_b() {
+    // The maker re-makes the offer asking for twice the token B.
+    assert_switched_offer_refused(AMOUNT_A, 2 * AMOUNT_B);
 }

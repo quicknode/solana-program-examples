@@ -7,4 +7,8 @@ pub enum EscrowError {
     // program-specific error codes (Quasar's #[error_code] starts at 0
     // unless told otherwise; framework errors occupy 3000+).
     ZeroAmount = 6000,
+    /// The offer pays less token A, or wants more token B, than the taker
+    /// agreed to: the maker re-made the offer at worse terms after the taker
+    /// signed.
+    OfferTermsChanged,
 }

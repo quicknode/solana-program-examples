@@ -4,6 +4,21 @@ All notable changes to this repository are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-10-04] - Escrow: the taker signs the terms
+
+### Fixed
+
+- `finance/escrow` (Anchor v2, Anchor v1, Quasar, native) let a maker switch
+  an offer under a taker. The offer's address is its maker and `id`, so the
+  maker could cancel and re-make the same `id` at worse terms while a
+  taker's `take_offer` was in flight, and the transaction would trade at the
+  new terms. `take_offer` now takes `minimum_token_a_out` and
+  `maximum_token_b_in`, and refuses the take with the new `OfferTermsChanged`
+  error before any token moves if the vault holds less token A or the offer
+  wants more token B. Tested by `test_take_offer_rejects_switched_offer` and
+  `test_take_offer_rejects_switched_offer_wanting_more_token_b` in each copy;
+  the Kani model gains `proof_take_offer_honors_taker_terms`.
+
 ## [2026-10-03] - Managed Fund rejects wide-confidence prices
 
 ### Fixed
