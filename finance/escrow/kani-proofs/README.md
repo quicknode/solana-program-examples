@@ -23,6 +23,7 @@ the invariants the program relies on:
 - `proof_close_offer_conserves_on_success`: Closing the offer account conserves lamports and empties the source.
 - `proof_close_offer_conserves_lamports_unconditionally`: **Finding (now fixed)**: lamport conservation holds with equality on every path (see below).
 - `proof_take_offer_conserves_value`: A take conserves total mint A and total mint B, drains the vault, and pays the maker exactly the price.
+- `proof_take_offer_honors_taker_terms`: A take either fails with `OfferTermsChanged` having moved nothing, or pays the taker at least `minimum_token_a_out` of mint A for at most `maximum_token_b_in` of mint B.
 - `proof_take_offer_guard_never_overflows`: The `checked_add` conservation guards in `take_offer` are unreachable dead code.
 - `proof_take_offer_guard_dead_under_spl_invariant`: Same, shown explicitly under the SPL supply invariant.
 - `proof_cancel_offer_returns_all_to_maker`: Cancelling returns every vault token to the maker and conserves mint A.

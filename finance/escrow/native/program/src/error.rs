@@ -29,6 +29,9 @@ pub enum EscrowError {
 
     #[error("An offer must exchange two different tokens")]
     SameMint,
+
+    #[error("The offer pays less token A, or wants more token B, than the taker agreed to")]
+    OfferTermsChanged,
 }
 
 impl From<EscrowError> for ProgramError {

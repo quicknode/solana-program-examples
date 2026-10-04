@@ -241,7 +241,11 @@ fn test_take_offer() {
     // Step 2: Bob takes the offer
     let take_offer_ix = Instruction::new_with_bytes(
         es.program_id,
-        &escrow::instruction::TakeOffer {}.data(),
+        &escrow::instruction::TakeOffer {
+            minimum_token_a_out: token_a_offered_amount,
+            maximum_token_b_in: token_b_wanted_amount,
+        }
+        .data(),
         escrow::accounts::TakeOfferAccountConstraints {
             taker: es.bob.pubkey(),
             maker: es.alice.pubkey(),
@@ -605,4 +609,156 @@ fn test_make_offer_rejects_same_mint() {
         get_token_account_balance(&es.svm, &alice_ata_a).unwrap(),
         alice_balance_before
     );
+}
+
+// Bob's `take_offer` for Alice's offer `offer_id`, signed for the given terms.
+fn take_offer_instruction(
+    es: &EscrowSetup,
+    offer_id: u64,
+    minimum_token_a_out: u64,
+    maximum_token_b_in: u64,
+) -> Instruction {
+    let (offer_pda, _bump) = Pubkey::find_program_address(
+        &[
+            b"offer",
+            es.alice.pubkey().as_ref(),
+            &offer_id.to_le_bytes(),
+        ],
+        &es.program_id,
+    );
+    let vault = derive_ata(&offer_pda, &es.mint_a);
+    Instruction::new_with_bytes(
+        es.program_id,
+        &escrow::instruction::TakeOffer {
+            minimum_token_a_out,
+            maximum_token_b_in,
+        }
+        .data(),
+        escrow::accounts::TakeOfferAccountConstraints {
+            taker: es.bob.pubkey(),
+            maker: es.alice.pubkey(),
+            token_mint_a: es.mint_a,
+            token_mint_b: es.mint_b,
+            taker_token_account_a: es.bob_ata_a,
+            taker_token_account_b: es.bob_ata_b,
+            maker_token_account_b: es.alice_ata_b,
+            offer: offer_pda,
+            vault,
+            associated_token_program: ata_program_id(),
+            token_program: token_program_id(),
+            system_program: system_program::id(),
+        }
+        .to_account_metas(None),
+    )
+}
+
+// Alice's `cancel_offer` for her offer `offer_id`, sent and unwrapped.
+fn cancel_offer(es: &mut EscrowSetup, offer_id: u64) {
+    let (offer_pda, _bump) = Pubkey::find_program_address(
+        &[
+            b"offer",
+            es.alice.pubkey().as_ref(),
+            &offer_id.to_le_bytes(),
+        ],
+        &es.program_id,
+    );
+    let vault = derive_ata(&offer_pda, &es.mint_a);
+    let cancel_offer_ix = Instruction::new_with_bytes(
+        es.program_id,
+        &escrow::instruction::CancelOffer {}.data(),
+        escrow::accounts::CancelOfferAccountConstraints {
+            maker: es.alice.pubkey(),
+            token_mint_a: es.mint_a,
+            maker_token_account_a: es.alice_ata_a,
+            offer: offer_pda,
+            vault,
+            associated_token_program: ata_program_id(),
+            token_program: token_program_id(),
+            system_program: system_program::id(),
+        }
+        .to_account_metas(None),
+    );
+    send_transaction_from_instructions(
+        &mut es.svm,
+        vec![cancel_offer_ix],
+        &[&es.payer, &es.alice],
+        &es.payer.pubkey(),
+    )
+    .unwrap();
+}
+
+// The bait and switch: Alice makes an offer, Bob signs a `take_offer` for its
+// terms, and before Bob's transaction lands Alice cancels and re-makes the
+// same id at the switched terms. The offer is at the same address, so Bob's
+// transaction reaches the new offer; it must fail with `OfferTermsChanged`
+// and leave Bob's tokens where they were.
+fn assert_switched_offer_refused(switched_a_offered: u64, switched_b_wanted: u64) {
+    let mut es = full_setup();
+    let (mint_b, alice_ata_b) = (es.mint_b, es.alice_ata_b);
+    let offer_id: u64 = 8;
+    let token_a_offered_amount: u64 = 1_000_000;
+    let token_b_wanted_amount: u64 = 1_000_000;
+
+    try_make_offer(
+        &mut es,
+        offer_id,
+        token_a_offered_amount,
+        token_b_wanted_amount,
+        mint_b,
+        alice_ata_b,
+    )
+    .unwrap();
+
+    // Bob signs for the terms he saw.
+    let take_offer_ix =
+        take_offer_instruction(&es, offer_id, token_a_offered_amount, token_b_wanted_amount);
+
+    // Alice switches the offer before Bob's transaction lands.
+    cancel_offer(&mut es, offer_id);
+    try_make_offer(
+        &mut es,
+        offer_id,
+        switched_a_offered,
+        switched_b_wanted,
+        mint_b,
+        alice_ata_b,
+    )
+    .unwrap();
+
+    let bob_b_before = get_token_account_balance(&es.svm, &es.bob_ata_b).unwrap();
+    let alice_b_before = get_token_account_balance(&es.svm, &es.alice_ata_b).unwrap();
+
+    let result = send_transaction_from_instructions(
+        &mut es.svm,
+        vec![take_offer_ix],
+        &[&es.payer, &es.bob],
+        &es.payer.pubkey(),
+    );
+
+    assert_fails_with(result, escrow::error::EscrowError::OfferTermsChanged);
+    assert_eq!(
+        get_token_account_balance(&es.svm, &es.bob_ata_b).unwrap(),
+        bob_b_before,
+        "the taker must not pay token B for a switched offer"
+    );
+    assert!(
+        es.svm.get_account(&es.bob_ata_a).is_none(),
+        "the taker must receive no token A from a switched offer"
+    );
+    assert_eq!(
+        get_token_account_balance(&es.svm, &es.alice_ata_b).unwrap(),
+        alice_b_before
+    );
+}
+
+#[test]
+fn test_take_offer_rejects_switched_offer() {
+    // Alice re-makes the offer putting a thousandth of the token A in the vault.
+    assert_switched_offer_refused(1_000, 1_000_000);
+}
+
+#[test]
+fn test_take_offer_rejects_switched_offer_wanting_more_token_b() {
+    // Alice re-makes the offer asking for twice the token B.
+    assert_switched_offer_refused(1_000_000, 2_000_000);
 }

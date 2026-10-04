@@ -1,6 +1,7 @@
 //! quasar-test integration tests: make an offer (deposit into the vault),
 //! take it (swap the tokens, close the offer and vault back to the maker),
-//! cancel it, and reject substituted accounts and non-maker signers.
+//! cancel it, and reject substituted accounts, non-maker signers, and a take
+//! that lands on an offer the maker switched to worse terms.
 
 use {
     crate::{
@@ -141,6 +142,8 @@ fn take_offer_swaps_tokens_and_returns_rent_to_the_maker(test: &mut Test) {
         taker_token_account_b: TAKER_TOKEN_ACCOUNT_B,
         maker_token_account_b: MAKER_TOKEN_ACCOUNT_B,
         vault: VAULT,
+        minimum_token_a_out: DEPOSIT_AMOUNT,
+        maximum_token_b_in: RECEIVE_AMOUNT,
     })
     .succeeds()
     // Token balances: the taker received the vault's mint A, the maker
@@ -193,6 +196,8 @@ fn take_offer_rejects_a_mint_that_does_not_match_the_offer(test: &mut Test) {
         taker_token_account_b: TAKER_TOKEN_ACCOUNT_B,
         maker_token_account_b: MAKER_TOKEN_ACCOUNT_B,
         vault: VAULT,
+        minimum_token_a_out: DEPOSIT_AMOUNT,
+        maximum_token_b_in: RECEIVE_AMOUNT,
     });
     assert!(
         result.is_err(),
@@ -231,6 +236,8 @@ fn take_offer_rejects_a_vault_that_does_not_match_the_offer(test: &mut Test) {
         taker_token_account_b: TAKER_TOKEN_ACCOUNT_B,
         maker_token_account_b: MAKER_TOKEN_ACCOUNT_B,
         vault: WRONG_VAULT,
+        minimum_token_a_out: DEPOSIT_AMOUNT,
+        maximum_token_b_in: RECEIVE_AMOUNT,
     });
     assert!(
         result.is_err(),
@@ -344,4 +351,81 @@ fn make_offer_rejects_an_offer_of_a_token_for_itself(test: &mut Test) {
     // before the handler runs.
     make_offer(test, DEPOSIT_AMOUNT, RECEIVE_AMOUNT, TOKEN_MINT_A)
         .fails(ProgramError::Runtime("AccountBorrowFailed".into()));
+}
+
+/// The taker's `take_offer`, signed for the given terms.
+fn take_offer_instruction(minimum_token_a_out: u64, maximum_token_b_in: u64) -> Instruction {
+    TakeOfferInstruction {
+        taker: TAKER,
+        offer_id_seed: OFFER_ID,
+        maker: MAKER,
+        token_mint_a: TOKEN_MINT_A,
+        token_mint_b: TOKEN_MINT_B,
+        taker_token_account_a: TAKER_TOKEN_ACCOUNT_A,
+        taker_token_account_b: TAKER_TOKEN_ACCOUNT_B,
+        maker_token_account_b: MAKER_TOKEN_ACCOUNT_B,
+        vault: VAULT,
+        minimum_token_a_out,
+        maximum_token_b_in,
+    }
+    .into()
+}
+
+/// The bait and switch: the maker makes an offer, the taker signs a
+/// `take_offer` for its terms, and before the taker's transaction lands the
+/// maker cancels and re-makes the same id at the switched terms. The offer is
+/// at the same address, so the taker's transaction reaches the new offer; it
+/// must fail with `OfferTermsChanged` and leave the taker's tokens where they
+/// were.
+fn assert_switched_offer_refused(test: &mut Test, switched_deposit: u64, switched_receive: u64) {
+    maker_holding_token_a(test);
+    test.add(Wallet::new().at(TAKER));
+    test.add(
+        TokenAccount::new(TOKEN_MINT_B, TAKER)
+            .at(TAKER_TOKEN_ACCOUNT_B)
+            .amount(10_000),
+    );
+
+    make_offer(test, DEPOSIT_AMOUNT, RECEIVE_AMOUNT, TOKEN_MINT_B).succeeds();
+
+    // The taker signs for the terms they saw.
+    let take = take_offer_instruction(DEPOSIT_AMOUNT, RECEIVE_AMOUNT);
+
+    // The maker switches the offer before the taker's transaction lands.
+    test.send(CancelOfferInstruction {
+        maker: MAKER,
+        offer_id_seed: OFFER_ID,
+        token_mint_a: TOKEN_MINT_A,
+        maker_token_account_a: MAKER_TOKEN_ACCOUNT_A,
+        vault: VAULT,
+    })
+    .succeeds();
+    make_offer(test, switched_deposit, switched_receive, TOKEN_MINT_B).succeeds();
+
+    test.send(take).fails_with(EscrowError::OfferTermsChanged);
+
+    assert_eq!(
+        test.tokens(TAKER_TOKEN_ACCOUNT_B),
+        10_000,
+        "the taker must not pay token B for a switched offer"
+    );
+    assert!(
+        test.account(TAKER_TOKEN_ACCOUNT_A)
+            .is_none_or(|account| account.lamports == 0),
+        "the taker must receive no token A from a switched offer"
+    );
+    assert_eq!(test.tokens(MAKER_TOKEN_ACCOUNT_B), 0);
+    assert_eq!(test.tokens(VAULT), switched_deposit);
+}
+
+#[quasar_test]
+fn test_take_offer_rejects_switched_offer(test: &mut Test) {
+    // The maker re-makes the offer with a single token A in the vault.
+    assert_switched_offer_refused(test, 1, RECEIVE_AMOUNT);
+}
+
+#[quasar_test]
+fn test_take_offer_rejects_switched_offer_wanting_more_token_b(test: &mut Test) {
+    // The maker re-makes the offer asking for twice the token B.
+    assert_switched_offer_refused(test, DEPOSIT_AMOUNT, 2 * RECEIVE_AMOUNT);
 }

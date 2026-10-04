@@ -5,7 +5,7 @@ use anchor_spl::{
     token_interface::{Mint, TokenAccount, TokenInterface},
 };
 
-use crate::Offer;
+use crate::{error::EscrowError, Offer};
 
 use super::{close_token_account, transfer_tokens};
 
@@ -69,6 +69,22 @@ pub struct TakeOfferAccountConstraints<'info> {
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub token_program: Interface<'info, TokenInterface>,
     pub system_program: Program<'info, System>,
+}
+
+// Refuse the take unless the offer still holds the terms the taker signed
+// for: at least `minimum_token_a_out` of token A in the vault, and no more
+// than `maximum_token_b_in` of token B wanted. Runs before any transfer.
+pub fn handle_check_offer_terms(
+    context: &Context<TakeOfferAccountConstraints>,
+    minimum_token_a_out: u64,
+    maximum_token_b_in: u64,
+) -> Result<()> {
+    require!(
+        context.accounts.vault.amount >= minimum_token_a_out
+            && context.accounts.offer.token_b_wanted_amount <= maximum_token_b_in,
+        EscrowError::OfferTermsChanged
+    );
+    Ok(())
 }
 
 pub fn handle_send_wanted_tokens_to_maker(
