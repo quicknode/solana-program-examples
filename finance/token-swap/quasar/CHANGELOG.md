@@ -12,10 +12,8 @@
   side fails with the new `EmptyInitialDeposit`. A pool created empty let
   whoever deposited first set its price, and clamped the creator's own
   deposit to that ratio. `deposit_liquidity` no longer has a pool-creation
-  branch: it refuses an empty effective reserve with the new
-  `EmptyPoolReserve` ("Pool reserves must both be positive to deposit or
-  swap"), which `swap_tokens` now checks too, as the Anchor copies did
-  already. The square-root arithmetic (`initial_lp_amount`) and the transfers
+  branch: it refuses an empty effective reserve with `EmptyPoolReserve`, the
+  error `swap_tokens` already returns for one. The square-root arithmetic (`initial_lp_amount`) and the transfers
   and LP mint both handlers end with (`deposit_and_mint_lp_tokens`) live in
   the new `liquidity` module, so there is one copy of each. New tests:
   `initialize_pool_takes_first_deposit`,
@@ -25,6 +23,25 @@
   ratio deposited right after the pool opens is clamped to the creator's
   price) and checks that a deposit against an empty reserve is refused; every
   other test opens its pool through `initialize_pool`.
+  `swap_rejects_empty_reserve` now empties a reserve by hand, since no pool
+  exists without a deposit any more.
+
+## [2026-10-04] - Mint order and empty reserves
+
+### Fixed
+
+- `initialize_pool` accepted its two mints in either order, so a pair could
+  have an (X, Y) pool and a (Y, X) pool side by side, splitting its liquidity.
+  It now requires `mint_a` to sort strictly below `mint_b` and fails with the
+  new `InvalidMintOrder` error otherwise, as the Anchor versions do.
+  `initialize_pool_rejects_unordered_mints` tries the reversed pair.
+- `swap_tokens` priced a trade against an empty reserve. Tokens sent straight
+  to `pool_b` before the first deposit leave `pool_a` empty, and a swap of any
+  size into `pool_a` was then paid all of `pool_b`, with the invariant check
+  passing because the pre-trade product was zero. It now refuses a swap while
+  either LP-claimable reserve is zero, with the new `EmptyPoolReserve` error,
+  as the Anchor versions do. `swap_rejects_empty_reserve` funds `pool_b` alone
+  and tries the swap.
 
 ## [2026-10-02] - Reserves at PDAs
 

@@ -41,6 +41,12 @@ pub struct InitializePoolAccountConstraints {
     )]
     pub liquidity_provider_mint: Account<Mint>,
     pub mint_a: Account<Mint>,
+    /// `mint_a` must sort strictly below `mint_b`, so each pair of mints has
+    /// exactly one pool. Without it an (X, Y) pool and a (Y, X) pool would
+    /// both be valid and split the pair's liquidity between them.
+    #[account(
+        constraints(mint_a.address().as_ref() < mint_b.address().as_ref()) @ AmmError::InvalidMintOrder,
+    )]
     pub mint_b: Account<Mint>,
     /// Pool's token A reserve, owned by `pool_config`, at a PDA of the pool.
     #[account(

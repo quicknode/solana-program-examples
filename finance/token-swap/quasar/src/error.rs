@@ -48,10 +48,14 @@ pub enum AmmError {
     /// A `pool_a` or `pool_b` account is not the reserve recorded on the
     /// pool's `PoolConfig`.
     InvalidPoolVault,
-    /// Pool reserves must both be positive to deposit or swap. Returned by
-    /// `swap_tokens` and `deposit_liquidity` when either LP-claimable
-    /// (effective) reserve is zero. Swapping against an empty reserve would
-    /// let the constant-product curve drain the opposite side while the
+    /// `initialize_pool` was called with `mint_a >= mint_b`. Requiring a
+    /// strict ascending order gives each pair of mints exactly one canonical
+    /// pool PDA; without it an (X, Y) pool and a (Y, X) pool would both be
+    /// valid, fragmenting liquidity.
+    InvalidMintOrder,
+    /// `swap_tokens` or `deposit_liquidity` found an LP-claimable (effective)
+    /// reserve of zero. Swapping against an empty reserve would let the
+    /// constant-product curve pay out the whole opposite side while the
     /// invariant check passes vacuously (k = 0 >= 0), and a deposit into an
     /// empty pool would set its price, so both are rejected outright. Every
     /// pool opens with its creator's deposit, and neither a withdrawal nor a

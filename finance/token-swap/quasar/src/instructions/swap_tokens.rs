@@ -115,11 +115,17 @@ pub fn handle_swap_tokens(
         .checked_sub(owed_b)
         .ok_or(AmmError::MathOverflow)?;
 
-    // An empty effective reserve has no price: the curve below would pay out
-    // the whole opposite side and the invariant check would pass vacuously
-    // (k = 0 >= 0). Every pool opens funded in `initialize_pool` and no swap
-    // or withdrawal empties a reserve, so this is not reachable; the check
-    // keeps that from depending on the arithmetic.
+    // Refuse to trade against an empty reserve. If the input side's effective
+    // reserve were 0, the constant-product formula below would output the
+    // ENTIRE opposite reserve (output = taxed_input * other / (0 + taxed_input)
+    // = other), draining that side - and the end-of-swap
+    // `new_invariant >= invariant` check would NOT catch it, because the
+    // pre-trade product k = 0 * other = 0 makes `0 >= 0` hold vacuously. A
+    // bootstrapped pool keeps both sides positive (the MINIMUM_LIQUIDITY floor
+    // on the first deposit, and swaps preserve the product), but tokens sent
+    // straight to a reserve before the first deposit leave one side funded and
+    // the other empty, and the curve's solvency must not rest on that never
+    // happening.
     require!(
         effective_pool_a > 0 && effective_pool_b > 0,
         AmmError::EmptyPoolReserve

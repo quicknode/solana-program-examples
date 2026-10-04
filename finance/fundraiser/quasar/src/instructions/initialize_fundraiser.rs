@@ -1,7 +1,7 @@
 use {
     crate::{
         error::FundraiserError,
-        state::{Fundraiser, FundraiserInner},
+        state::{one_major_unit, Fundraiser, FundraiserInner, MIN_AMOUNT_TO_RAISE},
     },
     quasar_lang::{prelude::*, sysvars::Sysvar as _},
     quasar_spl::prelude::*,
@@ -39,7 +39,15 @@ pub fn handle_initialize_fundraiser(
     duration: u16,
     bump: u8,
 ) -> Result<(), ProgramError> {
-    require!(amount_to_raise > 0, FundraiserError::InvalidAmount);
+    // The target must be at least MIN_AMOUNT_TO_RAISE major units, expressed
+    // in minor units: MIN_AMOUNT_TO_RAISE * 10^decimals.
+    let minimum_amount_to_raise = MIN_AMOUNT_TO_RAISE
+        .checked_mul(one_major_unit(accounts.mint_to_raise.decimals())?)
+        .ok_or(FundraiserError::MathOverflow)?;
+    require!(
+        amount_to_raise >= minimum_amount_to_raise,
+        FundraiserError::InvalidAmount
+    );
     // A zero-day window would close before any contribution could land.
     require!(duration > 0, FundraiserError::InvalidDuration);
 

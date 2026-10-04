@@ -1,5 +1,20 @@
 # Changelog
 
+## [2026-10-04]
+
+### Fixed
+
+- `initialize_fundraiser` accepted any nonzero target and `contribute` any
+  nonzero amount, where the Anchor versions require a target of at least
+  `MIN_AMOUNT_TO_RAISE` (3) major units of the raised token and a contribution
+  of at least one major unit (`10^decimals` minor units). The Quasar version
+  now enforces both: a smaller target fails with `InvalidAmount`, and a
+  smaller contribution, zero included, fails with the new
+  `ContributionTooSmall` error. `initialize_rejects_target_below_minimum` and
+  `contribute_below_one_major_unit_fails` try one minor unit under each
+  minimum. The tests' mint now has 2 decimals, so one major unit is 100 minor
+  units.
+
 ## [2026-10-03]
 
 ### Changed

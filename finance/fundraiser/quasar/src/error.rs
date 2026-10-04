@@ -33,4 +33,7 @@ pub enum FundraiserError {
     /// Contributions to an unclaimed fundraiser have not all been refunded,
     /// so closing its vault would strand them.
     RefundsOutstanding,
+    /// A contribution was below one major unit of the raised token
+    /// (`10^decimals` minor units).
+    ContributionTooSmall,
 }

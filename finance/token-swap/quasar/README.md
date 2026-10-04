@@ -31,6 +31,22 @@ Requesting more than the caller's token balance fails fast with
 always refers to the amounts actually moved. Error codes live in
 `src/error.rs` and start at 6000, matching the Anchor variant's offset.
 
+## One pool per pair, and no trading against an empty side
+
+`initialize_pool` requires `mint_a` to sort strictly below `mint_b`, failing
+with `InvalidMintOrder` otherwise, so each pair of mints has exactly one pool
+rather than an (X, Y) pool and a (Y, X) pool splitting its liquidity. Passing
+the same mint as both fails earlier, with Quasar's `AccountBorrowFailed`, since
+the runtime hands the program the second slot as a duplicate of the first.
+
+`swap_tokens` refuses to trade while either LP-claimable reserve is zero,
+failing with `EmptyPoolReserve`. Against an empty input side the
+constant-product formula pays out the whole opposite reserve, and the
+invariant check cannot catch it because the pre-trade product is zero.
+`swap_rejects_empty_reserve` runs that swap against a pool whose `pool_a` was
+emptied by hand, a state no instruction produces now that every pool opens
+with its creator's deposit.
+
 ## Setup
 
 From `finance/token-swap/quasar/`:
