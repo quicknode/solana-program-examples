@@ -24,6 +24,12 @@ fixed-size accounts, so this port follows that idiom:
   touches at the top of the instruction. Health is then computed inline from the
   freshly accrued reserves and the oracle prices passed in.
 
+- **Reserve configuration is fixed at creation.** There is no
+  `update_reserve_config`: a reserve's loan-to-value, liquidation threshold and
+  bonus, close factor, reserve factor, interest-rate curve and oracle
+  confidence limit are set by `initialize_reserve` and never change, so the
+  bounds the Anchor version checks on update are checked there.
+
 - **A hand-declared `LastRestartSlot` sysvar.** quasar-lang ships only the
   Clock and Rent sysvars, so `src/last_restart.rs` declares the 8-byte layout
   itself and reads it with the same `sol_get_sysvar` syscall. `price_scaled`

@@ -312,6 +312,37 @@ fn initialize_pool_creates_pool_config_and_lp_mint(test: &mut Test) {
     }
 }
 
+/// Pools are keyed by an ordered pair: creating the (B, A) pool beside the
+/// (A, B) pool would split the pair's liquidity across two pools, so the
+/// reversed order is refused. A pool of a mint against itself never reaches
+/// the order check: the same address in the `mint_a` and `mint_b` slots is a
+/// duplicate account, which Quasar's account parsing refuses with
+/// `AccountBorrowFailed` before any handler code runs.
+#[quasar_test]
+fn initialize_pool_rejects_unordered_mints(test: &mut Test) {
+    setup_pool(test);
+
+    test.send(InitializePoolInstruction {
+        mint_a: MINT_B,
+        mint_b: MINT_A,
+        payer: PAYER,
+    })
+    .fails_with(AmmError::InvalidMintOrder);
+    let config = test.derive_pda(ConfigPda::seeds());
+    assert!(
+        test.account(test.derive_pda(PoolPda::seeds(&config, &MINT_B, &MINT_A)))
+            .is_none(),
+        "the reversed pool must not exist"
+    );
+
+    test.send(InitializePoolInstruction {
+        mint_a: MINT_A,
+        mint_b: MINT_A,
+        payer: PAYER,
+    })
+    .fails(ProgramError::Runtime("AccountBorrowFailed".into()));
+}
+
 // ─── deposit_liquidity ───────────────────────────────────────────────────────
 
 #[quasar_test]
@@ -855,6 +886,41 @@ fn swap_rejects_substituted_pool_vault(test: &mut Test) {
         10_000_000,
         "pool_b must be untouched after the refused swap"
     );
+}
+
+/// Tokens sent straight to `pool_b` before anyone deposits leave a pool with
+/// one funded reserve and one empty one. Pricing a swap from that would pay
+/// the trader the whole of `pool_b` for any input (`input * b / (0 + input)
+/// = b`), and the invariant check would pass because the pre-trade product is
+/// zero, so the swap is refused.
+#[quasar_test]
+fn swap_rejects_empty_reserve(test: &mut Test) {
+    let env = setup_pool(test);
+    let pool_b = pool_b(test);
+    test.add(
+        TokenAccount::new(MINT_B, env.pool_config)
+            .at(pool_b)
+            .amount(5_000_000),
+    );
+    fund(test, TRADER, TRADER_TOKEN_A, TRADER_TOKEN_B, 1_000_000, 0);
+
+    swap(
+        test,
+        TRADER,
+        TRADER_TOKEN_A,
+        TRADER_TOKEN_B,
+        true,
+        1_000_000,
+        1,
+    )
+    .fails_with(AmmError::EmptyPoolReserve);
+
+    assert_eq!(
+        test.tokens(pool_b),
+        5_000_000,
+        "pool_b must be untouched after the refused swap"
+    );
+    assert_eq!(test.tokens(TRADER_TOKEN_B), 0);
 }
 
 /// A deposit that names the depositor's own token accounts as the reserves

@@ -12,12 +12,17 @@ use {
             RefundInstruction,
         },
         error::FundraiserError,
-        state::{Contribution, Fundraiser, SECONDS_PER_DAY},
+        state::{Contribution, Fundraiser, MIN_AMOUNT_TO_RAISE, SECONDS_PER_DAY},
     },
     quasar_lang::error::QuasarError,
     quasar_test::prelude::*,
 };
 
+/// Decimals of the raised token. Two keeps one major unit at 100 minor units,
+/// below every contribution the tests make.
+const MINT_DECIMALS: u8 = 2;
+/// One major unit of the raised token, the smallest contribution allowed.
+const ONE_TOKEN: u64 = 10_u64.pow(MINT_DECIMALS as u32);
 /// Fundraising target in minor units of the raised token.
 const TARGET_AMOUNT: u64 = 10_000;
 /// Fundraising window length in days.
@@ -96,7 +101,12 @@ fn framework_error(error: QuasarError) -> ProgramError {
 /// fixed start time.
 fn base_world(test: &mut Test) {
     test.add(Wallet::new().at(MAKER));
-    test.add(Mint::new(MAKER).at(MINT).supply(1_000_000_000).decimals(9));
+    test.add(
+        Mint::new(MAKER)
+            .at(MINT)
+            .supply(1_000_000_000)
+            .decimals(MINT_DECIMALS),
+    );
     test.add(TokenAccount::new(MINT, MAKER).at(MAKER_TA));
     test.warp_to_timestamp(START_TIME);
 }
@@ -264,6 +274,17 @@ fn initialize_rejects_zero_amount(test: &mut Test) {
     initialize_fundraiser(test, 0, DURATION_DAYS).fails_with(FundraiserError::InvalidAmount);
 }
 
+/// The target must be at least `MIN_AMOUNT_TO_RAISE` major units; one minor
+/// unit less is refused and the minimum itself is accepted.
+#[quasar_test]
+fn initialize_rejects_target_below_minimum(test: &mut Test) {
+    base_world(test);
+    let minimum = MIN_AMOUNT_TO_RAISE * ONE_TOKEN;
+    initialize_fundraiser(test, minimum - 1, DURATION_DAYS)
+        .fails_with(FundraiserError::InvalidAmount);
+    initialize_fundraiser(test, minimum, DURATION_DAYS).succeeds();
+}
+
 #[quasar_test]
 fn initialize_rejects_zero_duration(test: &mut Test) {
     base_world(test);
@@ -294,6 +315,24 @@ fn contribute_creates_contribution_and_moves_tokens(test: &mut Test) {
     let contribution_state = test.read::<Contribution>(contribution);
     assert_eq!(u64::from(contribution_state.amount), PARTIAL_CONTRIBUTION);
     assert_eq!(contribution_state.bump, expected_bump);
+}
+
+/// A contribution must be at least one major unit of the raised token. One
+/// minor unit less, and zero, are refused with nothing moved and no
+/// contribution account opened; exactly one major unit is accepted.
+#[quasar_test]
+fn contribute_below_one_major_unit_fails(test: &mut Test) {
+    let fundraiser = initialized_world(test);
+
+    for amount in [ONE_TOKEN - 1, 0] {
+        contribute(test, amount).fails_with(FundraiserError::ContributionTooSmall);
+    }
+    assert_eq!(test.tokens(VAULT), 0);
+    assert_eq!(open_contributions(test, fundraiser), 0);
+
+    contribute(test, ONE_TOKEN)
+        .succeeds()
+        .has_tokens(VAULT, ONE_TOKEN);
 }
 
 #[quasar_test]

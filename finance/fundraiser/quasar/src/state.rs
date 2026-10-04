@@ -4,6 +4,19 @@ use {crate::error::FundraiserError, quasar_lang::prelude::*};
 /// days; deadline math converts it to seconds with this factor.
 pub const SECONDS_PER_DAY: i64 = 86_400;
 
+/// The smallest target a fundraiser can set, in major units of the raised
+/// token. `initialize_fundraiser` converts it to minor units with the mint's
+/// decimals.
+pub const MIN_AMOUNT_TO_RAISE: u64 = 3;
+
+/// One major unit of a token with `decimals` decimals, in minor units:
+/// `10^decimals`.
+pub fn one_major_unit(decimals: u8) -> Result<u64, ProgramError> {
+    Ok(10_u64
+        .checked_pow(decimals as u32)
+        .ok_or(FundraiserError::MathOverflow)?)
+}
+
 /// State for the fundraiser: records the maker, target mint, vault, amounts,
 /// and timing.
 #[account(discriminator = 1, set_inner)]

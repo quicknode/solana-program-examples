@@ -1,5 +1,22 @@
 # Changelog
 
+## [2026-10-04] - Mint order and empty reserves
+
+### Fixed
+
+- `initialize_pool` accepted its two mints in either order, so a pair could
+  have an (X, Y) pool and a (Y, X) pool side by side, splitting its liquidity.
+  It now requires `mint_a` to sort strictly below `mint_b` and fails with the
+  new `InvalidMintOrder` error otherwise, as the Anchor versions do.
+  `initialize_pool_rejects_unordered_mints` tries the reversed pair.
+- `swap_tokens` priced a trade against an empty reserve. Tokens sent straight
+  to `pool_b` before the first deposit leave `pool_a` empty, and a swap of any
+  size into `pool_a` was then paid all of `pool_b`, with the invariant check
+  passing because the pre-trade product was zero. It now refuses a swap while
+  either LP-claimable reserve is zero, with the new `EmptyPoolReserve` error,
+  as the Anchor versions do. `swap_rejects_empty_reserve` funds `pool_b` alone
+  and tries the swap.
+
 ## [2026-10-02] - Reserves at PDAs
 
 ### Changed
