@@ -1,11 +1,12 @@
 use anchor_lang::prelude::*;
 
 mod constants;
-mod errors;
 // Public so the LiteSVM integration tests can build instruction arguments
-// (`OptionTerms`, `OptionKind`) against the program's own types, and the
-// proofs crate's README can point at the formulas it mirrors.
+// (`OptionTerms`, `OptionKind`) against the program's own types and assert
+// each refusal by its `OptionsError` code, and the proofs crate's README can
+// point at the formulas it mirrors.
 pub mod contract_math;
+pub mod errors;
 pub mod instructions;
 pub mod state;
 

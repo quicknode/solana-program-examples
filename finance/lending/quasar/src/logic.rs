@@ -47,6 +47,7 @@ pub fn snapshot_reserve(reserve: &Account<Reserve>) -> ReserveInner {
         min_borrow_rate_bps: u16::from(reserve.min_borrow_rate_bps),
         optimal_borrow_rate_bps: u16::from(reserve.optimal_borrow_rate_bps),
         max_borrow_rate_bps: u16::from(reserve.max_borrow_rate_bps),
+        max_confidence_bps: u16::from(reserve.max_confidence_bps),
         bump: reserve.bump,
     }
 }
@@ -124,8 +125,14 @@ pub fn accrue(
     Ok(())
 }
 
-/// The feed's price scaled by `FIXED_POINT_SCALE`, after staleness + positivity checks.
-pub fn price_scaled(feed: &Account<PriceFeed>, slot: u64) -> Result<u128, ProgramError> {
+/// The feed's price scaled by `FIXED_POINT_SCALE`, after asserting the feed
+/// is fresh, positive, and no less certain than `max_confidence_bps` of the
+/// price allows.
+pub fn price_scaled(
+    feed: &Account<PriceFeed>,
+    slot: u64,
+    max_confidence_bps: u16,
+) -> Result<u128, ProgramError> {
     let last_updated = u64::from(feed.last_updated_slot);
     let age = slot
         .checked_sub(last_updated)
@@ -146,6 +153,23 @@ pub fn price_scaled(feed: &Account<PriceFeed>, slot: u64) -> Result<u128, Progra
 
     let mantissa = i128::from(feed.price_mantissa);
     require!(mantissa > 0, LendingError::InvalidOraclePrice);
+
+    // Reject a price the oracle itself is unsure of: the confidence band, as
+    // a fraction of the price, must not exceed the reserve's limit.
+    // `confidence` shares the mantissa's exponent, so the comparison needs no
+    // scaling; it is `confidence / price <= max_confidence_bps / 10_000` with
+    // both sides multiplied out so no division truncates.
+    let band_scaled = (u64::from(feed.confidence) as u128)
+        .checked_mul(BPS_DENOMINATOR)
+        .ok_or(LendingError::MathOverflow)?;
+    let limit_scaled = (mantissa as u128)
+        .checked_mul(max_confidence_bps as u128)
+        .ok_or(LendingError::MathOverflow)?;
+    require!(
+        band_scaled <= limit_scaled,
+        LendingError::OracleConfidenceTooWide
+    );
+
     price_mantissa_to_scaled(mantissa as u128, i32::from(feed.exponent))
 }
 

@@ -48,21 +48,60 @@ fn deposit_that_would_mint_zero_shares_is_rejected() {
     );
 }
 
+/// Deposits floor the shares minted and redemptions floor the liquidity paid
+/// out, so a supplier who deposits and redeems over and over, at a size that
+/// does not divide the exchange rate evenly, can never end up with more than
+/// they started with. Interest accrues first so the rate is not one-to-one,
+/// and the pool stays borrowed throughout so every trip rounds somewhere.
 #[test]
 fn deposit_redeem_round_trip_creates_no_value() {
     let mut env = Env::new();
+    let collateral = env.add_reserve(6, dollars(1), default_config());
     let usdc = env.add_reserve(6, dollars(1), default_config());
+
+    let supplier = env.create_user();
+    env.fund(&supplier, usdc.mint, 1_000_000_000);
+    env.supply(&supplier, &usdc, 1_000_000_000);
+
+    let borrower = env.create_user();
+    env.fund(&borrower, collateral.mint, 1_000_000_000);
+    env.fund(&borrower, usdc.mint, 0);
+    env.supply(&borrower, &collateral, 1_000_000_000);
+    let obligation = env.initialize_obligation(&borrower);
+    env.post_collateral(&borrower, obligation, &collateral, 1_000_000_000);
+    env.try_borrow(
+        &borrower,
+        obligation,
+        &[&collateral],
+        &[],
+        &usdc,
+        500_000_000,
+    )
+    .unwrap();
+    env.warp_seconds(common::TENTH_OF_A_YEAR);
+    env.refresh_reserve_only(&borrower, &usdc);
+    assert!(env.reserve(&usdc).borrow_accumulation_factor > lending::constants::FIXED_POINT_SCALE);
 
     let user = env.create_user();
     let amount = 777_777_777;
-    let liquidity_account = env.fund(&user, usdc.mint, amount);
-    let share_account = env.supply(&user, &usdc, amount);
+    // Funded with more than one deposit's worth, so a trip that loses dust
+    // leaves enough for the next deposit of the full amount.
+    let funded = 2 * amount;
+    let liquidity_account = env.fund(&user, usdc.mint, funded);
+    let round_trips = 50;
 
-    let shares = env.token_balance(share_account);
-    env.try_redeem(&user, &usdc, shares).unwrap();
+    for trip in 1..=round_trips {
+        let share_account = env.supply(&user, &usdc, amount);
+        let shares = env.token_balance(share_account);
+        env.try_redeem(&user, &usdc, shares).unwrap();
+        // The next trip's instructions are byte-identical to this one's.
+        env.svm.expire_blockhash();
 
-    // The round trip must never return more than was put in.
-    assert!(env.token_balance(liquidity_account) <= amount);
+        assert!(
+            env.token_balance(liquidity_account) <= funded,
+            "round trip {trip} returned more than was put in"
+        );
+    }
 }
 
 #[test]

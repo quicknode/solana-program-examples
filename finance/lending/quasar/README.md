@@ -48,11 +48,35 @@ Everything else mirrors the Anchor version.
   deposited share amount, plus the borrow reserve and scaled debt. PDA:
   `["obligation", market, owner]`.
 - **`PriceFeed`**: an oracle-shaped price (`mantissa * 10^exponent`
-  + slot). PDA: `["price_feed", market, mint]`: scoped to a market, not to any
-  individual; only the market's `owner` may write it, so prices can't be squatted
-  and each market prices its own assets. `set_price` writes it directly for
-  deterministic tests; in production a reserve points at a real Pyth
-  price feed. Freshness is checked in slots.
+  + slot), with the publisher's **confidence** band in the mantissa's units
+  (how far the publisher's sources disagree, half the width of the interval
+  around the price). PDA: `["price_feed", market, mint]`: scoped to a market,
+  not to any individual; only the market's `owner` may write it, so prices
+  can't be squatted and each market prices its own assets. `set_price` takes
+  the mantissa, exponent and confidence band and writes the feed directly for
+  deterministic tests; in production a reserve points at a Pyth price feed and
+  the program reads its `PriceUpdateV2` account instead, after checking the
+  update's `feed_id`: `price_mantissa` is `price_message.price`, `exponent` is
+  `price_message.exponent`, `confidence` is `price_message.conf`, and
+  `last_updated_slot` is `posted_slot`. `price_scaled` makes three checks
+  before any handler values anything at the price:
+  - Freshness is checked in **slots** (`MAX_PRICE_STALENESS_SLOTS`), not
+    wall-clock time, plus one check slots alone cannot make: a cluster restart
+    passes hours of wall-clock time in zero slots, so a price stamped at or
+    before the `LastRestartSlot` sysvar's slot is rejected
+    (`PricePredatesRestart`), pausing valuation until the publisher posts again.
+  - The price must be positive (`InvalidOraclePrice`).
+  - The confidence band must be no wider than the reserve's
+    `max_confidence_bps` of the price, with the comparison multiplied out as
+    `confidence × 10,000 ≤ price × max_confidence_bps` in `u128` so no division
+    truncates. A wider band is refused with `OracleConfidenceTooWide`: the
+    oracle is reporting that it does not know the price, and a borrow,
+    withdrawal or liquidation valued at a number the oracle itself doubts would
+    be lending against a guess. The limit is a reserve config field beside the
+    loan-to-value and liquidation thresholds, so a market owner tunes it per
+    asset through `initialize_reserve`, and `validate_config` rejects a limit
+    above 100% or of zero, which would refuse every live price and freeze every
+    obligation holding the asset.
 - **Liquidation**: the close factor (max fraction of the debt one call repays)
   comes from the borrow reserve; the bonus from the collateral reserve. A
   repayment whose seizure would exceed the posted collateral fails with
@@ -75,7 +99,11 @@ Everything else mirrors the Anchor version.
   `collect_program_fees`. That spread between the borrow and supply rates is how
   the owner earns.
 - **Integer-only math**: `u128`, scaled by `FIXED_POINT_SCALE` (10^18), every
-  conversion rounding in the program's favour.
+  conversion rounding in the program's favour, so dust cannot be extracted by
+  repeated round-trips; `deposit_redeem_round_trip_creates_no_value` checks
+  this by depositing and redeeming 777,777,777 units fifty times against a
+  reserve whose exchange rate interest has moved off one-to-one, and asserts
+  the supplier never holds more than they started with.
 - **Interest on the wall clock**: a reserve's rate curve is annual, and the
   conversion to a per-second rate divides by `SECONDS_PER_YEAR`. Elapsed time is
   the Clock's `unix_timestamp` minus the reserve's `last_accrual_timestamp`, so a
@@ -112,7 +140,8 @@ cargo test tests::       # runs the quasar-svm integration tests
 `cargo build-sbf` must run first: the tests load the compiled
 `target/deploy/quasar_lending.so` into `quasar-svm`. The suite drives the full
 lifecycle: supply/redeem (1:1 first deposit, less the withheld minimum), borrow up to the LTV limit (and
-rejection beyond it), repay, interest accrual lifting the share value after time
-passes, interest that follows seconds rather than slots (and charges nothing for a
-timestamp behind the last accrual), and liquidation of an unhealthy position (with
-a healthy position rejected).
+rejection beyond it), a price whose confidence band is too wide, repay, interest
+accrual lifting the share value after time passes, interest that follows seconds
+rather than slots (and charges nothing for a timestamp behind the last accrual),
+liquidation of an unhealthy position (with a healthy position rejected), and
+rounding edges.

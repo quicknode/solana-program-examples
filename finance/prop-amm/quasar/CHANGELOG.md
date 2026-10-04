@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-10-04
+
+Check which program owns the price feed. `initialize_market` records the
+feed account's owning program on the new `Market.price_feed_program`, read
+from the account's owner at that moment, beside the feed address and scale it
+already pins. `read_oracle_price` now takes the feed account and that program
+rather than the feed's bytes, and refuses a feed account owned by any other
+with the new `PRICE_FEED_NOT_FROM_ORACLE` (14), before it decodes a byte, so
+`swap` no longer accepts any account laid out like a feed as a price. Tested
+by `swap_rejects_price_feed_from_another_program`, which rewrites the feed as
+a byte-identical copy owned by an unrelated program and then restores the
+owner.
+
 ## 2026-09-23
 
 Documentation only: a production feed is now described as a Pyth

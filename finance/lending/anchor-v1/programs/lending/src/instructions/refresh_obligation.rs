@@ -104,7 +104,8 @@ pub fn handle_refresh_obligation(context: Context<RefreshObligation>) -> Result<
 /// Read the next `[reserve, price_feed]` pair from `remaining_accounts`,
 /// checking it matches the obligation's stored reserve, belongs to the
 /// obligation's lending market, and that both the reserve (refreshed this
-/// slot) and the price (fresh) are usable.
+/// slot) and the price (fresh, and no wider a confidence band than the
+/// reserve allows) are usable.
 fn read_pair<'a, 'info>(
     accounts: &'a [AccountInfo<'info>],
     cursor: &mut usize,
@@ -142,7 +143,7 @@ where
         LendingError::InvalidObligationAccount
     );
     let price_feed = Account::<PriceFeed>::try_from(price_info)?;
-    let price_scaled = price_feed.price_scaled(slot)?;
+    let price_scaled = price_feed.price_scaled(slot, reserve.config.max_confidence_bps)?;
 
     Ok((reserve.into_inner(), price_scaled))
 }

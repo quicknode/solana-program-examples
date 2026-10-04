@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-10-04
+
+Check which program owns the price feed. `initialize_pool` records the feed
+account's owning program on the new `Pool.price_feed_program`, read from the
+account's owner at that moment, beside the feed address and scale it already
+pins. `read_feed_price` takes that program and refuses a feed account owned by
+any other with the new `PRICE_FEED_NOT_FROM_ORACLE` (23), before it decodes a
+byte, so no handler accepts any account laid out like a feed as a price.
+Tested by `open_rejects_price_feed_from_another_program`, which rewrites the
+feed as a byte-identical copy owned by an unrelated program and then restores
+the owner; `initialize_pool_creates_pool_vault_and_lp_mint` checks the
+recorded program.
+
+`funding_follows_seconds_not_slots` asserts the exact funding paid, `size *
+rate * seconds / FUNDING_PRECISION`, rather than that some was paid, and the
+new `first_deposit_below_minimum_fails` asserts `DEPOSIT_TOO_SMALL` by code one
+base unit under the withheld minimum and a single share minted one over it.
+
 ## 2026-10-01
 
 Replace the leverage cap with an initial margin. `initialize_pool`'s

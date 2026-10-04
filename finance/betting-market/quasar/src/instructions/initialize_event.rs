@@ -65,6 +65,8 @@ pub fn handle_initialize_event(
     accounts.event.set_inner(EventInner {
         event_id,
         outcome_count: 0,
+        open_outcomes: 0,
+        open_bets: 0,
         total_pool: 0,
         // Starts as a draft: outcomes are added before anyone can bet.
         status: EventStatus::Draft as u8,

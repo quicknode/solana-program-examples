@@ -390,7 +390,12 @@ pub fn refresh_price_and_funding_within_band(
 }
 
 fn read_pool_oracle_price(pool: &Pool, oracle_feed: &AccountView) -> Result<u64> {
-    crate::state::oracle::read_oracle_price(oracle_feed, pool.oracle_scale, pool.max_confidence_bps)
+    crate::state::oracle::read_oracle_price(
+        oracle_feed,
+        &pool.price_feed_program,
+        pool.oracle_scale,
+        pool.max_confidence_bps,
+    )
 }
 
 fn apply_price_and_funding(pool: &mut Pool, price: u64) -> Result<()> {

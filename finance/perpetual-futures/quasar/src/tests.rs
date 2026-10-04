@@ -47,6 +47,8 @@ const OPERATOR_COLLATERAL: Pubkey = Pubkey::new_from_array([16; 32]);
 const KEEPER: Pubkey = Pubkey::new_from_array([17; 32]);
 const SECOND_TRADER: Pubkey = Pubkey::new_from_array([18; 32]);
 const SECOND_TRADER_COLLATERAL: Pubkey = Pubkey::new_from_array([19; 32]);
+// A program that is not the one the pool recorded as its feed's owner.
+const OTHER_PROGRAM: Pubkey = Pubkey::new_from_array([20; 32]);
 
 // Matches `PRICE_AVERAGE_WINDOW_SECONDS`: one fold after this many seconds
 // replaces the pool's average price with the oracle price.
@@ -61,25 +63,36 @@ const PROFIT_WARMUP_SLOTS: u64 = 10;
 
 // Matches `HAIRCUT_PRECISION`: a haircut ratio of one.
 const HAIRCUT_PRECISION: u64 = 1_000_000_000;
+// Matches `FUNDING_PRECISION`: the fixed point the funding rate and index are
+// carried in, so a position's funding is `size * rate * seconds / this`.
+const FUNDING_PRECISION: u64 = 1_000_000_000;
 
 fn dollars(whole: i128) -> i128 {
     whole * 10i128.pow(ORACLE_SCALE)
 }
 
 /// A feed account in this program's layout: price (i128), scale (u32),
-/// last_update_slot (u64), confidence (u64). The tests own this; production
-/// reads a real feed.
+/// last_update_slot (u64), confidence (u64), owned by the system program,
+/// which the pool therefore records as the feed's owning program. The tests
+/// own this; production reads a real feed.
 fn set_feed(test: &mut Test, price: i128, confidence: u64) {
     set_feed_at_slot(test, price, SLOT, confidence);
 }
 
 fn set_feed_at_slot(test: &mut Test, price: i128, slot: u64, confidence: u64) {
+    set_feed_owned_by(test, system_program::ID, price, slot, confidence);
+}
+
+/// Write the feed account at `FEED` with `owner` as its owning program. The
+/// bytes are the same whoever owns it, so a copy owned by another program
+/// still decodes as a fresh, confident price at the pinned scale.
+fn set_feed_owned_by(test: &mut Test, owner: Pubkey, price: i128, slot: u64, confidence: u64) {
     let mut data = Vec::with_capacity(36);
     data.extend_from_slice(&price.to_le_bytes());
     data.extend_from_slice(&ORACLE_SCALE.to_le_bytes());
     data.extend_from_slice(&slot.to_le_bytes());
     data.extend_from_slice(&confidence.to_le_bytes());
-    test.set_account(Account::new(FEED, system_program::ID, 1_000_000, data));
+    test.set_account(Account::new(FEED, owner, 1_000_000, data));
 }
 
 /// Pin the Clock sysvar account at `slot` and `unix_timestamp`. Price freshness
@@ -375,8 +388,13 @@ fn close_position_for(
 #[quasar_test]
 fn initialize_pool_creates_pool_vault_and_lp_mint(test: &mut Test) {
     let env = setup(test);
-    // The pool, vault, and liquidity-provider mint were created.
+    // The pool, vault, and liquidity-provider mint were created, and the pool
+    // recorded the program that owned the feed.
     assert!(test.account(env.pool).is_some());
+    assert_eq!(
+        test.read::<Pool>(env.pool).price_feed_program,
+        system_program::ID
+    );
     let custody_vault = test.account(env.custody_vault).unwrap();
     let lp_mint = test.account(env.lp_mint).unwrap();
 
@@ -401,6 +419,18 @@ fn add_liquidity_deposits_and_mints_shares(test: &mut Test) {
         // (minus the withheld minimum liquidity).
         .has_tokens(env.custody_vault, 10_000 * ONE_USDC)
         .has_tokens(PROVIDER_LP, 10_000 * ONE_USDC - 1_000);
+}
+
+/// The first deposit must exceed the 1_000 withheld minimum: one base unit
+/// short is refused, and one over mints a single share.
+#[quasar_test]
+fn first_deposit_below_minimum_fails(test: &mut Test) {
+    let env = setup(test);
+    fund(test, PROVIDER, PROVIDER_COLLATERAL, 10_000);
+    add_liquidity(test, &env, 999).fails_with(error::DEPOSIT_TOO_SMALL);
+    add_liquidity(test, &env, 1_001)
+        .succeeds()
+        .has_tokens(PROVIDER_LP, 1);
 }
 
 #[quasar_test]
@@ -534,6 +564,26 @@ fn open_rejects_price_from_before_a_restart(test: &mut Test) {
     // Publishing after the restart (slot 10) reopens the pool.
     set_feed_at_slot(test, dollars(100), 10, 0);
     open_position(test, &env, 0, 1_000 * ONE_USDC, 5_000 * ONE_USDC).succeeds();
+}
+
+/// The pool records the program that owns its feed at creation and refuses a
+/// price from a feed account owned by any other program, however well its
+/// bytes decode. The feed is swapped for a byte-identical copy owned by an
+/// unrelated program, and the refusal is by the owner alone: the same bytes
+/// owned by the recorded program again are accepted.
+#[quasar_test]
+fn open_rejects_price_feed_from_another_program(test: &mut Test) {
+    let env = setup(test);
+    fund(test, PROVIDER, PROVIDER_COLLATERAL, 100_000 * ONE_USDC);
+    add_liquidity(test, &env, 100_000 * ONE_USDC).succeeds();
+    fund(test, TRADER, TRADER_COLLATERAL, 1_000 * ONE_USDC);
+
+    set_feed_owned_by(test, OTHER_PROGRAM, dollars(100), SLOT, 0);
+    open_position(test, &env, SIDE_LONG, 1_000 * ONE_USDC, 5_000 * ONE_USDC)
+        .fails_with(error::PRICE_FEED_NOT_FROM_ORACLE);
+
+    set_feed(test, dollars(100), 0);
+    open_position(test, &env, SIDE_LONG, 1_000 * ONE_USDC, 5_000 * ONE_USDC).succeeds();
 }
 
 #[quasar_test]
@@ -685,9 +735,10 @@ fn funding_follows_seconds_not_slots(test: &mut Test) {
     close_position(test, &env).succeeds();
     let with_extra_slots = (before_extra - test.tokens(TRADER_COLLATERAL)) - fees;
 
-    assert!(
-        flat > 0,
-        "the flat run must pay some funding to compare against"
+    // The flat run paid exactly the funding for the seconds it was open.
+    assert_eq!(
+        flat,
+        size * MAX_FUNDING_RATE_PER_SECOND * (2 * window) as u64 / FUNDING_PRECISION
     );
     assert_eq!(with_extra_slots, flat);
 }
@@ -750,7 +801,7 @@ fn operator_on_the_lighter_side_earns_only_the_fixed_rate(test: &mut Test) {
 
     let fees = 2 * (size / 1_000); // open and close, 0.1% of notional each
     let funding_received = test.tokens(OPERATOR_COLLATERAL) - (collateral - fees);
-    let expected = size * MAX_FUNDING_RATE_PER_SECOND * one_hour as u64 / 1_000_000_000;
+    let expected = size * MAX_FUNDING_RATE_PER_SECOND * one_hour as u64 / FUNDING_PRECISION;
     assert_eq!(funding_received, expected);
     assert!(
         funding_received * 1_000 < size,

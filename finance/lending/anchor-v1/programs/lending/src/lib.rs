@@ -44,8 +44,9 @@ pub mod lending {
         context: Context<SetPrice>,
         price_mantissa: i128,
         exponent: i32,
+        confidence: u64,
     ) -> Result<()> {
-        instructions::handle_set_price(context, price_mantissa, exponent)
+        instructions::handle_set_price(context, price_mantissa, exponent, confidence)
     }
 
     pub fn refresh_reserve(context: Context<RefreshReserve>) -> Result<()> {

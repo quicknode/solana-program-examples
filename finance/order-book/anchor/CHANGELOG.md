@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased - 2026-10-04
+
+### Added
+
+- `pause_market` and `resume_market`, signed by the market authority
+  (anyone else gets `NotMarketAuthority`). `pause_market` clears
+  `Market.is_active`, which `initialize_market` set and nothing cleared, so
+  the `MarketPaused` refusal in `place_order` can now happen.
+  `resume_market` sets the flag again. A pause stops new orders and nothing
+  else: `cancel_order`, `settle_funds` and `withdraw_fees` do not read the
+  flag. Tests: `pause_market_refuses_new_orders_with_market_paused`,
+  `paused_market_still_cancels_and_settles_a_resting_order`,
+  `paused_market_still_pays_out_fills_and_withdraws_fees`,
+  `resume_market_accepts_orders_again`,
+  `only_the_market_authority_can_pause_or_resume`.
+
+### Changed
+
+- `NotMarketAuthority`'s message names all three handlers it guards.
+- The README's code layout shows `withdraw_fees.rs` under
+  `instructions/admin/`, where it is.
+
 ## 2026-10-03
 
 ### Added

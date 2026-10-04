@@ -121,9 +121,14 @@ any time until someone does.
 ### Step 3: Bob buys the option
 
 `buy_option` takes 25 USDC from Bob: 0.25 USDC (the 1% fee) into the quote
-vault, owed to Maria, and 24.75 USDC straight to Alice. The 5 NVDAx do not
-move. The option's `holder` is now Bob and its status `Held`. Bob's downside
-is fixed at the 25 USDC he just paid.
+vault, owed to Maria, and 24.75 USDC straight to Alice, as two transfers (a
+venue with a zero fee makes only the first). The 5 NVDAx do not move. The
+option's `holder` is now Bob and its status `Held`. Bob's downside is fixed at
+the 25 USDC he just paid. Alice could not have bought her own option: the
+premium's source and destination are each bound to their party's associated
+token account, so with Alice on both sides they would be one account in two
+mutable slots, and Anchor refuses the instruction with
+`ConstraintDuplicateMutableAccount` before the handler runs.
 
 ### Step 4: NVIDIA rallies to $200 and Bob exercises
 
@@ -155,8 +160,9 @@ fall that never came should do.
 
 ### Step 8: Maria sweeps the fees
 
-`collect_fees` pays Maria the 0.45 USDC of accumulated fees. The vaults are
-empty: every token that entered has left to the party it was owed to.
+`collect_fees` pays Maria the 0.45 USDC of accumulated fees, and only that:
+`fees_owed` is the one part of the quote vault the admin can reach. The vaults
+are empty: every token that entered has left to the party it was owed to.
 
 Where everyone ended up: Alice earned a premium and sold her shares at her
 price; Bob turned 25 USDC of premium into 5 NVDAx at a $20 discount to the
@@ -172,7 +178,9 @@ call holders' strike payments awaiting collection) and `fees_owed`. Every
 handler that moves tokens updates the ledger before any transfer and then
 asserts that each vault still covers what it owes (`CustodyInvariantViolated`
 otherwise). The [Kani model checks](../kani-proofs) walk every path through an option's
-life and check that the ledger returns to zero.
+life and check that the ledger returns to zero, and check that `collect_fees`
+pays the admin exactly `fees_owed` and leaves everything owed to writers and
+holders in the vault.
 
 ## Design notes and further reading
 
@@ -211,10 +219,14 @@ cargo test
 ```
 
 The LiteSVM suite (`programs/options/tests/test_options.rs`) walks the call
-from write to collected strike and the put from write to exercise and to
-expiry, pins every balance to the minor unit, checks the custody ledger
-against the vault balances after every step, and checks that every refusal holds:
-the expiry boundary from both sides, cancel after sale, buy after sale or
-expiry, exercise by a non-holder, collection by a non-writer or before
-exercise, reclaim after exercise, fee collection by a non-admin, and the
-parameter checks at write time.
+from write to collected strike and from purchase to expiry and reclaim, and
+the put from write to exercise and from purchase to expiry and reclaim
+(`test_reclaim_collateral_after_expiry_returns_the_strike_to_the_put_writer`),
+pins every balance to the minor unit, counts the token transfers a purchase
+makes (two, or one on a zero-fee venue), checks the custody ledger against the
+vault balances after every lifecycle step, and checks that every refusal holds
+and fails with the expected error code: the expiry boundary from both sides,
+cancel after sale, buy after sale or expiry, a writer buying their own option,
+exercise by a non-holder, collection by a non-writer or before exercise,
+reclaim after exercise, fee collection by a non-admin, a second sweep with
+nothing owed, and the parameter checks at market and write time.

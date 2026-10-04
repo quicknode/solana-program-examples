@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased, 2026-10-04
+
+The quasar-test suite asserts the error code of every refusal (`fails_with`
+for the program's and Quasar's own errors, `fails` for the runtime's) instead
+of only that the transaction failed. New test
+`reclaim_collateral_after_expiry_returns_the_strike_to_the_put_writer`
+follows the put from purchase to expiry and reclaim.
+`writer_cannot_buy_their_own_option` asserts `AccountBorrowFailed`, the
+refusal Quasar's account parsing gives the duplicate `buyer` and `writer`
+slots. The purchase tests count the token program invocations in the logs, so
+they show the token transfers a buy makes: two with a fee, one without. The
+Kani crate gains `proof_collect_fees_pays_only_the_fees_owed`.
+
 ## 2026-10-03
 
 The option now stores `underlying_amount` and `strike_amount`, the two amounts

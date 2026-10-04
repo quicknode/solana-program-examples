@@ -55,6 +55,11 @@ pub struct Reserve {
     pub min_borrow_rate_bps: u16,
     pub optimal_borrow_rate_bps: u16,
     pub max_borrow_rate_bps: u16,
+    /// Widest confidence band, as a fraction of the price, this reserve's
+    /// price feed may report and still be valued against. A wider band is
+    /// refused (`OracleConfidenceTooWide`), so no borrow, withdrawal or
+    /// liquidation is priced off a quote the oracle itself is unsure of.
+    pub max_confidence_bps: u16,
     pub bump: u8,
 }
 
@@ -72,12 +77,15 @@ pub struct Obligation {
     pub bump: u8,
 }
 
-/// Oracle-shaped price feed, a mantissa and exponent like Pyth's.
-/// PDA: `["price_feed", market, mint]` — scoped to a market (not to any
-/// individual); only the market's `owner` may write it, so prices can't be
-/// squatted and each market prices its own assets.
+/// Oracle-shaped price feed: a mantissa, an exponent and a confidence band
+/// like Pyth's. PDA: `["price_feed", market, mint]` — scoped to a market (not
+/// to any individual); only the market's `owner` may write it, so prices
+/// can't be squatted and each market prices its own assets.
 /// `price = price_mantissa * 10^exponent`; freshness is checked in slots. In
-/// production this account would be a real Pyth price feed.
+/// production this account would be a Pyth `PriceUpdateV2`, mapped as
+/// `price_mantissa = price_message.price`, `exponent = price_message.exponent`,
+/// `confidence = price_message.conf` and `last_updated_slot = posted_slot`,
+/// after checking the update's `feed_id`.
 #[account(discriminator = 4, set_inner)]
 #[seeds(b"price_feed", market: Address, mint: Address)]
 pub struct PriceFeed {
@@ -85,6 +93,12 @@ pub struct PriceFeed {
     pub mint: Address,
     pub price_mantissa: i128,
     pub exponent: i32,
+    /// How far the publisher's price sources disagree, as half the width of
+    /// the interval around `price_mantissa`, in the mantissa's units (Pyth's
+    /// `conf`). A reserve refuses a price whose band is wider than its
+    /// `max_confidence_bps` of the price, so a market that has stopped
+    /// trading, or whose sources disagree, cannot be valued against.
+    pub confidence: u64,
     pub last_updated_slot: u64,
     pub bump: u8,
 }

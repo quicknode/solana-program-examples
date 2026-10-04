@@ -79,4 +79,18 @@ pub mod order_book {
     pub fn withdraw_fees(context: &mut Context<WithdrawFeesAccountConstraints>) -> Result<()> {
         instructions::withdraw_fees::handle_withdraw_fees(context)
     }
+
+    /// Stop the market taking new orders: `place_order` is refused with
+    /// `MarketPaused` until `resume_market`. Cancels, settlements and fee
+    /// withdrawals keep working while the market is paused. Only the
+    /// market's stored `authority` may call this.
+    pub fn pause_market(context: &mut Context<PauseMarketAccountConstraints>) -> Result<()> {
+        instructions::pause_market::handle_pause_market(context)
+    }
+
+    /// Reopen a paused market so `place_order` accepts orders again. Only
+    /// the market's stored `authority` may call this.
+    pub fn resume_market(context: &mut Context<ResumeMarketAccountConstraints>) -> Result<()> {
+        instructions::resume_market::handle_resume_market(context)
+    }
 }

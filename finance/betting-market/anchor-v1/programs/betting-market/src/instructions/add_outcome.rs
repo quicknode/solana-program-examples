@@ -57,6 +57,11 @@ pub fn handle_add_outcome(
         bump: context.bumps.outcome,
     });
 
-    context.accounts.event.outcome_count += 1;
+    let event = &mut context.accounts.event;
+    event.outcome_count += 1;
+    event.open_outcomes = event
+        .open_outcomes
+        .checked_add(1)
+        .ok_or(BettingError::MathOverflow)?;
     Ok(())
 }

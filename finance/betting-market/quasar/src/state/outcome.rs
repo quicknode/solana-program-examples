@@ -8,7 +8,9 @@ pub const MAX_LABEL_LEN: usize = 64;
 
 /// One possible result of an event (e.g. "Yes", "Team A wins"). `total_amount`
 /// is this outcome's share of the pool and the denominator for pro-rata payouts
-/// when this outcome wins.
+/// when this outcome wins. `bet_count` is the number of Bet accounts ever
+/// created on this outcome; closing a bet does not lower it (the event's
+/// `open_bets` is the count that does fall).
 ///
 /// PDA: `["outcome", event, index]`.
 #[account(discriminator = 3, set_inner)]

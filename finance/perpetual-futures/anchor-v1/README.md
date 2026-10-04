@@ -87,7 +87,7 @@ A position's *equity* is its net collateral plus profit/loss minus funding. Once
 
 ### Oracle
 
-The mark price comes from an oracle feed. This example validates the price for staleness (by slot), publication after the most recent cluster restart (the `LastRestartSlot` sysvar, because a halt passes hours of wall-clock time in zero slots), positivity, scale, and a [confidence band](https://docs.pyth.network/price-feeds/best-practices#confidence-intervals) that must stay within `max_confidence_bps` of the price: rejecting an uncertain price is one of the most common oracle-safety checks.
+The mark price comes from an oracle feed. `initialize_pool` records the program that owns the feed account on `Pool.price_feed_program`, and every read refuses a feed account owned by any other program with `PriceFeedNotFromOracle`: the feed's byte layout alone says nothing about who wrote it. The read then validates the price for staleness (by slot), publication after the most recent cluster restart (the `LastRestartSlot` sysvar, because a halt passes hours of wall-clock time in zero slots), positivity, scale, and a [confidence band](https://docs.pyth.network/price-feeds/best-practices#confidence-intervals) that must stay within `max_confidence_bps` of the price: rejecting an uncertain price is one of the most common oracle-safety checks.
 
 ### Price band
 
@@ -126,11 +126,11 @@ Amounts below are shown in whole USDC; onchain they are base units (× 10⁶). T
 
 **Instruction:** `initialize_pool(parameters)`
 
-The handler validates the parameters, then reads the oracle once to seed the pool's average price at $100.
+The handler validates the parameters, records the program that owns the oracle feed account as `price_feed_program`, then reads the oracle once to seed the pool's average price at $100.
 
 **Accounts created:**
 
-- `Pool` [PDA](https://solana.com/docs/terminology#program-derived-address-pda), seeds `["pool", collateral_mint, oracle_feed]`: parameters, liquidity, collateral total, program fees, insurance fund, per-side open-interest accumulators, funding index, average oracle price. The pool owns the vault and is the LP mint's authority, and signs vault transfers and mint/burn CPIs with its own seeds; there is no separate signing PDA
+- `Pool` [PDA](https://solana.com/docs/terminology#program-derived-address-pda), seeds `["pool", collateral_mint, oracle_feed]`: parameters, the feed's owning program, liquidity, collateral total, program fees, insurance fund, per-side open-interest accumulators, funding index, average oracle price. The pool owns the vault and is the LP mint's authority, and signs vault transfers and mint/burn CPIs with its own seeds; there is no separate signing PDA
 - `custody_vault` [token account](https://solana.com/docs/terminology#token-account) PDA, seeds `["vault", pool]`: all USDC, both provider liquidity and trader collateral; `pool` is its owner
 - `lp_mint` PDA, seeds `["lp_mint", pool]`: the share [mint](https://solana.com/docs/terminology#mint-account); `pool` is the mint authority
 
@@ -261,11 +261,11 @@ This is a teaching example, not an audited exchange. Notably:
 
 The tests run in-process with [LiteSVM](https://www.anchor-lang.com/docs/testing/litesvm) and [solana-kite](https://solanakite.org); no local validator is needed. They deploy both programs, drive the mock oracle, and cover:
 
-- liquidity round-trips, and share inflation through a provider's own trades
+- liquidity round-trips, the first deposit on both sides of the withheld minimum (`test_first_deposit_below_minimum_fails`), and share inflation through a provider's own trades
 - opening and closing longs and shorts in profit and loss
 - the initial margin on both sides of its boundary, and slippage rejection
-- stale-price, pre-restart-price, and wide-confidence rejection
-- funding accrual, the funding-rate maximum, an operator's wallet on the lighter side earning only the fixed rate, and funding that follows seconds rather than slots
+- stale-price, pre-restart-price, and wide-confidence rejection, and a feed account owned by another program refused on the owner alone (`test_open_rejects_price_feed_from_another_program`)
+- the exact funding a long pays over its time open (`test_funding_charged_to_long`), the funding-rate maximum, an operator's wallet on the lighter side earning only the fixed rate, and funding that follows seconds rather than slots
 - the price band: opens, closes, deposits and withdrawals refused when the oracle jumps outside it (`test_open_rejected_when_oracle_jumps_outside_band`, `test_close_rejected_when_oracle_jumps_outside_band`, `test_liquidity_changes_rejected_when_oracle_jumps_outside_band`), liquidation running outside it (`test_liquidation_runs_outside_band`), the exact average after each `update_price_average` (`test_single_update_moves_average_by_elapsed_fraction`), repeated updates walking the average to a genuine move until trading resumes (`test_price_average_catches_up_after_genuine_move`), and one manipulated read after an idle window leaving the average where it was (`test_one_manipulated_read_after_idle_does_not_move_average`)
 - liquidation, and the refusal to liquidate a healthy position
 - the haircut: a position opening without full backing (`test_open_allowed_without_full_backing`), profit paid in full while the pool backs it (`test_profit_runs_uncapped_when_backed`), two winners each paid exactly half when the pool is stressed (`test_haircut_scales_profit_when_pool_stressed`), the insurance fund paying a profit beyond `liquidity` (`test_insurance_pays_profit_beyond_liquidity`), and a winner offset by an open loser paid the pool's whole backing rather than refused (`test_winner_offset_by_open_loser_is_paid_not_refused`)

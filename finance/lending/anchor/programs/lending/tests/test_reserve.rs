@@ -47,6 +47,44 @@ fn rejects_misordered_interest_rate_curve() {
     common::assert_program_error!(result, LendingError::InvalidConfig);
 }
 
+/// The confidence limit is a fraction of the price, so it cannot exceed 100%.
+#[test]
+fn rejects_confidence_limit_wider_than_the_price() {
+    let mut env = Env::new();
+    let usdc = env.add_reserve(6, common::dollars(1), default_config());
+
+    let mut bad = default_config();
+    bad.max_confidence_bps = 10_001;
+    let result = env.try_update_config(&usdc, bad);
+    // A confidence limit above 100% of the price must be rejected.
+    common::assert_program_error!(result, LendingError::InvalidConfig);
+
+    let mut widest = default_config();
+    widest.max_confidence_bps = 10_000;
+    env.try_update_config(&usdc, widest).unwrap();
+    assert_eq!(env.reserve(&usdc).config.max_confidence_bps, 10_000);
+}
+
+/// A zero limit admits only a band of zero, which no live feed reports, so
+/// the reserve could never be valued: the config is rejected rather than
+/// freezing every obligation that holds the asset.
+#[test]
+fn rejects_zero_confidence_limit() {
+    let mut env = Env::new();
+    let usdc = env.add_reserve(6, common::dollars(1), default_config());
+
+    let mut bad = default_config();
+    bad.max_confidence_bps = 0;
+    let result = env.try_update_config(&usdc, bad);
+    // A zero confidence limit must be rejected.
+    common::assert_program_error!(result, LendingError::InvalidConfig);
+
+    let mut tightest = default_config();
+    tightest.max_confidence_bps = 1;
+    env.try_update_config(&usdc, tightest).unwrap();
+    assert_eq!(env.reserve(&usdc).config.max_confidence_bps, 1);
+}
+
 #[test]
 fn accepts_valid_config_update() {
     let mut env = Env::new();

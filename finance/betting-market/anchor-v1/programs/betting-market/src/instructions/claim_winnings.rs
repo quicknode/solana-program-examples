@@ -14,6 +14,7 @@ pub struct ClaimWinningsAccountConstraints<'info> {
     pub token_mint: InterfaceAccount<'info, Mint>,
 
     #[account(
+        mut,
         seeds = [b"event", event.event_id.to_le_bytes().as_ref()],
         bump = event.bump,
     )]
@@ -59,6 +60,15 @@ pub fn handle_claim_winnings(context: Context<ClaimWinningsAccountConstraints>) 
         context.accounts.bet.outcome_index == context.accounts.event.winning_outcome_index,
         BettingError::NothingToClaim
     );
+
+    // This Bet account closes when the handler returns, so the event's count
+    // of open bets drops by one before any tokens move.
+    context.accounts.event.open_bets = context
+        .accounts
+        .event
+        .open_bets
+        .checked_sub(1)
+        .ok_or(BettingError::MathOverflow)?;
 
     let stake = context.accounts.bet.amount;
     // Total staked on the winning outcome, and the losers' stakes after the fee.

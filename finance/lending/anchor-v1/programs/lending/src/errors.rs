@@ -22,6 +22,8 @@ pub enum LendingError {
     PricePredatesRestart,
     #[msg("Price feed reported a non-positive price")]
     InvalidOraclePrice,
+    #[msg("Price feed is too uncertain to value against: its confidence band exceeds the reserve's limit")]
+    OracleConfidenceTooWide,
     #[msg("Borrow would exceed the obligation's allowed borrow value")]
     BorrowTooLarge,
     #[msg("Withdraw would leave the obligation undercollateralized")]

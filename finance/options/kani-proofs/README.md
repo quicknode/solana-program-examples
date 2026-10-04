@@ -35,11 +35,16 @@ in the declared ranges:
   exactly one of the holder (exercise) and the writer (reclaim) can claim a
   held option's collateral. Never both, never neither.
 - `proof_vault_ledger_stays_consistent_across_every_lifecycle`: **the core
-  custody property.** Two options of either kind are written into the shared
+  custody invariant.** Two options of either kind are written into the shared
   vaults and each takes one of its three exits (cancel; buy then reclaim; buy,
   exercise, collect), and after every step each vault holds exactly what the
   market owes. With every option closed and the fees swept, both vaults are
   empty: no token is created or lost on any path.
+- `proof_collect_fees_pays_only_the_fees_owed`: the admin reaches only the
+  fees. From any ledger whose quote vault covers what it owes, plus any
+  surplus sent straight to the vault, one `collect_fees` pays the admin exactly
+  `fees_owed`, leaves every amount owed to writers and holders and the surplus
+  in the vault, zeroes `fees_owed`, and a second sweep pays nothing.
 
 ## Bounded model checking
 
@@ -63,12 +68,15 @@ the bound:
   amounts, premiums and fee rates at most 255. The ledger arithmetic
   it exercises is additions and subtractions whose behavior does not depend on
   the magnitudes.
+- `proof_collect_fees_pays_only_the_fees_owed`: fully symbolic; the owed
+  amounts, the fees and the surplus are any u64 whose sum fits in a vault
+  balance, since the sweep is one subtraction.
 
 ## Running
 
 ```bash
-# Plain unit tests (no Kani needed), which also pin the exact numbers the
-# LiteSVM tests and the book chapter use:
+# Plain unit tests (no Kani needed), which pin the exact numbers the LiteSVM
+# tests and the book chapter use and run the collect_fees check on them:
 cargo test
 
 # Full model check (requires cargo-kani):

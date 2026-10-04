@@ -8,6 +8,7 @@ use {
             DepositInventoryInstruction, InitializeMarketInstruction, SetQuoteInstruction,
             SwapInstruction, WithdrawInventoryInstruction,
         },
+        instructions::shared::error,
         state::Market,
         BaseVaultPda, QuoteVaultPda,
     },
@@ -45,6 +46,8 @@ const TRADER_QUOTE: Pubkey = Pubkey::new_from_array([9; 32]);
 const MALLORY: Pubkey = Pubkey::new_from_array([10; 32]);
 const MALLORY_BASE: Pubkey = Pubkey::new_from_array([11; 32]);
 const MALLORY_QUOTE: Pubkey = Pubkey::new_from_array([12; 32]);
+// A program that is not the one the market recorded as its feed's owner.
+const OTHER_PROGRAM: Pubkey = Pubkey::new_from_array([13; 32]);
 
 fn dollars(whole: i128) -> i128 {
     whole * 10i128.pow(ORACLE_SCALE)
@@ -70,15 +73,23 @@ fn set_clock(test: &mut Test) {
 }
 
 /// A feed account in this program's layout: price (i128), scale (u32),
-/// last_update_slot (u64), confidence (u64). The tests own this; production
-/// reads a real feed.
+/// last_update_slot (u64), confidence (u64), owned by the system program,
+/// which the market therefore records as the feed's owning program. The tests
+/// own this; production reads a real feed.
 fn set_feed_at_slot(test: &mut Test, price: i128, slot: u64, confidence: u64) {
+    set_feed_owned_by(test, system_program::ID, price, slot, confidence);
+}
+
+/// Write the feed account at `FEED` with `owner` as its owning program. The
+/// bytes are the same whoever owns it, so a copy owned by another program
+/// still decodes as a fresh, confident price at the pinned scale.
+fn set_feed_owned_by(test: &mut Test, owner: Pubkey, price: i128, slot: u64, confidence: u64) {
     let mut data = Vec::with_capacity(36);
     data.extend_from_slice(&price.to_le_bytes());
     data.extend_from_slice(&ORACLE_SCALE.to_le_bytes());
     data.extend_from_slice(&slot.to_le_bytes());
     data.extend_from_slice(&confidence.to_le_bytes());
-    test.set_account(Account::new(FEED, system_program::ID, 1_000_000, data));
+    test.set_account(Account::new(FEED, owner, 1_000_000, data));
 }
 
 fn set_feed(test: &mut Test, price: i128, confidence: u64) {
@@ -603,6 +614,47 @@ fn swap_rejects_price_from_before_a_restart(test: &mut Test) {
     );
 
     // Publishing after the restart (at `SLOT`) reopens the market.
+    set_feed(test, dollars(165), 0);
+    swap(
+        test,
+        &env,
+        TRADER,
+        TRADER_BASE,
+        TRADER_QUOTE,
+        DIRECTION_BUY_BASE,
+        825_825_000,
+        0,
+    )
+    .succeeds();
+}
+
+/// The market records the program that owns its feed at creation and refuses
+/// a price from a feed account owned by any other program, however well its
+/// bytes decode. The feed is swapped for a byte-identical copy owned by an
+/// unrelated program, and the refusal is by the owner alone: the same bytes
+/// owned by the recorded program again are accepted.
+#[quasar_test]
+fn swap_rejects_price_feed_from_another_program(test: &mut Test) {
+    let env = setup(test);
+    assert_eq!(
+        test.read::<Market>(env.market).price_feed_program,
+        system_program::ID
+    );
+    fund_trader(test, TRADER, TRADER_BASE, TRADER_QUOTE, 0, 825_825_000);
+
+    set_feed_owned_by(test, OTHER_PROGRAM, dollars(165), SLOT, 0);
+    swap(
+        test,
+        &env,
+        TRADER,
+        TRADER_BASE,
+        TRADER_QUOTE,
+        DIRECTION_BUY_BASE,
+        825_825_000,
+        0,
+    )
+    .fails_with(error::PRICE_FEED_NOT_FROM_ORACLE);
+
     set_feed(test, dollars(165), 0);
     swap(
         test,

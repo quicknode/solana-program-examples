@@ -67,6 +67,7 @@ NVDAx (9 decimals) / USDC (6 decimals): `base_lot_size = 1000`, `quote_lot_size 
 - `cancel_order`: Credit an open order's locked remainder back to the owner's `unsettled_*` and remove it from the book.
 - `settle_funds`: Move a user's `unsettled_*` balances out of the vaults into their token accounts.
 - `withdraw_fees`: Authority-only: drain the fee vault to the authority's token account.
+- `pause_market` / `resume_market`: Authority-only: clear and set `Market.is_active`. While it is clear, `place_order` is refused with `MarketPaused`; `cancel_order`, `settle_funds` and `withdraw_fees` do not read the flag, so a pause stops new orders and nothing else, and every token a trader locked or was owed before the pause can still leave the vaults during it.
 
 `place_order` takes `side` (`0` = bid, `1` = ask), `price`, `quantity`, and `order_id`. The caller passes the
 resting maker orders to cross as **remaining accounts**, in pairs of `(maker_order, maker_market_user)`, in the
@@ -125,6 +126,9 @@ are all consequences of Quasar being zero-copy, `no_std`, and zero-allocation:
   unit to the maker.
 - A full side **evicts its worst order** for a better one instead of refusing every new order, so filling the
   book with far-off orders cannot shut a market (see the lifecycle section).
+- **A pause stops new orders only.** `pause_market` clears `is_active`, and `place_order` is the only handler
+  that reads it. Cancels, settlements and fee withdrawals never check the flag, so nobody's tokens are locked in
+  a paused market. Only the market authority can pause or resume (`NotMarketAuthority` otherwise).
 
 ## Building and testing
 
@@ -143,11 +147,13 @@ in `src/tests.rs` drives the full lifecycle (initialize a market, create users, 
 bid, settle both sides, and withdraw the fee), asserting onchain state, token balances, and fee accounting at
 each step, plus an authorization rejection. Five eviction tests fill the bid side with 512 bids and check that a
 worse or equal bid is refused, a better bid evicts the worst and rests, the evicted owner settles their refund,
-wrong or missing evicted accounts are rejected, and a trader can evict their own worst order.
+wrong or missing evicted accounts are rejected, and a trader can evict their own worst order. Five pause tests
+check that a paused market refuses a new order with `MarketPaused` and locks nothing, still cancels and settles
+a resting order, still pays out a fill and withdraws the fee, takes orders again after `resume_market`, and
+refuses a trader signing either handler with `NotMarketAuthority`.
 
 ## Extending
 
 - **Self-trade prevention:** reject or cancel-back when a taker would cross their own resting order.
 - **Post-only / IOC / FOK** order types by gating the rest-vs-cancel behaviour on a flag.
 - **Multiple fee tiers** keyed on the taker's `MarketUser`.
-- **Market pause/resume** by flipping `Market.is_active` from an authority-gated handler.

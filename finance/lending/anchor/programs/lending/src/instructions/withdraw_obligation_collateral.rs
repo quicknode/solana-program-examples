@@ -23,7 +23,10 @@ pub fn handle_withdraw_obligation_collateral(
     context.accounts.obligation.require_refreshed()?;
     context.accounts.reserve.require_refreshed()?;
     let reserve = &context.accounts.reserve;
-    let price_scaled = context.accounts.price_feed.price_scaled(slot)?;
+    let price_scaled = context
+        .accounts
+        .price_feed
+        .price_scaled(slot, reserve.config.max_confidence_bps)?;
 
     let obligation = &mut context.accounts.obligation;
     let index = obligation.find_collateral(*reserve.address())?;

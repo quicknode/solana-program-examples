@@ -1,5 +1,37 @@
 # Changelog
 
+## [Unreleased] (2026-10-04)
+
+### Changed
+
+- Refuse a price the oracle itself is unsure of. `PriceFeed` gains a
+  `confidence` field, the publisher's confidence band in the mantissa's units
+  (Pyth's `price_message.conf`), which `set_price` now takes as a third
+  argument. `Reserve` gains `max_confidence_bps`, the widest band, as a
+  fraction of the price, the reserve will value against, which
+  `initialize_reserve` takes as its last config argument; `validate_config`
+  rejects a limit above 10,000 or of zero, since a zero limit would refuse
+  every live price and freeze every obligation holding the asset.
+  `price_scaled` now takes the reserve's limit and fails with the new
+  `OracleConfidenceTooWide` when
+  `confidence × 10,000 > price × max_confidence_bps`, computed in `u128` with
+  checked arithmetic, so `borrow_obligation_liquidity`,
+  `withdraw_obligation_collateral` and `liquidate_obligation` all refuse the
+  price. Tested by
+  `borrow_against_collateral_priced_with_a_wide_band_is_rejected`,
+  `borrow_of_a_token_priced_with_a_wide_band_is_rejected`,
+  `confidence_band_at_the_limit_passes_and_one_unit_over_fails`,
+  `rejects_confidence_limit_wider_than_the_price` and
+  `rejects_zero_confidence_limit`. The test harness's `set_price` publishes a
+  0.1% band; `set_price_with_confidence` takes one.
+
+### Added
+
+- `deposit_redeem_round_trip_creates_no_value` runs fifty deposit-and-redeem
+  round trips of 777,777,777 units against a reserve whose exchange rate
+  interest has moved off one-to-one, and asserts after each that the supplier
+  holds no more than they started with.
+
 ## [2026-09-23]
 
 ### Changed

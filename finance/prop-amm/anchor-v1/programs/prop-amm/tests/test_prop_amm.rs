@@ -5,6 +5,7 @@ use {
     },
     litesvm::LiteSVM,
     prop_amm::{
+        errors::PropAmmError,
         instructions::initialize_market::MarketParameters,
         state::{Direction, Market as MarketState},
     },
@@ -54,6 +55,19 @@ fn dollars(whole: i128) -> i128 {
     whole * 10i128.pow(ORACLE_SCALE)
 }
 
+/// Assert that `result` failed with the program's `expected` error. Anchor
+/// reports a program error as `Custom(6000 + the variant's index)`.
+fn assert_fails_with<T>(result: Result<T, String>, expected: PropAmmError) {
+    let code = expected as u32 + 6000;
+    let Err(error) = result else {
+        panic!("the transaction should have failed with error code {code}");
+    };
+    assert!(
+        error.contains(&format!("Custom({code})")),
+        "expected error code {code}, got: {error}"
+    );
+}
+
 /// One deployed market plus the keys needed to drive it.
 struct Market {
     svm: LiteSVM,
@@ -84,7 +98,7 @@ impl Market {
     /// Like `new`, but takes the full parameter set and surfaces an
     /// `initialize_market` rejection instead of panicking, so tests can probe
     /// the parameter validation.
-    fn try_new(initial_price: i128, parameters: MarketParameters) -> Result<Market, ()> {
+    fn try_new(initial_price: i128, parameters: MarketParameters) -> Result<Market, String> {
         let mut svm = LiteSVM::new();
         svm.add_program(
             prop_amm::id(),
@@ -168,7 +182,7 @@ impl Market {
             &[&operator],
             &operator.pubkey(),
         )
-        .map_err(|_| ())?;
+        .map_err(|error| format!("{error:?}"))?;
 
         // Fund the operator's inventory accounts.
         let operator_base =
@@ -410,7 +424,7 @@ impl Market {
         direction: Direction,
         amount_in: u64,
         minimum_amount_out: u64,
-    ) -> Result<(), ()> {
+    ) -> Result<(), String> {
         let trader_base = derive_ata(&trader.pubkey(), &self.base_mint);
         let trader_quote = derive_ata(&trader.pubkey(), &self.quote_mint);
         let instruction = Instruction::new_with_bytes(
@@ -444,7 +458,16 @@ impl Market {
             &trader.pubkey(),
         )
         .map(|_| ())
-        .map_err(|_| ())
+        .map_err(|error| format!("{error:?}"))
+    }
+
+    /// Replace the feed account at the market's recorded feed address with a
+    /// copy whose owning program is `owner`. The bytes are unchanged, so the
+    /// copy still decodes as a fresh, confident price at the pinned scale.
+    fn set_feed_owner(&mut self, owner: Pubkey) {
+        let mut feed_account = self.svm.get_account(&self.feed).unwrap();
+        feed_account.owner = owner;
+        self.svm.set_account(self.feed, feed_account).unwrap();
     }
 
     fn balance(&self, token_account: &Pubkey) -> u64 {
@@ -684,6 +707,35 @@ fn test_swap_rejects_price_from_before_a_restart() {
     market
         .swap(&alice, Direction::BuyBase, 825_825_000, 0)
         .expect("a freshly published price must be accepted after a restart");
+}
+
+/// The market records the program that owns its feed at creation and refuses
+/// a price from a feed account owned by any other program, however well its
+/// bytes decode. The feed is swapped for a byte-identical copy owned by an
+/// unrelated program, and the refusal is by the owner alone: the same bytes
+/// owned by the mock oracle program again are accepted.
+#[test]
+fn test_swap_rejects_price_feed_from_another_program() {
+    let mut market = Market::default_market();
+    assert_eq!(
+        market.market_state().price_feed_program,
+        mock_price_feed::id()
+    );
+    let (alice, _, _) = market.funded_trader(0, 825_825_000);
+
+    market.set_feed_owner(Pubkey::new_unique());
+    assert_fails_with(
+        market.swap(&alice, Direction::BuyBase, 825_825_000, 0),
+        PropAmmError::PriceFeedNotFromOracle,
+    );
+
+    // The retry is otherwise byte-identical to the rejected swap, so it would
+    // carry the same signature and be dropped as already processed.
+    market.svm.expire_blockhash();
+    market.set_feed_owner(mock_price_feed::id());
+    market
+        .swap(&alice, Direction::BuyBase, 825_825_000, 0)
+        .expect("the same feed owned by the recorded oracle program must be accepted");
 }
 
 /// A price the oracle itself is unsure about is rejected: the confidence band

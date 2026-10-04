@@ -14,6 +14,7 @@ pub struct ClaimRefundAccountConstraints<'info> {
     pub token_mint: InterfaceAccount<'info, Mint>,
 
     #[account(
+        mut,
         seeds = [b"event", event.event_id.to_le_bytes().as_ref()],
         bump = event.bump,
     )]
@@ -55,6 +56,15 @@ pub fn handle_claim_refund(context: Context<ClaimRefundAccountConstraints>) -> R
         context.accounts.event.status == EventStatus::Cancelled,
         BettingError::EventNotCancelled
     );
+
+    // This Bet account closes when the handler returns, so the event's count
+    // of open bets drops by one before any tokens move.
+    context.accounts.event.open_bets = context
+        .accounts
+        .event
+        .open_bets
+        .checked_sub(1)
+        .ok_or(BettingError::MathOverflow)?;
 
     let stake = context.accounts.bet.amount;
 

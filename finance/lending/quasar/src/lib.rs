@@ -55,6 +55,7 @@ mod quasar_lending {
         min_borrow_rate_bps: u16,
         optimal_borrow_rate_bps: u16,
         max_borrow_rate_bps: u16,
+        max_confidence_bps: u16,
     ) -> Result<(), ProgramError> {
         ctx.accounts.run(
             loan_to_value_bps,
@@ -66,6 +67,7 @@ mod quasar_lending {
             min_borrow_rate_bps,
             optimal_borrow_rate_bps,
             max_borrow_rate_bps,
+            max_confidence_bps,
             &ctx.bumps,
         )
     }
@@ -75,8 +77,10 @@ mod quasar_lending {
         ctx: Ctx<SetPrice>,
         price_mantissa: i128,
         exponent: i32,
+        confidence: u64,
     ) -> Result<(), ProgramError> {
-        ctx.accounts.run(price_mantissa, exponent, &ctx.bumps)
+        ctx.accounts
+            .run(price_mantissa, exponent, confidence, &ctx.bumps)
     }
 
     #[instruction(discriminator = 3)]

@@ -95,4 +95,17 @@ pub mod betting_market {
     pub fn claim_refund(context: &mut Context<ClaimRefundAccountConstraints>) -> Result<()> {
         instructions::claim_refund::handle_claim_refund(context)
     }
+
+    // Admin closes one Outcome account of a settled or cancelled event once
+    // every Bet account of the event is closed. The rent returns to the admin.
+    pub fn close_outcome(context: &mut Context<CloseOutcomeAccountConstraints>) -> Result<()> {
+        instructions::close_outcome::handle_close_outcome(context)
+    }
+
+    // Admin closes a settled or cancelled event once its bets and outcomes are
+    // closed: the vault's remaining dust goes to the fee recipient, and the
+    // vault and Event account close, returning their rent to the admin.
+    pub fn close_event(context: &mut Context<CloseEventAccountConstraints>) -> Result<()> {
+        instructions::close_event::handle_close_event(context)
+    }
 }

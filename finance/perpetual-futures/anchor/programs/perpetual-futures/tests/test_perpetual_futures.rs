@@ -29,6 +29,9 @@ const TEN_YEARS: i64 = 315_360_000;
 const PROFIT_WARMUP_SLOTS: u64 = 10;
 // Matches `HAIRCUT_PRECISION`: a haircut ratio of one.
 const HAIRCUT_PRECISION: u64 = 1_000_000_000;
+// Matches `FUNDING_PRECISION`: the fixed point the funding rate and index are
+// carried in, so a position's funding is `size * rate * seconds / this`.
+const FUNDING_PRECISION: u64 = 1_000_000_000;
 // Collateral token has 6 decimals (like USDC), so one whole unit is 1_000_000
 // base units.
 const ONE_USDC: u64 = 1_000_000;
@@ -310,6 +313,15 @@ impl Market {
         )
         .unwrap();
         (liquidator, liquidator_collateral)
+    }
+
+    /// Replace the feed account at the pool's recorded feed address with a
+    /// copy whose owning program is `owner`. The bytes are unchanged, so the
+    /// copy still decodes as a fresh, confident price at the pinned scale.
+    fn set_feed_owner(&mut self, owner: Address) {
+        let mut feed_account = self.svm.get_account(&self.feed).unwrap();
+        feed_account.owner = owner;
+        self.svm.set_account(self.feed, feed_account).unwrap();
     }
 
     /// Simulate a cluster restart at `slot`: prices stamped at or before it
@@ -623,6 +635,7 @@ fn test_initialize_pool() {
     assert_eq!(pool.authority, market.admin.pubkey());
     assert_eq!(pool.collateral_mint, market.collateral_mint);
     assert_eq!(pool.oracle_feed, market.feed);
+    assert_eq!(pool.price_feed_program, mock_price_feed::id());
     assert_eq!(pool.oracle_scale, ORACLE_SCALE);
     assert_eq!(pool.initial_margin_bps, 1_000);
     assert_eq!(pool.max_price_deviation_bps, 2_000);
@@ -668,14 +681,24 @@ fn test_add_liquidity_first_deposit_withholds_minimum() {
     assert_eq!(shares, deposit - 1_000);
 }
 
+/// The first deposit must exceed the 1_000 withheld minimum: one base unit
+/// short is refused, and one over mints a single share.
 #[test]
 fn test_first_deposit_below_minimum_fails() {
     let mut market = Market::default_market();
     let (provider, provider_collateral) = market.funded_trader(10_000);
-    // 500 base units is below the 1_000 locked minimum.
-    assert!(market
-        .add_liquidity(&provider, provider_collateral, 500, 0)
-        .is_err());
+    assert_fails_with(
+        market.add_liquidity(&provider, provider_collateral, 999, 0),
+        PerpError::DepositTooSmall,
+    );
+    market
+        .add_liquidity(&provider, provider_collateral, 1_001, 0)
+        .unwrap();
+    let provider_lp = derive_ata(&provider.pubkey(), &market.lp_mint);
+    assert_eq!(
+        get_token_account_balance(&market.svm, &provider_lp).unwrap(),
+        1
+    );
 }
 
 #[test]
@@ -1107,6 +1130,47 @@ fn test_open_rejects_price_from_before_a_restart() {
         .expect("a freshly published price must be accepted after a restart");
 }
 
+/// The pool records the program that owns its feed at creation and refuses a
+/// price from a feed account owned by any other program, however well its
+/// bytes decode. The feed is swapped for a byte-identical copy owned by an
+/// unrelated program, and the refusal is by the owner alone: the same bytes
+/// owned by the mock oracle program again are accepted.
+#[test]
+fn test_open_rejects_price_feed_from_another_program() {
+    let mut market = Market::default_market();
+    market.seed_liquidity(100_000 * ONE_USDC);
+    let collateral = 1_000 * ONE_USDC;
+    let (trader, trader_collateral) = market.funded_trader(collateral);
+
+    market.set_feed_owner(Address::new_unique());
+    assert_fails_with(
+        market.open_position(
+            &trader,
+            trader_collateral,
+            Side::Long,
+            collateral,
+            5_000 * ONE_USDC,
+            0,
+        ),
+        PerpError::PriceFeedNotFromOracle,
+    );
+
+    // The retry is otherwise byte-identical to the rejected open, so it would
+    // carry the same signature and be dropped as already processed.
+    market.svm.expire_blockhash();
+    market.set_feed_owner(mock_price_feed::id());
+    market
+        .open_position(
+            &trader,
+            trader_collateral,
+            Side::Long,
+            collateral,
+            5_000 * ONE_USDC,
+            0,
+        )
+        .expect("the same feed owned by the recorded oracle program must be accepted");
+}
+
 #[test]
 fn test_wide_oracle_confidence_rejected() {
     let mut market = Market::default_market();
@@ -1146,7 +1210,8 @@ fn test_funding_charged_to_long() {
 
     // Let funding accrue, then refresh the feed so the price is fresh again and
     // close at the same price (no profit/loss).
-    market.pass_seconds(2_000);
+    let seconds_open = 2_000;
+    market.pass_seconds(seconds_open);
     market.set_price(dollars(100));
     market
         .close_position(&trader, trader_collateral, Side::Long, 0)
@@ -1157,11 +1222,12 @@ fn test_funding_charged_to_long() {
     let net_collateral = collateral - open_fee;
     let payout = get_token_account_balance(&market.svm, &trader_collateral).unwrap();
 
-    // The trader received less than collateral-minus-close-fee; the shortfall
-    // is the funding they paid, which went to the liquidity providers.
-    assert!(payout < net_collateral - close_fee);
+    // The trader's shortfall against collateral-minus-fees is exactly the
+    // funding for the seconds the position was open, and it went to the
+    // liquidity providers.
     let funding_paid = (net_collateral - close_fee) - payout;
-    assert!(funding_paid > 0);
+    let expected = size * MAX_FUNDING_RATE_PER_SECOND * seconds_open as u64 / FUNDING_PRECISION;
+    assert_eq!(funding_paid, expected);
     assert_eq!(
         market.pool_state().liquidity,
         liquidity_before + funding_paid
@@ -1277,7 +1343,7 @@ fn test_operator_on_the_lighter_side_earns_only_the_fixed_rate() {
     let fees = 2 * (size / 1_000); // open and close, 0.1% of notional each
     let payout = get_token_account_balance(&market.svm, &operator_collateral).unwrap();
     let funding_received = payout - (collateral - fees);
-    let expected = size * MAX_FUNDING_RATE_PER_SECOND * one_hour as u64 / 1_000_000_000;
+    let expected = size * MAX_FUNDING_RATE_PER_SECOND * one_hour as u64 / FUNDING_PRECISION;
     assert_eq!(funding_received, expected);
     assert!(
         funding_received * 1_000 < size,

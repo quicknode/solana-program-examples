@@ -62,6 +62,8 @@ fn non_owner_cannot_write_market_price_feed() {
         data: lending::instruction::SetPrice {
             price_mantissa: common::dollars(1_000_000), // an absurd price
             exponent: common::PRICE_EXPONENT,
+            // Never read: the owner check rejects the instruction first.
+            confidence: 0,
         }
         .data(),
     };

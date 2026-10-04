@@ -503,7 +503,7 @@ this directly (`settle_funds_after_match_pays_out_both_unsettled_balances`).
 
 ## 3. Instruction lifecycle walkthrough
 
-The program has six instruction handlers. The order a user encounters
+The program has eight instruction handlers. The order a user encounters
 them is:
 
 1. `initialize_market` (market operator - once)
@@ -512,6 +512,8 @@ them is:
 4. `cancel_order` (a user - to remove a resting order)
 5. `settle_funds` (a user - to collect winnings)
 6. `withdraw_fees` (market authority - to collect program revenue)
+7. `pause_market` (market authority - to stop new orders)
+8. `resume_market` (market authority - to take orders again)
 
 For each, the shape is: who signs, what accounts go in, what PDAs get
 created, what token flows happen, what state mutates, what checks are
@@ -655,7 +657,7 @@ resting order.
 
 **Checks (top of handler):**
 
-- `market.is_active` → `MarketPaused`
+- `market.is_active` (false after `pause_market`) → `MarketPaused`
 - `price > 0` → `InvalidPrice`
 - `price % tick_size == 0` → `InvalidTickSize`
 - `quantity >= min_order_size` → `BelowMinOrderSize`
@@ -891,6 +893,47 @@ Signed by the Market PDA.
 
 **State changes:** none on program state (the vault balance drops to
 zero as a side effect of the transfer).
+
+---
+
+### 3.7 `pause_market` and `resume_market`
+
+**Who calls them:** the market authority, when the market must stop
+taking orders (a bad price feed on the operator's side, a mint whose
+issuer has halted transfers, a bug under investigation) and when it
+may take them again.
+
+**Signers:** `authority`.
+
+**Accounts in (both):**
+
+- `market` (mut)
+- `authority` (signer, bound by `address = market.authority`)
+
+**Checks:**
+
+- `authority.key() == market.authority` → `NotMarketAuthority`
+
+**Token movements:** none.
+
+**State changes:** `pause_market` sets `market.is_active = false`;
+`resume_market` sets it back to `true`.
+
+A pause stops new orders and nothing else. `place_order` is the only
+handler that reads `is_active`, so while the market is paused:
+
+- `place_order` → `MarketPaused`
+- `cancel_order` still cancels a resting order and credits its locked
+  tokens to the owner's unsettled balance
+- `settle_funds` still pays unsettled balances out of the vaults
+- `withdraw_fees` still empties the fee vault to the authority
+
+Let a pause stop deposits and trades, never withdrawals: every token
+a trader locked or was owed before the pause can still leave the
+vaults during it. The tests
+`paused_market_still_cancels_and_settles_a_resting_order` and
+`paused_market_still_pays_out_fills_and_withdraws_fees` run each exit
+on a paused market.
 
 ---
 
@@ -1329,7 +1372,7 @@ From [`errors.rs`](programs/order-book/src/errors.rs):
 
 - `InvalidPrice`: `place_order` called with `price == 0`
 - `OrderNotFound`: `cancel_order` failed to locate the order in the book (sanity path)
-- `MarketPaused`: `place_order` on a market with `is_active = false` (no handler flips this today, but the field is there)
+- `MarketPaused`: `place_order` on a market `pause_market` has paused and `resume_market` has not reopened
 - `Unauthorized`: `cancel_order` by someone other than the order owner
 - `OrderBookFull`: `place_order` remainder would rest on a side holding 512 orders without beating that side's worst price
 - `MissingEvictedAccounts`: A full side, and the worst resting order (with its owner's MarketUser) was not passed after the maker pairs
@@ -1344,7 +1387,7 @@ From [`errors.rs`](programs/order-book/src/errors.rs):
 - `MakerAccountMismatch`: Wrong number of maker accounts, wrong order, wrong market, or caller walked the book out of order
 - `MissingMakerAccounts`: Fewer remaining accounts than two per planned fill
 - `MakerOwnerMismatch`: Maker Order and MarketUser have different owners
-- `NotMarketAuthority`: `withdraw_fees` called by wrong signer
+- `NotMarketAuthority`: `withdraw_fees`, `pause_market` or `resume_market` signed by anyone but `market.authority`
 
 ### 6.2 Guarded design choices worth knowing
 
@@ -1392,6 +1435,11 @@ From [`errors.rs`](programs/order-book/src/errors.rs):
   cron or heartbeat.
 
 - **`withdraw_fees` no-ops on empty.** Likewise.
+
+- **A pause stops new orders only.** `pause_market` clears
+  `is_active`, and `place_order` is the only handler that reads it.
+  Cancels, settlements and fee withdrawals never check the flag, so
+  nobody's tokens are locked in a paused market.
 
 - **Boxed InterfaceAccounts.** Several handlers use `Box<
   InterfaceAccount<...>>` for mint/token accounts. That's a BPF
@@ -1442,8 +1490,6 @@ A production order book would add:
   ATA at match time.
 - **Minimum-tick for quantities.** `min_order_size` is a floor, but
   there's no "round lot" constraint.
-- **Pause / admin / upgrade.** `is_active` exists but no handler
-  flips it.
 - **Oracle-aware price bands.** A taker bid 10 000× higher than the
   best ask will happily sweep the book.
 
@@ -1481,7 +1527,7 @@ anchor test --skip-local-validator
 Expected:
 
 ```
-running 35 tests
+running 40 tests
 test authority_can_withdraw_fees_after_match ... ok
 test better_order_evicts_the_worst_and_rests ... ok
 test cancel_and_settle_bid_refunds_full_quote ... ok
@@ -1501,12 +1547,17 @@ test initialize_market_rejects_zero_quote_lot_size ... ok
 test initialize_market_rejects_zero_tick_size ... ok
 test initialize_market_sets_market_and_order_book ... ok
 test initialize_market_user_tracks_market_and_owner ... ok
+test only_the_market_authority_can_pause_or_resume ... ok
+test pause_market_refuses_new_orders_with_market_paused ... ok
+test paused_market_still_cancels_and_settles_a_resting_order ... ok
+test paused_market_still_pays_out_fills_and_withdraws_fees ... ok
 test place_ask_moves_base_into_vault ... ok
 test place_bid_moves_quote_into_vault ... ok
 test place_order_rejects_below_min_order_size ... ok
 test place_order_rejects_unaligned_tick ... ok
 test place_order_rejects_zero_price ... ok
 test resting_orders_at_same_price_fill_by_time_priority ... ok
+test resume_market_accepts_orders_again ... ok
 test settle_funds_after_match_pays_out_both_unsettled_balances ... ok
 test settle_funds_moves_unsettled_base_to_user ... ok
 test settle_funds_rejects_fee_vault_substituted_for_quote_vault ... ok
@@ -1569,6 +1620,14 @@ test trader_can_evict_their_own_worst_order ... ok
 - `eviction_rejects_missing_or_wrong_evicted_accounts`: No evicted order, a non-worst order, or the wrong owner's `MarketUser`
 - `trader_can_evict_their_own_worst_order`: Only the `Order` account is passed, and the caller's own `MarketUser` is credited
 - `full_side_cancel_of_the_last_scanned_order_fits_the_default_budget`: Canceling the bid found last among 512 stays inside the default 200,000-unit budget
+
+**Pause and resume:**
+
+- `pause_market_refuses_new_orders_with_market_paused`: An ask on a paused market gets `MarketPaused` and locks nothing
+- `paused_market_still_cancels_and_settles_a_resting_order`: An ask placed before the pause is cancelled and settled during it
+- `paused_market_still_pays_out_fills_and_withdraws_fees`: A maker settles a fill, and the authority withdraws the fee, during a pause
+- `resume_market_accepts_orders_again`: The ask refused during the pause rests after `resume_market`
+- `only_the_market_authority_can_pause_or_resume`: A trader signing either handler gets `NotMarketAuthority`, and the market's state does not change
 
 ### CI note
 
@@ -1685,7 +1744,11 @@ finance/order-book/anchor/
     │   │   ├── place_order.rs        (matching engine lives here)
     │   │   ├── cancel_order.rs
     │   │   ├── settle_funds.rs
-    │   │   └── withdraw_fees.rs
+    │   │   └── admin/                (market-authority handlers)
+    │   │       ├── mod.rs
+    │   │       ├── withdraw_fees.rs
+    │   │       ├── pause_market.rs
+    │   │       └── resume_market.rs
     │   └── state/
     │       ├── mod.rs
     │       ├── market.rs

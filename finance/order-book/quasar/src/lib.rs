@@ -106,4 +106,20 @@ mod quasar_order_book {
     pub fn withdraw_fees(ctx: Ctx<WithdrawFeesAccountConstraints>) -> Result<(), ProgramError> {
         instructions::withdraw_fees::handle_withdraw_fees(&mut ctx.accounts)
     }
+
+    /// Stop the market taking new orders: `place_order` is refused with
+    /// `MarketPaused` until `resume_market`. Cancels, settlements and fee
+    /// withdrawals keep working while the market is paused. Only the
+    /// market's stored `authority` may call this.
+    #[instruction(discriminator = 6)]
+    pub fn pause_market(ctx: Ctx<PauseMarketAccountConstraints>) -> Result<(), ProgramError> {
+        instructions::pause_market::handle_pause_market(&mut ctx.accounts)
+    }
+
+    /// Reopen a paused market so `place_order` accepts orders again. Only
+    /// the market's stored `authority` may call this.
+    #[instruction(discriminator = 7)]
+    pub fn resume_market(ctx: Ctx<ResumeMarketAccountConstraints>) -> Result<(), ProgramError> {
+        instructions::resume_market::handle_resume_market(&mut ctx.accounts)
+    }
 }

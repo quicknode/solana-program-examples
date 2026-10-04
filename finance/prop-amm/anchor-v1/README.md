@@ -67,11 +67,13 @@ during fast markets their quotes vanish and return minutes later.
 
 ### Oracle staleness and confidence
 
-Every swap re-validates the feed: the price must be positive, at the pinned
-scale, no older than 150 slots (~1 minute), stamped after the most recent
-cluster restart (the `LastRestartSlot` sysvar; a halt passes hours of
-wall-clock time in zero slots), and its confidence band must be inside
-`max_confidence_bps`. For this design the staleness bound is not
+Every swap re-validates the feed: the feed account must be owned by the
+program the market recorded at creation (`PriceFeedNotFromOracle` otherwise;
+the layout alone says nothing about who wrote the bytes), the price must be
+positive, at the pinned scale, no older than 150 slots (~1 minute), stamped
+after the most recent cluster restart (the `LastRestartSlot` sysvar; a halt
+passes hours of wall-clock time in zero slots), and its confidence band must
+be inside `max_confidence_bps`. For this design the staleness bound is not
 hygiene, it is the business: a quote priced off an old number is a free
 option for whoever notices first.
 
@@ -88,8 +90,9 @@ option for whoever notices first.
 
 `initialize_market` creates the `Market` account (PDA of the mint pair) and
 the two vaults, which the market account itself owns and signs for, and pins
-the oracle feed, its scale, a 10 bps spread, and a 1% confidence limit. One market per pair:
-the deployment is the firm.
+the oracle feed, the program that owns it (`price_feed_program`, read from
+the feed account's owner), its scale, a 10 bps spread, and a 1% confidence
+limit. One market per pair: the deployment is the firm.
 
 ### Step 2: Maria stocks the inventory
 
@@ -143,9 +146,6 @@ misprices.
 
 ## Limitations
 
-- The oracle feed's owning program is not verified: the operator picks the
-  feed, and a bad choice loses the operator's money, not the traders'. A
-  production reader must still check the account owner.
 - One flat spread both ways; no inventory skew, no size-dependent pricing.
 - `paused` is the only circuit breaker; production venues also bound
   per-slot volume and single-fill size.
@@ -160,8 +160,9 @@ cargo test
 The LiteSVM suite (`programs/prop-amm/tests/test_prop_amm.rs`) verifies the
 quote math to the minor unit in both directions, the exact round-trip spread,
 oracle repricing and re-quoting, and that every gate shuts: slippage,
-staleness, confidence, pause, zero amounts, inventory bounds, and operator
-access control.
+staleness, confidence, a feed account owned by another program
+(`test_swap_rejects_price_feed_from_another_program`), pause, zero amounts,
+inventory bounds, and operator access control.
 
 ## FAQ
 
@@ -179,4 +180,4 @@ The spread is the fee: buyers pay the oracle price plus `spread_bps`, sellers re
 
 ### What stops the venue from quoting a stale price?
 
-Every `swap` re-validates the feed: the price must be fresh (no older than 150 slots), stamped after the most recent cluster restart, at the pinned scale, and inside the configured confidence band. A stale quote is a free option for whoever notices first, so the staleness checks are the business model, not hygiene.
+Every `swap` re-validates the feed: the feed account must be owned by the program the market recorded at creation, and the price must be fresh (no older than 150 slots), stamped after the most recent cluster restart, at the pinned scale, and inside the configured confidence band. A stale quote is a free option for whoever notices first, so the staleness checks are the business model, not hygiene.

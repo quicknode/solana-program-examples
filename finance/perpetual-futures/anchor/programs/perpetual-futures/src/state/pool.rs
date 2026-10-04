@@ -19,6 +19,12 @@ pub struct Pool {
     /// reject any substituted feed account.
     pub oracle_feed: Address,
 
+    /// The program that owned `oracle_feed` when the pool was created. Every
+    /// price read requires the feed account to still be owned by it, so an
+    /// account at that address written by any other program is refused as a
+    /// price.
+    pub price_feed_program: Address,
+
     /// Decimal places the oracle price is quoted in. Pinned at creation so a
     /// feed that silently changes scale is rejected rather than mis-read.
     pub oracle_scale: u32,

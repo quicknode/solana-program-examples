@@ -23,7 +23,7 @@ use solana_kite::{
 use solana_signer::Signer;
 
 use lending::constants::{
-    LENDING_MARKET_SEED, LIQUIDITY_VAULT_SEED, MINIMUM_SHARES, OBLIGATION_SEED,
+    BPS_DENOMINATOR, LENDING_MARKET_SEED, LIQUIDITY_VAULT_SEED, MINIMUM_SHARES, OBLIGATION_SEED,
     OBLIGATION_SHARE_VAULT_SEED, PRICE_FEED_SEED, RESERVE_SEED, SHARE_MINT_SEED,
 };
 use lending::state::{Obligation, Reserve, ReserveConfig};
@@ -41,6 +41,24 @@ pub fn dollars(whole: u64) -> i128 {
 
 pub fn cents(amount: u64) -> i128 {
     (amount as i128) * 10_000_000_000_000_000
+}
+
+/// Basis points of the price a reserve accepts as a confidence band under
+/// `default_config`: 1%.
+pub const DEFAULT_MAX_CONFIDENCE_BPS: u16 = 100;
+
+/// A confidence band of 0.1% of the price, in the mantissa's units: a tenth
+/// of what `default_config` allows, so a price published with it is accepted.
+pub fn narrow_band(price_mantissa: i128) -> u64 {
+    u64::try_from(price_mantissa / 1_000).expect("band fits the feed's u64 confidence")
+}
+
+/// The widest confidence band `max_confidence_bps` lets a reserve value
+/// `price_mantissa` against: `price * max_confidence_bps / 10_000`, exact for
+/// the prices the tests use.
+pub fn widest_accepted_band(price_mantissa: i128, max_confidence_bps: u16) -> u64 {
+    let band = price_mantissa * max_confidence_bps as i128 / BPS_DENOMINATOR as i128;
+    u64::try_from(band).expect("band fits the feed's u64 confidence")
 }
 
 pub fn ata(owner: &Pubkey, mint: &Pubkey) -> Pubkey {
@@ -166,7 +184,13 @@ impl Env {
     ) -> ReserveHandle {
         let env_owner = self.owner.insecure_clone();
         let mint = create_token_mint(&mut self.svm, &env_owner, decimals, None).unwrap();
-        self.set_price_for(market_owner, market, mint, price_mantissa);
+        self.set_price_for(
+            market_owner,
+            market,
+            mint,
+            price_mantissa,
+            narrow_band(price_mantissa),
+        );
 
         let reserve = pda(&[RESERVE_SEED, market.as_ref(), mint.as_ref()]);
         let share_mint = pda(&[SHARE_MINT_SEED, reserve.as_ref()]);
@@ -259,10 +283,23 @@ impl Env {
         pda(&[PRICE_FEED_SEED, market.as_ref(), mint.as_ref()])
     }
 
+    /// Publish a price for `mint` in the default market with a narrow
+    /// confidence band, one the default config accepts.
     pub fn set_price(&mut self, mint: Pubkey, price_mantissa: i128) {
+        self.set_price_with_confidence(mint, price_mantissa, narrow_band(price_mantissa));
+    }
+
+    /// Publish a price for `mint` in the default market with the given
+    /// confidence band, in the mantissa's units.
+    pub fn set_price_with_confidence(
+        &mut self,
+        mint: Pubkey,
+        price_mantissa: i128,
+        confidence: u64,
+    ) {
         let owner = self.owner.insecure_clone();
         let market = self.market;
-        self.set_price_for(&owner, market, mint, price_mantissa);
+        self.set_price_for(&owner, market, mint, price_mantissa, confidence);
     }
 
     /// Publish a price for `mint` in `market`, signed by that market's `owner`.
@@ -272,6 +309,7 @@ impl Env {
         market: Pubkey,
         mint: Pubkey,
         price_mantissa: i128,
+        confidence: u64,
     ) {
         let price_feed = self.price_feed_address(market, mint);
         let instruction = Instruction {
@@ -287,6 +325,7 @@ impl Env {
             data: lending::instruction::SetPrice {
                 price_mantissa,
                 exponent: PRICE_EXPONENT,
+                confidence,
             }
             .data(),
         };
@@ -834,12 +873,13 @@ impl Env {
     }
 }
 
-/// A reasonable default reserve config: 75% LTV, 80% liquidation threshold,
-/// 5% bonus, 50% close factor, 10% reserve factor (program's cut of interest),
-/// kink at 80% utilization, 2%/20%/150% APR curve.
 /// A tenth of a 365-day year, in seconds: long enough for interest to show.
 pub const TENTH_OF_A_YEAR: i64 = lending::constants::SECONDS_PER_YEAR as i64 / 10;
 
+/// A reasonable default reserve config: 75% LTV, 80% liquidation threshold,
+/// 5% bonus, 50% close factor, 10% reserve factor (program's cut of interest),
+/// kink at 80% utilization, 2%/20%/150% APR curve, and a 1% confidence limit
+/// on the price feed.
 pub fn default_config() -> ReserveConfig {
     ReserveConfig {
         loan_to_value_bps: 7_500,
@@ -851,5 +891,6 @@ pub fn default_config() -> ReserveConfig {
         min_borrow_rate_bps: 200,
         optimal_borrow_rate_bps: 2_000,
         max_borrow_rate_bps: 15_000,
+        max_confidence_bps: DEFAULT_MAX_CONFIDENCE_BPS,
     }
 }

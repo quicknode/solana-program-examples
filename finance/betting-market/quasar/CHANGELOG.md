@@ -1,5 +1,40 @@
 # Changelog
 
+## [Unreleased] - 2026-10-04
+
+### Added
+
+- Two admin handlers close what an event created, once it is `Settled` or
+  `Cancelled` and every Bet account is closed. `close_outcome` closes one
+  Outcome account and returns its rent to the admin. `close_event`, once every
+  Outcome account is closed, pays whatever the vault still holds (the rounding
+  dust a settlement's floored payouts leave; nothing after a cancellation) to
+  the fee recipient's token account, closes the vault, and closes the Event
+  account, returning both rents to the admin. Errors `EventNotFinished`,
+  `BetsStillOpen` and `OutcomesStillOpen`, appended after `BettingStillOpen`.
+  `close_outcome` takes discriminator 10 and `close_event` 11, leaving the
+  existing ones in place.
+- `Event.open_bets` counts the Bet accounts still open across every outcome:
+  `place_bet` adds one when it creates a Bet account (a top-up reuses the
+  account), and `claim_winnings`, `claim_refund` and `close_losing_bet` each
+  subtract one. `Event.open_outcomes` counts the Outcome accounts still open:
+  `add_outcome` adds one, `close_outcome` subtracts one. Both fields sit after
+  `outcome_count`, so the Event account layout changes. `claim_winnings`,
+  `claim_refund` and `close_losing_bet` now take the event as writable.
+- Tests: `close_event_pays_dust_to_fee_recipient_and_returns_rent`,
+  `close_event_refused_while_a_bet_is_open`,
+  `close_event_refused_while_event_is_open` and
+  `only_admin_can_close_outcomes_and_event`;
+  `cancelled_event_refunds_the_exact_stake` refunds a second bettor and closes
+  the cancelled event after its refunds.
+
+### Changed
+
+- `initialize_event_rejects_a_non_admin_signer` also sends `add_outcome` from
+  a non-admin, and `full_lifecycle_settles_and_pays_the_winner` asserts
+  `EventNotSettled` for a close before settlement, `BetWon` for closing the
+  winning bet as a loser, and `NothingToClaim` for the loser's claim.
+
 ## [2026-10-03]
 
 ### Removed

@@ -64,15 +64,16 @@ pub fn handle_swap(
     let quote_decimals = market.quote_decimals;
     let spread_bps = market.spread_bps.get();
 
-    // Freshness, scale, and confidence are all enforced inside the read.
+    // The feed's owning program, freshness, scale, and confidence are all
+    // enforced inside the read.
     let slot = accounts.clock.slot.get();
-    let oracle_price = {
-        let view = accounts.oracle_feed.to_account_view();
-        let data = view
-            .try_borrow()
-            .map_err(|_| err(error::ORACLE_DATA_TOO_SHORT))?;
-        shared::read_oracle_price(&data, oracle_scale, slot, market.max_confidence_bps.get())?
-    };
+    let oracle_price = shared::read_oracle_price(
+        accounts.oracle_feed.to_account_view(),
+        &market.price_feed_program,
+        oracle_scale,
+        slot,
+        market.max_confidence_bps.get(),
+    )?;
 
     let (amount_out, respects_oracle_value) = match direction {
         DIRECTION_BUY_BASE => {

@@ -27,11 +27,12 @@ use crate::errors::PerpError;
 // the spot price for a less manipulable mark; the mock omits the EMA to stay
 // minimal.
 //
-// The feed account's owning program is NOT checked here: the pool trusts
-// whatever feed address its creator configured, which is inside the trust model
-// (the creator picks the oracle). A production reader must also verify the
-// account owner is the oracle program, which the `PriceUpdateV2` account type
-// does.
+// The feed account must be owned by the oracle program the pool recorded at
+// creation (`Pool::price_feed_program`, read from the feed's `owner` at that
+// moment). The layout above says nothing about who wrote the bytes, so
+// without the owner check any account laid out like a feed would be accepted
+// as a price. The pool's creator picks the feed, so the pool trusts the
+// program it recorded and refuses a feed account from any other.
 const PRICE_OFFSET: usize = 8 + 32;
 const SCALE_OFFSET: usize = PRICE_OFFSET + 16;
 const LAST_UPDATE_SLOT_OFFSET: usize = SCALE_OFFSET + 4;
@@ -41,14 +42,22 @@ const FEED_MINIMUM_LENGTH: usize = CONFIDENCE_OFFSET + 8;
 /// Read and validate the oracle price from `feed`.
 ///
 /// Returns the price as a `u64` in the pool's `expected_scale` fixed point.
-/// Rejects a stale price (older than `MAX_PRICE_STALENESS_SLOTS`), a
-/// non-positive price, a feed whose scale differs from the pool's pinned scale,
-/// and a price whose confidence band exceeds `max_confidence_bps` of the price.
+/// Rejects a feed account owned by any program other than `oracle_program`, a
+/// stale price (older than `MAX_PRICE_STALENESS_SLOTS`), a non-positive price,
+/// a feed whose scale differs from the pool's pinned scale, and a price whose
+/// confidence band exceeds `max_confidence_bps` of the price.
 pub fn read_oracle_price(
     feed: &AccountInfo,
+    oracle_program: &Pubkey,
     expected_scale: u32,
     max_confidence_bps: u16,
 ) -> Result<u64> {
+    require_keys_eq!(
+        *feed.owner,
+        *oracle_program,
+        PerpError::PriceFeedNotFromOracle
+    );
+
     let data = feed.try_borrow_data()?;
     require!(
         data.len() >= FEED_MINIMUM_LENGTH,

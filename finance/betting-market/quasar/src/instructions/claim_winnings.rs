@@ -2,7 +2,7 @@ use quasar_lang::prelude::*;
 use quasar_spl::prelude::*;
 
 use crate::errors::BettingError;
-use crate::state::{Bet, Event, EventStatus, EventVaultPda};
+use crate::state::{snapshot_event, Bet, Event, EventStatus, EventVaultPda};
 
 use super::transfer_from_vault;
 
@@ -13,7 +13,7 @@ pub struct ClaimWinningsAccountConstraints {
 
     pub token_mint: Account<Mint>,
 
-    #[account(address = Event::seeds(event.event_id.into()))]
+    #[account(mut, address = Event::seeds(event.event_id.into()))]
     pub event: Account<Event>,
 
     // Closing the Bet ends the position: the rent goes back to the bettor and a
@@ -62,6 +62,15 @@ pub fn handle_claim_winnings(
         accounts.bet.outcome_index == accounts.event.winning_outcome_index,
         BettingError::NothingToClaim
     );
+
+    // This Bet account closes when the handler returns, so the event's count
+    // of open bets drops by one before any tokens move.
+    let mut event = snapshot_event(&accounts.event);
+    event.open_bets = event
+        .open_bets
+        .checked_sub(1)
+        .ok_or(BettingError::MathOverflow)?;
+    accounts.event.set_inner(event);
 
     let stake = u64::from(accounts.bet.amount);
     let winning_pool = u64::from(accounts.event.winning_pool);

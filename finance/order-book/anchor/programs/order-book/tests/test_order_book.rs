@@ -7,7 +7,9 @@
 //! the vaults, and - in the matching block near the bottom - cross incoming
 //! orders against resting orders using price-time priority, charge the
 //! configured taker fee to a fee vault, and drain the fee vault via
-//! `withdraw_fees`.
+//! `withdraw_fees`. The pause block at the end checks that `pause_market`
+//! stops new orders and nothing else, and that `resume_market` reopens the
+//! market.
 
 use {
     anchor_lang::{
@@ -407,6 +409,30 @@ fn build_withdraw_fees_ix(sc: &Scenario, authority_quote_account: Address) -> In
             quote_mint: sc.quote_mint,
             authority: sc.authority.pubkey(),
             token_program: token_program_id(),
+        }
+        .to_account_metas(None),
+    )
+}
+
+fn build_pause_market_ix(sc: &Scenario, authority: &Address) -> Instruction {
+    Instruction::new_with_bytes(
+        sc.program_id,
+        &order_book::instruction::PauseMarket {}.data(),
+        order_book::accounts::PauseMarketAccountConstraints {
+            market: sc.market,
+            authority: *authority,
+        }
+        .to_account_metas(None),
+    )
+}
+
+fn build_resume_market_ix(sc: &Scenario, authority: &Address) -> Instruction {
+    Instruction::new_with_bytes(
+        sc.program_id,
+        &order_book::instruction::ResumeMarket {}.data(),
+        order_book::accounts::ResumeMarketAccountConstraints {
+            market: sc.market,
+            authority: *authority,
         }
         .to_account_metas(None),
     )
@@ -2808,4 +2834,282 @@ fn full_side_cancel_of_the_last_scanned_order_fits_the_default_budget() {
         &order_pda(&sc.program_id, &sc.market, WORST_BID_ORDER_ID),
     );
     assert_eq!(status, ORDER_STATUS_CANCELLED);
+}
+
+// ---------------------------------------------------------------------------
+// Pause and resume: a pause stops new orders and nothing else.
+// ---------------------------------------------------------------------------
+
+// The pause tests share one resting ask and one crossing bid. Chosen apart
+// from the suite's other sizes so a balance that matches is this test's own.
+const PAUSE_ASK_ID: u64 = 1;
+const PAUSE_BID_ID: u64 = 2;
+const PAUSE_PRICE: u64 = 1_300;
+const PAUSE_QUANTITY: u64 = 7;
+const PAUSE_GROSS: u64 = PAUSE_PRICE * PAUSE_QUANTITY * QUOTE_LOT_SIZE;
+const PAUSE_LOCKED_BASE: u64 = PAUSE_QUANTITY * BASE_LOT_SIZE;
+
+/// Sign `pause_market` or `resume_market` as `signer`.
+fn send_market_switch(
+    svm: &mut LiteSVM,
+    instruction: Instruction,
+    signer: &Keypair,
+) -> Result<(), String> {
+    send_transaction_from_instructions(svm, vec![instruction], &[signer], &signer.pubkey())
+        .map_err(|error| format!("{error:?}"))
+}
+
+/// The seller places the pause tests' ask. Returns the program's error text
+/// when the market refuses it.
+fn place_pause_ask(sc: &mut Scenario) -> Result<(), String> {
+    let ix = build_place_order_ix(
+        sc,
+        &sc.seller,
+        sc.seller_market_user,
+        sc.seller_base_ata,
+        sc.seller_quote_ata,
+        order_book::state::OrderSide::Ask,
+        PAUSE_ASK_ID,
+        PAUSE_PRICE,
+        PAUSE_QUANTITY,
+    );
+    send_transaction_from_instructions(&mut sc.svm, vec![ix], &[&sc.seller], &sc.seller.pubkey())
+        .map_err(|error| format!("{error:?}"))
+}
+
+#[test]
+fn pause_market_refuses_new_orders_with_market_paused() {
+    let mut sc = full_setup();
+    initialize_market_and_users(&mut sc);
+
+    let pause_ix = build_pause_market_ix(&sc, &sc.authority.pubkey());
+    send_market_switch(&mut sc.svm, pause_ix, &sc.authority).unwrap();
+
+    let error = place_pause_ask(&mut sc).expect_err("a paused market must not take an order");
+    assert!(
+        error.contains(&custom_error(order_book::errors::ErrorCode::MarketPaused)),
+        "{error}"
+    );
+    // The refused ask locked nothing.
+    assert_eq!(
+        get_token_account_balance(&sc.svm, &sc.base_vault).unwrap(),
+        0
+    );
+    assert_eq!(
+        get_token_account_balance(&sc.svm, &sc.seller_base_ata).unwrap(),
+        TRADER_STARTING_BALANCE
+    );
+}
+
+#[test]
+fn paused_market_still_cancels_and_settles_a_resting_order() {
+    let mut sc = full_setup();
+    initialize_market_and_users(&mut sc);
+
+    place_pause_ask(&mut sc).unwrap();
+    assert_eq!(
+        get_token_account_balance(&sc.svm, &sc.base_vault).unwrap(),
+        PAUSE_LOCKED_BASE
+    );
+
+    let pause_ix = build_pause_market_ix(&sc, &sc.authority.pubkey());
+    send_market_switch(&mut sc.svm, pause_ix, &sc.authority).unwrap();
+
+    // The ask was placed before the pause; its owner can still cancel it
+    // and take the locked NVDAx back out while the market is paused.
+    let cancel_ix = build_cancel_order_ix(
+        &sc,
+        &sc.seller.pubkey(),
+        sc.seller_market_user,
+        PAUSE_ASK_ID,
+    );
+    let settle_ix = build_settle_funds_ix(
+        &sc,
+        &sc.seller.pubkey(),
+        sc.seller_market_user,
+        sc.seller_base_ata,
+        sc.seller_quote_ata,
+    );
+    send_transaction_from_instructions(
+        &mut sc.svm,
+        vec![cancel_ix, settle_ix],
+        &[&sc.seller],
+        &sc.seller.pubkey(),
+    )
+    .unwrap();
+
+    let (_, status) = read_order_fill_and_status(
+        &sc.svm,
+        &order_pda(&sc.program_id, &sc.market, PAUSE_ASK_ID),
+    );
+    assert_eq!(status, ORDER_STATUS_CANCELLED);
+    assert_eq!(
+        get_token_account_balance(&sc.svm, &sc.base_vault).unwrap(),
+        0
+    );
+    assert_eq!(
+        get_token_account_balance(&sc.svm, &sc.seller_base_ata).unwrap(),
+        TRADER_STARTING_BALANCE
+    );
+}
+
+#[test]
+fn paused_market_still_pays_out_fills_and_withdraws_fees() {
+    let mut sc = full_setup();
+    initialize_market_and_users(&mut sc);
+
+    let authority_quote_ata = create_associated_token_account(
+        &mut sc.svm,
+        &sc.authority.pubkey(),
+        &sc.quote_mint,
+        &sc.payer,
+    )
+    .unwrap();
+
+    // A fill before the pause leaves the seller owed quote in their
+    // unsettled balance and the fee vault holding the taker fee.
+    place_pause_ask(&mut sc).unwrap();
+    let bid_ix = build_place_order_with_makers_ix(
+        &sc,
+        &sc.buyer,
+        sc.buyer_market_user,
+        sc.buyer_base_ata,
+        sc.buyer_quote_ata,
+        order_book::state::OrderSide::Bid,
+        PAUSE_BID_ID,
+        PAUSE_PRICE,
+        PAUSE_QUANTITY,
+        &[(PAUSE_ASK_ID, sc.seller_market_user)],
+    );
+    send_transaction_from_instructions(&mut sc.svm, vec![bid_ix], &[&sc.buyer], &sc.buyer.pubkey())
+        .unwrap();
+    let expected_fee = fee_ceil(PAUSE_GROSS);
+    assert_eq!(
+        get_token_account_balance(&sc.svm, &sc.fee_vault).unwrap(),
+        expected_fee
+    );
+
+    let pause_ix = build_pause_market_ix(&sc, &sc.authority.pubkey());
+    send_market_switch(&mut sc.svm, pause_ix, &sc.authority).unwrap();
+
+    // The maker's settlement goes through while paused.
+    let settle_ix = build_settle_funds_ix(
+        &sc,
+        &sc.seller.pubkey(),
+        sc.seller_market_user,
+        sc.seller_base_ata,
+        sc.seller_quote_ata,
+    );
+    send_transaction_from_instructions(
+        &mut sc.svm,
+        vec![settle_ix],
+        &[&sc.seller],
+        &sc.seller.pubkey(),
+    )
+    .unwrap();
+    assert_eq!(
+        get_token_account_balance(&sc.svm, &sc.seller_quote_ata).unwrap(),
+        PAUSE_GROSS - expected_fee
+    );
+
+    // So does the authority's fee withdrawal.
+    let withdraw_ix = build_withdraw_fees_ix(&sc, authority_quote_ata);
+    send_transaction_from_instructions(
+        &mut sc.svm,
+        vec![withdraw_ix],
+        &[&sc.authority],
+        &sc.authority.pubkey(),
+    )
+    .unwrap();
+    assert_eq!(
+        get_token_account_balance(&sc.svm, &sc.fee_vault).unwrap(),
+        0
+    );
+    assert_eq!(
+        get_token_account_balance(&sc.svm, &authority_quote_ata).unwrap(),
+        expected_fee
+    );
+}
+
+#[test]
+fn resume_market_accepts_orders_again() {
+    let mut sc = full_setup();
+    initialize_market_and_users(&mut sc);
+
+    let pause_ix = build_pause_market_ix(&sc, &sc.authority.pubkey());
+    send_market_switch(&mut sc.svm, pause_ix, &sc.authority).unwrap();
+    let error = place_pause_ask(&mut sc).expect_err("a paused market must not take an order");
+    assert!(
+        error.contains(&custom_error(order_book::errors::ErrorCode::MarketPaused)),
+        "{error}"
+    );
+
+    let resume_ix = build_resume_market_ix(&sc, &sc.authority.pubkey());
+    send_market_switch(&mut sc.svm, resume_ix, &sc.authority).unwrap();
+
+    // The same ask, refused a moment ago, now rests and locks its base. Its
+    // bytes are identical to the refused transaction's, so it needs a fresh
+    // blockhash to be taken as a new transaction.
+    sc.svm.expire_blockhash();
+    place_pause_ask(&mut sc).unwrap();
+    assert_eq!(
+        get_token_account_balance(&sc.svm, &sc.base_vault).unwrap(),
+        PAUSE_LOCKED_BASE
+    );
+}
+
+#[test]
+fn only_the_market_authority_can_pause_or_resume() {
+    let mut sc = full_setup();
+    initialize_market_and_users(&mut sc);
+
+    // A trader signing `pause_market` is refused, and the market stays open:
+    // the ask goes through afterwards.
+    let pause_ix = build_pause_market_ix(&sc, &sc.buyer.pubkey());
+    let error = send_market_switch(&mut sc.svm, pause_ix, &sc.buyer)
+        .expect_err("only the market authority may pause");
+    assert!(
+        error.contains(&custom_error(
+            order_book::errors::ErrorCode::NotMarketAuthority
+        )),
+        "{error}"
+    );
+    place_pause_ask(&mut sc).unwrap();
+
+    // Once the authority has paused, a trader signing `resume_market` is
+    // refused too, and the market stays paused: the buyer's bid is refused.
+    let pause_ix = build_pause_market_ix(&sc, &sc.authority.pubkey());
+    send_market_switch(&mut sc.svm, pause_ix, &sc.authority).unwrap();
+    let resume_ix = build_resume_market_ix(&sc, &sc.buyer.pubkey());
+    let error = send_market_switch(&mut sc.svm, resume_ix, &sc.buyer)
+        .expect_err("only the market authority may resume");
+    assert!(
+        error.contains(&custom_error(
+            order_book::errors::ErrorCode::NotMarketAuthority
+        )),
+        "{error}"
+    );
+    let bid_ix = build_place_order_ix(
+        &sc,
+        &sc.buyer,
+        sc.buyer_market_user,
+        sc.buyer_base_ata,
+        sc.buyer_quote_ata,
+        order_book::state::OrderSide::Bid,
+        PAUSE_BID_ID,
+        PAUSE_PRICE,
+        PAUSE_QUANTITY,
+    );
+    let error = send_transaction_from_instructions(
+        &mut sc.svm,
+        vec![bid_ix],
+        &[&sc.buyer],
+        &sc.buyer.pubkey(),
+    )
+    .map_err(|error| format!("{error:?}"))
+    .expect_err("a paused market must not take an order");
+    assert!(
+        error.contains(&custom_error(order_book::errors::ErrorCode::MarketPaused)),
+        "{error}"
+    );
 }

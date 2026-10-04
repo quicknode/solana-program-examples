@@ -21,8 +21,9 @@ pub struct InitializePool {
     )]
     pub pool: Account<Pool>,
     pub collateral_mint: Account<Mint>,
-    /// CHECK: stored on the pool; every read, including the one here that seeds
-    /// the average price, validates layout, scale, freshness.
+    /// CHECK: its key and its owning program are stored on the pool; every
+    /// read, including the one here that seeds the average price, requires
+    /// that owner and validates layout, scale, freshness.
     pub oracle_feed: UncheckedAccount,
     /// Liquidity-provider share mint; the pool account is its mint authority.
     #[account(
@@ -113,10 +114,13 @@ pub fn handle_initialize_pool(
         return Err(err(error::INVALID_PRICE_DEVIATION));
     }
 
-    // Seed the average with a validated oracle price, so the band is in force
-    // from the first trade.
+    // Record the feed's owning program, and seed the average with a validated
+    // oracle price, so the owner check and the band are in force from the
+    // first trade.
+    let price_feed_program = *accounts.oracle_feed.to_account_view().owner();
     let initial_price = read_feed_price(
         &accounts.oracle_feed,
+        &price_feed_program,
         oracle_scale,
         accounts.clock.slot.get(),
         max_confidence_bps,
@@ -126,6 +130,7 @@ pub fn handle_initialize_pool(
         authority: *accounts.authority.address(),
         collateral_mint: *accounts.collateral_mint.address(),
         oracle_feed: *accounts.oracle_feed.address(),
+        price_feed_program,
         custody_vault: *accounts.custody_vault.address(),
         lp_mint: *accounts.lp_mint.address(),
         oracle_scale,

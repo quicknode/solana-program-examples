@@ -18,4 +18,7 @@ pub enum LendingError {
     LiquidationTooLarge,
     NothingToCollect,
     PricePredatesRestart,
+    /// The price feed is too uncertain to value against: its confidence band
+    /// exceeds the reserve's limit.
+    OracleConfidenceTooWide,
 }

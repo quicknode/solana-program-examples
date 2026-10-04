@@ -1,7 +1,7 @@
 use quasar_lang::prelude::*;
 
 use crate::errors::BettingError;
-use crate::state::{Bet, Event, EventStatus};
+use crate::state::{snapshot_event, Bet, Event, EventStatus};
 
 // A losing bet pays nothing, but its account still holds rent. Closing it
 // returns the rent to the bettor. Winning bets must go through claim_winnings
@@ -11,7 +11,7 @@ pub struct CloseLosingBetAccountConstraints {
     #[account(mut)]
     pub bettor: Signer,
 
-    #[account(address = Event::seeds(event.event_id.into()))]
+    #[account(mut, address = Event::seeds(event.event_id.into()))]
     pub event: Account<Event>,
 
     #[account(
@@ -50,6 +50,15 @@ pub fn handle_close_losing_bet(
         accounts.bet.outcome_index != accounts.event.winning_outcome_index,
         BettingError::BetWon
     );
+
+    // This Bet account closes when the handler returns, so the event's count
+    // of open bets drops by one.
+    let mut event = snapshot_event(&accounts.event);
+    event.open_bets = event
+        .open_bets
+        .checked_sub(1)
+        .ok_or(BettingError::MathOverflow)?;
+    accounts.event.set_inner(event);
 
     Ok(())
 }

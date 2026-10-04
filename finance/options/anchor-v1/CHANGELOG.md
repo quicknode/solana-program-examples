@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased, 2026-10-04
+
+The LiteSVM suite asserts the error code of every refusal
+(`assert_fails_with` for the program's errors, `assert_fails_with_anchor_error`
+for Anchor's constraint errors) instead of only that the transaction failed;
+the `errors` module is public so it can. Two refusals that had been passing as
+duplicate transactions, the second fee sweep and a stranger's second exercise
+attempt, now reach the handler on a fresh blockhash and fail for the rule under
+test. New test
+`test_reclaim_collateral_after_expiry_returns_the_strike_to_the_put_writer`
+follows the put from purchase to expiry and reclaim.
+`test_writer_cannot_buy_their_own_option` asserts
+`ConstraintDuplicateMutableAccount`, the Anchor check that refuses the
+purchase. The suite sends transactions through LiteSVM directly and reads the
+metadata back, so the purchase tests count the token transfers a buy makes:
+two with a fee, one without. The Kani crate gains
+`proof_collect_fees_pays_only_the_fees_owed`.
+
 ## 2026-10-03
 
 The option now stores `underlying_amount` and `strike_amount`, the two amounts

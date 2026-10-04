@@ -12,6 +12,11 @@ pub struct Pool {
     pub authority: Address,
     pub collateral_mint: Address,
     pub oracle_feed: Address,
+    /// The program that owned `oracle_feed` when the pool was created. Every
+    /// price read requires the feed account to still be owned by it, so an
+    /// account at that address written by any other program is refused as a
+    /// price.
+    pub price_feed_program: Address,
     pub custody_vault: Address,
     pub lp_mint: Address,
     pub oracle_scale: u32,

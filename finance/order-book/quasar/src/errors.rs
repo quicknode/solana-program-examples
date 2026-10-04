@@ -27,6 +27,8 @@ pub enum OrderBookError {
     MakerAccountMismatch,
     MissingMakerAccounts,
     MakerOwnerMismatch,
+    /// `withdraw_fees`, `pause_market` or `resume_market` signed by anyone
+    /// but `market.authority`.
     NotMarketAuthority,
     InvalidOrderBook,
     InvalidOrderBookOwner,

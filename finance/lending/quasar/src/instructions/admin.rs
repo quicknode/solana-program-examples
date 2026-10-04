@@ -87,6 +87,7 @@ impl InitializeReserve {
         min_borrow_rate_bps: u16,
         optimal_borrow_rate_bps: u16,
         max_borrow_rate_bps: u16,
+        max_confidence_bps: u16,
         bumps: &InitializeReserveBumps,
     ) -> Result<(), ProgramError> {
         validate_config(
@@ -99,6 +100,7 @@ impl InitializeReserve {
             min_borrow_rate_bps,
             optimal_borrow_rate_bps,
             max_borrow_rate_bps,
+            max_confidence_bps,
         )?;
 
         let reserve_address = *self.reserve.address();
@@ -174,6 +176,7 @@ impl InitializeReserve {
             min_borrow_rate_bps,
             optimal_borrow_rate_bps,
             max_borrow_rate_bps,
+            max_confidence_bps,
             bump: bumps.reserve,
         });
         Ok(())
@@ -204,6 +207,7 @@ impl SetPrice {
         &mut self,
         price_mantissa: i128,
         exponent: i32,
+        confidence: u64,
         bumps: &SetPriceBumps,
     ) -> Result<(), ProgramError> {
         // Prices are stamped with the slot: freshness is counted in slots.
@@ -213,6 +217,7 @@ impl SetPrice {
             mint: *self.mint.address(),
             price_mantissa,
             exponent,
+            confidence,
             last_updated_slot: slot,
             bump: bumps.price_feed,
         });

@@ -65,7 +65,7 @@ pub enum ErrorCode {
     #[msg("Maker order and maker MarketUser owner mismatch")]
     MakerOwnerMismatch,
 
-    #[msg("Only the market authority can withdraw fees")]
+    #[msg("Only the market authority can withdraw fees, pause the market, or resume it")]
     NotMarketAuthority,
 
     #[msg("Order book account does not match the market's order book")]
