@@ -1,13 +1,15 @@
 //! quasar-test integration tests. They drive the real program instructions
 //! end-to-end: initialize a market, create users, place and cross orders,
 //! settle, and withdraw fees, asserting on-chain state and token balances at
-//! each step.
+//! each step. The pause block at the end checks that `pause_market` stops new
+//! orders and nothing else, and that `resume_market` reopens the market.
 
 use {
     crate::{
         cpi::{
             CancelOrderInstruction, InitializeMarketInstruction, InitializeMarketUserInstruction,
-            PlaceOrderInstruction, SettleFundsInstruction, WithdrawFeesInstruction,
+            PauseMarketInstruction, PlaceOrderInstruction, ResumeMarketInstruction,
+            SettleFundsInstruction, WithdrawFeesInstruction,
         },
         errors::OrderBookError,
         state::{
@@ -696,4 +698,227 @@ fn trader_can_evict_their_own_worst_order(test: &mut Test) {
     );
     // One order out, one order in.
     assert_eq!(user.open_orders_len as u64, ORDERS_PER_FILLER);
+}
+
+// --- Pause and resume: a pause stops new orders and nothing else ---
+
+// The pause tests share one resting ask and one crossing bid. Chosen apart
+// from the suite's other sizes so a balance that matches is this test's own.
+const PAUSE_ASK_ID: u64 = 1;
+const PAUSE_BID_ID: u64 = 2;
+const PAUSE_PRICE: u64 = 1_300;
+const PAUSE_QUANTITY: u64 = 7;
+const PAUSE_GROSS: u64 = PAUSE_PRICE * PAUSE_QUANTITY * QUOTE_LOT_SIZE; // 9100
+const PAUSE_FEE: u64 = 91; // ceil(9100 * 100 / 10000)
+const PAUSE_LOCKED_BASE: u64 = PAUSE_QUANTITY * BASE_LOT_SIZE; // 7000
+const ASK: u8 = 1;
+
+/// A market with the maker (the seller) and the taker (the buyer) registered
+/// and funded for the pause tests' one ask and one bid.
+fn init_pause_market(test: &mut Test) -> Pubkey {
+    let market = init_market(test);
+    initialize_market_user(test, market, MAKER);
+    initialize_market_user(test, market, TAKER);
+    test.add(
+        TokenAccount::new(BASE_MINT, MAKER)
+            .at(MAKER_BASE)
+            .amount(PAUSE_LOCKED_BASE),
+    );
+    test.add(TokenAccount::new(QUOTE_MINT, MAKER).at(MAKER_QUOTE));
+    test.add(TokenAccount::new(BASE_MINT, TAKER).at(TAKER_BASE));
+    test.add(
+        TokenAccount::new(QUOTE_MINT, TAKER)
+            .at(TAKER_QUOTE)
+            .amount(PAUSE_GROSS),
+    );
+    market
+}
+
+/// The maker places the pause tests' ask.
+fn place_pause_ask(test: &mut Test, market: Pubkey) -> Outcome {
+    place_order(
+        test,
+        market,
+        MAKER,
+        MAKER_BASE,
+        MAKER_QUOTE,
+        ASK,
+        PAUSE_PRICE,
+        PAUSE_QUANTITY,
+        PAUSE_ASK_ID,
+        &[],
+    )
+}
+
+#[quasar_test]
+fn pause_market_refuses_new_orders_with_market_paused(test: &mut Test) {
+    let market = init_pause_market(test);
+
+    test.send(PauseMarketInstruction {
+        market,
+        authority: AUTHORITY,
+    })
+    .succeeds();
+    assert!(!test.read::<Market>(market).is_active.is_true());
+
+    place_pause_ask(test, market).fails_with(OrderBookError::MarketPaused);
+    // The refused ask locked nothing.
+    let vaults = vaults(test, market);
+    assert_eq!(test.tokens(vaults.base), 0);
+    assert_eq!(test.tokens(MAKER_BASE), PAUSE_LOCKED_BASE);
+}
+
+#[quasar_test]
+fn paused_market_still_cancels_and_settles_a_resting_order(test: &mut Test) {
+    let market = init_pause_market(test);
+    let vaults = vaults(test, market);
+
+    place_pause_ask(test, market).succeeds();
+    assert_eq!(test.tokens(vaults.base), PAUSE_LOCKED_BASE);
+
+    test.send(PauseMarketInstruction {
+        market,
+        authority: AUTHORITY,
+    })
+    .succeeds();
+
+    // The ask was placed before the pause; its owner can still cancel it
+    // and take the locked base back out while the market is paused.
+    let cancel: Instruction = CancelOrderInstruction {
+        market,
+        order_book: ORDER_BOOK,
+        order_order_id_seed: PAUSE_ASK_ID,
+        owner: MAKER,
+    }
+    .into();
+    let settle: Instruction = SettleFundsInstruction {
+        owner: MAKER,
+        market,
+        base_vault: vaults.base,
+        quote_vault: vaults.quote,
+        user_base_account: MAKER_BASE,
+        user_quote_account: MAKER_QUOTE,
+        base_mint: BASE_MINT,
+        quote_mint: QUOTE_MINT,
+    }
+    .into();
+    test.send_all([cancel, settle]).succeeds();
+
+    let ask = test.derive_pda(Order::seeds(&market, PAUSE_ASK_ID));
+    assert_eq!(test.read::<Order>(ask).status, OrderStatus::Cancelled as u8);
+    assert_eq!(test.tokens(vaults.base), 0);
+    assert_eq!(test.tokens(MAKER_BASE), PAUSE_LOCKED_BASE);
+}
+
+#[quasar_test]
+fn paused_market_still_pays_out_fills_and_withdraws_fees(test: &mut Test) {
+    let market = init_pause_market(test);
+    let maker_market_user = test.derive_pda(MarketUser::seeds(&market, &MAKER));
+    let vaults = vaults(test, market);
+    test.add(TokenAccount::new(QUOTE_MINT, AUTHORITY).at(AUTHORITY_QUOTE));
+
+    // A fill before the pause leaves the maker owed quote in their
+    // unsettled balance and the fee vault holding the taker fee.
+    place_pause_ask(test, market).succeeds();
+    let ask = test.derive_pda(Order::seeds(&market, PAUSE_ASK_ID));
+    place_order(
+        test,
+        market,
+        TAKER,
+        TAKER_BASE,
+        TAKER_QUOTE,
+        BID,
+        PAUSE_PRICE,
+        PAUSE_QUANTITY,
+        PAUSE_BID_ID,
+        &[(ask, maker_market_user)],
+    )
+    .succeeds();
+    assert_eq!(test.tokens(vaults.fee), PAUSE_FEE);
+
+    test.send(PauseMarketInstruction {
+        market,
+        authority: AUTHORITY,
+    })
+    .succeeds();
+
+    // The maker's settlement goes through while paused.
+    settle_funds(test, market, MAKER, MAKER_BASE, MAKER_QUOTE).succeeds();
+    assert_eq!(test.tokens(MAKER_QUOTE), PAUSE_GROSS - PAUSE_FEE);
+
+    // So does the authority's fee withdrawal.
+    test.send(WithdrawFeesInstruction {
+        market,
+        fee_vault: vaults.fee,
+        authority_quote_account: AUTHORITY_QUOTE,
+        quote_mint: QUOTE_MINT,
+        authority: AUTHORITY,
+    })
+    .succeeds();
+    assert_eq!(test.tokens(vaults.fee), 0);
+    assert_eq!(test.tokens(AUTHORITY_QUOTE), PAUSE_FEE);
+}
+
+#[quasar_test]
+fn resume_market_accepts_orders_again(test: &mut Test) {
+    let market = init_pause_market(test);
+
+    test.send(PauseMarketInstruction {
+        market,
+        authority: AUTHORITY,
+    })
+    .succeeds();
+    place_pause_ask(test, market).fails_with(OrderBookError::MarketPaused);
+
+    test.send(ResumeMarketInstruction {
+        market,
+        authority: AUTHORITY,
+    })
+    .succeeds();
+    assert!(test.read::<Market>(market).is_active.is_true());
+
+    // The same ask, refused a moment ago, now rests and locks its base.
+    place_pause_ask(test, market).succeeds();
+    let vaults = vaults(test, market);
+    assert_eq!(test.tokens(vaults.base), PAUSE_LOCKED_BASE);
+}
+
+#[quasar_test]
+fn only_the_market_authority_can_pause_or_resume(test: &mut Test) {
+    let market = init_pause_market(test);
+
+    // A trader signing `pause_market` is refused, and the market stays open:
+    // the ask goes through afterwards.
+    test.send(PauseMarketInstruction {
+        market,
+        authority: TAKER,
+    })
+    .fails_with(OrderBookError::NotMarketAuthority);
+    place_pause_ask(test, market).succeeds();
+
+    // Once the authority has paused, a trader signing `resume_market` is
+    // refused too, and the market stays paused: the taker's bid is refused.
+    test.send(PauseMarketInstruction {
+        market,
+        authority: AUTHORITY,
+    })
+    .succeeds();
+    test.send(ResumeMarketInstruction {
+        market,
+        authority: TAKER,
+    })
+    .fails_with(OrderBookError::NotMarketAuthority);
+    place_order(
+        test,
+        market,
+        TAKER,
+        TAKER_BASE,
+        TAKER_QUOTE,
+        BID,
+        PAUSE_PRICE,
+        PAUSE_QUANTITY,
+        PAUSE_BID_ID,
+        &[],
+    )
+    .fails_with(OrderBookError::MarketPaused);
 }

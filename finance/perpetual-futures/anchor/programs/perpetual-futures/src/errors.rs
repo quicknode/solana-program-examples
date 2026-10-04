@@ -72,4 +72,7 @@ pub enum PerpError {
         "Profit cannot be taken yet: the position has not been open for the pool's profit warm-up"
     )]
     ProfitNotMatured,
+
+    #[msg("Price feed is not owned by the oracle program the pool recorded")]
+    PriceFeedNotFromOracle,
 }

@@ -3,7 +3,10 @@ mod common;
 use anchor_v2_testing::{Keypair, Signer};
 use lending::errors::LendingError;
 
-use common::{ata, default_config, dollars, Env, ReserveHandle};
+use common::{
+    ata, cents, default_config, dollars, narrow_band, widest_accepted_band, Env, ReserveHandle,
+    DEFAULT_MAX_CONFIDENCE_BPS,
+};
 
 /// One market with a collateral reserve and a separately-supplied borrow
 /// reserve, plus a borrower who has posted 1000 units of collateral (value
@@ -92,6 +95,107 @@ fn borrow_with_stale_price_feed_is_rejected() {
         100_000_000,
     );
     common::assert_program_error!(result, LendingError::StalePriceFeed);
+}
+
+/// A price the oracle is unsure of is no price to lend against. The
+/// collateral feed is read by `refresh_obligation`, so the band is refused
+/// there, before the borrow handler runs; once the publisher posts a narrow
+/// band again the same borrow goes through.
+#[test]
+fn borrow_against_collateral_priced_with_a_wide_band_is_rejected() {
+    let (mut env, collateral, borrow, borrower, obligation) = setup();
+
+    // Twice the band the reserve allows.
+    let wide_band = 2 * widest_accepted_band(dollars(1), DEFAULT_MAX_CONFIDENCE_BPS);
+    env.set_price_with_confidence(collateral.mint, dollars(1), wide_band);
+    let result = env.try_borrow(
+        &borrower,
+        obligation,
+        &[&collateral],
+        &[],
+        &borrow,
+        100_000_000,
+    );
+    // The collateral cannot be valued against a price the oracle is unsure of.
+    common::assert_program_error!(result, LendingError::OracleConfidenceTooWide);
+
+    // Warp so the retry is not byte-identical to the rejected borrow.
+    env.warp_slots(1);
+    env.set_price(collateral.mint, dollars(1));
+    env.set_price(borrow.mint, dollars(1));
+    env.try_borrow(
+        &borrower,
+        obligation,
+        &[&collateral],
+        &[],
+        &borrow,
+        100_000_000,
+    )
+    .unwrap();
+    assert_eq!(
+        env.token_balance(ata(&borrower.pubkey(), &borrow.mint)),
+        100_000_000
+    );
+}
+
+/// The borrowed token's feed is read by the borrow handler itself, which
+/// applies the same limit, so a wide band on that side is refused too.
+#[test]
+fn borrow_of_a_token_priced_with_a_wide_band_is_rejected() {
+    let (mut env, collateral, borrow, borrower, obligation) = setup();
+
+    let wide_band = 2 * widest_accepted_band(dollars(1), DEFAULT_MAX_CONFIDENCE_BPS);
+    env.set_price_with_confidence(borrow.mint, dollars(1), wide_band);
+    let result = env.try_borrow(
+        &borrower,
+        obligation,
+        &[&collateral],
+        &[],
+        &borrow,
+        100_000_000,
+    );
+    common::assert_program_error!(result, LendingError::OracleConfidenceTooWide);
+}
+
+/// The limit is inclusive: a band of exactly `max_confidence_bps` of the
+/// price is accepted, and one unit wider is refused. At $1.23 the 1% limit is
+/// 12,300,000,000,000,000 in the mantissa's units, with no rounding to hide
+/// behind.
+#[test]
+fn confidence_band_at_the_limit_passes_and_one_unit_over_fails() {
+    let (mut env, collateral, borrow, borrower, obligation) = setup();
+    let price = cents(123);
+    let limit = widest_accepted_band(price, DEFAULT_MAX_CONFIDENCE_BPS);
+    assert_eq!(limit, 12_300_000_000_000_000);
+
+    env.set_price_with_confidence(collateral.mint, price, limit + 1);
+    let result = env.try_borrow(
+        &borrower,
+        obligation,
+        &[&collateral],
+        &[],
+        &borrow,
+        100_000_000,
+    );
+    // One unit past the limit must be refused.
+    common::assert_program_error!(result, LendingError::OracleConfidenceTooWide);
+
+    env.warp_slots(1);
+    env.set_price_with_confidence(collateral.mint, price, limit);
+    env.set_price_with_confidence(borrow.mint, dollars(1), narrow_band(dollars(1)));
+    env.try_borrow(
+        &borrower,
+        obligation,
+        &[&collateral],
+        &[],
+        &borrow,
+        100_000_000,
+    )
+    .unwrap();
+    assert_eq!(
+        env.token_balance(ata(&borrower.pubkey(), &borrow.mint)),
+        100_000_000
+    );
 }
 
 /// A cluster restart passes hours of wall-clock time in zero slots, so a price

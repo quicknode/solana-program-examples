@@ -66,6 +66,11 @@ pub struct Market {
     pub base_lot_size: u64,
     pub quote_lot_size: u64,
     pub min_order_size: u64,
+    /// True from `initialize_market` until `pause_market` clears it;
+    /// `resume_market` sets it again. `place_order` refuses a market whose
+    /// flag is false with `MarketPaused`. Cancels, settlements and fee
+    /// withdrawals never read it, so a pause stops new orders and nothing
+    /// else.
     pub is_active: PodBool,
     pub bump: u8,
 }

@@ -66,8 +66,10 @@ pub fn handle_buy_option(accounts: &mut BuyOptionAccountConstraints) -> Result<(
         OptionsError::InvalidParameter
     );
     // A writer cannot buy their own option: the same address would sit in the
-    // `buyer` and `writer` slots at once, which the runtime refuses before
-    // this handler runs.
+    // `buyer` and `writer` slots at once, so the runtime hands the program the
+    // second as a duplicate of the first, and Quasar's account parsing refuses
+    // the duplicate with `AccountBorrowFailed` before this handler runs,
+    // whichever of the writer's token accounts the premium would come from.
 
     let (fee, to_writer) =
         split_premium(accounts.option.premium.get(), accounts.market.fee_bps.get())?;

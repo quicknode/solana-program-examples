@@ -35,6 +35,7 @@ pub mod error {
     pub const INVALID_PRICE_DEVIATION: u32 = 20;
     pub const PRICE_OUTSIDE_BAND: u32 = 21;
     pub const PROFIT_NOT_MATURED: u32 = 22;
+    pub const PRICE_FEED_NOT_FROM_ORACLE: u32 = 23;
 }
 
 #[inline(always)]
@@ -55,9 +56,15 @@ fn overflow() -> ProgramError {
 // Like the Anchor sibling, this validates freshness, positivity, and the
 // confidence band (`confidence / price`), rejecting a price whose band is too
 // wide. A production reader may also prefer the feed's EMA over the spot price;
-// the mock omits the EMA to stay minimal. The feed account's owning program is
-// NOT checked here — the pool trusts whatever feed its creator configured; a
-// production reader must verify the owner is the oracle program.
+// the mock omits the EMA to stay minimal.
+//
+// The feed account must be owned by the oracle program the pool recorded at
+// creation (`Pool::price_feed_program`, read from the feed's `owner` at that
+// moment). `read_feed_price` checks that before a byte is decoded. The layout
+// above says nothing about who wrote the bytes, so without the owner check
+// any account laid out like a feed would be accepted as a price. The pool's
+// creator picks the feed, so the pool trusts the program it recorded and
+// refuses a feed account from any other.
 const PRICE_OFFSET: usize = 0;
 const SCALE_OFFSET: usize = PRICE_OFFSET + 16;
 const LAST_UPDATE_SLOT_OFFSET: usize = SCALE_OFFSET + 4;
@@ -425,14 +432,19 @@ pub fn require_price_within_band(pool: &Account<Pool>, price: u64) -> Result<(),
 }
 
 /// Read and validate the oracle price from the feed account, checked for
-/// freshness against `slot`.
+/// freshness against `slot`. Rejects a feed account owned by any program other
+/// than `oracle_program` before decoding a byte.
 pub fn read_feed_price(
     oracle_feed: &UncheckedAccount,
+    oracle_program: &Address,
     expected_scale: u32,
     slot: u64,
     max_confidence_bps: u16,
 ) -> Result<u64, ProgramError> {
     let view = oracle_feed.to_account_view();
+    if view.owner() != oracle_program {
+        return Err(err(error::PRICE_FEED_NOT_FROM_ORACLE));
+    }
     let data = view
         .try_borrow()
         .map_err(|_| err(error::ORACLE_DATA_TOO_SHORT))?;
@@ -487,6 +499,7 @@ fn read_pool_oracle_price(
 ) -> Result<u64, ProgramError> {
     read_feed_price(
         oracle_feed,
+        &pool.price_feed_program,
         pool.oracle_scale.get(),
         slot,
         pool.max_confidence_bps.get(),

@@ -31,6 +31,16 @@ pub enum EventStatus {
 pub struct Event {
     pub event_id: u64,
     pub outcome_count: u8,
+    /// How many Outcome accounts of this event are still open. `add_outcome`
+    /// adds one; `close_outcome` subtracts one. `close_event` requires zero,
+    /// because an Outcome left behind would carry its stakes into a later
+    /// event created with the same `event_id`.
+    pub open_outcomes: u8,
+    /// How many Bet accounts across every outcome are still open. `place_bet`
+    /// adds one when it creates a Bet account (a top-up reuses the account);
+    /// `claim_winnings`, `claim_refund` and `close_losing_bet` each subtract
+    /// one when they close one. `close_outcome` and `close_event` require zero.
+    pub open_bets: u64,
     /// Sum of every stake placed across all outcomes.
     pub total_pool: u64,
     pub status: u8,
@@ -63,6 +73,8 @@ pub fn snapshot_event(event: &Account<Event>) -> EventInner {
     EventInner {
         event_id: u64::from(event.event_id),
         outcome_count: event.outcome_count,
+        open_outcomes: event.open_outcomes,
+        open_bets: u64::from(event.open_bets),
         total_pool: u64::from(event.total_pool),
         status: event.status,
         betting_closes_at: i64::from(event.betting_closes_at),

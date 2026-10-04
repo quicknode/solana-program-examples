@@ -203,7 +203,7 @@ impl BorrowObligationLiquidity {
         let collateral_value = market_value(
             u64::try_from(collateral_liquidity).map_err(|_| LendingError::MathOverflow)?,
             collateral.liquidity_decimals,
-            price_scaled(&self.collateral_price, slot)?,
+            price_scaled(&self.collateral_price, slot, collateral.max_confidence_bps)?,
             Rounding::Down,
         )?;
         let allowed = mul_div_floor(
@@ -213,7 +213,7 @@ impl BorrowObligationLiquidity {
         )?;
 
         // Existing debt value + the new borrow, both rounded up.
-        let borrow_price = price_scaled(&self.borrow_price, slot)?;
+        let borrow_price = price_scaled(&self.borrow_price, slot, borrow.max_confidence_bps)?;
         let existing_debt = current_debt(
             obligation.borrowed_principal,
             borrow.borrow_accumulation_factor,
@@ -419,7 +419,7 @@ impl WithdrawObligationCollateral {
         let remaining_value = market_value(
             u64::try_from(remaining_liquidity).map_err(|_| LendingError::MathOverflow)?,
             collateral.liquidity_decimals,
-            price_scaled(&self.collateral_price, slot)?,
+            price_scaled(&self.collateral_price, slot, collateral.max_confidence_bps)?,
             Rounding::Down,
         )?;
         let allowed = mul_div_floor(
@@ -449,7 +449,7 @@ impl WithdrawObligationCollateral {
             market_value(
                 debt,
                 borrow.liquidity_decimals,
-                price_scaled(&self.borrow_price, slot)?,
+                price_scaled(&self.borrow_price, slot, borrow.max_confidence_bps)?,
                 Rounding::Up,
             )?
         } else {
@@ -548,8 +548,9 @@ impl LiquidateObligation {
         accrue(&mut borrow, slot, timestamp)?;
         let mut obligation = snapshot_obligation(&self.obligation);
 
-        let collateral_price = price_scaled(&self.collateral_price, slot)?;
-        let borrow_price = price_scaled(&self.borrow_price, slot)?;
+        let collateral_price =
+            price_scaled(&self.collateral_price, slot, collateral.max_confidence_bps)?;
+        let borrow_price = price_scaled(&self.borrow_price, slot, borrow.max_confidence_bps)?;
 
         // Health: unhealthy when debt value exceeds collateral value * liquidation threshold.
         let collateral_total = net_total_liquidity(

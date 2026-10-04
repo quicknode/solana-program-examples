@@ -24,8 +24,9 @@ pub struct InitializeMarket {
     pub market: Account<Market>,
     pub base_mint: Account<Mint>,
     pub quote_mint: Account<Mint>,
-    /// CHECK: stored on the market; every read validates layout, scale,
-    /// freshness, and confidence.
+    /// CHECK: its key and its owning program are stored on the market; every
+    /// read requires that owner and validates layout, scale, freshness, and
+    /// confidence.
     pub oracle_feed: UncheckedAccount,
     // The market account itself is the token authority of both vaults and
     // signs their outgoing transfers with its own seeds, so no separate
@@ -81,6 +82,7 @@ pub fn handle_initialize_market(
         base_mint: *accounts.base_mint.address(),
         quote_mint: *accounts.quote_mint.address(),
         oracle_feed: *accounts.oracle_feed.address(),
+        price_feed_program: *accounts.oracle_feed.to_account_view().owner(),
         base_vault: *accounts.base_vault.address(),
         quote_vault: *accounts.quote_vault.address(),
         oracle_scale,

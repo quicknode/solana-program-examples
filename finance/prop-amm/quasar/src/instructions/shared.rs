@@ -24,6 +24,7 @@ pub mod error {
     pub const INVARIANT_VIOLATED: u32 = 11;
     pub const INVALID_DIRECTION: u32 = 12;
     pub const PRICE_PREDATES_RESTART: u32 = 13;
+    pub const PRICE_FEED_NOT_FROM_ORACLE: u32 = 14;
 }
 
 #[inline(always)]
@@ -41,23 +42,39 @@ fn overflow() -> ProgramError {
 // production it would be a Pyth `PriceUpdateV2` account, which the Pyth
 // Receiver program writes only after verifying the update's signatures. Like
 // the Anchor sibling, this validates freshness, positivity, scale, and the
-// confidence band; the feed account's owning program is NOT checked — the
-// operator picks the oracle, and a bad choice loses the operator's money, not
-// the traders'.
+// confidence band.
+//
+// The feed account must be owned by the oracle program the market recorded
+// at creation (`Market::price_feed_program`, read from the feed's `owner` at
+// that moment). The layout above says nothing about who wrote the bytes, so
+// without the owner check any account laid out like a feed would be accepted
+// as a price. The operator picks the feed, and a bad choice loses the
+// operator's capital rather than the traders', so the market trusts the
+// program it recorded and refuses a feed account from any other.
 const PRICE_OFFSET: usize = 0;
 const SCALE_OFFSET: usize = PRICE_OFFSET + 16;
 const LAST_UPDATE_SLOT_OFFSET: usize = SCALE_OFFSET + 4;
 const CONFIDENCE_OFFSET: usize = LAST_UPDATE_SLOT_OFFSET + 8;
 const FEED_MINIMUM_LENGTH: usize = CONFIDENCE_OFFSET + 8;
 
-/// Read and validate the oracle price from raw feed bytes. Returns the price
-/// as a `u64` in `expected_scale` fixed point.
+/// Read and validate the oracle price from the `feed` account. Returns the
+/// price as a `u64` in `expected_scale` fixed point. Rejects a feed account
+/// owned by any program other than `oracle_program` before decoding a byte,
+/// then a stale, non-positive, mis-scaled or wide-confidence price.
 pub fn read_oracle_price(
-    data: &[u8],
+    feed: &AccountView,
+    oracle_program: &Address,
     expected_scale: u32,
     current_slot: u64,
     max_confidence_bps: u16,
 ) -> Result<u64, ProgramError> {
+    if feed.owner() != oracle_program {
+        return Err(err(error::PRICE_FEED_NOT_FROM_ORACLE));
+    }
+
+    let data = feed
+        .try_borrow()
+        .map_err(|_| err(error::ORACLE_DATA_TOO_SHORT))?;
     if data.len() < FEED_MINIMUM_LENGTH {
         return Err(err(error::ORACLE_DATA_TOO_SHORT));
     }

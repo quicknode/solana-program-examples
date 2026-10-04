@@ -50,7 +50,8 @@ crosses the liquidation threshold and a liquidator can close part of the positio
 - **`Obligation`**: one per borrower per market: the share-token collateral
   posted and the liquidity borrowed, with cached quote-currency valuations. PDA
   seeds `["obligation", market, owner]`.
-- **`PriceFeed`**: a price for one token (see Oracle below).
+- **`PriceFeed`**: a price for one token, with the publisher's confidence
+  band (see Oracle below).
 
 ### Share tokens (the deposit claim)
 
@@ -139,29 +140,50 @@ All arithmetic is integer-only `u128`: no floats, no fixed-point crates. Ratios
 (rates, the index, the exchange rate, obligation values) are scaled by
 `FIXED_POINT_SCALE` (10^18). Every conversion rounds in the program's favour
 (user output floored, debt ceiled), so dust cannot be extracted by repeated
-round-trips.
+round-trips; `deposit_redeem_round_trip_creates_no_value` checks this by
+depositing and redeeming 777,777,777 units fifty times against a reserve whose
+exchange rate interest has moved off one-to-one, and asserts the supplier never
+holds more than they started with.
 
 ### Oracle
 
 `PriceFeed` mirrors an oracle price feed such as Pyth's: a signed mantissa, an
-exponent (`price = mantissa * 10^exponent`), and the slot the price was written.
-Freshness is checked in **slots** (`MAX_PRICE_STALENESS_SLOTS`), not wall-clock
-time, plus one check slots alone cannot make: a cluster restart passes hours of
-wall-clock time in zero slots, so `price_scaled` also rejects any price stamped
-at or before the `LastRestartSlot` sysvar's slot, pausing valuation until the
-publisher posts again. The feed PDA is seeded by `[b"price_feed", market, mint]` (scoped to a
+exponent (`price = mantissa * 10^exponent`), a **confidence** band in the
+mantissa's units (how far the publisher's sources disagree, half the width of
+the interval around the price), and the slot the price was written.
+`price_scaled` makes three checks before any handler values anything at the
+price:
+
+- Freshness is checked in **slots** (`MAX_PRICE_STALENESS_SLOTS`), not
+  wall-clock time, plus one check slots alone cannot make: a cluster restart
+  passes hours of wall-clock time in zero slots, so a price stamped at or
+  before the `LastRestartSlot` sysvar's slot is rejected
+  (`PricePredatesRestart`), pausing valuation until the publisher posts again.
+- The price must be positive (`InvalidOraclePrice`).
+- The confidence band must be no wider than the reserve's
+  `max_confidence_bps` of the price, with the comparison multiplied out as
+  `confidence × 10,000 ≤ price × max_confidence_bps` in `u128` so no division
+  truncates. A wider band is refused with `OracleConfidenceTooWide`: the oracle
+  is reporting that it does not know the price, and a borrow, withdrawal or
+  liquidation valued at a number the oracle itself doubts would be lending
+  against a guess. The limit lives in the reserve config beside the loan-to-value
+  and liquidation thresholds, so a market owner tunes it per asset, and
+  `validate()` rejects a limit above 100% or of zero, which would refuse every
+  live price and freeze every obligation holding the asset.
+
+The feed PDA is seeded by `[b"price_feed", market, mint]` (scoped to a
 market, not to any individual) and only that market's `owner` may write it
 (`set_price` checks `address = lending_market.owner`). So prices can't be squatted, a reserve
 trusts exactly its own market's feed for the mint, and isolated markets can
 price the same asset independently.
 
-The `set_price` handler writes the feed directly so the LiteSVM tests are
-deterministic; in production a reserve points at a Pyth price feed and the
-program reads its `PriceUpdateV2` account instead, as
-[`basics/pyth`](../../../basics/pyth/) does, after checking the update's
-`feed_id`: `price_mantissa` is `price_message.price`, `exponent` is
-`price_message.exponent`, and `last_updated_slot` is `posted_slot`. It should
-also reject results whose confidence interval is too wide.
+The `set_price` handler takes the mantissa, exponent and confidence band and
+writes the feed directly so the LiteSVM tests are deterministic; in production
+a reserve points at a Pyth price feed and the program reads its `PriceUpdateV2`
+account instead, as [`basics/pyth`](../../../basics/pyth/) does, after checking
+the update's `feed_id`: `price_mantissa` is `price_message.price`, `exponent`
+is `price_message.exponent`, `confidence` is `price_message.conf`, and
+`last_updated_slot` is `posted_slot`.
 
 ### Custody
 
@@ -213,8 +235,9 @@ anchor test    # or: cargo test     - runs the LiteSVM integration tests
 `anchor build` (or `cargo build-sbf`) must run first: the tests load the compiled
 `target/deploy/lending.so` via `include_bytes!`. The suite covers the
 non-happy-path branches: interest accrual, borrowing at the LTV limit, stale
-reserve/price rejection, liquidation of an unhealthy obligation after a price
-move, the share-inflation guard, and rounding edges.
+reserve/price rejection, a price whose confidence band is too wide, liquidation
+of an unhealthy obligation after a price move, the share-inflation guard, and
+rounding edges.
 
 ## FAQ
 
@@ -228,7 +251,7 @@ Through a cumulative accumulation factor: `refresh_reserve` advances a per-reser
 
 ### How are prices fed into the program?
 
-The admin `set_price` instruction handler stands in for an oracle feed in this example. `refresh_obligation` re-values collateral and debt at those prices before any borrow, withdraw, or liquidation is allowed, and stale reserves or prices are rejected.
+The admin `set_price` instruction handler stands in for an oracle feed in this example, writing a price and its confidence band. `refresh_obligation` re-values collateral and debt at those prices before any borrow, withdraw, or liquidation is allowed; stale reserves, stale prices, and prices whose confidence band is wider than the reserve's `max_confidence_bps` are rejected.
 
 ### How is this lending program tested?
 

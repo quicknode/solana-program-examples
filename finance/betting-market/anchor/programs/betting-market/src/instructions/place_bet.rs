@@ -131,6 +131,12 @@ pub fn handle_place_bet(
         .total_pool
         .checked_add(amount)
         .ok_or(BettingError::MathOverflow)?;
+    if is_new_bet {
+        event.open_bets = event
+            .open_bets
+            .checked_add(1)
+            .ok_or(BettingError::MathOverflow)?;
+    }
 
     Ok(())
 }

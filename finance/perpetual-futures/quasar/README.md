@@ -21,8 +21,14 @@ math. This page only covers what differs in the Quasar version.
   restart, which slot-based staleness alone cannot catch (a halt passes hours
   of wall-clock time in zero slots).
 - **Oracle feed in tests.** Rather than a separate mock-oracle program, the
-  tests write the feed account's bytes directly (price, scale, last-update slot)
-  and the program reads them the same way it would read a real oracle feed.
+  tests write the feed account's bytes directly (price, scale, last-update
+  slot, confidence) as a system-owned account, and the program reads them the
+  same way it would read a real oracle feed. The pool records the program that
+  owns the feed account at creation on `Pool.price_feed_program` and every
+  read refuses a feed account owned by any other program with
+  `PRICE_FEED_NOT_FROM_ORACLE` (23); here that recorded program is the system
+  program, and `open_rejects_price_feed_from_another_program` rewrites the
+  feed with another owner to show the refusal is on the owner alone.
 - **State writes** use Quasar's zero-copy field accessors (`field.get()` /
   `field.set()`) and `set_inner`, rather than Anchor's `Account` mutation.
 
@@ -35,12 +41,17 @@ wallets, then exercise:
 - pool initialization, including its checks on the initial margin (above the
   maintenance margin, at most 10,000 basis points) and the price band (above
   zero, below 10,000 basis points)
-- liquidity add/remove, and share inflation through a provider's own trades
+- liquidity add/remove, the first deposit on both sides of the withheld
+  minimum (`first_deposit_below_minimum_fails`), and share inflation through a
+  provider's own trades
 - opening and closing a long in profit, and the initial margin on both sides
   of its boundary
-- stale-price, pre-restart-price, and wide-confidence rejection
+- stale-price, pre-restart-price, and wide-confidence rejection, and a feed
+  account owned by another program refused on the owner alone
+  (`open_rejects_price_feed_from_another_program`)
 - the funding-rate maximum, an operator's wallet on the lighter side earning
-  only the fixed rate, and funding that follows seconds rather than slots
+  only the fixed rate, and the exact funding a long pays over its time open,
+  which follows seconds rather than slots (`funding_follows_seconds_not_slots`)
 - the price band: opens, closes, deposits and withdrawals refused when the
   oracle jumps outside it, liquidation running outside it, the exact average
   after one `update_price_average`
@@ -70,7 +81,8 @@ Program errors are `ProgramError::Custom` codes listed in
 `instructions/shared.rs`, with the same names as the Anchor version's
 `PerpError` variants in upper snake case: `INITIAL_MARGIN_NOT_MET` (2),
 `INITIAL_MARGIN_NOT_ABOVE_MAINTENANCE` (19), `INVALID_PRICE_DEVIATION` (20),
-`PRICE_OUTSIDE_BAND` (21) and `PROFIT_NOT_MATURED` (22) among them.
+`PRICE_OUTSIDE_BAND` (21), `PROFIT_NOT_MATURED` (22) and
+`PRICE_FEED_NOT_FROM_ORACLE` (23) among them.
 `update_price_average` is discriminator 7. `initialize_pool` takes the Anchor
 version's `PoolParameters` fields as separate arguments, ending with
 `insurance_fee_bps` and `profit_warmup_slots`.

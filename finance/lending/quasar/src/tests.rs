@@ -6,6 +6,7 @@
 
 use {
     crate::{
+        constants::{BPS_DENOMINATOR, FIXED_POINT_SCALE},
         cpi::{
             BorrowObligationLiquidityInstruction, DepositObligationCollateralInstruction,
             DepositReserveLiquidityInstruction, InitializeLendingMarketInstruction,
@@ -13,6 +14,7 @@ use {
             LiquidateObligationInstruction, RedeemReserveCollateralInstruction,
             RepayObligationLiquidityInstruction, SetPriceInstruction,
         },
+        error::LendingError,
         state::{LendingMarket, LiquidityVaultPda, Obligation, Reserve, ShareMintPda},
     },
     quasar_test::prelude::*,
@@ -25,6 +27,25 @@ fn dollars(whole: u64) -> i128 {
 }
 fn cents(amount: u64) -> i128 {
     (amount as i128) * 10_000_000_000_000_000
+}
+
+/// Basis points of the price a reserve accepts as a confidence band under
+/// `initialize_reserve`: 1%.
+const DEFAULT_MAX_CONFIDENCE_BPS: u16 = 100;
+
+/// A confidence band of 0.1% of the price, in the mantissa's units: a tenth
+/// of what `initialize_reserve` allows, so a price published with it is
+/// accepted.
+fn narrow_band(price_mantissa: i128) -> u64 {
+    u64::try_from(price_mantissa / 1_000).expect("band fits the feed's u64 confidence")
+}
+
+/// The widest confidence band `max_confidence_bps` lets a reserve value
+/// `price_mantissa` against: `price * max_confidence_bps / 10_000`, exact for
+/// the prices the tests use.
+fn widest_accepted_band(price_mantissa: i128, max_confidence_bps: u16) -> u64 {
+    let band = price_mantissa * max_confidence_bps as i128 / BPS_DENOMINATOR as i128;
+    u64::try_from(band).expect("band fits the feed's u64 confidence")
 }
 
 const DECIMALS: u8 = 6;
@@ -61,6 +82,16 @@ const ATTACKER_COLLATERAL: Pubkey = Pubkey::new_from_array([23; 32]);
 const ATTACKER_COLLATERAL_SHARE: Pubkey = Pubkey::new_from_array([24; 32]);
 const VICTIM_BORROW: Pubkey = Pubkey::new_from_array([25; 32]);
 const VICTIM_BORROW_SHARE: Pubkey = Pubkey::new_from_array([26; 32]);
+/// The supplier who runs the deposit-and-redeem round trips.
+const TRIPPER: Pubkey = Pubkey::new_from_array([27; 32]);
+const TRIPPER_BORROW: Pubkey = Pubkey::new_from_array([28; 32]);
+const TRIPPER_BORROW_SHARE: Pubkey = Pubkey::new_from_array([29; 32]);
+/// One deposit-and-redeem round trip's size: it does not divide the exchange
+/// rate evenly once interest has accrued, so every trip rounds somewhere.
+const ROUND_TRIP_AMOUNT: u64 = 777_777_777;
+/// The round-tripper is funded with more than one deposit's worth, so a trip
+/// that loses dust leaves enough for the next deposit of the full amount.
+const ROUND_TRIP_FUNDING: u64 = 2 * ROUND_TRIP_AMOUNT;
 /// What the market owner deposits to open each reserve: the smallest first
 /// deposit that clears the withheld minimum, minting the owner one share.
 const OPENING_DEPOSIT: u64 = crate::constants::MINIMUM_SHARES + 1;
@@ -106,7 +137,7 @@ fn pdas(test: &Test) -> Pdas {
 /// harness's world).
 fn base_world(test: &mut Test) -> Pdas {
     let w = pdas(test);
-    for wallet in [OWNER, SUPPLIER, BORROWER, LIQUIDATOR] {
+    for wallet in [OWNER, SUPPLIER, BORROWER, LIQUIDATOR, TRIPPER] {
         test.add(Wallet::new().at(wallet));
     }
     for the_mint in [COLLATERAL_MINT, BORROW_MINT, QUOTE_MINT] {
@@ -152,23 +183,57 @@ fn base_world(test: &mut Test) -> Pdas {
             .amount(OPENING_DEPOSIT),
     );
     test.add(TokenAccount::new(w.collateral_share_mint, OWNER).at(OWNER_COLLATERAL_SHARE));
+    test.add(
+        TokenAccount::new(BORROW_MINT, TRIPPER)
+            .at(TRIPPER_BORROW)
+            .amount(ROUND_TRIP_FUNDING),
+    );
+    test.add(TokenAccount::new(w.borrow_share_mint, TRIPPER).at(TRIPPER_BORROW_SHARE));
     w
 }
 
+/// Publish a price for `the_mint` with a narrow confidence band, one the
+/// default reserve config accepts.
 fn set_price(test: &mut Test, w: &Pdas, the_mint: Pubkey, mantissa: i128) {
+    set_price_with_confidence(test, w, the_mint, mantissa, narrow_band(mantissa));
+}
+
+/// Publish a price for `the_mint` with the given confidence band, in the
+/// mantissa's units.
+fn set_price_with_confidence(
+    test: &mut Test,
+    w: &Pdas,
+    the_mint: Pubkey,
+    mantissa: i128,
+    confidence: u64,
+) {
     test.send(SetPriceInstruction {
         owner: OWNER,
         lending_market: w.market,
         mint: the_mint,
         price_mantissa: mantissa,
         exponent: EXP,
+        confidence,
     })
     .succeeds();
 }
 
+/// Create a reserve with the default config and a 1% confidence limit on its
+/// price feed.
 fn initialize_reserve(test: &mut Test, w: &Pdas, the_mint: Pubkey) {
-    // 75% LTV, 80% liquidation threshold, 5% bonus, 50% close factor, 10%
-    // reserve factor, kink 80%, 2% / 20% / 150% APR curve.
+    initialize_reserve_with_confidence_limit(test, w, the_mint, DEFAULT_MAX_CONFIDENCE_BPS)
+        .succeeds();
+}
+
+/// Create a reserve with the default config and the given confidence limit:
+/// 75% LTV, 80% liquidation threshold, 5% bonus, 50% close factor, 10%
+/// reserve factor, kink 80%, 2% / 20% / 150% APR curve.
+fn initialize_reserve_with_confidence_limit(
+    test: &mut Test,
+    w: &Pdas,
+    the_mint: Pubkey,
+    max_confidence_bps: u16,
+) -> Outcome {
     test.send(InitializeReserveInstruction {
         owner: OWNER,
         lending_market: w.market,
@@ -182,8 +247,8 @@ fn initialize_reserve(test: &mut Test, w: &Pdas, the_mint: Pubkey) {
         min_borrow_rate_bps: 200,
         optimal_borrow_rate_bps: 2_000,
         max_borrow_rate_bps: 15_000,
+        max_confidence_bps,
     })
-    .succeeds();
 }
 
 /// Create the market and both reserves, then open each reserve with the
@@ -231,14 +296,34 @@ fn setup_empty_markets(test: &mut Test, w: &Pdas) {
 }
 
 fn deposit_borrow_side(test: &mut Test, w: &Pdas, amount: u64) -> Outcome {
+    deposit_borrow_side_as(
+        test,
+        w,
+        SUPPLIER,
+        SUPPLIER_BORROW,
+        SUPPLIER_BORROW_SHARE,
+        amount,
+    )
+}
+
+/// `supplier` deposits `amount` into the borrow reserve from
+/// `supplier_liquidity`, receiving shares in `supplier_share`.
+fn deposit_borrow_side_as(
+    test: &mut Test,
+    w: &Pdas,
+    supplier: Pubkey,
+    supplier_liquidity: Pubkey,
+    supplier_share: Pubkey,
+    amount: u64,
+) -> Outcome {
     test.send(DepositReserveLiquidityInstruction {
-        supplier: SUPPLIER,
+        supplier,
         reserve: w.borrow_reserve,
         liquidity_mint: BORROW_MINT,
         liquidity_vault: w.borrow_vault,
         share_mint: w.borrow_share_mint,
-        supplier_liquidity: SUPPLIER_BORROW,
-        supplier_share: SUPPLIER_BORROW_SHARE,
+        supplier_liquidity,
+        supplier_share,
         amount,
     })
 }
@@ -257,14 +342,34 @@ fn deposit_collateral_side(test: &mut Test, w: &Pdas, amount: u64) -> Outcome {
 }
 
 fn redeem(test: &mut Test, w: &Pdas, shares: u64) -> Outcome {
+    redeem_as(
+        test,
+        w,
+        SUPPLIER,
+        SUPPLIER_BORROW,
+        SUPPLIER_BORROW_SHARE,
+        shares,
+    )
+}
+
+/// `supplier` redeems `shares` of the borrow reserve from `supplier_share`,
+/// receiving liquidity in `supplier_liquidity`.
+fn redeem_as(
+    test: &mut Test,
+    w: &Pdas,
+    supplier: Pubkey,
+    supplier_liquidity: Pubkey,
+    supplier_share: Pubkey,
+    shares: u64,
+) -> Outcome {
     test.send(RedeemReserveCollateralInstruction {
-        supplier: SUPPLIER,
+        supplier,
         reserve: w.borrow_reserve,
         liquidity_mint: BORROW_MINT,
         liquidity_vault: w.borrow_vault,
         share_mint: w.borrow_share_mint,
-        supplier_liquidity: SUPPLIER_BORROW,
-        supplier_share: SUPPLIER_BORROW_SHARE,
+        supplier_liquidity,
+        supplier_share,
         shares,
     })
 }
@@ -402,6 +507,165 @@ fn borrow_up_to_ltv_succeeds_and_beyond_fails(test: &mut Test) {
     );
 }
 
+/// A price the oracle is unsure of is no price to lend against. The borrow
+/// handler reads the collateral feed first, so the band is refused there,
+/// before the borrowed token is priced; once the publisher posts a narrow
+/// band again the same borrow goes through.
+#[quasar_test]
+fn borrow_against_collateral_priced_with_a_wide_band_is_rejected(test: &mut Test) {
+    let w = base_world(test);
+    bootstrap_position(test, &w);
+
+    // Twice the band the reserve allows.
+    let wide_band = 2 * widest_accepted_band(dollars(1), DEFAULT_MAX_CONFIDENCE_BPS);
+    set_price_with_confidence(test, &w, COLLATERAL_MINT, dollars(1), wide_band);
+    // The collateral cannot be valued against a price the oracle is unsure of.
+    borrow(test, &w, 100 * UNIT).fails_with(LendingError::OracleConfidenceTooWide);
+
+    set_price(test, &w, COLLATERAL_MINT, dollars(1));
+    set_price(test, &w, BORROW_MINT, dollars(1));
+    borrow(test, &w, 100 * UNIT)
+        .succeeds()
+        .has_tokens(BORROWER_BORROW, 100 * UNIT);
+}
+
+/// The borrowed token's feed is read by the same handler, which applies the
+/// borrow reserve's limit, so a wide band on that side is refused too.
+#[quasar_test]
+fn borrow_of_a_token_priced_with_a_wide_band_is_rejected(test: &mut Test) {
+    let w = base_world(test);
+    bootstrap_position(test, &w);
+
+    let wide_band = 2 * widest_accepted_band(dollars(1), DEFAULT_MAX_CONFIDENCE_BPS);
+    set_price_with_confidence(test, &w, BORROW_MINT, dollars(1), wide_band);
+    borrow(test, &w, 100 * UNIT).fails_with(LendingError::OracleConfidenceTooWide);
+}
+
+/// The limit is inclusive: a band of exactly `max_confidence_bps` of the
+/// price is accepted, and one unit wider is refused. At $1.23 the 1% limit is
+/// 12,300,000,000,000,000 in the mantissa's units, with no rounding to hide
+/// behind.
+#[quasar_test]
+fn confidence_band_at_the_limit_passes_and_one_unit_over_fails(test: &mut Test) {
+    let w = base_world(test);
+    bootstrap_position(test, &w);
+    let price = cents(123);
+    let limit = widest_accepted_band(price, DEFAULT_MAX_CONFIDENCE_BPS);
+    assert_eq!(limit, 12_300_000_000_000_000);
+
+    set_price_with_confidence(test, &w, COLLATERAL_MINT, price, limit + 1);
+    // One unit past the limit must be refused.
+    borrow(test, &w, 100 * UNIT).fails_with(LendingError::OracleConfidenceTooWide);
+
+    set_price_with_confidence(test, &w, COLLATERAL_MINT, price, limit);
+    set_price_with_confidence(test, &w, BORROW_MINT, dollars(1), narrow_band(dollars(1)));
+    borrow(test, &w, 100 * UNIT)
+        .succeeds()
+        .has_tokens(BORROWER_BORROW, 100 * UNIT);
+}
+
+/// The confidence limit is a fraction of the price, so it cannot exceed 100%.
+/// This port has no `update_reserve_config`, so the limit is checked where the
+/// config is set, in `initialize_reserve`.
+#[quasar_test]
+fn rejects_confidence_limit_wider_than_the_price(test: &mut Test) {
+    let w = base_world(test);
+    test.send(InitializeLendingMarketInstruction {
+        owner: OWNER,
+        quote_mint: QUOTE_MINT,
+        market_id: MARKET_ID,
+    })
+    .succeeds();
+    set_price(test, &w, COLLATERAL_MINT, dollars(1));
+
+    // A confidence limit above 100% of the price must be rejected.
+    initialize_reserve_with_confidence_limit(test, &w, COLLATERAL_MINT, 10_001)
+        .fails_with(LendingError::InvalidConfig);
+
+    initialize_reserve_with_confidence_limit(test, &w, COLLATERAL_MINT, 10_000).succeeds();
+    let reserve = test.read::<Reserve>(w.collateral_reserve);
+    assert_eq!(u16::from(reserve.max_confidence_bps), 10_000);
+}
+
+/// A zero limit admits only a band of zero, which no live feed reports, so
+/// the reserve could never be valued: the config is rejected rather than
+/// freezing every obligation that holds the asset.
+#[quasar_test]
+fn rejects_zero_confidence_limit(test: &mut Test) {
+    let w = base_world(test);
+    test.send(InitializeLendingMarketInstruction {
+        owner: OWNER,
+        quote_mint: QUOTE_MINT,
+        market_id: MARKET_ID,
+    })
+    .succeeds();
+    set_price(test, &w, COLLATERAL_MINT, dollars(1));
+
+    // A zero confidence limit must be rejected.
+    initialize_reserve_with_confidence_limit(test, &w, COLLATERAL_MINT, 0)
+        .fails_with(LendingError::InvalidConfig);
+
+    initialize_reserve_with_confidence_limit(test, &w, COLLATERAL_MINT, 1).succeeds();
+    let reserve = test.read::<Reserve>(w.collateral_reserve);
+    assert_eq!(u16::from(reserve.max_confidence_bps), 1);
+}
+
+/// Deposits floor the shares minted and redemptions floor the liquidity paid
+/// out, so a supplier who deposits and redeems over and over, at a size that
+/// does not divide the exchange rate evenly, can never end up with more than
+/// they started with. Interest accrues first so the rate is not one-to-one,
+/// and the pool stays borrowed throughout so every trip rounds somewhere.
+#[quasar_test]
+fn deposit_redeem_round_trip_creates_no_value(test: &mut Test) {
+    let w = base_world(test);
+    bootstrap_position(test, &w);
+    borrow(test, &w, 500 * UNIT).succeeds();
+
+    // A tenth of a year passes. This port has no `refresh_reserve`: every
+    // handler that reads a reserve accrues it first, and redeeming one share
+    // is the smallest such call that needs no price.
+    let last_accrual = i64::from(
+        test.read::<Reserve>(w.borrow_reserve)
+            .last_accrual_timestamp,
+    );
+    test.warp_to_timestamp(last_accrual + TENTH_OF_A_YEAR);
+    redeem(test, &w, 1).succeeds();
+    assert!(
+        u128::from(
+            test.read::<Reserve>(w.borrow_reserve)
+                .borrow_accumulation_factor
+        ) > FIXED_POINT_SCALE
+    );
+
+    let round_trips = 50;
+    for trip in 1..=round_trips {
+        deposit_borrow_side_as(
+            test,
+            &w,
+            TRIPPER,
+            TRIPPER_BORROW,
+            TRIPPER_BORROW_SHARE,
+            ROUND_TRIP_AMOUNT,
+        )
+        .succeeds();
+        let shares = test.tokens(TRIPPER_BORROW_SHARE);
+        redeem_as(
+            test,
+            &w,
+            TRIPPER,
+            TRIPPER_BORROW,
+            TRIPPER_BORROW_SHARE,
+            shares,
+        )
+        .succeeds();
+
+        assert!(
+            test.tokens(TRIPPER_BORROW) <= ROUND_TRIP_FUNDING,
+            "round trip {trip} returned more than was put in"
+        );
+    }
+}
+
 #[quasar_test]
 fn repay_reduces_debt(test: &mut Test) {
     let w = base_world(test);
@@ -448,7 +712,7 @@ fn unhealthy_position_is_liquidated_and_healthy_is_rejected(test: &mut Test) {
 /// runtime.
 mod clock_warp {
     use {
-        super::{dollars, EXP, TENTH_OF_A_YEAR},
+        super::{dollars, narrow_band, DEFAULT_MAX_CONFIDENCE_BPS, EXP, TENTH_OF_A_YEAR},
         super::{
             ATTACKER, ATTACKER_BORROW, ATTACKER_BORROW_SHARE, ATTACKER_COLLATERAL,
             ATTACKER_COLLATERAL_SHARE, BORROWER, BORROWER_BORROW, BORROWER_COLLATERAL,
@@ -737,10 +1001,13 @@ mod clock_warp {
             self.run(data, metas).assert_success();
         }
 
+        /// Publish a price with a narrow confidence band, one the reserve
+        /// config accepts.
         fn set_price(&mut self, the_mint: Pubkey, price_feed: Pubkey, mantissa: i128) {
             let mut data = vec![2u8];
             data.extend_from_slice(&mantissa.to_le_bytes());
             data.extend_from_slice(&EXP.to_le_bytes());
+            data.extend_from_slice(&narrow_band(mantissa).to_le_bytes());
             let metas = vec![
                 meta(OWNER, true, true),
                 meta(self.market, false, false),
@@ -760,8 +1027,20 @@ mod clock_warp {
             price: Pubkey,
         ) {
             // 75% LTV, 80% liquidation threshold, 5% bonus, 50% close factor,
-            // 10% reserve factor, kink 80%, 2% / 20% / 150% APR curve.
-            let config: [u16; 9] = [7_500, 8_000, 500, 5_000, 1_000, 8_000, 200, 2_000, 15_000];
+            // 10% reserve factor, kink 80%, 2% / 20% / 150% APR curve, and a
+            // 1% confidence limit on the price feed.
+            let config: [u16; 10] = [
+                7_500,
+                8_000,
+                500,
+                5_000,
+                1_000,
+                8_000,
+                200,
+                2_000,
+                15_000,
+                DEFAULT_MAX_CONFIDENCE_BPS,
+            ];
             let mut data = vec![1u8];
             for value in config {
                 data.extend_from_slice(&value.to_le_bytes());

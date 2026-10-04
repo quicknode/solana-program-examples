@@ -247,6 +247,7 @@ pub fn validate_config(
     min_borrow_rate_bps: u16,
     optimal_borrow_rate_bps: u16,
     max_borrow_rate_bps: u16,
+    max_confidence_bps: u16,
 ) -> Result<(), ProgramError> {
     let within = |value: u16| (value as u128) <= BPS_DENOMINATOR;
     require!(
@@ -255,10 +256,16 @@ pub fn validate_config(
             && within(liquidation_bonus_bps)
             && within(close_factor_bps)
             && within(reserve_factor_bps)
-            && within(optimal_utilization_bps),
+            && within(optimal_utilization_bps)
+            && within(max_confidence_bps),
         LendingError::InvalidConfig
     );
+    // A zero close factor would make every liquidation a no-op.
     require!(close_factor_bps > 0, LendingError::InvalidConfig);
+    // A zero confidence limit admits only a price whose band is zero, which
+    // an oracle reports for no traded asset, so the reserve could never be
+    // valued and every obligation holding it would be frozen.
+    require!(max_confidence_bps > 0, LendingError::InvalidConfig);
     require!(
         optimal_utilization_bps > 0 && (optimal_utilization_bps as u128) < BPS_DENOMINATOR,
         LendingError::InvalidConfig

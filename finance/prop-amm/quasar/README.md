@@ -24,8 +24,13 @@ Quasar version.
   of wall-clock time in zero slots).
 - **Oracle feed in tests.** Rather than a separate mock-oracle program, the
   tests write the feed account's bytes directly (price, scale, last-update
-  slot, confidence) and the program reads them the same way it would read a
-  real oracle feed.
+  slot, confidence) as a system-owned account, and the program reads them the
+  same way it would read a real oracle feed. The market records the program
+  that owns the feed account at creation on `Market.price_feed_program` and
+  every read refuses a feed account owned by any other program with
+  `PRICE_FEED_NOT_FROM_ORACLE` (14); here that recorded program is the system
+  program, and `swap_rejects_price_feed_from_another_program` rewrites the
+  feed with another owner to show the refusal is on the owner alone.
 - **State writes** use Quasar's zero-copy field accessors (`field.get()` /
   `field.set()`) and `set_inner`, rather than Anchor's `Account` mutation.
 
@@ -36,8 +41,8 @@ They build the program, set up both mints, an oracle feed at $165, and an
 operator with funded inventory, then verify the quote math to the minor unit
 in both directions, the exact 1.65 USDC round-trip spread, oracle repricing
 and re-quoting, the operator's full exit, and that every gate shuts: slippage,
-staleness, restart handling, confidence, pause, zero amounts, inventory bounds, and operator
-access control.
+staleness, restart handling, confidence, a feed account owned by another
+program, pause, zero amounts, inventory bounds, and operator access control.
 
 ```bash
 quasar build

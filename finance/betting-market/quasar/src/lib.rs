@@ -121,4 +121,19 @@ mod quasar_betting_market {
     pub fn open_betting(ctx: Ctx<OpenBettingAccountConstraints>) -> Result<(), ProgramError> {
         instructions::open_betting::handle_open_betting(&mut ctx.accounts)
     }
+
+    /// Admin closes one Outcome account of a settled or cancelled event once
+    /// every Bet account of the event is closed. The rent returns to the admin.
+    #[instruction(discriminator = 10)]
+    pub fn close_outcome(ctx: Ctx<CloseOutcomeAccountConstraints>) -> Result<(), ProgramError> {
+        instructions::close_outcome::handle_close_outcome(&mut ctx.accounts)
+    }
+
+    /// Admin closes a settled or cancelled event once its bets and outcomes are
+    /// closed: the vault's remaining dust goes to the fee recipient, and the
+    /// vault and Event account close, returning their rent to the admin.
+    #[instruction(discriminator = 11)]
+    pub fn close_event(ctx: Ctx<CloseEventAccountConstraints>) -> Result<(), ProgramError> {
+        instructions::close_event::handle_close_event(&mut ctx.accounts)
+    }
 }

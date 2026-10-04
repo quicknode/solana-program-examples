@@ -122,10 +122,13 @@ pub fn handle_initialize_pool(
         PerpError::InvalidPriceDeviation
     );
 
-    // Seed the average with a validated oracle price, so the band is in force
-    // from the first trade.
+    // Record the feed's owning program, and seed the average with a validated
+    // oracle price, so the owner check and the band are in force from the
+    // first trade.
+    let price_feed_program = *context.accounts.oracle_feed.account().owner();
     let initial_price = read_oracle_price(
         &context.accounts.oracle_feed,
+        &price_feed_program,
         parameters.oracle_scale,
         parameters.max_confidence_bps,
     )?;
@@ -135,6 +138,7 @@ pub fn handle_initialize_pool(
     pool.authority = *context.accounts.authority.address();
     pool.collateral_mint = *context.accounts.collateral_mint.address();
     pool.oracle_feed = *context.accounts.oracle_feed.address();
+    pool.price_feed_program = price_feed_program;
     pool.oracle_scale = parameters.oracle_scale;
     pool.custody_vault = *context.accounts.custody_vault.address();
     pool.lp_mint = *context.accounts.lp_mint.address();
@@ -182,10 +186,11 @@ pub struct InitializePoolAccountConstraints {
 
     pub collateral_mint: Box<InterfaceAccount<Mint>>,
 
-    /// CHECK: The oracle feed account. Its key is stored on the pool and every
-    /// read, including the one here that seeds the average price, validates
-    /// the layout, scale, and freshness; it is never trusted by type. Swap for
-    /// a real Pyth price feed in production.
+    /// CHECK: The oracle feed account. Its key and its owning program are
+    /// stored on the pool, and every read, including the one here that seeds
+    /// the average price, requires that owner and validates the layout, scale,
+    /// and freshness; it is never trusted by type. Swap for a real Pyth price
+    /// feed in production.
     pub oracle_feed: UncheckedAccount,
 
     /// Liquidity-provider share mint. The pool account is its mint authority

@@ -16,9 +16,10 @@ pub struct ClaimRefundAccountConstraints {
     #[account(mint::token_program = token_program)]
     pub token_mint: InterfaceAccount<Mint>,
 
-    // `mut` so the borrow released for the vault CPI below can be reacquired:
-    // v2 has no read-only reacquire, and the derive dereferences `event` again
-    // when it checks the constraints that name it.
+    // `mut` because the handler lowers `open_bets`, and because the borrow
+    // released for the vault CPI below has to be reacquired: v2 has no
+    // read-only reacquire, and the derive dereferences `event` again when it
+    // checks the constraints that name it.
     #[account(
         mut,
         seeds = [b"event", event.event_id.to_le_bytes()],
@@ -61,6 +62,15 @@ pub fn handle_claim_refund(context: &mut Context<ClaimRefundAccountConstraints>)
         context.accounts.event.status == EventStatus::Cancelled,
         BettingError::EventNotCancelled
     );
+
+    // This Bet account closes when the handler returns, so the event's count
+    // of open bets drops by one before any tokens move.
+    context.accounts.event.open_bets = context
+        .accounts
+        .event
+        .open_bets
+        .checked_sub(1)
+        .ok_or(BettingError::MathOverflow)?;
 
     let stake = context.accounts.bet.amount;
 

@@ -14,6 +14,7 @@ use {
         errors::OptionsError,
         state::{Market, OptionContract, QuoteVaultPda, UnderlyingVaultPda},
     },
+    quasar_lang::error::QuasarError,
     quasar_test::prelude::*,
 };
 
@@ -317,6 +318,17 @@ fn assert_vaults_match_ledger(test: &Test, env: &Env) {
     );
 }
 
+/// How many CPIs the transaction's one instruction made: each one logs a
+/// `Program <id> invoke [2]` line. The handlers here call no program but the
+/// token program, so this is the number of token transfers.
+fn cpi_count(outcome: &Outcome) -> usize {
+    outcome
+        .logs()
+        .iter()
+        .filter(|log| log.ends_with("invoke [2]"))
+        .count()
+}
+
 // ===========================================================================
 // The call: write, buy, exercise, collect
 // ===========================================================================
@@ -357,18 +369,21 @@ fn write_call_moves_underlying_into_vault(test: &mut Test) {
 }
 
 /// Bob buys the option. He pays 25 USDC: 1% (0.25 USDC) to the venue, the rest
-/// straight to Alice. The 5 NVDAx do not move.
+/// straight to Alice, as two transfers. The 5 NVDAx do not move.
 #[quasar_test]
 fn buy_option_pays_the_premium_minus_the_fee(test: &mut Test) {
     let env = setup(test);
     let option = write_call(test, &env);
 
     let fee = 250_000; // 0.25 USDC
-    buy_option(test, &env, &BOB_P, &ALICE_P, CALL_ID)
+    let purchase = buy_option(test, &env, &BOB_P, &ALICE_P, CALL_ID);
+    purchase
         .succeeds()
         .has_tokens(BOB_USDC, STANDARD_USDC - CALL_PREMIUM)
         .has_tokens(ALICE_USDC, STANDARD_USDC + CALL_PREMIUM - fee)
         .has_tokens(env.quote_vault, fee);
+    // One transfer to Alice, one to the vault.
+    assert_eq!(cpi_count(&purchase), 2);
     // The underlying vault is not part of a buy, and did not move.
     assert_eq!(test.tokens(env.underlying_vault), FIVE_NVDAX);
 
@@ -511,6 +526,40 @@ fn reclaim_collateral_after_expiry_returns_it_to_the_writer(test: &mut Test) {
     assert_vaults_match_ledger(test, &env);
 }
 
+/// Dave never exercises: the week passes above the 150 strike. At expiry
+/// Carol takes her 750 USDC of collateral back, keeping the 19.80 USDC of
+/// premium, and the option closes with its rent back to her. Dave keeps his
+/// 5 NVDAx and is out the 20 USDC he paid; the venue's 0.20 USDC fee stays in
+/// the vault for Maria.
+#[quasar_test]
+fn reclaim_collateral_after_expiry_returns_the_strike_to_the_put_writer(test: &mut Test) {
+    let env = setup(test);
+    let option = write_put(test, &env);
+    buy_option(test, &env, &DAVE_P, &CAROL_P, PUT_ID).succeeds();
+    let fee = 200_000; // 1% of 20 USDC
+    let carol_lamports_before = test.lamports(CAROL);
+
+    test.warp_to_timestamp(EXPIRY);
+    reclaim_collateral(test, &env, &CAROL_P, PUT_ID)
+        .succeeds()
+        .has_tokens(CAROL_USDC, STANDARD_USDC + PUT_PREMIUM - fee)
+        .has_tokens(CAROL_NVDAX, 0)
+        .has_tokens(env.quote_vault, fee)
+        .has_tokens(env.underlying_vault, 0)
+        .is_closed(option);
+    assert_eq!(test.tokens(DAVE_USDC), STANDARD_USDC - PUT_PREMIUM);
+    assert_eq!(test.tokens(DAVE_NVDAX), FIVE_NVDAX);
+    assert!(
+        test.lamports(CAROL) > carol_lamports_before,
+        "the option's rent must return to the writer"
+    );
+    let market = test.read::<Market>(env.market);
+    assert_eq!(u64::from(market.quote_owed), 0);
+    assert_eq!(u64::from(market.underlying_owed), 0);
+    assert_eq!(u64::from(market.fees_owed), fee);
+    assert_vaults_match_ledger(test, &env);
+}
+
 // ===========================================================================
 // The expiry boundary, from both sides
 // ===========================================================================
@@ -607,13 +656,17 @@ fn buy_is_refused_once_sold(test: &mut Test) {
 }
 
 /// A writer cannot buy their own option: their address would sit in the `buyer`
-/// and `writer` slots at once, which the runtime refuses before the handler
-/// runs, whichever of their token accounts the premium is paid from.
+/// and `writer` slots at once, so the runtime hands the program the second as
+/// a duplicate of the first, and Quasar's account parsing refuses the
+/// duplicate with `AccountBorrowFailed` before any handler code runs,
+/// whichever of their token accounts the premium is paid from. The option
+/// stays listed and no USDC moves.
 #[quasar_test]
 fn writer_cannot_buy_their_own_option(test: &mut Test) {
     let env = setup(test);
     let option = write_call(test, &env);
-    assert!(buy_option(test, &env, &ALICE_P, &ALICE_P, CALL_ID).is_err());
+    buy_option(test, &env, &ALICE_P, &ALICE_P, CALL_ID)
+        .fails(ProgramError::Runtime("AccountBorrowFailed".into()));
 
     test.add(
         TokenAccount::new(USDC_MINT, ALICE)
@@ -621,9 +674,12 @@ fn writer_cannot_buy_their_own_option(test: &mut Test) {
             .amount(STANDARD_USDC),
     );
     let alice_from_other_account = person(ALICE, ALICE_NVDAX, ALICE_OTHER_USDC);
-    assert!(buy_option(test, &env, &alice_from_other_account, &ALICE_P, CALL_ID).is_err());
+    buy_option(test, &env, &alice_from_other_account, &ALICE_P, CALL_ID)
+        .fails(ProgramError::Runtime("AccountBorrowFailed".into()));
     assert_eq!(test.read::<OptionContract>(option).status, STATUS_LISTED);
+    assert_eq!(test.tokens(ALICE_USDC), STANDARD_USDC);
     assert_eq!(test.tokens(ALICE_OTHER_USDC), STANDARD_USDC);
+    assert_eq!(u64::from(test.read::<Market>(env.market).fees_owed), 0);
 }
 
 /// A buyer cannot route the premium to their own account by passing it as
@@ -656,15 +712,19 @@ fn buy_refuses_a_premium_account_the_writer_does_not_own(test: &mut Test) {
     assert_eq!(test.tokens(MALLORY_USDC), STANDARD_USDC);
 }
 
-/// Only the holder can exercise.
+/// Only the holder can exercise: an unsold option has no holder, and a stranger
+/// is not the holder of a sold one. Both refusals are the option's
+/// `has_one(holder)` constraint.
 #[quasar_test]
 fn exercise_is_refused_for_anyone_but_the_holder(test: &mut Test) {
     let env = setup(test);
     write_call(test, &env);
     // Unsold: the holder field is all zeroes, which no signer can match.
-    assert!(exercise_option(test, &env, &MALLORY_P, &ALICE_P, CALL_ID).is_err());
+    exercise_option(test, &env, &MALLORY_P, &ALICE_P, CALL_ID)
+        .fails_with(QuasarError::HasOneMismatch);
     buy_option(test, &env, &BOB_P, &ALICE_P, CALL_ID).succeeds();
-    assert!(exercise_option(test, &env, &MALLORY_P, &ALICE_P, CALL_ID).is_err());
+    exercise_option(test, &env, &MALLORY_P, &ALICE_P, CALL_ID)
+        .fails_with(QuasarError::HasOneMismatch);
     assert_eq!(test.tokens(env.underlying_vault), FIVE_NVDAX);
 }
 
@@ -677,9 +737,12 @@ fn collect_proceeds_needs_an_exercised_option_and_the_writer(test: &mut Test) {
     collect_proceeds(test, &env, &ALICE_P, CALL_ID).fails_with(OptionsError::OptionNotExercised);
 
     exercise_option(test, &env, &BOB_P, &ALICE_P, CALL_ID).succeeds();
-    // A non-writer's signature derives a different option PDA, so the
-    // account check fails before the handler runs.
-    assert!(collect_proceeds(test, &env, &BOB_P, CALL_ID).is_err());
+    // A non-writer's signature derives a different option PDA: an address
+    // nobody created, so the runtime hands the program an empty account owned
+    // by the system program, and Quasar refuses to read it as an
+    // `OptionContract` with `IllegalOwner` before the handler runs.
+    collect_proceeds(test, &env, &BOB_P, CALL_ID)
+        .fails(ProgramError::Runtime("IllegalOwner".into()));
     assert_eq!(test.tokens(env.quote_vault), CALL_STRIKE_AMOUNT + 250_000);
 }
 
@@ -700,7 +763,7 @@ fn collect_fees_is_refused_for_anyone_but_the_admin(test: &mut Test) {
     let env = setup(test);
     write_call(test, &env);
     buy_option(test, &env, &BOB_P, &ALICE_P, CALL_ID).succeeds();
-    assert!(collect_fees(test, &env, MALLORY, MALLORY_USDC).is_err());
+    collect_fees(test, &env, MALLORY, MALLORY_USDC).fails_with(QuasarError::HasOneMismatch);
     assert_eq!(
         u64::from(test.read::<Market>(env.market).fees_owed),
         250_000
@@ -781,24 +844,30 @@ fn initialize_market_rejects_a_full_fee(test: &mut Test) {
     initialize_market(test, 10_000, USDC_MINT).fails_with(OptionsError::InvalidParameter);
 }
 
-/// One mint on both sides is refused by the runtime before the handler's own
-/// check runs: the same account cannot be loaded into two slots.
+/// One mint on both sides is refused before the handler's own check runs: the
+/// runtime hands the program the second slot as a duplicate of the first, and
+/// Quasar's account parsing refuses it with `AccountBorrowFailed`.
 #[quasar_test]
 fn initialize_market_rejects_the_same_mint_on_both_sides(test: &mut Test) {
     test.add(Wallet::new().at(MARIA));
     test.add(Mint::new(MARIA).at(NVDAX_MINT).decimals(6));
-    assert!(initialize_market(test, FEE_BPS, NVDAX_MINT).is_err());
+    initialize_market(test, FEE_BPS, NVDAX_MINT)
+        .fails(ProgramError::Runtime("AccountBorrowFailed".into()));
 }
 
-/// A venue run at cost is a valid choice: the writer receives the whole
-/// premium and no fee transfer is attempted.
+/// A venue run at cost is a valid choice: with a zero fee the writer
+/// receives the whole premium in one transfer, and `buy_option` makes no
+/// fee transfer at all rather than one for zero.
 #[quasar_test]
 fn zero_fee_venue_pays_the_writer_the_whole_premium(test: &mut Test) {
     let env = setup_with_fee(test, 0);
     write_call(test, &env);
-    buy_option(test, &env, &BOB_P, &ALICE_P, CALL_ID)
+    let purchase = buy_option(test, &env, &BOB_P, &ALICE_P, CALL_ID);
+    purchase
         .succeeds()
         .has_tokens(ALICE_USDC, STANDARD_USDC + CALL_PREMIUM);
+    // The transfer to Alice, and nothing to the vault.
+    assert_eq!(cpi_count(&purchase), 1);
     assert_eq!(u64::from(test.read::<Market>(env.market).fees_owed), 0);
     assert_vaults_match_ledger(test, &env);
 }

@@ -61,6 +61,11 @@ anchor-v2-testing = { git = "https://github.com/otter-sec/anchor.git", rev = "3e
 # pinocchio's on-chain one; the tests move `unix_timestamp` past an expiry.
 solana-clock = "3.0.1"
 solana-kite = "0.4.0"
+# The suite sends each instruction through LiteSVM itself rather than through
+# solana-kite's wrapper, so it can read the transaction's metadata back: the
+# inner instructions say how many token transfers a handler made. The same
+# version anchor-v2-testing pins, so one copy is linked.
+litesvm = "=0.13.1"
 borsh = "1.6.1"
 
 [lints.rust]

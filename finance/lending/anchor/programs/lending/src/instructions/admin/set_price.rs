@@ -15,6 +15,7 @@ pub fn handle_set_price(
     context: &mut Context<SetPrice>,
     price_mantissa: i128,
     exponent: i32,
+    confidence: u64,
 ) -> Result<()> {
     let feed = &mut context.accounts.price_feed;
     feed.market = *context.accounts.lending_market.address();
@@ -22,6 +23,7 @@ pub fn handle_set_price(
     feed.bump = context.bumps.price_feed;
     feed.price_mantissa = price_mantissa;
     feed.exponent = exponent;
+    feed.confidence = confidence;
     feed.last_updated_slot = Clock::get()?.slot;
     Ok(())
 }

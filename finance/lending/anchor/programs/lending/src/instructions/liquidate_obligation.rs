@@ -45,8 +45,14 @@ pub fn handle_liquidate_obligation(
         LendingError::ObligationHealthy
     );
 
-    let repay_price = context.accounts.repay_price_feed.price_scaled(slot)?;
-    let collateral_price = context.accounts.collateral_price_feed.price_scaled(slot)?;
+    let repay_price = context
+        .accounts
+        .repay_price_feed
+        .price_scaled(slot, repay_reserve.config.max_confidence_bps)?;
+    let collateral_price = context
+        .accounts
+        .collateral_price_feed
+        .price_scaled(slot, collateral_reserve.config.max_confidence_bps)?;
 
     let borrow_index = obligation.find_borrow(*repay_reserve.address())?;
     let collateral_index = obligation.find_collateral(*collateral_reserve.address())?;

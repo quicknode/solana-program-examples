@@ -43,4 +43,7 @@ pub enum PropAmmError {
 
     #[msg("Oracle price is stale: it predates the last cluster restart")]
     PricePredatesRestart,
+
+    #[msg("Price feed is not owned by the oracle program the market recorded")]
+    PriceFeedNotFromOracle,
 }

@@ -1,10 +1,14 @@
 use {
     anchor_lang::{
         solana_program::instruction::Instruction, system_program, AccountDeserialize, Address,
-        InstructionData, ToAccountMetas,
+        Error as AnchorError, ErrorCode as AnchorErrorCode, InstructionData, ToAccountMetas,
     },
-    anchor_v2_testing::{Keypair, LiteSVM, Signer},
+    anchor_v2_testing::{
+        Keypair, LiteSVM, Message, Signer, VersionedMessage, VersionedTransaction,
+    },
+    litesvm::types::TransactionMetadata,
     options::{
+        errors::OptionsError,
         instructions::write_option::OptionTerms,
         state::{Market as MarketState, OptionContract, OptionKind, OptionStatus},
     },
@@ -66,6 +70,45 @@ fn derive_ata(wallet: &Address, mint: &Address) -> Address {
     .0
 }
 
+/// A failed transaction reports its program error as `Custom(n)`. Matching
+/// `n` checks that the transaction failed for the rule under test, not for
+/// some unrelated reason.
+fn assert_fails_with_code<T>(result: Result<T, String>, code: u32) {
+    let Err(error) = result else {
+        panic!("the transaction should have failed with error code {code}");
+    };
+    assert!(
+        error.contains(&format!("Custom({code})")),
+        "expected error code {code}, got: {error}"
+    );
+}
+
+/// Anchor numbers a program's own errors from 6000 in declaration order;
+/// `#[error_code]` generates the conversion.
+fn assert_fails_with<T>(result: Result<T, String>, expected: OptionsError) {
+    let AnchorError::Custom(code) = AnchorError::from(expected) else {
+        panic!("a program error converts to a custom code");
+    };
+    assert_fails_with_code(result, code);
+}
+
+/// Anchor's own constraint errors (an `address =` mismatch, a duplicate
+/// mutable account) are numbered below the program's and reported the same
+/// way.
+fn assert_fails_with_anchor_error<T>(result: Result<T, String>, expected: AnchorErrorCode) {
+    let AnchorError::Custom(code) = AnchorError::from(expected) else {
+        panic!("a constraint error converts to a custom code");
+    };
+    assert_fails_with_code(result, code);
+}
+
+/// How many CPIs the transaction's one instruction made. The handlers here
+/// call no program but the token program, so this is the number of token
+/// transfers.
+fn cpi_count(metadata: &TransactionMetadata) -> usize {
+    metadata.inner_instructions[0].len()
+}
+
 /// The walkthrough's call, expiring at `expiry`.
 fn call_terms(expiry: i64) -> OptionTerms {
     OptionTerms {
@@ -110,7 +153,7 @@ impl Venue {
     /// Like `new`, but surfaces an `initialize_market` rejection instead of
     /// panicking, so tests can probe the parameter validation. `same_mint`
     /// passes the underlying mint as the quote mint too.
-    fn try_new(fee_bps: u16, same_mint: bool) -> Result<Venue, ()> {
+    fn try_new(fee_bps: u16, same_mint: bool) -> Result<Venue, String> {
         let mut svm = anchor_v2_testing::svm();
         svm.add_program(
             options::id(),
@@ -159,7 +202,7 @@ impl Venue {
             &[&admin],
             &admin.pubkey(),
         )
-        .map_err(|_| ())?;
+        .map_err(|error| format!("{error:?}"))?;
 
         Ok(Venue {
             svm,
@@ -273,15 +316,26 @@ impl Venue {
         Address::try_from(&account.data[32..64]).unwrap()
     }
 
-    fn send(&mut self, instruction: Instruction, signer: &Keypair) -> Result<(), ()> {
-        send_transaction_from_instructions(
-            &mut self.svm,
-            vec![instruction],
-            &[signer],
-            &signer.pubkey(),
-        )
-        .map(|_| ())
-        .map_err(|_| ())
+    /// Send one instruction, signed and paid for by `signer`, and return the
+    /// transaction's metadata: its logs and the CPIs the handler made. A
+    /// failure carries the transaction error, which names the program error
+    /// as `Custom(n)`.
+    fn send(
+        &mut self,
+        instruction: Instruction,
+        signer: &Keypair,
+    ) -> Result<TransactionMetadata, String> {
+        let message = Message::new_with_blockhash(
+            &[instruction],
+            Some(&signer.pubkey()),
+            &self.svm.latest_blockhash(),
+        );
+        let transaction =
+            VersionedTransaction::try_new(VersionedMessage::Legacy(message), &[signer])
+                .expect("the payer signs its own transaction");
+        self.svm
+            .send_transaction(transaction)
+            .map_err(|failed| format!("{:?}", failed.err))
     }
 
     fn write_option(
@@ -289,7 +343,7 @@ impl Venue {
         writer: &Person,
         id: u64,
         terms: OptionTerms,
-    ) -> Result<Address, ()> {
+    ) -> Result<Address, String> {
         let option = self.option_pda(&writer.pubkey(), id);
         let instruction = Instruction::new_with_bytes(
             options::id(),
@@ -337,7 +391,12 @@ impl Venue {
         .expect("writing the put should succeed")
     }
 
-    fn buy_option(&mut self, buyer: &Person, writer: &Address, option: &Address) -> Result<(), ()> {
+    fn buy_option(
+        &mut self,
+        buyer: &Person,
+        writer: &Address,
+        option: &Address,
+    ) -> Result<TransactionMetadata, String> {
         let instruction = Instruction::new_with_bytes(
             options::id(),
             &options::instruction::BuyOption {}.data(),
@@ -357,7 +416,11 @@ impl Venue {
         self.send(instruction, &buyer.keypair)
     }
 
-    fn cancel_option(&mut self, writer: &Person, option: &Address) -> Result<(), ()> {
+    fn cancel_option(
+        &mut self,
+        writer: &Person,
+        option: &Address,
+    ) -> Result<TransactionMetadata, String> {
         let instruction = Instruction::new_with_bytes(
             options::id(),
             &options::instruction::CancelOption {}.data(),
@@ -383,7 +446,7 @@ impl Venue {
         holder: &Person,
         writer: &Address,
         option: &Address,
-    ) -> Result<(), ()> {
+    ) -> Result<TransactionMetadata, String> {
         let instruction = Instruction::new_with_bytes(
             options::id(),
             &options::instruction::ExerciseOption {}.data(),
@@ -407,7 +470,11 @@ impl Venue {
         self.send(instruction, &holder.keypair)
     }
 
-    fn collect_proceeds(&mut self, writer: &Person, option: &Address) -> Result<(), ()> {
+    fn collect_proceeds(
+        &mut self,
+        writer: &Person,
+        option: &Address,
+    ) -> Result<TransactionMetadata, String> {
         let instruction = Instruction::new_with_bytes(
             options::id(),
             &options::instruction::CollectProceeds {}.data(),
@@ -430,7 +497,11 @@ impl Venue {
         self.send(instruction, &writer.keypair)
     }
 
-    fn reclaim_collateral(&mut self, writer: &Person, option: &Address) -> Result<(), ()> {
+    fn reclaim_collateral(
+        &mut self,
+        writer: &Person,
+        option: &Address,
+    ) -> Result<TransactionMetadata, String> {
         let instruction = Instruction::new_with_bytes(
             options::id(),
             &options::instruction::ReclaimCollateral {}.data(),
@@ -451,7 +522,7 @@ impl Venue {
         self.send(instruction, &writer.keypair)
     }
 
-    fn collect_fees_as(&mut self, signer: &Keypair) -> Result<(), ()> {
+    fn collect_fees_as(&mut self, signer: &Keypair) -> Result<TransactionMetadata, String> {
         let instruction = Instruction::new_with_bytes(
             options::id(),
             &options::instruction::CollectFees {}.data(),
@@ -471,7 +542,7 @@ impl Venue {
         self.send(instruction, signer)
     }
 
-    fn collect_fees(&mut self) -> Result<(), ()> {
+    fn collect_fees(&mut self) -> Result<TransactionMetadata, String> {
         let admin = self.admin.insecure_clone();
         self.collect_fees_as(&admin)
     }
@@ -508,7 +579,7 @@ fn test_market_owns_both_vaults() {
     assert_eq!(venue.token_authority(&venue.quote_vault), venue.market);
 }
 
-/// Alice writes 5 covered calls on her 5 NVDAx. The whole 5 NVDAx moves into
+/// Alice writes a covered call on her 5 NVDAx. The whole 5 NVDAx moves into
 /// the vault at once; the option is listed for a 25 USDC premium.
 #[test]
 fn test_write_call_moves_underlying_into_vault() {
@@ -532,7 +603,7 @@ fn test_write_call_moves_underlying_into_vault() {
 }
 
 /// Bob buys the option. He pays 25 USDC: 1% (0.25 USDC) to the venue, the rest
-/// straight to Alice. The 5 NVDAx do not move.
+/// straight to Alice, as two transfers. The 5 NVDAx do not move.
 #[test]
 fn test_buy_option_pays_the_premium_minus_the_fee() {
     let mut venue = Venue::new();
@@ -540,8 +611,10 @@ fn test_buy_option_pays_the_premium_minus_the_fee() {
     let bob = venue.person(0, STANDARD_USDC);
     let option = venue.write_call(&alice);
 
-    venue.buy_option(&bob, &alice.pubkey(), &option).unwrap();
+    let purchase = venue.buy_option(&bob, &alice.pubkey(), &option).unwrap();
 
+    // One transfer to Alice, one to the vault.
+    assert_eq!(cpi_count(&purchase), 2);
     let fee = 250_000; // 0.25 USDC
     assert_eq!(venue.balance(&bob.quote), STANDARD_USDC - CALL_PREMIUM);
     assert_eq!(
@@ -643,8 +716,10 @@ fn test_collect_fees_pays_only_the_fees_owed() {
     assert_eq!(venue.market_state().fees_owed, 0);
     venue.assert_vaults_match_ledger();
 
-    // Nothing left to sweep.
-    assert!(venue.collect_fees().is_err());
+    // Nothing left to sweep. A fresh blockhash, or the retry would be dropped
+    // as a duplicate of the sweep above instead of reaching the handler.
+    venue.svm.expire_blockhash();
+    assert_fails_with(venue.collect_fees(), OptionsError::NothingToCollect);
 }
 
 // ===========================================================================
@@ -725,6 +800,46 @@ fn test_reclaim_collateral_after_expiry_returns_it_to_the_writer() {
     venue.assert_vaults_match_ledger();
 }
 
+/// Dave never exercises: the week passes above the 150 strike. At expiry
+/// Carol takes her 750 USDC of collateral back, keeping the 19.80 USDC of
+/// premium, and the option closes with its rent back to her. Dave keeps his
+/// 5 NVDAx and is out the 20 USDC he paid; the venue's 0.20 USDC fee stays in
+/// the vault for Maria.
+#[test]
+fn test_reclaim_collateral_after_expiry_returns_the_strike_to_the_put_writer() {
+    let mut venue = Venue::new();
+    let carol = venue.person(0, STANDARD_USDC);
+    let dave = venue.person(FIVE_NVDAX, STANDARD_USDC);
+    let option = venue.write_put(&carol);
+    venue.buy_option(&dave, &carol.pubkey(), &option).unwrap();
+    let fee = 200_000; // 1% of 20 USDC
+    let expiry = venue.option_state(&option).expiry;
+    let carol_lamports_before = venue.svm.get_balance(&carol.pubkey()).unwrap();
+
+    venue.warp_to(expiry);
+    venue.reclaim_collateral(&carol, &option).unwrap();
+
+    assert_eq!(
+        venue.balance(&carol.quote),
+        STANDARD_USDC + PUT_PREMIUM - fee
+    );
+    assert_eq!(venue.balance(&carol.underlying), 0);
+    assert_eq!(venue.balance(&dave.quote), STANDARD_USDC - PUT_PREMIUM);
+    assert_eq!(venue.balance(&dave.underlying), FIVE_NVDAX);
+    assert_eq!(venue.balance(&venue.quote_vault), fee);
+    assert_eq!(venue.balance(&venue.underlying_vault), 0);
+    assert!(!venue.option_exists(&option));
+    assert!(
+        venue.svm.get_balance(&carol.pubkey()).unwrap() > carol_lamports_before,
+        "the option's rent must return to the writer"
+    );
+    let market = venue.market_state();
+    assert_eq!(market.quote_owed, 0);
+    assert_eq!(market.underlying_owed, 0);
+    assert_eq!(market.fees_owed, fee);
+    venue.assert_vaults_match_ledger();
+}
+
 // ===========================================================================
 // The expiry boundary, from both sides
 // ===========================================================================
@@ -741,9 +856,10 @@ fn test_exercise_is_allowed_up_to_but_not_at_expiry() {
     let expiry = venue.option_state(&option).expiry;
 
     venue.warp_to(expiry);
-    assert!(venue
-        .exercise_option(&bob, &alice.pubkey(), &option)
-        .is_err());
+    assert_fails_with(
+        venue.exercise_option(&bob, &alice.pubkey(), &option),
+        OptionsError::OptionExpired,
+    );
 
     venue.warp_to(expiry - 1);
     venue
@@ -762,7 +878,10 @@ fn test_reclaim_is_refused_before_expiry() {
     let expiry = venue.option_state(&option).expiry;
 
     venue.warp_to(expiry - 1);
-    assert!(venue.reclaim_collateral(&alice, &option).is_err());
+    assert_fails_with(
+        venue.reclaim_collateral(&alice, &option),
+        OptionsError::OptionNotExpired,
+    );
 
     venue.warp_to(expiry);
     venue
@@ -781,7 +900,10 @@ fn test_buy_is_refused_after_expiry() {
     let expiry = venue.option_state(&option).expiry;
 
     venue.warp_to(expiry);
-    assert!(venue.buy_option(&bob, &alice.pubkey(), &option).is_err());
+    assert_fails_with(
+        venue.buy_option(&bob, &alice.pubkey(), &option),
+        OptionsError::OptionExpired,
+    );
 }
 
 // ===========================================================================
@@ -832,7 +954,10 @@ fn test_cancel_is_refused_once_sold() {
     let option = venue.write_call(&alice);
     venue.buy_option(&bob, &alice.pubkey(), &option).unwrap();
 
-    assert!(venue.cancel_option(&alice, &option).is_err());
+    assert_fails_with(
+        venue.cancel_option(&alice, &option),
+        OptionsError::OptionNotListed,
+    );
     assert_eq!(venue.balance(&venue.underlying_vault), FIVE_NVDAX);
 }
 
@@ -849,25 +974,36 @@ fn test_buy_is_refused_once_sold() {
     let option = venue.write_call(&alice);
     venue.buy_option(&bob, &alice.pubkey(), &option).unwrap();
 
-    assert!(venue.buy_option(&carol, &alice.pubkey(), &option).is_err());
+    assert_fails_with(
+        venue.buy_option(&carol, &alice.pubkey(), &option),
+        OptionsError::OptionNotListed,
+    );
     assert_eq!(venue.option_state(&option).holder, bob.pubkey());
 }
 
-/// A writer cannot buy their own option: the premium's source and destination
-/// would be the same token account in two mutable slots, which the loader
-/// rejects before the handler runs.
+/// A writer cannot buy their own option. `buyer_quote` and `writer_quote`
+/// are each bound to their party's associated token account, so with Alice
+/// on both sides they are one account in two mutable slots, and Anchor's
+/// duplicate-mutable-account check refuses the instruction before any
+/// handler code runs. The option stays listed and no USDC moves.
 #[test]
 fn test_writer_cannot_buy_their_own_option() {
     let mut venue = Venue::new();
     let alice = venue.person(FIVE_NVDAX, STANDARD_USDC);
     let option = venue.write_call(&alice);
 
-    assert!(venue.buy_option(&alice, &alice.pubkey(), &option).is_err());
+    assert_fails_with_anchor_error(
+        venue.buy_option(&alice, &alice.pubkey(), &option),
+        AnchorErrorCode::ConstraintDuplicateMutableAccount,
+    );
     assert_eq!(venue.option_state(&option).status, OptionStatus::Listed);
+    assert_eq!(venue.balance(&alice.quote), STANDARD_USDC);
+    assert_eq!(venue.market_state().fees_owed, 0);
 }
 
 /// Only the holder can exercise: an unsold option has no holder, and a stranger
-/// is not the holder of a sold one.
+/// is not the holder of a sold one. Both refusals are the `holder` account's
+/// `address = option.holder` constraint.
 #[test]
 fn test_exercise_is_refused_for_anyone_but_the_holder() {
     let mut venue = Venue::new();
@@ -876,13 +1012,18 @@ fn test_exercise_is_refused_for_anyone_but_the_holder() {
     let mallory = venue.person(0, STANDARD_USDC);
     let option = venue.write_call(&alice);
 
-    assert!(venue
-        .exercise_option(&mallory, &alice.pubkey(), &option)
-        .is_err());
+    assert_fails_with_anchor_error(
+        venue.exercise_option(&mallory, &alice.pubkey(), &option),
+        AnchorErrorCode::ConstraintAddress,
+    );
     venue.buy_option(&bob, &alice.pubkey(), &option).unwrap();
-    assert!(venue
-        .exercise_option(&mallory, &alice.pubkey(), &option)
-        .is_err());
+    // A fresh blockhash, or Mallory's identical retry would be dropped as a
+    // duplicate instead of reaching the constraint.
+    venue.svm.expire_blockhash();
+    assert_fails_with_anchor_error(
+        venue.exercise_option(&mallory, &alice.pubkey(), &option),
+        AnchorErrorCode::ConstraintAddress,
+    );
     assert_eq!(venue.balance(&venue.underlying_vault), FIVE_NVDAX);
 }
 
@@ -897,13 +1038,22 @@ fn test_collect_proceeds_needs_an_exercised_option_and_the_writer() {
     let option = venue.write_call(&alice);
     venue.buy_option(&bob, &alice.pubkey(), &option).unwrap();
 
-    assert!(venue.collect_proceeds(&alice, &option).is_err());
+    assert_fails_with(
+        venue.collect_proceeds(&alice, &option),
+        OptionsError::OptionNotExercised,
+    );
 
     venue
         .exercise_option(&bob, &alice.pubkey(), &option)
         .unwrap();
-    assert!(venue.collect_proceeds(&mallory, &option).is_err());
-    assert!(venue.collect_proceeds(&bob, &option).is_err());
+    assert_fails_with_anchor_error(
+        venue.collect_proceeds(&mallory, &option),
+        AnchorErrorCode::ConstraintAddress,
+    );
+    assert_fails_with_anchor_error(
+        venue.collect_proceeds(&bob, &option),
+        AnchorErrorCode::ConstraintAddress,
+    );
     assert_eq!(venue.balance(&venue.quote_vault), 900 * ONE_TOKEN + 250_000);
 }
 
@@ -922,7 +1072,10 @@ fn test_reclaim_is_refused_after_exercise() {
     let expiry = venue.option_state(&option).expiry;
 
     venue.warp_to(expiry + 1);
-    assert!(venue.reclaim_collateral(&alice, &option).is_err());
+    assert_fails_with(
+        venue.reclaim_collateral(&alice, &option),
+        OptionsError::OptionNotHeld,
+    );
 }
 
 #[test]
@@ -934,7 +1087,10 @@ fn test_collect_fees_is_refused_for_anyone_but_the_admin() {
     let option = venue.write_call(&alice);
     venue.buy_option(&bob, &alice.pubkey(), &option).unwrap();
 
-    assert!(venue.collect_fees_as(&mallory.keypair).is_err());
+    assert_fails_with_anchor_error(
+        venue.collect_fees_as(&mallory.keypair),
+        AnchorErrorCode::ConstraintAddress,
+    );
     assert_eq!(venue.market_state().fees_owed, 250_000);
 }
 
@@ -961,9 +1117,9 @@ fn test_write_option_rejects_zero_amounts_and_a_free_premium() {
             premium,
             expiry,
         };
-        assert!(
-            venue.write_option(&alice, id as u64 + 10, terms).is_err(),
-            "a zero in any term must be refused"
+        assert_fails_with(
+            venue.write_option(&alice, id as u64 + 10, terms),
+            OptionsError::InvalidParameter,
         );
     }
     assert_eq!(venue.balance(&alice.underlying), FIVE_NVDAX);
@@ -978,22 +1134,32 @@ fn test_write_option_rejects_an_expiry_that_has_passed() {
     let now = venue.now();
 
     for expiry in [now, now - SECONDS_PER_DAY] {
-        assert!(venue.write_option(&alice, 20, call_terms(expiry)).is_err());
+        assert_fails_with(
+            venue.write_option(&alice, 20, call_terms(expiry)),
+            OptionsError::ExpiryInPast,
+        );
     }
 }
 
 #[test]
 fn test_initialize_market_rejects_a_full_fee() {
-    assert!(Venue::try_new(10_000, false).is_err());
+    assert_fails_with(
+        Venue::try_new(10_000, false),
+        OptionsError::InvalidParameter,
+    );
 }
 
 #[test]
 fn test_initialize_market_rejects_the_same_mint_on_both_sides() {
-    assert!(Venue::try_new(FEE_BPS, true).is_err());
+    assert_fails_with(
+        Venue::try_new(FEE_BPS, true),
+        OptionsError::InvalidParameter,
+    );
 }
 
 /// A venue run at cost is a valid choice: with a zero fee the writer
-/// receives the whole premium and no fee transfer is attempted.
+/// receives the whole premium in one transfer, and `buy_option` makes no
+/// fee transfer at all rather than one for zero.
 #[test]
 fn test_zero_fee_venue_pays_the_writer_the_whole_premium() {
     let mut venue = Venue::try_new(0, false).unwrap();
@@ -1001,8 +1167,10 @@ fn test_zero_fee_venue_pays_the_writer_the_whole_premium() {
     let bob = venue.person(0, STANDARD_USDC);
     let option = venue.write_call(&alice);
 
-    venue.buy_option(&bob, &alice.pubkey(), &option).unwrap();
+    let purchase = venue.buy_option(&bob, &alice.pubkey(), &option).unwrap();
 
+    // The transfer to Alice, and nothing to the vault.
+    assert_eq!(cpi_count(&purchase), 1);
     assert_eq!(venue.balance(&alice.quote), STANDARD_USDC + CALL_PREMIUM);
     assert_eq!(venue.market_state().fees_owed, 0);
     venue.assert_vaults_match_ledger();

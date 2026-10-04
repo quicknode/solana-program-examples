@@ -64,6 +64,10 @@ pub fn handle_add_outcome(
         .outcome_count
         .checked_add(1)
         .ok_or(BettingError::MathOverflow)?;
+    event.open_outcomes = event
+        .open_outcomes
+        .checked_add(1)
+        .ok_or(BettingError::MathOverflow)?;
     accounts.event.set_inner(event);
     Ok(())
 }
