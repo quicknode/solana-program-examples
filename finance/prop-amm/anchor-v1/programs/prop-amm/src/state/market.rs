@@ -35,6 +35,12 @@ pub struct Market {
     /// substituted feed account.
     pub oracle_feed: Pubkey,
 
+    /// The program that owned `oracle_feed` when the market was created. Every
+    /// price read requires the feed account to still be owned by it, so an
+    /// account at that address written by any other program is refused as a
+    /// price.
+    pub price_feed_program: Pubkey,
+
     pub base_vault: Pubkey,
 
     pub quote_vault: Pubkey,

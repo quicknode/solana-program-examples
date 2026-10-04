@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-10-04
+
+Check which program owns the price feed. `initialize_market` records the
+feed account's owning program on the new `Market.price_feed_program`, read
+from the account's owner at that moment, beside the feed address and scale it
+already pins. `read_oracle_price` takes that program and refuses a feed
+account owned by any other with the new `PriceFeedNotFromOracle`, before it
+decodes a byte, so `swap` no longer accepts any account laid out like a feed
+as a price. Tested by `test_swap_rejects_price_feed_from_another_program`,
+which swaps the feed for a byte-identical copy owned by an unrelated program
+and then restores the owner. The `errors` module is public so the tests can
+match `PropAmmError` codes, and the suite's `swap` and `try_new` return the
+transaction error text.
+
 ## 2026-09-23
 
 The mock oracle program is now `mock-price-feed` (library and program

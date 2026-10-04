@@ -1,7 +1,8 @@
 use anchor_lang::prelude::*;
 
 mod constants;
-mod errors;
+// Public so the LiteSVM integration tests can match `PropAmmError` codes.
+pub mod errors;
 // Public so the LiteSVM integration tests can build instruction arguments
 // (`MarketParameters`, `Direction`) against the program's own types.
 pub mod instructions;

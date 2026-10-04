@@ -23,6 +23,16 @@ pub struct Event {
     #[max_len(200)]
     pub description: String,
     pub outcome_count: u8,
+    // How many Outcome accounts of this event are still open. `add_outcome`
+    // adds one; `close_outcome` subtracts one. `close_event` requires zero,
+    // because an Outcome left behind would carry its stakes into a later
+    // event created with the same `event_id`.
+    pub open_outcomes: u8,
+    // How many Bet accounts across every outcome are still open. `place_bet`
+    // adds one when it creates a Bet account (a top-up reuses the account);
+    // `claim_winnings`, `claim_refund` and `close_losing_bet` each subtract
+    // one when they close one. `close_outcome` and `close_event` require zero.
+    pub open_bets: u64,
     // Sum of every stake placed across all outcomes.
     pub total_pool: u64,
     pub status: EventStatus,

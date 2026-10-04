@@ -38,4 +38,10 @@ pub enum BettingError {
     BettingClosed,
     #[msg("Betting on this event is still open, so it cannot be settled yet")]
     BettingStillOpen,
+    #[msg("The event has not been settled or cancelled, so its accounts cannot be closed yet")]
+    EventNotFinished,
+    #[msg("Bet accounts are still open, so closing now would strand their claims")]
+    BetsStillOpen,
+    #[msg("Outcome accounts are still open, so the event cannot be closed yet")]
+    OutcomesStillOpen,
 }

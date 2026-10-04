@@ -11,6 +11,7 @@ pub struct CloseLosingBetAccountConstraints<'info> {
     pub bettor: Signer<'info>,
 
     #[account(
+        mut,
         seeds = [b"event", event.event_id.to_le_bytes().as_ref()],
         bump = event.bump,
     )]
@@ -36,6 +37,15 @@ pub fn handle_close_losing_bet(context: Context<CloseLosingBetAccountConstraints
         context.accounts.bet.outcome_index != context.accounts.event.winning_outcome_index,
         BettingError::BetWon
     );
+
+    // This Bet account closes when the handler returns, so the event's count
+    // of open bets drops by one.
+    context.accounts.event.open_bets = context
+        .accounts
+        .event
+        .open_bets
+        .checked_sub(1)
+        .ok_or(BettingError::MathOverflow)?;
 
     Ok(())
 }

@@ -262,12 +262,72 @@ impl Ledger {
         Some(())
     }
 
-    /// `collect_fees`: the fees leave for the admin.
-    pub fn collect_fees(&mut self) -> Option<()> {
-        self.quote_vault = self.quote_vault.checked_sub(self.fees_owed)?;
+    /// `collect_fees`: the fees leave for the admin. Returns what the admin
+    /// is paid. The handler also refuses when nothing is owed
+    /// (`NothingToCollect`); the model leaves that to its callers, since the
+    /// lifecycle harness sweeps a venue whose fee may be zero.
+    pub fn collect_fees(&mut self) -> Option<u64> {
+        let payout = self.fees_owed;
+        self.quote_vault = self.quote_vault.checked_sub(payout)?;
         self.fees_owed = 0;
-        Some(())
+        Some(payout)
     }
+}
+
+/// The admin reaches only the fees. Starting from any ledger whose quote
+/// vault covers what it owes, with `surplus` on top (tokens sent straight to
+/// the vault, which the handlers' `>=` custody check tolerates), one
+/// `collect_fees` pays the admin exactly `fees_owed`, never more; leaves every
+/// amount owed to writers and holders, and the surplus, in the vault; and
+/// leaves the counters consistent with the vault. Shared by the Kani harness,
+/// which runs it on symbolic inputs, and a plain unit test, which runs it on
+/// the chapter's numbers.
+pub fn check_collect_fees_pays_only_the_fees_owed(mut ledger: Ledger, surplus: u64) {
+    let before = ledger;
+    let payout = ledger
+        .collect_fees()
+        .expect("the vault covers the fees owed");
+
+    assert_eq!(payout, before.fees_owed);
+    assert!(payout <= before.fees_owed);
+    assert_eq!(ledger.fees_owed, 0);
+    // Nothing owed to a writer or holder changed hands.
+    assert_eq!(ledger.quote_owed, before.quote_owed);
+    assert_eq!(ledger.underlying_owed, before.underlying_owed);
+    assert_eq!(ledger.underlying_vault, before.underlying_vault);
+    // The quote vault lost exactly the payout and still holds what it owes,
+    // plus the surplus the admin could not reach.
+    assert_eq!(ledger.quote_vault, before.quote_vault - payout);
+    assert_eq!(ledger.quote_vault, ledger.quote_owed + surplus);
+    assert!(ledger.quote_vault >= ledger.quote_owed + ledger.fees_owed);
+    // A second sweep pays nothing: there is nothing left that is the admin's.
+    assert_eq!(ledger.collect_fees(), Some(0));
+    assert_eq!(ledger.quote_vault, before.quote_vault - payout);
+}
+
+/// `collect_fees` on every ledger the program could hold: any amounts owed,
+/// any fees, any surplus, as long as the sums fit in a vault balance.
+#[cfg(kani)]
+#[kani::proof]
+fn proof_collect_fees_pays_only_the_fees_owed() {
+    let underlying_owed: u64 = kani::any();
+    let quote_owed: u64 = kani::any();
+    let fees_owed: u64 = kani::any();
+    let surplus: u64 = kani::any();
+    // collect_fees refuses a sweep of nothing.
+    kani::assume(fees_owed >= 1);
+    let quote_vault = quote_owed
+        .checked_add(fees_owed)
+        .and_then(|owed| owed.checked_add(surplus));
+    kani::assume(quote_vault.is_some());
+    let ledger = Ledger {
+        underlying_owed,
+        quote_owed,
+        fees_owed,
+        underlying_vault: underlying_owed,
+        quote_vault: quote_vault.unwrap(),
+    };
+    check_collect_fees_pays_only_the_fees_owed(ledger, surplus);
 }
 
 /// Every path through an option's life leaves the ledger consistent and, once the
@@ -445,8 +505,23 @@ mod tests {
             .unwrap();
         // Maria sweeps 0.45 USDC and the vaults are empty.
         assert_eq!(ledger.fees_owed, 450_000);
-        ledger.collect_fees().unwrap();
+        assert_eq!(ledger.collect_fees(), Some(450_000));
         assert!(ledger.is_consistent());
         assert_eq!(ledger, Ledger::default());
+    }
+
+    #[test]
+    fn collect_fees_leaves_the_strike_payment_and_a_donation_in_the_vault() {
+        // After Bob's exercise: 900 USDC owed to Alice, 0.25 USDC of fees,
+        // and 3 USDC somebody sent straight to the vault.
+        let surplus = 3 * ONE_TOKEN;
+        let ledger = Ledger {
+            underlying_owed: 0,
+            quote_owed: 900 * ONE_TOKEN,
+            fees_owed: 250_000,
+            underlying_vault: 0,
+            quote_vault: 900 * ONE_TOKEN + 250_000 + surplus,
+        };
+        check_collect_fees_pays_only_the_fees_owed(ledger, surplus);
     }
 }

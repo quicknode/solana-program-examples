@@ -1,14 +1,16 @@
 use {
     anchor_lang::{
         prelude::Clock,
-        solana_program::{instruction::Instruction, pubkey::Pubkey, system_program},
+        solana_program::{
+            instruction::Instruction, pubkey::Pubkey, system_instruction, system_program,
+        },
         AccountDeserialize, InstructionData, ToAccountMetas,
     },
-    betting_market::{error::BettingError, Bet},
+    betting_market::{error::BettingError, Bet, Event},
     litesvm::LiteSVM,
     solana_keypair::Keypair,
     solana_kite::{
-        create_associated_token_account, create_token_mint, create_wallet,
+        create_associated_token_account, create_token_mint, create_wallet, get_sol_balance,
         get_token_account_balance, mint_tokens_to_token_account,
         send_transaction_from_instructions, SolanaKiteError,
     },
@@ -367,13 +369,148 @@ fn close_losing_bet_ix(bettor: &Pubkey, event_id: u64, outcome_index: u8) -> Ins
     )
 }
 
-// A Bet account lives only while its position is open: claiming, refunding or
-// closing it as a loser closes the account.
-fn bet_is_open(market: &Market, bet: &Pubkey) -> bool {
+fn close_outcome_ix(admin: Pubkey, event_id: u64, outcome_index: u8) -> Instruction {
+    let event = event_pda(event_id);
+    Instruction::new_with_bytes(
+        betting_market::id(),
+        &betting_market::instruction::CloseOutcome {}.data(),
+        betting_market::accounts::CloseOutcomeAccountConstraints {
+            admin,
+            config: config_pda(),
+            event,
+            outcome: outcome_pda(&event, outcome_index),
+        }
+        .to_account_metas(None),
+    )
+}
+
+fn close_event_ix(
+    admin: Pubkey,
+    mint: Pubkey,
+    fee_recipient: Pubkey,
+    fee_recipient_ata: Pubkey,
+    event_id: u64,
+) -> Instruction {
+    let event = event_pda(event_id);
+    Instruction::new_with_bytes(
+        betting_market::id(),
+        &betting_market::instruction::CloseEvent {}.data(),
+        betting_market::accounts::CloseEventAccountConstraints {
+            admin,
+            config: config_pda(),
+            token_mint: mint,
+            event,
+            vault: derive_ata(&event, &mint),
+            fee_recipient,
+            fee_recipient_token_account: fee_recipient_ata,
+            associated_token_program: ata_program_id(),
+            token_program: token_program_id(),
+            system_program: system_program::id(),
+        }
+        .to_account_metas(None),
+    )
+}
+
+// A closed account has no lamports and no data. A Bet account lives only
+// while its position is open: claiming, refunding or closing it as a loser
+// closes the account. Outcome accounts, the vault and the Event account close
+// through `close_outcome` and `close_event` once the event is finished.
+fn account_is_open(market: &Market, address: &Pubkey) -> bool {
     market
         .svm
-        .get_account(bet)
+        .get_account(address)
         .is_some_and(|account| account.lamports > 0 && !account.data.is_empty())
+}
+
+// The lamports an open account holds, which closing it returns to whoever
+// paid its rent.
+fn rent_of(market: &Market, address: &Pubkey) -> u64 {
+    market.svm.get_account(address).unwrap().lamports
+}
+
+// What one transaction with a single signer costs its fee payer, measured by
+// sending the admin a zero-lamport transfer to themselves: nothing else in
+// that transaction moves lamports. A fresh blockhash first, so repeated
+// measurements are distinct transactions.
+fn transaction_fee(market: &mut Market) -> u64 {
+    let admin = market.admin.pubkey();
+    market.svm.expire_blockhash();
+    let before = get_sol_balance(&market.svm, &admin);
+    send_transaction_from_instructions(
+        &mut market.svm,
+        vec![system_instruction::transfer(&admin, &admin, 0)],
+        &[&market.admin],
+        &admin,
+    )
+    .unwrap();
+    before - get_sol_balance(&market.svm, &admin)
+}
+
+fn read_event(market: &Market, event_id: u64) -> Event {
+    let account = market.svm.get_account(&event_pda(event_id)).unwrap();
+    Event::try_deserialize(&mut account.data.as_slice()).unwrap()
+}
+
+// Closes a finished event's Outcome accounts and then the event itself, as
+// the admin, asserting that each rent comes back to the admin and that every
+// closed account is gone. Returns what the vault held before it closed.
+fn close_outcomes_and_event(market: &mut Market, event_id: u64, outcome_count: u8) -> u64 {
+    let admin = market.admin.pubkey();
+    let mint = market.mint;
+    let fee_recipient = market.fee_recipient.pubkey();
+    let fee_recipient_ata = market.fee_recipient_ata;
+    let event = event_pda(event_id);
+    let vault = derive_ata(&event, &mint);
+    let fee = transaction_fee(market);
+
+    for index in 0..outcome_count {
+        let outcome = outcome_pda(&event, index);
+        let outcome_rent = rent_of(market, &outcome);
+        let admin_before = get_sol_balance(&market.svm, &admin);
+        send_transaction_from_instructions(
+            &mut market.svm,
+            vec![close_outcome_ix(admin, event_id, index)],
+            &[&market.admin],
+            &admin,
+        )
+        .unwrap();
+        assert!(
+            !account_is_open(market, &outcome),
+            "outcome {index} must be closed"
+        );
+        assert_eq!(
+            get_sol_balance(&market.svm, &admin),
+            admin_before + outcome_rent - fee,
+            "outcome {index}'s rent must return to the admin"
+        );
+    }
+    assert_eq!(read_event(market, event_id).open_outcomes, 0);
+
+    let vault_balance = get_token_account_balance(&market.svm, &vault).unwrap();
+    let event_rent = rent_of(market, &event);
+    let vault_rent = rent_of(market, &vault);
+    let admin_before = get_sol_balance(&market.svm, &admin);
+    send_transaction_from_instructions(
+        &mut market.svm,
+        vec![close_event_ix(
+            admin,
+            mint,
+            fee_recipient,
+            fee_recipient_ata,
+            event_id,
+        )],
+        &[&market.admin],
+        &admin,
+    )
+    .unwrap();
+    assert!(!account_is_open(market, &event));
+    assert!(!account_is_open(market, &vault));
+    assert_eq!(
+        get_sol_balance(&market.svm, &admin),
+        admin_before + event_rent + vault_rent - fee,
+        "the event's and the vault's rent must return to the admin"
+    );
+    vault_balance
 }
 
 // A bettor's open positions are the Bet accounts whose `bettor` field is their
@@ -549,11 +686,11 @@ fn test_full_lifecycle() {
 
     // Claiming closed the winners' Bet accounts.
     let winning_outcome = outcome_pda(&event_pda(event_id), 0);
-    assert!(!bet_is_open(
+    assert!(!account_is_open(
         &market,
         &bet_pda(&winning_outcome, &alice.pubkey())
     ));
-    assert!(!bet_is_open(
+    assert!(!account_is_open(
         &market,
         &bet_pda(&winning_outcome, &bob.pubkey())
     ));
@@ -571,14 +708,11 @@ fn test_full_lifecycle() {
         &[&carol],
         &carol.pubkey(),
     );
-    assert!(
-        carol_claim.is_err(),
-        "loser must not be able to claim winnings"
-    );
+    assert_fails_with(carol_claim, BettingError::NothingToClaim);
 
     // Her losing position stays open until she closes it.
     let carol_bet = bet_pda(&outcome_pda(&event_pda(event_id), 1), &carol.pubkey());
-    assert!(bet_is_open(&market, &carol_bet));
+    assert!(account_is_open(&market, &carol_bet));
     send_transaction_from_instructions(
         &mut market.svm,
         vec![close_losing_bet_ix(&carol.pubkey(), event_id, 1)],
@@ -586,7 +720,7 @@ fn test_full_lifecycle() {
         &carol.pubkey(),
     )
     .unwrap();
-    assert!(!bet_is_open(&market, &carol_bet));
+    assert!(!account_is_open(&market, &carol_bet));
 }
 
 #[test]
@@ -594,20 +728,49 @@ fn test_only_admin_can_initialize_event() {
     let mut market = setup();
     init_config(&mut market);
 
+    let admin = market.admin.pubkey();
     let mint = market.mint;
+    let event_id: u64 = 7;
     let mallory = create_wallet(&mut market.svm, 10_000_000_000).unwrap();
     let result = send_transaction_from_instructions(
         &mut market.svm,
         vec![initialize_event_ix(
             mallory.pubkey(),
             mint,
-            7,
+            event_id,
             "Unauthorized event",
         )],
         &[&mallory],
         &mallory.pubkey(),
     );
-    assert!(result.is_err(), "non-admin must not create an event");
+    assert_fails_with(result, BettingError::Unauthorized);
+
+    // Nor can anyone but the admin add an outcome to a draft, or open it.
+    send_transaction_from_instructions(
+        &mut market.svm,
+        vec![
+            initialize_event_ix(admin, mint, event_id, "Admin's event"),
+            add_outcome_ix(admin, event_id, 0, "Glowbugs 3"),
+            add_outcome_ix(admin, event_id, 1, "The Quiet Floor"),
+        ],
+        &[&market.admin],
+        &admin,
+    )
+    .unwrap();
+    let unauthorized_outcome = send_transaction_from_instructions(
+        &mut market.svm,
+        vec![add_outcome_ix(mallory.pubkey(), event_id, 2, "Late entry")],
+        &[&mallory],
+        &mallory.pubkey(),
+    );
+    assert_fails_with(unauthorized_outcome, BettingError::Unauthorized);
+    let unauthorized_open = send_transaction_from_instructions(
+        &mut market.svm,
+        vec![open_betting_ix(mallory.pubkey(), event_id)],
+        &[&mallory],
+        &mallory.pubkey(),
+    );
+    assert_fails_with(unauthorized_open, BettingError::Unauthorized);
 }
 
 #[test]
@@ -897,7 +1060,7 @@ fn test_cancel_and_refund() {
     .unwrap();
 
     let alice_bet = bet_pda(&outcome_pda(&event_pda(event_id), 0), &alice.pubkey());
-    assert!(bet_is_open(&market, &alice_bet));
+    assert!(account_is_open(&market, &alice_bet));
 
     send_transaction_from_instructions(
         &mut market.svm,
@@ -914,7 +1077,17 @@ fn test_cancel_and_refund() {
     .unwrap();
 
     // The refund closed Alice's Bet account.
-    assert!(!bet_is_open(&market, &alice_bet));
+    assert!(!account_is_open(&market, &alice_bet));
+
+    // Carol's refund is still outstanding, so the event's accounts stay.
+    let outcome_still_in_use = send_transaction_from_instructions(
+        &mut market.svm,
+        vec![close_outcome_ix(admin, event_id, 0)],
+        &[&market.admin],
+        &admin,
+    );
+    assert_fails_with(outcome_still_in_use, BettingError::BetsStillOpen);
+    assert_eq!(read_event(&market, event_id).open_bets, 1);
 
     send_transaction_from_instructions(
         &mut market.svm,
@@ -941,6 +1114,16 @@ fn test_cancel_and_refund() {
     );
     let vault = derive_ata(&event_pda(event_id), &mint);
     assert_eq!(get_token_account_balance(&market.svm, &vault).unwrap(), 0);
+
+    // With every stake refunded the admin closes the outcomes and the event.
+    // The vault was empty, so the fee recipient receives nothing.
+    assert_eq!(read_event(&market, event_id).open_bets, 0);
+    let vault_balance_at_close = close_outcomes_and_event(&mut market, event_id, 2);
+    assert_eq!(vault_balance_at_close, 0);
+    assert_eq!(
+        get_token_account_balance(&market.svm, &market.fee_recipient_ata).unwrap(),
+        0
+    );
 }
 
 #[test]
@@ -1003,10 +1186,7 @@ fn test_close_losing_bet_only_after_settle_and_only_for_losers() {
         &[&carol],
         &carol.pubkey(),
     );
-    assert!(
-        premature_close.is_err(),
-        "closing before settlement must fail"
-    );
+    assert_fails_with(premature_close, BettingError::EventNotSettled);
 
     // Betting has closed, so the event can be settled.
     warp_to(&mut market.svm, BETTING_CLOSES_AT);
@@ -1032,12 +1212,9 @@ fn test_close_losing_bet_only_after_settle_and_only_for_losers() {
         &[&alice],
         &alice.pubkey(),
     );
-    assert!(
-        winner_close.is_err(),
-        "a winning bet must not be closed as losing"
-    );
+    assert_fails_with(winner_close, BettingError::BetWon);
     let alice_bet = bet_pda(&outcome_pda(&event_pda(event_id), 0), &alice.pubkey());
-    assert!(bet_is_open(&market, &alice_bet));
+    assert!(account_is_open(&market, &alice_bet));
 
     // Carol lost; closing returns her Bet account's rent. A fresh blockhash so this is
     // a distinct transaction from her premature attempt above.
@@ -1050,7 +1227,7 @@ fn test_close_losing_bet_only_after_settle_and_only_for_losers() {
     )
     .unwrap();
     let carol_bet = bet_pda(&outcome_pda(&event_pda(event_id), 1), &carol.pubkey());
-    assert!(!bet_is_open(&market, &carol_bet));
+    assert!(!account_is_open(&market, &carol_bet));
 }
 
 // A wallet can hold as many open positions as it likes: forty bets across
@@ -1151,13 +1328,13 @@ fn test_no_cap_on_open_bets_per_wallet() {
             &outcome_pda(&event_pda(wide_event_id), index),
             &alice.pubkey(),
         );
-        assert!(bet_is_open(&market, &bet), "bet {index} must be open");
+        assert!(account_is_open(&market, &bet), "bet {index} must be open");
     }
     let other_market_bet = bet_pda(
         &outcome_pda(&event_pda(second_event_id), 0),
         &alice.pubkey(),
     );
-    assert!(bet_is_open(&market, &other_market_bet));
+    assert!(account_is_open(&market, &other_market_bet));
     assert_eq!(
         get_token_account_balance(&market.svm, &alice_ata).unwrap(),
         0
@@ -1393,4 +1570,386 @@ fn test_close_time_must_be_in_the_future() {
         &admin,
     );
     assert_fails_with(result, BettingError::CloseTimeInPast);
+}
+
+// Sets up a two-outcome market ("Yes" at index 0, "No" at index 1) on
+// `event_id` and opens it to bets.
+fn open_yes_no_market(market: &mut Market, event_id: u64, description: &str) {
+    let admin = market.admin.pubkey();
+    let mint = market.mint;
+    send_transaction_from_instructions(
+        &mut market.svm,
+        vec![
+            initialize_event_ix(admin, mint, event_id, description),
+            add_outcome_ix(admin, event_id, 0, "Yes"),
+            add_outcome_ix(admin, event_id, 1, "No"),
+            open_betting_ix(admin, event_id),
+        ],
+        &[&market.admin],
+        &admin,
+    )
+    .unwrap();
+}
+
+fn place_bet(
+    market: &mut Market,
+    bettor: &Keypair,
+    bettor_ata: &Pubkey,
+    event_id: u64,
+    outcome_index: u8,
+    amount: u64,
+) {
+    let mint = market.mint;
+    send_transaction_from_instructions(
+        &mut market.svm,
+        vec![place_bet_ix(
+            mint,
+            &bettor.pubkey(),
+            bettor_ata,
+            event_id,
+            outcome_index,
+            amount,
+        )],
+        &[bettor],
+        &bettor.pubkey(),
+    )
+    .unwrap();
+}
+
+// Settles `event_id` to `winning_outcome_index` once betting has closed.
+fn settle(market: &mut Market, event_id: u64, winning_outcome_index: u8) {
+    let admin = market.admin.pubkey();
+    let mint = market.mint;
+    let fee_recipient = market.fee_recipient.pubkey();
+    let fee_recipient_ata = market.fee_recipient_ata;
+    warp_to(&mut market.svm, BETTING_CLOSES_AT);
+    send_transaction_from_instructions(
+        &mut market.svm,
+        vec![settle_event_ix(
+            admin,
+            mint,
+            fee_recipient,
+            fee_recipient_ata,
+            event_id,
+            winning_outcome_index,
+        )],
+        &[&market.admin],
+        &admin,
+    )
+    .unwrap();
+}
+
+// The whole lifecycle through to every account closing. Stakes are chosen so
+// the pro-rata split does not divide evenly: Yes pool 300 (Alice 100 in two
+// bets, Bob 200), No pool 250 (Carol). Yes wins: losing pool 250, fee 5,
+// distributable 245; Alice gets floor(100 * 245 / 300) = 81 and Bob
+// floor(200 * 245 / 300) = 163, so one minor unit of dust stays in the vault
+// until `close_event` pays it to the fee recipient.
+#[test]
+fn test_close_event_pays_dust_to_fee_recipient_and_returns_rent() {
+    let mut market = setup();
+    let event_id: u64 = 13;
+    let (alice, alice_ata) = create_bettor(&mut market, 1_000);
+    let (bob, bob_ata) = create_bettor(&mut market, 1_000);
+    let (carol, carol_ata) = create_bettor(&mut market, 1_000);
+
+    init_config(&mut market);
+    let admin = market.admin.pubkey();
+    let mint = market.mint;
+    let fee_recipient = market.fee_recipient.pubkey();
+    let fee_recipient_ata = market.fee_recipient_ata;
+    open_yes_no_market(&mut market, event_id, "Top-grossing film");
+
+    // Alice's second bet tops up her existing Bet account rather than
+    // creating another, so it counts once among the open bets.
+    place_bet(&mut market, &alice, &alice_ata, event_id, 0, 60);
+    place_bet(&mut market, &alice, &alice_ata, event_id, 0, 40);
+    place_bet(&mut market, &bob, &bob_ata, event_id, 0, 200);
+    place_bet(&mut market, &carol, &carol_ata, event_id, 1, 250);
+    let event = read_event(&market, event_id);
+    assert_eq!(event.open_bets, 3);
+    assert_eq!(event.open_outcomes, 2);
+    assert_eq!(event.total_pool, 550);
+
+    settle(&mut market, event_id, 0);
+    assert_eq!(
+        get_token_account_balance(&market.svm, &fee_recipient_ata).unwrap(),
+        5
+    );
+
+    // Carol closes her losing bet; Alice and Bob claim.
+    send_transaction_from_instructions(
+        &mut market.svm,
+        vec![close_losing_bet_ix(&carol.pubkey(), event_id, 1)],
+        &[&carol],
+        &carol.pubkey(),
+    )
+    .unwrap();
+    assert_eq!(read_event(&market, event_id).open_bets, 2);
+    for (winner, winner_ata) in [(&alice, &alice_ata), (&bob, &bob_ata)] {
+        send_transaction_from_instructions(
+            &mut market.svm,
+            vec![claim_winnings_ix(
+                mint,
+                &winner.pubkey(),
+                winner_ata,
+                event_id,
+                0,
+            )],
+            &[winner],
+            &winner.pubkey(),
+        )
+        .unwrap();
+    }
+    assert_eq!(
+        get_token_account_balance(&market.svm, &alice_ata).unwrap(),
+        1_000 - 100 + 181
+    );
+    assert_eq!(
+        get_token_account_balance(&market.svm, &bob_ata).unwrap(),
+        1_000 - 200 + 363
+    );
+    assert_eq!(read_event(&market, event_id).open_bets, 0);
+
+    // The two floors left one minor unit in the vault.
+    let vault = derive_ata(&event_pda(event_id), &mint);
+    assert_eq!(get_token_account_balance(&market.svm, &vault).unwrap(), 1);
+
+    // Outcome accounts close before the event does.
+    let outcomes_still_open = send_transaction_from_instructions(
+        &mut market.svm,
+        vec![close_event_ix(
+            admin,
+            mint,
+            fee_recipient,
+            fee_recipient_ata,
+            event_id,
+        )],
+        &[&market.admin],
+        &admin,
+    );
+    assert_fails_with(outcomes_still_open, BettingError::OutcomesStillOpen);
+
+    let vault_balance_at_close = close_outcomes_and_event(&mut market, event_id, 2);
+    assert_eq!(vault_balance_at_close, 1);
+    // The dust joined the fee: 5 + 1.
+    assert_eq!(
+        get_token_account_balance(&market.svm, &fee_recipient_ata).unwrap(),
+        6
+    );
+}
+
+// A settled event keeps its accounts while any Bet account of it is open:
+// the claim and the losing-bet close both read the event and the outcome.
+#[test]
+fn test_close_event_refused_while_a_bet_is_open() {
+    let mut market = setup();
+    let event_id: u64 = 14;
+    let (alice, alice_ata) = create_bettor(&mut market, 1_000);
+    let (carol, carol_ata) = create_bettor(&mut market, 1_000);
+
+    init_config(&mut market);
+    let admin = market.admin.pubkey();
+    let mint = market.mint;
+    let fee_recipient = market.fee_recipient.pubkey();
+    let fee_recipient_ata = market.fee_recipient_ata;
+    open_yes_no_market(&mut market, event_id, "Match winner");
+    place_bet(&mut market, &alice, &alice_ata, event_id, 0, 100);
+    place_bet(&mut market, &carol, &carol_ata, event_id, 1, 300);
+    settle(&mut market, event_id, 0);
+
+    // Alice has claimed; Carol's losing bet is still open.
+    send_transaction_from_instructions(
+        &mut market.svm,
+        vec![claim_winnings_ix(
+            mint,
+            &alice.pubkey(),
+            &alice_ata,
+            event_id,
+            0,
+        )],
+        &[&alice],
+        &alice.pubkey(),
+    )
+    .unwrap();
+    assert_eq!(read_event(&market, event_id).open_bets, 1);
+
+    let event_close = send_transaction_from_instructions(
+        &mut market.svm,
+        vec![close_event_ix(
+            admin,
+            mint,
+            fee_recipient,
+            fee_recipient_ata,
+            event_id,
+        )],
+        &[&market.admin],
+        &admin,
+    );
+    assert_fails_with(event_close, BettingError::BetsStillOpen);
+    let outcome_close = send_transaction_from_instructions(
+        &mut market.svm,
+        vec![close_outcome_ix(admin, event_id, 1)],
+        &[&market.admin],
+        &admin,
+    );
+    assert_fails_with(outcome_close, BettingError::BetsStillOpen);
+
+    // Once Carol closes her bet, everything else can close.
+    send_transaction_from_instructions(
+        &mut market.svm,
+        vec![close_losing_bet_ix(&carol.pubkey(), event_id, 1)],
+        &[&carol],
+        &carol.pubkey(),
+    )
+    .unwrap();
+    close_outcomes_and_event(&mut market, event_id, 2);
+}
+
+// A draft or open event has not finished, so its accounts cannot close,
+// even when nobody has bet. Cancelling it is what lets it close.
+#[test]
+fn test_close_event_refused_while_event_is_open() {
+    let mut market = setup();
+    let event_id: u64 = 15;
+
+    init_config(&mut market);
+    let admin = market.admin.pubkey();
+    let mint = market.mint;
+    let fee_recipient = market.fee_recipient.pubkey();
+    let fee_recipient_ata = market.fee_recipient_ata;
+    send_transaction_from_instructions(
+        &mut market.svm,
+        vec![
+            initialize_event_ix(admin, mint, event_id, "Never bet on"),
+            add_outcome_ix(admin, event_id, 0, "Yes"),
+            add_outcome_ix(admin, event_id, 1, "No"),
+        ],
+        &[&market.admin],
+        &admin,
+    )
+    .unwrap();
+
+    // As a draft...
+    let draft_close = send_transaction_from_instructions(
+        &mut market.svm,
+        vec![close_event_ix(
+            admin,
+            mint,
+            fee_recipient,
+            fee_recipient_ata,
+            event_id,
+        )],
+        &[&market.admin],
+        &admin,
+    );
+    assert_fails_with(draft_close, BettingError::EventNotFinished);
+    let draft_outcome_close = send_transaction_from_instructions(
+        &mut market.svm,
+        vec![close_outcome_ix(admin, event_id, 0)],
+        &[&market.admin],
+        &admin,
+    );
+    assert_fails_with(draft_outcome_close, BettingError::EventNotFinished);
+
+    // ...and once open. A fresh blockhash so this is a distinct transaction
+    // from the draft attempt above.
+    send_transaction_from_instructions(
+        &mut market.svm,
+        vec![open_betting_ix(admin, event_id)],
+        &[&market.admin],
+        &admin,
+    )
+    .unwrap();
+    market.svm.expire_blockhash();
+    let open_close = send_transaction_from_instructions(
+        &mut market.svm,
+        vec![close_event_ix(
+            admin,
+            mint,
+            fee_recipient,
+            fee_recipient_ata,
+            event_id,
+        )],
+        &[&market.admin],
+        &admin,
+    );
+    assert_fails_with(open_close, BettingError::EventNotFinished);
+
+    // Cancelled with no bets, it closes straight away.
+    send_transaction_from_instructions(
+        &mut market.svm,
+        vec![cancel_event_ix(admin, event_id)],
+        &[&market.admin],
+        &admin,
+    )
+    .unwrap();
+    let vault_balance_at_close = close_outcomes_and_event(&mut market, event_id, 2);
+    assert_eq!(vault_balance_at_close, 0);
+}
+
+#[test]
+fn test_only_admin_can_close_outcomes_and_event() {
+    let mut market = setup();
+    let event_id: u64 = 16;
+    let (alice, alice_ata) = create_bettor(&mut market, 1_000);
+    let (carol, carol_ata) = create_bettor(&mut market, 1_000);
+
+    init_config(&mut market);
+    let mint = market.mint;
+    let fee_recipient = market.fee_recipient.pubkey();
+    let fee_recipient_ata = market.fee_recipient_ata;
+    open_yes_no_market(&mut market, event_id, "Derby winner");
+    place_bet(&mut market, &alice, &alice_ata, event_id, 0, 100);
+    place_bet(&mut market, &carol, &carol_ata, event_id, 1, 300);
+    settle(&mut market, event_id, 0);
+    send_transaction_from_instructions(
+        &mut market.svm,
+        vec![claim_winnings_ix(
+            mint,
+            &alice.pubkey(),
+            &alice_ata,
+            event_id,
+            0,
+        )],
+        &[&alice],
+        &alice.pubkey(),
+    )
+    .unwrap();
+    send_transaction_from_instructions(
+        &mut market.svm,
+        vec![close_losing_bet_ix(&carol.pubkey(), event_id, 1)],
+        &[&carol],
+        &carol.pubkey(),
+    )
+    .unwrap();
+
+    // Every bet is closed, so only the signer stands between Mallory and the
+    // rent.
+    let mallory = create_wallet(&mut market.svm, 10_000_000_000).unwrap();
+    let outcome_close = send_transaction_from_instructions(
+        &mut market.svm,
+        vec![close_outcome_ix(mallory.pubkey(), event_id, 0)],
+        &[&mallory],
+        &mallory.pubkey(),
+    );
+    assert_fails_with(outcome_close, BettingError::Unauthorized);
+    let event_close = send_transaction_from_instructions(
+        &mut market.svm,
+        vec![close_event_ix(
+            mallory.pubkey(),
+            mint,
+            fee_recipient,
+            fee_recipient_ata,
+            event_id,
+        )],
+        &[&mallory],
+        &mallory.pubkey(),
+    );
+    assert_fails_with(event_close, BettingError::Unauthorized);
+    let event = event_pda(event_id);
+    assert!(account_is_open(&market, &event));
+    assert!(account_is_open(&market, &outcome_pda(&event, 0)));
+
+    close_outcomes_and_event(&mut market, event_id, 2);
 }

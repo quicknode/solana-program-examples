@@ -110,6 +110,11 @@ pub struct ReserveConfig {
     pub optimal_borrow_rate_bps: u16,
     /// Borrow APR at 100% utilization.
     pub max_borrow_rate_bps: u16,
+    /// Widest confidence band, as a fraction of the price, this reserve's
+    /// price feed may report and still be valued against. A wider band is
+    /// refused (`OracleConfidenceTooWide`), so no borrow, withdrawal or
+    /// liquidation is priced off a quote the oracle itself is unsure of.
+    pub max_confidence_bps: u16,
 }
 
 impl ReserveConfig {
@@ -121,11 +126,16 @@ impl ReserveConfig {
                 && within_bps(self.liquidation_bonus_bps)
                 && within_bps(self.close_factor_bps)
                 && within_bps(self.reserve_factor_bps)
-                && within_bps(self.optimal_utilization_bps),
+                && within_bps(self.optimal_utilization_bps)
+                && within_bps(self.max_confidence_bps),
             LendingError::InvalidConfig
         );
         // A zero close factor would make every liquidation a no-op.
         require!(self.close_factor_bps > 0, LendingError::InvalidConfig);
+        // A zero confidence limit admits only a price whose band is zero, which
+        // an oracle reports for no traded asset, so the reserve could never be
+        // valued and every obligation holding it would be frozen.
+        require!(self.max_confidence_bps > 0, LendingError::InvalidConfig);
         // The kink must be strictly inside (0, 100%) so neither rate slope divides by zero.
         require!(
             self.optimal_utilization_bps > 0

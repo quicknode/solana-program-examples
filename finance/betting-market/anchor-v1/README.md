@@ -22,24 +22,33 @@ them in one place no single bettor controls, and paying winners by a fixed, publ
 still requires trusting the admin, who chooses the winning outcome, as described below. The pool is
 a token account owned by the event's PDA, so payouts are signed by the program with the event's
 seeds - there is no admin key that can move bettors' stakes out of the pool. The admin's only
-powers are creating events/outcomes, opening them to bets, and choosing the winning outcome (or
-cancelling).
+powers are creating events/outcomes, opening them to bets, choosing the winning outcome (or
+cancelling), and closing a finished event's accounts once every bet has been paid out or closed.
 
 ## Major Concepts
 
 ### Accounts
 
 - **Config** (`seeds = [b"config"]`) - one per deployment. Holds the `admin` (the only key that can
-  create events/outcomes, open betting, settle, and cancel), the `token_mint` every market accepts,
-  the `fee_recipient`, and the `default_fee_bps` each new event copies at creation.
+  create events/outcomes, open betting, settle, cancel, and close), the `token_mint` every market
+  accepts, the `fee_recipient`, and the `default_fee_bps` each new event copies at creation. The
+  config is the admin's long-lived state and stays open for the life of the deployment; no handler
+  closes it.
 - **Event** (`seeds = [b"event", event_id]`) - one betting market. Tracks `total_pool`, `status`
   (`Draft` / `Open` / `Settled` / `Cancelled`), `betting_closes_at`, and - once settled - the
   `winning_outcome_index`, `winning_pool`, and `distributable_losing_pool` that the payout formula
   reads. The event's `fee_bps` is copied from the config's `default_fee_bps` at creation and is what
   settlement charges. It and `betting_closes_at` are fixed at creation, so later Config changes
-  can't alter a market bettors have already joined.
+  can't alter a market bettors have already joined. Two counters say when the event can close:
+  `open_bets`, the number of Bet accounts across every outcome that are still open (`place_bet`
+  adds one when it creates a Bet account; a top-up reuses the account and adds nothing;
+  `claim_winnings`, `claim_refund` and `close_losing_bet` each subtract one), and `open_outcomes`,
+  the number of Outcome accounts still open (`add_outcome` adds one, `close_outcome` subtracts
+  one). `close_event` closes the Event account and the vault, returning their rent to the admin.
 - **Outcome** (`seeds = [b"outcome", event, index]`) - one possible result. Its `total_amount` is
-  the outcome's share of the pool and the denominator for pro-rata payouts when it wins.
+  the outcome's share of the pool and the denominator for pro-rata payouts when it wins; its
+  `bet_count` is the number of Bet accounts ever created on it. `close_outcome` closes it once the
+  event is finished and every bet is closed, returning its rent to the admin.
 - **Bet** (`seeds = [b"bet", outcome, bettor]`) - a bettor's total stake on one outcome. Re-betting
   the same outcome adds to the existing Bet, so there is exactly one per (outcome, bettor). The
   account exists only while the position is open: it closes (rent back to the bettor) via
@@ -52,8 +61,9 @@ cancelling).
 
 Each event owns a single vault token account - the associated token account of the Event PDA for
 `config.token_mint`. `place_bet` moves the stake from the bettor's token account into this vault.
-`settle_event`, `claim_winnings`, and `claim_refund` move tokens back out, with the program signing
-as the Event PDA (`seeds = [b"event", event_id, bump]`).
+`settle_event`, `claim_winnings`, `claim_refund` and `close_event` move tokens back out, with the
+program signing as the Event PDA (`seeds = [b"event", event_id, bump]`), and `close_event` then
+closes the vault with the same signature, returning its rent to the admin.
 
 ### Payout formula
 
@@ -72,7 +82,8 @@ payout = stake + stake * distributable_losing / winning_pool
 ```
 
 A winner always gets their own stake back; the fee is only ever taken from losing stakes. Integer
-division floors each share, leaving at most a few minor units of dust in the vault.
+division floors each share, leaving at most a few minor units of dust in the vault, which
+`close_event` pays to the fee recipient once every bet is closed.
 
 **Example:** Outcome A pool 100, Outcome B pool 50, `fee_bps = 200` (2%). A wins.
 `losing_pool = 50`, `fee = 1`, `distributable_losing = 49`. A bettor who staked 40 claims
@@ -96,6 +107,12 @@ division floors each share, leaving at most a few minor units of dust in the vau
 - `close_losing_bet` - losing bettor. After settlement, closes a worthless Bet to reclaim its rent.
 - `cancel_event` - admin. Voids a draft or unresolved market.
 - `claim_refund` - bettor. After a cancellation, reclaims the exact stake; the Bet account closes.
+- `close_outcome` - admin. Once the event is `Settled` or `Cancelled` (else `EventNotFinished`) and
+  `open_bets` is zero (else `BetsStillOpen`), closes one Outcome account and returns its rent to
+  the admin.
+- `close_event` - admin. Under the same two conditions, and once every Outcome account is closed
+  (else `OutcomesStillOpen`), pays whatever the vault still holds to the fee recipient's token
+  account, closes the vault, and closes the Event account, returning both rents to the admin.
 
 ### Lifecycle
 
@@ -118,6 +135,20 @@ known, and the admin cannot end a market before the window bettors were promised
 `settle_event` rejects a winning outcome with no bets - use `cancel_event` to unwind an event that
 can't be resolved fairly.
 
+`Settled` and `Cancelled` are the two ways an event ends, and in both every Bet account has a
+handler that pays it out or closes it: `claim_winnings` and `close_losing_bet` after a settlement,
+`claim_refund` after a cancellation. Once `open_bets` reaches zero the admin closes the accounts the
+event created, children first: `close_outcome` for each Outcome account, then `close_event` for the
+vault and the Event account. The order matters because each account's address is derived from its
+parent's. An Outcome account left open after its event closed would be found again, with its old
+`total_amount`, by a later event created with the same `event_id`, and a Bet account left open
+after its outcome closed would have nothing to claim against. So `close_outcome` refuses while any
+bet is open, and `close_event` refuses while any outcome is. After a settlement the vault holds
+only the dust the floored payouts left behind, and `close_event` pays it to the fee recipient with
+the fee; after a cancellation and its refunds the vault is empty. Every closed account's rent goes
+back to whoever paid it: the bettor for a Bet account, the admin for the outcomes, the vault and
+the event.
+
 ## Setup
 
 Install the [Solana CLI](https://docs.anza.xyz/cli/install) (provides `cargo-build-sbf`) and
@@ -139,6 +170,13 @@ edges of the betting close time, settling an outcome with no bets, the cancel/re
 `close_losing_bet` guards, and a wallet holding forty open bets at once, which shows there is no
 per-wallet cap.
 
+`test_close_event_pays_dust_to_fee_recipient_and_returns_rent` runs a settlement whose payouts do
+not divide evenly, closes the losing bet, both winners' bets, both outcomes and the event, and
+checks that the vault's one minor unit of dust reaches the fee recipient, that every closed account
+is gone, and that each rent returns to the admin. `test_close_event_refused_while_a_bet_is_open`,
+`test_close_event_refused_while_event_is_open` and `test_only_admin_can_close_outcomes_and_event`
+check the three refusals, and `test_cancel_and_refund` closes a cancelled event after its refunds.
+
 ```sh
 anchor test
 ```
@@ -158,3 +196,7 @@ By the crowd, not a bookmaker: each winner's payout scales with their share of t
 ### What happens if an event is cancelled?
 
 The admin calls `cancel_event` and every bettor reclaims their full stake with `claim_refund`. After a settled event, losers reclaim their bet account's rent with `close_losing_bet`.
+
+### What happens to the accounts once an event is over?
+
+Once every bet is paid out or closed, the admin calls `close_outcome` for each outcome and then `close_event`, which pays any rounding dust in the vault to the fee recipient and closes the vault and the Event account. Each rent returns to the admin, who paid it. The Config account stays open; it is the admin's state for the whole deployment.
