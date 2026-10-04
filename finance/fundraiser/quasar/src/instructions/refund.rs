@@ -74,7 +74,6 @@ pub fn handle_refund(
 
     let refund_amount: u64 = accounts.contribution.amount.into();
 
-    // Update state before the transfer CPI (checks-effects-interactions).
     accounts.fundraiser.current_amount = PodU64::from(
         current_amount
             .checked_sub(refund_amount)

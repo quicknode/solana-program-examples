@@ -9,13 +9,9 @@ use crate::state::{Market, MarketUser, MARKET_SEED, MARKET_USER_SEED};
 pub fn handle_settle_funds(context: &mut Context<SettleFundsAccountConstraints>) -> Result<()> {
     let market_user = &mut context.accounts.market_user;
 
-    // Snapshot the amounts the user is owed, then zero the counters
-    // BEFORE the token transfers. Checks-effects-interactions: even though
-    // Solana CPIs don't reenter in the EVM sense, if either transfer ever
-    // gained a path that called back into this program (custom token
-    // hooks, transfer-fee extensions with side effects, ...), having stale
-    // unsettled_* values readable mid-transfer would let a re-entry double-
-    // withdraw. Updating state first makes that class of bug impossible.
+    // Snapshot the amounts the user is owed and zero the counters; the
+    // transfers below pay out the snapshot. If a transfer fails, the whole
+    // transaction reverts, zeroing included.
     let base_amount = market_user.unsettled_base;
     let quote_amount = market_user.unsettled_quote;
     market_user.unsettled_base = 0;

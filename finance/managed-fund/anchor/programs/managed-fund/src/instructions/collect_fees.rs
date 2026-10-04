@@ -80,7 +80,7 @@ pub fn handle_collect_fees(context: &mut Context<CollectFeesAccountConstraints>)
         return Ok(());
     }
 
-    // Checks-effects-interactions: update total_shares before CPI
+    // Add the fee shares to the recorded supply
     context.accounts.fund.total_shares = total_shares
         .checked_add(fee_shares)
         .ok_or(FundError::MathOverflow)?;

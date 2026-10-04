@@ -82,7 +82,7 @@ All token accounts use `anchor_spl::token_interface` types (`InterfaceAccount<Mi
 
 ### Onchain math
 
-All balance and counter arithmetic uses `checked_*` operations and returns `FundraiserError::MathOverflow` on overflow. Both handlers that move tokens out of the vault update program state before issuing the transfer CPI (checks-effects-interactions).
+All balance and counter arithmetic uses `checked_*` operations and returns `FundraiserError::MathOverflow` on overflow.
 
 ## Lifecycle
 

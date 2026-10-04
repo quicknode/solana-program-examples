@@ -100,7 +100,7 @@ pub fn handle_withdraw(
         *amount = proportion(asset_holdings[index])?;
     }
 
-    // Checks-effects-interactions: shrink supply and holdings before any transfer.
+    // Shrink the share supply and the recorded holdings by the withdrawn slice.
     fund.total_shares = total_shares
         .checked_sub(shares_to_burn)
         .ok_or(FundError::MathOverflow)?;

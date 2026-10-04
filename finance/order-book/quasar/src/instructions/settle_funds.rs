@@ -44,10 +44,9 @@ pub struct SettleFundsAccountConstraints {
 pub fn handle_settle_funds(
     accounts: &mut SettleFundsAccountConstraints,
 ) -> Result<(), ProgramError> {
-    // Snapshot the amounts owed, then zero the counters BEFORE the token
-    // transfers (checks-effects-interactions): updating state first makes a
-    // re-entry double-withdraw impossible even if a token hook ever gained a
-    // path back into this program.
+    // Snapshot the amounts owed and zero the counters; the transfers below
+    // pay out the snapshot. If a transfer fails, the whole transaction
+    // reverts, zeroing included.
     let mut market_user = snapshot_market_user(&accounts.market_user);
     let base_amount = market_user.unsettled_base;
     let quote_amount = market_user.unsettled_quote;

@@ -80,7 +80,6 @@ pub fn handle_refund(accounts: &mut RefundAccountConstraints) -> Result<()> {
         FundraiserError::TargetMet
     );
 
-    // Checks-effects-interactions: update state before the transfer CPI.
     let refund_amount = accounts.contribution.amount;
     accounts.fundraiser.current_amount = accounts
         .fundraiser

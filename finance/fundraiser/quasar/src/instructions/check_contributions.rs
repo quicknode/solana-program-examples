@@ -59,7 +59,6 @@ pub fn handle_check_contributions(
         FundraiserError::TargetNotMet
     );
 
-    // Update state before the transfer CPI (checks-effects-interactions).
     accounts.fundraiser.claimed = PodBool::from(true);
 
     // Fundraiser PDA signer seeds: ["fundraiser", maker, bump].
