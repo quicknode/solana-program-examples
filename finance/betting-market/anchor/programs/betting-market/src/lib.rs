@@ -74,13 +74,13 @@ pub mod betting_market {
     }
 
     // A winner withdraws their stake plus their pro-rata share of the losing
-    // pool. The Bet account closes and leaves the bettor's User index.
+    // pool. The Bet account closes.
     pub fn claim_winnings(context: &mut Context<ClaimWinningsAccountConstraints>) -> Result<()> {
         instructions::claim_winnings::handle_claim_winnings(context)
     }
 
     // A loser closes their worthless bet after settlement, reclaiming the
-    // Bet account's rent and freeing the slot in their User index.
+    // Bet account's rent.
     pub fn close_losing_bet(context: &mut Context<CloseLosingBetAccountConstraints>) -> Result<()> {
         instructions::close_losing_bet::handle_close_losing_bet(context)
     }
@@ -91,7 +91,7 @@ pub mod betting_market {
     }
 
     // After a cancellation, a bettor reclaims their exact stake. The Bet
-    // account closes and leaves the bettor's User index.
+    // account closes.
     pub fn claim_refund(context: &mut Context<ClaimRefundAccountConstraints>) -> Result<()> {
         instructions::claim_refund::handle_claim_refund(context)
     }

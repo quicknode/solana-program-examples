@@ -15,8 +15,6 @@ pub enum BettingError {
     NothingToClaim,
     BetWon,
     ZeroAmount,
-    TooManyBets,
-    BetNotInUserIndex,
     MathOverflow,
     EventNotDraft,
     DescriptionTooLong,

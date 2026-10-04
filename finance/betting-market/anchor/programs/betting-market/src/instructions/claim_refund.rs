@@ -4,7 +4,7 @@ use crate::state::Event;
 use anchor_spl::mint;
 use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
 
-use crate::{error::BettingError, Bet, EventStatus, User};
+use crate::{error::BettingError, Bet, EventStatus};
 
 use super::{transfer_tokens_from_vault, EventSigner};
 
@@ -39,13 +39,6 @@ pub struct ClaimRefundAccountConstraints {
 
     #[account(
         mut,
-        seeds = [b"user", bettor.address().as_ref()],
-        bump = user.bump,
-    )]
-    pub user: BorshAccount<User>,
-
-    #[account(
-        mut,
         associated_token::mint = token_mint,
         associated_token::authority = bettor,
         associated_token::token_program = token_program,
@@ -70,12 +63,6 @@ pub fn handle_claim_refund(context: &mut Context<ClaimRefundAccountConstraints>)
     );
 
     let stake = context.accounts.bet.amount;
-
-    // The position is over, so drop the Bet from the bettor's index before the
-    // transfer (effects before interactions); the Bet account itself closes
-    // when the instruction finishes.
-    let bet_key = context.accounts.bet.address();
-    context.accounts.user.remove_bet(bet_key)?;
 
     // Gather the signing material before the borrow goes away.
     let event_signer = EventSigner::new(&context.accounts.event);

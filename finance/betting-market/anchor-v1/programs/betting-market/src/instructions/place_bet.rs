@@ -4,10 +4,7 @@ use anchor_spl::{
     token_interface::{Mint, TokenAccount, TokenInterface},
 };
 
-use crate::{
-    betting_is_open, error::BettingError, Bet, Config, Event, EventStatus, Outcome, User,
-    MAX_BETS_PER_USER,
-};
+use crate::{betting_is_open, error::BettingError, Bet, Config, Event, EventStatus, Outcome};
 
 use super::transfer_tokens_to_vault;
 
@@ -66,15 +63,6 @@ pub struct PlaceBetAccountConstraints<'info> {
     )]
     pub bet: Box<Account<'info, Bet>>,
 
-    #[account(
-        init_if_needed,
-        payer = bettor,
-        space = User::DISCRIMINATOR.len() + User::INIT_SPACE,
-        seeds = [b"user", bettor.key().as_ref()],
-        bump
-    )]
-    pub user: Box<Account<'info, User>>,
-
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub token_program: Interface<'info, TokenInterface>,
     pub system_program: Program<'info, System>,
@@ -105,9 +93,7 @@ pub fn handle_place_bet(context: Context<PlaceBetAccountConstraints>, amount: u6
     let event_key = context.accounts.event.key();
     let outcome_key = context.accounts.outcome.key();
     let outcome_index = context.accounts.outcome.index;
-    let bet_key = context.accounts.bet.key();
     let bet_bump = context.bumps.bet;
-    let user_bump = context.bumps.user;
 
     let bet = &mut context.accounts.bet;
     // A fresh init_if_needed Bet has amount 0; that is how we tell a first bet
@@ -142,19 +128,6 @@ pub fn handle_place_bet(context: Context<PlaceBetAccountConstraints>, amount: u6
         .total_pool
         .checked_add(amount)
         .ok_or(BettingError::MathOverflow)?;
-
-    let user = &mut context.accounts.user;
-    if user.authority == Pubkey::default() {
-        user.authority = bettor_key;
-        user.bump = user_bump;
-    }
-    if is_new_bet {
-        require!(
-            user.bets.len() < MAX_BETS_PER_USER,
-            BettingError::TooManyBets
-        );
-        user.bets.push(bet_key);
-    }
 
     Ok(())
 }
