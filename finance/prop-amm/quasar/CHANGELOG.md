@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased, 2026-10-05
+
+The quasar-test suite mints NVDAx with 8 decimals, its real count, and USDC
+with 6, so the two mints no longer share a decimal count (`NVDAX_DECIMALS`,
+`ONE_NVDAX`, `USDC_DECIMALS`, `ONE_USDC`). The walkthrough amounts are the
+same: 5 NVDAx (`FIVE_NVDAX`, now 500,000,000 minor units) costs 825.825 USDC
+at the ask (`FIVE_NVDAX_AT_THE_ASK`) and sells for 824.175 at the bid
+(`FIVE_NVDAX_AT_THE_BID`), 850.85 at $170 and 829.125 at a 50 bps spread, all
+exact, because the ask and bid have three decimal places of a dollar and 5
+is a whole number of NVDAx at any decimal count. Every refusal test asserts
+its error code with `fails_with`: the program's codes for slippage,
+staleness, a pre-restart price, confidence, pause, zero amounts, inventory
+bounds and parameter bounds, and `QuasarError::HasOneMismatch` for the
+`has_one(operator)` constraint that refuses an imposter operator. No program
+source changed: the quote math reads both mints' decimals from the market and
+already rounds the ask up, the bid down and both outputs down.
+
 ## 2026-10-04
 
 Check which program owns the price feed. `initialize_market` records the

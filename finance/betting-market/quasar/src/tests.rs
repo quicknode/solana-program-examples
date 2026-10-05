@@ -101,7 +101,7 @@ fn full_lifecycle_settles_and_pays_the_winner(test: &mut Test) {
 
     const STAKE_A: u64 = 100;
     const STAKE_B: u64 = 300;
-    const FEE: u64 = 1; // floor(100 * 100 / 10000) = 1
+    const FEE: u64 = 1; // ceil(100 * 100 / 10000) = 1, exact
     const PAYOUT_B: u64 = STAKE_B + 99; // stake + winnings(99)
 
     test.send(InitializeEventInstruction {
@@ -520,6 +520,46 @@ fn open_betting_needs_two_outcomes_and_the_admin(test: &mut Test) {
     );
 }
 
+/// Ending a market is the admin's alone: a stranger can neither settle it to
+/// an outcome nor cancel it, and the event stays open for the admin to settle.
+#[quasar_test]
+fn settle_and_cancel_reject_a_non_admin_signer(test: &mut Test) {
+    base_world(test);
+    test.add(Wallet::new().at(ATTACKER));
+    add_bettor(test, BETTOR_A, TOKEN_A);
+    add_bettor(test, BETTOR_C, TOKEN_C);
+    draft_event(test, &["Yes", "No"]);
+    test.send(open_betting(ADMIN)).succeeds();
+    let event = test.derive_pda(Event::seeds(EVENT_ID));
+
+    test.send(bet(BETTOR_A, TOKEN_A, 0, 100)).succeeds();
+    test.send(bet(BETTOR_C, TOKEN_C, 1, 200)).succeeds();
+
+    test.send(CancelEventInstruction {
+        admin: ATTACKER,
+        event_event_id_seed: EVENT_ID,
+    })
+    .fails_with(BettingError::Unauthorized);
+
+    // Betting has closed, so the only thing stopping the attacker is the
+    // signer.
+    test.warp_to_timestamp(BETTING_CLOSES_AT);
+    test.send(SettleEventInstruction {
+        admin: ATTACKER,
+        token_mint: TOKEN_MINT,
+        event_event_id_seed: EVENT_ID,
+        fee_recipient_token_account: FEE_RECIPIENT_TOKEN,
+        winning_outcome_index: 0,
+    })
+    .fails_with(BettingError::Unauthorized);
+    assert_eq!(test.read::<Event>(event).status, EventStatus::Open as u8);
+    assert_eq!(test.tokens(FEE_RECIPIENT_TOKEN), 0);
+
+    // The admin settles the same event, so the refusals were the signer's.
+    test.send(settle(0)).succeeds();
+    assert_eq!(test.read::<Event>(event).status, EventStatus::Settled as u8);
+}
+
 /// Bets land strictly before the close time and settlement only at or after
 /// it, so there is no second at which someone who knows the result can still
 /// stake, and none at which the admin can end the market early.
@@ -588,9 +628,10 @@ fn no_cap_on_open_bets_per_wallet(test: &mut Test) {
 /// The whole lifecycle through to every account closing. Stakes are chosen so
 /// the pro-rata split does not divide evenly: outcome 0 pool 300 (A 100 in two
 /// bets, B 200), outcome 1 pool 250 (C). Outcome 0 wins: losing pool 250, fee
-/// 2 (1%), distributable 248; A gets floor(100 * 248 / 300) = 82 and B
-/// floor(200 * 248 / 300) = 165, so one minor unit of dust stays in the vault
-/// until `close_event` pays it to the fee recipient.
+/// ceil(2.5) = 3 (1%, rounded up), distributable 247; A gets
+/// floor(100 * 247 / 300) = 82 and B floor(200 * 247 / 300) = 164, so one minor
+/// unit of dust stays in the vault until `close_event` pays it to the fee
+/// recipient.
 #[quasar_test]
 fn close_event_pays_dust_to_fee_recipient_and_returns_rent(test: &mut Test) {
     base_world(test);
@@ -621,7 +662,12 @@ fn close_event_pays_dust_to_fee_recipient_and_returns_rent(test: &mut Test) {
 
     test.warp_to_timestamp(BETTING_CLOSES_AT);
     test.send(settle(0)).succeeds();
-    assert_eq!(test.tokens(FEE_RECIPIENT_TOKEN), 2);
+    // 1% of 250 is 2.5; the fee rounds up.
+    assert_eq!(test.tokens(FEE_RECIPIENT_TOKEN), 3);
+    assert_eq!(
+        u64::from(test.read::<Event>(event).distributable_losing_pool),
+        247
+    );
 
     // C closes the losing bet; A and B claim.
     test.send(CloseLosingBetInstruction {
@@ -646,7 +692,7 @@ fn close_event_pays_dust_to_fee_recipient_and_returns_rent(test: &mut Test) {
         .is_closed(winner_bet);
     }
     assert_eq!(test.tokens(TOKEN_A), STARTING_TOKENS - 100 + 182);
-    assert_eq!(test.tokens(TOKEN_B), STARTING_TOKENS - 200 + 365);
+    assert_eq!(test.tokens(TOKEN_B), STARTING_TOKENS - 200 + 364);
     assert_eq!(u64::from(test.read::<Event>(event).open_bets), 0);
 
     // The two floors left one minor unit in the vault.
@@ -658,8 +704,8 @@ fn close_event_pays_dust_to_fee_recipient_and_returns_rent(test: &mut Test) {
 
     let vault_balance_at_close = close_outcomes_and_event(test, 2);
     assert_eq!(vault_balance_at_close, 1);
-    // The dust joined the fee: 2 + 1.
-    assert_eq!(test.tokens(FEE_RECIPIENT_TOKEN), 3);
+    // The dust joined the fee: 3 + 1.
+    assert_eq!(test.tokens(FEE_RECIPIENT_TOKEN), 4);
 }
 
 /// A settled event keeps its accounts while any Bet account of it is open:

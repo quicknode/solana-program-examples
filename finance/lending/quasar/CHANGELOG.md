@@ -1,5 +1,28 @@
 # Changelog
 
+## [Unreleased] (2026-10-05)
+
+### Changed
+
+- The program fee on accrued interest rounds up. `accrue` computes the reserve
+  factor's cut of each accrual with `mul_div_ceil`, so when the cut is not
+  whole the extra unit goes to the market owner, and the suppliers take the
+  remainder; fee and remainder sum to the interest and never exceed it. A fee
+  is the program's cut and rounds against the user, as every fee in these
+  programs does. The Kani crate gains
+  `proof_program_fee_rounds_up_within_interest`, which checks the fee never
+  exceeds the interest for any reserve factor up to 100%.
+- `first_deposit_must_exceed_the_minimum`, `borrow_up_to_ltv_succeeds_and_beyond_fails`
+  and `unhealthy_position_is_liquidated_and_healthy_is_rejected` assert the
+  error each refusal raises (`DepositTooSmall`, `BorrowTooLarge`,
+  `ObligationHealthy`), so every refusal test in the suite names its error code.
+
+### Added
+
+- `program_fee_rounds_up_and_suppliers_take_the_remainder` accrues one second
+  of interest on a 500-unit borrow (3 units) through `collect_program_fees`
+  and checks the owner receives 1 and the suppliers' pool grows by 2.
+
 ## [Unreleased] (2026-10-04)
 
 ### Changed

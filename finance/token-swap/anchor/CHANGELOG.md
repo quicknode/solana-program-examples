@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased (2026-10-05)
+
+`swap_tokens` rounds the trading fee up: `fee_amount` is `input * fee /
+10_000` rounded to the next whole minor unit, and the admin's slice of it,
+`fee_amount * admin_share_bps / 10_000`, rounds up the same way, so a fee
+that is not a whole number of minor units costs the trader one unit more
+rather than the pool one unit less, and the admin's share rounds against the
+LPs. The trader's side, `taxed_input`, is the input minus the rounded-up fee.
+A 500 bps fee on 1_000_001 minor units is 50_000.05, charged as 50_001, and
+the admin's 1667 bps of a 25_000 fee is 4_167.5, owed as 4_168
+(`test_swap_fee_rounds_up`, and `test_claim_admin_fees` asserts the exact
+amounts). The Kani harness `proof_fee_split_bounds` checks the rounding
+direction.
+
+`initialize_pool` refuses a deposit whose square root equals
+`MINIMUM_LIQUIDITY` as well as one below it, so the smallest pool that opens
+leaves its creator at least 1 LP token: a pool opened with `sqrt(100 * 100)`
+would mint its creator nothing. `test_initialize_pool_rejects_sqrt_equal_to_floor`
+checks both sides of the boundary.
+
 ## Unreleased (2026-10-04)
 
 `initialize_pool` now takes the creator's first deposit: it gains `amount_a`

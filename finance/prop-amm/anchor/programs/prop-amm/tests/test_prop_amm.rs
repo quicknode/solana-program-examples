@@ -1,7 +1,7 @@
 use {
     anchor_lang::{
         solana_program::instruction::Instruction, system_program, AccountDeserialize, Address,
-        InstructionData, ToAccountMetas,
+        Error as AnchorError, ErrorCode as AnchorErrorCode, InstructionData, ToAccountMetas,
     },
     anchor_v2_testing::{Keypair, LiteSVM, Signer},
     prop_amm::{
@@ -16,10 +16,22 @@ use {
     },
 };
 
-// Both tokens have 6 decimals: the base is NVDAx (tokenized NVIDIA stock) and
-// the quote is USDC, so one whole unit of either is 1_000_000 minor units.
-const ONE_TOKEN: u64 = 1_000_000;
-const DECIMALS: u8 = 6;
+// The base is NVDAx (tokenized NVIDIA stock), which has 8 decimals; the quote
+// is USDC, which has 6. The program reads both from the mints, so nothing in
+// the quote math assumes they match.
+const NVDAX_DECIMALS: u8 = 8;
+const ONE_NVDAX: u64 = 100_000_000;
+const USDC_DECIMALS: u8 = 6;
+const ONE_USDC: u64 = 1_000_000;
+
+// The walkthrough trade: at $165 with a 10 bps spread the ask is $165.165 and
+// the bid $164.835, so 5 NVDAx costs 825.825 USDC and sells for 824.175. Both
+// are exact in USDC's six decimals because the ask and bid have only three
+// decimal places of a dollar, and 5 is a whole number of NVDAx whatever the
+// token's decimals.
+const FIVE_NVDAX: u64 = 5 * ONE_NVDAX;
+const FIVE_NVDAX_AT_THE_ASK: u64 = 825_825_000; // 825.825 USDC
+const FIVE_NVDAX_AT_THE_BID: u64 = 824_175_000; // 824.175 USDC
 
 // The oracle quotes prices with 8 decimals, so $165 is 165 * 10^8.
 const ORACLE_SCALE: u32 = 8;
@@ -53,10 +65,10 @@ fn dollars(whole: i128) -> i128 {
     whole * 10i128.pow(ORACLE_SCALE)
 }
 
-/// Assert that `result` failed with the program's `expected` error. Anchor
-/// reports a program error as `Custom(6000 + the variant's index)`.
-fn assert_fails_with<T>(result: Result<T, String>, expected: PropAmmError) {
-    let code = expected as u32 + 6000;
+/// A failed transaction reports its program error as `Custom(n)`. Matching
+/// `n` checks that the transaction failed for the rule under test, not for
+/// some unrelated reason.
+fn assert_fails_with_code<T>(result: Result<T, String>, code: u32) {
     let Err(error) = result else {
         panic!("the transaction should have failed with error code {code}");
     };
@@ -64,6 +76,21 @@ fn assert_fails_with<T>(result: Result<T, String>, expected: PropAmmError) {
         error.contains(&format!("Custom({code})")),
         "expected error code {code}, got: {error}"
     );
+}
+
+/// Assert that `result` failed with the program's `expected` error. Anchor
+/// reports a program error as `Custom(6000 + the variant's index)`.
+fn assert_fails_with<T>(result: Result<T, String>, expected: PropAmmError) {
+    assert_fails_with_code(result, expected as u32 + 6000);
+}
+
+/// Anchor's own constraint errors (an `address =` mismatch, for instance) are
+/// numbered below the program's and reported the same way.
+fn assert_fails_with_anchor_error<T>(result: Result<T, String>, expected: AnchorErrorCode) {
+    let AnchorError::Custom(code) = AnchorError::from(expected) else {
+        panic!("a constraint error converts to a custom code");
+    };
+    assert_fails_with_code(result, code);
 }
 
 /// One deployed market plus the keys needed to drive it.
@@ -117,8 +144,8 @@ impl Market {
 
         let payer = create_wallet(&mut svm, 100_000_000_000).unwrap();
         let operator = create_wallet(&mut svm, 100_000_000_000).unwrap();
-        let base_mint = create_token_mint(&mut svm, &operator, DECIMALS, None).unwrap();
-        let quote_mint = create_token_mint(&mut svm, &operator, DECIMALS, None).unwrap();
+        let base_mint = create_token_mint(&mut svm, &operator, NVDAX_DECIMALS, None).unwrap();
+        let quote_mint = create_token_mint(&mut svm, &operator, USDC_DECIMALS, None).unwrap();
 
         // Create the mock oracle feed as a fresh account owned by the mock
         // program; the operator is its update authority.
@@ -193,7 +220,7 @@ impl Market {
             &mut svm,
             &base_mint,
             &operator_base,
-            10_000 * ONE_TOKEN,
+            10_000 * ONE_NVDAX,
             &operator,
         )
         .unwrap();
@@ -201,7 +228,7 @@ impl Market {
             &mut svm,
             &quote_mint,
             &operator_quote,
-            10_000_000 * ONE_TOKEN,
+            10_000_000 * ONE_USDC,
             &operator,
         )
         .unwrap();
@@ -225,7 +252,7 @@ impl Market {
     fn default_market() -> Market {
         let mut market = Market::new(dollars(165));
         market
-            .deposit_inventory(1_000 * ONE_TOKEN, 200_000 * ONE_TOKEN)
+            .deposit_inventory(1_000 * ONE_NVDAX, 200_000 * ONE_USDC)
             .unwrap();
         market
     }
@@ -325,7 +352,7 @@ impl Market {
         deposit: bool,
         base_amount: u64,
         quote_amount: u64,
-    ) -> Result<(), ()> {
+    ) -> Result<(), String> {
         let signer_base = derive_ata(&signer.pubkey(), &self.base_mint);
         let signer_quote = derive_ata(&signer.pubkey(), &self.quote_mint);
         let instruction = if deposit {
@@ -378,20 +405,25 @@ impl Market {
             &signer.pubkey(),
         )
         .map(|_| ())
-        .map_err(|_| ())
+        .map_err(|error| format!("{error:?}"))
     }
 
-    fn deposit_inventory(&mut self, base_amount: u64, quote_amount: u64) -> Result<(), ()> {
+    fn deposit_inventory(&mut self, base_amount: u64, quote_amount: u64) -> Result<(), String> {
         let operator = self.operator.insecure_clone();
         self.move_inventory_as(&operator, true, base_amount, quote_amount)
     }
 
-    fn withdraw_inventory(&mut self, base_amount: u64, quote_amount: u64) -> Result<(), ()> {
+    fn withdraw_inventory(&mut self, base_amount: u64, quote_amount: u64) -> Result<(), String> {
         let operator = self.operator.insecure_clone();
         self.move_inventory_as(&operator, false, base_amount, quote_amount)
     }
 
-    fn set_quote_as(&mut self, signer: &Keypair, spread_bps: u16, paused: bool) -> Result<(), ()> {
+    fn set_quote_as(
+        &mut self,
+        signer: &Keypair,
+        spread_bps: u16,
+        paused: bool,
+    ) -> Result<(), String> {
         let instruction = Instruction::new_with_bytes(
             prop_amm::id(),
             &prop_amm::instruction::SetQuote { spread_bps, paused }.data(),
@@ -408,10 +440,10 @@ impl Market {
             &signer.pubkey(),
         )
         .map(|_| ())
-        .map_err(|_| ())
+        .map_err(|error| format!("{error:?}"))
     }
 
-    fn set_quote(&mut self, spread_bps: u16, paused: bool) -> Result<(), ()> {
+    fn set_quote(&mut self, spread_bps: u16, paused: bool) -> Result<(), String> {
         let operator = self.operator.insecure_clone();
         self.set_quote_as(&operator, spread_bps, paused)
     }
@@ -489,20 +521,20 @@ impl Market {
 #[test]
 fn test_swap_buys_base_at_the_ask() {
     let mut market = Market::default_market();
-    let quote_in = 825_825_000; // 825.825 USDC
+    let quote_in = FIVE_NVDAX_AT_THE_ASK;
     let (alice, alice_base, alice_quote) = market.funded_trader(0, quote_in);
 
     market
-        .swap(&alice, Direction::BuyBase, quote_in, 5 * ONE_TOKEN)
+        .swap(&alice, Direction::BuyBase, quote_in, FIVE_NVDAX)
         .unwrap();
 
-    assert_eq!(market.balance(&alice_base), 5 * ONE_TOKEN);
+    assert_eq!(market.balance(&alice_base), FIVE_NVDAX);
     assert_eq!(market.balance(&alice_quote), 0);
     // Conservation: the vaults moved by exactly the two legs of the fill.
-    assert_eq!(market.balance(&market.base_vault), 995 * ONE_TOKEN);
+    assert_eq!(market.balance(&market.base_vault), 995 * ONE_NVDAX);
     assert_eq!(
         market.balance(&market.quote_vault),
-        200_000 * ONE_TOKEN + quote_in
+        200_000 * ONE_USDC + quote_in
     );
 }
 
@@ -511,18 +543,18 @@ fn test_swap_buys_base_at_the_ask() {
 #[test]
 fn test_swap_sells_base_at_the_bid() {
     let mut market = Market::default_market();
-    let (bob, bob_base, bob_quote) = market.funded_trader(5 * ONE_TOKEN, 0);
+    let (bob, bob_base, bob_quote) = market.funded_trader(FIVE_NVDAX, 0);
 
     market
-        .swap(&bob, Direction::SellBase, 5 * ONE_TOKEN, 824_175_000)
+        .swap(&bob, Direction::SellBase, FIVE_NVDAX, FIVE_NVDAX_AT_THE_BID)
         .unwrap();
 
     assert_eq!(market.balance(&bob_base), 0);
-    assert_eq!(market.balance(&bob_quote), 824_175_000); // 824.175 USDC
-    assert_eq!(market.balance(&market.base_vault), 1_005 * ONE_TOKEN);
+    assert_eq!(market.balance(&bob_quote), FIVE_NVDAX_AT_THE_BID);
+    assert_eq!(market.balance(&market.base_vault), 1_005 * ONE_NVDAX);
     assert_eq!(
         market.balance(&market.quote_vault),
-        200_000 * ONE_TOKEN - 824_175_000
+        200_000 * ONE_USDC - FIVE_NVDAX_AT_THE_BID
     );
 }
 
@@ -532,23 +564,23 @@ fn test_swap_sells_base_at_the_bid() {
 #[test]
 fn test_round_trip_costs_exactly_the_spread() {
     let mut market = Market::default_market();
-    let quote_in = 825_825_000;
+    let quote_in = FIVE_NVDAX_AT_THE_ASK;
     let (carol, carol_base, carol_quote) = market.funded_trader(0, quote_in);
 
     market
         .swap(&carol, Direction::BuyBase, quote_in, 0)
         .unwrap();
     market
-        .swap(&carol, Direction::SellBase, 5 * ONE_TOKEN, 0)
+        .swap(&carol, Direction::SellBase, FIVE_NVDAX, 0)
         .unwrap();
 
     assert_eq!(market.balance(&carol_base), 0);
     // 825.825 in, 824.175 back: the market kept 1.65 USDC.
     assert_eq!(market.balance(&carol_quote), quote_in - 1_650_000);
-    assert_eq!(market.balance(&market.base_vault), 1_000 * ONE_TOKEN);
+    assert_eq!(market.balance(&market.base_vault), 1_000 * ONE_NVDAX);
     assert_eq!(
         market.balance(&market.quote_vault),
-        200_000 * ONE_TOKEN + 1_650_000
+        200_000 * ONE_USDC + 1_650_000
     );
 }
 
@@ -563,10 +595,10 @@ fn test_quote_follows_the_oracle() {
     let quote_in = 850_850_000; // 850.85 USDC
     let (alice, alice_base, _) = market.funded_trader(0, quote_in);
     market
-        .swap(&alice, Direction::BuyBase, quote_in, 5 * ONE_TOKEN)
+        .swap(&alice, Direction::BuyBase, quote_in, FIVE_NVDAX)
         .unwrap();
 
-    assert_eq!(market.balance(&alice_base), 5 * ONE_TOKEN);
+    assert_eq!(market.balance(&alice_base), FIVE_NVDAX);
 }
 
 /// The operator re-quotes to a 50 bps spread; the next fill prices at
@@ -580,10 +612,10 @@ fn test_set_quote_changes_the_spread() {
     let quote_in = 829_125_000; // 829.125 USDC
     let (alice, alice_base, _) = market.funded_trader(0, quote_in);
     market
-        .swap(&alice, Direction::BuyBase, quote_in, 5 * ONE_TOKEN)
+        .swap(&alice, Direction::BuyBase, quote_in, FIVE_NVDAX)
         .unwrap();
 
-    assert_eq!(market.balance(&alice_base), 5 * ONE_TOKEN);
+    assert_eq!(market.balance(&alice_base), FIVE_NVDAX);
 }
 
 // ===========================================================================
@@ -597,51 +629,60 @@ fn test_set_quote_changes_the_spread() {
 fn test_operator_can_withdraw_everything_and_swaps_then_fail() {
     let mut market = Market::default_market();
     market
-        .withdraw_inventory(1_000 * ONE_TOKEN, 200_000 * ONE_TOKEN)
+        .withdraw_inventory(1_000 * ONE_NVDAX, 200_000 * ONE_USDC)
         .unwrap();
 
     assert_eq!(market.balance(&market.base_vault), 0);
     assert_eq!(market.balance(&market.quote_vault), 0);
     let operator_base = market.operator_base;
     let operator_quote = market.operator_quote;
-    assert_eq!(market.balance(&operator_base), 10_000 * ONE_TOKEN);
-    assert_eq!(market.balance(&operator_quote), 10_000_000 * ONE_TOKEN);
+    assert_eq!(market.balance(&operator_base), 10_000 * ONE_NVDAX);
+    assert_eq!(market.balance(&operator_quote), 10_000_000 * ONE_USDC);
 
-    let (alice, _, _) = market.funded_trader(0, 825_825_000);
-    assert!(market
-        .swap(&alice, Direction::BuyBase, 825_825_000, 0)
-        .is_err());
+    let (alice, _, _) = market.funded_trader(0, FIVE_NVDAX_AT_THE_ASK);
+    assert_fails_with(
+        market.swap(&alice, Direction::BuyBase, FIVE_NVDAX_AT_THE_ASK, 0),
+        PropAmmError::InsufficientInventory,
+    );
 }
 
 #[test]
 fn test_withdraw_more_than_inventory_fails() {
     let mut market = Market::default_market();
-    assert!(market.withdraw_inventory(1_001 * ONE_TOKEN, 0).is_err());
+    assert_fails_with(
+        market.withdraw_inventory(1_001 * ONE_NVDAX, 0),
+        PropAmmError::InsufficientInventory,
+    );
 }
 
 #[test]
 fn test_deposit_inventory_rejects_non_operator() {
     let mut market = Market::default_market();
-    let (mallory, _, _) = market.funded_trader(ONE_TOKEN, ONE_TOKEN);
-    assert!(market
-        .move_inventory_as(&mallory, true, ONE_TOKEN, 0)
-        .is_err());
+    let (mallory, _, _) = market.funded_trader(ONE_NVDAX, ONE_USDC);
+    assert_fails_with_anchor_error(
+        market.move_inventory_as(&mallory, true, ONE_NVDAX, 0),
+        AnchorErrorCode::ConstraintAddress,
+    );
 }
 
 #[test]
 fn test_withdraw_inventory_rejects_non_operator() {
     let mut market = Market::default_market();
     let (mallory, _, _) = market.funded_trader(0, 0);
-    assert!(market
-        .move_inventory_as(&mallory, false, ONE_TOKEN, 0)
-        .is_err());
+    assert_fails_with_anchor_error(
+        market.move_inventory_as(&mallory, false, ONE_NVDAX, 0),
+        AnchorErrorCode::ConstraintAddress,
+    );
 }
 
 #[test]
 fn test_set_quote_rejects_non_operator() {
     let mut market = Market::default_market();
     let (mallory, _, _) = market.funded_trader(0, 0);
-    assert!(market.set_quote_as(&mallory, 500, true).is_err());
+    assert_fails_with_anchor_error(
+        market.set_quote_as(&mallory, 500, true),
+        AnchorErrorCode::ConstraintAddress,
+    );
 }
 
 // ===========================================================================
@@ -652,12 +693,13 @@ fn test_set_quote_rejects_non_operator() {
 #[test]
 fn test_swap_rejects_slippage() {
     let mut market = Market::default_market();
-    let quote_in = 825_825_000;
+    let quote_in = FIVE_NVDAX_AT_THE_ASK;
     let (alice, _, _) = market.funded_trader(0, quote_in);
     // The fill would be exactly 5 NVDAx; demand one minor unit more.
-    assert!(market
-        .swap(&alice, Direction::BuyBase, quote_in, 5 * ONE_TOKEN + 1)
-        .is_err());
+    assert_fails_with(
+        market.swap(&alice, Direction::BuyBase, quote_in, FIVE_NVDAX + 1),
+        PropAmmError::SlippageExceeded,
+    );
 }
 
 /// An oracle price older than the staleness bound cannot be traded against.
@@ -666,13 +708,14 @@ fn test_swap_rejects_slippage() {
 #[test]
 fn test_swap_rejects_stale_price() {
     let mut market = Market::default_market();
-    let (alice, _, _) = market.funded_trader(0, 825_825_000);
+    let (alice, _, _) = market.funded_trader(0, FIVE_NVDAX_AT_THE_ASK);
     // The feed was last updated near slot 0; 200 slots later it is stale
     // (the bound is 150 slots).
     market.warp(200);
-    assert!(market
-        .swap(&alice, Direction::BuyBase, 825_825_000, 0)
-        .is_err());
+    assert_fails_with(
+        market.swap(&alice, Direction::BuyBase, FIVE_NVDAX_AT_THE_ASK, 0),
+        PropAmmError::StalePrice,
+    );
 }
 
 /// A cluster restart passes hours of wall-clock time in zero slots, so a price
@@ -682,7 +725,7 @@ fn test_swap_rejects_stale_price() {
 fn test_swap_rejects_price_from_before_a_restart() {
     let mut market = Market::default_market();
     market.set_price(dollars(165));
-    let (alice, _, _) = market.funded_trader(0, 825_825_000);
+    let (alice, _, _) = market.funded_trader(0, FIVE_NVDAX_AT_THE_ASK);
 
     // Simulate a halt: the cluster restarts a few slots after the price was
     // published, well inside the 150-slot staleness bound, so only the
@@ -691,9 +734,10 @@ fn test_swap_rejects_price_from_before_a_restart() {
     market.warp(published_at + 5);
     market.set_last_restart_slot(published_at + 3);
 
-    assert!(market
-        .swap(&alice, Direction::BuyBase, 825_825_000, 0)
-        .is_err());
+    assert_fails_with(
+        market.swap(&alice, Direction::BuyBase, FIVE_NVDAX_AT_THE_ASK, 0),
+        PropAmmError::PricePredatesRestart,
+    );
 
     // Publishing after the restart reopens the market. Warp first: the retry is
     // otherwise byte-identical to the rejected swap, so it would carry the same
@@ -701,7 +745,7 @@ fn test_swap_rejects_price_from_before_a_restart() {
     market.warp(published_at + 6);
     market.set_price(dollars(165));
     market
-        .swap(&alice, Direction::BuyBase, 825_825_000, 0)
+        .swap(&alice, Direction::BuyBase, FIVE_NVDAX_AT_THE_ASK, 0)
         .expect("a freshly published price must be accepted after a restart");
 }
 
@@ -717,11 +761,11 @@ fn test_swap_rejects_price_feed_from_another_program() {
         market.market_state().price_feed_program,
         mock_price_feed::id()
     );
-    let (alice, _, _) = market.funded_trader(0, 825_825_000);
+    let (alice, _, _) = market.funded_trader(0, FIVE_NVDAX_AT_THE_ASK);
 
     market.set_feed_owner(Address::new_unique());
     assert_fails_with(
-        market.swap(&alice, Direction::BuyBase, 825_825_000, 0),
+        market.swap(&alice, Direction::BuyBase, FIVE_NVDAX_AT_THE_ASK, 0),
         PropAmmError::PriceFeedNotFromOracle,
     );
 
@@ -730,7 +774,7 @@ fn test_swap_rejects_price_feed_from_another_program() {
     market.svm.expire_blockhash();
     market.set_feed_owner(mock_price_feed::id());
     market
-        .swap(&alice, Direction::BuyBase, 825_825_000, 0)
+        .swap(&alice, Direction::BuyBase, FIVE_NVDAX_AT_THE_ASK, 0)
         .expect("the same feed owned by the recorded oracle program must be accepted");
 }
 
@@ -740,10 +784,11 @@ fn test_swap_rejects_price_feed_from_another_program() {
 fn test_swap_rejects_wide_confidence() {
     let mut market = Market::default_market();
     market.set_price_with_confidence(dollars(165), 200_000_000);
-    let (alice, _, _) = market.funded_trader(0, 825_825_000);
-    assert!(market
-        .swap(&alice, Direction::BuyBase, 825_825_000, 0)
-        .is_err());
+    let (alice, _, _) = market.funded_trader(0, FIVE_NVDAX_AT_THE_ASK);
+    assert_fails_with(
+        market.swap(&alice, Direction::BuyBase, FIVE_NVDAX_AT_THE_ASK, 0),
+        PropAmmError::OracleConfidenceTooWide,
+    );
 }
 
 /// While the operator has pulled its quotes, nobody can swap.
@@ -751,23 +796,32 @@ fn test_swap_rejects_wide_confidence() {
 fn test_swap_rejects_when_paused() {
     let mut market = Market::default_market();
     market.set_quote(SPREAD_BPS, true).unwrap();
-    let (alice, _, _) = market.funded_trader(0, 825_825_000);
-    assert!(market
-        .swap(&alice, Direction::BuyBase, 825_825_000, 0)
-        .is_err());
+    let (alice, _, _) = market.funded_trader(0, FIVE_NVDAX_AT_THE_ASK);
+    assert_fails_with(
+        market.swap(&alice, Direction::BuyBase, FIVE_NVDAX_AT_THE_ASK, 0),
+        PropAmmError::MarketPaused,
+    );
 
     // Unpausing restores the exact same quote.
     market.set_quote(SPREAD_BPS, false).unwrap();
     market
-        .swap(&alice, Direction::BuyBase, 825_825_000, 5 * ONE_TOKEN)
+        .swap(
+            &alice,
+            Direction::BuyBase,
+            FIVE_NVDAX_AT_THE_ASK,
+            FIVE_NVDAX,
+        )
         .unwrap();
 }
 
 #[test]
 fn test_swap_rejects_zero_amount() {
     let mut market = Market::default_market();
-    let (alice, _, _) = market.funded_trader(0, ONE_TOKEN);
-    assert!(market.swap(&alice, Direction::BuyBase, 0, 0).is_err());
+    let (alice, _, _) = market.funded_trader(0, ONE_USDC);
+    assert_fails_with(
+        market.swap(&alice, Direction::BuyBase, 0, 0),
+        PropAmmError::ZeroAmount,
+    );
 }
 
 /// A buy bigger than the base inventory is rejected whole — a prop AMM never
@@ -779,9 +833,10 @@ fn test_swap_rejects_insufficient_inventory() {
     // but the vault only holds 1,000 NVDAx.
     let quote_in = 181_681_500_000;
     let (whale, _, _) = market.funded_trader(0, quote_in);
-    assert!(market
-        .swap(&whale, Direction::BuyBase, quote_in, 0)
-        .is_err());
+    assert_fails_with(
+        market.swap(&whale, Direction::BuyBase, quote_in, 0),
+        PropAmmError::InsufficientInventory,
+    );
 }
 
 // ===========================================================================
@@ -810,7 +865,10 @@ fn test_initialize_market_rejects_zero_spread() {
         spread_bps: 0,
         max_confidence_bps: MAX_CONFIDENCE_BPS,
     };
-    assert!(Market::try_new(dollars(165), parameters).is_err());
+    assert_fails_with(
+        Market::try_new(dollars(165), parameters),
+        PropAmmError::InvalidParameter,
+    );
 }
 
 #[test]
@@ -820,12 +878,18 @@ fn test_initialize_market_rejects_full_spread() {
         spread_bps: 10_000,
         max_confidence_bps: MAX_CONFIDENCE_BPS,
     };
-    assert!(Market::try_new(dollars(165), parameters).is_err());
+    assert_fails_with(
+        Market::try_new(dollars(165), parameters),
+        PropAmmError::InvalidParameter,
+    );
 }
 
 #[test]
 fn test_set_quote_rejects_invalid_spread() {
     let mut market = Market::default_market();
-    assert!(market.set_quote(0, false).is_err());
-    assert!(market.set_quote(10_000, false).is_err());
+    assert_fails_with(market.set_quote(0, false), PropAmmError::InvalidParameter);
+    assert_fails_with(
+        market.set_quote(10_000, false),
+        PropAmmError::InvalidParameter,
+    );
 }

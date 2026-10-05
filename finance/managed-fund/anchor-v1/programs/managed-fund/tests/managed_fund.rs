@@ -19,6 +19,7 @@ use {
 };
 
 use managed_fund::error::FundError;
+use mock_swap_router::error::RouterError;
 
 fn token_program_id() -> Pubkey {
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
@@ -78,7 +79,7 @@ fn set_price_feed(svm: &mut LiteSVM, key: Pubkey, price: i64) {
 
 /// Write a Pyth feed as if Pyth posted it in `posted_slot`.
 fn set_price_feed_posted_at(svm: &mut LiteSVM, key: Pubkey, price: i64, posted_slot: u64) {
-    write_price_feed(svm, key, price, -8, posted_slot);
+    write_price_feed(svm, key, price, PYTH_EXPONENT, posted_slot);
 }
 
 /// Write a Pyth feed with its own exponent: Pyth's US equity feeds use -5.
@@ -114,11 +115,20 @@ fn write_price_feed_with_confidence(
 const PUBLISH_TIME: i64 = 1_700_000_000;
 /// A tight confidence interval, $0.001 at exponent -8, far inside the 1% limit.
 const DEFAULT_CONFIDENCE: u64 = 100_000;
-const TOKEN_DECIMALS: u8 = 6;
+const USDC_DECIMALS: u8 = 6;
+/// TSLAx and NVDAx carry the eight decimals the real tokens have. The fund
+/// reads each mint's decimals rather than assuming USDC's six, so every basket
+/// amount below is in eight-decimal minor units while shares and USDC stay in
+/// six.
+const ASSET_DECIMALS: u8 = 8;
+/// The exponent of Pyth's crypto USD feeds, which the test feeds use unless a
+/// test writes its own.
+const PYTH_EXPONENT: i32 = -8;
 const SECONDS_PER_YEAR: i64 = 31_536_000;
+const SECONDS_PER_DAY: i64 = 86_400;
 
-const TSLA_PRICE: i64 = 25_000_000_000; // $250
-const NVDA_PRICE: i64 = 18_000_000_000; // $180
+const TSLA_PRICE: i64 = 25_000_000_000; // $250 at PYTH_EXPONENT
+const NVDA_PRICE: i64 = 18_000_000_000; // $180 at PYTH_EXPONENT
 const TSLA_RATE: u64 = 250_000_000; // router USDC minor units per whole token
 const NVDA_RATE: u64 = 180_000_000;
 
@@ -165,10 +175,10 @@ impl TestContext {
 /// Mints, router (config + rates + treasury), Pyth feeds, a registry with TSLAx
 /// and NVDAx approved, and all derived PDAs. Does not create the fund.
 fn setup_full() -> TestContext {
-    setup_with_tsla_decimals(TOKEN_DECIMALS)
+    setup_with_tsla_decimals(ASSET_DECIMALS)
 }
 
-/// `setup_full`, with TSLAx minted at `tsla_decimals` instead of six.
+/// `setup_full`, with TSLAx minted at `tsla_decimals` instead of eight.
 fn setup_with_tsla_decimals(tsla_decimals: u8) -> TestContext {
     let fund_program_id = managed_fund::id();
     let router_program_id = mock_swap_router::id();
@@ -201,9 +211,9 @@ fn setup_with_tsla_decimals(tsla_decimals: u8) -> TestContext {
     let payer = create_wallet(&mut svm, 100_000_000_000).unwrap();
     let manager = create_wallet(&mut svm, 10_000_000_000).unwrap();
 
-    let usdc_mint = create_token_mint(&mut svm, &payer, TOKEN_DECIMALS, None).unwrap();
+    let usdc_mint = create_token_mint(&mut svm, &payer, USDC_DECIMALS, None).unwrap();
     let tsla_mint = create_token_mint(&mut svm, &payer, tsla_decimals, None).unwrap();
-    let nvda_mint = create_token_mint(&mut svm, &payer, TOKEN_DECIMALS, None).unwrap();
+    let nvda_mint = create_token_mint(&mut svm, &payer, ASSET_DECIMALS, None).unwrap();
 
     let (router_config_pda, _) =
         Pubkey::find_program_address(&[b"router_config"], &router_program_id);
@@ -644,6 +654,18 @@ fn program_error(error: FundError) -> String {
     format!("Custom({})", 6000 + error as u32)
 }
 
+/// How a failed transaction reports one of the mock router's errors, raised
+/// inside the swap CPI: numbered from 6000 like the fund's own.
+fn router_error(error: RouterError) -> String {
+    format!("Custom({})", 6000 + error as u32)
+}
+
+/// How a failed transaction reports one of Anchor's own errors: constraint
+/// errors are numbered from 2000 and account errors from 3000.
+fn anchor_error(error: anchor_lang::error::ErrorCode) -> String {
+    format!("Custom({})", error as u32)
+}
+
 /// Recorded holdings must equal the vaults' token balances whenever nothing has
 /// been donated: a mismatch means a handler moved tokens without recording it.
 fn assert_holdings_match_vaults(ctx: &TestContext) {
@@ -681,13 +703,19 @@ fn donate_usdc(ctx: &mut TestContext, donor: &Keypair, amount: u64) {
 }
 
 /// A holder's position valued in USDC minor units at the test's starting prices
-/// (TSLAx $250, NVDAx $180; both assets and USDC have six decimals).
+/// (TSLAx $250, NVDAx $180), floored. An asset balance is in eight-decimal
+/// minor units and its price is at `PYTH_EXPONENT`, so the product is scaled by
+/// `10^(USDC_DECIMALS + PYTH_EXPONENT - ASSET_DECIMALS)` to reach USDC minor
+/// units, as the program's `asset_value_in_usdc` does.
 fn value_in_usdc(ctx: &TestContext, owner: &Pubkey) -> u64 {
-    let balance =
-        |mint: &Pubkey| get_token_account_balance(&ctx.svm, &derive_ata(owner, mint)).unwrap_or(0);
-    balance(&ctx.usdc_mint)
-        + balance(&ctx.tsla_mint) * (TSLA_PRICE as u64 / 100_000_000)
-        + balance(&ctx.nvda_mint) * (NVDA_PRICE as u64 / 100_000_000)
+    let balance = |mint: &Pubkey| {
+        get_token_account_balance(&ctx.svm, &derive_ata(owner, mint)).unwrap_or(0) as u128
+    };
+    let scale = 10u128.pow((ASSET_DECIMALS as i32 - PYTH_EXPONENT - USDC_DECIMALS as i32) as u32);
+    let in_usdc = |amount: u128, price: i64| amount * price as u128 / scale;
+    (balance(&ctx.usdc_mint)
+        + in_usdc(balance(&ctx.tsla_mint), TSLA_PRICE)
+        + in_usdc(balance(&ctx.nvda_mint), NVDA_PRICE)) as u64
 }
 
 fn read_asset_config(ctx: &TestContext, index: u8) -> managed_fund::state::AssetConfig {
@@ -755,25 +783,57 @@ fn do_rebalance(ctx: &mut TestContext, sell_index: u8, buy_index: u8) {
     try_rebalance(ctx, sell_index, buy_index).unwrap();
 }
 
+/// Assert that a transaction failed, and that it reported `expected`, the
+/// `Custom(code)` the error is sent as.
+fn assert_failed_with(result: Result<(), solana_kite::SolanaKiteError>, expected: &str, why: &str) {
+    let err = format!("{:?}", result.expect_err(why));
+    assert!(
+        err.contains(expected),
+        "{why}: expected {expected}, got {err}"
+    );
+}
+
 /// Assert that a transaction failed with one of the program's errors.
 fn assert_program_error(
     result: Result<(), solana_kite::SolanaKiteError>,
     error: FundError,
     why: &str,
 ) {
-    let err = format!("{:?}", result.expect_err(why));
-    assert!(err.contains(&program_error(error)), "{why}: {err}");
+    assert_failed_with(result, &program_error(error), why);
 }
 
-fn advance_one_year(ctx: &mut TestContext) {
+/// Assert that a transaction failed with one of the mock router's errors.
+fn assert_router_error(
+    result: Result<(), solana_kite::SolanaKiteError>,
+    error: RouterError,
+    why: &str,
+) {
+    assert_failed_with(result, &router_error(error), why);
+}
+
+/// Assert that a transaction failed on one of Anchor's own account constraints.
+fn assert_anchor_error(
+    result: Result<(), solana_kite::SolanaKiteError>,
+    error: anchor_lang::error::ErrorCode,
+    why: &str,
+) {
+    assert_failed_with(result, &anchor_error(error), why);
+}
+
+/// Move the clock `seconds` past the test's starting time, `PUBLISH_TIME`.
+fn advance_seconds(ctx: &mut TestContext, seconds: i64) {
     let clock = ctx.svm.get_sysvar::<Clock>();
     ctx.svm.set_sysvar(&Clock {
         slot: clock.slot + 1_000_000,
         epoch_start_timestamp: clock.epoch_start_timestamp,
         epoch: clock.epoch,
         leader_schedule_epoch: clock.leader_schedule_epoch,
-        unix_timestamp: PUBLISH_TIME + SECONDS_PER_YEAR,
+        unix_timestamp: PUBLISH_TIME + seconds,
     });
+}
+
+fn advance_one_year(ctx: &mut TestContext) {
+    advance_seconds(ctx, SECONDS_PER_YEAR);
 }
 
 fn do_collect_fees(ctx: &mut TestContext) -> Pubkey {
@@ -844,7 +904,7 @@ fn test_add_asset_rejects_unapproved() {
     init_fund(&mut ctx, FEE_BPS, SLIPPAGE_BPS, router);
 
     // A mint that was never approved: its approved_asset PDA does not exist.
-    let rogue_mint = create_token_mint(&mut ctx.svm, &ctx.payer, TOKEN_DECIMALS, None).unwrap();
+    let rogue_mint = create_token_mint(&mut ctx.svm, &ctx.payer, ASSET_DECIMALS, None).unwrap();
     let (rogue_entry, _) = Pubkey::find_program_address(
         &[
             b"approved_asset",
@@ -856,7 +916,11 @@ fn test_add_asset_rejects_unapproved() {
     let rogue_vault = derive_ata(&ctx.fund_pda, &rogue_mint);
 
     let result = add_asset(&mut ctx, 0, rogue_mint, rogue_entry, rogue_vault, 5000);
-    assert!(result.is_err(), "adding an unapproved mint must fail");
+    assert_anchor_error(
+        result,
+        anchor_lang::error::ErrorCode::AccountNotInitialized,
+        "adding an unapproved mint must fail",
+    );
 }
 
 #[test]
@@ -868,14 +932,18 @@ fn test_add_asset_rejects_weight_overflow() {
     add_asset(&mut ctx, 0, tm, wt, vt, 6000).unwrap();
     let (nm, wn, vn) = (ctx.nvda_mint, ctx.approved_nvda, ctx.vault_nvda);
     let result = add_asset(&mut ctx, 1, nm, wn, vn, 6000);
-    assert!(result.is_err(), "weights over 10000 bps must fail");
+    assert_program_error(
+        result,
+        FundError::WeightOverflow,
+        "weights over 10000 bps must fail",
+    );
 }
 
 /// Create a fresh mint and approve it in the registry. The bound price feed is an
 /// arbitrary pubkey: callers that never value this asset (e.g. the cap boundary test)
 /// do not need a real feed account.
 fn create_and_approve_mint(ctx: &mut TestContext) -> (Pubkey, Pubkey) {
-    let mint = create_token_mint(&mut ctx.svm, &ctx.payer, TOKEN_DECIMALS, None).unwrap();
+    let mint = create_token_mint(&mut ctx.svm, &ctx.payer, ASSET_DECIMALS, None).unwrap();
     let (entry, _) = Pubkey::find_program_address(
         &[b"approved_asset", ctx.registry_pda.as_ref(), mint.as_ref()],
         &ctx.fund_program_id,
@@ -920,7 +988,11 @@ fn test_add_asset_enforces_max_assets() {
     let (mint, entry) = create_and_approve_mint(&mut ctx);
     let vault = derive_ata(&ctx.fund_pda, &mint);
     let result = add_asset(&mut ctx, 16, mint, entry, vault, 0);
-    assert!(result.is_err(), "adding beyond MAX_ASSETS must revert");
+    assert_program_error(
+        result,
+        FundError::TooManyAssets,
+        "adding beyond MAX_ASSETS must revert",
+    );
 }
 
 #[test]
@@ -956,7 +1028,11 @@ fn test_initialize_rejects_excessive_fee() {
         &[&ctx.manager],
         &ctx.manager.pubkey(),
     );
-    assert!(r.is_err(), "fee above MAX_FEE_BPS must be rejected");
+    assert_program_error(
+        r,
+        FundError::FeeTooHigh,
+        "fee above MAX_FEE_BPS must be rejected",
+    );
 }
 
 #[test]
@@ -992,9 +1068,10 @@ fn test_initialize_rejects_excessive_slippage() {
         &[&ctx.manager],
         &ctx.manager.pubkey(),
     );
-    assert!(
-        r.is_err(),
-        "slippage above MAX_SLIPPAGE_BPS must be rejected"
+    assert_program_error(
+        r,
+        FundError::SlippageConfigTooHigh,
+        "slippage above MAX_SLIPPAGE_BPS must be rejected",
     );
 }
 
@@ -1008,7 +1085,7 @@ fn test_deposit_first() {
     let user_share = do_deposit(&mut ctx, &user, amount, amount);
 
     // First deposit is 1:1, then deployed at 40/60: 0.4 USDC -> TSLAx, 0.6 -> NVDAx,
-    // leaving no idle USDC.
+    // leaving no idle USDC. The basket vaults count eight-decimal minor units.
     assert_eq!(
         get_token_account_balance(&ctx.svm, &user_share).unwrap(),
         amount
@@ -1017,14 +1094,14 @@ fn test_deposit_first() {
         get_token_account_balance(&ctx.svm, &ctx.vault_usdc).unwrap(),
         0
     );
-    // 400000 USDC / 250 = 1600 TSLAx; 600000 USDC / 180 = 3333 NVDAx (floor).
+    // 0.4 USDC / 250 = 0.0016 TSLAx; 0.6 USDC / 180 = 0.00333333 NVDAx (floor).
     assert_eq!(
         get_token_account_balance(&ctx.svm, &ctx.vault_tsla).unwrap(),
-        1_600
+        160_000
     );
     assert_eq!(
         get_token_account_balance(&ctx.svm, &ctx.vault_nvda).unwrap(),
-        3_333
+        333_333
     );
 }
 
@@ -1037,9 +1114,10 @@ fn test_deposit_rejects_underallocated() {
     let user = fund_user(&mut ctx, 10_000_000);
     let ix = deposit_instruction(&ctx, &user, 10_000_000, 1, deposit_remaining_tsla(&ctx));
     let r = send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[&user], &user.pubkey());
-    assert!(
-        r.is_err(),
-        "deposit into an under-allocated fund must revert"
+    assert_program_error(
+        r,
+        FundError::FundNotFullyAllocated,
+        "deposit into an under-allocated fund must revert",
     );
 
     // Bring TSLAx to 100%; the deposit now succeeds and deploys fully into TSLAx.
@@ -1048,10 +1126,10 @@ fn test_deposit_rejects_underallocated() {
     ctx.svm.expire_blockhash();
     do_deposit_tsla_only(&mut ctx, &user, 10_000_000, 1);
 
-    // 10 USDC / 250 = 40000 TSLAx, with no idle USDC left.
+    // 10 USDC / 250 = 0.04 TSLAx, with no idle USDC left.
     assert_eq!(
         get_token_account_balance(&ctx.svm, &ctx.vault_tsla).unwrap(),
-        40_000
+        4_000_000
     );
     assert_eq!(
         get_token_account_balance(&ctx.svm, &ctx.vault_usdc).unwrap(),
@@ -1064,17 +1142,19 @@ fn test_deposit_rejects_slippage() {
     let mut ctx = setup_full();
     standard_fund(&mut ctx);
 
-    // Router rate for TSLAx far worse than the oracle: a deposit's TSLAx deploy leg
-    // must revert, taking the whole deposit with it.
+    // Router rate for TSLAx far worse than the oracle: the deposit's TSLAx deploy
+    // leg asks the router for at least the oracle amount less 1%, the router
+    // refuses, and its error reverts the whole deposit.
     let (tsla_mint, tsla_rate_pda) = (ctx.tsla_mint, ctx.tsla_rate_pda);
     set_router_rate(&mut ctx, tsla_mint, 300_000_000, tsla_rate_pda);
 
     let user = fund_user(&mut ctx, 10_000_000);
     let ix = deposit_instruction(&ctx, &user, 10_000_000, 1, deposit_remaining(&ctx));
     let r = send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[&user], &user.pubkey());
-    assert!(
-        r.is_err(),
-        "deposit deploy leg worse than oracle must revert the deposit"
+    assert_router_error(
+        r,
+        RouterError::SlippageExceeded,
+        "deposit deploy leg worse than oracle must revert the deposit",
     );
 }
 
@@ -1092,9 +1172,10 @@ fn test_deposit_rejects_unregistered_router() {
     let user = fund_user(&mut ctx, 10_000_000);
     let ix = deposit_instruction(&ctx, &user, 10_000_000, 1, deposit_remaining(&ctx));
     let r = send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[&user], &user.pubkey());
-    assert!(
-        r.is_err(),
-        "deposit deploying through an unregistered router must fail"
+    assert_program_error(
+        r,
+        FundError::InvalidSwapRouter,
+        "deposit deploying through an unregistered router must fail",
     );
 }
 
@@ -1131,13 +1212,10 @@ fn test_deposit_rejects_price_from_before_restart() {
     set_last_restart_slot(&mut ctx, 3);
 
     let ix = deposit_instruction(&ctx, &user, 10_000_000, 1, deposit_remaining(&ctx));
-    let message =
-        send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[&user], &user.pubkey())
-            .expect_err("a deposit priced before the restart must fail");
-    let code = managed_fund::error::FundError::PricePredatesRestart as u32 + 6000;
-    assert!(
-        message.to_string().contains(&format!("Custom({code})")),
-        "expected PricePredatesRestart (Custom({code})), got: {message}"
+    assert_program_error(
+        send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[&user], &user.pubkey()),
+        FundError::PricePredatesRestart,
+        "a deposit priced before the restart must fail",
     );
 
     // Pyth posting again after the restart reopens the fund. Fresh blockhash
@@ -1206,11 +1284,11 @@ fn test_rebalance() {
     // The USDC vault nets to zero across the two legs.
     assert_eq!(
         get_token_account_balance(&ctx.svm, &ctx.vault_tsla).unwrap(),
-        1_536_000
+        153_600_000
     );
     assert_eq!(
         get_token_account_balance(&ctx.svm, &ctx.vault_nvda).unwrap(),
-        2_880_000
+        288_000_000
     );
     assert_eq!(
         get_token_account_balance(&ctx.svm, &ctx.vault_usdc).unwrap(),
@@ -1229,11 +1307,33 @@ fn test_collect_fees() {
     advance_one_year(&mut ctx);
     let manager_share = do_collect_fees(&mut ctx);
 
-    // 1% of 1,000,000,000 = 10,000,000 fee shares.
+    // 1% of 1,000,000,000 = 10,000,000 fee shares, exactly.
     assert_eq!(
         get_token_account_balance(&ctx.svm, &manager_share).unwrap(),
         10_000_000
     );
+    assert_eq!(read_fund(&ctx).total_shares, 1_010_000_000);
+}
+
+/// A fee that is not a whole number of shares rounds up, against the holders:
+/// one day of a 1% fee on 1,000,000,000 shares is 27,397.26 shares, and the
+/// manager is minted 27,398.
+#[test]
+fn test_collect_fees_rounds_up() {
+    let mut ctx = setup_full();
+    standard_fund(&mut ctx);
+
+    let user = fund_user(&mut ctx, 1_000_000_000); // 1000 USDC
+    do_deposit(&mut ctx, &user, 1_000_000_000, 1);
+
+    advance_seconds(&mut ctx, SECONDS_PER_DAY);
+    let manager_share = do_collect_fees(&mut ctx);
+
+    assert_eq!(
+        get_token_account_balance(&ctx.svm, &manager_share).unwrap(),
+        27_398
+    );
+    assert_eq!(read_fund(&ctx).total_shares, 1_000_027_398);
 }
 
 fn withdraw_remaining(ctx: &TestContext, user: &Pubkey) -> Vec<AccountMeta> {
@@ -1255,7 +1355,8 @@ fn test_withdraw() {
     standard_fund(&mut ctx);
 
     let user = fund_user(&mut ctx, 10_000_000);
-    // Deposit auto-deploys 4 USDC -> 16000 TSLAx and 6 USDC -> 33333 NVDAx, no idle USDC.
+    // Deposit auto-deploys 4 USDC -> 0.016 TSLAx and 6 USDC -> 0.03333333 NVDAx,
+    // no idle USDC.
     let user_share = do_deposit(&mut ctx, &user, 10_000_000, 1);
     let shares = get_token_account_balance(&ctx.svm, &user_share).unwrap();
 
@@ -1292,15 +1393,16 @@ fn test_withdraw() {
     );
     send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[&user], &user.pubkey()).unwrap();
 
-    // Sole holder withdraws everything in kind: all 16000 TSLAx + 33333 NVDAx, no USDC.
+    // Sole holder withdraws everything in kind: all 0.016 TSLAx + 0.03333333
+    // NVDAx, no USDC.
     assert_eq!(get_token_account_balance(&ctx.svm, &user_usdc).unwrap(), 0);
     assert_eq!(
         get_token_account_balance(&ctx.svm, &derive_ata(&user.pubkey(), &ctx.tsla_mint)).unwrap(),
-        16_000
+        1_600_000
     );
     assert_eq!(
         get_token_account_balance(&ctx.svm, &derive_ata(&user.pubkey(), &ctx.nvda_mint)).unwrap(),
-        33_333
+        3_333_333
     );
 }
 
@@ -1346,7 +1448,11 @@ fn test_withdraw_rejects_slippage() {
         metas,
     );
     let r = send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[&user], &user.pubkey());
-    assert!(r.is_err(), "min_usdc_out above payout must revert");
+    assert_program_error(
+        r,
+        FundError::UsdcSlippage,
+        "min_usdc_out above payout must revert",
+    );
 }
 
 #[test]
@@ -1360,7 +1466,11 @@ fn test_deposit_rejects_incomplete_assets() {
     // Only one asset's accounts supplied (5) for a two-asset fund (needs 10).
     let ix = deposit_instruction(&ctx, &user, amount, 1, deposit_remaining_tsla(&ctx));
     let r = send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[&user], &user.pubkey());
-    assert!(r.is_err(), "incomplete asset accounts must revert");
+    assert_program_error(
+        r,
+        FundError::IncompleteAssetAccounts,
+        "incomplete asset accounts must revert",
+    );
 }
 
 fn do_withdraw(ctx: &mut TestContext, user: &Keypair, shares: u64, min_usdc_out: u64) {
@@ -1411,9 +1521,10 @@ fn test_set_weight_retire() {
     let user = fund_user(&mut ctx, 100_000_000);
     let ix = deposit_instruction(&ctx, &user, 100_000_000, 1, deposit_remaining(&ctx));
     let r = send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[&user], &user.pubkey());
-    assert!(
-        r.is_err(),
-        "an under-allocated (retired) fund must reject deposits"
+    assert_program_error(
+        r,
+        FundError::FundNotFullyAllocated,
+        "an under-allocated (retired) fund must reject deposits",
     );
 
     // Reassign the freed weight to TSLAx (back to 100%); deposits reopen and now deploy
@@ -1422,10 +1533,10 @@ fn test_set_weight_retire() {
     set_weight(&mut ctx, 0, 10_000).unwrap();
     ctx.svm.expire_blockhash();
     do_deposit(&mut ctx, &user, 100_000_000, 1);
-    // 100 USDC / 250 = 400000 TSLAx, nothing to NVDAx, no idle USDC.
+    // 100 USDC / 250 = 0.4 TSLAx, nothing to NVDAx, no idle USDC.
     assert_eq!(
         get_token_account_balance(&ctx.svm, &ctx.vault_tsla).unwrap(),
-        400_000
+        40_000_000
     );
     assert_eq!(
         get_token_account_balance(&ctx.svm, &ctx.vault_nvda).unwrap(),
@@ -1443,9 +1554,10 @@ fn test_set_weight_rejects_overflow() {
     standard_fund(&mut ctx);
     // TSLAx 4000 + NVDAx 6000 = 10000. Raising TSLAx to 6000 would total 12000.
     let r = set_weight(&mut ctx, 0, 6000);
-    assert!(
-        r.is_err(),
-        "weight change pushing total over 10000 must revert"
+    assert_program_error(
+        r,
+        FundError::WeightOverflow,
+        "weight change pushing total over 10000 must revert",
     );
 }
 
@@ -1471,7 +1583,13 @@ fn test_set_weight_rejects_non_manager() {
         &[&intruder],
         &intruder.pubkey(),
     );
-    assert!(r.is_err(), "only the manager may set weights");
+    // The manager is bound to the fund's stored `manager` by an Anchor
+    // constraint, so the refusal is Anchor's, not one of the program's errors.
+    assert_anchor_error(
+        r,
+        anchor_lang::error::ErrorCode::ConstraintHasOne,
+        "only the manager may set weights",
+    );
 }
 
 /// The whole lifecycle with the exact figures the book's Managed Fund chapter narrates: deposit and
@@ -1491,11 +1609,11 @@ fn test_full_lifecycle() {
     );
     assert_eq!(
         get_token_account_balance(&ctx.svm, &ctx.vault_tsla).unwrap(),
-        1_440_000
+        144_000_000
     );
     assert_eq!(
         get_token_account_balance(&ctx.svm, &ctx.vault_nvda).unwrap(),
-        3_000_000
+        300_000_000
     );
 
     assert_holdings_match_vaults(&ctx);
@@ -1506,11 +1624,11 @@ fn test_full_lifecycle() {
     assert_holdings_match_vaults(&ctx);
     assert_eq!(
         get_token_account_balance(&ctx.svm, &ctx.vault_tsla).unwrap(),
-        1_536_000
+        153_600_000
     );
     assert_eq!(
         get_token_account_balance(&ctx.svm, &ctx.vault_nvda).unwrap(),
-        2_880_000
+        288_000_000
     );
 
     // Bob deposits 480 USDC at NAV 960 -> 450,000,000 shares, deployed 40/60.
@@ -1522,16 +1640,17 @@ fn test_full_lifecycle() {
     );
     assert_eq!(
         get_token_account_balance(&ctx.svm, &ctx.vault_tsla).unwrap(),
-        2_304_000
+        230_400_000
     );
     assert_eq!(
         get_token_account_balance(&ctx.svm, &ctx.vault_nvda).unwrap(),
-        4_320_000
+        432_000_000
     );
 
     assert_holdings_match_vaults(&ctx);
 
-    // A year passes; the manager collects 1% of the 1,350,000,000 supply = 13,500,000.
+    // A year passes; the manager collects 1% of the 1,350,000,000 supply =
+    // 13,500,000, exactly: nothing to round.
     advance_one_year(&mut ctx);
     let manager_share = do_collect_fees(&mut ctx);
     assert_eq!(
@@ -1540,15 +1659,16 @@ fn test_full_lifecycle() {
     );
     assert_eq!(read_fund(&ctx).total_shares, 1_363_500_000);
 
-    // Alice withdraws all 900,000,000 shares in kind: her 900/1363.5 slice of each vault.
+    // Alice withdraws all 900,000,000 shares in kind: her 900/1363.5 slice of
+    // each vault, floored: 1.52079207 TSLAx and 2.85148514 NVDAx.
     do_withdraw(&mut ctx, &alice, 900_000_000, 0);
     assert_eq!(
         get_token_account_balance(&ctx.svm, &derive_ata(&alice.pubkey(), &ctx.tsla_mint)).unwrap(),
-        1_520_792
+        152_079_207
     );
     assert_eq!(
         get_token_account_balance(&ctx.svm, &derive_ata(&alice.pubkey(), &ctx.nvda_mint)).unwrap(),
-        2_851_485
+        285_148_514
     );
     assert_eq!(
         get_token_account_balance(&ctx.svm, &derive_ata(&alice.pubkey(), &ctx.usdc_mint)).unwrap(),
@@ -1656,10 +1776,10 @@ fn test_deposit_rejects_leg_that_buys_nothing() {
     );
     assert_eq!(read_fund(&ctx).total_shares, 0);
 
-    // A deposit large enough to buy some TSLAx goes through.
+    // A deposit large enough to buy some TSLAx goes through: 1 USDC buys 0.004.
     let user = fund_user(&mut ctx, 1_000_000);
     do_deposit_tsla_only(&mut ctx, &user, 1_000_000, 1);
-    assert_eq!(read_fund(&ctx).asset_holdings[0], 4_000);
+    assert_eq!(read_fund(&ctx).asset_holdings[0], 400_000);
 }
 
 /// Transfer `amount` of `mint` from the donor's token account straight into a
@@ -1721,7 +1841,7 @@ fn test_rebalance_refuses_drift_below_threshold() {
         FundError::DriftBelowThreshold,
         "drift under the threshold must not trade",
     );
-    assert_eq!(read_fund(&ctx).asset_holdings[1], 3_000_000);
+    assert_eq!(read_fund(&ctx).asset_holdings[1], 300_000_000);
 }
 
 /// Churn: once a rebalance has restored the weights, calling it again, in
@@ -1765,7 +1885,7 @@ struct ExtraAsset {
 }
 
 fn create_routable_asset(ctx: &mut TestContext, price: i64, rate: u64) -> ExtraAsset {
-    let mint = create_token_mint(&mut ctx.svm, &ctx.payer, TOKEN_DECIMALS, None).unwrap();
+    let mint = create_token_mint(&mut ctx.svm, &ctx.payer, ASSET_DECIMALS, None).unwrap();
     let ix = spl_token::instruction::set_authority(
         &spl_token::ID,
         &mint,
@@ -1883,7 +2003,7 @@ fn test_rebalance_refuses_buying_overweight_asset() {
         &stranger.pubkey(),
     )
     .unwrap();
-    assert!(read_fund(&ctx).asset_holdings[0] > 1_600_000);
+    assert!(read_fund(&ctx).asset_holdings[0] > 160_000_000);
 }
 
 /// A rebalance values every asset, so it needs every asset's accounts, as a
@@ -1934,7 +2054,7 @@ fn test_rebalance_sells_retired_asset() {
     // All 3 NVDAx sold for 3 USDC, which bought 0.012 TSLAx.
     let fund = read_fund(&ctx);
     assert_eq!(fund.asset_holdings[1], 0);
-    assert_eq!(fund.asset_holdings[0], 1_452_000);
+    assert_eq!(fund.asset_holdings[0], 145_200_000);
     assert_eq!(fund.usdc_holdings, 0);
     assert_holdings_match_vaults(&ctx);
 
@@ -2032,35 +2152,35 @@ fn test_initialize_rejects_threshold_out_of_range() {
 }
 
 /// Valuation scales by each asset's decimals and each feed's exponent. TSLAx
-/// here has eight decimals and a Pyth equity feed with exponent -5, while USDC
-/// and NVDAx keep six decimals and NVDAx's feed keeps -8. Assuming six decimals
-/// and -8 would value Alice's 1.44 TSLAx at $360 * 100 * 1,000, and Bob's
-/// deposit would buy almost no shares. Scaled correctly, every figure matches
-/// the six-decimal story.
+/// here has nine decimals and a Pyth equity feed with exponent -5, while NVDAx
+/// keeps its eight decimals and its feed keeps -8, and USDC its six. Assuming
+/// eight decimals and -8 would value Alice's 1.44 TSLAx at $360 * 10 * 1,000,
+/// and Bob's deposit would buy almost no shares. Scaled correctly, every figure
+/// matches the story in major units.
 #[test]
 fn test_valuation_scales_by_decimals_and_exponent() {
-    let mut ctx = setup_with_tsla_decimals(8);
+    let mut ctx = setup_with_tsla_decimals(9);
     write_price_feed(&mut ctx.svm, ctx.price_feed_tsla, 25_000_000, -5, 1); // $250
     standard_fund(&mut ctx);
-    assert_eq!(read_asset_config(&ctx, 0).decimals, 8);
-    assert_eq!(read_asset_config(&ctx, 1).decimals, 6);
+    assert_eq!(read_asset_config(&ctx, 0).decimals, 9);
+    assert_eq!(read_asset_config(&ctx, 1).decimals, ASSET_DECIMALS);
 
-    // Alice's 900 USDC deploys to 1.44 TSLAx (eight decimals) and 3 NVDAx.
+    // Alice's 900 USDC deploys to 1.44 TSLAx (nine decimals) and 3 NVDAx.
     let alice = fund_user(&mut ctx, 900_000_000);
     let alice_share = do_deposit(&mut ctx, &alice, 900_000_000, 1);
     assert_eq!(
         get_token_account_balance(&ctx.svm, &alice_share).unwrap(),
         900_000_000
     );
-    assert_eq!(read_fund(&ctx).asset_holdings[0], 144_000_000);
-    assert_eq!(read_fund(&ctx).asset_holdings[1], 3_000_000);
+    assert_eq!(read_fund(&ctx).asset_holdings[0], 1_440_000_000);
+    assert_eq!(read_fund(&ctx).asset_holdings[1], 300_000_000);
 
     // NVDAx to $200. The rebalance computes its trade in the same units: 0.12
     // NVDAx sold for 24 USDC, which buys 0.096 TSLAx, back to 40/60.
     set_nvda_price(&mut ctx, 20_000_000_000, 200_000_000);
     do_rebalance(&mut ctx, 1, 0);
-    assert_eq!(read_fund(&ctx).asset_holdings[0], 153_600_000);
-    assert_eq!(read_fund(&ctx).asset_holdings[1], 2_880_000);
+    assert_eq!(read_fund(&ctx).asset_holdings[0], 1_536_000_000);
+    assert_eq!(read_fund(&ctx).asset_holdings[1], 288_000_000);
 
     // The fund is worth $960, so Bob's 480 USDC buys 450 shares.
     let bob = fund_user(&mut ctx, 480_000_000);
@@ -2069,8 +2189,8 @@ fn test_valuation_scales_by_decimals_and_exponent() {
         get_token_account_balance(&ctx.svm, &bob_share).unwrap(),
         450_000_000
     );
-    assert_eq!(read_fund(&ctx).asset_holdings[0], 230_400_000);
-    assert_eq!(read_fund(&ctx).asset_holdings[1], 4_320_000);
+    assert_eq!(read_fund(&ctx).asset_holdings[0], 2_304_000_000);
+    assert_eq!(read_fund(&ctx).asset_holdings[1], 432_000_000);
     assert_holdings_match_vaults(&ctx);
 }
 
@@ -2095,7 +2215,7 @@ fn test_wide_confidence_price_rejected() {
         ctx.price_feed_nvda,
         20_000_000_000,
         400_000_000,
-        -8,
+        PYTH_EXPONENT,
         1,
     );
 
@@ -2116,11 +2236,11 @@ fn test_wide_confidence_price_rejected() {
     do_withdraw(&mut ctx, &alice, 450_000_000, 0);
     assert_eq!(
         get_token_account_balance(&ctx.svm, &derive_ata(&alice.pubkey(), &ctx.tsla_mint)).unwrap(),
-        720_000
+        72_000_000
     );
     assert_eq!(
         get_token_account_balance(&ctx.svm, &derive_ata(&alice.pubkey(), &ctx.nvda_mint)).unwrap(),
-        1_500_000
+        150_000_000
     );
 
     // A $2 interval is exactly 1% of the price, which is accepted: the
@@ -2130,11 +2250,11 @@ fn test_wide_confidence_price_rejected() {
         ctx.price_feed_nvda,
         20_000_000_000,
         200_000_000,
-        -8,
+        PYTH_EXPONENT,
         1,
     );
     do_rebalance(&mut ctx, 1, 0);
-    assert_eq!(read_fund(&ctx).asset_holdings[0], 768_000);
-    assert_eq!(read_fund(&ctx).asset_holdings[1], 1_440_000);
+    assert_eq!(read_fund(&ctx).asset_holdings[0], 76_800_000);
+    assert_eq!(read_fund(&ctx).asset_holdings[1], 144_000_000);
     assert_holdings_match_vaults(&ctx);
 }

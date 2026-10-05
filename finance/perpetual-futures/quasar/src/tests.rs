@@ -11,7 +11,7 @@ use {
             InitializePoolInstruction, LiquidatePositionInstruction, OpenPositionInstruction,
             RemoveLiquidityInstruction, UpdatePriceAverageInstruction,
         },
-        instructions::shared::error,
+        instructions::shared::{basis_points_of, basis_points_of_rounded_down, error},
         state::{Pool, Position},
         LpMintPda, VaultPda,
     },
@@ -556,10 +556,8 @@ fn open_rejects_price_from_before_a_restart(test: &mut Test) {
     set_clock_at(test, 10, 0);
     set_feed_at_slot(test, dollars(100), 5, 0);
     set_last_restart_slot(test, 7);
-    assert!(
-        open_position(test, &env, 0, 1_000 * ONE_USDC, 5_000 * ONE_USDC).is_err(),
-        "a pre-restart price must be rejected even inside the staleness bound"
-    );
+    open_position(test, &env, 0, 1_000 * ONE_USDC, 5_000 * ONE_USDC)
+        .fails_with(error::PRICE_PREDATES_RESTART);
 
     // Publishing after the restart (slot 10) reopens the pool.
     set_feed_at_slot(test, dollars(100), 10, 0);
@@ -819,10 +817,8 @@ fn wide_oracle_confidence_is_rejected(test: &mut Test) {
     // The pool tolerates a 1% confidence band (max_confidence_bps = 100). Widen
     // the feed's band to 2% of the price and the open must be rejected.
     set_feed(test, dollars(100), dollars(2) as u64);
-    assert!(
-        open_position(test, &env, 0, 1_000 * ONE_USDC, 5_000 * ONE_USDC).is_err(),
-        "a confidence band wider than max_confidence_bps must be rejected"
-    );
+    open_position(test, &env, 0, 1_000 * ONE_USDC, 5_000 * ONE_USDC)
+        .fails_with(error::ORACLE_CONFIDENCE_TOO_WIDE);
 }
 
 /// Nothing is set aside to back a position's profit, so a position can open
@@ -1178,13 +1174,13 @@ fn insurance_fund_funded_by_fees(test: &mut Test) {
     fund(test, PROVIDER, PROVIDER_COLLATERAL, 100_000 * ONE_USDC);
     add_liquidity(test, &env, 100_000 * ONE_USDC).succeeds();
 
-    // A size whose 0.1% fee is 1,234,567 minor units: 3,333 basis points of
-    // that is 411,481.18, so the insurance fund gets 411,481 and the program
-    // the other 823,086.
-    let size = 1_234_567_890;
-    let fee = 1_234_567;
+    // A size whose 0.1% fee is 1,234,567.89 minor units, rounded up to
+    // 1,234,568: 3,333 basis points of that is 411,481.5, so the insurance
+    // fund gets 411,481 (its cut rounds down) and the program the other 823,087.
+    let size: u64 = 1_234_567_890;
+    let fee = 1_234_568;
     let insurance_cut = 411_481;
-    assert_eq!(size / 1_000, fee);
+    assert_eq!(size.div_ceil(1_000), fee);
     fund(test, TRADER, TRADER_COLLATERAL, 200 * ONE_USDC);
     open_position(test, &env, SIDE_LONG, 200 * ONE_USDC, size).succeeds();
     let pool = test.read::<Pool>(env.pool);
@@ -1279,6 +1275,79 @@ fn liquidation_of_bankrupt_position_charges_insurance_before_liquidity(test: &mu
     assert_vault_matches_ledger(test, &env);
 }
 
+/// Every fee rounds up, and so does the maintenance requirement, so none is
+/// a minor unit short in the trader's favour. A position one base unit over
+/// $5,000 pays $5.000001 to open and the same to close: 0.1% of it is
+/// 5,000,000.001 base units, rounded up to 5,000,001. The insurance fund's
+/// half of a fee rounds down, and the program takes the odd unit. The same
+/// position is liquidatable at an equity of 250,000,001 base units, the
+/// maintenance requirement 250,000,000.05 rounded up, where a requirement
+/// rounded down would have left it one base unit too healthy, and the
+/// liquidation fee is 50,000,001.
+#[quasar_test]
+fn fees_and_maintenance_requirement_round_up(test: &mut Test) {
+    let env = setup(test);
+    fund(test, PROVIDER, PROVIDER_COLLATERAL, 100_000 * ONE_USDC);
+    add_liquidity(test, &env, 100_000 * ONE_USDC).succeeds();
+    let collateral = 1_000 * ONE_USDC;
+    let size = 5_000 * ONE_USDC + 1;
+    let fee = 5_000_001;
+    fund(test, TRADER, TRADER_COLLATERAL, 2 * collateral);
+
+    open_position(test, &env, SIDE_LONG, collateral, size).succeeds();
+    let pool = test.read::<Pool>(env.pool);
+    assert_eq!(u64::from(pool.insurance_fund), 2_500_000);
+    assert_eq!(u64::from(pool.program_fees), 2_500_001);
+    assert_eq!(u64::from(pool.total_collateral), collateral - fee);
+    let position = test.read::<Position>(test.derive_pda(Position::seeds(&env.pool, &TRADER)));
+    assert_eq!(u64::from(position.collateral), collateral - fee);
+
+    // Closing at the entry price settles no profit or loss, so the payout is
+    // the net collateral less the close fee.
+    close_position(test, &env)
+        .succeeds()
+        .has_tokens(TRADER_COLLATERAL, 2 * collateral - fee - fee);
+    let pool = test.read::<Pool>(env.pool);
+    assert_eq!(u64::from(pool.insurance_fund), 2 * 2_500_000);
+    assert_eq!(u64::from(pool.program_fees), 2 * 2_500_001);
+
+    // The same position again, taken to an equity of exactly the rounded-up
+    // maintenance requirement: $85.10000004 loses it 744,999,998 base units.
+    open_position(test, &env, SIDE_LONG, collateral, size).succeeds();
+    set_feed(test, 8_510_000_004, 0);
+    liquidate(test, &env)
+        .succeeds()
+        .has_tokens(LIQUIDATOR_COLLATERAL, 50_000_001)
+        // The trader is refunded the equity less the liquidation fee.
+        .has_tokens(
+            TRADER_COLLATERAL,
+            collateral - fee - fee + (250_000_001 - 50_000_001),
+        );
+    assert_vault_matches_ledger(test, &env);
+}
+
+/// `basis_points_of` rounds up, so an amount that is not an exact multiple
+/// rounds to the next base unit and the smallest non-zero amount pays a whole
+/// unit; an exact multiple is unchanged. `basis_points_of_rounded_down`
+/// splits a fee the pool already holds, so it rounds the other way.
+#[test]
+fn basis_points_of_rounds_up_and_the_insurance_split_rounds_down() {
+    assert_eq!(basis_points_of(5_000 * ONE_USDC, 10).unwrap(), 5 * ONE_USDC);
+    assert_eq!(
+        basis_points_of(5_000 * ONE_USDC + 1, 10).unwrap(),
+        5_000_001
+    );
+    assert_eq!(basis_points_of(1, 10).unwrap(), 1);
+    assert_eq!(basis_points_of(0, 10).unwrap(), 0);
+    // Widened to `u128`, so the largest amount does not overflow.
+    assert_eq!(basis_points_of(u64::MAX, 10_000).unwrap(), u64::MAX);
+    assert_eq!(
+        basis_points_of_rounded_down(5_000_001, 5_000).unwrap(),
+        2_500_000
+    );
+    assert_eq!(basis_points_of_rounded_down(1, 5_000).unwrap(), 0);
+}
+
 #[quasar_test]
 fn initialize_pool_rejects_insurance_fee_at_or_above_full_fee(test: &mut Test) {
     add_pool_prerequisites(test);
@@ -1301,6 +1370,9 @@ fn initialize_pool_rejects_close_fee_at_or_above_maintenance_margin(test: &mut T
     // close, so initialize_pool refuses the configuration.
     add_pool_prerequisites(test);
     init_pool(test, 500, 600).fails_with(error::INVALID_PARAMETER);
+    init_pool(test, 500, 500).fails_with(error::INVALID_PARAMETER);
+    // One basis point below the maintenance margin is accepted.
+    init_pool(test, 500, 499).succeeds();
 }
 
 #[quasar_test]

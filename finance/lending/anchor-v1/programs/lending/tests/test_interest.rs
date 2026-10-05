@@ -106,20 +106,68 @@ fn program_fees_accrue_and_owner_can_collect() {
     env.warp_seconds(TENTH_OF_A_YEAR);
     env.refresh_reserve_only(&borrower, &borrow);
 
-    // Fees accrued, and they are ~10% (the reserve factor) of total interest.
+    // Fees accrued: 10% (the reserve factor) of the interest, rounded up.
     let reserve = env.reserve(&borrow);
     let fees = reserve.accumulated_program_fees;
     assert!(fees > 0, "program fees should accrue once interest does");
     let total_interest = reserve.current_borrowed_amount().unwrap() - 500_000_000;
-    let expected_fee = total_interest / 10; // 1000 bps = 10%
-                                            // Allow a 1-unit rounding tolerance from flooring.
-    assert!(
-        fees.abs_diff(expected_fee) <= 1,
-        "fees {fees} should be ~10% of interest {total_interest}"
+    let expected_fee = total_interest.div_ceil(10); // 1000 bps = 10%
+    assert_eq!(
+        fees, expected_fee,
+        "fees {fees} should be 10% of interest {total_interest}, rounded up"
     );
 
     // Maria withdraws the fees to her own account.
     let owner_account = env.collect_program_fees(&borrow);
     assert_eq!(env.token_balance(owner_account), fees);
     assert_eq!(env.reserve(&borrow).accumulated_program_fees, 0);
+}
+
+/// The program fee is the program's cut of the interest, so it rounds against
+/// the user: up. One second of interest on a 500-unit borrow at the default
+/// curve is 3 units, a tenth of which is not whole; the fee is 1, not 0, and
+/// the suppliers' pool grows by the other 2, so fee and remainder sum to the
+/// interest and never exceed it.
+#[test]
+fn program_fee_rounds_up_and_suppliers_take_the_remainder() {
+    let mut env = Env::new();
+    let collateral = env.add_reserve(6, dollars(1), default_config());
+    let borrow = env.add_reserve(6, dollars(1), default_config());
+
+    let supplier = env.create_user();
+    env.fund(&supplier, borrow.mint, 1_000_000_000);
+    env.supply(&supplier, &borrow, 1_000_000_000);
+
+    let borrower = env.create_user();
+    env.fund(&borrower, collateral.mint, 1_000_000_000);
+    env.fund(&borrower, borrow.mint, 0);
+    env.supply(&borrower, &collateral, 1_000_000_000);
+    let obligation = env.initialize_obligation(&borrower);
+    env.post_collateral(&borrower, obligation, &collateral, 1_000_000_000);
+    env.try_borrow(
+        &borrower,
+        obligation,
+        &[&collateral],
+        &[],
+        &borrow,
+        500_000_000,
+    )
+    .unwrap();
+    let before = env.reserve(&borrow);
+    let debt_before = before.current_borrowed_amount().unwrap();
+    let suppliers_before = before.total_liquidity().unwrap();
+
+    env.warp_seconds(1);
+    env.refresh_reserve_only(&borrower, &borrow);
+
+    let after = env.reserve(&borrow);
+    let interest = after.current_borrowed_amount().unwrap() - debt_before;
+    assert_eq!(interest, 3, "one second of interest on the 500-unit borrow");
+    let fee = after.accumulated_program_fees;
+    assert_eq!(fee, 1, "a tenth of 3 units rounds up to 1 for the program");
+    assert_eq!(
+        after.total_liquidity().unwrap(),
+        suppliers_before + (interest - fee) as u128,
+        "the suppliers' pool grows by the interest less the fee"
+    );
 }

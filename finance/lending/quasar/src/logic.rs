@@ -9,7 +9,7 @@ use crate::{
     constants::{FIXED_POINT_SCALE, MAX_PRICE_STALENESS_SLOTS},
     error::LendingError,
     last_restart::LastRestartSlot,
-    math::{accrue_factor, current_debt, mul_div_floor, price_mantissa_to_scaled},
+    math::{accrue_factor, current_debt, mul_div_ceil, price_mantissa_to_scaled},
     state::{Obligation, ObligationInner, PriceFeed, Reserve, ReserveInner},
 };
 
@@ -103,13 +103,16 @@ pub fn accrue(
         reserve.max_borrow_rate_bps,
     )?;
     // The program keeps `reserve_factor_bps` of the newly accrued interest; the
-    // rest lifts the supplier exchange rate. Flooring rounds the owner's cut down.
+    // rest lifts the supplier exchange rate. The fee rounds up, in the owner's
+    // favour: a fee is the program's cut and so rounds against the user, and
+    // the suppliers take what is left, so the two parts sum to the interest and
+    // never exceed it.
     let borrowed_after = current_debt(
         reserve.borrowed_principal,
         reserve.borrow_accumulation_factor,
     )?;
     let interest = borrowed_after.saturating_sub(borrowed_before);
-    let fee = mul_div_floor(
+    let fee = mul_div_ceil(
         interest as u128,
         reserve.reserve_factor_bps as u128,
         BPS_DENOMINATOR,

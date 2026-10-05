@@ -20,15 +20,16 @@ use {
     quasar_test::prelude::*,
 };
 
-// --- Market parameters used across the tests (NVDAx-style base / USDC-style
-// quote): base 9 decimals, quote 6 decimals. base_lot_size = 10^(9-6) = 1000,
-// quote_lot_size = 1, so `price` reads as quote units per base lot. ---
+// --- Market parameters used across the tests: NVDAx (8 decimals onchain,
+// https://explorer.solana.com/address/Xsc9qvGR1efVDFGLrVsmkzv3qi45LTBjeUKSPmx9qEh)
+// over USDC (6 decimals). base_lot_size = 10^(8-6) = 100, quote_lot_size = 1,
+// so `price` reads as quote units per base lot. ---
 const FEE_BASIS_POINTS: u16 = 100; // 1%
 const TICK_SIZE: u64 = 1;
-const BASE_LOT_SIZE: u64 = 1000;
+const BASE_LOT_SIZE: u64 = 100;
 const QUOTE_LOT_SIZE: u64 = 1;
 const MIN_ORDER_SIZE: u64 = 1;
-const BASE_DECIMALS: u8 = 9;
+const BASE_DECIMALS: u8 = 8;
 const QUOTE_DECIMALS: u8 = 6;
 
 // Deterministic addresses keep tests independent of discovery order.
@@ -220,18 +221,18 @@ fn initialize_market_user_starts_with_empty_balances(test: &mut Test) {
 /// Full lifecycle: a maker rests an ask, a taker bid crosses it fully, both
 /// settle, and the authority withdraws the fee. Prices in the NVDAx/USDC lot
 /// model: ask 5 lots @ 100 -> gross 500 quote, 1% fee = 5, maker nets 495
-/// quote, taker receives 5000 raw base.
+/// quote, taker receives 500 raw base.
 #[quasar_test]
 fn place_match_settle_withdraw_moves_tokens_and_fees(test: &mut Test) {
     let market = init_market(test);
     let maker_market_user = initialize_market_user(test, market, MAKER);
     let taker_market_user = initialize_market_user(test, market, TAKER);
 
-    // Maker sells 5 base lots (locks 5 * 1000 = 5000 raw base); taker buys 5
+    // Maker sells 5 base lots (locks 5 * 100 = 500 raw base); taker buys 5
     // lots at 100 (locks 100 * 5 * 1 = 500 raw quote).
     const PRICE: u64 = 100;
     const QUANTITY: u64 = 5;
-    const MAKER_BASE_LOCK: u64 = QUANTITY * BASE_LOT_SIZE; // 5000
+    const MAKER_BASE_LOCK: u64 = QUANTITY * BASE_LOT_SIZE; // 500
     const TAKER_QUOTE_LOCK: u64 = PRICE * QUANTITY * QUOTE_LOT_SIZE; // 500
     const GROSS_QUOTE: u64 = PRICE * QUANTITY * QUOTE_LOT_SIZE; // 500
     const FEE_QUOTE: u64 = 5; // ceil(500 * 100 / 10000)
@@ -710,7 +711,7 @@ const PAUSE_PRICE: u64 = 1_300;
 const PAUSE_QUANTITY: u64 = 7;
 const PAUSE_GROSS: u64 = PAUSE_PRICE * PAUSE_QUANTITY * QUOTE_LOT_SIZE; // 9100
 const PAUSE_FEE: u64 = 91; // ceil(9100 * 100 / 10000)
-const PAUSE_LOCKED_BASE: u64 = PAUSE_QUANTITY * BASE_LOT_SIZE; // 7000
+const PAUSE_LOCKED_BASE: u64 = PAUSE_QUANTITY * BASE_LOT_SIZE; // 700
 const ASK: u8 = 1;
 
 /// A market with the maker (the seller) and the taker (the buyer) registered

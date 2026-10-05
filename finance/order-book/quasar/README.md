@@ -56,7 +56,7 @@ raw_quote = quantity × price × quote_lot_size
 ```
 
 Choose `base_lot_size = 10^max(d_base − d_quote, 0)` and `quote_lot_size = 10^max(d_quote − d_base, 0)`. For
-NVDAx (9 decimals) / USDC (6 decimals): `base_lot_size = 1000`, `quote_lot_size = 1`, so `price = 100` means
+NVDAx (8 decimals) / USDC (6 decimals): `base_lot_size = 100`, `quote_lot_size = 1`, so `price = 100` means
 100 USDC-units per base lot and `tick_size = 1` is one atomic increment.
 
 ## Instruction lifecycle

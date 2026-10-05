@@ -1,5 +1,25 @@
 # Changelog
 
+## [Unreleased] - 2026-10-05
+
+### Changed
+
+- `settle_event` rounds the fee up: `fee = ceil(losing_pool * fee_bps / 10_000)`,
+  and `distributable_losing_pool` is the losing pool minus that fee, so the
+  rounding on the fee goes the program's way as the rounding on each payout
+  does. A losing pool that is an exact multiple of the fee rate pays the same
+  fee as before; any other pays one minor unit more. In
+  `close_event_pays_dust_to_fee_recipient_and_returns_rent` the 1% fee on the
+  250 losing pool is 3, the winners share 247 (82 and 164), and the fee
+  recipient ends with 4 after the dust. The Kani harness
+  `proof_settlement_fee_and_split` proves the fee is that ceiling.
+
+### Added
+
+- `settle_and_cancel_reject_a_non_admin_signer`: `settle_event` and
+  `cancel_event` from a non-admin both fail with `Unauthorized`, the event stays
+  `Open`, and the admin then settles it.
+
 ## [Unreleased] - 2026-10-04
 
 ### Added

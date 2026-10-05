@@ -11,7 +11,7 @@ use {
             InitializePoolInstruction, SwapTokensInstruction, WithdrawLiquidityInstruction,
         },
         error::AmmError,
-        state::Config,
+        state::{Config, PoolConfig},
         ConfigPda, LiquidityMintPda, PoolAPda, PoolBPda, PoolPda,
     },
     quasar_test::prelude::*,
@@ -30,11 +30,24 @@ fn mul_div(amount: u64, numerator: u64, denominator: u64) -> u64 {
     .expect("mul_div: result exceeds u64")
 }
 
+/// `amount * numerator / denominator` rounded up, in u128 with checked ops.
+/// Mirrors the program's fee math: the swap fee and the admin's slice of it
+/// both round against the trader and the LPs.
+fn mul_div_ceil(amount: u64, numerator: u64, denominator: u64) -> u64 {
+    u64::try_from(
+        (amount as u128)
+            .checked_mul(numerator as u128)
+            .expect("mul_div_ceil: product overflow")
+            .div_ceil(denominator as u128),
+    )
+    .expect("mul_div_ceil: result exceeds u64")
+}
+
 /// Constant-product quote mirroring the program's swap math, on effective
 /// reserves: output = taxed_input * pool_out / (pool_in + taxed_input), where
-/// taxed_input = input - input * fee_bps / 10_000. All products in u128.
+/// taxed_input = input - ceil(input * fee_bps / 10_000). All products in u128.
 fn expected_swap_output(input: u64, fee_bps: u64, pool_in: u64, pool_out: u64) -> u64 {
-    let fee_amount = mul_div(input, fee_bps, crate::BASIS_POINTS_DIVISOR);
+    let fee_amount = mul_div_ceil(input, fee_bps, crate::BASIS_POINTS_DIVISOR);
     let taxed_input = input.checked_sub(fee_amount).expect("fee exceeds input");
     let divisor = pool_in.checked_add(taxed_input).expect("reserve overflow");
     mul_div(taxed_input, pool_out, divisor)
@@ -267,21 +280,13 @@ fn initialize_config_records_admin_and_fees(test: &mut Test) {
 #[quasar_test]
 fn initialize_config_rejects_invalid_fee(test: &mut Test) {
     // fee >= 10_000 → invalid.
-    let outcome = initialize_config(test, 10_000, 1_667);
-    assert!(
-        outcome.is_err(),
-        "initialize_config should have failed with invalid fee"
-    );
+    initialize_config(test, 10_000, 1_667).fails_with(AmmError::InvalidFee);
 }
 
 #[quasar_test]
 fn initialize_config_rejects_invalid_admin_share(test: &mut Test) {
     // admin_share_bps >= 10_000 → invalid.
-    let outcome = initialize_config(test, 30, 10_000);
-    assert!(
-        outcome.is_err(),
-        "initialize_config should have failed with admin_share_bps >= 10000"
-    );
+    initialize_config(test, 30, 10_000).fails_with(AmmError::AdminShareTooHigh);
 }
 
 // ─── initialize_pool ─────────────────────────────────────────────────────────────
@@ -442,6 +447,36 @@ fn initialize_pool_rejects_zero_amount_b(test: &mut Test) {
         test.account(pool_config_address(test)).is_none(),
         "no pool must exist after the refused initialize_pool"
     );
+}
+
+/// The floor boundary. A deposit whose square root is exactly
+/// `MINIMUM_LIQUIDITY` would open a pool and mint its creator nothing, so it
+/// is refused with `DepositTooSmall` and nothing is created; one unit above
+/// it opens the pool and leaves the creator 1 LP token.
+#[quasar_test]
+fn initialize_pool_rejects_sqrt_equal_to_floor(test: &mut Test) {
+    setup_config_and_mints(test);
+    let one_above_floor = crate::MINIMUM_LIQUIDITY + 1;
+    fund(
+        test,
+        CREATOR,
+        CREATOR_TOKEN_A,
+        CREATOR_TOKEN_B,
+        one_above_floor,
+        one_above_floor,
+    );
+    // sqrt(100 * 100) = 100 = MINIMUM_LIQUIDITY.
+    send_initialize_pool(test, crate::MINIMUM_LIQUIDITY, crate::MINIMUM_LIQUIDITY)
+        .fails_with(AmmError::DepositTooSmall);
+    assert!(
+        test.account(pool_config_address(test)).is_none(),
+        "no pool must exist after the refused initialize_pool"
+    );
+
+    // sqrt(101 * 101) = 101: the smallest pool that opens.
+    send_initialize_pool(test, one_above_floor, one_above_floor)
+        .succeeds()
+        .has_tokens(CREATOR_LP, 1);
 }
 
 // ─── deposit_liquidity ───────────────────────────────────────────────────────
@@ -1159,13 +1194,65 @@ fn claim_admin_fees_pays_the_admin(test: &mut Test) {
     test.add(TokenAccount::new(MINT_A, ADMIN).at(ADMIN_TOKEN_A));
     test.add(TokenAccount::new(MINT_B, ADMIN).at(ADMIN_TOKEN_B));
 
-    claim_fees(test, ADMIN, ADMIN_TOKEN_A, ADMIN_TOKEN_B).succeeds();
+    // A was the input side: 500_000 at 30 bps is a 1_500 fee, of which
+    // 1_500 * 1_667 / 10_000 = 250.05 is the admin's, owed as 251 because
+    // the admin's slice rounds up against the LPs. The claim pays exactly
+    // that and nothing on the B side.
+    let expected_admin_a = mul_div_ceil(
+        mul_div_ceil(500_000, POOL_FEE_BPS, crate::BASIS_POINTS_DIVISOR),
+        ADMIN_SHARE_BPS as u64,
+        crate::BASIS_POINTS_DIVISOR,
+    );
+    assert_eq!(expected_admin_a, 251);
+    claim_fees(test, ADMIN, ADMIN_TOKEN_A, ADMIN_TOKEN_B)
+        .succeeds()
+        .has_tokens(ADMIN_TOKEN_A, expected_admin_a)
+        .has_tokens(ADMIN_TOKEN_B, 0);
+    let pool = test.read::<PoolConfig>(pool_config_address(test));
+    assert_eq!(u64::from(pool.admin_fees_owed_a), 0);
+}
 
-    // After the claim, admin_token_a should have received some fees (A was
-    // the input side).
-    assert!(
-        test.tokens(ADMIN_TOKEN_A) > 0,
-        "admin should have received token-A fees"
+/// The fee rounds against the trader. 100_001 of A at 30 bps is a fee of
+/// 300.003, charged as 301; the admin's 1_667 bps of that is 50.18, owed as
+/// 51. The curve prices the 99_700 that remain:
+/// `99_700 * 10_000_000 / (10_000_000 + 99_700) = 98_715`.
+#[quasar_test]
+fn swap_fee_rounds_up(test: &mut Test) {
+    setup_pool(test, 10_000_000, 10_000_000);
+    test.add(Wallet::new().at(TRADER));
+    test.add(
+        TokenAccount::new(MINT_A, TRADER)
+            .at(TRADER_TOKEN_A)
+            .amount(1_000_000),
+    );
+
+    let input = 100_001u64;
+    assert_eq!(
+        mul_div_ceil(input, POOL_FEE_BPS, crate::BASIS_POINTS_DIVISOR),
+        301
+    );
+    assert_eq!(
+        expected_swap_output(input, POOL_FEE_BPS, 10_000_000, 10_000_000),
+        98_715
+    );
+    swap(
+        test,
+        TRADER,
+        TRADER_TOKEN_A,
+        TRADER_TOKEN_B,
+        true,
+        input,
+        98_715,
+    )
+    .succeeds()
+    // The trader pays the whole input; the fee is taken from it.
+    .has_tokens(pool_a(test), 10_000_000 + input)
+    .has_tokens(TRADER_TOKEN_B, 98_715);
+    let pool = test.read::<PoolConfig>(pool_config_address(test));
+    assert_eq!(
+        u64::from(pool.admin_fees_owed_a),
+        51,
+        "the admin's slice rounds up"
     );
 }
 
@@ -1196,9 +1283,5 @@ fn claim_admin_fees_rejects_non_admin(test: &mut Test) {
     test.add(TokenAccount::new(MINT_A, BAD_ACTOR).at(BAD_TOKEN_A));
     test.add(TokenAccount::new(MINT_B, BAD_ACTOR).at(BAD_TOKEN_B));
 
-    let outcome = claim_fees(test, BAD_ACTOR, BAD_TOKEN_A, BAD_TOKEN_B);
-    assert!(
-        outcome.is_err(),
-        "unauthorized claim_admin_fees should fail"
-    );
+    claim_fees(test, BAD_ACTOR, BAD_TOKEN_A, BAD_TOKEN_B).fails_with(AmmError::Unauthorized);
 }

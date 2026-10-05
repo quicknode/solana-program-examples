@@ -9,7 +9,7 @@
 //! The program is an ERC4626-style share vault: depositors mint share tokens
 //! against the fund's net asset value, and withdrawals burn shares for a
 //! proportional slice of every vault balance. A manager fee mints a small slice
-//! of shares over time. Token movement is via SPL CPIs Kani cannot symbolically
+//! of shares over time, rounded up. Token movement is via SPL CPIs Kani cannot symbolically
 //! execute, but the share math (`deposit`, `withdraw`, `collect_fees`) is pure
 //! integer arithmetic. This crate reproduces it faithfully and checks the
 //! invariants the fund's solvency rests on.
@@ -38,6 +38,31 @@ pub fn mul_div_floor(a: u128, b: u128, d: u128) -> Option<u128> {
         return None;
     }
     a.checked_mul(b)?.checked_div(d)
+}
+
+/// `ceil((a*b)/d)`, `None` on overflow / zero divisor.
+pub fn mul_div_ceil(a: u128, b: u128, d: u128) -> Option<u128> {
+    if d == 0 {
+        return None;
+    }
+    Some(a.checked_mul(b)?.div_ceil(d))
+}
+
+/// Shares minted to the manager for `elapsed` seconds of the annual fee:
+/// `ceil(total_shares * fee_bps * elapsed / (10_000 * SECONDS_PER_YEAR))`,
+/// the formula `handle_collect_fees` applies. The fee is owed to the manager,
+/// so a fraction of a share rounds up to a whole one.
+pub fn fee_shares(
+    total_shares: u64,
+    fee_bps: u16,
+    elapsed: u64,
+    seconds_per_year: u64,
+) -> Option<u64> {
+    let denominator = 10_000u128.checked_mul(seconds_per_year as u128)?;
+    let numerator_factor = (fee_bps as u128).checked_mul(elapsed as u128)?;
+    mul_div_ceil(total_shares as u128, numerator_factor, denominator)?
+        .try_into()
+        .ok()
 }
 
 /// Proportional withdrawal from one vault's recorded holding:
@@ -260,12 +285,15 @@ fn proof_donation_cannot_dilute_next_deposit() {
 // ===========================================================================
 
 /// The time-based manager fee mints
-/// `fee_shares = floor(total_shares * fee_bps * elapsed / (10_000 * SECONDS_PER_YEAR))`.
+/// `fee_shares = ceil(total_shares * fee_bps * elapsed / (10_000 * SECONDS_PER_YEAR))`.
 /// Over at most one year (`elapsed <= SECONDS_PER_YEAR`) with a valid fee rate
 /// (`fee_bps <= 10_000`), the combined numerator factor `fee_bps * elapsed` is
-/// `<= 10_000 * SECONDS_PER_YEAR`, so `fee_shares <= total_shares`: the manager
-/// can never mint more than a 100%-per-year dilution. Modelled with the combined
-/// `numerator_factor <= denominator` (the constraint the two bounds imply).
+/// `<= 10_000 * SECONDS_PER_YEAR`, so the exact quotient is `<= total_shares`,
+/// and rounding it up to a whole share cannot pass an integer bound: the
+/// manager can never mint more than a 100%-per-year dilution. Modelled with the
+/// combined `numerator_factor <= denominator` (the constraint the two bounds
+/// imply). The rounding itself is checked too: the fee is never below the exact
+/// quotient, and never more than one share above it.
 #[cfg(kani)]
 #[kani::proof]
 #[kani::solver(cadical)]
@@ -280,8 +308,15 @@ fn proof_fee_shares_bounded_by_supply() {
     kani::assume(numerator_factor <= denominator);
 
     let fee_shares =
-        mul_div_floor(total_shares as u128, numerator_factor, denominator).expect("computes");
+        mul_div_ceil(total_shares as u128, numerator_factor, denominator).expect("computes");
     assert!(fee_shares <= total_shares as u128); // <= 100%/year dilution
+
+    // Rounds up: at least the exact quotient, and less than one share over it.
+    let exact_floor =
+        mul_div_floor(total_shares as u128, numerator_factor, denominator).expect("computes");
+    assert!(fee_shares >= exact_floor);
+    assert!(fee_shares <= exact_floor + 1);
+    assert!(fee_shares * denominator >= total_shares as u128 * numerator_factor);
 }
 
 // ===========================================================================
@@ -390,15 +425,41 @@ mod tests {
             asset_value_in_usdc(144_000_000, 25_000_000, -5, 8, 6).unwrap(),
             360_000_000
         );
-        // 3 NVDAx at six decimals, $180 at exponent -8, is 540 USDC.
+        // 3 NVDAx at eight decimals, $180 at exponent -8, is 540 USDC.
         assert_eq!(
-            asset_value_in_usdc(3_000_000, 18_000_000_000, -8, 6, 6).unwrap(),
+            asset_value_in_usdc(300_000_000, 18_000_000_000, -8, 8, 6).unwrap(),
             540_000_000
         );
         // 24 USDC buys 0.096 TSLAx at eight decimals.
         assert_eq!(
             usdc_to_asset_amount(24_000_000, 25_000_000, -5, 8, 6).unwrap(),
             9_600_000
+        );
+    }
+
+    #[test]
+    fn fee_rounds_up_against_the_holders() {
+        const SECONDS_PER_YEAR: u64 = 31_536_000;
+        // The book's year: 1% of 1,350,000,000 shares is 13,500,000, exactly.
+        assert_eq!(
+            fee_shares(1_350_000_000, 100, SECONDS_PER_YEAR, SECONDS_PER_YEAR).unwrap(),
+            13_500_000
+        );
+        // One day of 1% on 1,000,000,000 shares is 27,397.26: the manager is
+        // minted 27,398.
+        assert_eq!(
+            fee_shares(1_000_000_000, 100, 86_400, SECONDS_PER_YEAR).unwrap(),
+            27_398
+        );
+        // A fee owed at all is at least one share, however short the period.
+        assert_eq!(
+            fee_shares(1_000_000_000, 100, 1, SECONDS_PER_YEAR).unwrap(),
+            1
+        );
+        // No supply, no fee.
+        assert_eq!(
+            fee_shares(0, 100, SECONDS_PER_YEAR, SECONDS_PER_YEAR).unwrap(),
+            0
         );
     }
 

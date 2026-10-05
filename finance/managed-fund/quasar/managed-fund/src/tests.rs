@@ -14,17 +14,19 @@
 //! a repeat call, an over-weight buy side, missing asset accounts and donated
 //! tokens are all refused, while a retired asset is sold out.
 //! `test_initialize_rejects_threshold_out_of_range` bounds the threshold, and
-//! `test_valuation_scales_by_decimals_and_exponent` values an eight-decimal
-//! asset priced by an exponent -5 feed, and
+//! `test_valuation_scales_by_decimals_and_exponent` values a nine-decimal
+//! asset priced by an exponent -5 feed,
 //! `test_wide_confidence_price_rejected` shows a feed whose confidence interval
-//! is past 1% of its price stops deposit and rebalance but not withdraw.
+//! is past 1% of its price stops deposit and rebalance but not withdraw, and
+//! `test_collect_fees` and `test_collect_fees_rounds_up` mint the manager a
+//! year's fee exactly and a day's fee rounded up.
 
 use {
     crate::{
         cpi::{
-            AddAssetInstruction, ApproveAssetInstruction, DepositInstruction,
-            InitializeFundInstruction, InitializeRegistryInstruction, RebalanceInstruction,
-            SetWeightInstruction, WithdrawInstruction,
+            AddAssetInstruction, ApproveAssetInstruction, CollectFeesInstruction,
+            DepositInstruction, InitializeFundInstruction, InitializeRegistryInstruction,
+            RebalanceInstruction, SetWeightInstruction, WithdrawInstruction,
         },
         errors::FundError,
         instructions::initialize_fund::{MAX_REBALANCE_THRESHOLD_BPS, MIN_REBALANCE_THRESHOLD_BPS},
@@ -36,9 +38,20 @@ use {
     quasar_test::prelude::*,
 };
 
-const DECIMALS: u8 = 6;
+const USDC_DECIMALS: u8 = 6;
+/// The single-asset fund's asset shares USDC's six decimals, so one of its
+/// minor units is priced in whole USDC minor units (250 at `RATE`), which the
+/// donation and dust tests lean on.
+const SINGLE_ASSET_DECIMALS: u8 = 6;
 /// One whole six-decimal token, in minor units.
 const ONE_TOKEN: u64 = 1_000_000;
+/// TSLAx and NVDAx carry the eight decimals the real tokens have. The fund
+/// reads each mint's decimals rather than assuming USDC's six, so every
+/// two-asset amount below is in eight-decimal minor units while shares and USDC
+/// stay in six.
+const ASSET_DECIMALS: u8 = 8;
+const SECONDS_PER_YEAR: i64 = 31_536_000;
+const SECONDS_PER_DAY: i64 = 86_400;
 const FEE_BPS: u16 = 100;
 const MAX_SLIPPAGE_BPS: u16 = 100;
 const REBALANCE_THRESHOLD_BPS: u16 = 200; // two percentage points
@@ -170,11 +183,11 @@ fn pdas(test: &Test) -> Pdas {
 fn setup_fund(test: &mut Test, asset_mint_authority: Pubkey) {
     test.add(Wallet::new().at(AUTHORITY));
     test.add(Wallet::new().at(MANAGER));
-    test.add(Mint::new(AUTHORITY).at(USDC_MINT).decimals(DECIMALS));
+    test.add(Mint::new(AUTHORITY).at(USDC_MINT).decimals(USDC_DECIMALS));
     test.add(
         Mint::new(asset_mint_authority)
             .at(ASSET_MINT)
-            .decimals(DECIMALS),
+            .decimals(SINGLE_ASSET_DECIMALS),
     );
 
     let registry = test.derive_pda(Registry::seeds(&AUTHORITY));
@@ -638,6 +651,10 @@ fn usdc_vault_pda(test: &Test) -> Pubkey {
     test.derive_pda(UsdcVaultPda::seeds(&fund_pda(test)))
 }
 
+fn share_mint_pda(test: &Test) -> Pubkey {
+    test.derive_pda(ShareMintPda::seeds(&fund_pda(test)))
+}
+
 fn approve_asset(test: &mut Test, mint: Pubkey, feed: Pubkey) {
     test.send(ApproveAssetInstruction {
         authority: AUTHORITY,
@@ -650,15 +667,15 @@ fn approve_asset(test: &mut Test, mint: Pubkey, feed: Pubkey) {
 /// Mints, router (config + rates + treasury), Pyth feeds, and a registry with
 /// TSLAx and NVDAx approved. Does not create the fund.
 fn setup_full(test: &mut Test) {
-    setup_with_tsla_decimals(test, DECIMALS);
+    setup_with_tsla_decimals(test, ASSET_DECIMALS);
 }
 
-/// `setup_full`, with TSLAx minted at `tsla_decimals` instead of six.
+/// `setup_full`, with TSLAx minted at `tsla_decimals` instead of eight.
 fn setup_with_tsla_decimals(test: &mut Test, tsla_decimals: u8) {
     load_router(test);
     test.add(Wallet::new().at(AUTHORITY));
     test.add(Wallet::new().at(MANAGER));
-    test.add(Mint::new(AUTHORITY).at(USDC_MINT).decimals(DECIMALS));
+    test.add(Mint::new(AUTHORITY).at(USDC_MINT).decimals(USDC_DECIMALS));
     // The router config account is every asset's mint authority, so the router
     // can mint it on swap.
     test.add(
@@ -669,7 +686,7 @@ fn setup_with_tsla_decimals(test: &mut Test, tsla_decimals: u8) {
     test.add(
         Mint::new(router_config_pda())
             .at(NVDA_MINT)
-            .decimals(DECIMALS),
+            .decimals(ASSET_DECIMALS),
     );
     write_price_feed(test, TSLA_FEED, TSLA_PRICE, -8, NOW, 1);
     write_price_feed(test, NVDA_FEED, NVDA_PRICE, -8, NOW, 1);
@@ -758,11 +775,10 @@ struct User {
 
 fn fund_user(test: &mut Test, usdc_amount: u64) -> User {
     let owner = test.add(Wallet::new());
-    let share_mint = test.derive_pda(ShareMintPda::seeds(&fund_pda(test)));
     User {
         owner,
         usdc: test.add(TokenAccount::new(USDC_MINT, owner).amount(usdc_amount)),
-        share: test.add(TokenAccount::new(share_mint, owner)),
+        share: test.add(TokenAccount::new(share_mint_pda(test), owner)),
         tsla: test.add(TokenAccount::new(TSLA_MINT, owner)),
         nvda: test.add(TokenAccount::new(NVDA_MINT, owner)),
     }
@@ -935,8 +951,8 @@ fn test_rebalance(test: &mut Test) {
 
     // 1.44 + 0.096 = 1.536 TSLAx; 3.0 - 0.12 = 2.88 NVDAx. Now 384 / 576 = 40 / 60.
     // The USDC vault nets to zero across the two legs.
-    assert_eq!(test.tokens(asset_vault_pda(test, 0)), 1_536_000);
-    assert_eq!(test.tokens(asset_vault_pda(test, 1)), 2_880_000);
+    assert_eq!(test.tokens(asset_vault_pda(test, 0)), 153_600_000);
+    assert_eq!(test.tokens(asset_vault_pda(test, 1)), 288_000_000);
     assert_eq!(test.tokens(usdc_vault_pda(test)), 0);
     assert_holdings_match_vaults(test);
 }
@@ -968,7 +984,7 @@ fn test_rebalance_refuses_drift_below_threshold(test: &mut Test) {
     // target and under the two-point threshold.
     set_nvda_price(test, 18_500_000_000, 185_000_000);
     try_rebalance(test, 1, 0).fails_with(FundError::DriftBelowThreshold);
-    assert_eq!(read_holdings(test).1[1], 3_000_000);
+    assert_eq!(read_holdings(test).1[1], 300_000_000);
 }
 
 /// Churn: once a rebalance has restored the weights, calling it again, in
@@ -998,7 +1014,7 @@ fn create_routable_asset(test: &mut Test, price: i64, rate: u64) {
     test.add(
         Mint::new(router_config_pda())
             .at(THIRD_MINT)
-            .decimals(DECIMALS),
+            .decimals(ASSET_DECIMALS),
     );
     set_router_rate(test, THIRD_MINT, rate);
     write_price_feed(test, THIRD_FEED, price, -8, NOW, 1);
@@ -1054,7 +1070,7 @@ fn test_rebalance_refuses_buying_overweight_asset(test: &mut Test) {
     // Selling NVDAx into TSLAx, the asset that is under, goes through.
     test.send(rebalance_instruction_with(stranger, 1, 0, remaining))
         .succeeds();
-    assert!(read_holdings(test).1[0] > 1_600_000);
+    assert!(read_holdings(test).1[0] > 160_000_000);
 }
 
 /// A rebalance values every asset, so it needs every asset's accounts, as a
@@ -1097,7 +1113,7 @@ fn test_rebalance_sells_retired_asset(test: &mut Test) {
     // All 3 NVDAx sold for 3 USDC, which bought 0.012 TSLAx.
     let (usdc_holdings, asset_holdings) = read_holdings(test);
     assert_eq!(asset_holdings[1], 0);
-    assert_eq!(asset_holdings[0], 1_452_000);
+    assert_eq!(asset_holdings[0], 145_200_000);
     assert_eq!(usdc_holdings, 0);
     assert_holdings_match_vaults(test);
 
@@ -1166,45 +1182,45 @@ fn test_initialize_rejects_threshold_out_of_range(test: &mut Test) {
 }
 
 /// Valuation scales by each asset's decimals and each feed's exponent. TSLAx
-/// here has eight decimals and a Pyth equity feed with exponent -5, while USDC
-/// and NVDAx keep six decimals and NVDAx's feed keeps -8. Assuming six decimals
-/// and -8 would value Alice's 1.44 TSLAx at $360 * 100 * 1,000, and Bob's
-/// deposit would buy almost no shares. Scaled correctly, every figure matches
-/// the six-decimal story.
+/// here has nine decimals and a Pyth equity feed with exponent -5, while NVDAx
+/// keeps its eight decimals and its feed keeps -8, and USDC its six. Assuming
+/// eight decimals and -8 would value Alice's 1.44 TSLAx at $360 * 10 * 1,000,
+/// and Bob's deposit would buy almost no shares. Scaled correctly, every figure
+/// matches the story in major units.
 #[quasar_test]
 fn test_valuation_scales_by_decimals_and_exponent(test: &mut Test) {
-    setup_with_tsla_decimals(test, 8);
+    setup_with_tsla_decimals(test, 9);
     write_price_feed(test, TSLA_FEED, 25_000_000, -5, NOW, 1); // $250
     standard_fund(test);
     assert_eq!(
         test.read::<AssetConfig>(asset_config_pda(test, 0)).decimals,
-        8
+        9
     );
     assert_eq!(
         test.read::<AssetConfig>(asset_config_pda(test, 1)).decimals,
-        6
+        ASSET_DECIMALS
     );
 
-    // Alice's 900 USDC deploys to 1.44 TSLAx (eight decimals) and 3 NVDAx.
+    // Alice's 900 USDC deploys to 1.44 TSLAx (nine decimals) and 3 NVDAx.
     let alice = fund_user(test, 900_000_000);
     do_deposit(test, &alice, 900_000_000);
     assert_eq!(test.tokens(alice.share), 900_000_000);
-    assert_eq!(read_holdings(test).1[0], 144_000_000);
-    assert_eq!(read_holdings(test).1[1], 3_000_000);
+    assert_eq!(read_holdings(test).1[0], 1_440_000_000);
+    assert_eq!(read_holdings(test).1[1], 300_000_000);
 
     // NVDAx to $200. The rebalance computes its trade in the same units: 0.12
     // NVDAx sold for 24 USDC, which buys 0.096 TSLAx, back to 40/60.
     set_nvda_price(test, 20_000_000_000, 200_000_000);
     do_rebalance(test, 1, 0);
-    assert_eq!(read_holdings(test).1[0], 153_600_000);
-    assert_eq!(read_holdings(test).1[1], 2_880_000);
+    assert_eq!(read_holdings(test).1[0], 1_536_000_000);
+    assert_eq!(read_holdings(test).1[1], 288_000_000);
 
     // The fund is worth $960, so Bob's 480 USDC buys 450 shares.
     let bob = fund_user(test, 480_000_000);
     do_deposit(test, &bob, 480_000_000);
     assert_eq!(test.tokens(bob.share), 450_000_000);
-    assert_eq!(read_holdings(test).1[0], 230_400_000);
-    assert_eq!(read_holdings(test).1[1], 4_320_000);
+    assert_eq!(read_holdings(test).1[0], 2_304_000_000);
+    assert_eq!(read_holdings(test).1[1], 432_000_000);
     assert_holdings_match_vaults(test);
 }
 
@@ -1233,15 +1249,65 @@ fn test_wide_confidence_price_rejected(test: &mut Test) {
 
     // Withdraw reads no price: Alice takes half her shares out in kind.
     do_withdraw(test, &alice, 450_000_000);
-    assert_eq!(test.tokens(alice.tsla), 720_000);
-    assert_eq!(test.tokens(alice.nvda), 1_500_000);
+    assert_eq!(test.tokens(alice.tsla), 72_000_000);
+    assert_eq!(test.tokens(alice.nvda), 150_000_000);
 
     // A $2 interval is exactly 1% of the price, which is accepted: the
     // rebalance sells 0.06 NVDAx for 12 USDC and buys 0.048 TSLAx.
     write_price_feed_with_confidence(test, NVDA_FEED, 20_000_000_000, 200_000_000, -8, NOW, 1);
     do_rebalance(test, 1, 0);
     let (_, holdings) = read_holdings(test);
-    assert_eq!(holdings[0], 768_000);
-    assert_eq!(holdings[1], 1_440_000);
+    assert_eq!(holdings[0], 76_800_000);
+    assert_eq!(holdings[1], 144_000_000);
     assert_holdings_match_vaults(test);
+}
+
+/// The manager's share token account, and the fee collection that mints to
+/// it. Anyone may send it; the authority pays here.
+fn collect_fees(test: &mut Test) -> (Pubkey, CollectFeesInstruction) {
+    let manager_share = test.add(TokenAccount::new(share_mint_pda(test), MANAGER));
+    let instruction = CollectFeesInstruction {
+        manager: MANAGER,
+        fund_index_seed: FUND_INDEX,
+        manager_share_account: manager_share,
+        payer: AUTHORITY,
+    };
+    (manager_share, instruction)
+}
+
+/// A year's fee on a 1,000 USDC fund: 1% of 1,000,000,000 shares is
+/// 10,000,000 shares, exactly, minted to the manager on top of the supply.
+#[quasar_test]
+fn test_collect_fees(test: &mut Test) {
+    setup_full(test);
+    standard_fund(test);
+    let user = fund_user(test, 1_000_000_000);
+    do_deposit(test, &user, 1_000_000_000);
+
+    test.warp_to_timestamp(NOW + SECONDS_PER_YEAR);
+    let (manager_share, instruction) = collect_fees(test);
+    test.send(instruction)
+        .succeeds()
+        .has_tokens(manager_share, 10_000_000);
+    let fund = test.read::<Fund>(fund_pda(test));
+    assert_eq!(u64::from(fund.total_shares), 1_010_000_000);
+}
+
+/// A fee that is not a whole number of shares rounds up, against the holders:
+/// one day of a 1% fee on 1,000,000,000 shares is 27,397.26 shares, and the
+/// manager is minted 27,398.
+#[quasar_test]
+fn test_collect_fees_rounds_up(test: &mut Test) {
+    setup_full(test);
+    standard_fund(test);
+    let user = fund_user(test, 1_000_000_000);
+    do_deposit(test, &user, 1_000_000_000);
+
+    test.warp_to_timestamp(NOW + SECONDS_PER_DAY);
+    let (manager_share, instruction) = collect_fees(test);
+    test.send(instruction)
+        .succeeds()
+        .has_tokens(manager_share, 27_398);
+    let fund = test.read::<Fund>(fund_pda(test));
+    assert_eq!(u64::from(fund.total_shares), 1_000_027_398);
 }

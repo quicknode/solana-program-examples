@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased] - 2026-10-05
+
+### Changed
+
+- **The management fee rounds up.** `collect_fees` mints `ceil(total_shares × fee_bps × elapsed / (10_000 × SECONDS_PER_YEAR))` shares to the manager: a fraction of a share owed is minted as a whole share, so the rounding dilutes the holders rather than shorting the manager. A year's fee in the test suites is an exact multiple and does not change; `test_collect_fees_rounds_up` checks that a day of a 1% fee on 1,000,000,000 shares, 27,397.26 shares, mints 27,398 (a floor minted 27,397). The Kani crate's `proof_fee_shares_bounded_by_supply` models the ceiling with the new `mul_div_ceil` and `fee_shares`, and checks the fee is never below the exact quotient and never more than one share above it.
+- **Tests mint TSLAx and NVDAx with eight decimals**, as the real tokens have, and USDC with six: `ASSET_DECIMALS` and `USDC_DECIMALS` replace `TOKEN_DECIMALS`. The program reads decimals from each mint, so every asserted basket amount is now in eight-decimal minor units and the same in major units as before (1.44 TSLAx is `144_000_000`). `test_valuation_scales_by_decimals_and_exponent` now varies TSLAx to nine decimals on its exponent −5 feed; `value_in_usdc` scales by each asset's decimals and the feed exponent.
+- **Every refusal test asserts its error code.** The tests that checked only `is_err()` now assert the program error (`WeightOverflow`, `TooManyAssets`, `FeeTooHigh`, `SlippageConfigTooHigh`, `FundNotFullyAllocated`, `InvalidSwapRouter`, `UsdcSlippage`, `IncompleteAssetAccounts`), the router's `SlippageExceeded` raised inside a deposit's swap CPI, or Anchor's own errors, `ConstraintHasOne` for a non-manager `set_weight` and `AccountNotInitialized` for an unapproved asset, through the new `assert_router_error` and `assert_anchor_error` helpers.
+
 ## 2026-10-03
 
 - **Prices with a wide confidence interval are rejected.** Pyth reports each price with a confidence interval (`conf`, offset 81), and `load_price` ignored it, so a price the publishers disagreed on by several percent was used as if it were exact. Deposits price shares from that price and rebalance sets its swap floor from it, so a wide band moves value between depositors or loosens the floor by the same amount. `load_price` now rejects a price whose interval exceeds `MAX_CONFIDENCE_BPS` (100 bps, 1% of the price) with the new `OracleConfidenceTooWide` error. `withdraw` reads no price and is unaffected, so investors can still leave in kind. The limit is a program constant, like the 60-second staleness window; prop-amm and perpetual-futures store theirs per market. Tested by `test_wide_confidence_price_rejected`. The web app's IDL gains the error.

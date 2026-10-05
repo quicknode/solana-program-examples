@@ -18,6 +18,22 @@ use {
 /// supply.
 const MINIMUM_LIQUIDITY: u64 = 100;
 
+/// Mirrors `constants::BASIS_POINTS_DIVISOR`.
+const BASIS_POINTS_DIVISOR: u64 = 10_000;
+
+/// The swap fee as `swap_tokens` computes it: `input * fee_bps / 10_000`,
+/// rounded up, so a fee that is not a whole number of minor units costs the
+/// trader one more unit.
+fn ceiled_fee(input: u64, fee_bps: u64) -> u64 {
+    (input * fee_bps).div_ceil(BASIS_POINTS_DIVISOR)
+}
+
+/// The admin's slice of a fee as `swap_tokens` computes it:
+/// `fee * admin_share_bps / 10_000`, rounded up against the LPs.
+fn ceiled_admin_portion(fee: u64, admin_share_bps: u64) -> u64 {
+    (fee * admin_share_bps).div_ceil(BASIS_POINTS_DIVISOR)
+}
+
 fn token_program_id() -> Pubkey {
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         .parse()
@@ -700,15 +716,17 @@ fn swap_a_to_b(ts: &mut TestSetup, input_amount: u64) {
 fn test_claim_admin_fees() {
     let mut ts = setup_pool(4_000_000, 1_000_000);
     // fee = 500 bps (5%), admin_share_bps = 1667 (~1/6).
-    // Per the swap: fee_amount = input * 500 / 10_000 = input * 5 / 100
-    //               admin_portion = fee_amount * 1667 / 10_000
+    // Per the swap: fee_amount = ceil(input * 500 / 10_000)
+    //               admin_portion = ceil(fee_amount * 1667 / 10_000)
     // Swap input is on the A side, so admin's claim accumulates in mint A.
+    // 1_000_000 in: a 50_000 fee, of which 50_000 * 1667 / 10_000 = 8_335
+    // exactly is the admin's.
     let swap_in = 1_000_000u64;
     swap_a_to_b(&mut ts, swap_in);
 
-    let fee_amount = swap_in * 500 / 10_000;
-    let expected_admin_a = fee_amount * 1667 / 10_000;
-    assert!(expected_admin_a > 0, "expected admin portion > 0");
+    let fee_amount = ceiled_fee(swap_in, 500);
+    let expected_admin_a = ceiled_admin_portion(fee_amount, 1667);
+    assert_eq!(expected_admin_a, 8_335);
 
     // ---- Phase 1: first claim transfers the accumulated A-side fees ----
     let admin_balance_a_before = get_token_account_balance(&ts.svm, &ts.holder_account_a).unwrap();
@@ -741,11 +759,13 @@ fn test_claim_admin_fees() {
     // This proves the accumulators were truly reset (not just zeroed in
     // memory): a fresh swap accrues new fees from a clean baseline, and the
     // next claim transfers exactly that new amount.
+    // 500_000 in: a 25_000 fee, of which 25_000 * 1667 / 10_000 = 4_167.5
+    // is the admin's, rounded up to 4_168 against the LPs.
     let swap_in_2 = 500_000u64;
     swap_a_to_b(&mut ts, swap_in_2);
-    let fee_amount_2 = swap_in_2 * 500 / 10_000;
-    let expected_admin_a_2 = fee_amount_2 * 1667 / 10_000;
-    assert!(expected_admin_a_2 > 0, "expected second admin portion > 0");
+    let fee_amount_2 = ceiled_fee(swap_in_2, 500);
+    let expected_admin_a_2 = ceiled_admin_portion(fee_amount_2, 1667);
+    assert_eq!(expected_admin_a_2, 4_168);
 
     let balance_a_pre_claim_2 = get_token_account_balance(&ts.svm, &ts.holder_account_a).unwrap();
 
@@ -1016,7 +1036,8 @@ fn test_deposit_after_swap_uses_shifted_effective_ratio() {
 
     // Opened at 1:1 so the post-swap ratio is dramatic and easy to
     // sanity-check.
-    // Swap 1M of A in. With fee = 500 bps and admin_share = 1667 bps:
+    // Swap 1M of A in. With fee = 500 bps and admin_share = 1667 bps, both
+    // rounded up (exact here):
     //   fee_amount = 50_000
     //   admin_portion = 50_000 * 1667 / 10_000 = 8_335 (accrues on side A)
     //   taxed_input = 950_000
@@ -1721,5 +1742,60 @@ fn test_invariant_holds_after_normal_swap() {
         k_after >= k_before,
         "effective invariant must not decrease across a fee-paying swap: \
          before={k_before}, after={k_after}"
+    );
+}
+
+/// The floor boundary. A deposit whose square root is exactly
+/// `MINIMUM_LIQUIDITY` would open a pool and mint its creator nothing, so it
+/// is refused with `DepositTooSmall` and nothing is created; one unit above
+/// it opens the pool and leaves the creator 1 LP token.
+#[test]
+fn test_initialize_pool_rejects_sqrt_equal_to_floor() {
+    let mut ts = setup_config_and_mints();
+    // sqrt(100 * 100) = 100 = MINIMUM_LIQUIDITY.
+    assert_error_code(
+        send_initialize_pool(&mut ts, MINIMUM_LIQUIDITY, MINIMUM_LIQUIDITY),
+        "DepositTooSmall",
+    );
+    assert!(ts.svm.get_account(&ts.pool_config_key).is_none());
+
+    // sqrt(101 * 101) = 101: the smallest pool that opens.
+    send_initialize_pool(&mut ts, MINIMUM_LIQUIDITY + 1, MINIMUM_LIQUIDITY + 1)
+        .expect("a square root one above the floor opens the pool");
+    assert_eq!(
+        get_token_account_balance(&ts.svm, &ts.liquidity_account).unwrap(),
+        1
+    );
+}
+
+/// The fee rounds against the trader. 1_000_001 of A at 500 bps is a fee of
+/// 50_000.05, charged as 50_001; the admin's 1667 bps of that is 8_335.17,
+/// owed as 8_336. The curve prices the 950_000 that remain:
+/// `950_000 * 1_000_000 / (4_000_000 + 950_000) = 191_919`.
+#[test]
+fn test_swap_fee_rounds_up() {
+    let mut ts = setup_pool(4_000_000, 1_000_000);
+    let holder_b_before = get_token_account_balance(&ts.svm, &ts.holder_account_b).unwrap();
+
+    let input = 1_000_001u64;
+    assert_eq!(ceiled_fee(input, 500), 50_001);
+    assert_eq!(ceiled_admin_portion(50_001, 1667), 8_336);
+    swap_a_to_b(&mut ts, input);
+
+    let admin_owed_a: u64 = {
+        let account = ts.svm.get_account(&ts.pool_config_key).unwrap();
+        let start = 8 + 32 * 3;
+        u64::from_le_bytes(account.data[start..start + 8].try_into().unwrap())
+    };
+    assert_eq!(admin_owed_a, 8_336, "the admin's slice rounds up");
+    assert_eq!(
+        get_token_account_balance(&ts.svm, &ts.holder_account_b).unwrap() - holder_b_before,
+        191_919,
+        "the output is priced from the input minus the rounded-up fee"
+    );
+    assert_eq!(
+        get_token_account_balance(&ts.svm, &ts.pool_a).unwrap(),
+        4_000_000 + input,
+        "the trader pays the whole input; the fee is taken from it"
     );
 }

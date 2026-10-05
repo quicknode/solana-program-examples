@@ -17,7 +17,7 @@ pub struct OptionTerms {
     pub kind: OptionKind,
 
     /// Underlying minor units the option covers: what a call writer posts and
-    /// a call holder receives, or a put holder delivers (1 NVDAx = 1_000_000).
+    /// a call holder receives, or a put holder delivers (1 NVDAx = 100_000_000).
     pub underlying_amount: u64,
 
     /// Quote minor units paid for the underlying on exercise: what a put

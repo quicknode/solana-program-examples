@@ -50,7 +50,9 @@ pub fn handle_collect_fees(
     let fund_index = u64::from(accounts.fund.index);
     let fund_bump = accounts.fund.bump;
 
-    // fee_shares = total_shares * fee_bps * elapsed / (10_000 * SECONDS_PER_YEAR)
+    // fee_shares = ceil(total_shares * fee_bps * elapsed / (10_000 * SECONDS_PER_YEAR)).
+    // The fee is owed to the manager, so it rounds up: a fraction of a share
+    // becomes a whole share, and the holders bear the rounding.
     let denominator = (10_000u128)
         .checked_mul(SECONDS_PER_YEAR as u128)
         .ok_or(FundError::MathOverflow)?;
@@ -59,12 +61,11 @@ pub fn handle_collect_fees(
         .ok_or(FundError::MathOverflow)?
         .checked_mul(elapsed_seconds as u128)
         .ok_or(FundError::MathOverflow)?
-        .checked_div(denominator)
-        .ok_or(FundError::MathOverflow)?
+        .div_ceil(denominator)
         .try_into()
         .map_err(|_| FundError::MathOverflow)?;
 
-    // Advance the accrual clock even when the fee rounds to zero.
+    // Advance the accrual clock even when the fee is zero (no supply, or no fee).
     let mut fund = snapshot_fund(&accounts.fund);
     fund.last_fee_accrual_timestamp = now;
     if fee_shares == 0 {

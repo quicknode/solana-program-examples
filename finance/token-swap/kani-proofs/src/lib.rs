@@ -14,8 +14,9 @@
 //! But the *interesting* part — the constant-product curve, the fee split, the
 //! integer square root `initialize_pool` uses for the creator's LP mint, and
 //! the proportional deposit and withdraw math — is pure integer arithmetic. This crate reproduces those formulas
-//! faithfully (same `u128` widening, same multiply-before-divide, same floor
-//! rounding) and checks the invariants the program depends on.
+//! faithfully (same `u128` widening, same multiply-before-divide, the fee
+//! rounded up and everything paid out rounded down) and checks the
+//! invariants the program depends on.
 //!
 //! Constants mirror `constants.rs`.
 
@@ -31,17 +32,19 @@ pub const MINIMUM_LIQUIDITY: u128 = 100;
 // ===========================================================================
 
 /// `(fee_amount, admin_portion, taxed_input)` as computed at the top of
-/// `handle_swap_tokens`. Returns `None` on the same overflow paths the program
-/// maps to `AmmError::MathOverflow`.
+/// `handle_swap_tokens`: the fee is `input * fee_bps / 10_000` rounded up,
+/// the admin's slice is `fee * admin_share_bps / 10_000` rounded up, and the
+/// trader's side is what remains. Returns `None` on the same overflow paths
+/// the program maps to `AmmError::MathOverflow`.
 ///
 /// `fee_bps` and `admin_share_bps` are validated `< 10_000` in `initialize_config`.
 pub fn fee_split(input_amount: u64, fee_bps: u16, admin_share_bps: u16) -> Option<(u64, u64, u64)> {
     let fee_amount = (input_amount as u128)
         .checked_mul(fee_bps as u128)?
-        .checked_div(BASIS_POINTS_DIVISOR)?;
+        .div_ceil(BASIS_POINTS_DIVISOR);
     let admin_portion = fee_amount
         .checked_mul(admin_share_bps as u128)?
-        .checked_div(BASIS_POINTS_DIVISOR)?;
+        .div_ceil(BASIS_POINTS_DIVISOR);
     let fee_amount: u64 = u64::try_from(fee_amount).ok()?;
     let admin_portion: u64 = u64::try_from(admin_portion).ok()?;
     let taxed_input = input_amount.checked_sub(fee_amount)?;
@@ -51,7 +54,10 @@ pub fn fee_split(input_amount: u64, fee_bps: u16, admin_share_bps: u16) -> Optio
 /// The fee never exceeds the input, the admin slice never exceeds the fee, and
 /// the taxed input plus fee reconstitutes the input exactly. These are the
 /// preconditions the rest of `swap_tokens` (the `checked_sub` for `taxed_input`,
-/// the `u64::try_from` casts) silently relies on.
+/// the `u64::try_from` casts) silently relies on. The harness also checks the
+/// rounding direction: each of the two quotients is the smallest integer at
+/// or above the exact fraction, so a fee that is not a whole number of minor
+/// units is charged one unit over, and never one unit under.
 #[cfg(kani)]
 #[kani::proof]
 #[kani::solver(cadical)]
@@ -77,6 +83,15 @@ fn proof_fee_split_bounds() {
     assert!(admin <= fee); // admin slice is a fraction of the fee
     assert_eq!(taxed as u128 + fee as u128, input as u128); // nothing lost
     assert_eq!(taxed, input - fee);
+
+    // Rounded up: `fee` is at or above the exact fraction, and one unit less
+    // would be below it. The same for the admin's slice of the fee.
+    let exact_fee = input as u128 * fee_bps as u128;
+    assert!(fee as u128 * BASIS_POINTS_DIVISOR >= exact_fee);
+    assert!((fee as u128) * BASIS_POINTS_DIVISOR < exact_fee + BASIS_POINTS_DIVISOR);
+    let exact_admin = fee as u128 * admin_share_bps as u128;
+    assert!(admin as u128 * BASIS_POINTS_DIVISOR >= exact_admin);
+    assert!((admin as u128) * BASIS_POINTS_DIVISOR < exact_admin + BASIS_POINTS_DIVISOR);
 }
 
 // ===========================================================================
@@ -454,11 +469,28 @@ mod tests {
 
     #[test]
     fn fee_split_basic() {
-        // 1% fee, 50% admin share, on 10_000 input.
+        // 1% fee, 50% admin share, on 10_000 input: both exact.
         let (fee, admin, taxed) = fee_split(10_000, 100, 5_000).unwrap();
         assert_eq!(fee, 100);
         assert_eq!(admin, 50);
         assert_eq!(taxed, 9_900);
+    }
+
+    #[test]
+    fn fee_split_rounds_up() {
+        // 5% fee on 1_000_001 is 50_000.05, charged as 50_001; the admin's
+        // 1667 bps of that is 8_335.17, owed as 8_336. The trader's side is
+        // the remainder.
+        let (fee, admin, taxed) = fee_split(1_000_001, 500, 1_667).unwrap();
+        assert_eq!(fee, 50_001);
+        assert_eq!(admin, 8_336);
+        assert_eq!(taxed, 950_000);
+        // The book's walkthrough: 100 USDC at 30 bps, admin share 1667 bps,
+        // both exact.
+        let (fee, admin, taxed) = fee_split(100_000_000, 30, 1_667).unwrap();
+        assert_eq!(fee, 300_000);
+        assert_eq!(admin, 50_010);
+        assert_eq!(taxed, 99_700_000);
     }
 
     #[test]

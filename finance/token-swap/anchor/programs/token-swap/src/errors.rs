@@ -12,10 +12,10 @@ pub enum AmmError {
     #[msg("Admin share must be less than 10000 basis points")]
     AdminShareTooHigh,
 
-    // Returned by `initialize_pool` when `sqrt(amount_a * amount_b)` is below
-    // `MINIMUM_LIQUIDITY`, so withholding the floor would leave the creator
-    // nothing, and by `deposit_liquidity` when a later deposit is too small a
-    // share of the pool to mint a single LP token.
+    // Returned by `initialize_pool` when `sqrt(amount_a * amount_b)` is at or
+    // below `MINIMUM_LIQUIDITY`, so withholding the floor would leave the
+    // creator nothing, and by `deposit_liquidity` when a later deposit is too
+    // small a share of the pool to mint a single LP token.
     #[msg("Depositing too little liquidity")]
     DepositTooSmall,
 

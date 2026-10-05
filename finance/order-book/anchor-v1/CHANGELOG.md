@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased - 2026-10-05
+
+### Added
+
+- `withdraw_fees_rejects_a_non_authority_signer`: after a fill, a trader
+  signing `withdraw_fees` gets `NotMarketAuthority`, the fee stays in the
+  vault, and the trader's quote balance is unchanged.
+
+### Changed
+
+- Every refusal test asserts the error code the call fails with, through
+  the suite's `failure_text` and `assert_fails_with` helpers:
+  `place_order_rejects_zero_price` (`InvalidPrice`),
+  `place_order_rejects_unaligned_tick` (`InvalidTickSize`),
+  `place_order_rejects_below_min_order_size` (`BelowMinOrderSize`),
+  `cancel_order_rejects_non_owner` (`Unauthorized`),
+  `settle_funds_rejects_fee_vault_substituted_for_quote_vault`
+  (`InvalidQuoteVault`), `initialize_market_rejects_zero_tick_size`
+  (`InvalidTickSize`), `initialize_market_rejects_zero_base_lot_size`
+  (`InvalidBaseLotSize`), `initialize_market_rejects_zero_quote_lot_size`
+  (`InvalidQuoteLotSize`) and `initialize_market_rejects_oversized_fee`
+  (`InvalidFeeBasisPoints`).
+- `build_withdraw_fees_ix` takes the signing authority, as the pause and
+  resume builders do.
+
 ## Unreleased - 2026-10-04
 
 ### Added

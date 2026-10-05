@@ -21,7 +21,8 @@ pub fn handle_liquidate_position(
     let settlement = settle_position(pool, position, price)?;
 
     // Liquidatable only once equity has fallen to or below the maintenance
-    // margin. A healthy position can only be closed by its owner.
+    // margin, rounded up against the trader. A healthy position can only be
+    // closed by its owner.
     let maintenance = basis_points_of(position_size, pool.maintenance_margin_bps)?;
     require!(
         settlement.equity <= maintenance as i128,

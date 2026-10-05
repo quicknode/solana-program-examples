@@ -150,8 +150,8 @@ fn proof_buy_never_exceeds_oracle_value() {
     // finance Kani crates stay tractable with — and the decimal exponents
     // are kept small (the identity is independent of the exponents' actual
     // values — they enter both sides of the comparison symmetrically — so
-    // tiny exponents exercise the same rounding edges as scale 8 and 6/6
-    // decimals).
+    // tiny exponents exercise the same rounding edges as scale 8 with an
+    // 8-decimal base and a 6-decimal quote).
     kani::assume(quote_in <= 255);
     kani::assume(price >= 1 && price <= 255);
     kani::assume(spread_bps >= 1 && (spread_bps as u128) < BASIS_POINTS);
@@ -255,10 +255,12 @@ fn proof_round_trip_never_profits_the_trader() {
 mod tests {
     use super::*;
 
-    // $165 at scale 8; both tokens 6 decimals; 10 bps spread.
+    // $165 at scale 8; NVDAx has 8 decimals, USDC 6; 10 bps spread.
     const PRICE: u64 = 16_500_000_000;
     const SCALE: u32 = 8;
-    const DEC: u8 = 6;
+    const NVDAX_DECIMALS: u8 = 8;
+    const USDC_DECIMALS: u8 = 6;
+    const FIVE_NVDAX: u64 = 500_000_000;
 
     #[test]
     fn ask_and_bid_at_165() {
@@ -271,8 +273,8 @@ mod tests {
         // 825.825 USDC buys exactly 5 NVDAx at the ask.
         let ask = ask_price(PRICE, 10).unwrap();
         assert_eq!(
-            base_out_for_quote_in(825_825_000, ask, SCALE, DEC, DEC).unwrap(),
-            5_000_000
+            base_out_for_quote_in(825_825_000, ask, SCALE, NVDAX_DECIMALS, USDC_DECIMALS).unwrap(),
+            FIVE_NVDAX
         );
     }
 
@@ -281,7 +283,7 @@ mod tests {
         // 5 NVDAx sells for exactly 824.175 USDC at the bid.
         let bid = bid_price(PRICE, 10).unwrap();
         assert_eq!(
-            quote_out_for_base_in(5_000_000, bid, SCALE, DEC, DEC).unwrap(),
+            quote_out_for_base_in(FIVE_NVDAX, bid, SCALE, NVDAX_DECIMALS, USDC_DECIMALS).unwrap(),
             824_175_000
         );
     }
@@ -291,9 +293,32 @@ mod tests {
         // In 825.825, back 824.175: the market keeps exactly 1.65 USDC.
         let ask = ask_price(PRICE, 10).unwrap();
         let bid = bid_price(PRICE, 10).unwrap();
-        let base = base_out_for_quote_in(825_825_000, ask, SCALE, DEC, DEC).unwrap();
-        let back = quote_out_for_base_in(base, bid, SCALE, DEC, DEC).unwrap();
+        let base =
+            base_out_for_quote_in(825_825_000, ask, SCALE, NVDAX_DECIMALS, USDC_DECIMALS).unwrap();
+        let back = quote_out_for_base_in(base, bid, SCALE, NVDAX_DECIMALS, USDC_DECIMALS).unwrap();
         assert_eq!(825_825_000 - back, 1_650_000);
+    }
+
+    #[test]
+    fn walkthrough_fills_are_exact_at_any_base_decimals() {
+        // The fills stay exact whatever NVDAx's decimals: 825.825 / 165.165
+        // is the whole number 5, and the ask and bid have three decimal
+        // places of a dollar, fewer than USDC's six. The base decimals only
+        // move the answer by a power of ten.
+        let ask = ask_price(PRICE, 10).unwrap();
+        let bid = bid_price(PRICE, 10).unwrap();
+        for base_decimals in 0..=9u8 {
+            let five = 5 * 10u64.pow(base_decimals as u32);
+            assert_eq!(
+                base_out_for_quote_in(825_825_000, ask, SCALE, base_decimals, USDC_DECIMALS)
+                    .unwrap(),
+                five
+            );
+            assert_eq!(
+                quote_out_for_base_in(five, bid, SCALE, base_decimals, USDC_DECIMALS).unwrap(),
+                824_175_000
+            );
+        }
     }
 
     #[test]

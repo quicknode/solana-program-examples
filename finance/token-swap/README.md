@@ -106,7 +106,7 @@ Initializes the singleton `Config` account with the supplied `admin`, `fee`, and
 Initializes a `PoolConfig` account, an LP mint (`liquidity_provider_mint`) whose mint authority is `pool_config`, and the two pool reserve token accounts (`pool_a`, `pool_b`), the associated token accounts of `pool_config`, then takes the creator's first deposit: `amount_a` of token A and `amount_b` of token B move from the creator's token accounts into the reserves, and the creator's LP tokens are minted to their LP token account, which the handler also creates. Enforces `mint_a < mint_b` for canonical pool addressing.
 
 - The first deposit sets the pool's price (the ratio of its reserves), so both amounts must be nonzero; a zero on either side fails with `EmptyInitialDeposit` and nothing is created. Taking the deposit in the same instruction means no pool ever exists empty, so nobody can set a pool's price for its creator by depositing first. `test_pool_creation_cannot_be_front_run` runs the attack: a deposit at a hostile ratio right after the pool opens is clamped to the creator's price, and a deposit against an empty reserve fails with `EmptyPoolReserve`.
-- The creator is minted `sqrt(amount_a * amount_b) - MINIMUM_LIQUIDITY` LP tokens (`liquidity::initial_lp_amount`), computed with a `u128` integer-sqrt (Newton's method), no floats. If `sqrt(amount_a * amount_b)` is below `MINIMUM_LIQUIDITY`, the handler fails with `DepositTooSmall`. The floor is never minted to anyone; from then on `deposit_liquidity` and `withdraw_liquidity` divide by `supply + MINIMUM_LIQUIDITY`, so its share of the reserves stays in the pool and no withdrawal can empty a reserve.
+- The creator is minted `sqrt(amount_a * amount_b) - MINIMUM_LIQUIDITY` LP tokens (`liquidity::initial_lp_amount`), computed with a `u128` integer-sqrt (Newton's method), no floats. If `sqrt(amount_a * amount_b)` is at or below `MINIMUM_LIQUIDITY`, the handler fails with `DepositTooSmall`, so the smallest pool that opens leaves its creator at least 1 LP token (`test_initialize_pool_rejects_sqrt_equal_to_floor` checks both sides of the boundary). The floor is never minted to anyone; from then on `deposit_liquidity` and `withdraw_liquidity` divide by `supply + MINIMUM_LIQUIDITY`, so its share of the reserves stays in the pool and no withdrawal can empty a reserve.
 - The transfers and the LP mint are the same code `deposit_liquidity` ends with (`liquidity::deposit_and_mint_lp_tokens`); only the arithmetic that decides the amounts differs.
 
 ### `deposit_liquidity`
@@ -128,11 +128,11 @@ Transfers token A and token B from the depositor to the pool, then mints LP toke
 
 Swaps a fixed `input_amount` of one token for as much of the other as possible (subject to `min_output_amount`). The `input_is_token_a` flag selects the input side (`true` = trader sends token A and receives token B; `false` = the reverse).
 
-- The total trading fee is taken off the input first: `fee_amount = input * fee / 10_000`.
+- The total trading fee is taken off the input first: `fee_amount = input * fee / 10_000`, rounded up, so a fee that is not a whole number of minor units costs the trader one more unit rather than the pool one less. On 100 USDC at 30 bps the fee is exactly 300,000 minor units; on 1,000,001 minor units at 500 bps it is 50,000.05, charged as 50,001 (`test_swap_fee_rounds_up`).
 - The fee is split between LPs and the admin:
-  - `admin_portion = fee_amount * admin_share_bps / 10_000` - accumulates as a virtual claim on the input-side reserve (`admin_fees_owed_a` or `admin_fees_owed_b`). Not transferred immediately, swept later by `claim_admin_fees`. Saves a CPI per swap.
+  - `admin_portion = fee_amount * admin_share_bps / 10_000`, rounded up against the LPs (300,000 at 1667 bps is exactly 50,010; 25,000 is 4,167.5, owed as 4,168) - accumulates as a virtual claim on the input-side reserve (`admin_fees_owed_a` or `admin_fees_owed_b`). Not transferred immediately, swept later by `claim_admin_fees`. Saves a CPI per swap.
   - `lp_portion = fee_amount - admin_portion` - stays physically in the reserves and boosts LP yield ("less output for the same input").
-- `taxed_input = input - fee_amount` is what enters the curve.
+- `taxed_input = input - fee_amount`, the trader's side after the rounded-up fee, is what enters the curve.
 - The output is computed against the **effective reserves** (`pool_X.amount - admin_fees_owed_X`), so the admin's outstanding fees do not contribute to the price. The curve math runs in `u128` with checked arithmetic, multiplying before dividing to keep precision; floor rounding favours the pool (Uniswap V2 convention).
 - The [price impact](https://www.investopedia.com/terms/p/price-impact.asp) of a swap - the difference between the quoted mid-price and the effective execution price - is determined by the size of the trade relative to the pool's effective reserves. Larger trades move the curve further, resulting in higher price impact.
 - If `output < min_output_amount`, the handler reverts with `SlippageExceeded`. This is the trader's slippage guard for cases where the pool shifted between quote time and tx landing.
@@ -267,7 +267,7 @@ Math (constant product, 0.3% fee from `Config.fee`, fee split per `Config.admin_
 
 - Total fee on the input: `11 × 0.003 = 0.033 USDC`.
 - Fee split:
-  - Admin slice (`admin_share_bps = 1667`): `0.033 × 0.1667 ≈ 0.0055 USDC` - added to `admin_fees_owed_b`.
+  - Admin slice (`admin_share_bps = 1667`): `0.033 × 0.1667 ≈ 0.0055 USDC` - added to `admin_fees_owed_b`. In minor units that is `33,000 × 1667 / 10,000 = 5,501.1`, owed as 5,502: the admin's slice rounds up against the LPs.
   - LP slice: `0.033 − 0.0055 ≈ 0.0275 USDC` - stays in the reserves, boosts LP yield.
 - Input into the curve: `11 − 0.033 = 10.967 USDC`.
 - Effective reserves before the trade: `effective_pool_a = 120`, `effective_pool_b = 600` (admin owes nothing yet).

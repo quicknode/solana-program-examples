@@ -18,28 +18,32 @@ use {
     quasar_test::prelude::*,
 };
 
-// Both tokens have 6 decimals: the underlying is NVDAx (tokenized NVIDIA
-// stock) and the quote is USDC.
-const ONE_TOKEN: u64 = 1_000_000;
+// The underlying is NVDAx (tokenized NVIDIA stock), which has 8 decimals,
+// and the quote is USDC, which has 6: one NVDAx is 100_000_000 minor units
+// and one USDC is 1_000_000.
+const NVDAX_DECIMALS: u8 = 8;
+const USDC_DECIMALS: u8 = 6;
+const ONE_NVDAX: u64 = 100_000_000;
+const ONE_USDC: u64 = 1_000_000;
 // The venue charges 1% of every premium.
 const FEE_BPS: u16 = 100;
 
 // The walkthrough's call: 5 NVDAx at a 180 USDC strike per share, so the
 // holder pays 5 x 180 = 900 USDC on exercise, asking 25 USDC for the option.
 // And the put: 5 NVDAx at 150 USDC, so 750 USDC, asking 20 USDC.
-const CALL_UNDERLYING: u64 = 5 * ONE_TOKEN;
-const CALL_STRIKE_AMOUNT: u64 = 900 * ONE_TOKEN;
-const CALL_PREMIUM: u64 = 25 * ONE_TOKEN;
-const PUT_UNDERLYING: u64 = 5 * ONE_TOKEN;
-const PUT_STRIKE_AMOUNT: u64 = 750 * ONE_TOKEN;
-const PUT_PREMIUM: u64 = 20 * ONE_TOKEN;
+const CALL_UNDERLYING: u64 = 5 * ONE_NVDAX;
+const CALL_STRIKE_AMOUNT: u64 = 900 * ONE_USDC;
+const CALL_PREMIUM: u64 = 25 * ONE_USDC;
+const PUT_UNDERLYING: u64 = 5 * ONE_NVDAX;
+const PUT_STRIKE_AMOUNT: u64 = 750 * ONE_USDC;
+const PUT_PREMIUM: u64 = 20 * ONE_USDC;
 const CALL_ID: u64 = 1;
 const PUT_ID: u64 = 2;
 
 // Every character starts with the standard wallet of 1,000 USDC; the story
 // hands the writers 5 NVDAx.
-const STANDARD_USDC: u64 = 1_000 * ONE_TOKEN;
-const FIVE_NVDAX: u64 = 5 * ONE_TOKEN;
+const STANDARD_USDC: u64 = 1_000 * ONE_USDC;
+const FIVE_NVDAX: u64 = 5 * ONE_NVDAX;
 
 // A fixed unix timestamp the clock is warped to before anything is written,
 // so the expiry a week later is deterministic.
@@ -125,8 +129,8 @@ fn initialize_market(test: &mut Test, fee_bps: u16, quote_mint: Pubkey) -> Outco
 fn setup_with_fee(test: &mut Test, fee_bps: u16) -> Env {
     test.add(Wallet::new().at(MARIA));
     test.add(TokenAccount::new(USDC_MINT, MARIA).at(MARIA_USDC).amount(0));
-    test.add(Mint::new(MARIA).at(NVDAX_MINT).decimals(6));
-    test.add(Mint::new(MARIA).at(USDC_MINT).decimals(6));
+    test.add(Mint::new(MARIA).at(NVDAX_MINT).decimals(NVDAX_DECIMALS));
+    test.add(Mint::new(MARIA).at(USDC_MINT).decimals(USDC_DECIMALS));
     test.warp_to_timestamp(START_TIME);
     add_person(test, &ALICE_P, FIVE_NVDAX, STANDARD_USDC);
     add_person(test, &BOB_P, 0, STANDARD_USDC);
@@ -390,6 +394,37 @@ fn buy_option_pays_the_premium_minus_the_fee(test: &mut Test) {
     let state = test.read::<OptionContract>(option);
     assert_eq!(state.holder, BOB);
     assert_eq!(state.status, STATUS_HELD);
+    assert_eq!(u64::from(test.read::<Market>(env.market).fees_owed), fee);
+    assert_vaults_match_ledger(test, &env);
+}
+
+/// A premium that is not a multiple of the rate: 10.000001 USDC at 1% is a
+/// fee of 0.100001 USDC, 0.10000001 rounded up to the minor unit, and the
+/// writer receives the premium minus the fee. The venue, not the writer,
+/// takes the rounding unit.
+#[quasar_test]
+fn fee_rounds_up_and_the_writer_takes_the_remainder(test: &mut Test) {
+    let env = setup(test);
+    let premium = 10 * ONE_USDC + 1;
+    write_option(
+        test,
+        &env,
+        &ALICE_P,
+        CALL_ID,
+        KIND_CALL,
+        CALL_UNDERLYING,
+        CALL_STRIKE_AMOUNT,
+        premium,
+        EXPIRY,
+    )
+    .succeeds();
+
+    let fee = 100_001; // 0.100001 USDC
+    buy_option(test, &env, &BOB_P, &ALICE_P, CALL_ID)
+        .succeeds()
+        .has_tokens(BOB_USDC, STANDARD_USDC - premium)
+        .has_tokens(ALICE_USDC, STANDARD_USDC + premium - fee)
+        .has_tokens(env.quote_vault, fee);
     assert_eq!(u64::from(test.read::<Market>(env.market).fees_owed), fee);
     assert_vaults_match_ledger(test, &env);
 }
@@ -839,8 +874,8 @@ fn write_option_rejects_an_expiry_that_has_passed(test: &mut Test) {
 #[quasar_test]
 fn initialize_market_rejects_a_full_fee(test: &mut Test) {
     test.add(Wallet::new().at(MARIA));
-    test.add(Mint::new(MARIA).at(NVDAX_MINT).decimals(6));
-    test.add(Mint::new(MARIA).at(USDC_MINT).decimals(6));
+    test.add(Mint::new(MARIA).at(NVDAX_MINT).decimals(NVDAX_DECIMALS));
+    test.add(Mint::new(MARIA).at(USDC_MINT).decimals(USDC_DECIMALS));
     initialize_market(test, 10_000, USDC_MINT).fails_with(OptionsError::InvalidParameter);
 }
 
@@ -850,7 +885,7 @@ fn initialize_market_rejects_a_full_fee(test: &mut Test) {
 #[quasar_test]
 fn initialize_market_rejects_the_same_mint_on_both_sides(test: &mut Test) {
     test.add(Wallet::new().at(MARIA));
-    test.add(Mint::new(MARIA).at(NVDAX_MINT).decimals(6));
+    test.add(Mint::new(MARIA).at(NVDAX_MINT).decimals(NVDAX_DECIMALS));
     initialize_market(test, FEE_BPS, NVDAX_MINT)
         .fails(ProgramError::Runtime("AccountBorrowFailed".into()));
 }

@@ -4,8 +4,9 @@
 //!
 //! There is no arithmetic in settlement at all: the option stores the two
 //! amounts that change hands, and settlement moves them as they are. The only
-//! rounding in the program is the floor in the fee split, and `split_premium`
-//! returns `None` on the paths the program maps to `OptionsError::MathOverflow`.
+//! rounding in the program is in the fee split, where the fee rounds up and
+//! the writer takes the remainder; `split_premium` returns `None` on the paths
+//! the program maps to `OptionsError::MathOverflow`.
 
 use crate::state::OptionKind;
 
@@ -34,13 +35,18 @@ pub fn exercise_payment(kind: OptionKind, underlying_amount: u64, strike_amount:
 }
 
 /// Split a premium into the venue's fee and the writer's share. The fee
-/// floors, so the writer receives the rounding minor unit; the venue gives up
-/// at most one minor unit per sale, and a sale needs a real premium, so the
-/// leak cannot be industrialized.
+/// rounds up, in the venue's favor, and the writer receives the premium minus
+/// the fee: a fee that floored would hand the writer the rounding minor unit
+/// on every sale whose premium is not a multiple of the rate. The two shares
+/// always sum to the premium, so the buyer never pays more than the writer
+/// asked. With the rate under 100% the fee never exceeds the premium, but a
+/// premium of a single minor unit rounds entirely into the fee.
 pub fn split_premium(premium: u64, fee_bps: u16) -> Option<(u64, u64)> {
+    // The product of a u64 and a u16 is far below u128::MAX, so the ceiling
+    // division cannot overflow.
     let fee = (premium as u128)
         .checked_mul(fee_bps as u128)?
-        .checked_div(BASIS_POINTS)?;
+        .div_ceil(BASIS_POINTS);
     let fee = u64::try_from(fee).ok()?;
     let to_writer = premium.checked_sub(fee)?;
     Some((fee, to_writer))
