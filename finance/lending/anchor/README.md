@@ -126,6 +126,27 @@ Borrowing and withdrawing are gated by `allowed_borrow_value`; an obligation is
 liquidatable once `borrowed_value > unhealthy_borrow_value`. Collateral is valued
 rounding down and debt rounding up, so health is always judged conservatively.
 
+An obligation with no borrows has nothing for its collateral to back, so
+`withdraw_obligation_collateral` reads no price and needs no refresh for it:
+the whole deposit comes out whatever the feed is doing, since a borrower who
+owes nothing must never be locked in by a stale or silent oracle
+(`debt_free_withdraw_needs_no_price_and_no_refresh`). With debt outstanding
+every check stays (`withdraw_with_debt_is_refused_while_the_price_is_stale`).
+Once the collateral is out, `close_obligation` returns the account's rent to
+the owner; it refuses with `ObligationNotEmpty` while any collateral or debt
+remains, and only the owner may close it.
+
+Each reserve's collateral vault closes when its last share leaves, whether a
+withdrawal or a liquidation takes it, and its rent goes back to the
+obligation's owner, who paid it when `deposit_obligation_collateral` created
+the vault (`init_if_needed` creates it again on a later deposit). The handler
+moves the vault's whole balance out before closing it, so share tokens someone
+sent straight to the vault cannot keep it open or block the withdrawal
+(`donated_shares_cannot_keep_the_vault_open`). `liquidate_obligation` takes the
+owner as `obligation_owner` for the rent and refuses any other account
+(`liquidator_cannot_redirect_the_vault_rent`). Every account the program creates
+for a borrower therefore closes, with its rent returned.
+
 Every handler that pairs an obligation with a reserve requires both to belong to
 the same `LendingMarket` (`MarketMismatch` otherwise), so each market is an
 isolation boundary: positions in one market can never be valued or settled
@@ -219,11 +240,14 @@ Admin: `initialize_lending_market`, `initialize_reserve`, `update_reserve_config
 Supply side: `refresh_reserve`, `deposit_reserve_liquidity`,
 `redeem_reserve_collateral`. Borrow side: `initialize_obligation`, `refresh_obligation`,
 `deposit_obligation_collateral`, `withdraw_obligation_collateral`,
-`borrow_obligation_liquidity`, `repay_obligation_liquidity`, `liquidate_obligation`.
+`borrow_obligation_liquidity`, `repay_obligation_liquidity`, `liquidate_obligation`,
+`close_obligation`.
 
 Value-dependent handlers require the reserves and the obligation to have been
 refreshed in the same transaction, so a typical action transaction is
-`[refresh_reserve …, refresh_obligation, <action>]`.
+`[refresh_reserve …, refresh_obligation, <action>]`. A withdrawal from an
+obligation with no borrows is the exception: it values nothing, so it is sent
+on its own.
 
 ## Setup
 

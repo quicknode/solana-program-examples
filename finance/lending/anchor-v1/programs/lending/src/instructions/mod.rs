@@ -1,5 +1,6 @@
 pub mod admin;
 pub mod borrow_obligation_liquidity;
+pub mod close_obligation;
 pub mod deposit_obligation_collateral;
 pub mod deposit_reserve_liquidity;
 pub mod initialize_obligation;
@@ -12,6 +13,7 @@ pub mod withdraw_obligation_collateral;
 
 pub use admin::*;
 pub use borrow_obligation_liquidity::*;
+pub use close_obligation::*;
 pub use deposit_obligation_collateral::*;
 pub use deposit_reserve_liquidity::*;
 pub use initialize_obligation::*;

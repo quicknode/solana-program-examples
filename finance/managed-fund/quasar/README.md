@@ -164,8 +164,10 @@ posted before a cluster restart is rejected until Pyth posts again. The
 rebalance tests sign as a stranger and check that a fund at its targets, within
 its threshold, or just rebalanced cannot be traded
 (`test_rebalance_cannot_churn` and its neighbors), and
-`test_valuation_scales_by_decimals_and_exponent` runs the story with a
-nine-decimal TSLAx on an exponent −5 feed. `test_wide_confidence_price_rejected`
+`test_valuation_scales_by_decimals_and_exponent` runs the story with an
+eight-decimal TSLAx on an exponent −5 feed and gets the same share counts, and
+`test_valuation_scales_by_nine_decimals_and_exponent` does the same with TSLAx
+at nine decimals. `test_wide_confidence_price_rejected`
 widens NVDAx's confidence interval to 2% of its price and checks that deposit
 and rebalance are refused while withdraw still pays out, and that a band of
 exactly 1% is accepted. `test_collect_fees` checks a year's 1% fee on

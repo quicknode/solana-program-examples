@@ -2,7 +2,7 @@
 
 ## Unreleased, 2026-10-05
 
-- The tests tell the book's story: token A is TSLAx, minted at 8 decimals, token B is USDC at 6, and Alice offers 1 TSLAx (`TSLAX_OFFERED`, 100,000,000 minor units) for 1,000 USDC (`USDC_WANTED`, 1,000,000,000 minor units). `test_cancel_offer_rejects_non_maker` asserts Anchor's `ConstraintAddress` (2012), so every refusal test asserts its error code.
+- The tests tell the book's story the way the book does: token A is USDC, minted at 6 decimals, token B is TSLAx at 8, and Alice offers 250 USDC (`USDC_OFFERED`, 250,000,000 minor units) for 1 TSLAx (`TSLAX_WANTED`, 100,000,000 minor units), which Bob takes. Both start with the standard wallet of 1 SOL and 1,000 USDC, and Bob also holds 1 TSLAx, so the take leaves him at 1,250 USDC. The switched-offer tests re-make the offer at 1 USDC for the same 1 TSLAx, and at the same 250 USDC for 2 TSLAx. The take test asserts both sides' balances in both tokens. `test_cancel_offer_rejects_non_maker` asserts Anchor's `ConstraintAddress` (2012), so every refusal test asserts its error code.
 
 ## 2026-10-04
 

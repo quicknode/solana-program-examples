@@ -4,12 +4,35 @@
 
 ### Added
 
+- `close_order` and `close_market_user`, so a participant's rent comes
+  back. Nothing closed an `Order` or `MarketUser` account before, so every
+  order and every registration cost its owner the rent for good.
+  `close_order` closes a Filled or Cancelled order to its owner, who signs;
+  both statuses have already left the slab and the owner's `open_orders`,
+  and a cancel has already credited its refund, so nothing refers to the
+  account. An Open or PartiallyFilled order gets the new `OrderNotClosable`.
+  `close_market_user` closes the owner's `MarketUser` when `open_orders` is
+  empty and both unsettled balances are zero, else the new
+  `MarketUserNotClosable`; the owner can register again afterwards. Either
+  signed by anyone but the owner gets `Unauthorized`. Tests:
+  `close_order_returns_a_cancelled_orders_rent`,
+  `close_order_returns_a_filled_orders_rent`,
+  `close_order_refuses_a_resting_order`,
+  `close_order_refuses_a_partially_filled_order`,
+  `close_order_refuses_a_non_owner`,
+  `close_market_user_returns_rent_when_nothing_is_open_or_owed`,
+  `close_market_user_refuses_an_open_order`,
+  `close_market_user_refuses_an_unsettled_balance`,
+  `close_market_user_refuses_a_non_owner`.
 - `withdraw_fees_rejects_a_non_authority_signer`: after a fill, a trader
   signing `withdraw_fees` gets `NotMarketAuthority`, the fee stays in the
   vault, and the trader's quote balance is unchanged.
 
 ### Changed
 
+- The test suite's comment on the shared bid and ask sizing no longer says
+  matching is not implemented. It is; no test places both orders, so they
+  never cross.
 - Every refusal test asserts the error code the call fails with, through
   the suite's `failure_text` and `assert_fails_with` helpers:
   `place_order_rejects_zero_price` (`InvalidPrice`),

@@ -4,10 +4,14 @@
 
 ### Changed
 
-- The tests tell the book's story: `TSLAX_MINT` is minted at 8 decimals,
-  `USDC_MINT` at 6, and the maker offers 1 TSLAx (`TSLAX_OFFERED`,
-  100,000,000 minor units) for 1,000 USDC (`USDC_WANTED`, 1,000,000,000 minor
-  units). The substituted-mint, substituted-vault and non-maker-cancel tests
+- The tests tell the book's story the way the book does: token A is
+  `USDC_MINT`, minted at 6 decimals, token B is `TSLAX_MINT` at 8, and the
+  maker offers 250 USDC (`USDC_OFFERED`, 250,000,000 minor units) for 1 TSLAx
+  (`TSLAX_WANTED`, 100,000,000 minor units), which the taker takes. Both start
+  with 1,000 USDC, and the taker also holds 1 TSLAx, so the take leaves the
+  taker at 1,250 USDC. The switched-offer tests
+  re-make the offer at 1 USDC for the same 1 TSLAx, and at the same 250 USDC
+  for 2 TSLAx. The take test asserts both sides' balances in both tokens. The substituted-mint, substituted-vault and non-maker-cancel tests
   assert `QuasarError::HasOneMismatch` (3005), so every refusal test asserts
   its error code.
 

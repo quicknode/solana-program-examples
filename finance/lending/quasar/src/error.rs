@@ -21,4 +21,6 @@ pub enum LendingError {
     /// The price feed is too uncertain to value against: its confidence band
     /// exceeds the reserve's limit.
     OracleConfidenceTooWide,
+    /// The obligation still holds collateral or debt and cannot be closed.
+    ObligationNotEmpty,
 }

@@ -2,6 +2,49 @@
 
 ## Unreleased (2026-10-05)
 
+Close each collateral vault when its last share leaves. A withdrawal or a
+liquidation that empties a reserve's deposit entry now also closes that
+reserve's per-obligation share vault, rent to the obligation's owner, who paid
+it in `deposit_obligation_collateral` (`init_if_needed` recreates it on a later
+deposit). The vault's whole balance moves out first, to the owner on a
+withdrawal and to the liquidator on a liquidation, so share tokens donated
+straight to the vault cannot keep it open or make the withdrawal fail.
+`withdraw_obligation_collateral`'s `owner` is now writable, and
+`liquidate_obligation` takes a new `obligation_owner` account
+(`address = obligation.owner`) to receive the rent. Tested by
+`full_withdraw_closes_the_vault_and_returns_its_rent`,
+`partial_withdraw_keeps_the_vault_open`,
+`redeposit_after_full_withdraw_recreates_the_vault`,
+`donated_shares_cannot_keep_the_vault_open`,
+`seizing_all_collateral_closes_the_vault_and_returns_its_rent_to_the_owner`
+and `liquidator_cannot_redirect_the_vault_rent` (`ConstraintAddress`);
+`debt_free_withdraw_needs_no_price_and_no_refresh` now asserts the vault is
+gone.
+
+A debt-free borrower can always withdraw. `withdraw_obligation_collateral`
+read the price feed and required a refreshed obligation on every call, and
+`refresh_obligation` reads prices too, so a borrower with no borrows could not
+take their collateral out while the feed was stale or silent. Now the handler
+skips the refresh requirement, the price read and the health check when
+`borrows` is empty, which is exactly when the debt is zero (a borrow entry is
+removed when its last unit is repaid); the obligation is still marked stale so
+its cached values are recomputed before the next health-dependent action.
+Every check stays for an obligation with debt. Tested by
+`debt_free_withdraw_needs_no_price_and_no_refresh`, which lets the price go
+stale and withdraws the whole deposit with no refresh in the transaction,
+`withdraw_after_full_repay_needs_no_price`, and
+`withdraw_with_debt_is_refused_while_the_price_is_stale`, which asserts the
+existing `StalePriceFeed` and `ObligationStale` refusals. The test harness
+gains `try_withdraw_collateral_without_refresh`.
+
+New `close_obligation` handler: closes an obligation with no deposits and no
+borrows, returning its rent to the owner through `close = owner`; `has_one =
+owner` refuses anyone else, and the new `ObligationNotEmpty` error refuses one
+that still holds collateral or debt. Tested by
+`close_obligation_returns_rent_to_owner` (rent back to the minor unit, account
+gone), `close_obligation_with_collateral_is_refused`,
+`close_obligation_with_debt_is_refused` and `non_owner_cannot_close_obligation`.
+
 The program fee on accrued interest rounds up. `accrue_interest` computes the
 reserve factor's cut of each accrual with `mul_div_ceil`, so when the cut is
 not whole the extra unit goes to the market owner, and the suppliers take the

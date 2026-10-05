@@ -150,3 +150,78 @@ fn over_seizing_liquidation_rejected_smaller_succeeds() {
         525_000_000
     );
 }
+
+/// A seizure that takes every collateral share removes the deposit entry and
+/// closes the collateral vault, returning its rent to the obligation's owner,
+/// who paid it, not to the liquidator who sent the transaction.
+///
+/// At $0.3675 the 1,000 collateral units are worth $367.50, and the close
+/// factor caps the repayment at half the $700 debt, $350, whose value plus
+/// the 5% bonus is exactly $367.50: the whole deposit.
+#[test]
+fn seizing_all_collateral_closes_the_vault_and_returns_its_rent_to_the_owner() {
+    let (mut env, collateral, borrow, borrower, obligation, liquidator) = setup();
+    env.set_price(collateral.mint, 367_500_000_000_000_000);
+    let vault = env.obligation_share_vault(&collateral, obligation);
+    let vault_rent = env.sol_balance(vault);
+    let owner_before = env.sol_balance(borrower.pubkey());
+
+    env.try_liquidate(
+        &liquidator,
+        obligation,
+        &[&collateral],
+        &[&borrow],
+        &borrow,
+        &collateral,
+        350_000_000,
+    )
+    .unwrap();
+
+    assert_eq!(
+        env.token_balance(ata(&liquidator.pubkey(), &collateral.share_mint)),
+        1_000_000_000
+    );
+    assert!(env.obligation(obligation).deposits.is_empty());
+    assert!(!env.account_is_open(vault));
+    assert_eq!(
+        env.sol_balance(borrower.pubkey()),
+        owner_before + vault_rent,
+        "the vault's rent must return to the owner who paid it"
+    );
+}
+
+/// The vault's rent belongs to the owner who paid it, so a liquidator cannot
+/// name another account as `obligation_owner` to send it elsewhere; `address
+/// = obligation.owner` refuses before anything moves. The account named is a
+/// third party's wallet: v2 refuses the liquidator's own key passed twice as
+/// a duplicate mutable account before the address constraint runs.
+#[test]
+fn liquidator_cannot_redirect_the_vault_rent() {
+    let (mut env, collateral, borrow, _borrower, obligation, liquidator) = setup();
+    env.set_price(collateral.mint, 367_500_000_000_000_000);
+    let vault = env.obligation_share_vault(&collateral, obligation);
+    let stranger = env.create_user();
+
+    let result = env.try_liquidate_with_rent_to(
+        &liquidator,
+        obligation,
+        &[&collateral],
+        &[&borrow],
+        &borrow,
+        &collateral,
+        350_000_000,
+        Some(stranger.pubkey()),
+    );
+    let anchor_lang::Error::Custom(code) =
+        anchor_lang::Error::from(anchor_lang::ErrorCode::ConstraintAddress)
+    else {
+        panic!("a constraint error converts to a custom code");
+    };
+    let message = result.expect_err("the vault's rent may only go to the obligation's owner");
+    assert!(
+        message.contains(&format!("Custom({code})")),
+        "expected ConstraintAddress (Custom({code})), got: {message}"
+    );
+    assert!(env.account_is_open(vault));
+    assert_eq!(env.token_balance(vault), 1_000_000_000);
+}

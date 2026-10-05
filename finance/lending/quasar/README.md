@@ -132,7 +132,28 @@ Everything else mirrors the Anchor version.
 `initialize_obligation` (5), `deposit_obligation_collateral` (6),
 `withdraw_obligation_collateral` (7), `borrow_obligation_liquidity` (8),
 `repay_obligation_liquidity` (9), `liquidate_obligation` (10),
-`collect_program_fees` (11).
+`collect_program_fees` (11), `close_obligation` (12).
+
+`withdraw_obligation_collateral` reads a price only when the obligation has
+debt. With no debt the collateral backs nothing, so the whole deposit comes
+out whatever the feeds are doing: a borrower who owes nothing must never be
+locked in by a stale or silent oracle (`debt_free_withdraw_needs_no_price`).
+With debt outstanding every check stays
+(`withdraw_with_debt_is_refused_while_the_price_is_stale`). Once the
+collateral is out, `close_obligation` returns the account's rent to the owner;
+it refuses with `ObligationNotEmpty` while any shares or principal remain, and
+only the owner may close it.
+
+The collateral vault closes when its last share leaves, whether a withdrawal
+or a liquidation takes it, and its rent goes back to the obligation's owner,
+who paid it when `deposit_obligation_collateral` created the vault
+(`init(idempotent)` creates it again on a later deposit). The handler moves
+the vault's whole balance out before closing it, so share tokens someone sent
+straight to the vault cannot keep it open or block the withdrawal
+(`donated_shares_cannot_keep_the_vault_open`). `liquidate_obligation` takes the
+owner as `obligation_owner` for the rent and refuses any other account
+(`liquidator_cannot_redirect_the_vault_rent`). Every account the program
+creates for a borrower therefore closes, with its rent returned.
 
 ## Setup
 

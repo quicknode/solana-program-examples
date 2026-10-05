@@ -31,7 +31,7 @@ quasar build
 cargo test
 ```
 
-Tests invoke instruction handlers and assert onchain state. No local validator. They tell one story: token A is TSLAx, minted at 8 decimals, token B is USDC at 6, and the maker offers 1 TSLAx (`TSLAX_OFFERED`, 100,000,000 minor units) for 1,000 USDC (`USDC_WANTED`, 1,000,000,000 minor units). They cover the make, take and cancel flows with their rent refunds, a take that lands on an offer the maker cancelled and re-made at worse terms (`OfferTermsChanged`), offers with zero on either side (`ZeroAmount`) or one token on both (`AccountBorrowFailed`), and a substituted mint, a substituted vault and a signer who is not the maker (each `HasOneMismatch`). Every refusal test asserts the error code it expects.
+Tests invoke instruction handlers and assert onchain state. No local validator. They tell one story, the book's: token A is USDC, minted at 6 decimals, token B is TSLAx at 8, and the maker offers 250 USDC (`USDC_OFFERED`, 250,000,000 minor units) for 1 TSLAx (`TSLAX_WANTED`, 100,000,000 minor units), which the taker takes. Both start with the standard 1,000 USDC, and the taker also holds 1 TSLAx, so the take leaves the taker at 1,250 USDC and no TSLAx. They cover the make, take and cancel flows with their rent refunds, a take that lands on an offer the maker cancelled and re-made at worse terms (`OfferTermsChanged`), offers with zero on either side (`ZeroAmount`) or one token on both (`AccountBorrowFailed`), and a substituted mint, a substituted vault and a signer who is not the maker (each `HasOneMismatch`). Every refusal test asserts the error code it expects.
 
 ## Usage
 

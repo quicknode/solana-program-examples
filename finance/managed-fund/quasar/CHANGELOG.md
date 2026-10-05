@@ -16,7 +16,11 @@
   `SINGLE_ASSET_DECIMALS` for the single-asset fund's asset, replacing
   `DECIMALS`). Every asserted basket amount is in eight-decimal minor units
   and unchanged in major units. `test_valuation_scales_by_decimals_and_exponent`
-  varies TSLAx to nine decimals on its exponent −5 feed.
+  keeps running the story with an eight-decimal TSLAx on an exponent −5 feed,
+  as the book describes, so it differs from the story in exponent only, and
+  the new `test_valuation_scales_by_nine_decimals_and_exponent` runs it with
+  TSLAx at nine decimals on the same feed, so the decimals vary as well; both
+  get the story's share counts.
 
 ## [2026-10-03]
 

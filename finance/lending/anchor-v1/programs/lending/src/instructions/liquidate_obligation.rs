@@ -1,6 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token_interface::{
-    transfer_checked, Mint, TokenAccount, TokenInterface, TransferChecked,
+    close_account, transfer_checked, CloseAccount, Mint, TokenAccount, TokenInterface,
+    TransferChecked,
 };
 
 use crate::constants::{
@@ -20,6 +21,12 @@ use crate::state::{Obligation, PriceFeed, Reserve};
 /// more collateral than the obligation holds, the call fails with
 /// `LiquidationTooLarge` — silently capping the seizure would make the
 /// liquidator pay full price for less collateral.
+///
+/// A seizure that takes the last share of the collateral reserve removes the
+/// deposit entry and closes that reserve's collateral vault, rent to the
+/// obligation's owner (`obligation_owner`), who paid it. The whole vault
+/// balance goes to the liquidator first, so share tokens someone sent straight
+/// to the vault cannot keep it open.
 ///
 /// Self-liquidation (the owner liquidating their own position) is not blocked:
 /// it is only possible while unhealthy and is economically pointless, matching
@@ -123,7 +130,7 @@ pub fn handle_liquidate_obligation(
     }
 
     // Effects: obligation debt and collateral.
-    let (lending_market, owner, obligation_bump) = {
+    let (lending_market, owner, obligation_bump, empties_vault) = {
         let obligation = &mut context.accounts.obligation;
         obligation.borrows[borrow_index].borrowed_principal = borrowed_principal
             .checked_sub(scaled_removed)
@@ -134,11 +141,23 @@ pub fn handle_liquidate_obligation(
         obligation.deposits[collateral_index].deposited_shares = deposited_shares
             .checked_sub(seize_shares)
             .ok_or(LendingError::MathOverflow)?;
-        if obligation.deposits[collateral_index].deposited_shares == 0 {
+        let empties_vault = obligation.deposits[collateral_index].deposited_shares == 0;
+        if empties_vault {
             obligation.deposits.remove(collateral_index);
         }
         obligation.stale = true;
-        (obligation.lending_market, obligation.owner, obligation.bump)
+        (
+            obligation.lending_market,
+            obligation.owner,
+            obligation.bump,
+            empties_vault,
+        )
+    };
+    // Emptying the entry sweeps the vault, donations included, so it can close.
+    let seize_transfer = if empties_vault {
+        context.accounts.obligation_collateral_vault.amount
+    } else {
+        seize_shares
     };
 
     // Interactions: liquidator repays, then receives the seized share tokens.
@@ -180,14 +199,29 @@ pub fn handle_liquidate_obligation(
             },
             &[&seeds],
         ),
-        seize_shares,
+        seize_transfer,
         context.accounts.collateral_share_mint.decimals,
     )?;
+
+    if empties_vault {
+        close_account(CpiContext::new_with_signer(
+            context.accounts.token_program.key(),
+            CloseAccount {
+                account: context
+                    .accounts
+                    .obligation_collateral_vault
+                    .to_account_info(),
+                destination: context.accounts.obligation_owner.to_account_info(),
+                authority: context.accounts.obligation.to_account_info(),
+            },
+            &[&seeds],
+        ))?;
+    }
 
     Ok(())
 }
 
-// Liquidation touches 13 accounts; every Account/InterfaceAccount is boxed so
+// Liquidation touches 14 accounts; every Account/InterfaceAccount is boxed so
 // account deserialization happens on the heap and stays within the BPF stack frame.
 #[derive(Accounts)]
 pub struct LiquidateObligation<'info> {
@@ -195,6 +229,11 @@ pub struct LiquidateObligation<'info> {
     pub obligation: Box<Account<'info, Obligation>>,
 
     pub liquidator: Signer<'info>,
+
+    /// The obligation's owner, who paid the collateral vault's rent; receives
+    /// it back if this seizure empties the vault.
+    #[account(mut, address = obligation.owner)]
+    pub obligation_owner: SystemAccount<'info>,
 
     #[account(
         mut,

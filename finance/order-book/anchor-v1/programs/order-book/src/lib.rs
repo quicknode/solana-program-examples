@@ -74,6 +74,20 @@ pub mod order_book {
         instructions::settle_funds::handle_settle_funds(context)
     }
 
+    /// Close a Filled or Cancelled order's account and return its rent to
+    /// the order's owner, who signs. An order still resting on the book
+    /// (Open or PartiallyFilled) is refused with `OrderNotClosable`.
+    pub fn close_order(context: Context<CloseOrderAccountConstraints>) -> Result<()> {
+        instructions::close_order::handle_close_order(context)
+    }
+
+    /// Close the owner's MarketUser account for this market and return its
+    /// rent to them. Refused with `MarketUserNotClosable` while the account
+    /// lists an open order or holds an unsettled balance.
+    pub fn close_market_user(context: Context<CloseMarketUserAccountConstraints>) -> Result<()> {
+        instructions::close_market_user::handle_close_market_user(context)
+    }
+
     /// Drain the fee vault into the market authority's token account.
     /// Authority-gated - only the market's stored `authority` may call this.
     pub fn withdraw_fees(context: Context<WithdrawFeesAccountConstraints>) -> Result<()> {

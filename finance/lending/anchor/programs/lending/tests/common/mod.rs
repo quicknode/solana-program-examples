@@ -7,14 +7,17 @@
 //! instructions into the same transaction, exactly as a real client must.
 
 use anchor_lang::{
-    solana_program::instruction::{AccountMeta, Instruction},
+    solana_program::{
+        instruction::{AccountMeta, Instruction},
+        system_instruction,
+    },
     system_program, AccountDeserialize, InstructionData, ToAccountMetas,
 };
 use anchor_spl::token::ID as TOKEN_PROGRAM_ID;
 use anchor_v2_testing::{Keypair, LiteSVM, Signer};
 use solana_kite::{
-    create_associated_token_account, create_token_mint, create_wallet, get_token_account_balance,
-    mint_tokens_to_token_account, send_transaction_from_instructions,
+    create_associated_token_account, create_token_mint, create_wallet, get_sol_balance,
+    get_token_account_balance, mint_tokens_to_token_account, send_transaction_from_instructions,
 };
 
 use lending::constants::{
@@ -704,28 +707,16 @@ impl Env {
         send(&mut self.svm, instructions, &[user], &user.pubkey()).unwrap();
     }
 
-    #[allow(clippy::too_many_arguments)]
-    pub fn try_withdraw_collateral(
-        &mut self,
+    fn withdraw_collateral_ix(
+        &self,
         user: &Keypair,
         obligation: Address,
-        deposit_reserves: &[&ReserveHandle],
-        borrow_reserves: &[&ReserveHandle],
         collateral: &ReserveHandle,
         share_amount: u64,
-    ) -> Result<(), String> {
+    ) -> Instruction {
         let user_share = ata(&user.pubkey(), &collateral.share_mint);
         let vault = self.obligation_share_vault(collateral, obligation);
-        let mut all: Vec<&ReserveHandle> = deposit_reserves.to_vec();
-        all.extend_from_slice(borrow_reserves);
-
-        let mut instructions = self.refresh_all_ix(&all);
-        instructions.push(self.refresh_obligation_ix(
-            obligation,
-            deposit_reserves,
-            borrow_reserves,
-        ));
-        instructions.push(Instruction {
+        Instruction {
             program_id: lending::id(),
             accounts: lending::accounts::WithdrawObligationCollateral {
                 obligation,
@@ -739,10 +730,91 @@ impl Env {
             }
             .to_account_metas(None),
             data: lending::instruction::WithdrawObligationCollateral { share_amount }.data(),
-        });
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn try_withdraw_collateral(
+        &mut self,
+        user: &Keypair,
+        obligation: Address,
+        deposit_reserves: &[&ReserveHandle],
+        borrow_reserves: &[&ReserveHandle],
+        collateral: &ReserveHandle,
+        share_amount: u64,
+    ) -> Result<(), String> {
+        let mut all: Vec<&ReserveHandle> = deposit_reserves.to_vec();
+        all.extend_from_slice(borrow_reserves);
+
+        let mut instructions = self.refresh_all_ix(&all);
+        instructions.push(self.refresh_obligation_ix(
+            obligation,
+            deposit_reserves,
+            borrow_reserves,
+        ));
+        instructions.push(self.withdraw_collateral_ix(user, obligation, collateral, share_amount));
         send(&mut self.svm, instructions, &[user], &user.pubkey())
     }
 
+    /// Send `withdraw_obligation_collateral` on its own, with no reserve or
+    /// obligation refresh in the transaction: what a debt-free borrower sends
+    /// when the price feed is stale or silent and a refresh would fail.
+    pub fn try_withdraw_collateral_without_refresh(
+        &mut self,
+        user: &Keypair,
+        obligation: Address,
+        collateral: &ReserveHandle,
+        share_amount: u64,
+    ) -> Result<(), String> {
+        let instruction = self.withdraw_collateral_ix(user, obligation, collateral, share_amount);
+        send(&mut self.svm, vec![instruction], &[user], &user.pubkey())
+    }
+
+    /// `signer` tries to close `obligation`, taking its rent.
+    pub fn try_close_obligation(
+        &mut self,
+        signer: &Keypair,
+        obligation: Address,
+    ) -> Result<(), String> {
+        let instruction = Instruction {
+            program_id: lending::id(),
+            accounts: lending::accounts::CloseObligation {
+                obligation,
+                owner: signer.pubkey(),
+            }
+            .to_account_metas(None),
+            data: lending::instruction::CloseObligation {}.data(),
+        };
+        send(
+            &mut self.svm,
+            vec![instruction],
+            &[signer],
+            &signer.pubkey(),
+        )
+    }
+
+    /// What one transaction with a single signer costs its fee payer, measured
+    /// by sending `payer` a zero-lamport transfer to themselves: nothing else
+    /// in that transaction moves lamports. A fresh blockhash first, so
+    /// repeated measurements are distinct transactions.
+    pub fn transaction_fee(&mut self, payer: &Keypair) -> u64 {
+        self.svm.expire_blockhash();
+        let before = self.sol_balance(payer.pubkey());
+        send(
+            &mut self.svm,
+            vec![system_instruction::transfer(
+                &payer.pubkey(),
+                &payer.pubkey(),
+                0,
+            )],
+            &[payer],
+            &payer.pubkey(),
+        )
+        .unwrap();
+        before - self.sol_balance(payer.pubkey())
+    }
+
+    #[allow(clippy::too_many_arguments)]
     #[allow(clippy::too_many_arguments)]
     pub fn try_liquidate(
         &mut self,
@@ -753,6 +825,33 @@ impl Env {
         repay: &ReserveHandle,
         collateral: &ReserveHandle,
         amount: u64,
+    ) -> Result<(), String> {
+        self.try_liquidate_with_rent_to(
+            liquidator,
+            obligation,
+            deposit_reserves,
+            borrow_reserves,
+            repay,
+            collateral,
+            amount,
+            None,
+        )
+    }
+
+    /// Liquidate, naming `obligation_owner` as the account the collateral
+    /// vault's rent returns to if the seizure empties it (`None` passes the
+    /// obligation's real owner, the only account the program accepts).
+    #[allow(clippy::too_many_arguments)]
+    pub fn try_liquidate_with_rent_to(
+        &mut self,
+        liquidator: &Keypair,
+        obligation: Address,
+        deposit_reserves: &[&ReserveHandle],
+        borrow_reserves: &[&ReserveHandle],
+        repay: &ReserveHandle,
+        collateral: &ReserveHandle,
+        amount: u64,
+        obligation_owner: Option<Address>,
     ) -> Result<(), String> {
         let repay_source = ata(&liquidator.pubkey(), &repay.mint);
         // Create the destination ATA only on the first call, so a test can
@@ -768,6 +867,8 @@ impl Env {
             .unwrap();
         }
         let vault = self.obligation_share_vault(collateral, obligation);
+        let obligation_owner =
+            obligation_owner.unwrap_or_else(|| self.obligation(obligation).owner);
 
         let mut all: Vec<&ReserveHandle> = deposit_reserves.to_vec();
         all.extend_from_slice(borrow_reserves);
@@ -782,6 +883,7 @@ impl Env {
             accounts: lending::accounts::LiquidateObligation {
                 obligation,
                 liquidator: liquidator.pubkey(),
+                obligation_owner,
                 repay_reserve: repay.reserve,
                 collateral_reserve: collateral.reserve,
                 repay_price_feed: repay.price_feed,
@@ -878,6 +980,41 @@ impl Env {
 
     pub fn token_balance(&self, token_account: Address) -> u64 {
         get_token_account_balance(&self.svm, &token_account).unwrap()
+    }
+
+    pub fn sol_balance(&self, address: Address) -> u64 {
+        get_sol_balance(&self.svm, &address)
+    }
+
+    /// Send `amount` share tokens of `handle` from `from`'s account straight to
+    /// `to`, outside the program: a donation the program never recorded.
+    pub fn send_shares(
+        &mut self,
+        from: &Keypair,
+        handle: &ReserveHandle,
+        to: Address,
+        amount: u64,
+    ) {
+        let source = ata(&from.pubkey(), &handle.share_mint);
+        let instruction = anchor_spl::token::spl_token::instruction::transfer_checked(
+            &TOKEN_PROGRAM_ID,
+            &source,
+            &handle.share_mint,
+            &to,
+            &from.pubkey(),
+            &[],
+            amount,
+            handle.decimals,
+        )
+        .unwrap();
+        send(&mut self.svm, vec![instruction], &[from], &from.pubkey()).unwrap();
+    }
+
+    /// A closed account has no lamports and no data.
+    pub fn account_is_open(&self, address: Address) -> bool {
+        self.svm
+            .get_account(&address)
+            .is_some_and(|account| account.lamports > 0 && !account.data.is_empty())
     }
 }
 

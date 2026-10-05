@@ -8,15 +8,19 @@ use {
     crate::{
         constants::{BPS_DENOMINATOR, FIXED_POINT_SCALE},
         cpi::{
-            BorrowObligationLiquidityInstruction, DepositObligationCollateralInstruction,
-            DepositReserveLiquidityInstruction, InitializeLendingMarketInstruction,
-            InitializeObligationInstruction, InitializeReserveInstruction,
-            LiquidateObligationInstruction, RedeemReserveCollateralInstruction,
-            RepayObligationLiquidityInstruction, SetPriceInstruction,
+            BorrowObligationLiquidityInstruction, CloseObligationInstruction,
+            DepositObligationCollateralInstruction, DepositReserveLiquidityInstruction,
+            InitializeLendingMarketInstruction, InitializeObligationInstruction,
+            InitializeReserveInstruction, LiquidateObligationInstruction,
+            RedeemReserveCollateralInstruction, RepayObligationLiquidityInstruction,
+            SetPriceInstruction, WithdrawObligationCollateralInstruction,
         },
         error::LendingError,
-        state::{LendingMarket, LiquidityVaultPda, Obligation, Reserve, ShareMintPda},
+        state::{
+            LendingMarket, LiquidityVaultPda, Obligation, ObligationVaultPda, Reserve, ShareMintPda,
+        },
     },
+    quasar_lang::error::QuasarError,
     quasar_test::prelude::*,
 };
 
@@ -401,10 +405,48 @@ fn repay(test: &mut Test, w: &Pdas, amount: u64) -> Outcome {
     })
 }
 
+/// The borrower withdraws `shares` of posted collateral. The borrow reserve
+/// and its feed are passed either way; the handler reads them only when the
+/// obligation has debt.
+fn withdraw(test: &mut Test, w: &Pdas, shares: u64) -> Outcome {
+    test.send(WithdrawObligationCollateralInstruction {
+        owner: BORROWER,
+        lending_market: w.market,
+        collateral_reserve: w.collateral_reserve,
+        collateral_price: w.collateral_price,
+        share_mint: w.collateral_share_mint,
+        borrow_reserve: w.borrow_reserve,
+        borrow_price: w.borrow_price,
+        owner_share: BORROWER_COLLATERAL_SHARE,
+        shares,
+    })
+}
+
+/// The borrower closes their obligation, taking its rent.
+fn close_obligation(test: &mut Test, w: &Pdas) -> Outcome {
+    test.send(CloseObligationInstruction {
+        owner: BORROWER,
+        lending_market: w.market,
+    })
+}
+
 fn liquidate(test: &mut Test, w: &Pdas, amount: u64) -> Outcome {
+    liquidate_with_rent_to(test, w, BORROWER, amount)
+}
+
+/// Liquidate, naming `obligation_owner` as the account the collateral
+/// vault's rent returns to if the seizure empties it. Only the obligation's
+/// real owner is accepted.
+fn liquidate_with_rent_to(
+    test: &mut Test,
+    w: &Pdas,
+    obligation_owner: Pubkey,
+    amount: u64,
+) -> Outcome {
     test.send(LiquidateObligationInstruction {
         liquidator: LIQUIDATOR,
         obligation: w.obligation,
+        obligation_owner,
         lending_market: w.market,
         collateral_reserve: w.collateral_reserve,
         collateral_price: w.collateral_price,
@@ -695,6 +737,221 @@ fn unhealthy_position_is_liquidated_and_healthy_is_rejected(test: &mut Test) {
         test.tokens(LIQUIDATOR_COLLATERAL_SHARE) > 0,
         "liquidator should receive seized collateral shares"
     );
+}
+
+/// Once the collateral is out, closing the obligation returns its rent to
+/// the owner and the account is gone. quasar-test charges no transaction fee,
+/// so the owner's balance rises by exactly the rent.
+#[quasar_test]
+fn close_obligation_returns_rent_to_owner(test: &mut Test) {
+    let w = base_world(test);
+    bootstrap_position(test, &w);
+    withdraw(test, &w, 1_000 * UNIT)
+        .succeeds()
+        .has_tokens(BORROWER_COLLATERAL_SHARE, 1_000 * UNIT);
+    assert_eq!(
+        u64::from(test.read::<Obligation>(w.obligation).deposited_shares),
+        0
+    );
+
+    let rent = test.lamports(w.obligation);
+    assert!(rent > 0);
+    let owner_before = test.lamports(BORROWER);
+    close_obligation(test, &w)
+        .succeeds()
+        .is_closed(w.obligation)
+        .has_lamports(BORROWER, owner_before + rent);
+}
+
+/// An obligation still holding collateral cannot close: the shares would be
+/// stranded in a vault whose authority no longer exists.
+#[quasar_test]
+fn close_obligation_with_collateral_is_refused(test: &mut Test) {
+    let w = base_world(test);
+    bootstrap_position(test, &w);
+    close_obligation(test, &w).fails_with(LendingError::ObligationNotEmpty);
+    assert_eq!(
+        u64::from(test.read::<Obligation>(w.obligation).deposited_shares),
+        1_000 * UNIT
+    );
+}
+
+/// An obligation with debt cannot close: closing it would forgive the loan.
+#[quasar_test]
+fn close_obligation_with_debt_is_refused(test: &mut Test) {
+    let w = base_world(test);
+    bootstrap_position(test, &w);
+    borrow(test, &w, 100 * UNIT).succeeds();
+    close_obligation(test, &w).fails_with(LendingError::ObligationNotEmpty);
+    assert!(u128::from(test.read::<Obligation>(w.obligation).borrowed_principal) > 0);
+}
+
+/// The borrower's collateral vault for the collateral reserve.
+fn collateral_vault(test: &Test, w: &Pdas) -> Pubkey {
+    test.derive_pda(ObligationVaultPda::seeds(
+        &w.collateral_reserve,
+        &w.obligation,
+    ))
+}
+
+/// A withdrawal that takes the last share closes the collateral vault and
+/// returns its rent to the owner, who paid it when the first deposit created
+/// the vault. quasar-test charges no transaction fee, so the owner's balance
+/// rises by exactly the rent.
+#[quasar_test]
+fn full_withdraw_closes_the_vault_and_returns_its_rent(test: &mut Test) {
+    let w = base_world(test);
+    bootstrap_position(test, &w);
+    let vault = collateral_vault(test, &w);
+    let vault_rent = test.lamports(vault);
+    assert!(vault_rent > 0);
+    let owner_before = test.lamports(BORROWER);
+
+    withdraw(test, &w, 1_000 * UNIT)
+        .succeeds()
+        .is_closed(vault)
+        .has_lamports(BORROWER, owner_before + vault_rent)
+        .has_tokens(BORROWER_COLLATERAL_SHARE, 1_000 * UNIT);
+}
+
+/// A withdrawal that leaves shares behind leaves the vault open.
+#[quasar_test]
+fn partial_withdraw_keeps_the_vault_open(test: &mut Test) {
+    let w = base_world(test);
+    bootstrap_position(test, &w);
+    let vault = collateral_vault(test, &w);
+    withdraw(test, &w, 400 * UNIT)
+        .succeeds()
+        .has_tokens(vault, 600 * UNIT)
+        .has_tokens(BORROWER_COLLATERAL_SHARE, 400 * UNIT);
+    assert_eq!(
+        u64::from(test.read::<Obligation>(w.obligation).deposited_shares),
+        600 * UNIT
+    );
+}
+
+/// The deposit handler creates the vault with `init(idempotent)`, so posting
+/// into the same reserve after a full withdrawal recreates it, and the
+/// position works as before.
+#[quasar_test]
+fn redeposit_after_full_withdraw_recreates_the_vault(test: &mut Test) {
+    let w = base_world(test);
+    bootstrap_position(test, &w);
+    let vault = collateral_vault(test, &w);
+    withdraw(test, &w, 1_000 * UNIT).succeeds().is_closed(vault);
+
+    test.send(DepositObligationCollateralInstruction {
+        owner: BORROWER,
+        lending_market: w.market,
+        reserve: w.collateral_reserve,
+        share_mint: w.collateral_share_mint,
+        owner_share: BORROWER_COLLATERAL_SHARE,
+        shares: 600 * UNIT,
+    })
+    .succeeds()
+    .has_tokens(vault, 600 * UNIT);
+    assert_eq!(
+        u64::from(test.read::<Obligation>(w.obligation).deposited_shares),
+        600 * UNIT
+    );
+
+    // The recreated vault backs a borrow like the first one did.
+    borrow(test, &w, 100 * UNIT)
+        .succeeds()
+        .has_tokens(BORROWER_BORROW, 100 * UNIT);
+}
+
+/// Share tokens sent straight to a vault are not recorded in the obligation,
+/// so they could otherwise leave it holding a balance when the last recorded
+/// share comes out, and an account holding tokens cannot close. The emptying
+/// withdrawal sweeps the whole balance to the owner, so the vault still
+/// closes and the withdrawal still succeeds. The donor is the market owner,
+/// whose opening deposit minted one share.
+#[quasar_test]
+fn donated_shares_cannot_keep_the_vault_open(test: &mut Test) {
+    let w = base_world(test);
+    bootstrap_position(test, &w);
+    let vault = collateral_vault(test, &w);
+
+    // An SPL `transfer_checked` (instruction 12) of the owner's one share.
+    let mut data = vec![12u8];
+    data.extend_from_slice(&1u64.to_le_bytes());
+    data.push(DECIMALS);
+    test.send(Instruction {
+        program_id: quasar_svm::SPL_TOKEN_PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(OWNER_COLLATERAL_SHARE, false),
+            AccountMeta::new_readonly(w.collateral_share_mint, false),
+            AccountMeta::new(vault, false),
+            AccountMeta::new_readonly(OWNER, true),
+        ],
+        data,
+    })
+    .succeeds()
+    .has_tokens(vault, 1_000 * UNIT + 1);
+
+    withdraw(test, &w, 1_000 * UNIT)
+        .succeeds()
+        .is_closed(vault)
+        .has_tokens(BORROWER_COLLATERAL_SHARE, 1_000 * UNIT + 1);
+}
+
+/// A seizure that takes every collateral share closes the collateral vault
+/// and returns its rent to the obligation's owner, who paid it, not to the
+/// liquidator who sent the transaction.
+///
+/// At $0.3675 the 1,000 collateral units are worth $367.50, and the close
+/// factor caps the repayment at half the $700 debt, $350, whose value plus
+/// the 5% bonus is exactly $367.50: the whole deposit.
+#[quasar_test]
+fn seizing_all_collateral_closes_the_vault_and_returns_its_rent_to_the_owner(test: &mut Test) {
+    let w = base_world(test);
+    bootstrap_position(test, &w);
+    borrow(test, &w, 700 * UNIT).succeeds();
+    set_price(test, &w, COLLATERAL_MINT, 367_500_000_000_000_000);
+    let vault = collateral_vault(test, &w);
+    let vault_rent = test.lamports(vault);
+    let owner_before = test.lamports(BORROWER);
+
+    liquidate(test, &w, 350 * UNIT)
+        .succeeds()
+        .is_closed(vault)
+        .has_tokens(LIQUIDATOR_COLLATERAL_SHARE, 1_000 * UNIT)
+        .has_lamports(BORROWER, owner_before + vault_rent);
+    assert_eq!(
+        u64::from(test.read::<Obligation>(w.obligation).deposited_shares),
+        0
+    );
+}
+
+/// The vault's rent belongs to the owner who paid it, so a liquidator cannot
+/// name another account (here the supplier's wallet) as `obligation_owner` to
+/// send it elsewhere.
+#[quasar_test]
+fn liquidator_cannot_redirect_the_vault_rent(test: &mut Test) {
+    let w = base_world(test);
+    bootstrap_position(test, &w);
+    borrow(test, &w, 700 * UNIT).succeeds();
+    set_price(test, &w, COLLATERAL_MINT, 367_500_000_000_000_000);
+
+    liquidate_with_rent_to(test, &w, SUPPLIER, 350 * UNIT).fails_with(QuasarError::AddressMismatch);
+    test.send(LiquidateObligationInstruction {
+        liquidator: LIQUIDATOR,
+        obligation: w.obligation,
+        obligation_owner: BORROWER,
+        lending_market: w.market,
+        collateral_reserve: w.collateral_reserve,
+        collateral_price: w.collateral_price,
+        share_mint: w.collateral_share_mint,
+        liquidator_collateral: LIQUIDATOR_COLLATERAL_SHARE,
+        borrow_reserve: w.borrow_reserve,
+        borrow_price: w.borrow_price,
+        liquidity_mint: BORROW_MINT,
+        liquidity_vault: w.borrow_vault,
+        liquidator_liquidity: LIQUIDATOR_BORROW,
+        amount: 350 * UNIT,
+    })
+    .succeeds();
 }
 
 /// The scenarios below move the slot and the Clock's timestamp independently:
@@ -1254,6 +1511,49 @@ mod clock_warp {
             self.run(data, metas)
         }
 
+        /// `owner` withdraws `shares` of posted collateral to `owner_share`.
+        /// The borrow reserve and its feed are passed either way; the
+        /// handler reads them only when the obligation has debt.
+        fn withdraw(
+            &mut self,
+            owner: Pubkey,
+            owner_share: Pubkey,
+            shares: u64,
+        ) -> quasar_svm::ExecutionResult {
+            let (obligation, obligation_vault) = self.obligation(owner);
+            let mut data = vec![7u8];
+            data.extend_from_slice(&shares.to_le_bytes());
+            let metas = vec![
+                meta(owner, true, true),
+                meta(self.market, false, false),
+                meta(obligation, true, false),
+                meta(self.collateral_reserve, true, false),
+                meta(self.collateral_price, false, false),
+                meta(self.collateral_share_mint, false, false),
+                meta(self.borrow_reserve, false, false),
+                meta(self.borrow_price, false, false),
+                meta(obligation_vault, true, false),
+                meta(owner_share, true, false),
+                meta(quasar_svm::SPL_TOKEN_PROGRAM_ID, false, false),
+            ];
+            self.run(data, metas)
+        }
+
+        /// `signer` tries to close `owner`'s obligation, taking its rent.
+        fn close_obligation(
+            &mut self,
+            signer: Pubkey,
+            owner: Pubkey,
+        ) -> quasar_svm::ExecutionResult {
+            let (obligation, _) = self.obligation(owner);
+            let metas = vec![
+                meta(signer, true, true),
+                meta(self.market, false, false),
+                meta(obligation, true, false),
+            ];
+            self.run(vec![12u8], metas)
+        }
+
         /// Supplier funds the borrow reserve; borrower posts 1000 units of collateral.
         fn bootstrap_position(&mut self) {
             self.setup_markets();
@@ -1357,6 +1657,106 @@ mod clock_warp {
         world
             .borrow(BORROWER, BORROWER_BORROW, 100 * UNIT)
             .assert_success();
+    }
+
+    /// A borrower who owes nothing must never be locked in by the oracle. With
+    /// no debt the collateral backs nothing, so the withdraw handler reads no
+    /// price, and the whole deposit comes out while the feed is stale. The
+    /// borrow handler is tried first to show the feed really is stale.
+    #[test]
+    fn debt_free_withdraw_needs_no_price() {
+        let mut world = World::new();
+        world.bootstrap_position();
+        let (_, obligation_vault) = world.obligation(BORROWER);
+        assert_eq!(world.tokens(BORROWER_COLLATERAL_SHARE), 0);
+        assert_eq!(world.tokens(obligation_vault), 1_000 * UNIT);
+
+        // Advance well past the staleness window without re-publishing prices.
+        world.warp_slots(50);
+        world.borrow(BORROWER, BORROWER_BORROW, UNIT).assert_error(
+            quasar_svm::ProgramError::Custom(crate::error::LendingError::StalePrice as u32),
+        );
+
+        world
+            .withdraw(BORROWER, BORROWER_COLLATERAL_SHARE, 1_000 * UNIT)
+            .assert_success();
+        assert_eq!(world.tokens(BORROWER_COLLATERAL_SHARE), 1_000 * UNIT);
+        // The last share out closes the vault.
+        assert!(world
+            .svm
+            .get_account(&obligation_vault)
+            .is_none_or(|account| account.lamports == 0 && account.data.is_empty()));
+    }
+
+    /// Repaying the last unit zeroes the principal, so a borrower who has
+    /// fully repaid is debt-free and withdraws without a price, like one who
+    /// never borrowed.
+    #[test]
+    fn withdraw_after_full_repay_needs_no_price() {
+        let mut world = World::new();
+        world.bootstrap_position();
+        world
+            .borrow(BORROWER, BORROWER_BORROW, 500 * UNIT)
+            .assert_success();
+        world
+            .repay(BORROWER, BORROWER_BORROW, BORROWER, 500 * UNIT)
+            .assert_success();
+
+        world.warp_slots(50);
+        world
+            .withdraw(BORROWER, BORROWER_COLLATERAL_SHARE, 1_000 * UNIT)
+            .assert_success();
+        assert_eq!(world.tokens(BORROWER_COLLATERAL_SHARE), 1_000 * UNIT);
+    }
+
+    /// With debt outstanding every check stays: a stale price refuses the
+    /// withdrawal, and nothing moves.
+    #[test]
+    fn withdraw_with_debt_is_refused_while_the_price_is_stale() {
+        let mut world = World::new();
+        world.bootstrap_position();
+        world
+            .borrow(BORROWER, BORROWER_BORROW, 100 * UNIT)
+            .assert_success();
+        let (_, obligation_vault) = world.obligation(BORROWER);
+
+        world.warp_slots(50);
+        world
+            .withdraw(BORROWER, BORROWER_COLLATERAL_SHARE, 1)
+            .assert_error(quasar_svm::ProgramError::Custom(
+                crate::error::LendingError::StalePrice as u32,
+            ));
+        assert_eq!(world.tokens(obligation_vault), 1_000 * UNIT);
+        assert_eq!(world.tokens(BORROWER_COLLATERAL_SHARE), 0);
+    }
+
+    /// Only the owner may close their obligation and take its rent. The
+    /// obligation's address is derived from the signer, so a stranger's
+    /// signature derives a different address than the obligation passed and
+    /// the framework refuses before the handler runs.
+    #[test]
+    fn non_owner_cannot_close_obligation() {
+        let mut world = World::new();
+        world.bootstrap_position();
+        world
+            .withdraw(BORROWER, BORROWER_COLLATERAL_SHARE, 1_000 * UNIT)
+            .assert_success();
+        let (obligation, _) = world.obligation(BORROWER);
+        let rent = world.svm.get_account(&obligation).expect("open").lamports;
+
+        world
+            .close_obligation(SUPPLIER, BORROWER)
+            .assert_error(quasar_svm::ProgramError::Custom(
+                quasar_lang::error::QuasarError::InvalidPda as u32,
+            ));
+        assert_eq!(
+            world
+                .svm
+                .get_account(&obligation)
+                .expect("still open")
+                .lamports,
+            rent
+        );
     }
 
     /// The factor after one accrual `seconds` after the last: one multiply by

@@ -2,7 +2,7 @@
 
 This Solana program is an **escrow** written directly against `solana-program`, with no framework. It lets a **maker** swap a specific amount of one token for a desired amount of another token with a **taker**, atomically and without either party having to trust the other.
 
-For example: Alice offers 1 TSLAx and wants 1,000 USDC in return. The program holds Alice's TSLAx in a vault until someone delivers the USDC, then releases both sides in a single transaction.
+For example: Alice offers 250 USDC and wants 1 TSLAx in return. The program holds Alice's USDC in a vault until someone delivers the TSLAx, then releases both sides in a single transaction.
 
 See also the [Anchor](../anchor/) and [Quasar](../quasar/) variants of the same program.
 
@@ -45,4 +45,4 @@ The Rust + [LiteSVM](https://www.anchor-lang.com/docs/testing/litesvm) tests loa
 cargo test --manifest-path=./program/Cargo.toml
 ```
 
-The tests tell the story above: mint A is TSLAx, minted at 8 decimals, mint B is USDC at 6, and the maker offers 1 TSLAx (100,000,000 minor units) for 1,000 USDC (1,000,000,000 minor units). They cover the make/take flow, the make/cancel flow, rejection of a non-maker cancel (`MakerMismatch`), rejection of a take that lands on an offer the maker cancelled and re-made at worse terms (`test_take_offer_rejects_switched_offer` for less token A, `test_take_offer_rejects_switched_offer_wanting_more_token_b` for more token B), rejection of offers with zero tokens on either side (`ZeroAmount`) or the same token on both (`SameMint`), token balances on every leg, and the rent refunds (the maker's lamports recover the offer and vault rent after both take and cancel). Every refusal test asserts the error code it expects.
+The tests tell the story above: mint A is USDC, minted at 6 decimals, mint B is TSLAx at 8, and the maker offers 250 USDC (250,000,000 minor units) for 1 TSLAx (100,000,000 minor units), which the taker takes. Both start with the standard wallet of 1 SOL and 1,000 USDC, and the taker also holds 1 TSLAx, so the take leaves the taker at 1,250 USDC and no TSLAx. They cover the make/take flow, the make/cancel flow, rejection of a non-maker cancel (`MakerMismatch`), rejection of a take that lands on an offer the maker cancelled and re-made at worse terms (`test_take_offer_rejects_switched_offer` for 1 USDC instead of 250, `test_take_offer_rejects_switched_offer_wanting_more_token_b` for 2 TSLAx instead of 1), rejection of offers with zero tokens on either side (`ZeroAmount`) or the same token on both (`SameMint`), token balances on every leg, and the rent refunds (the maker's lamports recover the offer and vault rent after both take and cancel). Every refusal test asserts the error code it expects.

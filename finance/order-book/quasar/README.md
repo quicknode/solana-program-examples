@@ -68,6 +68,8 @@ NVDAx (8 decimals) / USDC (6 decimals): `base_lot_size = 100`, `quote_lot_size =
 - `settle_funds`: Move a user's `unsettled_*` balances out of the vaults into their token accounts.
 - `withdraw_fees`: Authority-only: drain the fee vault to the authority's token account.
 - `pause_market` / `resume_market`: Authority-only: clear and set `Market.is_active`. While it is clear, `place_order` is refused with `MarketPaused`; `cancel_order`, `settle_funds` and `withdraw_fees` do not read the flag, so a pause stops new orders and nothing else, and every token a trader locked or was owed before the pause can still leave the vaults during it.
+- `close_order`: Close a Filled or Cancelled order's account and return its rent to the owner, who signs. Both statuses have already left the slab and the owner's open-order list, and a cancel has already credited its refund, so nothing refers to the account. An Open or PartiallyFilled order gets `OrderNotClosable`: cancel it first.
+- `close_market_user`: Close the owner's `MarketUser` and return its rent, when `open_orders_len` is zero and both `unsettled_*` balances are zero (an open order would still credit it, and an unsettled balance is owed through it); otherwise `MarketUserNotClosable`. The owner can register again later. Both handlers refuse any signer but the owner with `Unauthorized`.
 
 `place_order` takes `side` (`0` = bid, `1` = ask), `price`, `quantity`, and `order_id`. The caller passes the
 resting maker orders to cross as **remaining accounts**, in pairs of `(maker_order, maker_market_user)`, in the
@@ -151,6 +153,10 @@ wrong or missing evicted accounts are rejected, and a trader can evict their own
 check that a paused market refuses a new order with `MarketPaused` and locks nothing, still cancels and settles
 a resting order, still pays out a fill and withdraws the fee, takes orders again after `resume_market`, and
 refuses a trader signing either handler with `NotMarketAuthority`.
+Nine closing tests check that `close_order` returns a cancelled and a filled order's rent to its owner and
+refuses a resting order, a partially filled order and a non-owner, and that `close_market_user` returns an idle
+account's rent (and lets the owner register again) and refuses an account with an open order, one with an
+unsettled balance, and a non-owner.
 
 ## Extending
 

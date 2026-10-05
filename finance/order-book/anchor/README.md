@@ -503,7 +503,7 @@ this directly (`settle_funds_after_match_pays_out_both_unsettled_balances`).
 
 ## 3. Instruction lifecycle walkthrough
 
-The program has eight instruction handlers. The order a user encounters
+The program has ten instruction handlers. The order a user encounters
 them is:
 
 1. `initialize_market` (market operator - once)
@@ -514,6 +514,8 @@ them is:
 6. `withdraw_fees` (market authority - to collect program revenue)
 7. `pause_market` (market authority - to stop new orders)
 8. `resume_market` (market authority - to take orders again)
+9. `close_order` (a user - to reclaim a finished order's rent)
+10. `close_market_user` (a user - to reclaim their account's rent when done)
 
 For each, the shape is: who signs, what accounts go in, what PDAs get
 created, what token flows happen, what state mutates, what checks are
@@ -934,6 +936,76 @@ vaults during it. The tests
 `paused_market_still_cancels_and_settles_a_resting_order` and
 `paused_market_still_pays_out_fills_and_withdraws_fees` run each exit
 on a paused market.
+
+---
+
+### 3.8 `close_order`
+
+**Who calls it:** the order's owner, once the order is finished, to get
+the account's rent back.
+
+**Signers:** `owner`.
+
+**Accounts in:**
+
+- `market`
+- `order` (mut, PDA seeds-checked via stored bump, closed to `owner`)
+- `owner` (signer, mut - receives the rent)
+
+**Checks:**
+
+- `order.owner == owner.key()` → `Unauthorized`
+- `order.status ∈ {Filled, Cancelled}` → `OrderNotClosable`
+
+**Token movements:** none. The order's rent (lamports) goes back to
+`owner`.
+
+**State changes:** the `Order` account is closed.
+
+Why only a finished order: a `Filled` or `Cancelled` order has already
+left every other structure that referred to it. The matching engine
+removes a fully filled maker's leaf from the slab and its id from the
+maker's `open_orders` in the same `place_order` call, and a taker order
+that fills in full never enters the slab; `cancel_order` (and the
+eviction path of `place_order`) removes the leaf and the id and credits
+the unfilled remainder to the owner's unsettled balance before stamping
+the order `Cancelled`. So closing the account leaves no dangling
+reference and loses no credit. An `Open` or `PartiallyFilled` order
+still has a leaf on the book and a lock in the vault; cancel it first.
+
+### 3.9 `close_market_user`
+
+**Who calls it:** the account's owner, when they are done with the
+market, to get the account's rent back. They can call
+`initialize_market_user` again later.
+
+**Signers:** `owner`.
+
+**Accounts in:**
+
+- `market`
+- `market_user` (mut, PDA seeds-checked via stored bump, closed to
+  `owner`)
+- `owner` (signer, mut - receives the rent)
+
+**Checks:**
+
+- `market_user.owner == owner.key()` → `Unauthorized`
+- `market_user.open_orders` is empty, `unsettled_base == 0` and
+  `unsettled_quote == 0` → `MarketUserNotClosable`
+
+**Token movements:** none. The account's rent goes back to `owner`.
+
+**State changes:** the `MarketUser` account is closed.
+
+The two conditions are the two ways the program still needs the
+account. An open order will be filled or cancelled against it, and
+either path credits the unsettled balance on this account. An unsettled
+balance is money the vault owes the owner that only `settle_funds`,
+reading this account, can pay out; closing the account would forfeit
+it. The PDA's seeds come from the owner the account itself records, so
+a signer who is not that owner is refused with `Unauthorized` rather
+than a seeds mismatch.
 
 ---
 
@@ -1373,7 +1445,7 @@ From [`errors.rs`](programs/order-book/src/errors.rs):
 - `InvalidPrice`: `place_order` called with `price == 0`
 - `OrderNotFound`: `cancel_order` failed to locate the order in the book (sanity path)
 - `MarketPaused`: `place_order` on a market `pause_market` has paused and `resume_market` has not reopened
-- `Unauthorized`: `cancel_order` by someone other than the order owner
+- `Unauthorized`: `cancel_order` or `close_order` by someone other than the order owner, or `close_market_user` by someone other than the account's owner
 - `OrderBookFull`: `place_order` remainder would rest on a side holding 512 orders without beating that side's worst price
 - `MissingEvictedAccounts`: A full side, and the worst resting order (with its owner's MarketUser) was not passed after the maker pairs
 - `EvictedAccountMismatch`: The order passed for eviction is not the side's worst, or the MarketUser passed is not its owner's
@@ -1388,6 +1460,8 @@ From [`errors.rs`](programs/order-book/src/errors.rs):
 - `MissingMakerAccounts`: Fewer remaining accounts than two per planned fill
 - `MakerOwnerMismatch`: Maker Order and MarketUser have different owners
 - `NotMarketAuthority`: `withdraw_fees`, `pause_market` or `resume_market` signed by anyone but `market.authority`
+- `OrderNotClosable`: `close_order` on an Open or PartiallyFilled order, which still rests on the book
+- `MarketUserNotClosable`: `close_market_user` while the account lists an open order or holds an unsettled balance
 
 ### 6.2 Guarded design choices worth knowing
 
@@ -1634,6 +1708,18 @@ test withdraw_fees_rejects_a_non_authority_signer ... ok
 - `resume_market_accepts_orders_again`: The ask refused during the pause rests after `resume_market`
 - `only_the_market_authority_can_pause_or_resume`: A trader signing either handler gets `NotMarketAuthority`, and the market's state does not change
 
+**Closing accounts:**
+
+- `close_order_returns_a_cancelled_orders_rent`: A cancelled ask's account is gone and the seller's balance rose by its rent (less the transaction fee); the unsettled credit and the vault are untouched
+- `close_order_returns_a_filled_orders_rent`: After a full cross, the maker's ask and the taker's bid each close to their own owner; the fills' credits stay on the `MarketUser` accounts
+- `close_order_refuses_a_resting_order`: An open ask gets `OrderNotClosable` and stays
+- `close_order_refuses_a_partially_filled_order`: A partially filled ask gets `OrderNotClosable` and stays
+- `close_order_refuses_a_non_owner`: The buyer signing for the seller's cancelled ask gets `Unauthorized`
+- `close_market_user_returns_rent_when_nothing_is_open_or_owed`: After place, cancel and settle, the account closes, the rent comes back, and `initialize_market_user` creates it again
+- `close_market_user_refuses_an_open_order`: An account listing a resting ask gets `MarketUserNotClosable`
+- `close_market_user_refuses_an_unsettled_balance`: An account owed a cancelled ask's refund gets `MarketUserNotClosable`
+- `close_market_user_refuses_a_non_owner`: The buyer signing for the seller's account gets `Unauthorized`
+
 ### CI note
 
 The repo's `.github/workflows/anchor.yml` runs `anchor build` before
@@ -1749,6 +1835,8 @@ finance/order-book/anchor/
     │   │   ├── place_order.rs        (matching engine lives here)
     │   │   ├── cancel_order.rs
     │   │   ├── settle_funds.rs
+    │   │   ├── close_order.rs
+    │   │   ├── close_market_user.rs
     │   │   └── admin/                (market-authority handlers)
     │   │       ├── mod.rs
     │   │       ├── withdraw_fees.rs
