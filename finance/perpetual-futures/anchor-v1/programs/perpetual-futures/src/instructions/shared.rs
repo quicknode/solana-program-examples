@@ -325,13 +325,13 @@ pub fn basis_points_of_rounded_down(amount: u64, basis_points: u16) -> Result<u6
 ///
 /// `average += (last_oracle_price - average) * min(elapsed, PRICE_AVERAGE_WINDOW_SECONDS) / PRICE_AVERAGE_WINDOW_SECONDS`
 ///
-/// The price read now only starts counting from now, so it moves the average
-/// only if it is still the oracle's price at a later read, weighted by the
-/// seconds between the two reads; a read of a different price in between
-/// replaces it. A pool left idle for a window or more therefore cannot have
-/// its average set by one read. As with funding, a timestamp at or before the
-/// stored one is treated as no time elapsed: the average and the stored stamp
-/// stay where they are, and only `last_oracle_price` is updated.
+/// The price read now only starts counting from now: at the next read it is
+/// credited for the seconds between the two reads, whatever price that read
+/// sees, and then replaced as the latest observation. So a pool left idle for
+/// a window or more cannot have its average set by one read. As with funding,
+/// a timestamp at or before the stored one is treated as no time elapsed: the
+/// average and the stored stamp stay where they are, and only
+/// `last_oracle_price` is updated.
 pub fn fold_price_into_average(pool: &mut Pool, price: u64, current_timestamp: i64) -> Result<()> {
     if current_timestamp <= pool.average_price_timestamp {
         pool.last_oracle_price = price;

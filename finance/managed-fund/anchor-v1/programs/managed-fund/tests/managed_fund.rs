@@ -2152,34 +2152,53 @@ fn test_initialize_rejects_threshold_out_of_range() {
 }
 
 /// Valuation scales by each asset's decimals and each feed's exponent. TSLAx
-/// here has nine decimals and a Pyth equity feed with exponent -5, while NVDAx
-/// keeps its eight decimals and its feed keeps -8, and USDC its six. Assuming
-/// eight decimals and -8 would value Alice's 1.44 TSLAx at $360 * 10 * 1,000,
-/// and Bob's deposit would buy almost no shares. Scaled correctly, every figure
-/// matches the story in major units.
+/// here keeps its eight decimals but is priced by a Pyth equity feed with
+/// exponent -5, so it differs from the story in exponent only, while NVDAx
+/// keeps its -8 feed and USDC its six decimals. Assuming -8 would value
+/// Alice's 1.44 TSLAx at $360 * 1,000, and Bob's deposit would buy almost no
+/// shares. Scaled correctly, every figure matches the story.
 #[test]
 fn test_valuation_scales_by_decimals_and_exponent() {
-    let mut ctx = setup_with_tsla_decimals(9);
+    run_story_with_tsla_decimals(ASSET_DECIMALS);
+}
+
+/// The same story with TSLAx at nine decimals on the exponent -5 feed, so the
+/// decimals vary as well as the exponent: assuming eight decimals and -8 would
+/// value Alice's 1.44 TSLAx at $360 * 10 * 1,000. The share counts are the
+/// story's; only the TSLAx holdings carry the extra digit.
+#[test]
+fn test_valuation_scales_by_nine_decimals_and_exponent() {
+    run_story_with_tsla_decimals(9);
+}
+
+/// Runs the story's deposit, rebalance and second deposit with TSLAx minted at
+/// `tsla_decimals` and priced by an exponent -5 feed, asserting the story's
+/// share counts and the holdings in each asset's minor units.
+fn run_story_with_tsla_decimals(tsla_decimals: u8) {
+    let mut ctx = setup_with_tsla_decimals(tsla_decimals);
     write_price_feed(&mut ctx.svm, ctx.price_feed_tsla, 25_000_000, -5, 1); // $250
     standard_fund(&mut ctx);
-    assert_eq!(read_asset_config(&ctx, 0).decimals, 9);
+    assert_eq!(read_asset_config(&ctx, 0).decimals, tsla_decimals);
     assert_eq!(read_asset_config(&ctx, 1).decimals, ASSET_DECIMALS);
+    // One whole TSLAx in minor units; 1.44 TSLAx is 144_000_000 at eight
+    // decimals and 1_440_000_000 at nine.
+    let tsla_unit = 10u64.pow(u32::from(tsla_decimals));
 
-    // Alice's 900 USDC deploys to 1.44 TSLAx (nine decimals) and 3 NVDAx.
+    // Alice's 900 USDC deploys to 1.44 TSLAx and 3 NVDAx.
     let alice = fund_user(&mut ctx, 900_000_000);
     let alice_share = do_deposit(&mut ctx, &alice, 900_000_000, 1);
     assert_eq!(
         get_token_account_balance(&ctx.svm, &alice_share).unwrap(),
         900_000_000
     );
-    assert_eq!(read_fund(&ctx).asset_holdings[0], 1_440_000_000);
+    assert_eq!(read_fund(&ctx).asset_holdings[0], 144 * tsla_unit / 100);
     assert_eq!(read_fund(&ctx).asset_holdings[1], 300_000_000);
 
     // NVDAx to $200. The rebalance computes its trade in the same units: 0.12
     // NVDAx sold for 24 USDC, which buys 0.096 TSLAx, back to 40/60.
     set_nvda_price(&mut ctx, 20_000_000_000, 200_000_000);
     do_rebalance(&mut ctx, 1, 0);
-    assert_eq!(read_fund(&ctx).asset_holdings[0], 1_536_000_000);
+    assert_eq!(read_fund(&ctx).asset_holdings[0], 1_536 * tsla_unit / 1_000);
     assert_eq!(read_fund(&ctx).asset_holdings[1], 288_000_000);
 
     // The fund is worth $960, so Bob's 480 USDC buys 450 shares.
@@ -2189,7 +2208,7 @@ fn test_valuation_scales_by_decimals_and_exponent() {
         get_token_account_balance(&ctx.svm, &bob_share).unwrap(),
         450_000_000
     );
-    assert_eq!(read_fund(&ctx).asset_holdings[0], 2_304_000_000);
+    assert_eq!(read_fund(&ctx).asset_holdings[0], 2_304 * tsla_unit / 1_000);
     assert_eq!(read_fund(&ctx).asset_holdings[1], 432_000_000);
     assert_holdings_match_vaults(&ctx);
 }

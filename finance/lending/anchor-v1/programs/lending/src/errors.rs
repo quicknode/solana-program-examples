@@ -42,4 +42,6 @@ pub enum LendingError {
     LiquidationTooLarge,
     #[msg("No program fees are available to collect")]
     NothingToCollect,
+    #[msg("Obligation still holds collateral or debt and cannot be closed")]
+    ObligationNotEmpty,
 }

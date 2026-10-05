@@ -1810,8 +1810,10 @@ fn test_close_event_pays_dust_to_fee_recipient_and_returns_rent() {
     );
 }
 
-// A settled event keeps its accounts while any Bet account of it is open:
-// the claim and the losing-bet close both read the event and the outcome.
+// A settled event keeps its Event and Outcome accounts while any Bet account
+// of it is open. The claim and the losing-bet close read only the event and
+// the bet, so the outcome half is an ordering rule: an Outcome stays open
+// for as long as any Bet of the event names it by address.
 #[test]
 fn test_close_event_refused_while_a_bet_is_open() {
     let mut market = setup();

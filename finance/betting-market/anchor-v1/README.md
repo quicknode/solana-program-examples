@@ -143,14 +143,16 @@ handler that pays it out or closes it: `claim_winnings` and `close_losing_bet` a
 `claim_refund` after a cancellation. Once `open_bets` reaches zero the admin closes the accounts the
 event created, children first: `close_outcome` for each Outcome account, then `close_event` for the
 vault and the Event account. The order matters because each account's address is derived from its
-parent's. An Outcome account left open after its event closed would be found again, with its old
-`total_amount`, by a later event created with the same `event_id`, and a Bet account left open
-after its outcome closed would have nothing to claim against. So `close_outcome` refuses while any
-bet is open, and `close_event` refuses while any outcome is. After a settlement the vault holds
-only the dust the floored payouts left behind, and `close_event` pays it to the fee recipient with
-the fee; after a cancellation and its refunds the vault is empty. Every closed account's rent goes
-back to whoever paid it: the bettor for a Bet account, the admin for the outcomes, the vault and
-the event.
+parent's, and an Event's from the admin-supplied `event_id`. An Outcome account left open after its
+event closed would sit at the address a later event created with the same `event_id` needs for its
+first outcome, so that event's `add_outcome` would fail. A Bet left open is a different case: no
+claim, refund or losing-bet close reads the Outcome account, so keeping an Outcome open for as long
+as any Bet names its address is an ordering rule rather than something those handlers need. So
+`close_outcome` refuses while any bet is open, and `close_event` refuses while any outcome is. After
+a settlement the vault holds only the dust the floored payouts left behind, and `close_event` pays
+it to the fee recipient with the fee; after a cancellation and its refunds the vault is empty. Every
+closed account's rent goes back to whoever paid it: the bettor for a Bet account, the admin for the
+outcomes, the vault and the event.
 
 ## Setup
 

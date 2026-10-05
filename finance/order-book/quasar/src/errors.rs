@@ -41,4 +41,10 @@ pub enum OrderBookError {
     /// The order passed for eviction is not the side's worst, or the
     /// MarketUser passed is not its owner's.
     EvictedAccountMismatch,
+    /// `close_order` on an Open or PartiallyFilled order: it still rests on
+    /// the book, so cancel it first.
+    OrderNotClosable,
+    /// `close_market_user` while the account lists an open order or holds
+    /// an unsettled balance.
+    MarketUserNotClosable,
 }

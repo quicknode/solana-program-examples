@@ -8,7 +8,7 @@
 
 This Solana [program](https://solana.com/docs/terminology#program) is an **escrow** - it lets a **maker** swap a specific amount of one token for a desired amount of another token with a **taker**, atomically and without either party having to trust the other.
 
-For example: Alice offers 1 TSLAx and wants 1,000 USDC in return. The program holds Alice's TSLAx in a vault until someone delivers the USDC, then releases both sides in a single transaction. Neither party can take the other's tokens and run, and there is no spread or middleman fee on the swap.
+For example: Alice offers 250 USDC and wants 1 TSLAx in return. The program holds Alice's USDC in a vault until someone delivers the TSLAx, then releases both sides in a single transaction. Neither party can take the other's tokens and run, and there is no spread or middleman fee on the swap.
 
 See also the [native](../native/) and [Quasar](../quasar/) variants of the same program.
 
@@ -47,7 +47,7 @@ The tests are Rust integration tests running against [LiteSVM](https://www.ancho
 cargo test
 ```
 
-(`anchor test` runs the same command, per `Anchor.toml`.) The tests tell the story above: token A is TSLAx, minted at 8 decimals, token B is USDC at 6, and Alice offers 1 TSLAx (100,000,000 minor units) for 1,000 USDC (1,000,000,000 minor units). They cover the make/take flow, the make/cancel flow, rejection of a non-maker cancel (Anchor's `ConstraintHasOne`, 2001), rejection of a take that lands on an offer the maker cancelled and re-made at worse terms (`test_take_offer_rejects_switched_offer` for less token A, `test_take_offer_rejects_switched_offer_wanting_more_token_b` for more token B), rejection of offers with zero tokens on either side (`ZeroAmount`) or the same token on both (`ConstraintDuplicateMutableAccount`, 2040), token balances on every leg, and the rent refunds (the maker's lamports recover the offer and vault rent after both take and cancel). Every refusal test asserts the error code it expects.
+(`anchor test` runs the same command, per `Anchor.toml`.) The tests tell the story above: token A is USDC, minted at 6 decimals, token B is TSLAx at 8, and Alice offers 250 USDC (250,000,000 minor units) for 1 TSLAx (100,000,000 minor units), which Bob takes. Both start with the standard wallet of 1 SOL and 1,000 USDC, and Bob also holds 1 TSLAx, so the take leaves him at 1,250 USDC and no TSLAx. They cover the make/take flow, the make/cancel flow, rejection of a non-maker cancel (Anchor's `ConstraintHasOne`, 2001), rejection of a take that lands on an offer the maker cancelled and re-made at worse terms (`test_take_offer_rejects_switched_offer` for 1 USDC instead of 250, `test_take_offer_rejects_switched_offer_wanting_more_token_b` for 2 TSLAx instead of 1), rejection of offers with zero tokens on either side (`ZeroAmount`) or the same token on both (`ConstraintDuplicateMutableAccount`, 2040), token balances on every leg, and the rent refunds (the maker's lamports recover the offer and vault rent after both take and cancel). Every refusal test asserts the error code it expects.
 
 ## FAQ
 

@@ -76,6 +76,10 @@ pub mod lending {
         instructions::handle_refresh_obligation(context)
     }
 
+    pub fn close_obligation(context: &mut Context<CloseObligation>) -> Result<()> {
+        instructions::handle_close_obligation(context)
+    }
+
     pub fn deposit_obligation_collateral(
         context: &mut Context<DepositObligationCollateral>,
         share_amount: u64,

@@ -313,3 +313,104 @@ fn withdraw_blocked_while_borrowed_then_allowed_after_repay() {
         1_000_000_000
     );
 }
+
+/// A borrower who owes nothing must never be locked in by the oracle. With no
+/// borrows the collateral backs nothing, so the withdraw handler reads no
+/// price and needs no refresh, and the whole deposit comes out while the feed
+/// is stale. The refreshed path is tried first to show the feed really is
+/// stale: `refresh_obligation` reads the price and refuses it.
+#[test]
+fn debt_free_withdraw_needs_no_price_and_no_refresh() {
+    let (mut env, collateral, _borrow, borrower, obligation) = setup();
+    let user_share = ata(&borrower.pubkey(), &collateral.share_mint);
+    let vault = env.obligation_share_vault(&collateral, obligation);
+    assert_eq!(env.token_balance(user_share), 0);
+    assert_eq!(env.token_balance(vault), 1_000_000_000);
+
+    // Advance well past the staleness window without re-publishing prices.
+    env.warp_slots(50);
+    let refreshed = env.try_withdraw_collateral(
+        &borrower,
+        obligation,
+        &[&collateral],
+        &[],
+        &collateral,
+        1_000_000_000,
+    );
+    assert!(refreshed.unwrap_err().contains("StalePriceFeed"));
+
+    env.try_withdraw_collateral_without_refresh(&borrower, obligation, &collateral, 1_000_000_000)
+        .unwrap();
+    assert_eq!(env.token_balance(user_share), 1_000_000_000);
+    // The last share out closes the vault.
+    assert!(!env.account_is_open(vault));
+    let state = env.obligation(obligation);
+    assert!(state.deposits.is_empty());
+    assert!(state.borrows.is_empty());
+    assert!(state.stale);
+}
+
+/// Repaying the last unit removes the borrow entry, so a borrower who has
+/// fully repaid is debt-free and withdraws without a price, like one who
+/// never borrowed.
+#[test]
+fn withdraw_after_full_repay_needs_no_price() {
+    let (mut env, collateral, borrow, borrower, obligation) = setup();
+    env.try_borrow(
+        &borrower,
+        obligation,
+        &[&collateral],
+        &[],
+        &borrow,
+        500_000_000,
+    )
+    .unwrap();
+    env.repay(&borrower, obligation, &borrow, 500_000_000);
+    assert!(env.obligation(obligation).borrows.is_empty());
+
+    env.warp_slots(50);
+    env.try_withdraw_collateral_without_refresh(&borrower, obligation, &collateral, 1_000_000_000)
+        .unwrap();
+    assert_eq!(
+        env.token_balance(ata(&borrower.pubkey(), &collateral.share_mint)),
+        1_000_000_000
+    );
+    assert!(env.obligation(obligation).deposits.is_empty());
+}
+
+/// With debt outstanding every check stays: a stale price refuses the
+/// refreshed withdrawal, and skipping the refresh is refused as stale too.
+#[test]
+fn withdraw_with_debt_is_refused_while_the_price_is_stale() {
+    let (mut env, collateral, borrow, borrower, obligation) = setup();
+    env.try_borrow(
+        &borrower,
+        obligation,
+        &[&collateral],
+        &[],
+        &borrow,
+        100_000_000,
+    )
+    .unwrap();
+
+    env.warp_slots(50);
+    let refreshed = env.try_withdraw_collateral(
+        &borrower,
+        obligation,
+        &[&collateral],
+        &[&borrow],
+        &collateral,
+        1,
+    );
+    assert!(refreshed.unwrap_err().contains("StalePriceFeed"));
+
+    let unrefreshed =
+        env.try_withdraw_collateral_without_refresh(&borrower, obligation, &collateral, 1);
+    assert!(unrefreshed.unwrap_err().contains("ObligationStale"));
+
+    // Nothing moved.
+    assert_eq!(
+        env.token_balance(env.obligation_share_vault(&collateral, obligation)),
+        1_000_000_000
+    );
+}

@@ -77,8 +77,12 @@ pub fn handle_close_event(context: Context<CloseEventAccountConstraints>) -> Res
         context.accounts.event.open_bets == 0,
         BettingError::BetsStillOpen
     );
-    // An Outcome account left behind would be found again, with its old
-    // `total_amount`, by a later event created with the same `event_id`.
+    // Every Outcome account of the event must already be closed. Outcome
+    // addresses derive from the event's, and the event's from the
+    // admin-supplied `event_id`, so a later event created with the same
+    // `event_id` reuses this event's address and its outcome addresses. An
+    // Outcome left behind would make that event's first `add_outcome` fail,
+    // because `init` refuses an account that already exists.
     require!(
         context.accounts.event.open_outcomes == 0,
         BettingError::OutcomesStillOpen

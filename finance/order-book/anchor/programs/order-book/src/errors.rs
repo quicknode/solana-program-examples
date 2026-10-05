@@ -78,4 +78,10 @@ pub enum ErrorCode {
 
     #[msg("Evicted order provided is not the worst resting order on the full side")]
     EvictedAccountMismatch,
+
+    #[msg("Order is still open or partially filled: cancel it before closing its account")]
+    OrderNotClosable,
+
+    #[msg("MarketUser still has open orders or an unsettled balance")]
+    MarketUserNotClosable,
 }

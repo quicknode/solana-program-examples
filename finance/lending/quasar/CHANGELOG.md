@@ -4,6 +4,34 @@
 
 ### Changed
 
+- Close the collateral vault when its last share leaves. A withdrawal or a
+  liquidation that takes the last deposited share now also closes the
+  obligation's share vault, rent to the obligation's owner, who paid it in
+  `deposit_obligation_collateral` (`init(idempotent)` recreates it on a later
+  deposit). The vault's whole balance moves out first, to the owner on a
+  withdrawal and to the liquidator on a liquidation, so share tokens donated
+  straight to the vault cannot keep it open or make the withdrawal fail.
+  `liquidate_obligation` takes a new `obligation_owner` account
+  (`address = obligation.owner`) to receive the rent. Tested by
+  `full_withdraw_closes_the_vault_and_returns_its_rent`,
+  `partial_withdraw_keeps_the_vault_open`,
+  `redeposit_after_full_withdraw_recreates_the_vault`,
+  `donated_shares_cannot_keep_the_vault_open`,
+  `seizing_all_collateral_closes_the_vault_and_returns_its_rent_to_the_owner`
+  and `liquidator_cannot_redirect_the_vault_rent` (`AddressMismatch`);
+  `debt_free_withdraw_needs_no_price` now asserts the vault is gone.
+- A debt-free borrower can always withdraw. `withdraw_obligation_collateral`
+  valued the remaining collateral at the feed's price on every call, so a
+  borrower with no debt could not take their collateral out while the feed
+  was stale or silent. Now the handler reads no price and runs no health
+  check when `borrowed_principal` is zero (repaying the last unit zeroes it);
+  the price accounts are still passed and checked to be the reserves' own,
+  but their values are not read. Every check stays for an obligation with
+  debt. Tested by `debt_free_withdraw_needs_no_price`, which lets the price
+  go stale and withdraws the whole deposit,
+  `withdraw_after_full_repay_needs_no_price`, and
+  `withdraw_with_debt_is_refused_while_the_price_is_stale`, which asserts the
+  existing `StalePrice` refusal.
 - The program fee on accrued interest rounds up. `accrue` computes the reserve
   factor's cut of each accrual with `mul_div_ceil`, so when the cut is not
   whole the extra unit goes to the market owner, and the suppliers take the
@@ -19,6 +47,16 @@
 
 ### Added
 
+- `close_obligation` (discriminator 12): closes an obligation with no deposited
+  shares and no borrowed principal, returning its rent to the owner through
+  `close(dest = owner)`; `has_one(owner)` and the owner-seeded address refuse
+  anyone else, and the new `ObligationNotEmpty` error refuses one that still
+  holds collateral or debt. Tested by `close_obligation_returns_rent_to_owner`
+  (rent back to the lamport, account gone),
+  `close_obligation_with_collateral_is_refused`,
+  `close_obligation_with_debt_is_refused` and `non_owner_cannot_close_obligation`
+  (which asserts `InvalidPda`, the framework's refusal of an obligation whose
+  address was not derived from the signer).
 - `program_fee_rounds_up_and_suppliers_take_the_remainder` accrues one second
   of interest on a 500-unit borrow (3 units) through `collect_program_fees`
   and checks the owner receives 1 and the suppliers' pool grows by 2.

@@ -21,19 +21,21 @@ const MAKE_OFFER: u8 = 0;
 const TAKE_OFFER: u8 = 1;
 const CANCEL_OFFER: u8 = 2;
 
-// The story the tests tell: the maker offers 1 TSLAx and wants 1,000 USDC for
-// it. TSLAx has 8 decimals and USDC has 6, so every amount below is in those
-// minor units.
-const TSLAX_DECIMALS: u8 = 8;
+// The story the tests tell: the maker (Alice) offers 250 USDC (mint A) and
+// wants 1 TSLAx (mint B) for it, and the taker (Bob) takes the offer. USDC
+// has 6 decimals and TSLAx has 8, so every amount below is in those minor
+// units.
 const USDC_DECIMALS: u8 = 6;
-const ONE_TSLAX: u64 = 10u64.pow(TSLAX_DECIMALS as u32);
+const TSLAX_DECIMALS: u8 = 8;
 const ONE_USDC: u64 = 10u64.pow(USDC_DECIMALS as u32);
-const TSLAX_OFFERED: u64 = ONE_TSLAX;
-const USDC_WANTED: u64 = 1_000 * ONE_USDC;
-// What each side holds before the offer: the maker 10 TSLAx, the taker
-// 10,000 USDC.
-const MAKER_TSLAX: u64 = 10 * ONE_TSLAX;
-const TAKER_USDC: u64 = 10_000 * ONE_USDC;
+const ONE_TSLAX: u64 = 10u64.pow(TSLAX_DECIMALS as u32);
+const USDC_OFFERED: u64 = 250 * ONE_USDC;
+const TSLAX_WANTED: u64 = ONE_TSLAX;
+// What each side holds before the offer: both start with the standard
+// wallet of 1 SOL and 1,000 USDC, and the taker also holds 1 TSLAx.
+const MAKER_USDC: u64 = 1_000 * ONE_USDC;
+const TAKER_USDC: u64 = 1_000 * ONE_USDC;
+const TAKER_TSLAX: u64 = ONE_TSLAX;
 const OFFER_ID: u64 = 0;
 
 /// Sign with `payer` (fee payer) plus any extra signers and send the tx,
@@ -106,6 +108,22 @@ fn mint_tokens(
     send(svm, payer, &[create_ata, mint_to_ix], &[]);
 }
 
+/// Create `holder`'s ATA for an existing `mint` and mint `amount` into it. The
+/// payer is the mint authority and pays the ATA's rent.
+fn fund_token_account(
+    svm: &mut LiteSVM,
+    payer: &Keypair,
+    mint: &Pubkey,
+    holder: &Pubkey,
+    amount: u64,
+) {
+    let token_program = spl_token_interface::id();
+    let ata = get_associated_token_address(holder, mint);
+    let create_ata = create_associated_token_account(&payer.pubkey(), holder, mint, &token_program);
+    let mint_to_ix = mint_to(&token_program, mint, &ata, &payer.pubkey(), &[], amount).unwrap();
+    send(svm, payer, &[create_ata, mint_to_ix], &[]);
+}
+
 fn token_amount(svm: &LiteSVM, address: &Pubkey) -> u64 {
     let account = svm.get_account(address).unwrap();
     TokenAccount::unpack(&account.data).unwrap().amount
@@ -152,23 +170,25 @@ fn setup() -> EscrowSetup {
     svm.airdrop(&maker.pubkey(), LAMPORTS_PER_SOL).unwrap();
     svm.airdrop(&taker.pubkey(), LAMPORTS_PER_SOL).unwrap();
 
-    // Mint A is TSLAx, held by the maker; mint B is USDC, held by the taker.
+    // Mint A is USDC, held by the maker; mint B is TSLAx, held by the taker.
     mint_tokens(
         &mut svm,
         &payer,
         &mint_a,
-        TSLAX_DECIMALS,
+        USDC_DECIMALS,
         &maker.pubkey(),
-        MAKER_TSLAX,
+        MAKER_USDC,
     );
     mint_tokens(
         &mut svm,
         &payer,
         &mint_b,
-        USDC_DECIMALS,
+        TSLAX_DECIMALS,
         &taker.pubkey(),
-        TAKER_USDC,
+        TAKER_TSLAX,
     );
+    // The taker's own 1,000 USDC, in an account the payer opens for them.
+    fund_token_account(&mut svm, &payer, &mint_a.pubkey(), &taker.pubkey(), TAKER_USDC);
 
     let (offer, _bump) = Pubkey::find_program_address(
         &[b"offer", maker.pubkey().as_ref(), &OFFER_ID.to_le_bytes()],
@@ -200,8 +220,8 @@ fn setup() -> EscrowSetup {
 fn make_offer_instruction(es: &EscrowSetup) -> Instruction {
     make_offer_instruction_for(
         es,
-        TSLAX_OFFERED,
-        USDC_WANTED,
+        USDC_OFFERED,
+        TSLAX_WANTED,
         &es.mint_b.pubkey(),
         &es.maker_account_b,
     )
@@ -240,7 +260,7 @@ fn make_offer_instruction_for(
 }
 
 fn take_offer_instruction(es: &EscrowSetup) -> Instruction {
-    take_offer_instruction_for(es, TSLAX_OFFERED, USDC_WANTED)
+    take_offer_instruction_for(es, USDC_OFFERED, TSLAX_WANTED)
 }
 
 /// A `take_offer` instruction signed for the given terms: the least token A
@@ -315,7 +335,7 @@ fn test_escrow_make_and_take() {
 
     // Vault holds the offered Mint A amount, and the maker paid the rent for
     // the offer account and the vault.
-    assert_eq!(token_amount(&es.svm, &es.vault), TSLAX_OFFERED);
+    assert_eq!(token_amount(&es.svm, &es.vault), USDC_OFFERED);
     let offer_rent = lamports(&es.svm, &es.offer);
     let vault_rent = lamports(&es.svm, &es.vault);
     assert!(offer_rent > 0 && vault_rent > 0);
@@ -333,21 +353,32 @@ fn test_escrow_make_and_take() {
     assert_eq!(lamports(&es.svm, &es.offer), 0);
     assert_eq!(lamports(&es.svm, &es.vault), 0);
 
-    // Taker received Mint A; maker received Mint B.
-    assert_eq!(token_amount(&es.svm, &es.taker_account_a), TSLAX_OFFERED);
-    assert_eq!(token_amount(&es.svm, &es.maker_account_b), USDC_WANTED);
+    // Taker received the 250 USDC (mint A), ending at 1,250 USDC, and paid
+    // the 1 TSLAx (mint B); maker received the TSLAx and is down the USDC.
+    assert_eq!(
+        token_amount(&es.svm, &es.taker_account_a),
+        TAKER_USDC + USDC_OFFERED
+    );
+    assert_eq!(
+        token_amount(&es.svm, &es.taker_account_b),
+        TAKER_TSLAX - TSLAX_WANTED
+    );
+    assert_eq!(token_amount(&es.svm, &es.maker_account_b), TSLAX_WANTED);
+    assert_eq!(
+        token_amount(&es.svm, &es.maker_account_a),
+        MAKER_USDC - USDC_OFFERED
+    );
 
     // Rent destinations: the maker's lamports fully recover (the offer and
-    // vault rent both come back to the maker). The taker only paid the rent
-    // for their own new Mint A ATA.
+    // vault rent both come back to the maker). The taker already had their
+    // Mint A (USDC) ATA, so the take costs them no rent at all.
     assert_eq!(
         lamports(&es.svm, &es.maker.pubkey()),
         maker_lamports_before_make
     );
-    let taker_ata_a_rent = lamports(&es.svm, &es.taker_account_a);
     assert_eq!(
         lamports(&es.svm, &es.taker.pubkey()),
-        taker_lamports_before_take - taker_ata_a_rent
+        taker_lamports_before_take
     );
 }
 
@@ -365,7 +396,7 @@ fn test_escrow_make_and_cancel() {
     // maker.
     let make_ix = make_offer_instruction(&es);
     send(&mut es.svm, &payer, &[make_ix], &[&maker]);
-    assert_eq!(token_amount(&es.svm, &es.vault), TSLAX_OFFERED);
+    assert_eq!(token_amount(&es.svm, &es.vault), USDC_OFFERED);
     let maker_ata_b_rent = lamports(&es.svm, &es.maker_account_b);
     assert!(maker_ata_b_rent > 0);
 
@@ -409,7 +440,7 @@ fn test_cancel_offer_rejects_non_maker() {
     assert_fails_with(result, MAKER_MISMATCH);
 
     // The vault still holds the offered tokens.
-    assert_eq!(token_amount(&es.svm, &es.vault), TSLAX_OFFERED);
+    assert_eq!(token_amount(&es.svm, &es.vault), USDC_OFFERED);
 }
 
 // `EscrowError` variants in declaration order, as the program reports them in
@@ -443,7 +474,7 @@ fn assert_make_offer_refused(es: &mut EscrowSetup, instruction: Instruction, exp
     let maker = es.maker.insecure_clone();
     let result = try_send(&mut es.svm, &payer, &[instruction], &[&maker]);
     assert_fails_with(result, expected_code);
-    assert_eq!(token_amount(&es.svm, &es.maker_account_a), MAKER_TSLAX);
+    assert_eq!(token_amount(&es.svm, &es.maker_account_a), MAKER_USDC);
     assert_eq!(lamports(&es.svm, &es.offer), 0);
 }
 
@@ -453,7 +484,7 @@ fn test_make_offer_rejects_zero_offered_amount() {
     let instruction = make_offer_instruction_for(
         &es,
         0,
-        USDC_WANTED,
+        TSLAX_WANTED,
         &es.mint_b.pubkey(),
         &es.maker_account_b,
     );
@@ -465,7 +496,7 @@ fn test_make_offer_rejects_zero_wanted_amount() {
     let mut es = setup();
     let instruction = make_offer_instruction_for(
         &es,
-        TSLAX_OFFERED,
+        USDC_OFFERED,
         0,
         &es.mint_b.pubkey(),
         &es.maker_account_b,
@@ -480,8 +511,8 @@ fn test_make_offer_rejects_same_mint() {
     // account is their token-A account.
     let instruction = make_offer_instruction_for(
         &es,
-        TSLAX_OFFERED,
-        USDC_WANTED,
+        USDC_OFFERED,
+        TSLAX_WANTED,
         &es.mint_a.pubkey(),
         &es.maker_account_a,
     );
@@ -504,7 +535,7 @@ fn assert_switched_offer_refused(switched_a_offered: u64, switched_b_wanted: u64
     send(&mut es.svm, &payer, &[make_ix], &[&maker]);
 
     // The taker signs for the terms they saw.
-    let take_ix = take_offer_instruction_for(&es, TSLAX_OFFERED, USDC_WANTED);
+    let take_ix = take_offer_instruction_for(&es, USDC_OFFERED, TSLAX_WANTED);
 
     // The maker switches the offer before the taker's transaction lands.
     let cancel_ix = cancel_offer_instruction(&es, &es.maker.pubkey());
@@ -521,28 +552,41 @@ fn assert_switched_offer_refused(switched_a_offered: u64, switched_b_wanted: u64
     let result = try_send(&mut es.svm, &payer, &[take_ix], &[&taker]);
     assert_fails_with(result, OFFER_TERMS_CHANGED);
 
+    // The taker still holds their 1 TSLAx and their 1,000 USDC (so they
+    // received no USDC), the maker's TSLAx account is still empty, and the
+    // switched offer's USDC is still in the vault.
     assert_eq!(
         token_amount(&es.svm, &es.taker_account_b),
-        TAKER_USDC,
-        "the taker must not pay token B for a switched offer"
+        TAKER_TSLAX,
+        "the taker must not pay TSLAx (token B) for a switched offer"
     );
     assert_eq!(
-        lamports(&es.svm, &es.taker_account_a),
-        0,
-        "the taker must receive no token A from a switched offer"
+        token_amount(&es.svm, &es.taker_account_a),
+        TAKER_USDC,
+        "the taker must receive no USDC (token A) from a switched offer"
     );
-    assert_eq!(token_amount(&es.svm, &es.maker_account_b), 0);
-    assert_eq!(token_amount(&es.svm, &es.vault), switched_a_offered);
+    assert_eq!(
+        token_amount(&es.svm, &es.maker_account_b),
+        0,
+        "the maker must receive no TSLAx (token B) from a switched offer"
+    );
+    assert_eq!(
+        token_amount(&es.svm, &es.vault),
+        switched_a_offered,
+        "the switched offer's USDC stays in the vault"
+    );
 }
 
 #[test]
 fn test_take_offer_rejects_switched_offer() {
-    // The maker re-makes the offer with a thousandth of the TSLAx.
-    assert_switched_offer_refused(TSLAX_OFFERED / 1_000, USDC_WANTED);
+    // The maker re-makes the offer with 1 USDC in the vault instead of 250,
+    // for the same 1 TSLAx.
+    assert_switched_offer_refused(ONE_USDC, TSLAX_WANTED);
 }
 
 #[test]
 fn test_take_offer_rejects_switched_offer_wanting_more_token_b() {
-    // The maker re-makes the offer asking for twice the USDC.
-    assert_switched_offer_refused(TSLAX_OFFERED, 2 * USDC_WANTED);
+    // The maker re-makes the offer asking for 2 TSLAx instead of 1, for the
+    // same 250 USDC.
+    assert_switched_offer_refused(USDC_OFFERED, 2 * TSLAX_WANTED);
 }

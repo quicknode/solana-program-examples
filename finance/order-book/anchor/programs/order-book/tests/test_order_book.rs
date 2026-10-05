@@ -7,9 +7,11 @@
 //! the vaults, and - in the matching block near the bottom - cross incoming
 //! orders against resting orders using price-time priority, charge the
 //! configured taker fee to a fee vault, and drain the fee vault via
-//! `withdraw_fees`. The pause block at the end checks that `pause_market`
-//! stops new orders and nothing else, and that `resume_market` reopens the
-//! market.
+//! `withdraw_fees`. The pause block checks that `pause_market` stops new
+//! orders and nothing else, and that `resume_market` reopens the market. The
+//! closing block at the end checks that `close_order` and
+//! `close_market_user` give a finished order's and an idle user's rent back
+//! to the owner, and refuse while anything still rests or is owed.
 
 use {
     anchor_lang::{
@@ -27,7 +29,7 @@ use {
     },
     anchor_v2_testing::{Keypair, LiteSVM, Signer},
     solana_kite::{
-        create_associated_token_account, create_token_mint, create_wallet,
+        create_associated_token_account, create_token_mint, create_wallet, get_sol_balance,
         get_token_account_balance, mint_tokens_to_token_account,
         send_transaction_from_instructions,
     },
@@ -77,9 +79,10 @@ const MIN_ORDER_SIZE: u64 = 1;
 // order placed in the tests with room to spare.
 const TRADER_STARTING_BALANCE: u64 = 1_000_000_000;
 
-// Shared order sizing - chosen so price * quantity stays well inside u64
-// and the seller's ask sits at the same price as the buyer's bid (matching
-// is not implemented, they just coexist in the book).
+// Shared order sizing for the tests that place a single order and then
+// cancel or settle it - chosen so price * quantity stays well inside u64. No
+// test places both, so the bid and the ask never cross; the matching tests
+// further down choose their own prices.
 const BID_PRICE: u64 = 100;
 const BID_QUANTITY: u64 = 10;
 const ASK_PRICE: u64 = 100;
@@ -484,6 +487,33 @@ fn build_settle_funds_ix(
             quote_mint: sc.quote_mint,
             owner: *owner,
             token_program: token_program_id(),
+        }
+        .to_account_metas(None),
+    )
+}
+
+fn build_close_order_ix(sc: &Scenario, owner: &Address, order_id: u64) -> Instruction {
+    let order = order_pda(&sc.program_id, &sc.market, order_id);
+    Instruction::new_with_bytes(
+        sc.program_id,
+        &order_book::instruction::CloseOrder {}.data(),
+        order_book::accounts::CloseOrderAccountConstraints {
+            market: sc.market,
+            order,
+            owner: *owner,
+        }
+        .to_account_metas(None),
+    )
+}
+
+fn build_close_market_user_ix(sc: &Scenario, owner: &Address, market_user: Address) -> Instruction {
+    Instruction::new_with_bytes(
+        sc.program_id,
+        &order_book::instruction::CloseMarketUser {}.data(),
+        order_book::accounts::CloseMarketUserAccountConstraints {
+            market: sc.market,
+            market_user,
+            owner: *owner,
         }
         .to_account_metas(None),
     )
@@ -3219,4 +3249,349 @@ fn only_the_market_authority_can_pause_or_resume() {
         error.contains(&custom_error(order_book::errors::ErrorCode::MarketPaused)),
         "{error}"
     );
+}
+
+// ---------------------------------------------------------------------------
+// Closing accounts: a finished order and an idle MarketUser give their rent
+// back to the owner who paid it. Every test here uses the seller's ask of
+// CLOSE_QUANTITY lots at CLOSE_PRICE (order CLOSE_ASK_ID), and the ones that
+// need a fill cross it with the buyer's bid (order CLOSE_BID_ID).
+// ---------------------------------------------------------------------------
+
+const CLOSE_PRICE: u64 = 100;
+const CLOSE_QUANTITY: u64 = 5;
+const CLOSE_ASK_ID: u64 = 1;
+const CLOSE_BID_ID: u64 = 2;
+
+// A closed account has no lamports and no data. Anchor's `close` constraint
+// moves the rent out and hands the account back to the system program.
+fn account_is_open(svm: &LiteSVM, address: &Address) -> bool {
+    svm.get_account(address)
+        .is_some_and(|account| account.lamports > 0 && !account.data.is_empty())
+}
+
+// The lamports an open account holds, which closing it returns to whoever
+// paid its rent.
+fn rent_of(svm: &LiteSVM, address: &Address) -> u64 {
+    svm.get_account(address).unwrap().lamports
+}
+
+// What one transaction with a single signer costs its fee payer, measured by
+// sending `wallet` a zero-lamport transfer to itself: nothing else in that
+// transaction moves lamports. A fresh blockhash first, so repeated
+// measurements are distinct transactions.
+fn transaction_fee(svm: &mut LiteSVM, wallet: &Keypair) -> u64 {
+    let address = wallet.pubkey();
+    svm.expire_blockhash();
+    let before = get_sol_balance(svm, &address);
+    send_transaction_from_instructions(
+        svm,
+        vec![system_instruction::transfer(&address, &address, 0)],
+        &[wallet],
+        &address,
+    )
+    .unwrap();
+    before - get_sol_balance(svm, &address)
+}
+
+/// The seller rests the closing tests' ask.
+fn place_close_ask(sc: &mut Scenario) {
+    let ask_ix = build_place_order_ix(
+        sc,
+        &sc.seller,
+        sc.seller_market_user,
+        sc.seller_base_ata,
+        sc.seller_quote_ata,
+        order_book::state::OrderSide::Ask,
+        CLOSE_ASK_ID,
+        CLOSE_PRICE,
+        CLOSE_QUANTITY,
+    );
+    send_transaction_from_instructions(
+        &mut sc.svm,
+        vec![ask_ix],
+        &[&sc.seller],
+        &sc.seller.pubkey(),
+    )
+    .unwrap();
+}
+
+/// The buyer crosses the seller's ask with a bid of `quantity` lots at the
+/// same price: the whole ask when `quantity` is CLOSE_QUANTITY, part of it
+/// otherwise.
+fn cross_close_ask(sc: &mut Scenario, quantity: u64) {
+    let bid_ix = build_place_order_with_makers_ix(
+        sc,
+        &sc.buyer,
+        sc.buyer_market_user,
+        sc.buyer_base_ata,
+        sc.buyer_quote_ata,
+        order_book::state::OrderSide::Bid,
+        CLOSE_BID_ID,
+        CLOSE_PRICE,
+        quantity,
+        &[(CLOSE_ASK_ID, sc.seller_market_user)],
+    );
+    send_transaction_from_instructions(&mut sc.svm, vec![bid_ix], &[&sc.buyer], &sc.buyer.pubkey())
+        .unwrap();
+}
+
+/// The seller cancels their ask, which credits its locked base to their
+/// unsettled balance.
+fn cancel_close_ask(sc: &mut Scenario) {
+    let cancel_ix =
+        build_cancel_order_ix(sc, &sc.seller.pubkey(), sc.seller_market_user, CLOSE_ASK_ID);
+    send_transaction_from_instructions(
+        &mut sc.svm,
+        vec![cancel_ix],
+        &[&sc.seller],
+        &sc.seller.pubkey(),
+    )
+    .unwrap();
+}
+
+/// The seller settles, emptying their unsettled balances.
+fn settle_seller(sc: &mut Scenario) {
+    let settle_ix = build_settle_funds_ix(
+        sc,
+        &sc.seller.pubkey(),
+        sc.seller_market_user,
+        sc.seller_base_ata,
+        sc.seller_quote_ata,
+    );
+    send_transaction_from_instructions(
+        &mut sc.svm,
+        vec![settle_ix],
+        &[&sc.seller],
+        &sc.seller.pubkey(),
+    )
+    .unwrap();
+}
+
+/// Sends `close_ix`, which closes `account`, signed and paid by `owner`.
+/// Asserts the account is gone afterwards and that the owner's balance rose
+/// by exactly the account's rent, less the transaction fee.
+fn assert_close_returns_rent(
+    svm: &mut LiteSVM,
+    close_ix: Instruction,
+    account: &Address,
+    owner: &Keypair,
+) {
+    let rent = rent_of(svm, account);
+    let fee = transaction_fee(svm, owner);
+    let before = get_sol_balance(svm, &owner.pubkey());
+
+    send_transaction_from_instructions(svm, vec![close_ix], &[owner], &owner.pubkey()).unwrap();
+
+    assert!(!account_is_open(svm, account));
+    assert_eq!(get_sol_balance(svm, &owner.pubkey()), before + rent - fee);
+}
+
+#[test]
+fn close_order_returns_a_cancelled_orders_rent() {
+    let mut sc = full_setup();
+    initialize_market_and_users(&mut sc);
+
+    place_close_ask(&mut sc);
+    cancel_close_ask(&mut sc);
+
+    let ask = order_pda(&sc.program_id, &sc.market, CLOSE_ASK_ID);
+    let close_ix = build_close_order_ix(&sc, &sc.seller.pubkey(), CLOSE_ASK_ID);
+    assert_close_returns_rent(&mut sc.svm, close_ix, &ask, &sc.seller);
+
+    // Closing the order touches neither the refund it had already credited
+    // nor the vault that still holds the tokens until settlement.
+    let (seller_base, _) = read_user_unsettled(&sc.svm, &sc.seller_market_user);
+    assert_eq!(seller_base, CLOSE_QUANTITY * BASE_LOT_SIZE);
+    assert_eq!(
+        get_token_account_balance(&sc.svm, &sc.base_vault).unwrap(),
+        CLOSE_QUANTITY * BASE_LOT_SIZE
+    );
+}
+
+#[test]
+fn close_order_returns_a_filled_orders_rent() {
+    let mut sc = full_setup();
+    initialize_market_and_users(&mut sc);
+
+    place_close_ask(&mut sc);
+    cross_close_ask(&mut sc, CLOSE_QUANTITY);
+
+    // Both the maker's ask and the taker's bid filled in full; each owner
+    // closes their own.
+    let ask = order_pda(&sc.program_id, &sc.market, CLOSE_ASK_ID);
+    let close_ask_ix = build_close_order_ix(&sc, &sc.seller.pubkey(), CLOSE_ASK_ID);
+    assert_close_returns_rent(&mut sc.svm, close_ask_ix, &ask, &sc.seller);
+    let bid = order_pda(&sc.program_id, &sc.market, CLOSE_BID_ID);
+    let close_bid_ix = build_close_order_ix(&sc, &sc.buyer.pubkey(), CLOSE_BID_ID);
+    assert_close_returns_rent(&mut sc.svm, close_bid_ix, &bid, &sc.buyer);
+
+    // The fills' credits are untouched: they live on the MarketUser
+    // accounts, not on the orders.
+    let (buyer_base, _) = read_user_unsettled(&sc.svm, &sc.buyer_market_user);
+    assert_eq!(buyer_base, CLOSE_QUANTITY * BASE_LOT_SIZE);
+    let gross_quote = CLOSE_PRICE * CLOSE_QUANTITY * QUOTE_LOT_SIZE;
+    let (_, seller_quote) = read_user_unsettled(&sc.svm, &sc.seller_market_user);
+    assert_eq!(seller_quote, gross_quote - fee_ceil(gross_quote));
+}
+
+#[test]
+fn close_order_refuses_a_resting_order() {
+    let mut sc = full_setup();
+    initialize_market_and_users(&mut sc);
+
+    place_close_ask(&mut sc);
+
+    let close_ix = build_close_order_ix(&sc, &sc.seller.pubkey(), CLOSE_ASK_ID);
+    let error = failure_text(
+        &mut sc.svm,
+        vec![close_ix],
+        &[&sc.seller],
+        &sc.seller.pubkey(),
+        "an order resting on the book must not close",
+    );
+    assert_fails_with(&error, order_book::errors::ErrorCode::OrderNotClosable);
+    assert!(account_is_open(
+        &sc.svm,
+        &order_pda(&sc.program_id, &sc.market, CLOSE_ASK_ID)
+    ));
+}
+
+#[test]
+fn close_order_refuses_a_partially_filled_order() {
+    let mut sc = full_setup();
+    initialize_market_and_users(&mut sc);
+
+    place_close_ask(&mut sc);
+    cross_close_ask(&mut sc, CLOSE_QUANTITY - 1);
+
+    let ask = order_pda(&sc.program_id, &sc.market, CLOSE_ASK_ID);
+    let (_, status) = read_order_fill_and_status(&sc.svm, &ask);
+    assert_eq!(status, ORDER_STATUS_PARTIALLY_FILLED);
+
+    let close_ix = build_close_order_ix(&sc, &sc.seller.pubkey(), CLOSE_ASK_ID);
+    let error = failure_text(
+        &mut sc.svm,
+        vec![close_ix],
+        &[&sc.seller],
+        &sc.seller.pubkey(),
+        "a partially filled order still rests on the book and must not close",
+    );
+    assert_fails_with(&error, order_book::errors::ErrorCode::OrderNotClosable);
+    assert!(account_is_open(&sc.svm, &ask));
+}
+
+#[test]
+fn close_order_refuses_a_non_owner() {
+    let mut sc = full_setup();
+    initialize_market_and_users(&mut sc);
+
+    place_close_ask(&mut sc);
+    cancel_close_ask(&mut sc);
+
+    // The order is closable, but only by the seller: the buyer signing for
+    // it would be paid the seller's rent.
+    let attack_ix = build_close_order_ix(&sc, &sc.buyer.pubkey(), CLOSE_ASK_ID);
+    let error = failure_text(
+        &mut sc.svm,
+        vec![attack_ix],
+        &[&sc.buyer],
+        &sc.buyer.pubkey(),
+        "a non-owner must not close an order",
+    );
+    assert_fails_with(&error, order_book::errors::ErrorCode::Unauthorized);
+    assert!(account_is_open(
+        &sc.svm,
+        &order_pda(&sc.program_id, &sc.market, CLOSE_ASK_ID)
+    ));
+}
+
+#[test]
+fn close_market_user_returns_rent_when_nothing_is_open_or_owed() {
+    let mut sc = full_setup();
+    initialize_market_and_users(&mut sc);
+
+    // Place, cancel and settle, so the account has been through a full
+    // cycle and is back to nothing open and nothing owed.
+    place_close_ask(&mut sc);
+    cancel_close_ask(&mut sc);
+    settle_seller(&mut sc);
+    assert_eq!(read_open_order_count(&sc.svm, &sc.seller_market_user), 0);
+    assert_eq!(read_user_unsettled(&sc.svm, &sc.seller_market_user), (0, 0));
+
+    let close_ix = build_close_market_user_ix(&sc, &sc.seller.pubkey(), sc.seller_market_user);
+    assert_close_returns_rent(&mut sc.svm, close_ix, &sc.seller_market_user, &sc.seller);
+
+    // The seller can come back to the market: the PDA is free to create
+    // again.
+    let reinit_ix = build_initialize_market_user_ix(&sc, &sc.seller.pubkey());
+    send_transaction_from_instructions(
+        &mut sc.svm,
+        vec![reinit_ix],
+        &[&sc.seller],
+        &sc.seller.pubkey(),
+    )
+    .unwrap();
+    assert!(account_is_open(&sc.svm, &sc.seller_market_user));
+}
+
+#[test]
+fn close_market_user_refuses_an_open_order() {
+    let mut sc = full_setup();
+    initialize_market_and_users(&mut sc);
+
+    place_close_ask(&mut sc);
+
+    let close_ix = build_close_market_user_ix(&sc, &sc.seller.pubkey(), sc.seller_market_user);
+    let error = failure_text(
+        &mut sc.svm,
+        vec![close_ix],
+        &[&sc.seller],
+        &sc.seller.pubkey(),
+        "a MarketUser with an open order must not close",
+    );
+    assert_fails_with(&error, order_book::errors::ErrorCode::MarketUserNotClosable);
+    assert!(account_is_open(&sc.svm, &sc.seller_market_user));
+}
+
+#[test]
+fn close_market_user_refuses_an_unsettled_balance() {
+    let mut sc = full_setup();
+    initialize_market_and_users(&mut sc);
+
+    // Cancelled but not settled: nothing is open, but the refund is still
+    // owed through this account and would be lost with it.
+    place_close_ask(&mut sc);
+    cancel_close_ask(&mut sc);
+    assert_eq!(read_open_order_count(&sc.svm, &sc.seller_market_user), 0);
+
+    let close_ix = build_close_market_user_ix(&sc, &sc.seller.pubkey(), sc.seller_market_user);
+    let error = failure_text(
+        &mut sc.svm,
+        vec![close_ix],
+        &[&sc.seller],
+        &sc.seller.pubkey(),
+        "a MarketUser owed an unsettled balance must not close",
+    );
+    assert_fails_with(&error, order_book::errors::ErrorCode::MarketUserNotClosable);
+    assert!(account_is_open(&sc.svm, &sc.seller_market_user));
+}
+
+#[test]
+fn close_market_user_refuses_a_non_owner() {
+    let mut sc = full_setup();
+    initialize_market_and_users(&mut sc);
+
+    // The seller's account is closable, but the buyer signing for it would
+    // be paid the seller's rent.
+    let attack_ix = build_close_market_user_ix(&sc, &sc.buyer.pubkey(), sc.seller_market_user);
+    let error = failure_text(
+        &mut sc.svm,
+        vec![attack_ix],
+        &[&sc.buyer],
+        &sc.buyer.pubkey(),
+        "a non-owner must not close a MarketUser",
+    );
+    assert_fails_with(&error, order_book::errors::ErrorCode::Unauthorized);
+    assert!(account_is_open(&sc.svm, &sc.seller_market_user));
 }

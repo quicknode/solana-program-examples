@@ -3,9 +3,9 @@ use anchor_lang::prelude::*;
 use crate::{error::BettingError, Config, Event, EventStatus, Outcome};
 
 // Close one Outcome account of a finished event and return its rent to the
-// admin, who paid it. Bet accounts derive their address from the outcome's,
-// so every bet of the event must already be closed, and the Outcome accounts
-// must all close before `close_event` can close the event.
+// admin, who paid it. The event's accounts close in the reverse of the order
+// they were created: every Bet of the event before any Outcome, and every
+// Outcome before `close_event` can close the event.
 #[derive(Accounts)]
 pub struct CloseOutcomeAccountConstraints<'info> {
     #[account(mut)]
@@ -43,9 +43,13 @@ pub fn handle_close_outcome(context: Context<CloseOutcomeAccountConstraints>) ->
         ),
         BettingError::EventNotFinished
     );
-    // A Bet account derives its address from its outcome's, so an outcome
-    // closed under an open bet would leave that bet's claim or refund with
-    // no outcome to check against.
+    // No claim, refund or losing-bet close reads the Outcome: each re-derives
+    // the Bet address from the outcome pubkey the Bet stores, which stays
+    // valid as bytes after the Outcome closes. This check is an ordering
+    // rule, not something those handlers need: an Outcome stays open for as
+    // long as any Bet of the event names it by address, so no live position
+    // ever points at an address the program has emptied, and the event's
+    // `open_bets` counter is the gate.
     require!(
         context.accounts.event.open_bets == 0,
         BettingError::BetsStillOpen

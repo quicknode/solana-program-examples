@@ -122,4 +122,22 @@ mod quasar_order_book {
     pub fn resume_market(ctx: Ctx<ResumeMarketAccountConstraints>) -> Result<(), ProgramError> {
         instructions::resume_market::handle_resume_market(&mut ctx.accounts)
     }
+
+    /// Close a Filled or Cancelled order's account and return its rent to
+    /// the order's owner, who signs. An order still resting on the book
+    /// (Open or PartiallyFilled) is refused with `OrderNotClosable`.
+    #[instruction(discriminator = 8)]
+    pub fn close_order(ctx: Ctx<CloseOrderAccountConstraints>) -> Result<(), ProgramError> {
+        instructions::close_order::handle_close_order(&mut ctx.accounts)
+    }
+
+    /// Close the owner's MarketUser account for this market and return its
+    /// rent to them. Refused with `MarketUserNotClosable` while the account
+    /// lists an open order or holds an unsettled balance.
+    #[instruction(discriminator = 9)]
+    pub fn close_market_user(
+        ctx: Ctx<CloseMarketUserAccountConstraints>,
+    ) -> Result<(), ProgramError> {
+        instructions::close_market_user::handle_close_market_user(&mut ctx.accounts)
+    }
 }

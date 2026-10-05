@@ -148,4 +148,9 @@ mod quasar_lending {
     pub fn collect_program_fees(ctx: Ctx<CollectProgramFees>) -> Result<(), ProgramError> {
         ctx.accounts.run()
     }
+
+    #[instruction(discriminator = 12)]
+    pub fn close_obligation(ctx: Ctx<CloseObligation>) -> Result<(), ProgramError> {
+        ctx.accounts.run()
+    }
 }
