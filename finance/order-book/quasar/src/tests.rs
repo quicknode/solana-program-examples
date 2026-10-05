@@ -1229,3 +1229,56 @@ fn close_market_user_refuses_a_non_owner(test: &mut Test) {
     let maker_market_user = test.derive_pda(MarketUser::seeds(&market, &MAKER));
     assert_eq!(test.read::<MarketUser>(maker_market_user).owner, MAKER);
 }
+
+#[quasar_test]
+fn evicted_order_and_its_owners_market_user_close_after_settling(test: &mut Test) {
+    let market = init_market(test);
+    let fillers = fill_bid_side(test, market);
+    let newcomer = create_trader(test, market, 100);
+    let evicted = &fillers[0];
+    let worst_order = test.derive_pda(Order::seeds(&market, WORST_BID_ORDER_ID));
+
+    // A better bid evicts the worst one, which eviction stamps Cancelled and
+    // refunds through its owner's unsettled balance.
+    place_bid(
+        test,
+        market,
+        &newcomer,
+        ORDERS_PER_SIDE + 1,
+        EVICTION_BETTER_BID_PRICE,
+        &[worst_order, evicted.market_user],
+    )
+    .succeeds();
+    assert_eq!(
+        test.read::<Order>(worst_order).status,
+        OrderStatus::Cancelled as u8
+    );
+
+    // The evicted owner's other bids (IDs 2 through ORDERS_PER_FILLER) still
+    // rest, so they cancel those to have nothing open, then settle every
+    // refund to have nothing owed.
+    for order_id in WORST_BID_ORDER_ID + 1..=ORDERS_PER_FILLER {
+        test.send(CancelOrderInstruction {
+            market,
+            order_book: ORDER_BOOK,
+            order_order_id_seed: order_id,
+            owner: evicted.owner,
+        })
+        .succeeds();
+    }
+    settle_funds(test, market, evicted.owner, evicted.base, evicted.quote).succeeds();
+    let evicted_user = test.read::<MarketUser>(evicted.market_user);
+    assert_eq!(evicted_user.open_orders_len, 0);
+    assert_eq!(u64::from(evicted_user.unsettled_base), 0);
+    assert_eq!(u64::from(evicted_user.unsettled_quote), 0);
+
+    // The evicted order closes to its owner, then the owner's MarketUser.
+    close_order_and_assert_rent_returned(test, market, evicted.owner, WORST_BID_ORDER_ID);
+    let user_rent = test.lamports(evicted.market_user);
+    let owner_before = test.lamports(evicted.owner);
+    let close_ix = close_market_user(test, market, evicted.owner, evicted.owner);
+    test.send(close_ix)
+        .succeeds()
+        .is_closed(evicted.market_user)
+        .has_lamports(evicted.owner, owner_before + user_rent);
+}

@@ -44,4 +44,10 @@ pub enum LendingError {
     NothingToCollect,
     #[msg("Obligation still holds collateral or debt and cannot be closed")]
     ObligationNotEmpty,
+    #[msg("Borrow rate is above the program's ceiling of 30,000 bps (300% a year)")]
+    BorrowRateAboveCeiling,
+    #[msg("A config update may not lower a reserve's liquidation threshold")]
+    RiskLimitLowered,
+    #[msg("Liquidation threshold is too high for the collateral to pay the liquidation bonus")]
+    LiquidationBonusUnpayable,
 }

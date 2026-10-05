@@ -4,31 +4,57 @@
 
 ### Changed
 
+- Cap the borrow rate and keep the liquidation bonus payable.
+  `validate_config` now refuses any of `min_borrow_rate_bps`,
+  `optimal_borrow_rate_bps` or `max_borrow_rate_bps` above the new
+  `BORROW_RATE_CEILING_BPS` (30,000 bps, 300% a year) with the new
+  `BorrowRateAboveCeiling` error, so `initialize_reserve` can no longer set a
+  curve up to the 655% a year a bare u16 allows. It also refuses a config
+  where `liquidation_threshold_bps * (10_000 + liquidation_bonus_bps)` exceeds
+  `10_000 * 10_000` with the new `LiquidationBonusUnpayable` error, so a
+  liquidation at the threshold can always pay its bonus out of the
+  collateral. This port has no `update_reserve_config`, so the Anchor
+  versions' ratchet on `liquidation_threshold_bps` has nothing to guard here.
+  Tested by `rejects_borrow_rate_above_ceiling_at_initialize` (each rate field
+  alone above the ceiling), `accepts_borrow_rate_at_ceiling`,
+  `rejects_unpayable_liquidation_bonus_at_initialize` and
+  `accepts_liquidation_bonus_at_the_bound`.
 - Close the collateral vault when its last share leaves. A withdrawal or a
   liquidation that takes the last deposited share now also closes the
-  obligation's share vault, rent to the obligation's owner, who paid it in
+  obligation's share vault, whose rent the obligation's owner paid in
   `deposit_obligation_collateral` (`init(idempotent)` recreates it on a later
   deposit). The vault's whole balance moves out first, to the owner on a
   withdrawal and to the liquidator on a liquidation, so share tokens donated
-  straight to the vault cannot keep it open or make the withdrawal fail.
-  `liquidate_obligation` takes a new `obligation_owner` account
-  (`address = obligation.owner`) to receive the rent. Tested by
-  `full_withdraw_closes_the_vault_and_returns_its_rent`,
+  straight to the vault cannot keep it open or make the withdrawal fail. A
+  withdrawal closes the vault to the owner. A liquidation closes it into the
+  obligation account, and `close_obligation` returns that rent to the owner
+  with the obligation's own; `liquidate_obligation`'s accounts are
+  unchanged. Tested by `full_withdraw_closes_the_vault_and_returns_its_rent`,
   `partial_withdraw_keeps_the_vault_open`,
   `redeposit_after_full_withdraw_recreates_the_vault`,
   `donated_shares_cannot_keep_the_vault_open`,
-  `seizing_all_collateral_closes_the_vault_and_returns_its_rent_to_the_owner`
-  and `liquidator_cannot_redirect_the_vault_rent` (`AddressMismatch`);
+  `seizing_all_collateral_closes_the_vault_into_the_obligation`,
+  `seizing_all_collateral_sweeps_donated_shares_to_the_liquidator`,
+  `partial_liquidation_keeps_the_vault_open`,
+  `close_obligation_after_full_liquidation_returns_both_rents_to_the_owner`,
+  `close_obligation_refused_while_debt_remains_after_full_liquidation`,
+  `redeposit_after_full_liquidation_recreates_the_vault`,
+  `owner_can_liquidate_their_own_obligation` and
+  `owner_can_liquidate_their_own_obligation_to_empty`;
   `debt_free_withdraw_needs_no_price` now asserts the vault is gone.
 - A debt-free borrower can always withdraw. `withdraw_obligation_collateral`
   valued the remaining collateral at the feed's price on every call, so a
   borrower with no debt could not take their collateral out while the feed
   was stale or silent. Now the handler reads no price and runs no health
   check when `borrowed_principal` is zero (repaying the last unit zeroes it);
-  the price accounts are still passed and checked to be the reserves' own,
-  but their values are not read. Every check stays for an obligation with
-  debt. Tested by `debt_free_withdraw_needs_no_price`, which lets the price
-  go stale and withdraws the whole deposit,
+  the collateral price account is still checked to be the collateral
+  reserve's own, but its value is not read, and the borrow reserve and borrow
+  price accounts are ignored. Every check stays for an obligation with debt.
+  Tested by `debt_free_withdraw_needs_no_price`, which lets the price go
+  stale and withdraws the whole deposit,
+  `debt_free_withdraw_ignores_the_borrow_accounts`, which passes an unrelated
+  borrow reserve and feed and has the same accounts refused
+  (`WrongReserve`) once there is debt,
   `withdraw_after_full_repay_needs_no_price`, and
   `withdraw_with_debt_is_refused_while_the_price_is_stale`, which asserts the
   existing `StalePrice` refusal.

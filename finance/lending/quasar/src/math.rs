@@ -6,8 +6,8 @@ use quasar_lang::prelude::*;
 
 use crate::{
     constants::{
-        BPS_DENOMINATOR, FIXED_POINT_SCALE, FIXED_POINT_SCALE_DECIMALS, MINIMUM_SHARES,
-        SECONDS_PER_YEAR,
+        BORROW_RATE_CEILING_BPS, BPS_DENOMINATOR, FIXED_POINT_SCALE, FIXED_POINT_SCALE_DECIMALS,
+        MINIMUM_SHARES, SECONDS_PER_YEAR,
     },
     error::LendingError,
 };
@@ -273,6 +273,24 @@ pub fn validate_config(
     require!(
         loan_to_value_bps <= liquidation_threshold_bps,
         LendingError::InvalidConfig
+    );
+    // A liquidation at the threshold must be able to pay its bonus out of the
+    // collateral: the debt is at most `threshold` of the collateral's value,
+    // and the liquidator takes that debt plus the bonus, so
+    // `threshold * (1 + bonus)` may not exceed 100%. Both fields are at most
+    // 10,000 here, so the product fits a u128 with room to spare.
+    require!(
+        (liquidation_threshold_bps as u128) * (BPS_DENOMINATOR + liquidation_bonus_bps as u128)
+            <= BPS_DENOMINATOR * BPS_DENOMINATOR,
+        LendingError::LiquidationBonusUnpayable
+    );
+    // No point on the rate curve may exceed the ceiling, so no reserve can be
+    // created charging an arbitrary rate.
+    require!(
+        min_borrow_rate_bps <= BORROW_RATE_CEILING_BPS
+            && optimal_borrow_rate_bps <= BORROW_RATE_CEILING_BPS
+            && max_borrow_rate_bps <= BORROW_RATE_CEILING_BPS,
+        LendingError::BorrowRateAboveCeiling
     );
     require!(
         min_borrow_rate_bps <= optimal_borrow_rate_bps

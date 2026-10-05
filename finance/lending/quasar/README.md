@@ -28,7 +28,22 @@ fixed-size accounts, so this port follows that idiom:
   `update_reserve_config`: a reserve's loan-to-value, liquidation threshold and
   bonus, close factor, reserve factor, interest-rate curve and oracle
   confidence limit are set by `initialize_reserve` and never change, so the
-  bounds the Anchor version checks on update are checked there.
+  bounds the Anchor version checks on update are checked there. Those include
+  the borrow rate ceiling: no rate on the curve may exceed
+  `BORROW_RATE_CEILING_BPS` (30,000 bps, 300% a year), or the reserve is
+  refused with `BorrowRateAboveCeiling`. They also include the bound that
+  keeps the liquidation bonus payable: a reserve whose
+  `liquidation_threshold_bps * (10_000 + liquidation_bonus_bps)` exceeds
+  `10_000 * 10_000` is refused with `LiquidationBonusUnpayable`
+  (`rejects_unpayable_liquidation_bonus_at_initialize`,
+  `accepts_liquidation_bonus_at_the_bound`). A position becomes liquidatable
+  once its debt passes the threshold share of its collateral, and the
+  liquidator takes that debt plus the bonus in collateral, so the bound keeps
+  a liquidation at the threshold payable from the collateral rather than
+  leaving the suppliers bad debt. The default 80% threshold with a 5% bonus
+  gives 8,000 × 10,500 = 84,000,000, inside the bound. With no update handler,
+  the Anchor version's rule that an update may only raise the liquidation
+  threshold holds here trivially.
 
 - **A hand-declared `LastRestartSlot` sysvar.** quasar-lang ships only the
   Clock and Rent sysvars, so `src/last_restart.rs` declares the 8-byte layout
@@ -144,16 +159,30 @@ collateral is out, `close_obligation` returns the account's rent to the owner;
 it refuses with `ObligationNotEmpty` while any shares or principal remain, and
 only the owner may close it.
 
-The collateral vault closes when its last share leaves, whether a withdrawal
-or a liquidation takes it, and its rent goes back to the obligation's owner,
-who paid it when `deposit_obligation_collateral` created the vault
-(`init(idempotent)` creates it again on a later deposit). The handler moves
-the vault's whole balance out before closing it, so share tokens someone sent
-straight to the vault cannot keep it open or block the withdrawal
-(`donated_shares_cannot_keep_the_vault_open`). `liquidate_obligation` takes the
-owner as `obligation_owner` for the rent and refuses any other account
-(`liquidator_cannot_redirect_the_vault_rent`). Every account the program
-creates for a borrower therefore closes, with its rent returned.
+The collateral vault closes when its last share leaves. The rent was paid by
+the obligation's owner when `deposit_obligation_collateral` created the vault
+(`init(idempotent)` creates it again on a later deposit). A withdrawal that
+empties the vault returns that rent to the owner straight away. A liquidation
+that empties it closes it into the obligation account instead, so
+liquidation takes no account the borrower controls
+(`seizing_all_collateral_closes_the_vault_into_the_obligation`), and the owner
+can still liquidate their own position, partly
+(`owner_can_liquidate_their_own_obligation`) or down to an empty vault
+(`owner_can_liquidate_their_own_obligation_to_empty`). `close_obligation` later
+hands the owner the obligation's own rent and the vault's together
+(`close_obligation_after_full_liquidation_returns_both_rents_to_the_owner`),
+and a later deposit recreates the vault
+(`redeposit_after_full_liquidation_recreates_the_vault`).
+Either way the whole vault balance moves out before the vault closes, so
+share tokens someone sent straight to the vault cannot keep it open or block
+the withdrawal (`donated_shares_cannot_keep_the_vault_open`,
+`seizing_all_collateral_sweeps_donated_shares_to_the_liquidator`).
+
+Every account the program creates for a borrower closes, with its rent
+returned, once the position is fully unwound. An obligation that a
+liquidation leaves holding debt and no collateral is not unwound:
+`close_obligation` refuses it until that debt is repaid
+(`close_obligation_refused_while_debt_remains_after_full_liquidation`).
 
 ## Setup
 

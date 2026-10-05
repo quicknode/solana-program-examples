@@ -2,22 +2,58 @@
 
 ## Unreleased (2026-10-05)
 
+Cap the borrow rate, ratchet the liquidation threshold and keep the bonus
+payable. The market owner's `update_reserve_config` acts at once on a reserve
+with open loans, and could raise the rate curve to any u16 (655% a year) or
+lower `liquidation_threshold_bps` and make existing borrowers liquidatable on
+the spot. `ReserveConfig::validate` now refuses any of `min_borrow_rate_bps`,
+`optimal_borrow_rate_bps` or `max_borrow_rate_bps` above the new
+`BORROW_RATE_CEILING_BPS` (30,000 bps, 300% a year) with the new
+`BorrowRateAboveCeiling` error, at `initialize_reserve` and on every update.
+`update_reserve_config` also refuses a config whose
+`liquidation_threshold_bps` is below the reserve's current value with the new
+`RiskLimitLowered` error; raising it is allowed. `loan_to_value_bps` is not
+ratcheted, because it limits only new borrows, so the owner can still lower it
+to stop new borrowing against an asset. Because the threshold can now only
+rise, `ReserveConfig::validate` also refuses a config where
+`liquidation_threshold_bps * (10_000 + liquidation_bonus_bps)` exceeds
+`10_000 * 10_000` with the new `LiquidationBonusUnpayable` error, so a
+liquidation at the threshold can always pay its bonus out of the collateral.
+Tested by `rejects_borrow_rate_above_ceiling_at_initialize`,
+`rejects_borrow_rate_above_ceiling_on_update` (each rate field alone above the
+ceiling), `accepts_borrow_rate_at_ceiling`,
+`rejects_lowering_liquidation_threshold`, `accepts_lowering_loan_to_value`,
+`accepts_raising_loan_to_value_and_liquidation_threshold`,
+`accepts_curve_change_with_risk_limits_unchanged`,
+`rejects_unpayable_liquidation_bonus_at_initialize`,
+`rejects_unpayable_liquidation_bonus_on_update` and
+`accepts_liquidation_bonus_at_the_bound`; `accepts_valid_config_update` now
+raises the loan-to-value instead of lowering it. The tests gain a
+`try_add_reserve_to` helper that returns the `initialize_reserve` result.
+
 Close each collateral vault when its last share leaves. A withdrawal or a
 liquidation that empties a reserve's deposit entry now also closes that
-reserve's per-obligation share vault, rent to the obligation's owner, who paid
-it in `deposit_obligation_collateral` (`init_if_needed` recreates it on a later
+reserve's per-obligation share vault, whose rent the obligation's owner paid
+in `deposit_obligation_collateral` (`init_if_needed` recreates it on a later
 deposit). The vault's whole balance moves out first, to the owner on a
 withdrawal and to the liquidator on a liquidation, so share tokens donated
-straight to the vault cannot keep it open or make the withdrawal fail.
-`withdraw_obligation_collateral`'s `owner` is now writable, and
-`liquidate_obligation` takes a new `obligation_owner` account
-(`address = obligation.owner`) to receive the rent. Tested by
+straight to the vault cannot keep it open or make the withdrawal fail. A
+withdrawal closes the vault to the owner, whose `owner` account is now
+writable. A liquidation closes it into the obligation account, and
+`close_obligation` returns that rent to the owner with the obligation's own;
+`liquidate_obligation`'s accounts are unchanged. Tested by
 `full_withdraw_closes_the_vault_and_returns_its_rent`,
 `partial_withdraw_keeps_the_vault_open`,
 `redeposit_after_full_withdraw_recreates_the_vault`,
 `donated_shares_cannot_keep_the_vault_open`,
-`seizing_all_collateral_closes_the_vault_and_returns_its_rent_to_the_owner`
-and `liquidator_cannot_redirect_the_vault_rent` (`ConstraintAddress`);
+`seizing_all_collateral_closes_the_vault_into_the_obligation`,
+`seizing_all_collateral_sweeps_donated_shares_to_the_liquidator`,
+`partial_liquidation_keeps_the_vault_open`,
+`close_obligation_after_full_liquidation_returns_both_rents_to_the_owner`,
+`close_obligation_refused_while_debt_remains_after_full_liquidation`,
+`redeposit_after_full_liquidation_recreates_the_vault`,
+`owner_can_liquidate_their_own_obligation` and
+`owner_can_liquidate_their_own_obligation_to_empty`;
 `debt_free_withdraw_needs_no_price_and_no_refresh` now asserts the vault is
 gone.
 
