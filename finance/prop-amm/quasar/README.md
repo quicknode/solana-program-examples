@@ -37,12 +37,16 @@ Quasar version.
 ## Testing
 
 Tests run in-process with [`quasar-svm`](https://github.com/blueshift-gg/quasar-svm).
-They build the program, set up both mints, an oracle feed at $165, and an
-operator with funded inventory, then verify the quote math to the minor unit
-in both directions, the exact 1.65 USDC round-trip spread, oracle repricing
-and re-quoting, the operator's full exit, and that every gate shuts: slippage,
-staleness, restart handling, confidence, a feed account owned by another
-program, pause, zero amounts, inventory bounds, and operator access control.
+They build the program, set up both mints (NVDAx with 8 decimals, USDC with
+6), an oracle feed at $165, and an operator with funded inventory, then verify
+the quote math to the minor unit in both directions, the exact 1.65 USDC
+round-trip spread, oracle repricing and re-quoting, the operator's full exit,
+and that every gate shuts: slippage, staleness, restart handling, confidence,
+a feed account owned by another program, pause, zero amounts, inventory
+bounds, parameter bounds, and operator access control. Every refusal test
+asserts its error code with `fails_with`: the program's own codes from
+`instructions::shared::error`, and `QuasarError::HasOneMismatch` for the
+`has_one(operator)` constraint that refuses an imposter operator.
 
 ```bash
 quasar build

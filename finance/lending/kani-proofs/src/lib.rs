@@ -9,8 +9,9 @@
 //!
 //! The lending program is the richest of the finance examples: a Solend-style
 //! pool with `mul_div` floor/ceil rounding (`math.rs`), a kinked interest-rate
-//! curve and a compounding accumulation factor (`state::reserve`), a share-token
-//! exchange rate (`deposit`/`redeem`), and liquidation sizing with a close
+//! curve, a compounding accumulation factor and a fee split that rounds up for
+//! the program (`state::reserve`), a share-token exchange rate
+//! (`deposit`/`redeem`), and liquidation sizing with a close
 //! factor and bonus (`liquidate_obligation`). All of that is pure integer
 //! arithmetic; the token movement is delegated to SPL CPIs that Kani cannot
 //! symbolically execute. This crate reproduces the formulas faithfully and
@@ -138,6 +139,37 @@ fn proof_accumulation_factor_monotonic() {
 
     let new_factor = grow_factor(old_factor, accrued, scale).unwrap();
     assert!(new_factor >= old_factor); // the factor never decreases
+}
+
+/// The program's cut of one accrual's interest: `ceil(interest * reserve_factor
+/// / 10_000)` (mirrors the fee line of `accrue_interest`). The suppliers take
+/// the remainder, `interest - fee`.
+pub fn program_fee(interest: u128, reserve_factor_bps: u128) -> Option<u128> {
+    mul_div_ceil(interest, reserve_factor_bps, BPS_DENOMINATOR)
+}
+
+/// The fee split is exact and bounded: the fee rounds up, in the program's
+/// favour, yet never exceeds the interest (the reserve factor is at most
+/// 100%), so the suppliers' remainder never underflows and fee plus remainder
+/// is exactly the interest. Nothing is created by rounding, and whatever
+/// rounding there is goes to the program, never to the user.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::solver(cadical)]
+fn proof_program_fee_rounds_up_within_interest() {
+    let interest: u128 = kani::any();
+    let reserve_factor_bps: u128 = kani::any();
+    kani::assume(interest <= 4095);
+    kani::assume(reserve_factor_bps <= BPS_DENOMINATOR); // validate(): factor <= 10_000 bps
+
+    let fee = program_fee(interest, reserve_factor_bps).unwrap();
+    assert!(fee <= interest); // the program never takes more than accrued
+    let remainder = interest - fee; // so the suppliers' share cannot underflow
+    assert_eq!(fee + remainder, interest); // nothing created, nothing lost
+
+    // The fee is the least integer covering the exact cut: rounding went up.
+    assert!(fee * BPS_DENOMINATOR >= interest * reserve_factor_bps);
+    assert!(fee == 0 || (fee - 1) * BPS_DENOMINATOR < interest * reserve_factor_bps);
 }
 
 // ===========================================================================
@@ -340,6 +372,18 @@ mod tests {
         assert_eq!(grow_factor(150, 10, 100).unwrap(), 165);
         // zero accrual leaves the index unchanged.
         assert_eq!(grow_factor(150, 0, 100).unwrap(), 150);
+    }
+
+    #[test]
+    fn fee_rounds_up_and_leaves_the_rest() {
+        // 3 units of interest at a 10% factor: the exact cut is 0.3, the fee is 1
+        // and the suppliers take 2.
+        assert_eq!(program_fee(3, 1_000).unwrap(), 1);
+        // exact division rounds nowhere.
+        assert_eq!(program_fee(30, 1_000).unwrap(), 3);
+        // a 100% factor takes everything and nothing more.
+        assert_eq!(program_fee(7, BPS_DENOMINATOR).unwrap(), 7);
+        assert_eq!(program_fee(0, 1_000).unwrap(), 0);
     }
 
     #[test]

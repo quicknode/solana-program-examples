@@ -39,8 +39,9 @@ They build the program, set up a collateral mint, oracle feed, and funded
 wallets, then exercise:
 
 - pool initialization, including its checks on the initial margin (above the
-  maintenance margin, at most 10,000 basis points) and the price band (above
-  zero, below 10,000 basis points)
+  maintenance margin, at most 10,000 basis points), the close fee (below the
+  maintenance margin) and the price band (above zero, below 10,000 basis
+  points)
 - liquidity add/remove, the first deposit on both sides of the withheld
   minimum (`first_deposit_below_minimum_fails`), and share inflation through a
   provider's own trades
@@ -61,6 +62,9 @@ wallets, then exercise:
   after an idle window leaving the average where it was
   (`one_manipulated_read_after_idle_does_not_move_average`)
 - liquidation, and fee collection
+- every fee and the maintenance requirement rounding up
+  (`fees_and_maintenance_requirement_round_up`), and `basis_points_of` at
+  its boundaries
 - the haircut: a position opening without full backing, profit paid in full
   while the pool backs it, two winners each paid exactly half when the pool is
   stressed (`haircut_scales_profit_when_pool_stressed`), the insurance fund

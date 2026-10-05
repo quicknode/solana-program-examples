@@ -82,8 +82,8 @@ option for whoever notices first.
 ### Participants
 
 - **Maria** operates the market-making firm.
-- **Alice** and **Bob** trade NVDAx (tokenized NVIDIA stock, 6 decimals)
-  against USDC.
+- **Alice** and **Bob** trade NVDAx (tokenized NVIDIA stock, 8 decimals)
+  against USDC (6 decimals).
 - The oracle quotes NVDAx at **$165** with 8 decimals of scale.
 
 ### Step 1: Maria opens the market
@@ -103,14 +103,18 @@ nobody else to account for.
 ### Step 3: Alice buys 5 NVDAx at the ask
 
 At $165 with a 10 bps spread the ask is $165.165. Alice's `swap`
-(`Direction::BuyBase`) spends exactly 1,651.65 USDC for 10 NVDAx;
-whether she bought 1 or 500, the unit price would be the same.
+(`Direction::BuyBase`) spends exactly 825.825 USDC for 5 NVDAx;
+whether she bought 1 or 500, the unit price would be the same. The fill is
+exact in USDC's six decimals because the ask has three decimal places of a
+dollar, and 5 is a whole number of NVDAx whatever the token's decimals: the
+quote math scales the base and quote amounts by their own mints' decimals,
+which need not match.
 
 ### Step 4: Bob sells 5 NVDAx at the bid
 
 The bid is $164.835, so Bob's `swap` (`Direction::SellBase`) receives
-exactly 1,648.35 USDC. A round trip through both sides costs exactly the
-3.30 USDC spread: the spread is the fee, and it lands in the inventory,
+exactly 824.175 USDC. A round trip through both sides costs exactly the
+1.65 USDC spread: the spread is the fee, and it lands in the inventory,
 not in a fee ledger.
 
 ### Step 5: The oracle reprices; the quote follows
@@ -157,12 +161,16 @@ anchor build
 cargo test
 ```
 
-The LiteSVM suite (`programs/prop-amm/tests/test_prop_amm.rs`) verifies the
-quote math to the minor unit in both directions, the exact round-trip spread,
-oracle repricing and re-quoting, and that every gate shuts: slippage,
-staleness, confidence, a feed account owned by another program
+The LiteSVM suite (`programs/prop-amm/tests/test_prop_amm.rs`) mints NVDAx
+with 8 decimals and USDC with 6, verifies the quote math to the minor unit in
+both directions, the exact round-trip spread, oracle repricing and re-quoting,
+and that every gate shuts: slippage, staleness, a price from before a cluster
+restart, confidence, a feed account owned by another program
 (`test_swap_rejects_price_feed_from_another_program`), pause, zero amounts,
-inventory bounds, and operator access control.
+inventory bounds, parameter bounds, and operator access control. Every
+refusal test asserts its error code: `assert_fails_with` for the program's
+own errors and `assert_fails_with_anchor_error` for the constraint that keeps
+the operator's instructions to the operator.
 
 ## FAQ
 

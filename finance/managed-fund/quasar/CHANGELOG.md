@@ -1,5 +1,23 @@
 # Changelog
 
+## [Unreleased] - 2026-10-05
+
+### Changed
+
+- The management fee rounds up. `collect_fees` mints
+  `ceil(total_shares × fee_bps × elapsed / (10_000 × SECONDS_PER_YEAR))`
+  shares to the manager, so a fraction of a share owed is minted as a whole
+  share and the rounding dilutes the holders. New `test_collect_fees` checks a
+  year's fee on 1,000,000,000 shares is 10,000,000, exactly, and
+  `test_collect_fees_rounds_up` that a day's fee, 27,397.26 shares, mints
+  27,398.
+- The two-asset tests mint TSLAx and NVDAx with eight decimals, as the real
+  tokens have, and USDC with six (`ASSET_DECIMALS`, `USDC_DECIMALS`, and
+  `SINGLE_ASSET_DECIMALS` for the single-asset fund's asset, replacing
+  `DECIMALS`). Every asserted basket amount is in eight-decimal minor units
+  and unchanged in major units. `test_valuation_scales_by_decimals_and_exponent`
+  varies TSLAx to nine decimals on its exponent −5 feed.
+
 ## [2026-10-03]
 
 ### Fixed

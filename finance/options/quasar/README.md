@@ -53,9 +53,12 @@ expiry is deterministic, then walk the call from write to collected strike
 and from purchase to expiry and reclaim, and the put from write to exercise
 and from purchase to expiry and reclaim
 (`reclaim_collateral_after_expiry_returns_the_strike_to_the_put_writer`),
-pin every balance to the minor unit, count the token transfers a purchase
-makes (two, or one on a zero-fee venue), and check the custody ledger
-against the vault balances after every lifecycle step. Every gate has a test
+pin every balance to the minor unit, check that the fee on a premium that is
+not a multiple of the rate rounds up and the writer receives the rest
+(`fee_rounds_up_and_the_writer_takes_the_remainder`), count the token
+transfers a purchase makes (two, or one on a zero-fee venue), and check the
+custody ledger against the vault balances after every lifecycle step. Every
+gate has a test
 that proves it shuts and fails with the expected error code: the expiry
 boundary from both sides, cancel after sale, buy after sale or expiry, a
 writer buying their own option, a premium account the writer does not own,

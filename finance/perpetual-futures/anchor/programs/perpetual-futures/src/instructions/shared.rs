@@ -241,7 +241,7 @@ pub fn apply_haircut(profit: i128, haircut: u128) -> Result<i128> {
 /// insurance cut is `insurance_fee_bps` of the fee, rounded down, and the
 /// program keeps the rest, so the two always add up to the whole fee.
 pub fn split_fee(fee: u64, insurance_fee_bps: u16) -> Result<(u64, u64)> {
-    let insurance_cut = basis_points_of(fee, insurance_fee_bps)?;
+    let insurance_cut = basis_points_of_rounded_down(fee, insurance_fee_bps)?;
     let program_cut = fee
         .checked_sub(insurance_cut)
         .ok_or(PerpError::MathOverflow)?;
@@ -286,10 +286,28 @@ pub fn position_funding(
     })
 }
 
-/// `basis_points` of `amount`, rounded down — used for fees and for the
-/// maintenance-margin threshold alike. Widened to `u128` so a large amount
-/// cannot overflow the intermediate product.
+/// `basis_points` of `amount`, rounded up: the open, close and liquidation
+/// fees and the maintenance requirement a position is liquidated at, each of
+/// which rounds in the pool's favour, so a fee is never a minor unit short and
+/// a position is never a minor unit too healthy to liquidate. Widened to
+/// `u128` so a large amount cannot overflow the intermediate product.
 pub fn basis_points_of(amount: u64, basis_points: u16) -> Result<u64> {
+    let denominator = BASIS_POINTS_DENOMINATOR as u128;
+    (amount as u128)
+        .checked_mul(basis_points as u128)
+        .ok_or(PerpError::MathOverflow)?
+        .checked_add(denominator - 1)
+        .ok_or(PerpError::MathOverflow)?
+        .checked_div(denominator)
+        .ok_or(PerpError::MathOverflow)?
+        .try_into()
+        .map_err(|_| PerpError::MathOverflow.into())
+}
+
+/// `basis_points` of `amount`, rounded down: the insurance fund's cut of a fee
+/// the pool has already collected, where the rounding moves nothing between
+/// the pool and a trader. `split_fee` gives the program the remainder.
+pub fn basis_points_of_rounded_down(amount: u64, basis_points: u16) -> Result<u64> {
     (amount as u128)
         .checked_mul(basis_points as u128)
         .ok_or(PerpError::MathOverflow)?

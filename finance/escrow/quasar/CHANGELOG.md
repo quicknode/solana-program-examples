@@ -1,5 +1,16 @@
 # Changelog
 
+## [Unreleased, 2026-10-05]
+
+### Changed
+
+- The tests tell the book's story: `TSLAX_MINT` is minted at 8 decimals,
+  `USDC_MINT` at 6, and the maker offers 1 TSLAx (`TSLAX_OFFERED`,
+  100,000,000 minor units) for 1,000 USDC (`USDC_WANTED`, 1,000,000,000 minor
+  units). The substituted-mint, substituted-vault and non-maker-cancel tests
+  assert `QuasarError::HasOneMismatch` (3005), so every refusal test asserts
+  its error code.
+
 ## [2026-10-04]
 
 ### Fixed

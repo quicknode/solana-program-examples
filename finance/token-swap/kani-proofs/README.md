@@ -17,9 +17,10 @@ CPIs that Kani cannot symbolically execute, but the *interesting* part, the
 constant-product curve, the fee split, the integer square root `initialize_pool`
 uses for the creator's LP mint, and the proportional deposit and withdraw math,
 is pure integer arithmetic. This crate reproduces those formulas faithfully (same `u128`
-widening, multiply-before-divide, floor rounding) and checks their invariants:
+widening, multiply-before-divide, the fee rounded up and everything paid out rounded
+down) and checks their invariants:
 
-- `proof_fee_split_bounds`: `fee <= input`, `admin_portion <= fee`, and `taxed_input + fee == input`.
+- `proof_fee_split_bounds`: `fee <= input`, `admin_portion <= fee`, `taxed_input + fee == input`, and both the fee and the admin's slice of it are the exact fraction rounded up, never down.
 - `proof_swap_preserves_constant_product`: **The core safety property**: a swap never decreases `k = reserve_in * reserve_out`.
 - `proof_swap_cannot_fully_drain_when_reserve_positive`: With a non-empty input reserve, output is always `< other_reserve` (pool stays solvent).
 - `proof_swap_at_zero_reserve_drains_whole_pool`: **Finding**, checked as a positive characterization (see below).

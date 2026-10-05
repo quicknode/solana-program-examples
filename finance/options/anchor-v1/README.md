@@ -73,8 +73,10 @@ minor-unit amounts that change hands on exercise, both chosen by the writer.
 `strike_amount` is the strike for the whole option, as an amount rather than a
 price. The collateral, the exercise payment and the proceeds are each one of
 those two amounts, so settlement does no arithmetic at all: nothing is
-multiplied, divided or rounded. The only rounding in the program is the floor
-in the venue's fee.
+multiplied, divided or rounded. The only rounding in the program is in the
+venue's fee, which rounds up: the writer receives the premium minus the fee,
+so the venue, not the writer, takes the rounding minor unit on a premium that
+is not a multiple of the rate.
 
 ### Expiry is one comparison and its complement
 
@@ -90,7 +92,7 @@ deadline is one.
 ### Participants
 
 - **Maria** operates the venue and earns 1% of every premium.
-- **Alice** holds 5 NVDAx (tokenized NVIDIA stock, 6 decimals) she would be
+- **Alice** holds 5 NVDAx (tokenized NVIDIA stock, 8 decimals) she would be
   happy to sell at $180, and wants to be paid while she waits.
 - **Bob** thinks NVIDIA will rally past $180 within the week and wants that
   upside for less than the price of 5 shares.
@@ -122,7 +124,9 @@ any time until someone does.
 
 `buy_option` takes 25 USDC from Bob: 0.25 USDC (the 1% fee) into the quote
 vault, owed to Maria, and 24.75 USDC straight to Alice, as two transfers (a
-venue with a zero fee makes only the first). The 5 NVDAx do not move. The
+venue with a zero fee makes only the first). 25 USDC is a multiple of the
+rate, so nothing rounds; a premium of 10.000001 USDC would owe a fee of
+0.100001 USDC, rounded up from 0.10000001, and pay the writer 9.90 USDC. The 5 NVDAx do not move. The
 option's `holder` is now Bob and its status `Held`. Bob's downside is fixed at
 the 25 USDC he just paid. Alice could not have bought her own option: the
 premium's source and destination are each bound to their party's associated
@@ -222,9 +226,12 @@ The LiteSVM suite (`programs/options/tests/test_options.rs`) walks the call
 from write to collected strike and from purchase to expiry and reclaim, and
 the put from write to exercise and from purchase to expiry and reclaim
 (`test_reclaim_collateral_after_expiry_returns_the_strike_to_the_put_writer`),
-pins every balance to the minor unit, counts the token transfers a purchase
-makes (two, or one on a zero-fee venue), checks the custody ledger against the
-vault balances after every lifecycle step, and checks that every refusal holds
+pins every balance to the minor unit, checks that the fee on a premium that is
+not a multiple of the rate rounds up and the writer receives the rest
+(`test_fee_rounds_up_and_the_writer_takes_the_remainder`), counts the token
+transfers a purchase makes (two, or one on a zero-fee venue), checks the
+custody ledger against the vault balances after every lifecycle step, and
+checks that every refusal holds
 and fails with the expected error code: the expiry boundary from both sides,
 cancel after sale, buy after sale or expiry, a writer buying their own option,
 exercise by a non-holder, collection by a non-writer or before exercise,

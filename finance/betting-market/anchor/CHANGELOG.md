@@ -1,5 +1,24 @@
 # Changelog
 
+## [Unreleased] - 2026-10-05
+
+### Changed
+
+- `settle_event` rounds the fee up: `fee = ceil(losing_pool * fee_bps / 10_000)`,
+  and `distributable_losing_pool` is the losing pool minus that fee, so the
+  rounding on the fee goes the program's way as the rounding on each payout
+  does. A losing pool that is an exact multiple of the fee rate pays the same
+  fee as before; any other pays one minor unit more. The Kani harness
+  `proof_settlement_fee_and_split` proves the fee is that ceiling.
+- `test_double_claim_fails` asserts the error the second claim hits: Anchor's
+  own account check, reported as the runtime's `UninitializedAccount`, since the first claim closed the Bet account.
+
+### Added
+
+- `test_only_admin_can_settle_or_cancel_event`: `settle_event` and
+  `cancel_event` from a non-admin both fail with `Unauthorized`, the event stays
+  `Open`, and the admin then settles it.
+
 ## [Unreleased] - 2026-10-04
 
 ### Added

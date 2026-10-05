@@ -14,8 +14,9 @@ one.
 The onchain instructions hand token movement to the SPL token program through
 CPIs that Kani cannot symbolically execute, but the arithmetic they rely on is
 pure integer math, and small: settlement moves the two amounts the writer
-chose and the option stores, the only rounding in the program is the floor in
-the fee split, and the expiry window is one comparison and its complement.
+chose and the option stores, the only rounding in the program is in the fee
+split, where the fee rounds up and the writer takes the remainder, and the
+expiry window is one comparison and its complement.
 This crate reproduces those formulas (mirroring `options::contract_math`) and
 the handlers' custody accounting (mirroring the `underlying_owed`,
 `quote_owed` and `fees_owed` counters on the `Market` account) and checks, for every input
@@ -28,9 +29,10 @@ in the declared ranges:
   terms. Settlement does no arithmetic, so nothing can open a gap between
   posted and delivered.
 - `proof_premium_split_conserves_the_premium`: fee plus the writer's share is
-  exactly the premium, the fee never exceeds it, the writer always receives
-  something while the fee is under 100%, and the fee is the exact floor of
-  `premium * fee_bps / 10_000`.
+  exactly the premium, the fee never exceeds it while the rate is under 100%,
+  the writer's share is the premium minus the fee, and the fee is the exact
+  ceiling of `premium * fee_bps / 10_000`: never short of the venue's rate,
+  and never more than one minor unit above it.
 - `proof_exercise_and_reclaim_windows_partition_time`: at every instant
   exactly one of the holder (exercise) and the writer (reclaim) can claim a
   held option's collateral. Never both, never neither.
@@ -60,8 +62,8 @@ the bound:
   and checking a divider exact against a multiplier is the hardest shape of
   problem a SAT solver sees: a 16-bit premium against the full fee range runs
   for hours. Eight bits on each side finish in about a second, exercise the
-  floor on both sides of every carry, and the fee-equals-premium edge at the
-  99.99% ceiling is pinned by a unit test.
+  ceiling on both sides of every carry, and the fee-equals-premium edge at the
+  99.99% rate is pinned by a unit test.
 - `proof_exercise_and_reclaim_windows_partition_time`: fully symbolic; it is
   one comparison.
 - `proof_vault_ledger_stays_consistent_across_every_lifecycle`: each option's

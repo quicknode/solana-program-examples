@@ -398,7 +398,11 @@ fn build_place_order_with_makers_ix(
     ix
 }
 
-fn build_withdraw_fees_ix(sc: &Scenario, authority_quote_account: Address) -> Instruction {
+fn build_withdraw_fees_ix(
+    sc: &Scenario,
+    authority: &Address,
+    authority_quote_account: Address,
+) -> Instruction {
     Instruction::new_with_bytes(
         sc.program_id,
         &order_book::instruction::WithdrawFees {}.data(),
@@ -407,7 +411,7 @@ fn build_withdraw_fees_ix(sc: &Scenario, authority_quote_account: Address) -> In
             fee_vault: sc.fee_vault,
             authority_quote_account,
             quote_mint: sc.quote_mint,
-            authority: sc.authority.pubkey(),
+            authority: *authority,
             token_program: token_program_id(),
         }
         .to_account_metas(None),
@@ -717,9 +721,14 @@ fn place_order_rejects_zero_price() {
         0,
         BID_QUANTITY,
     );
-    let result =
-        send_transaction_from_instructions(&mut sc.svm, vec![ix], &[&sc.buyer], &sc.buyer.pubkey());
-    assert!(result.is_err(), "order at price 0 must be rejected");
+    let error = failure_text(
+        &mut sc.svm,
+        vec![ix],
+        &[&sc.buyer],
+        &sc.buyer.pubkey(),
+        "order at price 0 must be rejected",
+    );
+    assert_fails_with(&error, order_book::errors::ErrorCode::InvalidPrice);
 }
 
 #[test]
@@ -768,12 +777,14 @@ fn place_order_rejects_unaligned_tick() {
         unaligned_price,
         BID_QUANTITY,
     );
-    let result =
-        send_transaction_from_instructions(&mut sc.svm, vec![ix], &[&sc.buyer], &sc.buyer.pubkey());
-    assert!(
-        result.is_err(),
-        "unaligned price must be rejected by tick check"
+    let error = failure_text(
+        &mut sc.svm,
+        vec![ix],
+        &[&sc.buyer],
+        &sc.buyer.pubkey(),
+        "unaligned price must be rejected by tick check",
     );
+    assert_fails_with(&error, order_book::errors::ErrorCode::InvalidTickSize);
 }
 
 #[test]
@@ -820,16 +831,14 @@ fn place_order_rejects_below_min_order_size() {
         ASK_PRICE,
         too_small_quantity,
     );
-    let result = send_transaction_from_instructions(
+    let error = failure_text(
         &mut sc.svm,
         vec![ix],
         &[&sc.seller],
         &sc.seller.pubkey(),
+        "quantity below min_order_size must be rejected",
     );
-    assert!(
-        result.is_err(),
-        "quantity below min_order_size must be rejected"
-    );
+    assert_fails_with(&error, order_book::errors::ErrorCode::BelowMinOrderSize);
 }
 
 #[test]
@@ -919,16 +928,14 @@ fn cancel_order_rejects_non_owner() {
         sc.seller_market_user,
         bid_order_id,
     );
-    let result = send_transaction_from_instructions(
+    let error = failure_text(
         &mut sc.svm,
         vec![attack_ix],
         &[&sc.seller],
         &sc.seller.pubkey(),
+        "non-owner must not be able to cancel an order",
     );
-    assert!(
-        result.is_err(),
-        "non-owner must not be able to cancel an order"
-    );
+    assert_fails_with(&error, order_book::errors::ErrorCode::Unauthorized);
 }
 
 #[test]
@@ -1034,13 +1041,13 @@ fn cancel_and_settle_bid_refunds_full_quote() {
     );
 }
 
-// Regression test for the fee-drain attack on settle_funds. Pre-fix,
-// `SettleFundsAccountConstraints` did not bind `quote_vault` to `market.quote_vault` via
-// an address constraint, so a caller could pass `market.fee_vault` (same mint and
-// same authority) where `quote_vault` was expected and drain accumulated
-// taker fees while spending their own unsettled_quote credit. The
-// address constraint now bound on the vault field must surface this
-// as `ConstraintHasOne` (anchor error 2001) before any transfer runs.
+// The fee-drain attack on settle_funds: the fee vault has the same mint and
+// the same authority as the quote vault, so a caller who passes
+// `market.fee_vault` where `quote_vault` belongs would be paid accumulated
+// taker fees against their own unsettled_quote credit. The constraint
+// `address = market.quote_vault @ ErrorCode::InvalidQuoteVault` on the
+// `quote_vault` field refuses the call with `InvalidQuoteVault`
+// before any transfer runs.
 #[test]
 fn settle_funds_rejects_fee_vault_substituted_for_quote_vault() {
     let mut sc = full_setup();
@@ -1095,16 +1102,14 @@ fn settle_funds_rejects_fee_vault_substituted_for_quote_vault() {
         .to_account_metas(None),
     );
 
-    let result = send_transaction_from_instructions(
+    let error = failure_text(
         &mut sc.svm,
         vec![attack_ix],
         &[&sc.buyer],
         &sc.buyer.pubkey(),
+        "settle_funds must reject fee_vault substituted for quote_vault",
     );
-    assert!(
-        result.is_err(),
-        "settle_funds must reject fee_vault substituted for quote_vault"
-    );
+    assert_fails_with(&error, order_book::errors::ErrorCode::InvalidQuoteVault);
 }
 
 #[test]
@@ -1121,13 +1126,14 @@ fn initialize_market_rejects_zero_tick_size() {
         QUOTE_LOT_SIZE,
         MIN_ORDER_SIZE,
     );
-    let result = send_transaction_from_instructions(
+    let error = failure_text(
         &mut sc.svm,
         vec![create_ix, ix],
         &[&sc.authority, &sc.order_book],
         &sc.authority.pubkey(),
+        "tick_size == 0 must be rejected",
     );
-    assert!(result.is_err(), "tick_size == 0 must be rejected");
+    assert_fails_with(&error, order_book::errors::ErrorCode::InvalidTickSize);
 }
 
 #[test]
@@ -1143,13 +1149,14 @@ fn initialize_market_rejects_zero_base_lot_size() {
         QUOTE_LOT_SIZE,
         MIN_ORDER_SIZE,
     );
-    let result = send_transaction_from_instructions(
+    let error = failure_text(
         &mut sc.svm,
         vec![create_ix, ix],
         &[&sc.authority, &sc.order_book],
         &sc.authority.pubkey(),
+        "base_lot_size == 0 must be rejected",
     );
-    assert!(result.is_err(), "base_lot_size == 0 must be rejected");
+    assert_fails_with(&error, order_book::errors::ErrorCode::InvalidBaseLotSize);
 }
 
 #[test]
@@ -1165,13 +1172,14 @@ fn initialize_market_rejects_zero_quote_lot_size() {
         0,
         MIN_ORDER_SIZE,
     );
-    let result = send_transaction_from_instructions(
+    let error = failure_text(
         &mut sc.svm,
         vec![create_ix, ix],
         &[&sc.authority, &sc.order_book],
         &sc.authority.pubkey(),
+        "quote_lot_size == 0 must be rejected",
     );
-    assert!(result.is_err(), "quote_lot_size == 0 must be rejected");
+    assert_fails_with(&error, order_book::errors::ErrorCode::InvalidQuoteLotSize);
 }
 
 #[test]
@@ -1189,16 +1197,14 @@ fn initialize_market_rejects_oversized_fee() {
         QUOTE_LOT_SIZE,
         MIN_ORDER_SIZE,
     );
-    let result = send_transaction_from_instructions(
+    let error = failure_text(
         &mut sc.svm,
         vec![create_ix, ix],
         &[&sc.authority, &sc.order_book],
         &sc.authority.pubkey(),
+        "fee_basis_points above 10_000 must be rejected",
     );
-    assert!(
-        result.is_err(),
-        "fee_basis_points above 10_000 must be rejected"
-    );
+    assert_fails_with(&error, order_book::errors::ErrorCode::InvalidFeeBasisPoints);
 }
 
 // ---------------------------------------------------------------------------
@@ -2047,7 +2053,7 @@ fn authority_can_withdraw_fees_after_match() {
         EXPECTED_FEE
     );
 
-    let withdraw_ix = build_withdraw_fees_ix(&sc, authority_quote_ata);
+    let withdraw_ix = build_withdraw_fees_ix(&sc, &sc.authority.pubkey(), authority_quote_ata);
     send_transaction_from_instructions(
         &mut sc.svm,
         vec![withdraw_ix],
@@ -2064,6 +2070,81 @@ fn authority_can_withdraw_fees_after_match() {
     assert_eq!(
         get_token_account_balance(&sc.svm, &authority_quote_ata).unwrap(),
         EXPECTED_FEE
+    );
+}
+
+#[test]
+fn withdraw_fees_rejects_a_non_authority_signer() {
+    // The same fill as `authority_can_withdraw_fees_after_match`, so the fee
+    // vault holds something worth taking; then the buyer, not the authority,
+    // signs `withdraw_fees` with their own quote ATA as the destination.
+    let mut sc = full_setup();
+    initialize_market_and_users(&mut sc);
+
+    const MAKER_ASK_ID: u64 = 1;
+    const PRICE: u64 = 2000;
+    const QUANTITY: u64 = 50;
+    const GROSS: u64 = PRICE * QUANTITY * QUOTE_LOT_SIZE;
+    const EXPECTED_FEE: u64 = fee_ceil(GROSS);
+
+    let ask_ix = build_place_order_ix(
+        &sc,
+        &sc.seller,
+        sc.seller_market_user,
+        sc.seller_base_ata,
+        sc.seller_quote_ata,
+        order_book::state::OrderSide::Ask,
+        MAKER_ASK_ID,
+        PRICE,
+        QUANTITY,
+    );
+    send_transaction_from_instructions(
+        &mut sc.svm,
+        vec![ask_ix],
+        &[&sc.seller],
+        &sc.seller.pubkey(),
+    )
+    .unwrap();
+
+    const TAKER_BID_ID: u64 = 2;
+    let bid_ix = build_place_order_with_makers_ix(
+        &sc,
+        &sc.buyer,
+        sc.buyer_market_user,
+        sc.buyer_base_ata,
+        sc.buyer_quote_ata,
+        order_book::state::OrderSide::Bid,
+        TAKER_BID_ID,
+        PRICE,
+        QUANTITY,
+        &[(MAKER_ASK_ID, sc.seller_market_user)],
+    );
+    send_transaction_from_instructions(&mut sc.svm, vec![bid_ix], &[&sc.buyer], &sc.buyer.pubkey())
+        .unwrap();
+    assert_eq!(
+        get_token_account_balance(&sc.svm, &sc.fee_vault).unwrap(),
+        EXPECTED_FEE
+    );
+
+    let attack_ix = build_withdraw_fees_ix(&sc, &sc.buyer.pubkey(), sc.buyer_quote_ata);
+    let error = failure_text(
+        &mut sc.svm,
+        vec![attack_ix],
+        &[&sc.buyer],
+        &sc.buyer.pubkey(),
+        "a trader must not be able to withdraw the fee vault",
+    );
+    assert_fails_with(&error, order_book::errors::ErrorCode::NotMarketAuthority);
+
+    // The fee stays in the vault and the buyer's quote balance is what the
+    // fill left: the starting balance less the gross they paid.
+    assert_eq!(
+        get_token_account_balance(&sc.svm, &sc.fee_vault).unwrap(),
+        EXPECTED_FEE
+    );
+    assert_eq!(
+        get_token_account_balance(&sc.svm, &sc.buyer_quote_ata).unwrap(),
+        TRADER_STARTING_BALANCE - GROSS
     );
 }
 
@@ -2465,6 +2546,32 @@ const ORDER_STATUS_CANCELLED: u8 = 3;
 /// carries for `code`.
 fn custom_error(code: order_book::errors::ErrorCode) -> String {
     format!("Custom({})", code as u32 + 6000)
+}
+
+/// Sends instructions that must fail and returns the failure text, so the
+/// caller can assert on the error code with `assert_fails_with`. Panics with
+/// `must_fail` if the transaction goes through.
+fn failure_text(
+    svm: &mut LiteSVM,
+    instructions: Vec<Instruction>,
+    signers: &[&Keypair],
+    payer: &Address,
+    must_fail: &str,
+) -> String {
+    match send_transaction_from_instructions(svm, instructions, signers, payer) {
+        Ok(_) => panic!("{must_fail}"),
+        Err(error) => format!("{error:?}"),
+    }
+}
+
+/// Asserts that a failure text carries `code`: the one error the call under
+/// test must refuse with, not merely some error.
+fn assert_fails_with(error: &str, code: order_book::errors::ErrorCode) {
+    let expected = custom_error(code);
+    assert!(
+        error.contains(&expected),
+        "expected the failure to carry {expected}, got: {error}"
+    );
 }
 
 struct Trader {
@@ -3013,7 +3120,7 @@ fn paused_market_still_pays_out_fills_and_withdraws_fees() {
     );
 
     // So does the authority's fee withdrawal.
-    let withdraw_ix = build_withdraw_fees_ix(&sc, authority_quote_ata);
+    let withdraw_ix = build_withdraw_fees_ix(&sc, &sc.authority.pubkey(), authority_quote_ata);
     send_transaction_from_instructions(
         &mut sc.svm,
         vec![withdraw_ix],

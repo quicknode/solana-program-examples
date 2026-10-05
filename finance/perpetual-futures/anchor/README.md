@@ -21,7 +21,7 @@ A [perpetual future](https://www.investopedia.com/terms/f/futurescontract.asp) (
 - `perpetual-futures`: The exchange: pool creation, liquidity provision, opening/closing leveraged positions, funding, liquidation, and fee collection.
 - `mock-price-feed`: Test-only price feed. Stores a price, scale, last-update slot, and confidence band that tests write directly. Replaced in production by a Pyth `PriceUpdateV2` account, as read in [`basics/pyth`](../../../basics/pyth/).
 
-All arithmetic is integer `u128` with `checked_*` operations, multiplying before dividing and rounding in the pool's favour: no floats, no fixed-point library.
+All arithmetic is integer `u128` with `checked_*` operations, multiplying before dividing and rounding in the pool's favour: every fee and the maintenance requirement round up, and what is paid out rounds down. No floats, no fixed-point library.
 
 ---
 
@@ -81,7 +81,7 @@ Funding runs on the wall clock rather than the slot count, so what a position co
 
 ### Maintenance margin and liquidation
 
-A position's *equity* is its net collateral plus profit/loss minus funding. Once equity falls to or below the [maintenance margin](https://www.investopedia.com/terms/m/maintenancemargin.asp) (`maintenance_margin_bps` of notional), the position can be [liquidated](https://www.investopedia.com/terms/l/liquidation.asp). Liquidation is permissionless: anyone can crank it and earn the liquidation fee, `liquidation_fee_bps` of the position's size, paid out of its remaining equity. Whatever part of the fee the equity cannot cover is forgiven, as in Percolator: neither the insurance fund nor the liquidity providers pay it, so a liquidator of a position whose equity is already below zero receives nothing, and the position still closes. The insurance fund pays its deficit first (see [the insurance fund](#the-insurance-fund)); `test_liquidation_of_bankrupt_position_charges_insurance_before_liquidity` liquidates such a position and checks the exact split.
+A position's *equity* is its net collateral plus profit/loss minus funding. Once equity falls to or below the [maintenance margin](https://www.investopedia.com/terms/m/maintenancemargin.asp) (`maintenance_margin_bps` of notional, rounded up), the position can be [liquidated](https://www.investopedia.com/terms/l/liquidation.asp). Liquidation is permissionless: anyone can crank it and earn the liquidation fee, `liquidation_fee_bps` of the position's size, rounded up and paid out of its remaining equity. Whatever part of the fee the equity cannot cover is forgiven, as in Percolator: neither the insurance fund nor the liquidity providers pay it, so a liquidator of a position whose equity is already below zero receives nothing, and the position still closes. The insurance fund pays its deficit first (see [the insurance fund](#the-insurance-fund)); `test_liquidation_of_bankrupt_position_charges_insurance_before_liquidity` liquidates such a position and checks the exact split.
 
 `initialize_pool` requires `maintenance_margin_bps < initial_margin_bps <= 10_000` and refuses anything else with `InitialMarginNotAboveMaintenance` (or `InvalidParameter` above 10,000). Every position therefore opens with more margin than it is liquidated at, so none can be liquidated in the slot it opened.
 
@@ -104,7 +104,7 @@ A single oracle print can be wrong while still being fresh, positive and confide
 
 ### Fees and slippage
 
-Open and close fees are charged in [basis points](https://www.investopedia.com/terms/b/basispoint.asp) (1 bp = 0.01%) of notional; `insurance_fee_bps` of each goes to the insurance fund and the rest accrues to the program. Every state-changing handler takes a `minimum_*` / acceptable-price bound (protection against [slippage](https://www.investopedia.com/terms/s/slippage.asp), the gap between the expected and actual fill) and reverts if the bound is breached. Pass `0` to opt out.
+Open and close fees are charged in [basis points](https://www.investopedia.com/terms/b/basispoint.asp) (1 bp = 0.01%) of notional. `basis_points_of` rounds each fee up to the next base unit, as it does the liquidation fee and the maintenance requirement, so a fee is never a minor unit short in the trader's favour; `insurance_fee_bps` of each fee, rounded down by `basis_points_of_rounded_down`, goes to the insurance fund and the program takes the rest. `test_fees_and_maintenance_requirement_round_up` opens, closes and liquidates a position one base unit over $5,000 and checks every rounded figure. Every state-changing handler takes a `minimum_*` / acceptable-price bound (protection against [slippage](https://www.investopedia.com/terms/s/slippage.asp), the gap between the expected and actual fill) and reverts if the bound is breached. Pass `0` to opt out.
 
 ---
 
@@ -267,13 +267,14 @@ The tests run in-process with [LiteSVM](https://www.anchor-lang.com/docs/testing
 - stale-price, pre-restart-price, and wide-confidence rejection, and a feed account owned by another program refused on the owner alone (`test_open_rejects_price_feed_from_another_program`)
 - the exact funding a long pays over its time open (`test_funding_charged_to_long`), the funding-rate maximum, an operator's wallet on the lighter side earning only the fixed rate, and funding that follows seconds rather than slots
 - the price band: opens, closes, deposits and withdrawals refused when the oracle jumps outside it (`test_open_rejected_when_oracle_jumps_outside_band`, `test_close_rejected_when_oracle_jumps_outside_band`, `test_liquidity_changes_rejected_when_oracle_jumps_outside_band`), liquidation running outside it (`test_liquidation_runs_outside_band`), the exact average after each `update_price_average` (`test_single_update_moves_average_by_elapsed_fraction`), repeated updates walking the average to a genuine move until trading resumes (`test_price_average_catches_up_after_genuine_move`), and one manipulated read after an idle window leaving the average where it was (`test_one_manipulated_read_after_idle_does_not_move_average`)
-- liquidation, and the refusal to liquidate a healthy position
+- liquidation, and the refusal to liquidate a healthy position (`test_healthy_position_cannot_be_liquidated`, which asserts `PositionHealthy`)
 - the haircut: a position opening without full backing (`test_open_allowed_without_full_backing`), profit paid in full while the pool backs it (`test_profit_runs_uncapped_when_backed`), two winners each paid exactly half when the pool is stressed (`test_haircut_scales_profit_when_pool_stressed`), the insurance fund paying a profit beyond `liquidity` (`test_insurance_pays_profit_beyond_liquidity`), and a winner offset by an open loser paid the pool's whole backing rather than refused (`test_winner_offset_by_open_loser_is_paid_not_refused`)
 - the profit warm-up on both sides of its boundary (`test_profit_blocked_before_maturation`, `test_profit_realized_after_maturation`), and a loss closing in the slot it opened (`test_loss_not_gated_by_maturation`)
 - the insurance fund: its exact share of each fee (`test_insurance_fund_funded_by_fees`), a bankrupt position's deficit paid by the fund (`test_insurance_absorbs_bankruptcy_deficit`), and a bankrupt position liquidated for no fee with the fund paying before the providers (`test_liquidation_of_bankrupt_position_charges_insurance_before_liquidity`)
 - withdrawals capped at `liquidity` while traders are down (`test_remove_liquidity_capped_at_liquidity`)
-- `initialize_pool`'s parameter checks, including an initial margin at or below the maintenance margin, a price band outside its range, and an insurance fee of 10,000 basis points or more
-- fee collection
+- `initialize_pool`'s parameter checks, including an initial margin at or below the maintenance margin, a close fee at or above it (`test_initialize_pool_rejects_close_fee_at_or_above_maintenance_margin`), a price band outside its range, and an insurance fee of 10,000 basis points or more
+- every fee and the maintenance requirement rounding up (`test_fees_and_maintenance_requirement_round_up`), and `basis_points_of` at its boundaries
+- fee collection, and its refusal to anyone but the pool's authority (`test_collect_fees_requires_authority`, which asserts the constraint's own error code)
 
 ```bash
 anchor build

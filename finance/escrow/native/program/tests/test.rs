@@ -21,10 +21,19 @@ const MAKE_OFFER: u8 = 0;
 const TAKE_OFFER: u8 = 1;
 const CANCEL_OFFER: u8 = 2;
 
-const DECIMALS: u8 = 6;
-const MINTED_AMOUNT: u64 = 100 * 1_000_000; // 100 tokens at 6 decimals
-const AMOUNT_A: u64 = 4 * 1_000_000; // offered
-const AMOUNT_B: u64 = 1_000_000; // wanted
+// The story the tests tell: the maker offers 1 TSLAx and wants 1,000 USDC for
+// it. TSLAx has 8 decimals and USDC has 6, so every amount below is in those
+// minor units.
+const TSLAX_DECIMALS: u8 = 8;
+const USDC_DECIMALS: u8 = 6;
+const ONE_TSLAX: u64 = 10u64.pow(TSLAX_DECIMALS as u32);
+const ONE_USDC: u64 = 10u64.pow(USDC_DECIMALS as u32);
+const TSLAX_OFFERED: u64 = ONE_TSLAX;
+const USDC_WANTED: u64 = 1_000 * ONE_USDC;
+// What each side holds before the offer: the maker 10 TSLAx, the taker
+// 10,000 USDC.
+const MAKER_TSLAX: u64 = 10 * ONE_TSLAX;
+const TAKER_USDC: u64 = 10_000 * ONE_USDC;
 const OFFER_ID: u64 = 0;
 
 /// Sign with `payer` (fee payer) plus any extra signers and send the tx,
@@ -52,9 +61,16 @@ fn try_send(
     svm.send_transaction(tx).map(|_| ()).map_err(Box::new)
 }
 
-/// Create `mint`, an ATA for `holder`, and mint `MINTED_AMOUNT` into it. The
-/// payer is the mint + freeze authority.
-fn mint_tokens(svm: &mut LiteSVM, payer: &Keypair, mint: &Keypair, holder: &Pubkey) {
+/// Create `mint` with `decimals`, an ATA for `holder`, and mint `amount` into
+/// it. The payer is the mint + freeze authority.
+fn mint_tokens(
+    svm: &mut LiteSVM,
+    payer: &Keypair,
+    mint: &Keypair,
+    decimals: u8,
+    holder: &Pubkey,
+    amount: u64,
+) {
     let token_program = spl_token_interface::id();
     let rent = svm.minimum_balance_for_rent_exemption(Mint::LEN);
 
@@ -70,7 +86,7 @@ fn mint_tokens(svm: &mut LiteSVM, payer: &Keypair, mint: &Keypair, holder: &Pubk
         &mint.pubkey(),
         &payer.pubkey(),
         Some(&payer.pubkey()),
-        DECIMALS,
+        decimals,
     )
     .unwrap();
     send(svm, payer, &[create_mint_account, init_mint], &[mint]);
@@ -84,7 +100,7 @@ fn mint_tokens(svm: &mut LiteSVM, payer: &Keypair, mint: &Keypair, holder: &Pubk
         &ata,
         &payer.pubkey(),
         &[],
-        MINTED_AMOUNT,
+        amount,
     )
     .unwrap();
     send(svm, payer, &[create_ata, mint_to_ix], &[]);
@@ -136,9 +152,23 @@ fn setup() -> EscrowSetup {
     svm.airdrop(&maker.pubkey(), LAMPORTS_PER_SOL).unwrap();
     svm.airdrop(&taker.pubkey(), LAMPORTS_PER_SOL).unwrap();
 
-    // Maker holds Mint A, taker holds Mint B.
-    mint_tokens(&mut svm, &payer, &mint_a, &maker.pubkey());
-    mint_tokens(&mut svm, &payer, &mint_b, &taker.pubkey());
+    // Mint A is TSLAx, held by the maker; mint B is USDC, held by the taker.
+    mint_tokens(
+        &mut svm,
+        &payer,
+        &mint_a,
+        TSLAX_DECIMALS,
+        &maker.pubkey(),
+        MAKER_TSLAX,
+    );
+    mint_tokens(
+        &mut svm,
+        &payer,
+        &mint_b,
+        USDC_DECIMALS,
+        &taker.pubkey(),
+        TAKER_USDC,
+    );
 
     let (offer, _bump) = Pubkey::find_program_address(
         &[b"offer", maker.pubkey().as_ref(), &OFFER_ID.to_le_bytes()],
@@ -170,8 +200,8 @@ fn setup() -> EscrowSetup {
 fn make_offer_instruction(es: &EscrowSetup) -> Instruction {
     make_offer_instruction_for(
         es,
-        AMOUNT_A,
-        AMOUNT_B,
+        TSLAX_OFFERED,
+        USDC_WANTED,
         &es.mint_b.pubkey(),
         &es.maker_account_b,
     )
@@ -210,7 +240,7 @@ fn make_offer_instruction_for(
 }
 
 fn take_offer_instruction(es: &EscrowSetup) -> Instruction {
-    take_offer_instruction_for(es, AMOUNT_A, AMOUNT_B)
+    take_offer_instruction_for(es, TSLAX_OFFERED, USDC_WANTED)
 }
 
 /// A `take_offer` instruction signed for the given terms: the least token A
@@ -285,7 +315,7 @@ fn test_escrow_make_and_take() {
 
     // Vault holds the offered Mint A amount, and the maker paid the rent for
     // the offer account and the vault.
-    assert_eq!(token_amount(&es.svm, &es.vault), AMOUNT_A);
+    assert_eq!(token_amount(&es.svm, &es.vault), TSLAX_OFFERED);
     let offer_rent = lamports(&es.svm, &es.offer);
     let vault_rent = lamports(&es.svm, &es.vault);
     assert!(offer_rent > 0 && vault_rent > 0);
@@ -304,8 +334,8 @@ fn test_escrow_make_and_take() {
     assert_eq!(lamports(&es.svm, &es.vault), 0);
 
     // Taker received Mint A; maker received Mint B.
-    assert_eq!(token_amount(&es.svm, &es.taker_account_a), AMOUNT_A);
-    assert_eq!(token_amount(&es.svm, &es.maker_account_b), AMOUNT_B);
+    assert_eq!(token_amount(&es.svm, &es.taker_account_a), TSLAX_OFFERED);
+    assert_eq!(token_amount(&es.svm, &es.maker_account_b), USDC_WANTED);
 
     // Rent destinations: the maker's lamports fully recover (the offer and
     // vault rent both come back to the maker). The taker only paid the rent
@@ -335,7 +365,7 @@ fn test_escrow_make_and_cancel() {
     // maker.
     let make_ix = make_offer_instruction(&es);
     send(&mut es.svm, &payer, &[make_ix], &[&maker]);
-    assert_eq!(token_amount(&es.svm, &es.vault), AMOUNT_A);
+    assert_eq!(token_amount(&es.svm, &es.vault), TSLAX_OFFERED);
     let maker_ata_b_rent = lamports(&es.svm, &es.maker_account_b);
     assert!(maker_ata_b_rent > 0);
 
@@ -376,20 +406,34 @@ fn test_cancel_offer_rejects_non_maker() {
     // match the signer, so the program must reject it.
     let cancel_ix = cancel_offer_instruction(&es, &es.taker.pubkey());
     let result = try_send(&mut es.svm, &payer, &[cancel_ix], &[&taker]);
-    assert!(
-        result.is_err(),
-        "non-maker must not be able to cancel the offer"
-    );
+    assert_fails_with(result, MAKER_MISMATCH);
 
     // The vault still holds the offered tokens.
-    assert_eq!(token_amount(&es.svm, &es.vault), AMOUNT_A);
+    assert_eq!(token_amount(&es.svm, &es.vault), TSLAX_OFFERED);
 }
 
 // `EscrowError` variants in declaration order, as the program reports them in
 // `InstructionError::Custom`.
+const MAKER_MISMATCH: u32 = 2;
 const ZERO_AMOUNT: u32 = 7;
 const SAME_MINT: u32 = 8;
 const OFFER_TERMS_CHANGED: u32 = 9;
+
+/// Check that a refused transaction failed with `expected_code`, so the test
+/// knows it failed for the check under test and not for some other reason.
+fn assert_fails_with(
+    result: Result<(), Box<litesvm::types::FailedTransactionMetadata>>,
+    expected_code: u32,
+) {
+    let error = format!(
+        "{:?}",
+        result.expect_err("transaction should have failed").err
+    );
+    assert!(
+        error.contains(&format!("Custom({expected_code})")),
+        "expected error {expected_code}, got: {error}"
+    );
+}
 
 /// Send a `make_offer` the program should refuse, and check it failed with
 /// `expected_code`, left the maker's tokens where they were, and created no
@@ -398,31 +442,34 @@ fn assert_make_offer_refused(es: &mut EscrowSetup, instruction: Instruction, exp
     let payer = es.payer.insecure_clone();
     let maker = es.maker.insecure_clone();
     let result = try_send(&mut es.svm, &payer, &[instruction], &[&maker]);
-    let error = format!(
-        "{:?}",
-        result.expect_err("make_offer should have failed").err
-    );
-    assert!(
-        error.contains(&format!("Custom({expected_code})")),
-        "expected error {expected_code}, got: {error}"
-    );
-    assert_eq!(token_amount(&es.svm, &es.maker_account_a), MINTED_AMOUNT);
+    assert_fails_with(result, expected_code);
+    assert_eq!(token_amount(&es.svm, &es.maker_account_a), MAKER_TSLAX);
     assert_eq!(lamports(&es.svm, &es.offer), 0);
 }
 
 #[test]
 fn test_make_offer_rejects_zero_offered_amount() {
     let mut es = setup();
-    let instruction =
-        make_offer_instruction_for(&es, 0, AMOUNT_B, &es.mint_b.pubkey(), &es.maker_account_b);
+    let instruction = make_offer_instruction_for(
+        &es,
+        0,
+        USDC_WANTED,
+        &es.mint_b.pubkey(),
+        &es.maker_account_b,
+    );
     assert_make_offer_refused(&mut es, instruction, ZERO_AMOUNT);
 }
 
 #[test]
 fn test_make_offer_rejects_zero_wanted_amount() {
     let mut es = setup();
-    let instruction =
-        make_offer_instruction_for(&es, AMOUNT_A, 0, &es.mint_b.pubkey(), &es.maker_account_b);
+    let instruction = make_offer_instruction_for(
+        &es,
+        TSLAX_OFFERED,
+        0,
+        &es.mint_b.pubkey(),
+        &es.maker_account_b,
+    );
     assert_make_offer_refused(&mut es, instruction, ZERO_AMOUNT);
 }
 
@@ -433,8 +480,8 @@ fn test_make_offer_rejects_same_mint() {
     // account is their token-A account.
     let instruction = make_offer_instruction_for(
         &es,
-        AMOUNT_A,
-        AMOUNT_B,
+        TSLAX_OFFERED,
+        USDC_WANTED,
         &es.mint_a.pubkey(),
         &es.maker_account_a,
     );
@@ -457,7 +504,7 @@ fn assert_switched_offer_refused(switched_a_offered: u64, switched_b_wanted: u64
     send(&mut es.svm, &payer, &[make_ix], &[&maker]);
 
     // The taker signs for the terms they saw.
-    let take_ix = take_offer_instruction_for(&es, AMOUNT_A, AMOUNT_B);
+    let take_ix = take_offer_instruction_for(&es, TSLAX_OFFERED, USDC_WANTED);
 
     // The maker switches the offer before the taker's transaction lands.
     let cancel_ix = cancel_offer_instruction(&es, &es.maker.pubkey());
@@ -472,18 +519,11 @@ fn assert_switched_offer_refused(switched_a_offered: u64, switched_b_wanted: u64
     send(&mut es.svm, &payer, &[switched_make_ix], &[&maker]);
 
     let result = try_send(&mut es.svm, &payer, &[take_ix], &[&taker]);
-    let error = format!(
-        "{:?}",
-        result.expect_err("take_offer should have failed").err
-    );
-    assert!(
-        error.contains(&format!("Custom({OFFER_TERMS_CHANGED})")),
-        "expected error {OFFER_TERMS_CHANGED}, got: {error}"
-    );
+    assert_fails_with(result, OFFER_TERMS_CHANGED);
 
     assert_eq!(
         token_amount(&es.svm, &es.taker_account_b),
-        MINTED_AMOUNT,
+        TAKER_USDC,
         "the taker must not pay token B for a switched offer"
     );
     assert_eq!(
@@ -497,12 +537,12 @@ fn assert_switched_offer_refused(switched_a_offered: u64, switched_b_wanted: u64
 
 #[test]
 fn test_take_offer_rejects_switched_offer() {
-    // The maker re-makes the offer with a thousandth of the token A.
-    assert_switched_offer_refused(AMOUNT_A / 1_000, AMOUNT_B);
+    // The maker re-makes the offer with a thousandth of the TSLAx.
+    assert_switched_offer_refused(TSLAX_OFFERED / 1_000, USDC_WANTED);
 }
 
 #[test]
 fn test_take_offer_rejects_switched_offer_wanting_more_token_b() {
-    // The maker re-makes the offer asking for twice the token B.
-    assert_switched_offer_refused(AMOUNT_A, 2 * AMOUNT_B);
+    // The maker re-makes the offer asking for twice the USDC.
+    assert_switched_offer_refused(TSLAX_OFFERED, 2 * USDC_WANTED);
 }

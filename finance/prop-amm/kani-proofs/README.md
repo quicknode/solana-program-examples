@@ -44,7 +44,7 @@ Following percolator's practice, amounts and prices are bounded and the
 decimal exponents are kept small; the identities are independent of the
 exponents' actual values (they enter both sides of each comparison
 symmetrically), so the bounded domain exercises the same rounding edges as
-scale 8 with 6-decimal tokens. Spreads stay fully symbolic over their entire
+scale 8 with an 8-decimal base (NVDAx) against a 6-decimal quote (USDC). Spreads stay fully symbolic over their entire
 valid range (`1..10_000`).
 
 - `proof_quote_brackets_oracle`: price fully symbolic (linear arithmetic)

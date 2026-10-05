@@ -78,13 +78,15 @@ pub fn handle_settle_event(
         .ok_or(BettingError::MathOverflow)?;
 
     // The fee is only ever charged on the losing side, so a winner can never
-    // receive less than they staked.
+    // receive less than they staked. It rounds up, in the program's favor:
+    // fee = ceil(losing_pool * fee_bps / 10_000), and the winners share what
+    // the fee leaves. fee_bps never exceeds 10_000, so the fee never exceeds
+    // the losing pool.
     let fee_bps = u16::from(accounts.event.fee_bps);
     let fee: u64 = (losing_pool as u128)
         .checked_mul(fee_bps as u128)
         .ok_or(BettingError::MathOverflow)?
-        .checked_div(BPS_DENOMINATOR)
-        .ok_or(BettingError::MathOverflow)?
+        .div_ceil(BPS_DENOMINATOR)
         .try_into()
         .map_err(|_| BettingError::MathOverflow)?;
     let distributable_losing_pool = losing_pool

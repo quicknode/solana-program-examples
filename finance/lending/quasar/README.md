@@ -100,10 +100,14 @@ Everything else mirrors the Anchor version.
   conversion between shares and liquidity divides by. The withheld shares
   belong to nobody, so the attacker's one share is 1 of 1,001.
 - **Program fees**: the reserve keeps `reserve_factor_bps` of each interest
-  accrual in `accumulated_program_fees` (carved out of total liquidity, so it
-  never lifts the supplier exchange rate); the market owner withdraws it with
-  `collect_program_fees`. That spread between the borrow and supply rates is how
-  the owner earns.
+  accrual in `accumulated_program_fees`, rounded up (`mul_div_ceil`), since a
+  fee is the program's cut and rounds against the user; the suppliers take the
+  remainder, so the two parts sum to the interest and never exceed it
+  (`program_fee_rounds_up_and_suppliers_take_the_remainder` checks a second's
+  interest of 3 units, of which the fee is 1). The fees are carved out of total
+  liquidity, so they never lift the supplier exchange rate, and the market
+  owner withdraws them with `collect_program_fees`. That spread between the
+  borrow and supply rates is how the owner earns.
 - **Integer-only math**: `u128`, scaled by `FIXED_POINT_SCALE` (10^18), every
   conversion rounding in the program's favour, so dust cannot be extracted by
   repeated round-trips; `deposit_redeem_round_trip_creates_no_value` checks

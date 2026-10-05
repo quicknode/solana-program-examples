@@ -67,7 +67,9 @@ themselves or pair a real mint with a feed they control.
   the oracle price so a bad swap route reverts, and the buy leg spends only what
   the sale brought in.
 - `collect_fees` accrues the time-based management fee by minting fresh shares to
-  the manager, diluting holders at the configured annual rate.
+  the manager, diluting holders at the configured annual rate. The fee rounds
+  up: a fraction of a share owed is minted as a whole share, so the rounding
+  dilutes the holders rather than shorting the manager.
 
 Every swap and rebalance leg is bounded by the registered price feed: the
 program computes the oracle-implied output and rejects any swap that falls short
@@ -103,7 +105,9 @@ withdraw), in index order.
   along deposit, withdraw, and rebalance. There is no manager path to withdraw
   holdings, nor to choose a trade: rebalancing is sized by the program.
 - Value computations use u128 intermediates with checked arithmetic, flooring
-  in the fund's favour.
+  in the fund's favour: a depositor's shares and a withdrawer's payout round
+  down. The management fee rounds up, so the manager is never minted less than
+  the fee owed.
 - The management fee is capped (10% per year) and the slippage tolerance is
   capped (10%), so neither can be configured to drain the fund.
 - Price feeds are validated against the address recorded on the asset config and
@@ -160,11 +164,17 @@ posted before a cluster restart is rejected until Pyth posts again. The
 rebalance tests sign as a stranger and check that a fund at its targets, within
 its threshold, or just rebalanced cannot be traded
 (`test_rebalance_cannot_churn` and its neighbors), and
-`test_valuation_scales_by_decimals_and_exponent` runs the story with an
-eight-decimal asset on an exponent −5 feed. `test_wide_confidence_price_rejected`
+`test_valuation_scales_by_decimals_and_exponent` runs the story with a
+nine-decimal TSLAx on an exponent −5 feed. `test_wide_confidence_price_rejected`
 widens NVDAx's confidence interval to 2% of its price and checks that deposit
 and rebalance are refused while withdraw still pays out, and that a band of
-exactly 1% is accepted.
+exactly 1% is accepted. `test_collect_fees` checks a year's 1% fee on
+1,000,000,000 shares is 10,000,000 shares, exactly, and
+`test_collect_fees_rounds_up` that a day's fee, 27,397.26 shares, is minted as
+27,398. The two-asset tests mint TSLAx and NVDAx with eight decimals, as the
+real tokens are, and USDC with six, so their basket amounts are in
+eight-decimal minor units. Every refusal test asserts the error code it fails
+with.
 
 ## Extending
 

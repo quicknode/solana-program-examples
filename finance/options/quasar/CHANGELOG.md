@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased, 2026-10-05
+
+The venue's fee rounds up: `split_premium` takes the ceiling of
+`premium * fee_bps / 10_000` and pays the writer the premium minus the fee,
+so the venue, not the writer, takes the rounding minor unit on a premium that
+is not a multiple of the rate. The walkthrough's premiums (25 and 20 USDC at
+1%) are multiples of the rate, so their fees (0.25 and 0.20 USDC) are the
+same either way. New test `fee_rounds_up_and_the_writer_takes_the_remainder`
+buys a 10.000001 USDC option and checks a fee of 0.100001 USDC and 9.90 USDC
+to the writer. The Kani harness `proof_premium_split_conserves_the_premium`
+checks the exact ceiling, and its unit tests the rounded cases, including a
+one-minor-unit premium that rounds entirely into the fee at the highest rate.
+NVDAx is minted with 8 decimals in the suite, as the real token is, and USDC
+with 6: 5 NVDAx is 500,000,000 minor units; every USDC amount is unchanged.
+
 ## Unreleased, 2026-10-04
 
 The quasar-test suite asserts the error code of every refusal (`fails_with`

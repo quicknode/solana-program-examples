@@ -71,8 +71,8 @@ When an event settles to a winning outcome:
 
 ```
 losing_pool             = total_pool - winning_pool
-fee                     = losing_pool * fee_bps / 10000      // charged only on the losing side
-distributable_losing    = losing_pool - fee
+fee                     = ceil(losing_pool * fee_bps / 10000)  // charged only on the losing side, rounded up
+distributable_losing    = losing_pool - fee                    // what the winners share
 ```
 
 Each winning bet then claims:
@@ -81,13 +81,16 @@ Each winning bet then claims:
 payout = stake + stake * distributable_losing / winning_pool
 ```
 
-A winner always gets their own stake back; the fee is only ever taken from losing stakes. Integer
-division floors each share, leaving at most a few minor units of dust in the vault, which
-`close_event` pays to the fee recipient once every bet is closed.
+A winner always gets their own stake back; the fee is only ever taken from losing stakes. Every
+rounding goes the program's way: the fee is the ceiling of its fraction of the losing pool, and
+each winner's share is floored, so the payouts and the fee together never exceed what the vault
+holds. The flooring leaves at most a few minor units of dust in the vault, which `close_event` pays
+to the fee recipient once every bet is closed.
 
 **Example:** Outcome A pool 100, Outcome B pool 50, `fee_bps = 200` (2%). A wins.
 `losing_pool = 50`, `fee = 1`, `distributable_losing = 49`. A bettor who staked 40 claims
-`40 + 40 * 49 / 100 = 59`.
+`40 + 40 * 49 / 100 = 59`. Had the losing pool been 55, the fee would be `ceil(1.1) = 2` and
+`distributable_losing = 53`.
 
 ### Instruction handlers
 
@@ -164,8 +167,11 @@ anchor build
 Tests are Rust integration tests running against
 [LiteSVM](https://www.anchor-lang.com/docs/testing/litesvm) with
 [solana-kite](https://crates.io/crates/solana-kite) helpers. They cover the full lifecycle (bet →
-settle → claim with exact payout and fee assertions), admin authorization, the bet-after-settle and
-double-claim guards, the outcome list locking when betting opens, the two-outcome minimum, both
+settle → claim with exact payout and fee assertions), admin authorization of every admin handler
+(`test_only_admin_can_settle_or_cancel_event` covers settling and cancelling), the bet-after-settle
+guard, the double-claim guard (the first claim closes the Bet account, so Anchor refuses the second
+while loading the accounts, and the test asserts that error), the outcome list locking when betting
+opens, the two-outcome minimum, both
 edges of the betting close time, settling an outcome with no bets, the cancel/refund path, the
 `close_losing_bet` guards, and a wallet holding forty open bets at once, which shows there is no
 per-wallet cap.

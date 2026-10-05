@@ -6,7 +6,7 @@ use {
         },
         AccountDeserialize, InstructionData, ToAccountMetas,
     },
-    betting_market::{error::BettingError, Bet, Event},
+    betting_market::{error::BettingError, Bet, Event, EventStatus},
     litesvm::LiteSVM,
     solana_keypair::Keypair,
     solana_kite::{
@@ -116,7 +116,20 @@ fn warp_to(svm: &mut LiteSVM, unix_timestamp: i64) {
 // failed transaction reports the number as `Custom(n)`. Matching it proves the
 // transaction failed for the rule under test, not for some unrelated reason.
 fn assert_fails_with(result: Result<(), SolanaKiteError>, expected: BettingError) {
-    let code = 6000 + expected as u32;
+    assert_fails_with_code(result, 6000 + expected as u32);
+}
+
+// Anchor's own errors (account checks that fail before any handler runs) are
+// numbered from the framework's `ErrorCode`, below 6000, and reported the same
+// way.
+fn assert_fails_with_anchor_error(
+    result: Result<(), SolanaKiteError>,
+    expected: anchor_lang::error::ErrorCode,
+) {
+    assert_fails_with_code(result, expected as u32);
+}
+
+fn assert_fails_with_code(result: Result<(), SolanaKiteError>, code: u32) {
     let error = format!("{:?}", result.expect_err("transaction should have failed"));
     assert!(
         error.contains(&format!("Custom({code})")),
@@ -773,6 +786,60 @@ fn test_only_admin_can_initialize_event() {
     assert_fails_with(unauthorized_open, BettingError::Unauthorized);
 }
 
+// Ending a market is the admin's alone: a stranger can neither settle it to
+// an outcome nor cancel it, and the event stays open for the admin to settle.
+#[test]
+fn test_only_admin_can_settle_or_cancel_event() {
+    let mut market = setup();
+    let event_id: u64 = 14;
+    let (alice, alice_ata) = create_bettor(&mut market, 1_000);
+    let (carol, carol_ata) = create_bettor(&mut market, 1_000);
+
+    init_config(&mut market);
+    let admin = market.admin.pubkey();
+    let mint = market.mint;
+    let fee_recipient = market.fee_recipient.pubkey();
+    let fee_recipient_ata = market.fee_recipient_ata;
+    open_yes_no_market(&mut market, event_id, "Will it rain on Sunday?");
+    place_bet(&mut market, &alice, &alice_ata, event_id, 0, 100);
+    place_bet(&mut market, &carol, &carol_ata, event_id, 1, 200);
+
+    let mallory = create_wallet(&mut market.svm, 10_000_000_000).unwrap();
+    let unauthorized_cancel = send_transaction_from_instructions(
+        &mut market.svm,
+        vec![cancel_event_ix(mallory.pubkey(), event_id)],
+        &[&mallory],
+        &mallory.pubkey(),
+    );
+    assert_fails_with(unauthorized_cancel, BettingError::Unauthorized);
+
+    // Betting has closed, so the only thing stopping Mallory is the signer.
+    warp_to(&mut market.svm, BETTING_CLOSES_AT);
+    let unauthorized_settle = send_transaction_from_instructions(
+        &mut market.svm,
+        vec![settle_event_ix(
+            mallory.pubkey(),
+            mint,
+            fee_recipient,
+            fee_recipient_ata,
+            event_id,
+            0,
+        )],
+        &[&mallory],
+        &mallory.pubkey(),
+    );
+    assert_fails_with(unauthorized_settle, BettingError::Unauthorized);
+    assert!(read_event(&market, event_id).status == EventStatus::Open);
+    assert_eq!(
+        get_token_account_balance(&market.svm, &fee_recipient_ata).unwrap(),
+        0
+    );
+
+    // The admin settles the same event, so the refusals were the signer's.
+    settle(&mut market, event_id, 0);
+    assert!(read_event(&market, event_id).status == EventStatus::Settled);
+}
+
 #[test]
 fn test_cannot_bet_after_settle() {
     let mut market = setup();
@@ -940,7 +1007,11 @@ fn test_double_claim_fails() {
         &[&alice],
         &alice.pubkey(),
     );
-    assert!(second.is_err(), "claiming the same bet twice must fail");
+    // The first claim closed the Bet account (`close = bettor`), so the second
+    // transaction passes an address with no lamports and no data. Anchor
+    // refuses it while loading the accounts, before the handler runs, with
+    // its own `AccountNotInitialized` (3012) rather than a `BettingError`.
+    assert_fails_with_anchor_error(second, anchor_lang::error::ErrorCode::AccountNotInitialized);
 }
 
 #[test]

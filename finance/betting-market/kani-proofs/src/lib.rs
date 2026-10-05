@@ -26,12 +26,14 @@
 pub const BPS_DENOMINATOR: u128 = 10_000;
 
 /// Settlement math from `handle_settle_event`: split the pool into the losing
-/// side, the fee (charged only on losers), and the distributable remainder.
-/// Returns `(losing_pool, fee, distributable_losing_pool)`. `None` on the
-/// underflow/overflow paths.
+/// side, the fee (charged only on losers, and rounded up:
+/// `ceil(losing_pool * fee_bps / 10_000)`), and the distributable remainder
+/// the winners share. Returns `(losing_pool, fee, distributable_losing_pool)`.
+/// `None` on the underflow/overflow paths.
 pub fn settle(total_pool: u64, winning_pool: u64, fee_bps: u16) -> Option<(u64, u64, u64)> {
     let losing_pool = total_pool.checked_sub(winning_pool)?;
-    let fee: u64 = ((losing_pool as u128) * (fee_bps as u128) / BPS_DENOMINATOR)
+    let fee: u64 = ((losing_pool as u128) * (fee_bps as u128))
+        .div_ceil(BPS_DENOMINATOR)
         .try_into()
         .ok()?;
     let distributable = losing_pool.checked_sub(fee)?;
@@ -56,8 +58,9 @@ pub fn winnings(stake: u64, distributable: u64, winning_pool: u64) -> Option<u64
 /// Settlement is well-formed for any pool where `winning_pool <= total_pool`
 /// (the invariant `place_bet` maintains: a single outcome's stakes are a subset
 /// of the whole pool): the fee never exceeds the losing pool (so `distributable`
-/// never underflows), and `winning + distributable + fee == total` — every base
-/// unit is accounted for.
+/// never underflows), the fee is the ceiling of `losing * fee_bps / 10_000` (it
+/// rounds in the program's favor, never the winners'), and
+/// `winning + distributable + fee == total` — every base unit is accounted for.
 #[cfg(kani)]
 #[kani::proof]
 #[kani::solver(cadical)]
@@ -76,6 +79,11 @@ fn proof_settlement_fee_and_split() {
 
     assert!(fee <= losing); // fee only ever a fraction of the losing pool
     assert_eq!(losing, total_pool - winning_pool);
+    // The fee is the ceiling: at least the exact fraction, and the smallest
+    // integer that is, so no more than one base unit above it.
+    let exact = losing as u128 * fee_bps as u128; // in units of 1/10_000
+    assert!(fee as u128 * BPS_DENOMINATOR >= exact);
+    assert!((fee as u128) * BPS_DENOMINATOR < exact + BPS_DENOMINATOR);
     // Conservation: nothing created or destroyed by settlement.
     assert_eq!(
         winning_pool as u128 + distributable as u128 + fee as u128,
@@ -338,6 +346,19 @@ mod tests {
         // total 1000, winning 400, 2% fee on the 600 losing pool = 12.
         let (losing, fee, dist) = settle(1000, 400, 200).unwrap();
         assert_eq!((losing, fee, dist), (600, 12, 588));
+    }
+
+    #[test]
+    fn settle_fee_rounds_up() {
+        // total 550, winning 300, 1% fee on the 250 losing pool: 2.5 rounds up
+        // to 3, and the winners share 247.
+        assert_eq!(settle(550, 300, 100).unwrap(), (250, 3, 247));
+        // 2% of 201 is 4.02: the fee is 5, never 4.
+        assert_eq!(settle(201, 0, 200).unwrap(), (201, 5, 196));
+        // A fee of 100% takes the whole losing pool and no more.
+        assert_eq!(settle(201, 1, 10_000).unwrap(), (200, 200, 0));
+        // No fee: nothing to round.
+        assert_eq!(settle(201, 1, 0).unwrap(), (200, 0, 200));
     }
 
     #[test]

@@ -87,6 +87,9 @@ pub fn handle_liquidate_position(
         .checked_sub(funding)
         .ok_or(ProgramError::ArithmeticOverflow)?;
 
+    // Liquidatable only once equity has fallen to or below the maintenance
+    // margin, rounded up against the trader. A healthy position can only be
+    // closed by its owner.
     let maintenance = basis_points_of(size, accounts.pool.maintenance_margin_bps.get())?;
     if equity > maintenance as i128 {
         return Err(err(error::POSITION_HEALTHY));

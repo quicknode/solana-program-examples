@@ -71,8 +71,20 @@ fn non_owner_cannot_write_market_price_feed() {
         &[&attacker],
         &attacker.pubkey(),
     );
+    // `SetPrice` binds the signer with `address = lending_market.owner`, so
+    // the refusal is Anchor's constraint error, not one of the program's;
+    // v2 logs only its numeric code.
+    let anchor_lang::Error::Custom(code) =
+        anchor_lang::Error::from(anchor_lang::ErrorCode::ConstraintAddress)
+    else {
+        panic!("a constraint error converts to a custom code");
+    };
+    let message = format!(
+        "{:?}",
+        result.expect_err("only the market owner may write its price feed")
+    );
     assert!(
-        result.is_err(),
-        "only the market owner may write its price feed"
+        message.contains(&format!("Custom({code})")),
+        "expected ConstraintAddress (Custom({code})), got: {message}"
     );
 }

@@ -13,10 +13,10 @@ pub enum AmmError {
     /// cannot take more than the whole fee.
     AdminShareTooHigh,
     /// Depositing too little liquidity. Returned by `initialize_pool` when
-    /// `sqrt(amount_a * amount_b)` is below `MINIMUM_LIQUIDITY`, so withholding
-    /// the floor would leave the creator nothing, and by `deposit_liquidity`
-    /// when a later deposit is too small a share of the pool to mint a single
-    /// LP token.
+    /// `sqrt(amount_a * amount_b)` is at or below `MINIMUM_LIQUIDITY`, so
+    /// withholding the floor would leave the creator nothing, and by
+    /// `deposit_liquidity` when a later deposit is too small a share of the
+    /// pool to mint a single LP token.
     DepositTooSmall,
     /// Clamping the caller's amounts to the current pool ratio rounded one
     /// side down to zero; the pool cannot issue meaningful LP shares.

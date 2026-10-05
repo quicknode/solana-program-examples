@@ -2914,6 +2914,7 @@ dependencies = [
  "anchor-spl",
  "anchor-v2-testing",
  "borsh 1.7.0",
+ "litesvm",
  "solana-address 2.6.1",
  "solana-clock 3.1.1",
  "solana-kite",

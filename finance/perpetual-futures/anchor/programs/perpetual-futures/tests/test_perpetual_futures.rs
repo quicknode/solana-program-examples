@@ -1,12 +1,15 @@
 use {
     anchor_lang::{
         solana_program::instruction::Instruction, system_program, AccountDeserialize, Address,
-        InstructionData, ToAccountMetas,
+        Error as AnchorError, ErrorCode as AnchorErrorCode, InstructionData, ToAccountMetas,
     },
     anchor_v2_testing::{Keypair, LiteSVM, Signer},
     perpetual_futures::{
         errors::PerpError,
-        instructions::initialize_pool::PoolParameters,
+        instructions::{
+            initialize_pool::PoolParameters,
+            shared::{basis_points_of, basis_points_of_rounded_down},
+        },
         state::{Pool, Position, Side},
     },
     solana_kite::{
@@ -89,7 +92,19 @@ fn default_parameters(funding_rate_per_second: u64) -> PoolParameters {
 /// Assert that `result` failed with the program's `expected` error. Anchor
 /// reports a program error as `Custom(6000 + the variant's index)`.
 fn assert_fails_with<T>(result: Result<T, String>, expected: PerpError) {
-    let code = expected as u32 + 6000;
+    assert_fails_with_code(result, expected as u32 + 6000);
+}
+
+/// Assert that `result` failed on one of Anchor's own account constraints,
+/// which report their code without the program-error offset.
+fn assert_fails_with_anchor_error<T>(result: Result<T, String>, expected: AnchorErrorCode) {
+    let AnchorError::Custom(code) = AnchorError::from(expected) else {
+        panic!("a constraint error converts to a custom code");
+    };
+    assert_fails_with_code(result, code);
+}
+
+fn assert_fails_with_code<T>(result: Result<T, String>, code: u32) {
     let Err(error) = result else {
         panic!("the transaction should have failed with error code {code}");
     };
@@ -968,26 +983,28 @@ fn test_open_rejects_zero_amounts() {
     market.seed_liquidity(100_000 * ONE_USDC);
     let (trader, trader_collateral) = market.funded_trader(1_000 * ONE_USDC);
 
-    assert!(market
-        .open_position(
+    assert_fails_with(
+        market.open_position(
             &trader,
             trader_collateral,
             Side::Long,
             0,
             5_000 * ONE_USDC,
-            0
-        )
-        .is_err());
-    assert!(market
-        .open_position(
+            0,
+        ),
+        PerpError::ZeroAmount,
+    );
+    assert_fails_with(
+        market.open_position(
             &trader,
             trader_collateral,
             Side::Long,
             1_000 * ONE_USDC,
             0,
-            0
-        )
-        .is_err());
+            0,
+        ),
+        PerpError::ZeroAmount,
+    );
 }
 
 #[test]
@@ -1050,16 +1067,17 @@ fn test_open_long_slippage_guard() {
     // Current price is $100 (10^10 in scale 8). A long willing to pay at most
     // $99 must be rejected.
     let acceptable_price = (dollars(99)) as u64;
-    assert!(market
-        .open_position(
+    assert_fails_with(
+        market.open_position(
             &trader,
             trader_collateral,
             Side::Long,
             collateral,
             5_000 * ONE_USDC,
-            acceptable_price
-        )
-        .is_err());
+            acceptable_price,
+        ),
+        PerpError::SlippageExceeded,
+    );
 }
 
 #[test]
@@ -1071,16 +1089,17 @@ fn test_stale_price_rejected() {
 
     // Move far past the staleness window without refreshing the feed.
     market.warp(10_000);
-    assert!(market
-        .open_position(
+    assert_fails_with(
+        market.open_position(
             &trader,
             trader_collateral,
             Side::Long,
             collateral,
             5_000 * ONE_USDC,
-            0
-        )
-        .is_err());
+            0,
+        ),
+        PerpError::StalePrice,
+    );
 }
 
 /// A cluster restart passes hours of wall-clock time in zero slots, so a
@@ -1102,16 +1121,17 @@ fn test_open_rejects_price_from_before_a_restart() {
     market.warp(published_at + 5);
     market.set_last_restart_slot(published_at + 3);
 
-    assert!(market
-        .open_position(
+    assert_fails_with(
+        market.open_position(
             &trader,
             trader_collateral,
             Side::Long,
             collateral,
             5_000 * ONE_USDC,
-            u64::MAX
-        )
-        .is_err());
+            u64::MAX,
+        ),
+        PerpError::PricePredatesRestart,
+    );
 
     // Publishing after the restart reopens the pool. Warp first: the retry is
     // otherwise byte-identical to the rejected open, so it would carry the same
@@ -1181,16 +1201,17 @@ fn test_wide_oracle_confidence_rejected() {
     // The pool tolerates a 1% confidence band (max_confidence_bps = 100). Widen
     // the feed's band to 2% of the price and the open must be rejected.
     market.set_price_with_confidence(dollars(100), dollars(2) as u64);
-    assert!(market
-        .open_position(
+    assert_fails_with(
+        market.open_position(
             &trader,
             trader_collateral,
             Side::Long,
             collateral,
             5_000 * ONE_USDC,
-            0
-        )
-        .is_err());
+            0,
+        ),
+        PerpError::OracleConfidenceTooWide,
+    );
 }
 
 #[test]
@@ -1420,9 +1441,10 @@ fn test_healthy_position_cannot_be_liquidated() {
 
     // Price barely moves; the position stays healthy.
     market.set_price(dollars(99));
-    assert!(market
-        .liquidate(&liquidator, &trader.pubkey(), trader_collateral, Side::Long)
-        .is_err());
+    assert_fails_with(
+        market.liquidate(&liquidator, &trader.pubkey(), trader_collateral, Side::Long),
+        PerpError::PositionHealthy,
+    );
 }
 
 #[test]
@@ -1456,8 +1478,10 @@ fn test_collect_fees() {
     );
     assert_eq!(market.pool_state().program_fees, 0);
 
-    // Nothing left to claim on a second sweep.
-    assert!(market.collect_fees(&admin).is_err());
+    // Nothing left to claim on a second sweep (a fresh blockhash, or the
+    // identical transaction is rejected as already processed).
+    market.svm.expire_blockhash();
+    assert_fails_with(market.collect_fees(&admin), PerpError::NothingToClaim);
 }
 
 #[test]
@@ -1485,7 +1509,12 @@ fn test_collect_fees_requires_authority() {
         &market.payer,
     )
     .unwrap();
-    assert!(market.collect_fees(&imposter).is_err());
+    // The `authority` account is bound to `pool.authority` by an `address`
+    // constraint, so the refusal is Anchor's, not the program's.
+    assert_fails_with_anchor_error(
+        market.collect_fees(&imposter),
+        AnchorErrorCode::ConstraintAddress,
+    );
 }
 
 /// Nothing is set aside to back a position's profit, so a position can open
@@ -1885,13 +1914,13 @@ fn test_insurance_fund_funded_by_fees() {
     .unwrap();
     market.seed_liquidity(100_000 * ONE_USDC);
 
-    // A size whose 0.1% fee is 1,234,567 minor units: 3,333 basis points of
-    // that is 411,481.18, so the insurance fund gets 411,481 and the program
-    // the other 823,086.
-    let size = 1_234_567_890;
-    let fee = 1_234_567;
+    // A size whose 0.1% fee is 1,234,567.89 minor units, rounded up to
+    // 1,234,568: 3,333 basis points of that is 411,481.5, so the insurance
+    // fund gets 411,481 (its cut rounds down) and the program the other 823,087.
+    let size: u64 = 1_234_567_890;
+    let fee = 1_234_568;
     let insurance_cut = 411_481;
-    assert_eq!(size / 1_000, fee);
+    assert_eq!(size.div_ceil(1_000), fee);
     let collateral = 200 * ONE_USDC;
     let (trader, trader_collateral) = market.funded_trader(collateral);
     market
@@ -2006,6 +2035,98 @@ fn test_liquidation_of_bankrupt_position_charges_insurance_before_liquidity() {
     market.assert_vault_matches_ledger();
 }
 
+/// Every fee rounds up, and so does the maintenance requirement, so none is
+/// a minor unit short in the trader's favour. A position one base unit over
+/// $5,000 pays $5.000001 to open and the same to close: 0.1% of it is
+/// 5,000,000.001 base units, rounded up to 5,000,001. The insurance fund's
+/// half of a fee rounds down, and the program takes the odd unit. The same
+/// position is liquidatable at an equity of 250,000,001 base units, the
+/// maintenance requirement 250,000,000.05 rounded up, where a requirement
+/// rounded down would have left it one base unit too healthy, and the
+/// liquidation fee is 50,000,001.
+#[test]
+fn test_fees_and_maintenance_requirement_round_up() {
+    let mut market = Market::default_market();
+    market.seed_liquidity(100_000 * ONE_USDC);
+    let collateral = 1_000 * ONE_USDC;
+    let size = 5_000 * ONE_USDC + 1;
+    let fee = 5_000_001;
+    let (trader, trader_collateral) = market.funded_trader(2 * collateral);
+
+    market
+        .open_position(&trader, trader_collateral, Side::Long, collateral, size, 0)
+        .unwrap();
+    let pool = market.pool_state();
+    assert_eq!(pool.insurance_fund, 2_500_000);
+    assert_eq!(pool.program_fees, 2_500_001);
+    assert_eq!(pool.total_collateral, collateral - fee);
+    assert_eq!(
+        market
+            .position_state(&trader.pubkey(), Side::Long)
+            .collateral,
+        collateral - fee
+    );
+
+    // Closing at the entry price settles no profit or loss, so the payout is
+    // the net collateral less the close fee.
+    market
+        .close_position(&trader, trader_collateral, Side::Long, 0)
+        .unwrap();
+    assert_eq!(
+        get_token_account_balance(&market.svm, &trader_collateral).unwrap(),
+        2 * collateral - fee - fee
+    );
+    let pool = market.pool_state();
+    assert_eq!(pool.insurance_fund, 2 * 2_500_000);
+    assert_eq!(pool.program_fees, 2 * 2_500_001);
+
+    // The same position again, taken to an equity of exactly the rounded-up
+    // maintenance requirement: $85.10000004 loses it 744,999,998 base units.
+    // The open is byte-identical to the first, so it would carry the same
+    // signature and be dropped as already processed without a new blockhash.
+    market.svm.expire_blockhash();
+    market
+        .open_position(&trader, trader_collateral, Side::Long, collateral, size, 0)
+        .unwrap();
+    market.set_price(8_510_000_004);
+    let (liquidator, liquidator_collateral) = market.liquidator();
+    market
+        .liquidate(&liquidator, &trader.pubkey(), trader_collateral, Side::Long)
+        .unwrap();
+    assert_eq!(
+        get_token_account_balance(&market.svm, &liquidator_collateral).unwrap(),
+        50_000_001
+    );
+    // The trader is refunded the equity less the liquidation fee.
+    assert_eq!(
+        get_token_account_balance(&market.svm, &trader_collateral).unwrap(),
+        collateral - fee - fee + (250_000_001 - 50_000_001)
+    );
+    market.assert_vault_matches_ledger();
+}
+
+/// `basis_points_of` rounds up, so an amount that is not an exact multiple
+/// rounds to the next base unit and the smallest non-zero amount pays a whole
+/// unit; an exact multiple is unchanged. `basis_points_of_rounded_down`
+/// splits a fee the pool already holds, so it rounds the other way.
+#[test]
+fn test_basis_points_of_rounds_up_and_the_insurance_split_rounds_down() {
+    assert_eq!(basis_points_of(5_000 * ONE_USDC, 10).unwrap(), 5 * ONE_USDC);
+    assert_eq!(
+        basis_points_of(5_000 * ONE_USDC + 1, 10).unwrap(),
+        5_000_001
+    );
+    assert_eq!(basis_points_of(1, 10).unwrap(), 1);
+    assert_eq!(basis_points_of(0, 10).unwrap(), 0);
+    // Widened to `u128`, so the largest amount does not overflow.
+    assert_eq!(basis_points_of(u64::MAX, 10_000).unwrap(), u64::MAX);
+    assert_eq!(
+        basis_points_of_rounded_down(5_000_001, 5_000).unwrap(),
+        2_500_000
+    );
+    assert_eq!(basis_points_of_rounded_down(1, 5_000).unwrap(), 0);
+}
+
 #[test]
 fn test_initialize_pool_rejects_insurance_fee_at_or_above_full_fee() {
     let with_insurance_fee = |insurance_fee_bps| PoolParameters {
@@ -2024,14 +2145,20 @@ fn test_initialize_pool_rejects_close_fee_at_or_above_maintenance_margin() {
     // A pool whose close fee reached the maintenance margin could strand a
     // position that is too healthy to liquidate but too poor to pay the fee to
     // close, so initialize_pool refuses the configuration.
-    let parameters = PoolParameters {
-        close_fee_bps: 600,
+    let with_close_fee = |close_fee_bps| PoolParameters {
+        close_fee_bps,
         ..default_parameters(0)
     };
     assert_fails_with(
-        Market::try_new(dollars(100), parameters),
+        Market::try_new(dollars(100), with_close_fee(600)),
         PerpError::InvalidParameter,
     );
+    assert_fails_with(
+        Market::try_new(dollars(100), with_close_fee(500)),
+        PerpError::InvalidParameter,
+    );
+    // One basis point below the maintenance margin is accepted.
+    assert!(Market::try_new(dollars(100), with_close_fee(499)).is_ok());
 }
 
 #[test]

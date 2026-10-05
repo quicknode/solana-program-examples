@@ -1,7 +1,7 @@
 use {
     anchor_lang::{
-        solana_program::instruction::Instruction, system_program, Address, InstructionData,
-        ToAccountMetas,
+        solana_program::instruction::Instruction, system_program, Address, ErrorCode,
+        InstructionData, ToAccountMetas,
     },
     anchor_v2_testing::{Keypair, LiteSVM, Signer},
     solana_kite::{
@@ -22,6 +22,19 @@ fn ata_program_id() -> Address {
         .parse()
         .unwrap()
 }
+
+// The story the tests tell: Alice offers 1 TSLAx and wants 1,000 USDC for it.
+// TSLAx has 8 decimals and USDC has 6, so every amount below is in those
+// minor units.
+const TSLAX_DECIMALS: u8 = 8;
+const USDC_DECIMALS: u8 = 6;
+const ONE_TSLAX: u64 = 10u64.pow(TSLAX_DECIMALS as u32);
+const ONE_USDC: u64 = 10u64.pow(USDC_DECIMALS as u32);
+const TSLAX_OFFERED: u64 = ONE_TSLAX;
+const USDC_WANTED: u64 = 1_000 * ONE_USDC;
+// What each side holds before the offer: Alice 10 TSLAx, Bob 10,000 USDC.
+const ALICE_TSLAX: u64 = 10 * ONE_TSLAX;
+const BOB_USDC: u64 = 10_000 * ONE_USDC;
 
 fn lamports(svm: &LiteSVM, address: &Address) -> u64 {
     svm.get_account(address).map(|a| a.lamports).unwrap_or(0)
@@ -66,13 +79,10 @@ fn full_setup() -> EscrowSetup {
     let alice = create_wallet(&mut svm, 10_000_000_000).unwrap();
     let bob = create_wallet(&mut svm, 10_000_000_000).unwrap();
 
-    let decimals: u8 = 6;
-    let alice_amount: u64 = 1_000_000_000;
-    let bob_amount: u64 = 1_000_000_000;
-
-    // Create mints (payer is mint authority)
-    let mint_a = create_token_mint(&mut svm, &payer, decimals, None).unwrap();
-    let mint_b = create_token_mint(&mut svm, &payer, decimals, None).unwrap();
+    // Token A is TSLAx and token B is USDC; the payer is the mint authority
+    // of both.
+    let mint_a = create_token_mint(&mut svm, &payer, TSLAX_DECIMALS, None).unwrap();
+    let mint_b = create_token_mint(&mut svm, &payer, USDC_DECIMALS, None).unwrap();
 
     // Create ATAs
     let alice_ata_a =
@@ -85,9 +95,9 @@ fn full_setup() -> EscrowSetup {
     // bob_ata_a is derived but not pre-created (program uses init_if_needed)
     let bob_ata_a = derive_ata(&bob.pubkey(), &mint_a);
 
-    // Mint tokens: Alice gets token A, Bob gets token B
-    mint_tokens_to_token_account(&mut svm, &mint_a, &alice_ata_a, alice_amount, &payer).unwrap();
-    mint_tokens_to_token_account(&mut svm, &mint_b, &bob_ata_b, bob_amount, &payer).unwrap();
+    // Alice holds the TSLAx, Bob holds the USDC.
+    mint_tokens_to_token_account(&mut svm, &mint_a, &alice_ata_a, ALICE_TSLAX, &payer).unwrap();
+    mint_tokens_to_token_account(&mut svm, &mint_b, &bob_ata_b, BOB_USDC, &payer).unwrap();
 
     EscrowSetup {
         svm,
@@ -109,8 +119,8 @@ fn test_make_offer() {
     let mut es = full_setup();
 
     let offer_id: u64 = 1;
-    let token_a_offered_amount: u64 = 1_000_000;
-    let token_b_wanted_amount: u64 = 1_000_000;
+    let token_a_offered_amount: u64 = TSLAX_OFFERED;
+    let token_b_wanted_amount: u64 = USDC_WANTED;
 
     // Derive offer PDA
     let (offer_pda, _bump) = Address::find_program_address(
@@ -176,8 +186,8 @@ fn test_take_offer() {
     let mut es = full_setup();
 
     let offer_id: u64 = 2;
-    let token_a_offered_amount: u64 = 1_000_000;
-    let token_b_wanted_amount: u64 = 1_000_000;
+    let token_a_offered_amount: u64 = TSLAX_OFFERED;
+    let token_b_wanted_amount: u64 = USDC_WANTED;
 
     // Derive offer PDA
     let (offer_pda, _bump) = Address::find_program_address(
@@ -313,8 +323,8 @@ fn test_cancel_offer() {
     let mut es = full_setup();
 
     let offer_id: u64 = 3;
-    let token_a_offered_amount: u64 = 500_000;
-    let token_b_wanted_amount: u64 = 1_000_000;
+    let token_a_offered_amount: u64 = TSLAX_OFFERED;
+    let token_b_wanted_amount: u64 = USDC_WANTED;
 
     let (offer_pda, _bump) = Address::find_program_address(
         &[
@@ -417,8 +427,8 @@ fn test_cancel_offer_rejects_non_maker() {
     let mut es = full_setup();
 
     let offer_id: u64 = 4;
-    let token_a_offered_amount: u64 = 500_000;
-    let token_b_wanted_amount: u64 = 1_000_000;
+    let token_a_offered_amount: u64 = TSLAX_OFFERED;
+    let token_b_wanted_amount: u64 = USDC_WANTED;
 
     let (offer_pda, _bump) = Address::find_program_address(
         &[
@@ -487,10 +497,7 @@ fn test_cancel_offer_rejects_non_maker() {
         &[&es.payer, &es.bob],
         &es.payer.pubkey(),
     );
-    assert!(
-        result.is_err(),
-        "Bob must not be able to cancel Alice's offer"
-    );
+    assert_fails_with_anchor_error(result, ErrorCode::ConstraintAddress);
 }
 
 // Anchor numbers a program's errors from 6000 in declaration order, and a
@@ -500,11 +507,27 @@ fn assert_fails_with(
     result: Result<(), solana_kite::SolanaKiteError>,
     expected: escrow::error::EscrowError,
 ) {
-    let code = 6000 + expected as u32;
+    assert_fails_with_program_error(result, &anchor_lang::Error::Custom(6000 + expected as u32));
+}
+
+// The same check for one of Anchor's own constraint errors. Anchor 2 reports
+// a constraint failure as the `ProgramError` its `ErrorCode` converts to,
+// which for most constraints is `Custom(n)` with Anchor 1's number for it.
+fn assert_fails_with_anchor_error(
+    result: Result<(), solana_kite::SolanaKiteError>,
+    expected: ErrorCode,
+) {
+    assert_fails_with_program_error(result, &anchor_lang::Error::from(expected));
+}
+
+fn assert_fails_with_program_error(
+    result: Result<(), solana_kite::SolanaKiteError>,
+    expected: &anchor_lang::Error,
+) {
     let error = format!("{:?}", result.expect_err("transaction should have failed"));
     assert!(
-        error.contains(&format!("Custom({code})")),
-        "expected error {code}, got: {error}"
+        error.contains(&format!("{expected:?}")),
+        "expected error {expected:?}, got: {error}"
     );
 }
 
@@ -563,7 +586,7 @@ fn test_make_offer_rejects_zero_offered_amount() {
     let (mint_b, alice_ata_b) = (es.mint_b, es.alice_ata_b);
     let alice_balance_before = get_token_account_balance(&es.svm, &es.alice_ata_a).unwrap();
 
-    let result = try_make_offer(&mut es, 5, 0, 1_000_000, mint_b, alice_ata_b);
+    let result = try_make_offer(&mut es, 5, 0, USDC_WANTED, mint_b, alice_ata_b);
 
     assert_fails_with(result, escrow::error::EscrowError::ZeroAmount);
     assert_eq!(
@@ -578,7 +601,7 @@ fn test_make_offer_rejects_zero_wanted_amount() {
     let (mint_b, alice_ata_b) = (es.mint_b, es.alice_ata_b);
     let alice_balance_before = get_token_account_balance(&es.svm, &es.alice_ata_a).unwrap();
 
-    let result = try_make_offer(&mut es, 6, 1_000_000, 0, mint_b, alice_ata_b);
+    let result = try_make_offer(&mut es, 6, TSLAX_OFFERED, 0, mint_b, alice_ata_b);
 
     assert_fails_with(result, escrow::error::EscrowError::ZeroAmount);
     assert_eq!(
@@ -595,14 +618,17 @@ fn test_make_offer_rejects_same_mint() {
     let (mint_a, alice_ata_a) = (es.mint_a, es.alice_ata_a);
     let alice_balance_before = get_token_account_balance(&es.svm, &alice_ata_a).unwrap();
 
-    let result = try_make_offer(&mut es, 7, 1_000_000, 2_000_000, mint_a, alice_ata_a);
+    let result = try_make_offer(
+        &mut es,
+        7,
+        TSLAX_OFFERED,
+        2 * TSLAX_OFFERED,
+        mint_a,
+        alice_ata_a,
+    );
 
     // Anchor refuses the same mutable account twice before the handler runs.
-    let error = format!("{:?}", result.expect_err("a same-token offer must fail"));
-    assert!(
-        error.contains("Custom(2040)"),
-        "expected ConstraintDuplicateMutableAccount (2040), got: {error}"
-    );
+    assert_fails_with_anchor_error(result, ErrorCode::ConstraintDuplicateMutableAccount);
     assert_eq!(
         get_token_account_balance(&es.svm, &alice_ata_a).unwrap(),
         alice_balance_before
@@ -694,8 +720,8 @@ fn assert_switched_offer_refused(switched_a_offered: u64, switched_b_wanted: u64
     let mut es = full_setup();
     let (mint_b, alice_ata_b) = (es.mint_b, es.alice_ata_b);
     let offer_id: u64 = 8;
-    let token_a_offered_amount: u64 = 1_000_000;
-    let token_b_wanted_amount: u64 = 1_000_000;
+    let token_a_offered_amount: u64 = TSLAX_OFFERED;
+    let token_b_wanted_amount: u64 = USDC_WANTED;
 
     try_make_offer(
         &mut es,
@@ -751,12 +777,12 @@ fn assert_switched_offer_refused(switched_a_offered: u64, switched_b_wanted: u64
 
 #[test]
 fn test_take_offer_rejects_switched_offer() {
-    // Alice re-makes the offer putting a thousandth of the token A in the vault.
-    assert_switched_offer_refused(1_000, 1_000_000);
+    // Alice re-makes the offer putting a thousandth of the TSLAx in the vault.
+    assert_switched_offer_refused(TSLAX_OFFERED / 1_000, USDC_WANTED);
 }
 
 #[test]
 fn test_take_offer_rejects_switched_offer_wanting_more_token_b() {
-    // Alice re-makes the offer asking for twice the token B.
-    assert_switched_offer_refused(1_000_000, 2_000_000);
+    // Alice re-makes the offer asking for twice the USDC.
+    assert_switched_offer_refused(TSLAX_OFFERED, 2 * USDC_WANTED);
 }

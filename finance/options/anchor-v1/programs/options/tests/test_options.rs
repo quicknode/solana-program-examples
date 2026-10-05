@@ -21,33 +21,35 @@ use {
     solana_transaction::Transaction,
 };
 
-// Both tokens have 6 decimals: the underlying is NVDAx (tokenized NVIDIA
-// stock) and the quote is USDC, so one whole unit of either is 1_000_000
-// minor units.
-const ONE_TOKEN: u64 = 1_000_000;
-const DECIMALS: u8 = 6;
+// The underlying is NVDAx (tokenized NVIDIA stock), which has 8 decimals,
+// and the quote is USDC, which has 6: one NVDAx is 100_000_000 minor units
+// and one USDC is 1_000_000.
+const NVDAX_DECIMALS: u8 = 8;
+const USDC_DECIMALS: u8 = 6;
+const ONE_NVDAX: u64 = 100_000_000;
+const ONE_USDC: u64 = 1_000_000;
 
 // The venue charges 1% of every premium.
 const FEE_BPS: u16 = 100;
 
 // The walkthrough's call: 5 NVDAx at a strike of 180 USDC each, 900 USDC in
 // all, asking 25 USDC for the option, expiring a week out.
-const CALL_UNDERLYING: u64 = 5 * ONE_TOKEN;
-const CALL_STRIKE_AMOUNT: u64 = 900 * ONE_TOKEN;
-const CALL_PREMIUM: u64 = 25 * ONE_TOKEN;
+const CALL_UNDERLYING: u64 = 5 * ONE_NVDAX;
+const CALL_STRIKE_AMOUNT: u64 = 900 * ONE_USDC;
+const CALL_PREMIUM: u64 = 25 * ONE_USDC;
 // And the put: 5 NVDAx at a strike of 150 USDC each, 750 USDC in all, asking
 // 20 USDC.
-const PUT_UNDERLYING: u64 = 5 * ONE_TOKEN;
-const PUT_STRIKE_AMOUNT: u64 = 750 * ONE_TOKEN;
-const PUT_PREMIUM: u64 = 20 * ONE_TOKEN;
+const PUT_UNDERLYING: u64 = 5 * ONE_NVDAX;
+const PUT_STRIKE_AMOUNT: u64 = 750 * ONE_USDC;
+const PUT_PREMIUM: u64 = 20 * ONE_USDC;
 
 const SECONDS_PER_DAY: i64 = 24 * 60 * 60;
 const ONE_WEEK: i64 = 7 * SECONDS_PER_DAY;
 
 // Every character starts with the standard wallet of 1,000 USDC; the story
 // hands the writers 5 NVDAx.
-const STANDARD_USDC: u64 = 1_000 * ONE_TOKEN;
-const FIVE_NVDAX: u64 = 5 * ONE_TOKEN;
+const STANDARD_USDC: u64 = 1_000 * ONE_USDC;
+const FIVE_NVDAX: u64 = 5 * ONE_NVDAX;
 
 fn token_program_id() -> Pubkey {
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
@@ -156,11 +158,11 @@ impl Venue {
 
         let payer = create_wallet(&mut svm, 100_000_000_000).unwrap();
         let admin = create_wallet(&mut svm, 100_000_000_000).unwrap();
-        let underlying_mint = create_token_mint(&mut svm, &admin, DECIMALS, None).unwrap();
+        let underlying_mint = create_token_mint(&mut svm, &admin, NVDAX_DECIMALS, None).unwrap();
         let quote_mint = if same_mint {
             underlying_mint
         } else {
-            create_token_mint(&mut svm, &admin, DECIMALS, None).unwrap()
+            create_token_mint(&mut svm, &admin, USDC_DECIMALS, None).unwrap()
         };
 
         let market = Pubkey::find_program_address(
@@ -617,6 +619,34 @@ fn test_buy_option_pays_the_premium_minus_the_fee() {
     venue.assert_vaults_match_ledger();
 }
 
+/// A premium that is not a multiple of the rate: 10.000001 USDC at 1% is a
+/// fee of 0.100001 USDC, 0.10000001 rounded up to the minor unit, and the
+/// writer receives the premium minus the fee. The venue, not the writer,
+/// takes the rounding unit.
+#[test]
+fn test_fee_rounds_up_and_the_writer_takes_the_remainder() {
+    let mut venue = Venue::new();
+    let alice = venue.person(FIVE_NVDAX, STANDARD_USDC);
+    let bob = venue.person(0, STANDARD_USDC);
+    let premium = 10 * ONE_USDC + 1;
+    let terms = OptionTerms {
+        premium,
+        ..call_terms(venue.now() + ONE_WEEK)
+    };
+    let option = venue
+        .write_option(&alice, 3, terms)
+        .expect("writing the call should succeed");
+
+    venue.buy_option(&bob, &alice.pubkey(), &option).unwrap();
+
+    let fee = 100_001; // 0.100001 USDC
+    assert_eq!(venue.balance(&bob.quote), STANDARD_USDC - premium);
+    assert_eq!(venue.balance(&alice.quote), STANDARD_USDC + premium - fee);
+    assert_eq!(venue.balance(&venue.quote_vault), fee);
+    assert_eq!(venue.market_state().fees_owed, fee);
+    venue.assert_vaults_match_ledger();
+}
+
 /// NVIDIA rallies past the strike offchain, so Bob exercises: he pays the
 /// strike, 5 x 180 = 900 USDC, into the vault and takes the 5 NVDAx. The 900
 /// USDC is now owed to Alice, and the underlying is no longer owed to anyone.
@@ -668,7 +698,7 @@ fn test_collect_proceeds_pays_the_writer_and_closes_the_option() {
 
     assert_eq!(
         venue.balance(&alice.quote),
-        STANDARD_USDC + 900 * ONE_TOKEN + CALL_PREMIUM - 250_000
+        STANDARD_USDC + 900 * ONE_USDC + CALL_PREMIUM - 250_000
     );
     assert_eq!(venue.balance(&alice.underlying), 0);
     assert!(!venue.option_exists(&option));
@@ -699,7 +729,7 @@ fn test_collect_fees_pays_only_the_fees_owed() {
 
     let admin_quote = derive_ata(&venue.admin.pubkey(), &venue.quote_mint);
     assert_eq!(venue.balance(&admin_quote), 250_000);
-    assert_eq!(venue.balance(&venue.quote_vault), 900 * ONE_TOKEN);
+    assert_eq!(venue.balance(&venue.quote_vault), 900 * ONE_USDC);
     assert_eq!(venue.market_state().fees_owed, 0);
     venue.assert_vaults_match_ledger();
 
@@ -724,7 +754,7 @@ fn test_put_lifecycle_delivers_the_underlying_for_the_strike() {
     let dave = venue.person(FIVE_NVDAX, STANDARD_USDC);
 
     let option = venue.write_put(&carol);
-    let collateral = 750 * ONE_TOKEN;
+    let collateral = 750 * ONE_USDC;
     assert_eq!(venue.balance(&carol.quote), STANDARD_USDC - collateral);
     assert_eq!(venue.balance(&venue.quote_vault), collateral);
     assert_eq!(venue.market_state().quote_owed, collateral);
@@ -1041,7 +1071,7 @@ fn test_collect_proceeds_needs_an_exercised_option_and_the_writer() {
         venue.collect_proceeds(&bob, &option),
         AnchorErrorCode::ConstraintAddress,
     );
-    assert_eq!(venue.balance(&venue.quote_vault), 900 * ONE_TOKEN + 250_000);
+    assert_eq!(venue.balance(&venue.quote_vault), 900 * ONE_USDC + 250_000);
 }
 
 /// An exercised option has no collateral left to reclaim, whatever the clock

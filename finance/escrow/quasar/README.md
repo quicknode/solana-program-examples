@@ -24,13 +24,14 @@ Prerequisites: [Quasar](https://quasar-lang.com/docs) CLI and [Agave](https://do
 
 ## Testing
 
-In-process tests via **Quasar SVM** (`quasar-svm` in `Quasar.toml`):
+In-process tests with the `quasar-test` harness (`cargo test`, the command `Quasar.toml` names):
 
 ```bash
+quasar build
 cargo test
 ```
 
-Tests invoke instruction handlers and assert onchain state. No local validator.
+Tests invoke instruction handlers and assert onchain state. No local validator. They tell one story: token A is TSLAx, minted at 8 decimals, token B is USDC at 6, and the maker offers 1 TSLAx (`TSLAX_OFFERED`, 100,000,000 minor units) for 1,000 USDC (`USDC_WANTED`, 1,000,000,000 minor units). They cover the make, take and cancel flows with their rent refunds, a take that lands on an offer the maker cancelled and re-made at worse terms (`OfferTermsChanged`), offers with zero on either side (`ZeroAmount`) or one token on both (`AccountBorrowFailed`), and a substituted mint, a substituted vault and a signer who is not the maker (each `HasOneMismatch`). Every refusal test asserts the error code it expects.
 
 ## Usage
 

@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased (2026-10-05)
+
+### Changed
+
+- `swap_tokens` rounds the trading fee up: `fee_amount` is
+  `input * fee / 10_000` rounded to the next whole minor unit, and the
+  admin's slice of it, `fee_amount * admin_share_bps / 10_000`, rounds up the
+  same way, so a fee that is not a whole number of minor units costs the
+  trader one unit more rather than the pool one unit less, and the admin's
+  share rounds against the LPs. The trader's side, `taxed_input`, is the
+  input minus the rounded-up fee. A 30 bps fee on 100_001 minor units is
+  300.003, charged as 301, and the admin's 1_667 bps of a 1_500 fee is 250.05,
+  owed as 251 (`swap_fee_rounds_up`; `claim_admin_fees_pays_the_admin` asserts
+  the exact amount).
+- `initialize_pool` refuses a deposit whose square root equals
+  `MINIMUM_LIQUIDITY` as well as one below it, so the smallest pool that opens
+  leaves its creator at least 1 LP token: a pool opened with
+  `sqrt(100 * 100)` would mint its creator nothing.
+  `initialize_pool_rejects_sqrt_equal_to_floor` checks both sides of the
+  boundary.
+- `initialize_config_rejects_invalid_fee`,
+  `initialize_config_rejects_invalid_admin_share` and
+  `claim_admin_fees_rejects_non_admin` assert `InvalidFee`,
+  `AdminShareTooHigh` and `Unauthorized` rather than any failure.
+
 ## Unreleased (2026-10-04)
 
 ### Changed

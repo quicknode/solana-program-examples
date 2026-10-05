@@ -81,19 +81,24 @@ pub fn handle_swap_tokens(
     // `pool_config.admin_fees_owed_<input_side>` and is swept later by
     // `claim_admin_fees`. This saves a CPI per swap. u128 + checked: the
     // intermediate `input * fee` can overflow u64; multiply before divide.
+    // Both divisions round up: a fee that is not a whole number of minor
+    // units costs the trader one more unit rather than the pool one less,
+    // and the admin's slice of it rounds up against the LPs for the same
+    // reason. `taxed_input`, the trader's side, is what remains after the
+    // ceiled fee. `fee < 10_000`, so the ceiling of `input * fee / 10_000`
+    // is at most `input` and fits a u64; the admin portion is at most the
+    // fee by the same argument.
     let fee = accounts.config.fee() as u128;
     let admin_share_bps = accounts.config.admin_share_bps() as u128;
     let fee_amount_u128 = (input as u128)
         .checked_mul(fee)
         .ok_or(AmmError::MathOverflow)?
-        .checked_div(BASIS_POINTS_DIVISOR as u128)
-        .ok_or(AmmError::MathOverflow)?;
+        .div_ceil(BASIS_POINTS_DIVISOR as u128);
     let fee_amount = u64::try_from(fee_amount_u128).map_err(|_| AmmError::MathOverflow)?;
     let admin_portion_u128 = (fee_amount as u128)
         .checked_mul(admin_share_bps)
         .ok_or(AmmError::MathOverflow)?
-        .checked_div(BASIS_POINTS_DIVISOR as u128)
-        .ok_or(AmmError::MathOverflow)?;
+        .div_ceil(BASIS_POINTS_DIVISOR as u128);
     let admin_portion = u64::try_from(admin_portion_u128).map_err(|_| AmmError::MathOverflow)?;
     let taxed_input = input
         .checked_sub(fee_amount)

@@ -484,10 +484,9 @@ fn first_deposit_withholds_the_minimum(test: &mut Test) {
 fn first_deposit_must_exceed_the_minimum(test: &mut Test) {
     let w = base_world(test);
     setup_empty_markets(test, &w);
-    assert!(
-        deposit_borrow_side(test, &w, crate::constants::MINIMUM_SHARES).is_err(),
-        "a first deposit of only the minimum mints nothing and must be rejected"
-    );
+    // A first deposit of only the minimum mints nothing and is refused.
+    deposit_borrow_side(test, &w, crate::constants::MINIMUM_SHARES)
+        .fails_with(LendingError::DepositTooSmall);
 }
 
 #[quasar_test]
@@ -501,10 +500,7 @@ fn borrow_up_to_ltv_succeeds_and_beyond_fails(test: &mut Test) {
         .has_tokens(BORROWER_BORROW, 750 * UNIT);
 
     // One unit more exceeds the allowed borrow value.
-    assert!(
-        borrow(test, &w, UNIT).is_err(),
-        "borrowing past LTV must fail"
-    );
+    borrow(test, &w, UNIT).fails_with(LendingError::BorrowTooLarge);
 }
 
 /// A price the oracle is unsure of is no price to lend against. The borrow
@@ -685,10 +681,7 @@ fn unhealthy_position_is_liquidated_and_healthy_is_rejected(test: &mut Test) {
     borrow(test, &w, 700 * UNIT).succeeds();
 
     // Healthy at $1 collateral ($1000 * 80% = $800 threshold > $700 debt).
-    assert!(
-        liquidate(test, &w, 350 * UNIT).is_err(),
-        "healthy obligation must not be liquidatable"
-    );
+    liquidate(test, &w, 350 * UNIT).fails_with(LendingError::ObligationHealthy);
 
     // Collateral price halves to $0.50: $500 collateral, $400 threshold < $700 debt.
     set_price(test, &w, COLLATERAL_MINT, cents(50));
@@ -1484,6 +1477,51 @@ mod clock_warp {
             balance(&result, OWNER_BORROW) > 0,
             "owner should collect a positive program fee, got {}",
             balance(&result, OWNER_BORROW)
+        );
+    }
+
+    /// The program fee is the program's cut of the interest, so it rounds
+    /// against the user: up. One second of interest on a 500-unit borrow at
+    /// the harness's curve is 3 units, a tenth of which is not whole; the fee
+    /// is 1, not 0, and the suppliers' pool grows by the other 2, so fee and
+    /// remainder sum to the interest and never exceed it. `collect_program_fees`
+    /// accrues the reserve itself and pays the fee out, so it is the accrual
+    /// here and the owner's balance is the fee.
+    #[test]
+    fn program_fee_rounds_up_and_suppliers_take_the_remainder() {
+        let mut world = World::new();
+        world.bootstrap_position();
+        world
+            .borrow(BORROWER, BORROWER_BORROW, 500 * UNIT)
+            .assert_success();
+        let before = world.reserve(world.borrow_reserve);
+        let debt_before = current_debt(
+            u128::from(before.borrowed_principal),
+            u128::from(before.borrow_accumulation_factor),
+        )
+        .unwrap();
+        let (suppliers_before, _) = world.borrow_reserve_totals();
+
+        world.warp_seconds(1);
+        let result = world.collect_borrow_fees();
+        result.assert_success();
+
+        let after = world.reserve(world.borrow_reserve);
+        let interest = current_debt(
+            u128::from(after.borrowed_principal),
+            u128::from(after.borrow_accumulation_factor),
+        )
+        .unwrap()
+            - debt_before;
+        assert_eq!(interest, 3, "one second of interest on the 500-unit borrow");
+        let fee = balance(&result, OWNER_BORROW);
+        assert_eq!(fee, 1, "a tenth of 3 units rounds up to 1 for the program");
+        assert_eq!(u64::from(after.accumulated_program_fees), 0);
+        let (suppliers_after, _) = world.borrow_reserve_totals();
+        assert_eq!(
+            suppliers_after,
+            suppliers_before + u128::from(interest - fee),
+            "the suppliers' pool grows by the interest less the fee"
         );
     }
 

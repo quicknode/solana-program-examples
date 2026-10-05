@@ -1,7 +1,8 @@
 //! The pure contract math and the custody check, ported from the Anchor
 //! sibling (`options::contract_math` and `instructions::shared`). Settlement
 //! does no arithmetic at all: the option stores the two amounts that change
-//! hands, and the only rounding is the floor in the fee split.
+//! hands, and the only rounding is in the fee split, where the fee rounds up
+//! and the writer takes the remainder.
 
 use {
     crate::{
@@ -56,13 +57,19 @@ pub fn require_valid_kind(kind: u8) -> Result<(), ProgramError> {
 }
 
 /// Split a premium into the venue's fee and the writer's share. The fee
-/// floors, so the writer receives the rounding minor unit.
+/// rounds up, in the venue's favor, and the writer receives the premium minus
+/// the fee: a fee that floored would hand the writer the rounding minor unit
+/// on every sale whose premium is not a multiple of the rate. The two shares
+/// always sum to the premium. With the rate under 100% the fee never exceeds
+/// the premium, but a premium of a single minor unit rounds entirely into the
+/// fee.
 pub fn split_premium(premium: u64, fee_bps: u16) -> Result<(u64, u64), ProgramError> {
+    // The product of a u64 and a u16 is far below u128::MAX, so the ceiling
+    // division cannot overflow.
     let fee = (premium as u128)
         .checked_mul(fee_bps as u128)
         .ok_or(OptionsError::MathOverflow)?
-        .checked_div(BASIS_POINTS_DENOMINATOR as u128)
-        .ok_or(OptionsError::MathOverflow)?;
+        .div_ceil(BASIS_POINTS_DENOMINATOR as u128);
     let fee = u64::try_from(fee).map_err(|_| OptionsError::MathOverflow)?;
     let to_writer = premium.checked_sub(fee).ok_or(OptionsError::MathOverflow)?;
     Ok((fee, to_writer))

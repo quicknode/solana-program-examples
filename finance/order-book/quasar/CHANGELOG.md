@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased - 2026-10-05
+
+### Changed
+
+- The tests mint NVDAx with its onchain 8 decimals over USDC's 6, so
+  `base_lot_size` is 100: a 5-lot ask locks 500 raw base and the pause
+  tests' 7-lot ask locks 700. The README's two-lot example uses the same
+  figures.
+
 ## Unreleased - 2026-10-04
 
 ### Added

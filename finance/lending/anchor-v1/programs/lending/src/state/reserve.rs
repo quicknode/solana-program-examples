@@ -280,12 +280,14 @@ impl Reserve {
 
             // Borrowers owe the full interest (the factor grew for all of it); the
             // program keeps `reserve_factor_bps` of the newly accrued interest,
-            // and the remainder lifts the supplier exchange rate. Flooring the fee
-            // rounds the owner's cut down, in the suppliers' favour.
+            // and the remainder lifts the supplier exchange rate. The fee rounds
+            // up, in the owner's favour: a fee is the program's cut and so rounds
+            // against the user, and the suppliers take what is left, so the two
+            // parts sum to the interest and never exceed it.
             let interest = self
                 .current_borrowed_amount()?
                 .saturating_sub(borrowed_before);
-            let fee = mul_div_floor(
+            let fee = mul_div_ceil(
                 interest as u128,
                 self.config.reserve_factor_bps as u128,
                 BPS_DENOMINATOR,

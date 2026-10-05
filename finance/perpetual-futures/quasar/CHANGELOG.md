@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased, 2026-10-05
+
+Every fee rounds up. `basis_points_of` in `instructions/shared.rs` rounds its
+result up to the next base unit, so the open, close and liquidation fees and
+the maintenance requirement a position is liquidated at each round in the
+pool's favour: a fee is never a minor unit short, and a position is never a
+minor unit too healthy to liquidate. The insurance fund's cut of a fee the
+pool already holds is split by the new `basis_points_of_rounded_down`, and the
+program takes the remainder, so the two still add up to the whole fee. Tested
+by `fees_and_maintenance_requirement_round_up`, which opens, closes and
+liquidates a position one base unit over $5,000 and checks the 5,000,001-unit
+fees, the 2,500,000 / 2,500,001 insurance and program split, the liquidation
+at an equity of exactly 250,000,001 and the 50,000,001 liquidation fee, and by
+`basis_points_of_rounds_up_and_the_insurance_split_rounds_down` at the
+boundaries.
+
+Every refusal test asserts its error code:
+`open_rejects_price_from_before_a_restart` asserts `PRICE_PREDATES_RESTART`
+(18) and `wide_oracle_confidence_is_rejected` `ORACLE_CONFIDENCE_TOO_WIDE`
+(16). `initialize_pool_rejects_close_fee_at_or_above_maintenance_margin` runs
+a close fee of 600 and of 500 basis points against a 500 maintenance margin,
+both refused with `INVALID_PARAMETER`, and 499, accepted.
+
 ## 2026-10-04
 
 Check which program owns the price feed. `initialize_pool` records the feed

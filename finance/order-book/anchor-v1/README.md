@@ -1519,7 +1519,7 @@ anchor test --skip-local-validator
 Expected:
 
 ```
-running 40 tests
+running 41 tests
 test authority_can_withdraw_fees_after_match ... ok
 test better_order_evicts_the_worst_and_rests ... ok
 test cancel_and_settle_bid_refunds_full_quote ... ok
@@ -1560,6 +1560,7 @@ test taker_crosses_multiple_resting_orders_best_price_first ... ok
 test taker_partially_filled_remainder_rests_on_book ... ok
 test taker_partially_fills_resting_order_rest_stays_on_book ... ok
 test trader_can_evict_their_own_worst_order ... ok
+test withdraw_fees_rejects_a_non_authority_signer ... ok
 ```
 
 ### What each test exercises
@@ -1572,14 +1573,18 @@ test trader_can_evict_their_own_worst_order ... ok
 - `place_ask_moves_base_into_vault`: Fund lock on ask
 - `settle_funds_moves_unsettled_base_to_user`: Vault → user ATA transfer via market PDA signer
 
-**Validation:**
+**Validation (each asserts the error code the refusal carries):**
 
-- `place_order_rejects_zero_price`: `price > 0`
-- `place_order_rejects_unaligned_tick`: `price % tick_size == 0`
-- `place_order_rejects_below_min_order_size`: `quantity >= min_order_size`
-- `cancel_order_rejects_non_owner`: Ownership check on cancel
-- `initialize_market_rejects_zero_tick_size`: Init constraint
-- `initialize_market_rejects_oversized_fee`: `fee_bps <= 10_000`
+- `place_order_rejects_zero_price`: `price > 0`, else `InvalidPrice`
+- `place_order_rejects_unaligned_tick`: `price % tick_size == 0`, else `InvalidTickSize`
+- `place_order_rejects_below_min_order_size`: `quantity >= min_order_size`, else `BelowMinOrderSize`
+- `cancel_order_rejects_non_owner`: A signer who does not own the order gets `Unauthorized`
+- `settle_funds_rejects_fee_vault_substituted_for_quote_vault`: The fee vault passed as `quote_vault` gets `InvalidQuoteVault`
+- `initialize_market_rejects_zero_tick_size`: `InvalidTickSize`
+- `initialize_market_rejects_zero_base_lot_size`: `InvalidBaseLotSize`
+- `initialize_market_rejects_zero_quote_lot_size`: `InvalidQuoteLotSize`
+- `initialize_market_rejects_oversized_fee`: `fee_bps <= 10_000`, else `InvalidFeeBasisPoints`
+- `withdraw_fees_rejects_a_non_authority_signer`: A trader signing `withdraw_fees` after a fill gets `NotMarketAuthority`, and the fee stays in the vault
 
 **Cancel + settle flow:**
 

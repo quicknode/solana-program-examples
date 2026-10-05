@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased (2026-10-05)
+
+The program fee on accrued interest rounds up. `accrue_interest` computes the
+reserve factor's cut of each accrual with `mul_div_ceil`, so when the cut is
+not whole the extra unit goes to the market owner, and the suppliers take the
+remainder; fee and remainder sum to the interest and never exceed it. A fee is
+the program's cut and rounds against the user, as every fee in these programs
+does. `program_fees_accrue_and_owner_can_collect` asserts the fee equals the
+interest times the reserve factor, rounded up, and the new
+`program_fee_rounds_up_and_suppliers_take_the_remainder` accrues one second of
+interest on a 500-unit borrow (3 units) and checks the fee is 1 and the
+suppliers' pool grows by 2. The Kani crate gains
+`proof_program_fee_rounds_up_within_interest`, which checks the fee never
+exceeds the interest for any reserve factor up to 100%.
+
+`non_owner_cannot_write_market_price_feed` asserts the constraint error the
+refusal raises (`ConstraintAddress`, by its code), so every refusal test in the suite names
+its error code.
+
 ## Unreleased (2026-10-04)
 
 Refuse a price the oracle itself is unsure of. `PriceFeed` gains a

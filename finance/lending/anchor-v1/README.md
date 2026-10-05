@@ -107,11 +107,15 @@ read the reserve's value require the refresh to have run in the current slot.
 
 Borrowers owe the full interest, but suppliers don't receive all of it. On each
 accrual the reserve keeps `config.reserve_factor_bps` of the freshly accrued
-interest in `accumulated_program_fees`; only the remainder lifts the supplier
-exchange rate. Those fees are carved out of `total_liquidity`, so they never
-count as a supplier claim, and the market owner withdraws them with
-**`collect_program_fees`** (paid out of the reserve's available liquidity).
-This spread between the borrow rate and the supply rate is the program's revenue.
+interest in `accumulated_program_fees`, rounded up (`mul_div_ceil`), since a
+fee is the program's cut and rounds against the user; only the remainder lifts
+the supplier exchange rate, so the two parts sum to the interest and never
+exceed it (`program_fee_rounds_up_and_suppliers_take_the_remainder` checks a
+second's interest of 3 units, of which the fee is 1). Those fees are carved out
+of `total_liquidity`, so they never count as a supplier claim, and the market
+owner withdraws them with **`collect_program_fees`** (paid out of the reserve's
+available liquidity). This spread between the borrow rate and the supply rate
+is the program's revenue.
 
 ### Obligation health
 
@@ -139,7 +143,8 @@ less, which would make the liquidator overpay.
 All arithmetic is integer-only `u128`: no floats, no fixed-point crates. Ratios
 (rates, the index, the exchange rate, obligation values) are scaled by
 `FIXED_POINT_SCALE` (10^18). Every conversion rounds in the program's favour
-(user output floored, debt ceiled), so dust cannot be extracted by repeated
+(user output floored, debt and the program fee ceiled), so dust cannot be
+extracted by repeated
 round-trips; `deposit_redeem_round_trip_creates_no_value` checks this by
 depositing and redeeming 777,777,777 units fifty times against a reserve whose
 exchange rate interest has moved off one-to-one, and asserts the supplier never

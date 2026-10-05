@@ -22,6 +22,7 @@ formulas faithfully and checks their invariants:
 - `proof_mul_div_floor_ceil_correct`: `mul_div_floor`/`mul_div_ceil` are the true floor/ceil of `a·b/d`, differ by ≤ 1, and coincide iff the division is exact.
 - `proof_rounding_is_program_favourable`: `ceil ≥ floor` always, debt (rounded up) is never undercounted and a supplier claim (rounded down) never overcounted, so dust can't be extracted by round-trips.
 - `proof_accumulation_factor_monotonic`: The borrow accumulation factor never decreases (`accrue_interest` multiplies by a factor ≥ 1), borrowers always owe ≥ principal.
+- `proof_program_fee_rounds_up_within_interest`: The program's cut of an accrual, `ceil(interest · reserve_factor / 10000)`, rounds up yet never exceeds the interest, so the suppliers' remainder never underflows and fee + remainder = interest.
 - `proof_utilization_in_range`: Utilization is always a valid `[0, 10000]` bps fraction (`borrowed ≤ gross`).
 - `proof_borrow_rate_within_bounds`: The kinked rate curve stays within `[min_rate, max_rate]` for every utilization, given the config ordering `min ≤ optimal ≤ max`.
 - `proof_deposit_redeem_cannot_extract`: A deposit→redeem round-trip never returns more liquidity than was put in (both legs floor), no rounding drain of the pool.
@@ -49,6 +50,7 @@ so the harness can use a small one:
 - `proof_mul_div_floor_ceil_correct`: `a, b, d <= 31`, ~37s
 - `proof_rounding_is_program_favourable`: `a, b, d <= 127`, ~29s
 - `proof_accumulation_factor_monotonic`: `old/accrued <= 255`, `scale <= 127`, ~5s
+- `proof_program_fee_rounds_up_within_interest`: `interest <= 4095`, <1s
 - `proof_utilization_in_range`: `<= 4095`, ~1s
 - `proof_borrow_rate_within_bounds`: rates `<= 255`, `full_utilization <= 32`, ~25s
 - `proof_deposit_redeem_cannot_extract`: `<= 31`, ~6s

@@ -30,7 +30,9 @@ pub fn integer_sqrt(n: u128) -> u128 {
 }
 
 /// LP tokens minted to the creator for the deposit that opens a pool:
-/// `sqrt(amount_a * amount_b) - MINIMUM_LIQUIDITY`.
+/// `sqrt(amount_a * amount_b) - MINIMUM_LIQUIDITY`. A deposit whose square
+/// root is at or below `MINIMUM_LIQUIDITY` fails with `DepositTooSmall`, so
+/// the smallest pool that opens leaves its creator at least 1 LP token.
 ///
 /// The `MINIMUM_LIQUIDITY` floor is never minted to anyone. From then on
 /// `deposit_liquidity` and `withdraw_liquidity` divide by
@@ -50,7 +52,7 @@ pub fn initial_lp_amount(amount_a: u64, amount_b: u64) -> Result<u64, ProgramErr
         .checked_mul(amount_b as u128)
         .ok_or(AmmError::MathOverflow)?;
     let sqrt_product = u64::try_from(integer_sqrt(product)).map_err(|_| AmmError::MathOverflow)?;
-    if sqrt_product < MINIMUM_LIQUIDITY {
+    if sqrt_product <= MINIMUM_LIQUIDITY {
         return Err(AmmError::DepositTooSmall.into());
     }
     sqrt_product

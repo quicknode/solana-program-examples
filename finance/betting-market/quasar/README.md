@@ -32,8 +32,9 @@ result is known the winners divide the pool.
   betting_closes_at` and settlement only once `now >= betting_closes_at`, so
   nobody can stake after the result could be known.
   The program fee is charged only on the losing pool, so a winner can never
-  receive less than they staked. The fee moves to the fee recipient immediately;
-  the figures winners need are recorded on the event.
+  receive less than they staked, and it rounds up:
+  `ceil(losing_pool * fee_bps / 10_000)`. The fee moves to the fee recipient
+  immediately; the figures winners need are recorded on the event.
 - A winner calls `claim_winnings` to withdraw their stake plus their share of
   the losing pool (their stake divided by the total winning stake, times the
   distributable losing pool). A loser calls `close_losing_bet` to reclaim their
@@ -114,9 +115,10 @@ deployment.
   only the deployed program can move pooled funds. There is no admin path to
   withdraw stakes, only to settle or cancel.
 - Payouts credit and close before transferring (effects before interactions),
-  and the fee uses integer division that floors in the pool's favor, leaving at
-  most a few minor units of dust rather than ever overpaying. `close_event` pays
-  that dust to the fee recipient once every bet is closed.
+  and every rounding goes the pool's way: the fee is the ceiling of its fraction
+  of the losing pool and each winner's share is floored, leaving at most a few
+  minor units of dust rather than ever overpaying. `close_event` pays that dust
+  to the fee recipient once every bet is closed.
 - Admin-gated instructions bind the signer to `config.admin` with `has_one`, and
   the winning outcome is tied to its index through the account's PDA derivation,
   so a mismatched outcome can't be settled to.
@@ -154,12 +156,14 @@ suite in `src/tests.rs` drives the full lifecycle (create a market, add outcomes
 open betting, place opposing bets, settle after the close, claim the winnings,
 close the losing bet) and the cancel-and-refund path, asserting onchain state,
 token balances, and fee accounting at each step. It also checks the admin
-authorization, that the outcome list locks when betting opens, the two-outcome
-minimum, both edges of the betting close time, and that a close time in the past
-is refused.
+authorization of every admin handler
+(`settle_and_cancel_reject_a_non_admin_signer` covers settling and cancelling),
+that the outcome list locks when betting opens, the two-outcome minimum, both
+edges of the betting close time, and that a close time in the past is refused.
 
 `close_event_pays_dust_to_fee_recipient_and_returns_rent` runs a settlement
-whose payouts do not divide evenly, closes the losing bet, both winners' bets,
+whose fee (1% of 250, rounded up to 3) and payouts do not divide evenly, closes
+the losing bet, both winners' bets,
 both outcomes and the event, and checks that the vault's one minor unit of dust
 reaches the fee recipient, that every closed account is gone, and that each rent
 returns to the admin. `close_event_refused_while_a_bet_is_open`,
