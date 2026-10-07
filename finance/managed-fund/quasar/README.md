@@ -106,8 +106,11 @@ withdraw), in index order.
   holdings, nor to choose a trade: rebalancing is sized by the program.
 - Value computations use u128 intermediates with checked arithmetic, flooring
   in the fund's favour: a depositor's shares and a withdrawer's payout round
-  down. The management fee rounds up, so the manager is never minted less than
-  the fee owed.
+  down. Deposit values each asset rounding up
+  (`asset_value_in_usdc_rounded_up`), so NAV is never understated by rounding
+  and the floored share count cannot hand a depositor a share the holders paid
+  for (`test_deposit_values_assets_rounding_up`). The management fee rounds
+  up, so the manager is never minted less than the fee owed.
 - The management fee is capped (10% per year) and the slippage tolerance is
   capped (10%), so neither can be configured to drain the fund.
 - Price feeds are validated against the address recorded on the asset config and

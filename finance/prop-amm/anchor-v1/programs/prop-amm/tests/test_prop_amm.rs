@@ -533,6 +533,46 @@ impl Market {
         self.close_market_as(&operator)
     }
 
+    /// A plain SPL Token `TransferChecked` of `amount` minor units from
+    /// `from_account` (owned by `sender`) straight into `vault`. Nothing in
+    /// the market program runs: this is a third party donating tokens to a
+    /// vault, not the operator's `deposit_inventory`. The instruction is
+    /// built by hand (tag 12, amount, decimals) with the token program's
+    /// account order: source, mint, destination, owner.
+    fn donate_to_vault(
+        &mut self,
+        sender: &Keypair,
+        from_account: &Pubkey,
+        mint: &Pubkey,
+        decimals: u8,
+        vault: &Pubkey,
+        amount: u64,
+    ) {
+        let mut data = vec![12u8];
+        data.extend_from_slice(&amount.to_le_bytes());
+        data.push(decimals);
+        let transfer = Instruction::new_with_bytes(
+            token_program_id(),
+            &data,
+            vec![
+                anchor_lang::solana_program::instruction::AccountMeta::new(*from_account, false),
+                anchor_lang::solana_program::instruction::AccountMeta::new_readonly(*mint, false),
+                anchor_lang::solana_program::instruction::AccountMeta::new(*vault, false),
+                anchor_lang::solana_program::instruction::AccountMeta::new_readonly(
+                    sender.pubkey(),
+                    true,
+                ),
+            ],
+        );
+        send_transaction_from_instructions(
+            &mut self.svm,
+            vec![transfer],
+            &[sender],
+            &sender.pubkey(),
+        )
+        .expect("a plain token transfer into a vault should succeed");
+    }
+
     fn lamports(&self, address: &Pubkey) -> u64 {
         self.svm
             .get_account(address)
@@ -750,6 +790,82 @@ fn test_close_market_refuses_while_a_vault_holds_tokens() {
     market.withdraw_inventory(1, 0).unwrap();
     market.svm.expire_blockhash();
     market.close_market().expect("an empty market must close");
+}
+
+/// Nobody can wedge the close or slip tokens past it by sending them straight
+/// to a vault. After Maria withdraws everything, a stranger sends one minor
+/// unit of NVDAx into the base vault with a plain token transfer, not
+/// `deposit_inventory`, and the close is refused; then one minor unit of USDC
+/// into the quote vault, and the close is refused again. Maria withdraws each
+/// donation like any other inventory and the market closes.
+#[test]
+fn test_close_market_refuses_tokens_sent_straight_to_a_vault() {
+    let mut market = Market::default_market();
+    market
+        .withdraw_inventory(1_000 * ONE_NVDAX, 200_000 * ONE_USDC)
+        .unwrap();
+    let (stranger, stranger_base, stranger_quote) = market.funded_trader(1, 1);
+
+    let base_mint = market.base_mint;
+    let base_vault = market.base_vault;
+    market.donate_to_vault(
+        &stranger,
+        &stranger_base,
+        &base_mint,
+        NVDAX_DECIMALS,
+        &base_vault,
+        1,
+    );
+    assert_eq!(market.balance(&base_vault), 1);
+    assert_fails_with(market.close_market(), PropAmmError::InventoryNotEmpty);
+    assert!(market.svm.get_account(&market.market).is_some());
+    market.withdraw_inventory(1, 0).unwrap();
+
+    let quote_mint = market.quote_mint;
+    let quote_vault = market.quote_vault;
+    market.donate_to_vault(
+        &stranger,
+        &stranger_quote,
+        &quote_mint,
+        USDC_DECIMALS,
+        &quote_vault,
+        1,
+    );
+    assert_eq!(market.balance(&quote_vault), 1);
+    // The retry is otherwise byte-identical to the refused close, so a fresh
+    // blockhash gives it a new signature.
+    market.svm.expire_blockhash();
+    assert_fails_with(market.close_market(), PropAmmError::InventoryNotEmpty);
+    assert!(market.svm.get_account(&market.market).is_some());
+    market.withdraw_inventory(0, 1).unwrap();
+
+    market.svm.expire_blockhash();
+    market.close_market().expect("an empty market must close");
+    assert!(market.svm.get_account(&market.market).is_none());
+    // The operator now holds its own inventory plus both donated units.
+    let operator_base = market.operator_base;
+    let operator_quote = market.operator_quote;
+    assert_eq!(market.balance(&operator_base), 10_000 * ONE_NVDAX + 1);
+    assert_eq!(market.balance(&operator_quote), 10_000_000 * ONE_USDC + 1);
+}
+
+/// A closed market cannot fill. Its account is gone, so a swap naming it
+/// fails before any token moves, and the trader keeps every token.
+#[test]
+fn test_swap_against_a_closed_market_fails() {
+    let mut market = Market::default_market();
+    market
+        .withdraw_inventory(1_000 * ONE_NVDAX, 200_000 * ONE_USDC)
+        .unwrap();
+    market.close_market().unwrap();
+
+    let (alice, alice_base, alice_quote) = market.funded_trader(0, FIVE_NVDAX_AT_THE_ASK);
+    assert_fails_with_anchor_error(
+        market.swap(&alice, Direction::BuyBase, FIVE_NVDAX_AT_THE_ASK, 0),
+        AnchorErrorCode::AccountNotInitialized,
+    );
+    assert_eq!(market.balance(&alice_base), 0);
+    assert_eq!(market.balance(&alice_quote), FIVE_NVDAX_AT_THE_ASK);
 }
 
 #[test]

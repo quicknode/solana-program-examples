@@ -145,7 +145,7 @@ What remains to trust: the honesty of the registered router and registry. The ma
 ## Financial Math Implementation
 
 - Integer arithmetic only; intermediate products use `u128`; multiply before divide.
-- All arithmetic uses `checked_*`. Deposits and withdrawals floor in the fund's favour: a depositor's shares and a withdrawer's payout round down, and the fund keeps the remainder. The management fee rounds up, so the manager is never minted less than the fee owed.
+- All arithmetic uses `checked_*`. Deposits and withdrawals floor in the fund's favour: a depositor's shares and a withdrawer's payout round down, and the fund keeps the remainder. Deposit values each asset rounding up (`asset_value_in_usdc_rounded_up`), so NAV is never understated by rounding and the floored share count cannot hand a depositor a share the holders paid for; `test_deposit_values_assets_rounding_up` checks a second 1 USDC deposit against a NAV of 999,999.4 mints 1,000,000 shares, not the 1,000,001 a floored NAV would. The management fee rounds up, so the manager is never minted less than the fee owed.
 - `transfer_checked` carries decimals through every token CPI.
 
 ---

@@ -21,7 +21,7 @@ A [perpetual future](https://www.investopedia.com/terms/f/futurescontract.asp) (
 - `perpetual-futures`: The exchange: pool creation, liquidity provision, opening/closing leveraged positions, funding, liquidation, and fee collection.
 - `mock-price-feed`: Test-only price feed. Stores a price, scale, last-update slot, and confidence band that tests write directly. Replaced in production by a Pyth `PriceUpdateV2` account, as read in [`basics/pyth`](../../../basics/pyth/).
 
-All arithmetic is integer `u128` with `checked_*` operations, multiplying before dividing and rounding in the pool's favour: every fee and the maintenance requirement round up, and what is paid out rounds down. No floats, no fixed-point library.
+All arithmetic is integer `u128` with `checked_*` operations, multiplying before dividing and rounding in the pool's favour: every fee and the maintenance requirement round up, and what is paid out rounds down. A position's profit/loss is floored toward negative infinity, so a fractional loss rounds up to the next base unit, and its funding rounds toward positive infinity, so funding the trader pays rounds up and funding the trader receives rounds down (`test_position_pnl_rounds_against_the_trader`, `test_position_funding_rounds_against_the_trader`). No floats, no fixed-point library.
 
 ---
 

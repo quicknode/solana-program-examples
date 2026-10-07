@@ -141,8 +141,9 @@ fn proof_accumulation_factor_monotonic() {
     kani::assume(accrued <= 255);
 
     let new_factor = grow_factor(old_factor, accrued, scale).unwrap();
-    assert!(new_factor >= old_factor); // the factor never decreases
-                                       // Rounded up: never below the exact product, and less than one unit above.
+    // The factor never decreases.
+    assert!(new_factor >= old_factor);
+    // Rounded up: never below the exact product, and less than one unit above.
     let product = old_factor * (scale + accrued);
     assert!(new_factor * scale >= product);
     assert!(new_factor == 0 || (new_factor - 1) * scale < product);

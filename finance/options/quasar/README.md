@@ -20,8 +20,8 @@ differs in the Quasar version.
   still has exactly the terms the buyer passed, so a writer cannot cancel and
   rewrite the option at the same `id` on worse terms while the purchase is on
   its way (`buy_option_refuses_a_switched_option`).
-- **The writer's underlying account is created if needed; a holder's token
-  accounts must already exist.** `write_option`, `cancel_option`,
+- **The writer's underlying account is created if needed; every other token
+  account must already exist.** `write_option`, `cancel_option`,
   `reclaim_collateral` and `collect_proceeds` take the writer's underlying
   account as their associated token account, created with
   `init(idempotent)` at the writer's expense, so a put writer who has never
@@ -29,7 +29,9 @@ differs in the Quasar version.
   (`put_writer_without_an_underlying_account_writes_and_reclaims`,
   `put_writer_without_an_underlying_account_writes_and_cancels`). The Anchor
   version also uses `init_if_needed` for a call holder's underlying account
-  at exercise; here the tests create a holder's token accounts up front.
+  at exercise, and creates the writer's quote account in `write_option` and
+  the admin's fee account in `collect_fees`; here the writer's quote account,
+  the admin's fee account and a holder's token accounts must already exist.
 - **The writer's premium account is bound in the handler.** The Anchor
   version derives it as the writer's associated token account; here
   `buy_option` checks that the account passed as `writer_quote` is owned by

@@ -111,6 +111,34 @@ pub fn asset_value_in_usdc(
     mul_pow10_div(amount.checked_mul(price)?, power, 1)
 }
 
+/// `numerator * 10^power / denominator`, rounded up (`mul_pow10_div_ceil` in
+/// `oracle.rs`).
+pub fn mul_pow10_div_ceil(numerator: u128, power: i32, denominator: u128) -> Option<u128> {
+    let scale = 10u128.checked_pow(power.unsigned_abs())?;
+    let (numerator, denominator) = if power >= 0 {
+        (numerator.checked_mul(scale)?, denominator)
+    } else {
+        (numerator, denominator.checked_mul(scale)?)
+    };
+    if denominator == 0 {
+        return None;
+    }
+    Some(numerator.div_ceil(denominator))
+}
+
+/// `asset_value_in_usdc`, rounded up (`asset_value_in_usdc_rounded_up`): how
+/// `handle_deposit` values each asset in the NAV it prices shares against.
+pub fn asset_value_in_usdc_rounded_up(
+    amount: u128,
+    price: u128,
+    exponent: i32,
+    asset_decimals: u8,
+    usdc_decimals: u8,
+) -> Option<u128> {
+    let power = usdc_decimals as i32 + exponent - asset_decimals as i32;
+    mul_pow10_div_ceil(amount.checked_mul(price)?, power, 1)
+}
+
 /// Asset minor units that `usdc_amount` USDC minor units buys at the oracle
 /// price, floored (`usdc_to_asset_amount`).
 pub fn usdc_to_asset_amount(
@@ -386,6 +414,50 @@ fn proof_rebalance_trade_never_overshoots() {
 }
 
 // ===========================================================================
+// 8. Deposit's NAV is never understated
+// ===========================================================================
+
+/// `handle_deposit` values each asset rounding up. The rounded-up value is the
+/// exact value's ceiling: never below the floored value and at most one minor
+/// unit above it. A NAV that is not understated mints a depositor no more
+/// shares than the floored NAV would, so the rounding goes against the
+/// depositor and never against the holders already in the fund.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::solver(cadical)]
+fn proof_deposit_nav_rounds_against_the_depositor() {
+    let amount: u128 = kani::any();
+    let price: u128 = kani::any();
+    let exponent: i32 = kani::any();
+    let asset_decimals: u8 = kani::any();
+    let usdc_decimals: u8 = kani::any();
+    let usdc_amount: u64 = kani::any();
+    let total_shares: u64 = kani::any();
+
+    kani::assume(amount >= 1 && amount <= 255);
+    kani::assume(price >= 1 && price <= 255);
+    kani::assume(exponent >= -3 && exponent <= 0);
+    kani::assume(asset_decimals <= 3 && usdc_decimals <= 3);
+    kani::assume(usdc_amount <= 31 && total_shares >= 1 && total_shares <= 31);
+
+    let floored = asset_value_in_usdc(amount, price, exponent, asset_decimals, usdc_decimals)
+        .expect("computes");
+    let rounded_up =
+        asset_value_in_usdc_rounded_up(amount, price, exponent, asset_decimals, usdc_decimals)
+            .expect("computes");
+    assert!(rounded_up >= floored);
+    assert!(rounded_up <= floored + 1);
+
+    if floored > 0 {
+        let shares_at_floor =
+            deposit_shares(usdc_amount, total_shares, floored as u64).expect("computes");
+        let shares_rounded_up =
+            deposit_shares(usdc_amount, total_shares, rounded_up as u64).expect("computes");
+        assert!(shares_rounded_up <= shares_at_floor);
+    }
+}
+
+// ===========================================================================
 // Plain unit tests.
 // ===========================================================================
 
@@ -415,6 +487,36 @@ mod tests {
         assert_eq!(victim, 1_000_000_000);
         let back = withdraw_amount(1 + 1_000_000_000, victim, attacker + victim).unwrap();
         assert_eq!(back, 1_000_000_000);
+    }
+
+    #[test]
+    fn deposit_nav_rounds_up() {
+        // 333,333 NVDAx minor units at $180 (exponent -8, eight decimals) are
+        // worth 599,999.4 USDC minor units: 599,999 floored, 600,000 rounded up.
+        assert_eq!(
+            asset_value_in_usdc(333_333, 18_000_000_000, -8, 8, 6).unwrap(),
+            599_999
+        );
+        assert_eq!(
+            asset_value_in_usdc_rounded_up(333_333, 18_000_000_000, -8, 8, 6).unwrap(),
+            600_000
+        );
+        // An exact value is unchanged.
+        assert_eq!(
+            asset_value_in_usdc_rounded_up(300_000_000, 18_000_000_000, -8, 8, 6).unwrap(),
+            540_000_000
+        );
+        // With 160,000 TSLAx minor units worth exactly 400,000, a second 1 USDC
+        // deposit against the rounded-up NAV of 1,000,000 mints 1,000,000
+        // shares; against the floored 999,999 it would mint 1,000,001.
+        assert_eq!(
+            deposit_shares(1_000_000, 1_000_000, 1_000_000),
+            Some(1_000_000)
+        );
+        assert_eq!(
+            deposit_shares(1_000_000, 1_000_000, 999_999),
+            Some(1_000_001)
+        );
     }
 
     #[test]

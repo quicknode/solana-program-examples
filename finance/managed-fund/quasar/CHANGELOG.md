@@ -24,6 +24,15 @@
 
 ### Fixed
 
+- Deposit values the basket rounding up. `deposit` priced shares as
+  `usdc_amount × total_shares / nav` with each asset's value in `nav` floored,
+  so NAV read up to a minor unit per asset low and a depositor could be minted
+  a share more than their USDC bought, paid for by the existing holders.
+  `deposit` now values each asset with the new
+  `asset_value_in_usdc_rounded_up`, so the floored share count rounds against
+  the depositor. `withdraw` reads no price and is unchanged. Tested by
+  `test_deposit_values_assets_rounding_up`, where a second 1 USDC deposit
+  against a NAV of 999,999.4 mints 1,000,000 shares, not 1,000,001.
 - A partially verified Pyth update is refused. `load_price` read the price at
   fixed offsets (price at 73) that assume the one-byte encoding of
   `verification_level`, `Full`. A `Partial { num_signatures }` update encodes
