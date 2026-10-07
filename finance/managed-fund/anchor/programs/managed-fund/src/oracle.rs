@@ -6,7 +6,7 @@ use crate::error::FundError;
 /// PriceUpdateV2 account: 8 discriminator + 32 write_authority = 40.
 const PYTH_VERIFICATION_LEVEL_OFFSET: usize = 40;
 /// Borsh tag of `VerificationLevel::Full`, a price verified against a quorum
-/// of Pyth's guardian set. `Partial { num_signatures }` is tag 0 followed by a
+/// of Pyth's signers. `Partial { num_signatures }` is tag 0 followed by a
 /// one-byte signature count, so it encodes in two bytes rather than one and
 /// moves every later field one byte along. The offsets below assume `Full`.
 const PYTH_VERIFICATION_LEVEL_FULL: u8 = 1;
@@ -56,7 +56,7 @@ fn read_pyth_raw(account_data: &[u8]) -> Result<(i64, u64, i32, i64, u64)> {
         return err!(FundError::InvalidPriceFeed);
     }
     // Refuse anything but a fully verified update. A partially verified one
-    // was signed by fewer than a quorum of the guardian set, and its longer
+    // was signed by fewer than a quorum of Pyth's signers, and its longer
     // `verification_level` encoding would shift every offset below by a byte,
     // so its price would be read from the wrong bytes.
     require!(
@@ -95,7 +95,7 @@ fn read_pyth_raw(account_data: &[u8]) -> Result<(i64, u64, i32, i64, u64)> {
 /// return its positive, fresh price. `now` is the current unix timestamp.
 /// A price whose confidence interval exceeds `MAX_CONFIDENCE_BPS` is rejected.
 /// A price posted at or before the last cluster restart is rejected too, and
-/// so is an update Pyth's guardian set did not fully verify.
+/// so is an update a quorum of Pyth's signers did not fully verify.
 pub fn load_price(
     price_feed: &AccountView,
     expected_key: &Address,
@@ -267,6 +267,33 @@ pub fn asset_value_in_usdc_rounded_up(
             .ok_or(FundError::MathOverflow)?,
         power,
         1,
+    )
+}
+
+/// `share_bps` of the value of `amount` asset minor units in USDC minor units,
+/// `amount * price * share_bps * 10^(usdc_decimals + exponent - asset_decimals)
+/// / 10_000`, rounded up in one division. Rebalance sets its sell leg's
+/// minimum output to this, with `share_bps` the part of the value the
+/// slippage tolerance keeps. Flooring the value and then flooring the share
+/// again would let the floor sit up to a minor unit below the exact figure,
+/// accepting a sale that pays the fund less than its tolerance allows;
+/// rounding the exact product up keeps the floor at or above it.
+pub fn asset_value_share_in_usdc_rounded_up(
+    amount: u128,
+    price: OraclePrice,
+    asset_decimals: u8,
+    usdc_decimals: u8,
+    share_bps: u128,
+) -> Result<u128> {
+    let power = usdc_decimals as i32 + price.exponent - asset_decimals as i32;
+    mul_pow10_div_ceil(
+        amount
+            .checked_mul(price.price)
+            .ok_or(FundError::MathOverflow)?
+            .checked_mul(share_bps)
+            .ok_or(FundError::MathOverflow)?,
+        power,
+        10_000,
     )
 }
 

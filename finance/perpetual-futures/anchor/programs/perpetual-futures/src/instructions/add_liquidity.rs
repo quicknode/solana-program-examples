@@ -8,7 +8,9 @@ use anchor_spl::{
 
 use crate::constants::{MINIMUM_LIQUIDITY, POOL_SEED, VAULT_SEED};
 use crate::errors::PerpError;
-use crate::instructions::shared::{liquidity_provider_aum, refresh_price_and_funding_within_band};
+use crate::instructions::shared::{
+    liquidity_provider_aum, refresh_price_and_funding_within_band, Rounding,
+};
 use crate::state::Pool;
 
 pub fn handle_add_liquidity(
@@ -44,7 +46,11 @@ pub fn handle_add_liquidity(
         // The same divisor covers a pool whose providers have all left: the
         // minimum's slice is still in `liquidity`, so the next deposit is
         // priced against it rather than bootstrapped.
-        let aum = liquidity_provider_aum(pool, price)?;
+        //
+        // The pool is valued rounding up, so a fraction of a base unit in the
+        // traders' marked profit/loss raises the price of a share rather than
+        // lowering it.
+        let aum = liquidity_provider_aum(pool, price, Rounding::Up)?;
         require!(aum > 0, PerpError::PoolInsolvent);
         let total_shares = (lp_supply as u128)
             .checked_add(MINIMUM_LIQUIDITY as u128)

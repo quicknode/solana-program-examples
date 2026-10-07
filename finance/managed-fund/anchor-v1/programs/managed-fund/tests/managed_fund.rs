@@ -1355,6 +1355,39 @@ fn test_rebalance() {
         0
     );
 }
+/// Rebalance's sell floor rounds up, in the fund's favour. With NVDAx at
+/// $200.00000001 the trade sells 11,999,999 NVDAx minor units, worth
+/// 23,999,998.0012 USDC minor units, and the 1% tolerance keeps
+/// 23,759,998.001188 of that, so the floor is 23,759,999. A router quoting
+/// exactly 1% under $200 pays 23,759,998: a floor taken from the value floored
+/// to 23,999,998 would be 23,759,998 and accept that sale, a fraction of a
+/// minor unit short of the tolerance. Here it is refused, and a quote that pays
+/// 23,759,999 goes through.
+#[test]
+fn test_rebalance_sell_floor_rounds_up() {
+    let mut ctx = setup_full();
+    standard_fund(&mut ctx);
+    let alice = fund_user(&mut ctx, 900_000_000);
+    do_deposit(&mut ctx, &alice, 900_000_000, 1);
+
+    set_nvda_price(&mut ctx, 20_000_000_001, 198_000_000);
+    assert_router_error(
+        try_rebalance(&mut ctx, 1, 0),
+        RouterError::SlippageExceeded,
+        "a sale one minor unit under the rounded-up floor",
+    );
+
+    // 11,999,999 * 198,000,009 / 10^8 = 23,759,999.08, floored by the router.
+    set_nvda_price(&mut ctx, 20_000_000_001, 198_000_009);
+    do_rebalance(&mut ctx, 1, 0);
+
+    // 23,759,999 USDC buys 9,503,999 TSLAx minor units at $250.
+    let fund = read_fund(&ctx);
+    assert_eq!(fund.asset_holdings[1], 300_000_000 - 11_999_999);
+    assert_eq!(fund.asset_holdings[0], 144_000_000 + 9_503_999);
+    assert_eq!(fund.usdc_holdings, 0);
+    assert_holdings_match_vaults(&ctx);
+}
 
 #[test]
 fn test_collect_fees() {
@@ -2339,7 +2372,7 @@ fn test_wide_confidence_price_rejected() {
 }
 
 /// The fund reads a Pyth update at fixed offsets that assume a fully verified
-/// one. A partially verified update, signed by two of the five guardians, is
+/// one. A partially verified update, signed by two of the five signers, is
 /// refused with `PriceNotFullyVerified` rather than read a byte off. Rewritten
 /// as fully verified at the same price, the same deposit prices exactly as
 /// `test_deposit_first` does.

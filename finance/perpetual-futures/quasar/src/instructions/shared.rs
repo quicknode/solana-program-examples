@@ -219,30 +219,72 @@ pub fn position_pnl(
         .ok_or_else(overflow)
 }
 
+/// Which way a valuation's fractional base unit goes.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Rounding {
+    Down,
+    Up,
+}
+
+/// `numerator / denominator` for a non-negative `numerator` and a positive
+/// `denominator`, rounded the way `rounding` says.
+fn divide_rounding(
+    numerator: i128,
+    denominator: i128,
+    rounding: Rounding,
+) -> Result<i128, ProgramError> {
+    let quotient = numerator.checked_div(denominator).ok_or_else(overflow)?;
+    let remainder = numerator.checked_rem(denominator).ok_or_else(overflow)?;
+    if rounding == Rounding::Up && remainder != 0 {
+        return quotient.checked_add(1).ok_or_else(overflow);
+    }
+    Ok(quotient)
+}
+
+/// Aggregate unrealized profit/loss of every open trader at `price`, from the
+/// pool's per-side accumulators. Positive means traders are collectively up.
+///
+/// `rounding` is the direction of the result: `Up` rounds the long side's
+/// value up and the short side's value down, so a fraction of a base unit on
+/// either side counts as owed to traders; `Down` does the opposite. Callers
+/// choose the direction that goes against whoever is being priced:
+/// `add_liquidity` rounds this `Down` (the pool is valued high, so a deposit
+/// is minted no more shares than it pays for), `remove_liquidity` and
+/// `haircut_ratio` round it `Up` (a withdrawal is paid no more than its shares
+/// are worth, and no winner more than the backing allows).
 pub fn traders_unrealized_pnl(
     long_size: u128,
     long_size_scaled: u128,
     short_size: u128,
     short_size_scaled: u128,
     price: u64,
+    rounding: Rounding,
 ) -> Result<i128, ProgramError> {
     let price = price as i128;
     let size_precision = SIZE_PRECISION as i128;
+    let (long_rounding, short_rounding) = match rounding {
+        Rounding::Up => (Rounding::Up, Rounding::Down),
+        Rounding::Down => (Rounding::Down, Rounding::Up),
+    };
 
-    let long_value = price
-        .checked_mul(long_size_scaled as i128)
-        .ok_or_else(overflow)?
-        .checked_div(size_precision)
-        .ok_or_else(overflow)?;
+    let long_value = divide_rounding(
+        price
+            .checked_mul(long_size_scaled as i128)
+            .ok_or_else(overflow)?,
+        size_precision,
+        long_rounding,
+    )?;
     let long_pnl = long_value
         .checked_sub(long_size as i128)
         .ok_or_else(overflow)?;
 
-    let short_value = price
-        .checked_mul(short_size_scaled as i128)
-        .ok_or_else(overflow)?
-        .checked_div(size_precision)
-        .ok_or_else(overflow)?;
+    let short_value = divide_rounding(
+        price
+            .checked_mul(short_size_scaled as i128)
+            .ok_or_else(overflow)?,
+        size_precision,
+        short_rounding,
+    )?;
     let short_pnl = (short_size as i128)
         .checked_sub(short_value)
         .ok_or_else(overflow)?;
@@ -279,6 +321,9 @@ pub fn haircut_ratio(
         pool.short_size.get(),
         pool.short_size_scaled.get(),
         price,
+        // Rounded up, so a fraction of a base unit counts as owed and can
+        // only lower `h`.
+        Rounding::Up,
     )?;
     let liability = u128::try_from(traders.max(closing_profit).max(0)).map_err(|_| overflow())?;
     if liability == 0 {

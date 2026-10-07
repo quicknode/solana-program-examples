@@ -110,7 +110,10 @@ withdraw), in index order.
   (`asset_value_in_usdc_rounded_up`), so NAV is never understated by rounding
   and the floored share count cannot hand a depositor a share the holders paid
   for (`test_deposit_values_assets_rounding_up`). The management fee rounds
-  up, so the manager is never minted less than the fee owed.
+  up, so the manager is never minted less than the fee owed. Rebalance's
+  sell-leg slippage floor rounds up too
+  (`asset_value_share_in_usdc_rounded_up`), so it is never looser than the
+  tolerance (`test_rebalance_sell_floor_rounds_up`).
 - The management fee is capped (10% per year) and the slippage tolerance is
   capped (10%), so neither can be configured to drain the fund.
 - Price feeds are validated against the address recorded on the asset config and
@@ -123,7 +126,7 @@ withdraw), in index order.
   (`OracleConfidenceTooWide`). `withdraw` reads no price, so investors can
   always leave in kind.
 - The feed's fields are read at fixed byte offsets that assume its
-  `verification_level` is `Full`, verified by a quorum of Pyth's guardian set
+  `verification_level` is `Full`, verified by a quorum of Pyth's signers
   (three of five), so `load_price` checks that tag (offset 40) first and
   refuses anything else (`PriceNotFullyVerified`). A `Partial` update encodes
   `verification_level` in two bytes rather than one, which would move every

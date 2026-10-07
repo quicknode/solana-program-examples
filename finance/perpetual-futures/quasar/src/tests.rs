@@ -1095,6 +1095,59 @@ fn remove_liquidity_capped_at_liquidity(test: &mut Test) {
     assert_vault_matches_ledger(test, &env);
 }
 
+/// `add_liquidity` values the pool rounding up. A $5,000 short entered at
+/// $100 and marked at $99.99999999 is worth 4,999,999,999.5 base units, so
+/// traders are up half a base unit. Rounded against the depositor that half
+/// counts as nothing owed, assets-under-management stays at the pool's
+/// 100,000 USDC of liquidity, and a 100,000 USDC deposit is minted exactly
+/// 100,000 USDC of shares. Valuing the short at 4,999,999,999 would read the
+/// pool one base unit low and mint one share more.
+#[quasar_test]
+fn add_liquidity_values_the_pool_rounding_up(test: &mut Test) {
+    let env = setup(test);
+    fund(test, PROVIDER, PROVIDER_COLLATERAL, 200_000 * ONE_USDC);
+    add_liquidity(test, &env, 100_000 * ONE_USDC).succeeds();
+    fund(test, TRADER, TRADER_COLLATERAL, 1_000 * ONE_USDC);
+    open_position(test, &env, SIDE_SHORT, 1_000 * ONE_USDC, 5_000 * ONE_USDC).succeeds();
+    set_feed(test, dollars(100) - 1, 0);
+
+    // The provider already holds the first deposit's 100,000 USDC of shares
+    // less the withheld 1,000.
+    add_liquidity(test, &env, 100_000 * ONE_USDC)
+        .succeeds()
+        .has_tokens(PROVIDER_LP, 200_000 * ONE_USDC - 1_000);
+    assert_eq!(
+        u64::from(test.read::<Pool>(env.pool).liquidity),
+        200_000 * ONE_USDC
+    );
+    assert_vault_matches_ledger(test, &env);
+}
+
+/// `remove_liquidity` values the pool rounding down. A $5,000 long entered at
+/// $100 and marked at $100.00000001 is worth 5,000,000,000.5 base units, so
+/// traders are up half a base unit. Rounded against the withdrawing provider
+/// that half counts as a whole unit owed, assets-under-management reads
+/// 99,999,999,999, and the provider's 99,999,999,000 shares of 100,000,000,000
+/// redeem 99,999,998,999.00000001, paid as 99,999,998,999. Valuing the long at
+/// 5,000,000,000 would pay 99,999,999,000.
+#[quasar_test]
+fn remove_liquidity_values_the_pool_rounding_down(test: &mut Test) {
+    let env = setup(test);
+    fund(test, PROVIDER, PROVIDER_COLLATERAL, 100_000 * ONE_USDC);
+    add_liquidity(test, &env, 100_000 * ONE_USDC).succeeds();
+    fund(test, TRADER, TRADER_COLLATERAL, 1_000 * ONE_USDC);
+    open_position(test, &env, SIDE_LONG, 1_000 * ONE_USDC, 5_000 * ONE_USDC).succeeds();
+    set_feed(test, dollars(100) + 1, 0);
+
+    let shares = test.tokens(PROVIDER_LP);
+    assert_eq!(shares, 100_000 * ONE_USDC - 1_000);
+    remove_liquidity(test, &env, shares)
+        .succeeds()
+        .has_tokens(PROVIDER_COLLATERAL, 99_999_998_999);
+    assert_eq!(u64::from(test.read::<Pool>(env.pool).liquidity), 1_001);
+    assert_vault_matches_ledger(test, &env);
+}
+
 /// Open a $5,000 long with $1,000 of collateral against a $100,000 pool and
 /// return the slot it opened in.
 fn open_long_against_deep_pool(test: &mut Test, env: &Env) -> u64 {

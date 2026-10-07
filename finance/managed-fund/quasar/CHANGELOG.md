@@ -24,6 +24,15 @@
 
 ### Fixed
 
+- Rebalance's sell floor rounds up. `minimum_usdc_from_sell` floored the
+  oracle value of what is sold and then floored the slippage tolerance's share
+  of it, so it could sit up to a minor unit below the exact figure. It now
+  comes from the new `asset_value_share_in_usdc_rounded_up`, which rounds the
+  exact product up in one division. Tested by
+  `test_rebalance_sell_floor_rounds_up`: with NVDAx at $200.00000001 a router
+  paying 23,759,998 USDC minor units for 11,999,999 NVDAx minor units (99% of
+  their value is 23,759,998.001188) is refused with the router's
+  `SlippageExceeded`, and one paying 23,759,999 goes through.
 - Deposit values the basket rounding up. `deposit` priced shares as
   `usdc_amount × total_shares / nav` with each asset's value in `nav` floored,
   so NAV read up to a minor unit per asset low and a depositor could be minted

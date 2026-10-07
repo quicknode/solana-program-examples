@@ -139,6 +139,26 @@ pub fn asset_value_in_usdc_rounded_up(
     mul_pow10_div_ceil(amount.checked_mul(price)?, power, 1)
 }
 
+/// `share_bps` of what `amount` asset minor units are worth in USDC minor
+/// units, rounded up in one division (`asset_value_share_in_usdc_rounded_up`):
+/// the minimum `handle_rebalance` accepts from its sell leg, with `share_bps`
+/// the part of the value its slippage tolerance keeps.
+pub fn asset_value_share_in_usdc_rounded_up(
+    amount: u128,
+    price: u128,
+    exponent: i32,
+    asset_decimals: u8,
+    usdc_decimals: u8,
+    share_bps: u128,
+) -> Option<u128> {
+    let power = usdc_decimals as i32 + exponent - asset_decimals as i32;
+    mul_pow10_div_ceil(
+        amount.checked_mul(price)?.checked_mul(share_bps)?,
+        power,
+        10_000,
+    )
+}
+
 /// Asset minor units that `usdc_amount` USDC minor units buys at the oracle
 /// price, floored (`usdc_to_asset_amount`).
 pub fn usdc_to_asset_amount(
@@ -458,6 +478,57 @@ fn proof_deposit_nav_rounds_against_the_depositor() {
 }
 
 // ===========================================================================
+// 9. Rebalance's sell floor is never looser than its tolerance
+// ===========================================================================
+
+/// `handle_rebalance` refuses a sale that pays less than `share_bps` of the
+/// oracle value of what it sells. The floor is that product rounded up in one
+/// division, so it is never below the exact figure and less than one minor
+/// unit above it, and never below the floor the handler used to take by
+/// flooring the value and then the share.
+///
+/// The scale is fixed at a negative power of ten, `10^-3` (one-decimal USDC,
+/// a two-decimal asset, exponent -2), the sign every real feed gives (six-
+/// decimal USDC, an eight-decimal asset and exponent -8 is `10^-10`): with a
+/// symbolic power the solver divides by a symbolic denominator and does not
+/// finish.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::solver(cadical)]
+fn proof_sell_floor_rounds_in_the_funds_favour() {
+    let amount: u128 = kani::any();
+    let price: u128 = kani::any();
+    let share_bps: u128 = kani::any();
+
+    kani::assume(amount >= 1 && amount <= 255);
+    kani::assume(price >= 1 && price <= 255);
+    // `MAX_SLIPPAGE_BPS` is 1_000, so the tolerance keeps 90% to 100%.
+    kani::assume(share_bps >= 9_000 && share_bps <= 10_000);
+
+    let (exponent, asset_decimals, usdc_decimals) = (-2, 2, 1);
+    let floor = asset_value_share_in_usdc_rounded_up(
+        amount,
+        price,
+        exponent,
+        asset_decimals,
+        usdc_decimals,
+        share_bps,
+    )
+    .expect("computes");
+
+    // The exact figure as a fraction: amount * price * share_bps / (10_000 * 10^3).
+    let numerator = amount * price * share_bps;
+    let denominator = 10_000 * 1_000;
+    assert!(floor * denominator >= numerator);
+    assert!(floor * denominator < numerator + denominator);
+
+    let value = asset_value_in_usdc(amount, price, exponent, asset_decimals, usdc_decimals)
+        .expect("computes");
+    let floored_twice = mul_div_floor(value, share_bps, 10_000).expect("computes");
+    assert!(floor >= floored_twice);
+}
+
+// ===========================================================================
 // Plain unit tests.
 // ===========================================================================
 
@@ -562,6 +633,27 @@ mod tests {
         assert_eq!(
             fee_shares(0, 100, SECONDS_PER_YEAR, SECONDS_PER_YEAR).unwrap(),
             0
+        );
+    }
+
+    #[test]
+    fn sell_floor_rounds_up() {
+        // The program's test: 11,999,999 NVDAx minor units at $200.00000001
+        // are worth 23,999,998.0012 USDC minor units, 99% of which is
+        // 23,759,998.001188. Rounded up in one division the floor is
+        // 23,759,999; flooring the value and then the share gave 23,759,998.
+        let floor =
+            asset_value_share_in_usdc_rounded_up(11_999_999, 20_000_000_001, -8, 8, 6, 9_900)
+                .unwrap();
+        assert_eq!(floor, 23_759_999);
+        let value = asset_value_in_usdc(11_999_999, 20_000_000_001, -8, 8, 6).unwrap();
+        assert_eq!(mul_div_floor(value, 9_900, 10_000).unwrap(), 23_759_998);
+        // A whole figure is unchanged: 0.12 NVDAx at $200 is 24 USDC, 99% of
+        // which is 23.76 USDC exactly.
+        assert_eq!(
+            asset_value_share_in_usdc_rounded_up(12_000_000, 20_000_000_000, -8, 8, 6, 9_900)
+                .unwrap(),
+            23_760_000
         );
     }
 

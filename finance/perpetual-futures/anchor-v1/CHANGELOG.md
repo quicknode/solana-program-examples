@@ -2,6 +2,23 @@
 
 ## Unreleased, 2026-10-05
 
+Liquidity-provider shares are priced against the provider.
+`traders_unrealized_pnl` floored both sides' marked value, so the long side
+rounded traders' profit down and the short side rounded it up, and
+`add_liquidity` or `remove_liquidity` could round a base unit in the
+provider's favour depending on the book. It now takes a `Rounding`, and
+`liquidity_provider_aum` takes the direction of the valuation:
+`add_liquidity` values the pool rounding up, so a deposit is minted no more
+shares than it pays for, and `remove_liquidity` rounds it down, so a
+withdrawal is paid no more than its shares are worth. `haircut_ratio` rounds
+the traders' liability up, so a fraction of a base unit can only lower `h`.
+Tested by `test_add_liquidity_values_the_pool_rounding_up` (a 100,000 USDC
+deposit against an open short marked half a base unit in profit mints
+100,000,000,000 shares, not 100,000,000,001) and
+`test_remove_liquidity_values_the_pool_rounding_down` (a provider
+withdrawing against an open long marked half a base unit in profit is paid
+99,999,998,999, not 99,999,999,000). No existing figure changes.
+
 Profit/loss and funding round against the trader. `position_pnl` and
 `position_funding` in `instructions/shared.rs` divided with truncation toward
 zero, so a fractional loss was booked a base unit small, and funding a trader

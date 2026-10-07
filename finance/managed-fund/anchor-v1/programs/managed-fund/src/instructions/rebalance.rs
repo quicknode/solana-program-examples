@@ -10,7 +10,8 @@ use mock_swap_router::cpi::accounts::{
 
 use crate::error::FundError;
 use crate::oracle::{
-    asset_value_in_usdc, load_price, read_token_amount, usdc_to_asset_amount, OraclePrice,
+    asset_value_in_usdc, asset_value_share_in_usdc_rounded_up, load_price, read_token_amount,
+    usdc_to_asset_amount, OraclePrice,
 };
 use crate::state::{AssetConfig, Fund, MAX_ASSETS};
 
@@ -184,17 +185,16 @@ pub fn handle_rebalance<'info>(
         FundError::InsufficientHoldings
     );
 
-    // Sell leg floor: USDC out within slippage of the oracle value of what is sold.
-    let minimum_usdc_from_sell: u64 = asset_value_in_usdc(
+    // Sell leg floor: USDC out within slippage of the oracle value of what is
+    // sold, rounded up in the fund's favour so the floor is never looser than
+    // the tolerance.
+    let minimum_usdc_from_sell: u64 = asset_value_share_in_usdc_rounded_up(
         sell_amount as u128,
         sell_price,
         sell_config.decimals,
         usdc_decimals,
+        slip,
     )?
-    .checked_mul(slip)
-    .ok_or(FundError::MathOverflow)?
-    .checked_div(10_000)
-    .ok_or(FundError::MathOverflow)?
     .try_into()
     .map_err(|_| FundError::MathOverflow)?;
 

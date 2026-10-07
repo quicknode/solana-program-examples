@@ -64,6 +64,9 @@ const ROUTER_ID_STR: &str = "SWPR8Rk3aq3DrDGLdaANq7xCMnXoUFUJWJJmCWxc8Jm";
 const RATE: u64 = 250_000_000; // router USDC minor units per whole token
 const NOW: i64 = 1_000; // fixed clock for the deposit test
 const FUND_INDEX: u64 = 0;
+/// The mock router's `SlippageExceeded`: its errors start at 6000 and this is
+/// the second.
+const ROUTER_SLIPPAGE_EXCEEDED: u32 = 6001;
 
 // Deterministic addresses.
 const AUTHORITY: Pubkey = Pubkey::new_from_array([1; 32]);
@@ -427,7 +430,7 @@ fn deposit_rejects_price_from_before_a_restart(test: &mut Test) {
 }
 
 /// The fund reads a Pyth update at fixed offsets that assume a fully verified
-/// one. A partially verified update, signed by two of the five guardians, is
+/// one. A partially verified update, signed by two of the five signers, is
 /// refused with `PriceNotFullyVerified` rather than read a byte off. Rewritten
 /// as fully verified at the same price, the same deposit prices exactly as
 /// `deposit_mints_shares_and_deploys_into_the_basket` does.
@@ -1035,6 +1038,41 @@ fn test_rebalance(test: &mut Test) {
     // The USDC vault nets to zero across the two legs.
     assert_eq!(test.tokens(asset_vault_pda(test, 0)), 153_600_000);
     assert_eq!(test.tokens(asset_vault_pda(test, 1)), 288_000_000);
+    assert_eq!(test.tokens(usdc_vault_pda(test)), 0);
+    assert_holdings_match_vaults(test);
+}
+
+/// Rebalance's sell floor rounds up, in the fund's favour. With NVDAx at
+/// $200.00000001 the trade sells 11,999,999 NVDAx minor units, worth
+/// 23,999,998.0012 USDC minor units, and the 1% tolerance keeps
+/// 23,759,998.001188 of that, so the floor is 23,759,999. A router quoting
+/// exactly 1% under $200 pays 23,759,998: a floor taken from the value floored
+/// to 23,999,998 would be 23,759,998 and accept that sale, a fraction of a
+/// minor unit short of the tolerance. Here it is refused, and a quote that pays
+/// 23,759,999 goes through.
+#[quasar_test]
+fn test_rebalance_sell_floor_rounds_up(test: &mut Test) {
+    setup_full(test);
+    standard_fund(test);
+    let alice = fund_user(test, 900_000_000);
+    do_deposit(test, &alice, 900_000_000);
+
+    set_nvda_price(test, 20_000_000_001, 198_000_000);
+    try_rebalance(test, 1, 0).fails(ProgramError::Custom(ROUTER_SLIPPAGE_EXCEEDED));
+
+    // 11,999,999 * 198,000,009 / 10^8 = 23,759,999.08, floored by the router.
+    set_nvda_price(test, 20_000_000_001, 198_000_009);
+    do_rebalance(test, 1, 0);
+
+    // 23,759,999 USDC buys 9,503,999 TSLAx minor units at $250.
+    assert_eq!(
+        test.tokens(asset_vault_pda(test, 1)),
+        300_000_000 - 11_999_999
+    );
+    assert_eq!(
+        test.tokens(asset_vault_pda(test, 0)),
+        144_000_000 + 9_503_999
+    );
     assert_eq!(test.tokens(usdc_vault_pda(test)), 0);
     assert_holdings_match_vaults(test);
 }

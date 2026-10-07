@@ -1811,6 +1811,81 @@ fn test_remove_liquidity_capped_at_liquidity() {
     assert_eq!(market.pool_state().liquidity, 0);
     market.assert_vault_matches_ledger();
 }
+/// `add_liquidity` values the pool rounding up. A $5,000 short entered at
+/// $100 and marked at $99.99999999 is worth 4,999,999,999.5 base units, so
+/// traders are up half a base unit. Rounded against the depositor that half
+/// counts as nothing owed, assets-under-management stays at the pool's
+/// 100,000 USDC of liquidity, and a 100,000 USDC deposit is minted exactly
+/// 100,000 USDC of shares. Valuing the short at 4,999,999,999 would read the
+/// pool one base unit low and mint one share more.
+#[test]
+fn test_add_liquidity_values_the_pool_rounding_up() {
+    let mut market = Market::default_market();
+    market.seed_liquidity(100_000 * ONE_USDC);
+    let (trader, trader_collateral) = market.funded_trader(1_000 * ONE_USDC);
+    market
+        .open_position(
+            &trader,
+            trader_collateral,
+            Side::Short,
+            1_000 * ONE_USDC,
+            5_000 * ONE_USDC,
+            0,
+        )
+        .unwrap();
+    market.set_price(dollars(100) - 1);
+
+    let deposit = 100_000 * ONE_USDC;
+    let (provider, provider_collateral) = market.funded_trader(deposit);
+    market
+        .add_liquidity(&provider, provider_collateral, deposit, 0)
+        .unwrap();
+    let provider_lp = derive_ata(&provider.pubkey(), &market.lp_mint);
+    assert_eq!(
+        get_token_account_balance(&market.svm, &provider_lp).unwrap(),
+        100_000 * ONE_USDC
+    );
+    assert_eq!(market.pool_state().liquidity, 200_000 * ONE_USDC);
+    market.assert_vault_matches_ledger();
+}
+
+/// `remove_liquidity` values the pool rounding down. A $5,000 long entered at
+/// $100 and marked at $100.00000001 is worth 5,000,000,000.5 base units, so
+/// traders are up half a base unit. Rounded against the withdrawing provider
+/// that half counts as a whole unit owed, assets-under-management reads
+/// 99,999,999,999, and the provider's 99,999,999,000 shares of 100,000,000,000
+/// redeem 99,999,998,999.00000001, paid as 99,999,998,999. Valuing the long at
+/// 5,000,000,000 would pay 99,999,999,000.
+#[test]
+fn test_remove_liquidity_values_the_pool_rounding_down() {
+    let mut market = Market::default_market();
+    let (provider, provider_collateral) = market.seed_liquidity(100_000 * ONE_USDC);
+    let (trader, trader_collateral) = market.funded_trader(1_000 * ONE_USDC);
+    market
+        .open_position(
+            &trader,
+            trader_collateral,
+            Side::Long,
+            1_000 * ONE_USDC,
+            5_000 * ONE_USDC,
+            0,
+        )
+        .unwrap();
+    market.set_price(dollars(100) + 1);
+
+    let provider_lp = derive_ata(&provider.pubkey(), &market.lp_mint);
+    let shares = get_token_account_balance(&market.svm, &provider_lp).unwrap();
+    assert_eq!(shares, 100_000 * ONE_USDC - 1_000);
+    market
+        .remove_liquidity(&provider, provider_collateral, shares, 0)
+        .unwrap();
+    assert_eq!(
+        get_token_account_balance(&market.svm, &provider_collateral).unwrap(),
+        99_999_998_999
+    );
+    assert_eq!(market.pool_state().liquidity, 1_001);
+    market.assert_vault_matches_ledger();
+}
 
 /// One slot short of the warm-up, a profitable close is refused and the
 /// position stays open.

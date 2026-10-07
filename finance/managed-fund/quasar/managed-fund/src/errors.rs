@@ -42,6 +42,6 @@ pub enum FundError {
     NotUnderweight,
     /// The Pyth price's confidence interval is too wide to trust.
     OracleConfidenceTooWide,
-    /// The Pyth price update is not fully verified by the guardian set.
+    /// The Pyth price update is not fully verified by a quorum of Pyth's signers.
     PriceNotFullyVerified,
 }

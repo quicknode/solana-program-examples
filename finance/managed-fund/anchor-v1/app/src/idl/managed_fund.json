@@ -1056,7 +1056,7 @@
     {
       "code": 6033,
       "name": "PriceNotFullyVerified",
-      "msg": "Pyth price update is not fully verified by the guardian set"
+      "msg": "Pyth price update is not fully verified by a quorum of Pyth's signers"
     }
   ],
   "types": [
