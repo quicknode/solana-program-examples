@@ -22,6 +22,7 @@ input, the harnesses check:
 - `proof_recorded_holdings_never_exceed_balance`: The program prices shares and pays withdrawals from its recorded holdings, not vault balances. Across a deposit, a donation, and a withdrawal, the recorded holding never exceeds the vault's real balance, so every payout is covered however much is donated.
 - `proof_donation_cannot_dilute_next_deposit`: The inflation attack modelled directly: after an attacker's first deposit and a donation of any size, the victim's deposit mints exactly one share per minor unit and withdraws in full.
 - `proof_fee_shares_bounded_by_supply`: The time-based manager fee, `ceil(total_shares·fee_bps·elapsed/(10000·seconds_per_year))`, can never mint more than 100%/year of dilution (`fee_shares <= total_shares` for `elapsed <= 1yr`, `fee_bps <= 10000`), and rounds up: it is never below the exact quotient and never more than one share above it.
+- `proof_deposit_nav_rounds_against_the_depositor`: Deposit values each asset rounding up. The rounded-up value is never below the floored one and at most one minor unit above it, and a deposit priced against it mints no more shares than one priced against the floored NAV, so valuation rounding never hands a depositor a share the holders paid for.
 
 ## Bounded model checking
 
@@ -34,6 +35,7 @@ representative range; the share identities are scale-invariant.
 - `proof_recorded_holdings_never_exceed_balance`: balances and supply `<= 255`
 - `proof_donation_cannot_dilute_next_deposit`: deposits `<= 31`, donation unbounded
 - `proof_fee_shares_bounded_by_supply`: `<= 255`, runs in ~4s
+- `proof_deposit_nav_rounds_against_the_depositor`: amounts and prices `<= 255`, deposits and supply `<= 31`, runs in ~3 minutes
 
 Run weekly in CI (the `kani.yml` `verify` job), not on every push/PR, because
 the bounded nonlinear model checks are slow. A fast unit-test job runs per push/PR.

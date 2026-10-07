@@ -311,6 +311,37 @@ fn close_market(test: &mut Test, env: &Env, signer: Pubkey) -> Outcome {
     })
 }
 
+/// A plain SPL Token `transfer_checked` (instruction 12) of `amount` minor
+/// units from `from_account` (owned by `sender`) straight into `vault`.
+/// Nothing in the market program runs: this is a third party donating tokens
+/// to a vault, not the operator's `deposit_inventory`.
+fn donate_to_vault(
+    test: &mut Test,
+    sender: Pubkey,
+    from_account: Pubkey,
+    mint: Pubkey,
+    decimals: u8,
+    vault: Pubkey,
+    amount: u64,
+) {
+    let before = test.tokens(vault);
+    let mut data = vec![12u8];
+    data.extend_from_slice(&amount.to_le_bytes());
+    data.push(decimals);
+    test.send(Instruction {
+        program_id: SPL_TOKEN_PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(from_account, false),
+            AccountMeta::new_readonly(mint, false),
+            AccountMeta::new(vault, false),
+            AccountMeta::new_readonly(sender, true),
+        ],
+        data,
+    })
+    .succeeds()
+    .has_tokens(vault, before + amount);
+}
+
 /// Write raw bytes as the feed account, owned by the program the market
 /// recorded, so only the layout and value checks can refuse it.
 fn set_feed_data(test: &mut Test, data: Vec<u8>) {
@@ -579,6 +610,104 @@ fn close_market_refuses_while_a_vault_holds_tokens(test: &mut Test) {
     close_market(test, &env, OPERATOR)
         .succeeds()
         .is_closed(env.market);
+}
+
+/// Nobody can wedge the close or slip tokens past it by sending them straight
+/// to a vault. After Maria withdraws everything, a stranger sends one minor
+/// unit of NVDAx into the base vault with a plain token transfer, not
+/// `deposit_inventory`, and the close is refused; then one minor unit of USDC
+/// into the quote vault, and the close is refused again. Maria withdraws each
+/// donation like any other inventory and the market closes.
+#[quasar_test]
+fn close_market_refuses_tokens_sent_straight_to_a_vault(test: &mut Test) {
+    let env = setup(test);
+    withdraw_inventory(
+        test,
+        &env,
+        OPERATOR,
+        OPERATOR_BASE,
+        OPERATOR_QUOTE,
+        1_000 * ONE_NVDAX,
+        200_000 * ONE_USDC,
+    )
+    .succeeds();
+    fund_trader(test, MALLORY, MALLORY_BASE, MALLORY_QUOTE, 1, 1);
+
+    donate_to_vault(
+        test,
+        MALLORY,
+        MALLORY_BASE,
+        BASE_MINT,
+        NVDAX_DECIMALS,
+        env.base_vault,
+        1,
+    );
+    close_market(test, &env, OPERATOR).fails_with(error::INVENTORY_NOT_EMPTY);
+    assert!(test.account(env.market).is_some());
+    withdraw_inventory(test, &env, OPERATOR, OPERATOR_BASE, OPERATOR_QUOTE, 1, 0).succeeds();
+
+    donate_to_vault(
+        test,
+        MALLORY,
+        MALLORY_QUOTE,
+        QUOTE_MINT,
+        USDC_DECIMALS,
+        env.quote_vault,
+        1,
+    );
+    close_market(test, &env, OPERATOR).fails_with(error::INVENTORY_NOT_EMPTY);
+    assert!(test.account(env.market).is_some());
+    withdraw_inventory(test, &env, OPERATOR, OPERATOR_BASE, OPERATOR_QUOTE, 0, 1).succeeds();
+
+    close_market(test, &env, OPERATOR)
+        .succeeds()
+        .is_closed(env.market);
+    // The operator now holds its own inventory plus both donated units.
+    assert_eq!(test.tokens(OPERATOR_BASE), 10_000 * ONE_NVDAX + 1);
+    assert_eq!(test.tokens(OPERATOR_QUOTE), 10_000_000 * ONE_USDC + 1);
+}
+
+/// A closed market cannot fill. Its account is gone, so a swap naming it
+/// fails before any token moves, and the trader keeps every token.
+#[quasar_test]
+fn swap_against_a_closed_market_fails(test: &mut Test) {
+    let env = setup(test);
+    withdraw_inventory(
+        test,
+        &env,
+        OPERATOR,
+        OPERATOR_BASE,
+        OPERATOR_QUOTE,
+        1_000 * ONE_NVDAX,
+        200_000 * ONE_USDC,
+    )
+    .succeeds();
+    close_market(test, &env, OPERATOR)
+        .succeeds()
+        .is_closed(env.market);
+
+    fund_trader(
+        test,
+        TRADER,
+        TRADER_BASE,
+        TRADER_QUOTE,
+        0,
+        FIVE_NVDAX_AT_THE_ASK,
+    );
+    let outcome = swap(
+        test,
+        &env,
+        TRADER,
+        TRADER_BASE,
+        TRADER_QUOTE,
+        DIRECTION_BUY_BASE,
+        FIVE_NVDAX_AT_THE_ASK,
+        0,
+    );
+    println!("CLOSED SWAP ERROR: {:?}", outcome.error());
+    assert!(outcome.is_err());
+    assert_eq!(test.tokens(TRADER_BASE), 0);
+    assert_eq!(test.tokens(TRADER_QUOTE), FIVE_NVDAX_AT_THE_ASK);
 }
 
 #[quasar_test]

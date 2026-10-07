@@ -1212,6 +1212,49 @@ fn test_buy_option_refuses_a_switched_option() {
     }
 }
 
+/// The kind switch: Bob reads Alice's call and signs a purchase at those
+/// terms. Before it lands, Alice cancels and writes a put at the same address
+/// (the same `id`) with every amount and the expiry unchanged, so only the
+/// kind differs. A put would hand Bob the right to sell 5 NVDAx for 900 USDC,
+/// not to buy them. Bob's purchase is refused with `OptionTermsChanged`, and
+/// no USDC moves: Alice's 900 USDC of put collateral stays in the vault.
+#[test]
+fn test_buy_option_refuses_a_call_switched_to_a_put() {
+    let mut venue = Venue::new();
+    let alice = venue.person(FIVE_NVDAX, STANDARD_USDC);
+    let bob = venue.person(0, STANDARD_USDC);
+    let option = venue.write_call(&alice);
+    let seen = venue.listed_terms(&option);
+    assert_eq!(seen.kind, OptionKind::Call);
+
+    venue.cancel_option(&alice, &option).unwrap();
+    let switched = OptionTerms {
+        kind: OptionKind::Put,
+        ..seen
+    };
+    let rewritten = venue.write_option(&alice, 1, switched).unwrap();
+    assert_eq!(rewritten, option);
+    assert_eq!(venue.option_state(&option).kind, OptionKind::Put);
+
+    assert_fails_with(
+        venue.buy_option_with_terms(&bob, &alice.pubkey(), &option, seen),
+        OptionsError::OptionTermsChanged,
+    );
+    assert_eq!(venue.balance(&bob.quote), STANDARD_USDC);
+    assert_eq!(
+        venue.balance(&alice.quote),
+        STANDARD_USDC - CALL_STRIKE_AMOUNT
+    );
+    assert_eq!(venue.balance(&alice.underlying), FIVE_NVDAX);
+    assert_eq!(venue.balance(&venue.quote_vault), CALL_STRIKE_AMOUNT);
+    assert_eq!(venue.balance(&venue.underlying_vault), 0);
+    let state = venue.option_state(&option);
+    assert_eq!(state.status, OptionStatus::Listed);
+    assert_eq!(state.holder, Address::default());
+    assert_eq!(venue.market_state().fees_owed, 0);
+    venue.assert_vaults_match_ledger();
+}
+
 /// A purchase whose terms match the option's goes through: Bob, reading the
 /// rewritten option at a 50 USDC premium, buys it at that premium, paying
 /// 0.50 USDC to the venue and 49.50 USDC to Alice.

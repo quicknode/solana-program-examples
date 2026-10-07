@@ -891,6 +891,49 @@ fn buy_option_refuses_a_switched_option(test: &mut Test) {
     }
 }
 
+/// The kind switch: Bob reads Alice's call and signs a purchase at those
+/// terms. Before it lands, Alice cancels and writes a put at the same address
+/// (the same `id`) with every amount and the expiry unchanged, so only the
+/// kind differs. A put would hand Bob the right to sell 5 NVDAx for 900 USDC,
+/// not to buy them. Bob's purchase is refused with `OptionTermsChanged`, and
+/// no USDC moves: Alice's 900 USDC of put collateral stays in the vault.
+#[quasar_test]
+fn buy_option_refuses_a_call_switched_to_a_put(test: &mut Test) {
+    let env = setup(test);
+    let option = write_call(test, &env);
+    let seen = listed_terms(test, &env, &ALICE_P, CALL_ID);
+    assert_eq!(seen.kind, KIND_CALL);
+
+    cancel_option(test, &env, &ALICE_P, CALL_ID).succeeds();
+    write_option(
+        test,
+        &env,
+        &ALICE_P,
+        CALL_ID,
+        KIND_PUT,
+        seen.underlying_amount,
+        seen.strike_amount,
+        seen.premium,
+        seen.expiry,
+    )
+    .succeeds();
+    assert_eq!(option_pda(test, &env, &ALICE_P, CALL_ID), option);
+    assert_eq!(test.read::<OptionContract>(option).kind, KIND_PUT);
+
+    buy_option_with_terms(test, &env, &BOB_P, &ALICE_P, CALL_ID, seen)
+        .fails_with(OptionsError::OptionTermsChanged);
+    assert_eq!(test.tokens(BOB_USDC), STANDARD_USDC);
+    assert_eq!(test.tokens(ALICE_USDC), STANDARD_USDC - CALL_STRIKE_AMOUNT);
+    assert_eq!(test.tokens(ALICE_NVDAX), FIVE_NVDAX);
+    assert_eq!(test.tokens(env.quote_vault), CALL_STRIKE_AMOUNT);
+    assert_eq!(test.tokens(env.underlying_vault), 0);
+    let state = test.read::<OptionContract>(option);
+    assert_eq!(state.status, STATUS_LISTED);
+    assert_eq!(state.holder, Pubkey::default());
+    assert_eq!(u64::from(test.read::<Market>(env.market).fees_owed), 0);
+    assert_vaults_match_ledger(test, &env);
+}
+
 /// A purchase whose terms match the option's goes through: Bob, reading the
 /// rewritten option at a 50 USDC premium, buys it at that premium, paying
 /// 0.50 USDC to the venue and 49.50 USDC to Alice.
