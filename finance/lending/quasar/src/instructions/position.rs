@@ -364,9 +364,9 @@ impl RepayObligationLiquidity {
 /// collateral that remains. With no debt the collateral backs nothing, so no
 /// price is read and no health check runs: the whole deposit can come out
 /// whatever the feeds are doing, since a borrower who owes nothing must never
-/// be locked in by a stale or silent oracle. The price accounts are still
-/// passed, and checked to be the reserves' own, but their values are not
-/// read.
+/// be locked in by a stale or silent oracle. The collateral price account is
+/// still checked to be the collateral reserve's own, but its value is not
+/// read; the borrow reserve and borrow price accounts are ignored.
 ///
 /// A withdrawal that takes the last share closes the collateral vault and
 /// returns its rent to the owner, who paid it when
@@ -542,7 +542,9 @@ impl WithdrawObligationCollateral {
 /// `ObligationNotEmpty`. Only the owner may close it (`has_one(owner)`), since
 /// the rent is theirs and a stranger could otherwise close a position its
 /// owner means to use again. The account itself closes through the
-/// `close(dest = owner)` constraint once the handler returns.
+/// `close(dest = owner)` constraint once the handler returns, which hands the
+/// owner every lamport it holds: its own rent, plus the rent of a collateral
+/// vault a liquidation emptied and closed into it.
 #[derive(Accounts)]
 pub struct CloseObligation {
     #[account(mut)]
@@ -574,20 +576,20 @@ impl CloseObligation {
 // liquidate_obligation
 // ---------------------------------------------------------------------------
 
-/// A seizure that takes the last share closes the collateral vault, rent to
-/// the obligation's owner (`obligation_owner`), who paid it. The whole vault
-/// balance goes to the liquidator first, so share tokens someone sent straight
-/// to the vault cannot keep it open.
+/// A seizure that takes the last share closes the collateral vault. The whole
+/// vault balance goes to the liquidator first, so share tokens someone sent
+/// straight to the vault cannot keep it open. The vault's rent goes into the
+/// obligation account itself, not to the owner's wallet: liquidation then
+/// takes no account the borrower controls, so nothing the borrower does to
+/// their wallet can make it fail, and the owner can still liquidate their own
+/// position. The rent returns to the owner, who paid it, when
+/// `close_obligation` closes the obligation with every lamport it holds.
 #[derive(Accounts)]
 pub struct LiquidateObligation {
     #[account(mut)]
     pub liquidator: Signer,
     #[account(mut, has_one(lending_market))]
     pub obligation: Account<Obligation>,
-    /// The obligation's owner, who paid the collateral vault's rent; receives
-    /// it back if this seizure empties the vault.
-    #[account(mut, address = obligation.owner)]
-    pub obligation_owner: UncheckedAccount,
     pub lending_market: Account<LendingMarket>,
     #[account(mut, has_one(lending_market), has_one(share_mint))]
     pub collateral_reserve: Account<Reserve>,
@@ -792,11 +794,7 @@ impl LiquidateObligation {
             .invoke_signed(&seeds)?;
         if empties_vault {
             self.token_program
-                .close_account(
-                    &self.obligation_vault,
-                    &self.obligation_owner,
-                    &self.obligation,
-                )
+                .close_account(&self.obligation_vault, &self.obligation, &self.obligation)
                 .invoke_signed(&seeds)?;
         }
         Ok(())

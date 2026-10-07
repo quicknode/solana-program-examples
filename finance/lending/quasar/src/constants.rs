@@ -14,6 +14,13 @@ pub const FIXED_POINT_SCALE_DECIMALS: i32 = 18;
 /// 100% expressed in basis points.
 pub const BPS_DENOMINATOR: u128 = 10_000;
 
+/// Highest annual borrow rate, in basis points, any point on a reserve's rate
+/// curve may be set to: 30,000 bps, or 300% a year. `math::validate_config`
+/// refuses a `min_borrow_rate_bps`, `optimal_borrow_rate_bps` or
+/// `max_borrow_rate_bps` above it (`BorrowRateAboveCeiling`), so a reserve can
+/// never charge the 655% a year a bare u16 would allow.
+pub const BORROW_RATE_CEILING_BPS: u16 = 30_000;
+
 /// Seconds in a 365-day year: the divisor that turns an annual rate into the
 /// per-second rate interest accrues at. Interest runs on the wall clock, not
 /// the slot count, because a rate quoted per year is a promise about wall-clock

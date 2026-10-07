@@ -136,16 +136,30 @@ Once the collateral is out, `close_obligation` returns the account's rent to
 the owner; it refuses with `ObligationNotEmpty` while any collateral or debt
 remains, and only the owner may close it.
 
-Each reserve's collateral vault closes when its last share leaves, whether a
-withdrawal or a liquidation takes it, and its rent goes back to the
-obligation's owner, who paid it when `deposit_obligation_collateral` created
-the vault (`init_if_needed` creates it again on a later deposit). The handler
-moves the vault's whole balance out before closing it, so share tokens someone
-sent straight to the vault cannot keep it open or block the withdrawal
-(`donated_shares_cannot_keep_the_vault_open`). `liquidate_obligation` takes the
-owner as `obligation_owner` for the rent and refuses any other account
-(`liquidator_cannot_redirect_the_vault_rent`). Every account the program creates
-for a borrower therefore closes, with its rent returned.
+Each reserve's collateral vault closes when its last share leaves. The rent
+was paid by the obligation's owner when `deposit_obligation_collateral`
+created the vault (`init_if_needed` creates it again on a later deposit). A
+withdrawal that empties the vault returns that rent to the owner straight
+away. A liquidation that empties it closes it into the obligation account
+instead, so liquidation takes no account the borrower controls
+(`seizing_all_collateral_closes_the_vault_into_the_obligation`), and the owner
+can still liquidate their own position, partly
+(`owner_can_liquidate_their_own_obligation`) or down to an empty vault
+(`owner_can_liquidate_their_own_obligation_to_empty`). `close_obligation` later
+hands the owner the obligation's own rent and the vault's together
+(`close_obligation_after_full_liquidation_returns_both_rents_to_the_owner`),
+and a later deposit recreates the vault
+(`redeposit_after_full_liquidation_recreates_the_vault`).
+Either way the whole vault balance moves out before the vault closes, so share
+tokens someone sent straight to the vault cannot keep it open or block the
+withdrawal (`donated_shares_cannot_keep_the_vault_open`,
+`seizing_all_collateral_sweeps_donated_shares_to_the_liquidator`).
+
+Every account the program creates for a borrower closes, with its rent
+returned, once the position is fully unwound. An obligation that a
+liquidation leaves holding debt and no collateral is not unwound:
+`close_obligation` refuses it until that debt is repaid
+(`close_obligation_refused_while_debt_remains_after_full_liquidation`).
 
 Every handler that pairs an obligation with a reserve requires both to belong to
 the same `LendingMarket` (`MarketMismatch` otherwise), so each market is an
@@ -219,6 +233,33 @@ can update reserve risk parameters (`update_reserve_config`) and withdraw the
 program's earned fees (`collect_program_fees`), but has no path to a supplier's
 deposits or a borrower's collateral: there is no admin escape hatch over user funds.
 
+`update_reserve_config` takes effect at once on a reserve with open loans, so
+three limits protect the people already there:
+
+- **A borrow rate ceiling.** `ReserveConfig::validate` refuses any of
+  `min_borrow_rate_bps`, `optimal_borrow_rate_bps` or `max_borrow_rate_bps`
+  above `BORROW_RATE_CEILING_BPS` (30,000 bps, 300% a year) with
+  `BorrowRateAboveCeiling`, at `initialize_reserve` and on every update. Without
+  it the curve could be set to any u16, up to 655% a year.
+- **The liquidation threshold only rises.** `update_reserve_config` refuses a
+  config whose `liquidation_threshold_bps` is lower than the reserve's current
+  value with `RiskLimitLowered`, so an update can never move the line an open
+  borrow is measured against and make it liquidatable on the spot. The
+  loan-to-value is not ratcheted: it limits only new borrows and withdrawals
+  by an indebted borrower, so the owner may lower it, down to 0, to stop new
+  borrowing against an asset that has become dangerous
+  (`accepts_lowering_loan_to_value`).
+- **The bonus is always payable.** `ReserveConfig::validate` refuses a config
+  where `liquidation_threshold_bps * (10_000 + liquidation_bonus_bps)` exceeds
+  `10_000 * 10_000` with `LiquidationBonusUnpayable`, at `initialize_reserve`
+  and on every update. A position becomes liquidatable once its debt passes the
+  threshold share of its collateral, and the liquidator takes that debt plus
+  the bonus in collateral, so the bound keeps a liquidation at the threshold
+  payable from the collateral rather than leaving the suppliers bad debt.
+  Because the threshold can never come back down, this also stops a mistaken
+  raise from locking that loss into the reserve. The default 80% threshold
+  with a 5% bonus gives 8,000 × 10,500 = 84,000,000, inside the bound.
+
 ### Known limits
 
 - **Tokens with transfer fees are not supported.** The program uses
@@ -227,9 +268,6 @@ deposits or a borrower's collateral: there is no admin escape hatch over user fu
   accounting would overstate `available_liquidity`. Production lending programs
   whitelist mints; a market owner here must only create reserves for tokens
   without transfer fees.
-- **Reserve config changes act immediately.** Lowering a reserve's
-  `liquidation_threshold_bps` can make existing obligations liquidatable at
-  once; production governance phases such changes in.
 - This is an example. Deploying any program that custodies funds calls for a
   professional security audit first.
 

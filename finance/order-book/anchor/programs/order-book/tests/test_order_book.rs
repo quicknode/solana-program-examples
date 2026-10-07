@@ -3595,3 +3595,73 @@ fn close_market_user_refuses_a_non_owner() {
     assert_fails_with(&error, order_book::errors::ErrorCode::Unauthorized);
     assert!(account_is_open(&sc.svm, &sc.seller_market_user));
 }
+
+#[test]
+fn evicted_order_and_its_owners_market_user_close_after_settling() {
+    let mut sc = full_setup();
+    initialize_market_and_users(&mut sc);
+    let fillers = fill_bid_side(&mut sc);
+    let newcomer = create_trader(&mut sc);
+    let evicted = &fillers[0];
+
+    // A better bid evicts the worst one, which eviction stamps Cancelled and
+    // refunds through its owner's unsettled balance.
+    place_bid(
+        &mut sc,
+        &newcomer,
+        ORDERS_PER_SIDE + 1,
+        EVICTION_BETTER_BID_PRICE,
+        &[(WORST_BID_ORDER_ID, evicted.market_user)],
+    )
+    .unwrap();
+    let worst_order = order_pda(&sc.program_id, &sc.market, WORST_BID_ORDER_ID);
+    let (_, status) = read_order_fill_and_status(&sc.svm, &worst_order);
+    assert_eq!(status, ORDER_STATUS_CANCELLED);
+
+    // The evicted owner's other bids (IDs 2 through ORDERS_PER_FILLER) still
+    // rest, so they cancel those to have nothing open, then settle every
+    // refund to have nothing owed.
+    for order_id in WORST_BID_ORDER_ID + 1..=ORDERS_PER_FILLER {
+        let cancel_ix = build_cancel_order_ix(
+            &sc,
+            &evicted.keypair.pubkey(),
+            evicted.market_user,
+            order_id,
+        );
+        send_transaction_from_instructions(
+            &mut sc.svm,
+            vec![cancel_ix],
+            &[&evicted.keypair],
+            &evicted.keypair.pubkey(),
+        )
+        .unwrap();
+    }
+    let settle_ix = build_settle_funds_ix(
+        &sc,
+        &evicted.keypair.pubkey(),
+        evicted.market_user,
+        evicted.base_ata,
+        evicted.quote_ata,
+    );
+    send_transaction_from_instructions(
+        &mut sc.svm,
+        vec![settle_ix],
+        &[&evicted.keypair],
+        &evicted.keypair.pubkey(),
+    )
+    .unwrap();
+    assert_eq!(read_open_order_count(&sc.svm, &evicted.market_user), 0);
+    assert_eq!(read_user_unsettled(&sc.svm, &evicted.market_user), (0, 0));
+
+    // The evicted order closes to its owner, then the owner's MarketUser.
+    let close_order_ix = build_close_order_ix(&sc, &evicted.keypair.pubkey(), WORST_BID_ORDER_ID);
+    assert_close_returns_rent(&mut sc.svm, close_order_ix, &worst_order, &evicted.keypair);
+    let close_user_ix =
+        build_close_market_user_ix(&sc, &evicted.keypair.pubkey(), evicted.market_user);
+    assert_close_returns_rent(
+        &mut sc.svm,
+        close_user_ix,
+        &evicted.market_user,
+        &evicted.keypair,
+    );
+}

@@ -6,7 +6,7 @@
 
 use {
     crate::{
-        constants::{BPS_DENOMINATOR, FIXED_POINT_SCALE},
+        constants::{BORROW_RATE_CEILING_BPS, BPS_DENOMINATOR, FIXED_POINT_SCALE},
         cpi::{
             BorrowObligationLiquidityInstruction, CloseObligationInstruction,
             DepositObligationCollateralInstruction, DepositReserveLiquidityInstruction,
@@ -20,7 +20,6 @@ use {
             LendingMarket, LiquidityVaultPda, Obligation, ObligationVaultPda, Reserve, ShareMintPda,
         },
     },
-    quasar_lang::error::QuasarError,
     quasar_test::prelude::*,
 };
 
@@ -255,6 +254,59 @@ fn initialize_reserve_with_confidence_limit(
     })
 }
 
+/// Initialize a reserve with the default risk limits and the rate curve
+/// `min`/`optimal`/`max`.
+fn initialize_reserve_with_curve(
+    test: &mut Test,
+    w: &Pdas,
+    the_mint: Pubkey,
+    min_borrow_rate_bps: u16,
+    optimal_borrow_rate_bps: u16,
+    max_borrow_rate_bps: u16,
+) -> Outcome {
+    test.send(InitializeReserveInstruction {
+        owner: OWNER,
+        lending_market: w.market,
+        liquidity_mint: the_mint,
+        loan_to_value_bps: 7_500,
+        liquidation_threshold_bps: 8_000,
+        liquidation_bonus_bps: 500,
+        close_factor_bps: 5_000,
+        reserve_factor_bps: 1_000,
+        optimal_utilization_bps: 8_000,
+        min_borrow_rate_bps,
+        optimal_borrow_rate_bps,
+        max_borrow_rate_bps,
+        max_confidence_bps: DEFAULT_MAX_CONFIDENCE_BPS,
+    })
+}
+
+/// Initialize a reserve with the default config but the liquidation threshold
+/// and bonus `liquidation_threshold_bps` and `liquidation_bonus_bps`.
+fn initialize_reserve_with_threshold_and_bonus(
+    test: &mut Test,
+    w: &Pdas,
+    the_mint: Pubkey,
+    liquidation_threshold_bps: u16,
+    liquidation_bonus_bps: u16,
+) -> Outcome {
+    test.send(InitializeReserveInstruction {
+        owner: OWNER,
+        lending_market: w.market,
+        liquidity_mint: the_mint,
+        loan_to_value_bps: 7_500,
+        liquidation_threshold_bps,
+        liquidation_bonus_bps,
+        close_factor_bps: 5_000,
+        reserve_factor_bps: 1_000,
+        optimal_utilization_bps: 8_000,
+        min_borrow_rate_bps: 200,
+        optimal_borrow_rate_bps: 2_000,
+        max_borrow_rate_bps: 15_000,
+        max_confidence_bps: DEFAULT_MAX_CONFIDENCE_BPS,
+    })
+}
+
 /// Create the market and both reserves, then open each reserve with the
 /// owner's deposit so the withheld minimum is in place and later deposits mint
 /// shares one-for-one until interest accrues.
@@ -431,32 +483,39 @@ fn close_obligation(test: &mut Test, w: &Pdas) -> Outcome {
 }
 
 fn liquidate(test: &mut Test, w: &Pdas, amount: u64) -> Outcome {
-    liquidate_with_rent_to(test, w, BORROWER, amount)
+    liquidate_as(
+        test,
+        w,
+        LIQUIDATOR,
+        LIQUIDATOR_BORROW,
+        LIQUIDATOR_COLLATERAL_SHARE,
+        amount,
+    )
 }
 
-/// Liquidate, naming `obligation_owner` as the account the collateral
-/// vault's rent returns to if the seizure empties it. Only the obligation's
-/// real owner is accepted.
-fn liquidate_with_rent_to(
+/// `liquidator` repays from `liquidator_liquidity` and receives the seized
+/// shares in `liquidator_collateral`.
+fn liquidate_as(
     test: &mut Test,
     w: &Pdas,
-    obligation_owner: Pubkey,
+    liquidator: Pubkey,
+    liquidator_liquidity: Pubkey,
+    liquidator_collateral: Pubkey,
     amount: u64,
 ) -> Outcome {
     test.send(LiquidateObligationInstruction {
-        liquidator: LIQUIDATOR,
+        liquidator,
         obligation: w.obligation,
-        obligation_owner,
         lending_market: w.market,
         collateral_reserve: w.collateral_reserve,
         collateral_price: w.collateral_price,
         share_mint: w.collateral_share_mint,
-        liquidator_collateral: LIQUIDATOR_COLLATERAL_SHARE,
+        liquidator_collateral,
         borrow_reserve: w.borrow_reserve,
         borrow_price: w.borrow_price,
         liquidity_mint: BORROW_MINT,
         liquidity_vault: w.borrow_vault,
-        liquidator_liquidity: LIQUIDATOR_BORROW,
+        liquidator_liquidity,
         amount,
     })
 }
@@ -648,6 +707,117 @@ fn rejects_zero_confidence_limit(test: &mut Test) {
     assert_eq!(u16::from(reserve.max_confidence_bps), 1);
 }
 
+/// No rate on the curve may exceed the 300% a year ceiling. Each of `min`,
+/// `optimal` and `max` is tried one past it on its own, with the other two
+/// inside the ceiling, and each is refused at creation, the only place this
+/// port sets a config. For `min` and `optimal` the curve is then misordered as
+/// well, and the ceiling check runs first, so each case returns
+/// `BorrowRateAboveCeiling` only through its own field's clause.
+#[quasar_test]
+fn rejects_borrow_rate_above_ceiling_at_initialize(test: &mut Test) {
+    let w = base_world(test);
+    test.send(InitializeLendingMarketInstruction {
+        owner: OWNER,
+        quote_mint: QUOTE_MINT,
+        market_id: MARKET_ID,
+    })
+    .succeeds();
+    set_price(test, &w, COLLATERAL_MINT, dollars(1));
+
+    let above = BORROW_RATE_CEILING_BPS + 1;
+    for (min, optimal, max) in [
+        (above, 2_000, 15_000),
+        (200, above, 15_000),
+        (200, 2_000, above),
+    ] {
+        initialize_reserve_with_curve(test, &w, COLLATERAL_MINT, min, optimal, max)
+            .fails_with(LendingError::BorrowRateAboveCeiling);
+    }
+}
+
+/// A rate exactly at the ceiling is accepted.
+#[quasar_test]
+fn accepts_borrow_rate_at_ceiling(test: &mut Test) {
+    let w = base_world(test);
+    test.send(InitializeLendingMarketInstruction {
+        owner: OWNER,
+        quote_mint: QUOTE_MINT,
+        market_id: MARKET_ID,
+    })
+    .succeeds();
+    set_price(test, &w, COLLATERAL_MINT, dollars(1));
+
+    initialize_reserve_with_curve(
+        test,
+        &w,
+        COLLATERAL_MINT,
+        BORROW_RATE_CEILING_BPS,
+        BORROW_RATE_CEILING_BPS,
+        BORROW_RATE_CEILING_BPS,
+    )
+    .succeeds();
+    let reserve = test.read::<Reserve>(w.collateral_reserve);
+    assert_eq!(
+        u16::from(reserve.min_borrow_rate_bps),
+        BORROW_RATE_CEILING_BPS
+    );
+    assert_eq!(
+        u16::from(reserve.optimal_borrow_rate_bps),
+        BORROW_RATE_CEILING_BPS
+    );
+    assert_eq!(
+        u16::from(reserve.max_borrow_rate_bps),
+        BORROW_RATE_CEILING_BPS
+    );
+}
+
+/// A reserve cannot be created with a threshold so high that a liquidation at
+/// it could not pay the bonus from the collateral, whether the bonus or the
+/// threshold crosses the bound: 8,000 x 12,501 and 9,524 x 10,500 are each
+/// past 10,000 x 10,000.
+#[quasar_test]
+fn rejects_unpayable_liquidation_bonus_at_initialize(test: &mut Test) {
+    let w = base_world(test);
+    test.send(InitializeLendingMarketInstruction {
+        owner: OWNER,
+        quote_mint: QUOTE_MINT,
+        market_id: MARKET_ID,
+    })
+    .succeeds();
+    set_price(test, &w, COLLATERAL_MINT, dollars(1));
+
+    for (threshold, bonus) in [(8_000, 2_501), (9_524, 500)] {
+        initialize_reserve_with_threshold_and_bonus(test, &w, COLLATERAL_MINT, threshold, bonus)
+            .fails_with(LendingError::LiquidationBonusUnpayable);
+    }
+}
+
+/// A threshold and bonus exactly at the bound are accepted: 8,000 x 12,500 is
+/// exactly 100,000,000, and 9,523 is the highest threshold a 5% bonus allows
+/// (9,523 x 10,500 is 99,991,500).
+#[quasar_test]
+fn accepts_liquidation_bonus_at_the_bound(test: &mut Test) {
+    let w = base_world(test);
+    test.send(InitializeLendingMarketInstruction {
+        owner: OWNER,
+        quote_mint: QUOTE_MINT,
+        market_id: MARKET_ID,
+    })
+    .succeeds();
+    set_price(test, &w, COLLATERAL_MINT, dollars(1));
+    set_price(test, &w, BORROW_MINT, dollars(1));
+
+    initialize_reserve_with_threshold_and_bonus(test, &w, COLLATERAL_MINT, 8_000, 2_500).succeeds();
+    let reserve = test.read::<Reserve>(w.collateral_reserve);
+    assert_eq!(u16::from(reserve.liquidation_threshold_bps), 8_000);
+    assert_eq!(u16::from(reserve.liquidation_bonus_bps), 2_500);
+
+    initialize_reserve_with_threshold_and_bonus(test, &w, BORROW_MINT, 9_523, 500).succeeds();
+    let reserve = test.read::<Reserve>(w.borrow_reserve);
+    assert_eq!(u16::from(reserve.liquidation_threshold_bps), 9_523);
+    assert_eq!(u16::from(reserve.liquidation_bonus_bps), 500);
+}
+
 /// Deposits floor the shares minted and redemptions floor the liquidity paid
 /// out, so a supplier who deposits and redeems over and over, at a size that
 /// does not divide the exchange rate evenly, can never end up with more than
@@ -786,6 +956,27 @@ fn close_obligation_with_debt_is_refused(test: &mut Test) {
     assert!(u128::from(test.read::<Obligation>(w.obligation).borrowed_principal) > 0);
 }
 
+/// The market owner sends their one collateral share straight to `vault`
+/// with an SPL `transfer_checked` (instruction 12): a donation the program
+/// never recorded. The vault holds the borrower's 1,000 units, plus this.
+fn donate_owner_share(test: &mut Test, w: &Pdas, vault: Pubkey) {
+    let mut data = vec![12u8];
+    data.extend_from_slice(&1u64.to_le_bytes());
+    data.push(DECIMALS);
+    test.send(Instruction {
+        program_id: quasar_svm::SPL_TOKEN_PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(OWNER_COLLATERAL_SHARE, false),
+            AccountMeta::new_readonly(w.collateral_share_mint, false),
+            AccountMeta::new(vault, false),
+            AccountMeta::new_readonly(OWNER, true),
+        ],
+        data,
+    })
+    .succeeds()
+    .has_tokens(vault, 1_000 * UNIT + 1);
+}
+
 /// The borrower's collateral vault for the collateral reserve.
 fn collateral_vault(test: &Test, w: &Pdas) -> Pubkey {
     test.derive_pda(ObligationVaultPda::seeds(
@@ -873,22 +1064,7 @@ fn donated_shares_cannot_keep_the_vault_open(test: &mut Test) {
     bootstrap_position(test, &w);
     let vault = collateral_vault(test, &w);
 
-    // An SPL `transfer_checked` (instruction 12) of the owner's one share.
-    let mut data = vec![12u8];
-    data.extend_from_slice(&1u64.to_le_bytes());
-    data.push(DECIMALS);
-    test.send(Instruction {
-        program_id: quasar_svm::SPL_TOKEN_PROGRAM_ID,
-        accounts: vec![
-            AccountMeta::new(OWNER_COLLATERAL_SHARE, false),
-            AccountMeta::new_readonly(w.collateral_share_mint, false),
-            AccountMeta::new(vault, false),
-            AccountMeta::new_readonly(OWNER, true),
-        ],
-        data,
-    })
-    .succeeds()
-    .has_tokens(vault, 1_000 * UNIT + 1);
+    donate_owner_share(test, &w, vault);
 
     withdraw(test, &w, 1_000 * UNIT)
         .succeeds()
@@ -896,62 +1072,273 @@ fn donated_shares_cannot_keep_the_vault_open(test: &mut Test) {
         .has_tokens(BORROWER_COLLATERAL_SHARE, 1_000 * UNIT + 1);
 }
 
-/// A seizure that takes every collateral share closes the collateral vault
-/// and returns its rent to the obligation's owner, who paid it, not to the
-/// liquidator who sent the transaction.
-///
-/// At $0.3675 the 1,000 collateral units are worth $367.50, and the close
-/// factor caps the repayment at half the $700 debt, $350, whose value plus
-/// the 5% bonus is exactly $367.50: the whole deposit.
+/// Price at which the capped repayment seizes the whole deposit: at $0.3675
+/// the 1,000 collateral units are worth $367.50, and the close factor caps the
+/// repayment at half the $700 debt, $350, whose value plus the 5% bonus is
+/// exactly $367.50.
+const PRICE_TO_SEIZE_EVERYTHING: i128 = 367_500_000_000_000_000;
+
+/// A seizure that takes every collateral share closes the collateral vault.
+/// Its rent goes into the obligation account, not to any wallet, so
+/// liquidation takes no account the borrower controls; the owner's wallet is
+/// untouched until `close_obligation` hands it back.
 #[quasar_test]
-fn seizing_all_collateral_closes_the_vault_and_returns_its_rent_to_the_owner(test: &mut Test) {
+fn seizing_all_collateral_closes_the_vault_into_the_obligation(test: &mut Test) {
     let w = base_world(test);
     bootstrap_position(test, &w);
     borrow(test, &w, 700 * UNIT).succeeds();
-    set_price(test, &w, COLLATERAL_MINT, 367_500_000_000_000_000);
+    set_price(test, &w, COLLATERAL_MINT, PRICE_TO_SEIZE_EVERYTHING);
     let vault = collateral_vault(test, &w);
     let vault_rent = test.lamports(vault);
+    let obligation_before = test.lamports(w.obligation);
     let owner_before = test.lamports(BORROWER);
 
     liquidate(test, &w, 350 * UNIT)
         .succeeds()
         .is_closed(vault)
         .has_tokens(LIQUIDATOR_COLLATERAL_SHARE, 1_000 * UNIT)
-        .has_lamports(BORROWER, owner_before + vault_rent);
+        .has_lamports(w.obligation, obligation_before + vault_rent);
+    // The owner's wallet is not even part of the liquidation.
+    assert_eq!(test.lamports(BORROWER), owner_before);
     assert_eq!(
         u64::from(test.read::<Obligation>(w.obligation).deposited_shares),
         0
     );
 }
 
-/// The vault's rent belongs to the owner who paid it, so a liquidator cannot
-/// name another account (here the supplier's wallet) as `obligation_owner` to
-/// send it elsewhere.
+/// Share tokens sent straight to the vault are not recorded in the
+/// obligation. A seizure that empties the vault sweeps them to the liquidator
+/// with the seized shares, so the vault can still close. The donor is the
+/// market owner, whose opening deposit minted one share.
 #[quasar_test]
-fn liquidator_cannot_redirect_the_vault_rent(test: &mut Test) {
+fn seizing_all_collateral_sweeps_donated_shares_to_the_liquidator(test: &mut Test) {
     let w = base_world(test);
     bootstrap_position(test, &w);
     borrow(test, &w, 700 * UNIT).succeeds();
-    set_price(test, &w, COLLATERAL_MINT, 367_500_000_000_000_000);
+    let vault = collateral_vault(test, &w);
+    donate_owner_share(test, &w, vault);
 
-    liquidate_with_rent_to(test, &w, SUPPLIER, 350 * UNIT).fails_with(QuasarError::AddressMismatch);
-    test.send(LiquidateObligationInstruction {
-        liquidator: LIQUIDATOR,
-        obligation: w.obligation,
-        obligation_owner: BORROWER,
-        lending_market: w.market,
-        collateral_reserve: w.collateral_reserve,
-        collateral_price: w.collateral_price,
-        share_mint: w.collateral_share_mint,
-        liquidator_collateral: LIQUIDATOR_COLLATERAL_SHARE,
-        borrow_reserve: w.borrow_reserve,
-        borrow_price: w.borrow_price,
-        liquidity_mint: BORROW_MINT,
-        liquidity_vault: w.borrow_vault,
-        liquidator_liquidity: LIQUIDATOR_BORROW,
-        amount: 350 * UNIT,
+    set_price(test, &w, COLLATERAL_MINT, PRICE_TO_SEIZE_EVERYTHING);
+    let vault_rent = test.lamports(vault);
+    let obligation_before = test.lamports(w.obligation);
+    liquidate(test, &w, 350 * UNIT)
+        .succeeds()
+        .is_closed(vault)
+        .has_tokens(LIQUIDATOR_COLLATERAL_SHARE, 1_000 * UNIT + 1)
+        .has_lamports(w.obligation, obligation_before + vault_rent);
+}
+
+/// A seizure that leaves shares behind leaves the vault open, holding exactly
+/// the shares the obligation still records.
+#[quasar_test]
+fn partial_liquidation_keeps_the_vault_open(test: &mut Test) {
+    let w = base_world(test);
+    bootstrap_position(test, &w);
+    borrow(test, &w, 700 * UNIT).succeeds();
+    set_price(test, &w, COLLATERAL_MINT, cents(50));
+    let vault = collateral_vault(test, &w);
+
+    liquidate(test, &w, 100 * UNIT).succeeds();
+    let seized = test.tokens(LIQUIDATOR_COLLATERAL_SHARE);
+    assert!(seized > 0);
+    let remaining = u64::from(test.read::<Obligation>(w.obligation).deposited_shares);
+    assert_eq!(remaining, 1_000 * UNIT - seized);
+    assert_eq!(test.tokens(vault), remaining);
+}
+
+/// The vault rent a liquidation left in the obligation returns to the owner
+/// when they close it: once the remaining debt is repaid, `close_obligation`
+/// pays out the obligation's own rent and the vault's together. quasar-test
+/// charges no transaction fee, so the owner's balance rises by exactly both.
+#[quasar_test]
+fn close_obligation_after_full_liquidation_returns_both_rents_to_the_owner(test: &mut Test) {
+    let w = base_world(test);
+    bootstrap_position(test, &w);
+    borrow(test, &w, 700 * UNIT).succeeds();
+    set_price(test, &w, COLLATERAL_MINT, PRICE_TO_SEIZE_EVERYTHING);
+    let vault_rent = test.lamports(collateral_vault(test, &w));
+    let obligation_rent = test.lamports(w.obligation);
+    liquidate(test, &w, 350 * UNIT).succeeds();
+
+    // The seizure repaid $350 of the $700; the borrower repays the rest.
+    repay(test, &w, 1_000 * UNIT).succeeds();
+    assert_eq!(
+        u128::from(test.read::<Obligation>(w.obligation).borrowed_principal),
+        0
+    );
+    assert_eq!(test.lamports(w.obligation), obligation_rent + vault_rent);
+
+    let owner_before = test.lamports(BORROWER);
+    close_obligation(test, &w)
+        .succeeds()
+        .is_closed(w.obligation)
+        .has_lamports(BORROWER, owner_before + obligation_rent + vault_rent);
+}
+
+/// An owner may liquidate their own unhealthy position: they repay their own
+/// debt and take their own collateral at the bonus. Pointless economically,
+/// but not refused.
+#[quasar_test]
+fn owner_can_liquidate_their_own_obligation(test: &mut Test) {
+    let w = base_world(test);
+    bootstrap_position(test, &w);
+    borrow(test, &w, 700 * UNIT).succeeds();
+    set_price(test, &w, COLLATERAL_MINT, cents(50));
+    assert_eq!(test.tokens(BORROWER_COLLATERAL_SHARE), 0);
+
+    liquidate_as(
+        test,
+        &w,
+        BORROWER,
+        BORROWER_BORROW,
+        BORROWER_COLLATERAL_SHARE,
+        100 * UNIT,
+    )
+    .succeeds()
+    .has_tokens(BORROWER_BORROW, 600 * UNIT);
+    let seized = test.tokens(BORROWER_COLLATERAL_SHARE);
+    assert!(seized > 0);
+    assert_eq!(
+        u64::from(test.read::<Obligation>(w.obligation).deposited_shares),
+        1_000 * UNIT - seized
+    );
+}
+
+/// An owner may also liquidate their own position down to nothing: the
+/// seizure empties the vault, which closes into the obligation account, while
+/// the owner signs as the liquidator. The owner gets every share back and the
+/// vault's rent waits in the obligation.
+#[quasar_test]
+fn owner_can_liquidate_their_own_obligation_to_empty(test: &mut Test) {
+    let w = base_world(test);
+    bootstrap_position(test, &w);
+    borrow(test, &w, 700 * UNIT).succeeds();
+    set_price(test, &w, COLLATERAL_MINT, PRICE_TO_SEIZE_EVERYTHING);
+    let vault = collateral_vault(test, &w);
+    let vault_rent = test.lamports(vault);
+    let obligation_before = test.lamports(w.obligation);
+    assert_eq!(test.tokens(BORROWER_COLLATERAL_SHARE), 0);
+
+    liquidate_as(
+        test,
+        &w,
+        BORROWER,
+        BORROWER_BORROW,
+        BORROWER_COLLATERAL_SHARE,
+        350 * UNIT,
+    )
+    .succeeds()
+    .is_closed(vault)
+    .has_tokens(BORROWER_BORROW, 350 * UNIT)
+    .has_tokens(BORROWER_COLLATERAL_SHARE, 1_000 * UNIT)
+    .has_lamports(w.obligation, obligation_before + vault_rent);
+    assert_eq!(
+        u64::from(test.read::<Obligation>(w.obligation).deposited_shares),
+        0
+    );
+}
+
+/// A liquidation that takes all the collateral and half the debt leaves the
+/// obligation holding debt and nothing else, and `close_obligation` refuses it
+/// until that debt is repaid.
+#[quasar_test]
+fn close_obligation_refused_while_debt_remains_after_full_liquidation(test: &mut Test) {
+    let w = base_world(test);
+    bootstrap_position(test, &w);
+    borrow(test, &w, 700 * UNIT).succeeds();
+    set_price(test, &w, COLLATERAL_MINT, PRICE_TO_SEIZE_EVERYTHING);
+    liquidate(test, &w, 350 * UNIT).succeeds();
+    let obligation = test.read::<Obligation>(w.obligation);
+    assert_eq!(u64::from(obligation.deposited_shares), 0);
+    assert!(u128::from(obligation.borrowed_principal) > 0);
+
+    close_obligation(test, &w).fails_with(LendingError::ObligationNotEmpty);
+    assert!(test.lamports(w.obligation) > 0);
+}
+
+/// After a liquidation closes the vault, the owner can post collateral again:
+/// the deposit recreates the vault, paid for by the owner, and the old vault's
+/// rent stays in the obligation. The owner has no shares left, so the
+/// liquidator hands 600 back with an SPL `transfer_checked` (instruction 12).
+#[quasar_test]
+fn redeposit_after_full_liquidation_recreates_the_vault(test: &mut Test) {
+    let w = base_world(test);
+    bootstrap_position(test, &w);
+    borrow(test, &w, 700 * UNIT).succeeds();
+    set_price(test, &w, COLLATERAL_MINT, PRICE_TO_SEIZE_EVERYTHING);
+    let vault = collateral_vault(test, &w);
+    let vault_rent = test.lamports(vault);
+    let obligation_rent = test.lamports(w.obligation);
+    liquidate(test, &w, 350 * UNIT).succeeds().is_closed(vault);
+
+    let mut data = vec![12u8];
+    data.extend_from_slice(&(600 * UNIT).to_le_bytes());
+    data.push(DECIMALS);
+    test.send(Instruction {
+        program_id: quasar_svm::SPL_TOKEN_PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(LIQUIDATOR_COLLATERAL_SHARE, false),
+            AccountMeta::new_readonly(w.collateral_share_mint, false),
+            AccountMeta::new(BORROWER_COLLATERAL_SHARE, false),
+            AccountMeta::new_readonly(LIQUIDATOR, true),
+        ],
+        data,
     })
-    .succeeds();
+    .succeeds()
+    .has_tokens(BORROWER_COLLATERAL_SHARE, 600 * UNIT);
+
+    test.send(DepositObligationCollateralInstruction {
+        owner: BORROWER,
+        lending_market: w.market,
+        reserve: w.collateral_reserve,
+        share_mint: w.collateral_share_mint,
+        owner_share: BORROWER_COLLATERAL_SHARE,
+        shares: 600 * UNIT,
+    })
+    .succeeds()
+    .has_tokens(vault, 600 * UNIT)
+    .has_tokens(BORROWER_COLLATERAL_SHARE, 0)
+    .has_lamports(vault, vault_rent)
+    .has_lamports(w.obligation, obligation_rent + vault_rent);
+    assert_eq!(
+        u64::from(test.read::<Obligation>(w.obligation).deposited_shares),
+        600 * UNIT
+    );
+}
+
+/// With no debt the withdraw handler ignores the borrow reserve and borrow
+/// price accounts, so a debt-free borrower can pass any: here a reserve the
+/// obligation never borrowed from and a feed that is not that reserve's. With
+/// debt, the same accounts are refused.
+#[quasar_test]
+fn debt_free_withdraw_ignores_the_borrow_accounts(test: &mut Test) {
+    let w = base_world(test);
+    bootstrap_position(test, &w);
+    // An unrelated reserve, for the quote mint.
+    set_price(test, &w, QUOTE_MINT, dollars(1));
+    initialize_reserve(test, &w, QUOTE_MINT);
+    let quote_reserve = test.derive_pda(Reserve::seeds(&w.market, &QUOTE_MINT));
+
+    let withdraw_with_unrelated_borrow_accounts = |test: &mut Test, shares: u64| {
+        test.send(WithdrawObligationCollateralInstruction {
+            owner: BORROWER,
+            lending_market: w.market,
+            collateral_reserve: w.collateral_reserve,
+            collateral_price: w.collateral_price,
+            share_mint: w.collateral_share_mint,
+            borrow_reserve: quote_reserve,
+            borrow_price: w.borrow_price,
+            owner_share: BORROWER_COLLATERAL_SHARE,
+            shares,
+        })
+    };
+
+    withdraw_with_unrelated_borrow_accounts(test, 400 * UNIT)
+        .succeeds()
+        .has_tokens(BORROWER_COLLATERAL_SHARE, 400 * UNIT);
+
+    borrow(test, &w, 100 * UNIT).succeeds();
+    withdraw_with_unrelated_borrow_accounts(test, UNIT).fails_with(LendingError::WrongReserve);
 }
 
 /// The scenarios below move the slot and the Clock's timestamp independently:

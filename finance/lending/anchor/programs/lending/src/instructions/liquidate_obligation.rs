@@ -24,10 +24,14 @@ use crate::state::{Obligation, PriceFeed, Reserve};
 /// liquidator pay full price for less collateral.
 ///
 /// A seizure that takes the last share of the collateral reserve removes the
-/// deposit entry and closes that reserve's collateral vault, rent to the
-/// obligation's owner (`obligation_owner`), who paid it. The whole vault
+/// deposit entry and closes that reserve's collateral vault. The whole vault
 /// balance goes to the liquidator first, so share tokens someone sent straight
-/// to the vault cannot keep it open.
+/// to the vault cannot keep it open. The vault's rent goes into the obligation
+/// account itself, not to the owner's wallet: liquidation then takes no
+/// account the borrower controls, so nothing the borrower does to their wallet
+/// can make it fail, and the owner can still liquidate their own position. The
+/// rent returns to the owner, who paid it, when `close_obligation` closes the
+/// obligation with every lamport it holds.
 ///
 /// Self-liquidation (the owner liquidating their own position) is not blocked:
 /// it is only possible while unhealthy and is economically pointless, matching
@@ -214,6 +218,11 @@ pub fn handle_liquidate_obligation(
         context.accounts.collateral_share_mint.decimals(),
     )?;
     if empties_vault {
+        // The obligation is both the vault's authority and the rent's
+        // destination, so the two handles come from separate copies of its
+        // view rather than two borrows of the same field.
+        let mut destination_view = *context.accounts.obligation.account();
+        let authority_view = *context.accounts.obligation.account();
         close_account(CpiContext::new_with_signer(
             context.accounts.token_program.address(),
             CloseAccount {
@@ -221,8 +230,8 @@ pub fn handle_liquidate_obligation(
                     .accounts
                     .obligation_collateral_vault
                     .to_cpi_handle_mut(),
-                destination: context.accounts.obligation_owner.cpi_handle_mut(),
-                authority: context.accounts.obligation.cpi_handle(),
+                destination: CpiHandleMut::writable(&mut destination_view),
+                authority: CpiHandle::readonly(&authority_view),
             },
             &[&seeds],
         ))?;
@@ -232,7 +241,7 @@ pub fn handle_liquidate_obligation(
     Ok(())
 }
 
-// Liquidation touches 14 accounts; every Account/InterfaceAccount is boxed so
+// Liquidation touches 13 accounts; every Account/InterfaceAccount is boxed so
 // account deserialization happens on the heap and stays within the BPF stack frame.
 #[derive(Accounts)]
 pub struct LiquidateObligation {
@@ -240,11 +249,6 @@ pub struct LiquidateObligation {
     pub obligation: Box<BorshAccount<Obligation>>,
 
     pub liquidator: Signer,
-
-    /// The obligation's owner, who paid the collateral vault's rent; receives
-    /// it back if this seizure empties the vault.
-    #[account(mut, address = obligation.owner)]
-    pub obligation_owner: SystemAccount,
 
     #[account(
         mut,

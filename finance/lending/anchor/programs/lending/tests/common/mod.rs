@@ -197,6 +197,20 @@ impl Env {
         price_mantissa: i128,
         config: ReserveConfig,
     ) -> ReserveHandle {
+        self.try_add_reserve_to(market_owner, market, decimals, price_mantissa, config)
+            .unwrap()
+    }
+
+    /// Initialize a reserve with `config` and return the transaction result, so
+    /// a test can assert on the error `initialize_reserve` refuses it with.
+    pub fn try_add_reserve_to(
+        &mut self,
+        market_owner: &Keypair,
+        market: Address,
+        decimals: u8,
+        price_mantissa: i128,
+        config: ReserveConfig,
+    ) -> Result<ReserveHandle, String> {
         let env_owner = self.owner.insecure_clone();
         let mint = create_token_mint(&mut self.svm, &env_owner, decimals, None).unwrap();
         self.set_price_for(
@@ -233,17 +247,16 @@ impl Env {
             vec![instruction],
             &[market_owner],
             &market_owner.pubkey(),
-        )
-        .unwrap();
+        )?;
 
-        ReserveHandle {
+        Ok(ReserveHandle {
             mint,
             decimals,
             reserve,
             share_mint,
             liquidity_vault,
             price_feed,
-        }
+        })
     }
 
     pub fn current_timestamp(&self) -> i64 {
@@ -826,33 +839,6 @@ impl Env {
         collateral: &ReserveHandle,
         amount: u64,
     ) -> Result<(), String> {
-        self.try_liquidate_with_rent_to(
-            liquidator,
-            obligation,
-            deposit_reserves,
-            borrow_reserves,
-            repay,
-            collateral,
-            amount,
-            None,
-        )
-    }
-
-    /// Liquidate, naming `obligation_owner` as the account the collateral
-    /// vault's rent returns to if the seizure empties it (`None` passes the
-    /// obligation's real owner, the only account the program accepts).
-    #[allow(clippy::too_many_arguments)]
-    pub fn try_liquidate_with_rent_to(
-        &mut self,
-        liquidator: &Keypair,
-        obligation: Address,
-        deposit_reserves: &[&ReserveHandle],
-        borrow_reserves: &[&ReserveHandle],
-        repay: &ReserveHandle,
-        collateral: &ReserveHandle,
-        amount: u64,
-        obligation_owner: Option<Address>,
-    ) -> Result<(), String> {
         let repay_source = ata(&liquidator.pubkey(), &repay.mint);
         // Create the destination ATA only on the first call, so a test can
         // attempt several liquidations.
@@ -867,8 +853,6 @@ impl Env {
             .unwrap();
         }
         let vault = self.obligation_share_vault(collateral, obligation);
-        let obligation_owner =
-            obligation_owner.unwrap_or_else(|| self.obligation(obligation).owner);
 
         let mut all: Vec<&ReserveHandle> = deposit_reserves.to_vec();
         all.extend_from_slice(borrow_reserves);
@@ -883,7 +867,6 @@ impl Env {
             accounts: lending::accounts::LiquidateObligation {
                 obligation,
                 liquidator: liquidator.pubkey(),
-                obligation_owner,
                 repay_reserve: repay.reserve,
                 collateral_reserve: collateral.reserve,
                 repay_price_feed: repay.price_feed,

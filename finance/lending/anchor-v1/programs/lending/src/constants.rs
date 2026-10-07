@@ -21,6 +21,14 @@ pub const FIXED_POINT_SCALE_DECIMALS: i32 = 18;
 /// Denominator for every basis-point config value. 100% == 10_000 bps.
 pub const BPS_DENOMINATOR: u128 = 10_000;
 
+/// Highest annual borrow rate, in basis points, any point on a reserve's rate
+/// curve may be set to: 30,000 bps, or 300% a year. `ReserveConfig::validate`
+/// refuses a `min_borrow_rate_bps`, `optimal_borrow_rate_bps` or
+/// `max_borrow_rate_bps` above it (`BorrowRateAboveCeiling`) at creation and on
+/// every update, so the market owner cannot reprice open loans to the 655% a
+/// year a bare u16 would allow.
+pub const BORROW_RATE_CEILING_BPS: u16 = 30_000;
+
 /// Maximum distinct reserves an obligation may use as collateral, and
 /// separately as borrows. Bounds the account size and the compute cost of
 /// refresh_obligation (which iterates every entry).

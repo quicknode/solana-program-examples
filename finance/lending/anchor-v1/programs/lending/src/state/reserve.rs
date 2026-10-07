@@ -1,7 +1,8 @@
 use anchor_lang::prelude::*;
 
 use crate::constants::{
-    BPS_DENOMINATOR, FIXED_POINT_SCALE, MINIMUM_SHARES, RESERVE_SEED, SECONDS_PER_YEAR,
+    BORROW_RATE_CEILING_BPS, BPS_DENOMINATOR, FIXED_POINT_SCALE, MINIMUM_SHARES, RESERVE_SEED,
+    SECONDS_PER_YEAR,
 };
 use crate::errors::LendingError;
 use crate::math::{mul_div_ceil, mul_div_floor};
@@ -146,6 +147,25 @@ impl ReserveConfig {
         require!(
             self.loan_to_value_bps <= self.liquidation_threshold_bps,
             LendingError::InvalidConfig
+        );
+        // A liquidation at the threshold must be able to pay its bonus out of
+        // the collateral: the debt is at most `threshold` of the collateral's
+        // value, and the liquidator takes that debt plus the bonus, so
+        // `threshold * (1 + bonus)` may not exceed 100%. Both fields are at
+        // most 10,000 here, so the product fits a u128 with room to spare.
+        require!(
+            (self.liquidation_threshold_bps as u128)
+                * (BPS_DENOMINATOR + self.liquidation_bonus_bps as u128)
+                <= BPS_DENOMINATOR * BPS_DENOMINATOR,
+            LendingError::LiquidationBonusUnpayable
+        );
+        // No point on the rate curve may exceed the ceiling, so an owner
+        // cannot reprice open loans to an arbitrary rate.
+        require!(
+            self.min_borrow_rate_bps <= BORROW_RATE_CEILING_BPS
+                && self.optimal_borrow_rate_bps <= BORROW_RATE_CEILING_BPS
+                && self.max_borrow_rate_bps <= BORROW_RATE_CEILING_BPS,
+            LendingError::BorrowRateAboveCeiling
         );
         require!(
             self.min_borrow_rate_bps <= self.optimal_borrow_rate_bps

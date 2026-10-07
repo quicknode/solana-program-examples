@@ -13,7 +13,9 @@ use crate::state::Obligation;
 /// `ObligationNotEmpty`. Only the owner may close it (`has_one = owner`), since
 /// the rent is theirs and a stranger could otherwise close a position its
 /// owner means to use again. The account itself closes through Anchor's
-/// `close = owner` constraint once the handler returns.
+/// `close = owner` constraint once the handler returns, which hands the owner
+/// every lamport it holds: its own rent, plus the rent of any collateral vault
+/// a liquidation emptied and closed into it.
 pub fn handle_close_obligation(context: Context<CloseObligation>) -> Result<()> {
     let obligation = &context.accounts.obligation;
     require!(
