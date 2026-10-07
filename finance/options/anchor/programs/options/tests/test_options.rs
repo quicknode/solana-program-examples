@@ -999,7 +999,10 @@ fn test_put_writer_without_an_underlying_account_writes_and_cancels() {
 
     let option = venue.write_put(&carol);
     assert_eq!(venue.balance(&carol.underlying), 0);
-    assert_eq!(venue.balance(&carol.quote), STANDARD_USDC - PUT_STRIKE_AMOUNT);
+    assert_eq!(
+        venue.balance(&carol.quote),
+        STANDARD_USDC - PUT_STRIKE_AMOUNT
+    );
     let option_rent = venue.lamports(&option);
     let carol_lamports_before_cancel = venue.lamports(&carol.pubkey());
 
