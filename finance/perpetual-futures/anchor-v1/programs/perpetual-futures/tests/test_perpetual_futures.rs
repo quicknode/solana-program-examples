@@ -2086,14 +2086,15 @@ fn test_fees_and_maintenance_requirement_round_up() {
     assert_eq!(pool.program_fees, 2 * 2_500_001);
 
     // The same position again, taken to an equity of exactly the rounded-up
-    // maintenance requirement: $85.10000004 loses it 744,999,998 base units.
+    // maintenance requirement: $85.10000005 loses it 744,999,997.65 base
+    // units, a loss of 744,999,998 once floored against the trader.
     // The open is byte-identical to the first, so it would carry the same
     // signature and be dropped as already processed without a new blockhash.
     market.svm.expire_blockhash();
     market
         .open_position(&trader, trader_collateral, Side::Long, collateral, size, 0)
         .unwrap();
-    market.set_price(8_510_000_004);
+    market.set_price(8_510_000_005);
     let (liquidator, liquidator_collateral) = market.liquidator();
     market
         .liquidate(&liquidator, &trader.pubkey(), trader_collateral, Side::Long)
@@ -2152,8 +2153,7 @@ fn test_position_pnl_rounds_against_the_trader() {
 /// `FUNDING_PRECISION` units of 10^9) on a position of 1,000 base units is
 /// 1.5 base units. A trader who pays is charged 2, where truncation would
 /// charge 1; a trader who is paid receives 1, the same as truncation. A short
-/// is rounded the same way as a long: truncating before applying its sign
-/// would have charged a paying short 1.
+/// is rounded the same way as a long.
 #[test]
 fn test_position_funding_rounds_against_the_trader() {
     // The index rises: longs pay, shorts are paid.

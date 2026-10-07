@@ -5,14 +5,17 @@
 Profit/loss and funding round against the trader. `position_pnl` and
 `position_funding` in `instructions/shared.rs` divided with truncation toward
 zero, so a fractional loss was booked a base unit small, and funding a trader
-owed was charged a base unit short. A short's funding was also truncated
-before its sign was applied, so a short that owed funding was rounded in its
-own favour. `position_pnl` now floors toward negative infinity, and
-`position_funding` applies the side's sign first and then rounds toward
-positive infinity, so funding the trader pays rounds up and funding the trader
-receives rounds down. The walkthrough's figures are exact and unchanged.
+owed was charged a base unit short. `position_pnl` now floors toward
+negative infinity, and `position_funding` applies the side's sign first and
+then rounds toward positive infinity, so funding the trader pays rounds up
+and funding the trader receives rounds down. The walkthrough's figures are exact and unchanged.
 Tested by `test_position_pnl_rounds_against_the_trader` and
 `test_position_funding_rounds_against_the_trader`.
+`test_fees_and_maintenance_requirement_round_up` now liquidates at
+$85.10000005 instead of $85.10000004: the old price's loss of 744,999,998.15
+base units floors to 744,999,999, and the new one's 744,999,997.65 floors to
+744,999,998, so the position is still liquidated at an equity of exactly
+250,000,001.
 
 Every fee rounds up. `basis_points_of` in `instructions/shared.rs` rounds its
 result up to the next base unit, so the open, close and liquidation fees and

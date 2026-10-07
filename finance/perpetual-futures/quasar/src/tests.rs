@@ -1314,9 +1314,10 @@ fn fees_and_maintenance_requirement_round_up(test: &mut Test) {
     assert_eq!(u64::from(pool.program_fees), 2 * 2_500_001);
 
     // The same position again, taken to an equity of exactly the rounded-up
-    // maintenance requirement: $85.10000004 loses it 744,999,998 base units.
+    // maintenance requirement: $85.10000005 loses it 744,999,997.65 base
+    // units, a loss of 744,999,998 once floored against the trader.
     open_position(test, &env, SIDE_LONG, collateral, size).succeeds();
-    set_feed(test, 8_510_000_004, 0);
+    set_feed(test, 8_510_000_005, 0);
     liquidate(test, &env)
         .succeeds()
         .has_tokens(LIQUIDATOR_COLLATERAL, 50_000_001)
@@ -1370,8 +1371,7 @@ fn position_pnl_rounds_against_the_trader() {
 /// `FUNDING_PRECISION` units of 10^9) on a position of 1,000 base units is
 /// 1.5 base units. A trader who pays is charged 2, where truncation would
 /// charge 1; a trader who is paid receives 1, the same as truncation. A short
-/// is rounded the same way as a long: truncating before applying its sign
-/// would have charged a paying short 1.
+/// is rounded the same way as a long.
 #[test]
 fn position_funding_rounds_against_the_trader() {
     // The index rises: longs pay, shorts are paid.

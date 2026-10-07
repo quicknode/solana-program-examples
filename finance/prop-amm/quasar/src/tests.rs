@@ -694,7 +694,10 @@ fn swap_against_a_closed_market_fails(test: &mut Test) {
         0,
         FIVE_NVDAX_AT_THE_ASK,
     );
-    let outcome = swap(
+    // The closed market's address is an empty system account, so the
+    // runtime's owner check refuses it as `IllegalOwner` before the handler
+    // runs.
+    swap(
         test,
         &env,
         TRADER,
@@ -703,9 +706,8 @@ fn swap_against_a_closed_market_fails(test: &mut Test) {
         DIRECTION_BUY_BASE,
         FIVE_NVDAX_AT_THE_ASK,
         0,
-    );
-    println!("CLOSED SWAP ERROR: {:?}", outcome.error());
-    assert!(outcome.is_err());
+    )
+    .fails(ProgramError::Runtime("IllegalOwner".into()));
     assert_eq!(test.tokens(TRADER_BASE), 0);
     assert_eq!(test.tokens(TRADER_QUOTE), FIVE_NVDAX_AT_THE_ASK);
 }

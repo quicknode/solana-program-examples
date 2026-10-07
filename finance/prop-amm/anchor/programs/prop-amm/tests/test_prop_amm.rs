@@ -1,8 +1,8 @@
 use {
     anchor_lang::{
         solana_program::instruction::{AccountMeta, Instruction},
-        system_program, AccountDeserialize, Address,
-        Error as AnchorError, ErrorCode as AnchorErrorCode, InstructionData, ToAccountMetas,
+        system_program, AccountDeserialize, Address, Error as AnchorError,
+        ErrorCode as AnchorErrorCode, InstructionData, ToAccountMetas,
     },
     anchor_v2_testing::{Keypair, LiteSVM, Signer},
     prop_amm::{
@@ -857,9 +857,14 @@ fn test_swap_against_a_closed_market_fails() {
     market.close_market().unwrap();
 
     let (alice, alice_base, alice_quote) = market.funded_trader(0, FIVE_NVDAX_AT_THE_ASK);
-    assert_fails_with_anchor_error(
-        market.swap(&alice, Direction::BuyBase, FIVE_NVDAX_AT_THE_ASK, 0),
-        AnchorErrorCode::AccountNotInitialized,
+    // Anchor 2 reports the missing market as the runtime's
+    // `UninitializedAccount`, not a custom code.
+    let Err(error) = market.swap(&alice, Direction::BuyBase, FIVE_NVDAX_AT_THE_ASK, 0) else {
+        panic!("a swap against a closed market must fail");
+    };
+    assert!(
+        error.contains("InstructionError(0, UninitializedAccount)"),
+        "expected UninitializedAccount, got: {error}"
     );
     assert_eq!(market.balance(&alice_base), 0);
     assert_eq!(market.balance(&alice_quote), FIVE_NVDAX_AT_THE_ASK);
