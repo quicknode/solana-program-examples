@@ -131,10 +131,11 @@ fn half_borrowed_reserve(env: &mut Env) -> (common::ReserveHandle, common::Reser
 }
 
 /// The factor after one refresh `seconds` after the last: one multiply by
-/// `1 + rate_per_second * seconds`, floored, exactly as the program does it.
+/// `1 + rate_per_second * seconds`, rounded up, exactly as the program does it.
 fn factor_after(reserve: &Reserve, seconds: u128) -> u128 {
     let rate = reserve.current_borrow_rate_per_second().unwrap();
-    reserve.borrow_accumulation_factor * (FIXED_POINT_SCALE + rate * seconds) / FIXED_POINT_SCALE
+    (reserve.borrow_accumulation_factor * (FIXED_POINT_SCALE + rate * seconds))
+        .div_ceil(FIXED_POINT_SCALE)
 }
 
 /// The rate fields are annual, and a year is a length of wall-clock time, so

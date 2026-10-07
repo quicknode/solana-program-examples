@@ -46,15 +46,23 @@ pub struct WriteOptionAccountConstraints {
     pub underlying_vault: Account<Token>,
     #[account(mut)]
     pub quote_vault: Account<Token>,
-    /// A call writer pays collateral from this account; a put writer's copy
-    /// is only validated. Unlike the Anchor sibling, it must already exist.
-    #[account(mut)]
+    /// A call writer pays collateral from this account. A put writer may
+    /// never have held the underlying, so the account is created if needed,
+    /// at the writer's expense; it is where `collect_proceeds` pays a put
+    /// writer, and `cancel_option` and `reclaim_collateral` take it too.
+    #[account(
+        mut,
+        init(idempotent),
+        payer = writer,
+        associated_token(mint = underlying_mint, authority = writer, token_program = token_program),
+    )]
     pub writer_underlying: Account<Token>,
     /// A put writer pays collateral from this account, and every writer is
     /// paid their premium into it by `buy_option`. Must already exist.
     #[account(mut)]
     pub writer_quote: Account<Token>,
     pub token_program: Program<TokenProgram>,
+    pub associated_token_program: Program<AssociatedTokenProgram>,
     pub system_program: Program<SystemProgram>,
     pub rent: Sysvar<Rent>,
 }

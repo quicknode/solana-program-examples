@@ -50,9 +50,14 @@ pub mod options {
     }
 
     /// Buy a listed option: pay the premium (the venue's fee comes out of it,
-    /// the rest goes to the writer) and become the holder.
-    pub fn buy_option(context: &mut Context<BuyOptionAccountConstraints>) -> Result<()> {
-        instructions::handle_buy_option(context)
+    /// the rest goes to the writer) and become the holder. `terms` are the
+    /// terms the buyer saw when they built the transaction; the purchase is
+    /// refused unless the option still has exactly those terms.
+    pub fn buy_option(
+        context: &mut Context<BuyOptionAccountConstraints>,
+        terms: OptionTerms,
+    ) -> Result<()> {
+        instructions::handle_buy_option(context, terms)
     }
 
     /// Writer withdraws an unsold option: collateral back, account closed.

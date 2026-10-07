@@ -111,19 +111,22 @@ fn proof_rounding_is_program_favourable() {
 // 2. Compounding accumulation factor  (reserve::accrue_interest)
 // ===========================================================================
 
-/// Factor update `new = floor(old * growth / scale)` where the growth per
-/// accrual is `scale + accrued` (so always `>= scale`). Generic in `scale`
-/// because the property is scale-invariant (the real code uses
-/// `FIXED_POINT_SCALE = 10^18`).
+/// Factor update `new = ceil(old * growth / scale)` where the growth per
+/// accrual is `scale + accrued` (so always `>= scale`). It rounds up because
+/// every debt is principal times this factor, and a floored factor would
+/// understate it. Generic in `scale` because the property is scale-invariant
+/// (the real code uses `FIXED_POINT_SCALE = 10^18`).
 pub fn grow_factor(old_factor: u128, accrued: u128, scale: u128) -> Option<u128> {
     let growth = scale.checked_add(accrued)?;
-    mul_div_floor(old_factor, growth, scale)
+    mul_div_ceil(old_factor, growth, scale)
 }
 
 /// The borrow accumulation factor is monotonically non-decreasing: each
 /// accrual multiplies by a factor `>= 1`, so `new_factor >= old_factor`. A debt
 /// scaled by this value can therefore never shrink from interest accrual, the
-/// core guarantee that borrowers always owe at least their principal.
+/// core guarantee that borrowers always owe at least their principal. The
+/// update also never understates the exact product: it is the least integer
+/// covering `old * growth / scale`, so rounding goes against the borrower.
 #[cfg(kani)]
 #[kani::proof]
 #[kani::solver(cadical)]
@@ -138,7 +141,12 @@ fn proof_accumulation_factor_monotonic() {
     kani::assume(accrued <= 255);
 
     let new_factor = grow_factor(old_factor, accrued, scale).unwrap();
-    assert!(new_factor >= old_factor); // the factor never decreases
+    // The factor never decreases.
+    assert!(new_factor >= old_factor);
+    // Rounded up: never below the exact product, and less than one unit above.
+    let product = old_factor * (scale + accrued);
+    assert!(new_factor * scale >= product);
+    assert!(new_factor == 0 || (new_factor - 1) * scale < product);
 }
 
 /// The program's cut of one accrual's interest: `ceil(interest * reserve_factor
@@ -176,17 +184,19 @@ fn proof_program_fee_rounds_up_within_interest() {
 // 3. Utilization and the kinked borrow-rate curve  (reserve.rs)
 // ===========================================================================
 
-/// `utilization_bps = floor(borrowed * 10_000 / gross)` (0 if the pool is empty).
+/// `utilization_bps = ceil(borrowed * 10_000 / gross)` (0 if the pool is
+/// empty). Rounded up because it only feeds the borrow rate, and a floored
+/// utilization would charge the borrower less.
 pub fn utilization_bps(borrowed: u128, gross: u128) -> u128 {
     if gross == 0 {
         return 0;
     }
-    mul_div_floor(borrowed, BPS_DENOMINATOR, gross).unwrap()
+    mul_div_ceil(borrowed, BPS_DENOMINATOR, gross).unwrap()
 }
 
 /// Utilization is always a valid fraction in `[0, 10_000]` bps, because the
 /// borrowed amount can never exceed gross liquidity (`gross = available +
-/// borrowed`). Keeps the rate curve's domain well-defined.
+/// borrowed`), even rounded up. Keeps the rate curve's domain well-defined.
 #[cfg(kani)]
 #[kani::proof]
 #[kani::solver(cadical)]
@@ -201,7 +211,9 @@ fn proof_utilization_in_range() {
 }
 
 /// The kinked borrow-rate APR (bps) from `current_borrow_rate_per_second`, given a
-/// utilization and the curve parameters. Mirrors the two-segment formula.
+/// utilization and the curve parameters. Mirrors the two-segment formula,
+/// including its rounding: each segment's climb rounds up, against the
+/// borrower.
 ///
 /// `full_utilization` is the 100%-utilization denominator — `BPS_DENOMINATOR`
 /// (10_000) on-chain. It is a parameter here only so the scale-invariant
@@ -218,13 +230,13 @@ pub fn borrow_rate_bps(
 ) -> Option<u128> {
     if utilization <= optimal_utilization {
         let rate_range = optimal_rate.checked_sub(min_rate)?;
-        let climbed = mul_div_floor(rate_range, utilization, optimal_utilization)?;
+        let climbed = mul_div_ceil(rate_range, utilization, optimal_utilization)?;
         min_rate.checked_add(climbed)
     } else {
         let rate_range = max_rate.checked_sub(optimal_rate)?;
         let utilization_above = utilization.checked_sub(optimal_utilization)?;
         let utilization_range = full_utilization.checked_sub(optimal_utilization)?;
-        let climbed = mul_div_floor(rate_range, utilization_above, utilization_range)?;
+        let climbed = mul_div_ceil(rate_range, utilization_above, utilization_range)?;
         optimal_rate.checked_add(climbed)
     }
 }
@@ -234,6 +246,7 @@ pub fn borrow_rate_bps(
 /// enforces (`min <= optimal <= max`, `0 < optimal_utilization < 10_000`). So
 /// the interest rate can never escape its configured bounds regardless of pool
 /// state — no utilization makes a borrower pay below `min` or above `max`.
+/// Rounding the climb up keeps this: the climb is at most the segment's range.
 #[cfg(kani)]
 #[kani::proof]
 #[kani::solver(cadical)]
@@ -372,6 +385,20 @@ mod tests {
         assert_eq!(grow_factor(150, 10, 100).unwrap(), 165);
         // zero accrual leaves the index unchanged.
         assert_eq!(grow_factor(150, 0, 100).unwrap(), 150);
+        // a remainder rounds up: 3 * 3 / 2 = 4.5 -> 5, against the borrower.
+        assert_eq!(grow_factor(3, 1, 2).unwrap(), 5);
+    }
+
+    #[test]
+    fn utilization_and_rate_round_up() {
+        // 1 of 3 borrowed is 3,333.3 bps, which rounds up to 3,334.
+        assert_eq!(utilization_bps(1, 3), 3_334);
+        // min 200, optimal 2000, kink at 8000: 1800 * 3334 / 8000 = 750.15,
+        // which rounds up to 751.
+        assert_eq!(
+            borrow_rate_bps(3_334, 200, 2_000, 15_000, 8_000, 10_000).unwrap(),
+            951
+        );
     }
 
     #[test]

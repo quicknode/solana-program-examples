@@ -1,8 +1,8 @@
 use quasar_lang::prelude::*;
 
 /// One options venue. Mirrors the Anchor `Market` field-for-field; see the
-/// Anchor sibling's README for what each field means. The three `*_locked` /
-/// `fees_owed` counters are the ledger of what each vault owes, asserted
+/// Anchor sibling's README for what each field means. The `*_owed` counters
+/// (`underlying_owed`, `quote_owed` and `fees_owed`) are the ledger of what each vault owes, asserted
 /// against the vault balances after every transfer.
 #[account(discriminator = 1, set_inner)]
 #[seeds(b"market", underlying_mint: Address, quote_mint: Address)]

@@ -34,12 +34,20 @@ pub struct CollectProceedsAccountConstraints {
     pub underlying_vault: Account<Token>,
     #[account(mut)]
     pub quote_vault: Account<Token>,
-    /// Unlike the Anchor sibling, both writer accounts must already exist.
-    #[account(mut)]
+    /// A put writer is paid in the underlying, which they may never have
+    /// held, so the account is created if needed, at the writer's expense.
+    #[account(
+        mut,
+        init(idempotent),
+        payer = writer,
+        associated_token(mint = underlying_mint, authority = writer, token_program = token_program),
+    )]
     pub writer_underlying: Account<Token>,
     #[account(mut)]
     pub writer_quote: Account<Token>,
     pub token_program: Program<TokenProgram>,
+    pub associated_token_program: Program<AssociatedTokenProgram>,
+    pub system_program: Program<SystemProgram>,
 }
 
 /// The writer collects what the holder paid at exercise: the strike for a

@@ -1,5 +1,8 @@
 use anchor_lang::prelude::*;
-use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
+use anchor_spl::{
+    associated_token::AssociatedToken,
+    token_interface::{Mint, TokenAccount, TokenInterface},
+};
 
 use crate::constants::{MARKET_SEED, OPTION_SEED, QUOTE_VAULT_SEED, UNDERLYING_VAULT_SEED};
 use crate::contract_math;
@@ -119,8 +122,13 @@ pub struct ReclaimCollateralAccountConstraints<'info> {
     )]
     pub quote_vault: Box<InterfaceAccount<'info, TokenAccount>>,
 
+    // A call writer's collateral comes back here. A put writer may never have
+    // held the underlying (or may have closed the account since writing), so
+    // it is created if needed, at the writer's expense, as `collect_proceeds`
+    // does.
     #[account(
-        mut,
+        init_if_needed,
+        payer = writer,
         associated_token::mint = underlying_mint,
         associated_token::authority = writer,
         associated_token::token_program = token_program,
@@ -136,4 +144,6 @@ pub struct ReclaimCollateralAccountConstraints<'info> {
     pub writer_quote: Box<InterfaceAccount<'info, TokenAccount>>,
 
     pub token_program: Interface<'info, TokenInterface>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
+    pub system_program: Program<'info, System>,
 }

@@ -1,7 +1,8 @@
 use {
     anchor_lang::{
-        solana_program::instruction::Instruction, system_program, AccountDeserialize, Address,
-        Error as AnchorError, ErrorCode as AnchorErrorCode, InstructionData, ToAccountMetas,
+        solana_program::instruction::{AccountMeta, Instruction},
+        system_program, AccountDeserialize, Address, Error as AnchorError,
+        ErrorCode as AnchorErrorCode, InstructionData, ToAccountMetas,
     },
     anchor_v2_testing::{Keypair, LiteSVM, Signer},
     prop_amm::{
@@ -500,6 +501,89 @@ impl Market {
         self.svm.set_account(self.feed, feed_account).unwrap();
     }
 
+    /// Close the market signed by `signer` (the operator in honest tests, an
+    /// imposter in the access-control test). The payer covers the transaction
+    /// fee, so the signer's lamports move only by the rent the close returns.
+    fn close_market_as(&mut self, signer: &Keypair) -> Result<(), String> {
+        let instruction = Instruction::new_with_bytes(
+            prop_amm::id(),
+            &prop_amm::instruction::CloseMarket {}.data(),
+            prop_amm::accounts::CloseMarketAccountConstraints {
+                operator: signer.pubkey(),
+                market: self.market,
+                base_vault: self.base_vault,
+                quote_vault: self.quote_vault,
+                token_program: token_program_id(),
+            }
+            .to_account_metas(None),
+        );
+        let payer = self.payer.insecure_clone();
+        send_transaction_from_instructions(
+            &mut self.svm,
+            vec![instruction],
+            &[&payer, signer],
+            &payer.pubkey(),
+        )
+        .map(|_| ())
+        .map_err(|error| format!("{error:?}"))
+    }
+
+    fn close_market(&mut self) -> Result<(), String> {
+        let operator = self.operator.insecure_clone();
+        self.close_market_as(&operator)
+    }
+
+    /// A plain SPL Token `TransferChecked` of `amount` minor units from
+    /// `from_account` (owned by `sender`) straight into `vault`. Nothing in
+    /// the market program runs: this is a third party donating tokens to a
+    /// vault, not the operator's `deposit_inventory`. The instruction is
+    /// built by hand (tag 12, amount, decimals) with the token program's
+    /// account order: source, mint, destination, owner.
+    fn donate_to_vault(
+        &mut self,
+        sender: &Keypair,
+        from_account: &Address,
+        mint: &Address,
+        decimals: u8,
+        vault: &Address,
+        amount: u64,
+    ) {
+        let mut data = vec![12u8];
+        data.extend_from_slice(&amount.to_le_bytes());
+        data.push(decimals);
+        let transfer = Instruction::new_with_bytes(
+            token_program_id(),
+            &data,
+            vec![
+                AccountMeta::new(*from_account, false),
+                AccountMeta::new_readonly(*mint, false),
+                AccountMeta::new(*vault, false),
+                AccountMeta::new_readonly(sender.pubkey(), true),
+            ],
+        );
+        send_transaction_from_instructions(
+            &mut self.svm,
+            vec![transfer],
+            &[sender],
+            &sender.pubkey(),
+        )
+        .expect("a plain token transfer into a vault should succeed");
+    }
+
+    fn lamports(&self, address: &Address) -> u64 {
+        self.svm
+            .get_account(address)
+            .map_or(0, |account| account.lamports)
+    }
+
+    /// Cut the feed account's data to `length` bytes, keeping its owner, so
+    /// the market's owner check passes and only the layout check can refuse it.
+    fn truncate_feed(&mut self, length: usize) {
+        let mut feed_account = self.svm.get_account(&self.feed).unwrap();
+        feed_account.data.truncate(length);
+        self.svm.set_account(self.feed, feed_account).unwrap();
+    }
+
     fn balance(&self, token_account: &Address) -> u64 {
         get_token_account_balance(&self.svm, token_account).unwrap()
     }
@@ -646,6 +730,160 @@ fn test_operator_can_withdraw_everything_and_swaps_then_fail() {
     );
 }
 
+/// Maria withdraws every token, then closes the market. The market account
+/// and both vaults are gone, and the three rents she paid at
+/// `initialize_market` come back to her to the lamport.
+#[test]
+fn test_close_market_returns_all_three_rents() {
+    let mut market = Market::default_market();
+    market
+        .withdraw_inventory(1_000 * ONE_NVDAX, 200_000 * ONE_USDC)
+        .unwrap();
+
+    let operator = market.operator.pubkey();
+    let operator_before = market.lamports(&operator);
+    let rents = market.lamports(&market.market)
+        + market.lamports(&market.base_vault)
+        + market.lamports(&market.quote_vault);
+    assert!(rents > 0);
+
+    market.close_market().unwrap();
+
+    assert_eq!(market.lamports(&operator), operator_before + rents);
+    assert!(market.svm.get_account(&market.market).is_none());
+    assert!(market.svm.get_account(&market.base_vault).is_none());
+    assert!(market.svm.get_account(&market.quote_vault).is_none());
+    // The inventory went back through `withdraw_inventory`, so the operator
+    // holds every token it minted.
+    let operator_base = market.operator_base;
+    let operator_quote = market.operator_quote;
+    assert_eq!(market.balance(&operator_base), 10_000 * ONE_NVDAX);
+    assert_eq!(market.balance(&operator_quote), 10_000_000 * ONE_USDC);
+}
+
+/// The market cannot close while either vault holds a single minor unit: the
+/// operator withdraws first. Each vault's check is exercised on its own.
+#[test]
+fn test_close_market_refuses_while_a_vault_holds_tokens() {
+    let mut market = Market::default_market();
+    assert_fails_with(market.close_market(), PropAmmError::InventoryNotEmpty);
+
+    // Each retry is otherwise byte-identical to the refused close, so it would
+    // carry the same signature and be dropped as already processed; a fresh
+    // blockhash gives it a new one.
+
+    // Base vault empty, quote vault still stocked.
+    market.withdraw_inventory(1_000 * ONE_NVDAX, 0).unwrap();
+    market.svm.expire_blockhash();
+    assert_fails_with(market.close_market(), PropAmmError::InventoryNotEmpty);
+
+    // Quote vault empty, one minor unit of base back in the base vault.
+    market.withdraw_inventory(0, 200_000 * ONE_USDC).unwrap();
+    market.deposit_inventory(1, 0).unwrap();
+    market.svm.expire_blockhash();
+    assert_fails_with(market.close_market(), PropAmmError::InventoryNotEmpty);
+    assert!(market.svm.get_account(&market.market).is_some());
+
+    market.withdraw_inventory(1, 0).unwrap();
+    market.svm.expire_blockhash();
+    market.close_market().expect("an empty market must close");
+}
+
+/// Nobody can wedge the close or slip tokens past it by sending them straight
+/// to a vault. After Maria withdraws everything, a stranger sends one minor
+/// unit of NVDAx into the base vault with a plain token transfer, not
+/// `deposit_inventory`, and the close is refused; then one minor unit of USDC
+/// into the quote vault, and the close is refused again. Maria withdraws each
+/// donation like any other inventory and the market closes.
+#[test]
+fn test_close_market_refuses_tokens_sent_straight_to_a_vault() {
+    let mut market = Market::default_market();
+    market
+        .withdraw_inventory(1_000 * ONE_NVDAX, 200_000 * ONE_USDC)
+        .unwrap();
+    let (stranger, stranger_base, stranger_quote) = market.funded_trader(1, 1);
+
+    let base_mint = market.base_mint;
+    let base_vault = market.base_vault;
+    market.donate_to_vault(
+        &stranger,
+        &stranger_base,
+        &base_mint,
+        NVDAX_DECIMALS,
+        &base_vault,
+        1,
+    );
+    assert_eq!(market.balance(&base_vault), 1);
+    assert_fails_with(market.close_market(), PropAmmError::InventoryNotEmpty);
+    assert!(market.svm.get_account(&market.market).is_some());
+    market.withdraw_inventory(1, 0).unwrap();
+
+    let quote_mint = market.quote_mint;
+    let quote_vault = market.quote_vault;
+    market.donate_to_vault(
+        &stranger,
+        &stranger_quote,
+        &quote_mint,
+        USDC_DECIMALS,
+        &quote_vault,
+        1,
+    );
+    assert_eq!(market.balance(&quote_vault), 1);
+    // The retry is otherwise byte-identical to the refused close, so a fresh
+    // blockhash gives it a new signature.
+    market.svm.expire_blockhash();
+    assert_fails_with(market.close_market(), PropAmmError::InventoryNotEmpty);
+    assert!(market.svm.get_account(&market.market).is_some());
+    market.withdraw_inventory(0, 1).unwrap();
+
+    market.svm.expire_blockhash();
+    market.close_market().expect("an empty market must close");
+    assert!(market.svm.get_account(&market.market).is_none());
+    // The operator now holds its own inventory plus both donated units.
+    let operator_base = market.operator_base;
+    let operator_quote = market.operator_quote;
+    assert_eq!(market.balance(&operator_base), 10_000 * ONE_NVDAX + 1);
+    assert_eq!(market.balance(&operator_quote), 10_000_000 * ONE_USDC + 1);
+}
+
+/// A closed market cannot fill. Its account is gone, so a swap naming it
+/// fails before any token moves, and the trader keeps every token.
+#[test]
+fn test_swap_against_a_closed_market_fails() {
+    let mut market = Market::default_market();
+    market
+        .withdraw_inventory(1_000 * ONE_NVDAX, 200_000 * ONE_USDC)
+        .unwrap();
+    market.close_market().unwrap();
+
+    let (alice, alice_base, alice_quote) = market.funded_trader(0, FIVE_NVDAX_AT_THE_ASK);
+    // Anchor 2 reports the missing market as the runtime's
+    // `UninitializedAccount`, not a custom code.
+    let Err(error) = market.swap(&alice, Direction::BuyBase, FIVE_NVDAX_AT_THE_ASK, 0) else {
+        panic!("a swap against a closed market must fail");
+    };
+    assert!(
+        error.contains("InstructionError(0, UninitializedAccount)"),
+        "expected UninitializedAccount, got: {error}"
+    );
+    assert_eq!(market.balance(&alice_base), 0);
+    assert_eq!(market.balance(&alice_quote), FIVE_NVDAX_AT_THE_ASK);
+}
+
+#[test]
+fn test_close_market_rejects_non_operator() {
+    let mut market = Market::default_market();
+    market
+        .withdraw_inventory(1_000 * ONE_NVDAX, 200_000 * ONE_USDC)
+        .unwrap();
+    let (mallory, _, _) = market.funded_trader(0, 0);
+    assert_fails_with_anchor_error(
+        market.close_market_as(&mallory),
+        AnchorErrorCode::ConstraintAddress,
+    );
+    assert!(market.svm.get_account(&market.market).is_some());
+}
+
 #[test]
 fn test_withdraw_more_than_inventory_fails() {
     let mut market = Market::default_market();
@@ -789,6 +1027,77 @@ fn test_swap_rejects_wide_confidence() {
         market.swap(&alice, Direction::BuyBase, FIVE_NVDAX_AT_THE_ASK, 0),
         PropAmmError::OracleConfidenceTooWide,
     );
+}
+
+/// A zero or negative oracle price is not a price. The market refuses to
+/// quote against either rather than divide by it or flip the spread.
+#[test]
+fn test_swap_rejects_non_positive_price() {
+    let mut market = Market::default_market();
+    let (alice, _, _) = market.funded_trader(0, FIVE_NVDAX_AT_THE_ASK);
+
+    market.set_price(0);
+    assert_fails_with(
+        market.swap(&alice, Direction::BuyBase, FIVE_NVDAX_AT_THE_ASK, 0),
+        PropAmmError::NonPositivePrice,
+    );
+
+    // The retry is otherwise byte-identical to the rejected swap, so it would
+    // carry the same signature and be dropped as already processed.
+    market.svm.expire_blockhash();
+    market.set_price(-dollars(165));
+    assert_fails_with(
+        market.swap(&alice, Direction::BuyBase, FIVE_NVDAX_AT_THE_ASK, 0),
+        PropAmmError::NonPositivePrice,
+    );
+}
+
+/// A market created for a feed with 6 decimals of scale refuses a feed that
+/// reports 8: read at the wrong scale, $165 would be $16,500.
+#[test]
+fn test_swap_rejects_oracle_scale_mismatch() {
+    let parameters = MarketParameters {
+        oracle_scale: ORACLE_SCALE - 2,
+        spread_bps: SPREAD_BPS,
+        max_confidence_bps: MAX_CONFIDENCE_BPS,
+    };
+    let mut market = Market::try_new(dollars(165), parameters).unwrap();
+    market
+        .deposit_inventory(1_000 * ONE_NVDAX, 200_000 * ONE_USDC)
+        .unwrap();
+    let (alice, _, _) = market.funded_trader(0, FIVE_NVDAX_AT_THE_ASK);
+    assert_fails_with(
+        market.swap(&alice, Direction::BuyBase, FIVE_NVDAX_AT_THE_ASK, 0),
+        PropAmmError::OracleScaleMismatch,
+    );
+}
+
+/// A feed account owned by the recorded oracle program but too short to hold
+/// the price layout is refused before a byte of it is decoded.
+#[test]
+fn test_swap_rejects_oracle_data_too_short() {
+    let mut market = Market::default_market();
+    let (alice, _, _) = market.funded_trader(0, FIVE_NVDAX_AT_THE_ASK);
+    // The layout needs 76 bytes; keep the discriminator, authority and price.
+    market.truncate_feed(56);
+    assert_fails_with(
+        market.swap(&alice, Direction::BuyBase, FIVE_NVDAX_AT_THE_ASK, 0),
+        PropAmmError::OracleDataTooShort,
+    );
+}
+
+/// One minor unit of USDC (0.000001) at the $165.165 ask buys 0.0000000060546
+/// NVDAx, which floors to zero minor units. The market refuses rather than
+/// take the trader's input for nothing.
+#[test]
+fn test_swap_rejects_amount_that_rounds_to_zero() {
+    let mut market = Market::default_market();
+    let (alice, _, alice_quote) = market.funded_trader(0, 1);
+    assert_fails_with(
+        market.swap(&alice, Direction::BuyBase, 1, 0),
+        PropAmmError::AmountRoundsToZero,
+    );
+    assert_eq!(market.balance(&alice_quote), 1);
 }
 
 /// While the operator has pulled its quotes, nobody can swap.

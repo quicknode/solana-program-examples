@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased, 2026-10-07
+
+Add `close_market`. The market account and its two vaults had no close
+handler, so the rent the operator paid for all three at `initialize_market`
+could never be recovered. The new handler is signed by the operator, under the
+same `has_one = operator` constraint as `withdraw_inventory`; it refuses with the new
+`InventoryNotEmpty` while either vault holds tokens (the operator withdraws
+first), closes both vaults with the market's own seeds, and closes the market
+account through `close = operator`, so all three rents return to the operator.
+Tested by `test_close_market_returns_all_three_rents` (rent back to the
+lamport, all three accounts gone), `test_close_market_refuses_while_a_vault_holds_tokens`
+(each vault on its own) and `test_close_market_rejects_non_operator`
+(`ConstraintHasOne`).
+
+Four refusals had no test. `test_swap_rejects_non_positive_price` (a zero and
+a negative price), `test_swap_rejects_oracle_scale_mismatch` (a market pinned
+at scale 6 against a feed at 8), `test_swap_rejects_oracle_data_too_short` (the
+feed account cut to 56 bytes, still owned by the oracle program) and
+`test_swap_rejects_amount_that_rounds_to_zero` (a 1-minor-unit USDC buy) now
+assert `NonPositivePrice`, `OracleScaleMismatch`, `OracleDataTooShort` and
+`AmountRoundsToZero`.
+
 ## Unreleased, 2026-10-05
 
 The LiteSVM suite mints NVDAx with 8 decimals, its real count, and USDC with

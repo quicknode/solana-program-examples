@@ -31,4 +31,7 @@ pub enum OptionsError {
 
     #[msg("Vault balance would fall below what the market owes")]
     CustodyInvariantViolated,
+
+    #[msg("Option terms differ from the terms the buyer agreed to")]
+    OptionTermsChanged,
 }

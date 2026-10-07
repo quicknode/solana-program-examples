@@ -11,7 +11,9 @@ use {
             InitializePoolInstruction, LiquidatePositionInstruction, OpenPositionInstruction,
             RemoveLiquidityInstruction, UpdatePriceAverageInstruction,
         },
-        instructions::shared::{basis_points_of, basis_points_of_rounded_down, error},
+        instructions::shared::{
+            basis_points_of, basis_points_of_rounded_down, error, position_funding, position_pnl,
+        },
         state::{Pool, Position},
         LpMintPda, VaultPda,
     },
@@ -1093,6 +1095,59 @@ fn remove_liquidity_capped_at_liquidity(test: &mut Test) {
     assert_vault_matches_ledger(test, &env);
 }
 
+/// `add_liquidity` values the pool rounding up. A $5,000 short entered at
+/// $100 and marked at $99.99999999 is worth 4,999,999,999.5 base units, so
+/// traders are up half a base unit. Rounded against the depositor that half
+/// counts as nothing owed, assets-under-management stays at the pool's
+/// 100,000 USDC of liquidity, and a 100,000 USDC deposit is minted exactly
+/// 100,000 USDC of shares. Valuing the short at 4,999,999,999 would read the
+/// pool one base unit low and mint one share more.
+#[quasar_test]
+fn add_liquidity_values_the_pool_rounding_up(test: &mut Test) {
+    let env = setup(test);
+    fund(test, PROVIDER, PROVIDER_COLLATERAL, 200_000 * ONE_USDC);
+    add_liquidity(test, &env, 100_000 * ONE_USDC).succeeds();
+    fund(test, TRADER, TRADER_COLLATERAL, 1_000 * ONE_USDC);
+    open_position(test, &env, SIDE_SHORT, 1_000 * ONE_USDC, 5_000 * ONE_USDC).succeeds();
+    set_feed(test, dollars(100) - 1, 0);
+
+    // The provider already holds the first deposit's 100,000 USDC of shares
+    // less the withheld 1,000.
+    add_liquidity(test, &env, 100_000 * ONE_USDC)
+        .succeeds()
+        .has_tokens(PROVIDER_LP, 200_000 * ONE_USDC - 1_000);
+    assert_eq!(
+        u64::from(test.read::<Pool>(env.pool).liquidity),
+        200_000 * ONE_USDC
+    );
+    assert_vault_matches_ledger(test, &env);
+}
+
+/// `remove_liquidity` values the pool rounding down. A $5,000 long entered at
+/// $100 and marked at $100.00000001 is worth 5,000,000,000.5 base units, so
+/// traders are up half a base unit. Rounded against the withdrawing provider
+/// that half counts as a whole unit owed, assets-under-management reads
+/// 99,999,999,999, and the provider's 99,999,999,000 shares of 100,000,000,000
+/// redeem 99,999,998,999.00000001, paid as 99,999,998,999. Valuing the long at
+/// 5,000,000,000 would pay 99,999,999,000.
+#[quasar_test]
+fn remove_liquidity_values_the_pool_rounding_down(test: &mut Test) {
+    let env = setup(test);
+    fund(test, PROVIDER, PROVIDER_COLLATERAL, 100_000 * ONE_USDC);
+    add_liquidity(test, &env, 100_000 * ONE_USDC).succeeds();
+    fund(test, TRADER, TRADER_COLLATERAL, 1_000 * ONE_USDC);
+    open_position(test, &env, SIDE_LONG, 1_000 * ONE_USDC, 5_000 * ONE_USDC).succeeds();
+    set_feed(test, dollars(100) + 1, 0);
+
+    let shares = test.tokens(PROVIDER_LP);
+    assert_eq!(shares, 100_000 * ONE_USDC - 1_000);
+    remove_liquidity(test, &env, shares)
+        .succeeds()
+        .has_tokens(PROVIDER_COLLATERAL, 99_999_998_999);
+    assert_eq!(u64::from(test.read::<Pool>(env.pool).liquidity), 1_001);
+    assert_vault_matches_ledger(test, &env);
+}
+
 /// Open a $5,000 long with $1,000 of collateral against a $100,000 pool and
 /// return the slot it opened in.
 fn open_long_against_deep_pool(test: &mut Test, env: &Env) -> u64 {
@@ -1312,9 +1367,10 @@ fn fees_and_maintenance_requirement_round_up(test: &mut Test) {
     assert_eq!(u64::from(pool.program_fees), 2 * 2_500_001);
 
     // The same position again, taken to an equity of exactly the rounded-up
-    // maintenance requirement: $85.10000004 loses it 744,999,998 base units.
+    // maintenance requirement: $85.10000005 loses it 744,999,997.65 base
+    // units, a loss of 744,999,998 once floored against the trader.
     open_position(test, &env, SIDE_LONG, collateral, size).succeeds();
-    set_feed(test, 8_510_000_004, 0);
+    set_feed(test, 8_510_000_005, 0);
     liquidate(test, &env)
         .succeeds()
         .has_tokens(LIQUIDATOR_COLLATERAL, 50_000_001)
@@ -1346,6 +1402,52 @@ fn basis_points_of_rounds_up_and_the_insurance_split_rounds_down() {
         2_500_000
     );
     assert_eq!(basis_points_of_rounded_down(1, 5_000).unwrap(), 0);
+}
+
+/// `position_pnl` floors toward negative infinity rather than truncating
+/// toward zero. A position of 1,000 base units entered at 3 and marked at 2
+/// has lost 333.33 base units: truncation would book a loss of 333, floor
+/// books 334, so the fraction goes to the pool. A profit of 333.33 still
+/// books 333, the same as truncation, and a short is floored the same way.
+#[test]
+fn position_pnl_rounds_against_the_trader() {
+    assert_eq!(position_pnl(SIDE_LONG, 1_000, 3, 2).unwrap(), -334);
+    assert_eq!(position_pnl(SIDE_LONG, 1_000, 3, 4).unwrap(), 333);
+    assert_eq!(position_pnl(SIDE_SHORT, 1_000, 3, 4).unwrap(), -334);
+    assert_eq!(position_pnl(SIDE_SHORT, 1_000, 3, 2).unwrap(), 333);
+    // A whole number of base units is unchanged.
+    assert_eq!(position_pnl(SIDE_LONG, 1_000, 4, 2).unwrap(), -500);
+}
+
+/// `position_funding` rounds up, toward positive infinity, so a fraction of a
+/// base unit goes to the pool. A funding index that moves 1,500,000 (in
+/// `FUNDING_PRECISION` units of 10^9) on a position of 1,000 base units is
+/// 1.5 base units. A trader who pays is charged 2, where truncation would
+/// charge 1; a trader who is paid receives 1, the same as truncation. A short
+/// is rounded the same way as a long.
+#[test]
+fn position_funding_rounds_against_the_trader() {
+    // The index rises: longs pay, shorts are paid.
+    assert_eq!(position_funding(SIDE_LONG, 1_000, 0, 1_500_000).unwrap(), 2);
+    assert_eq!(
+        position_funding(SIDE_SHORT, 1_000, 0, 1_500_000).unwrap(),
+        -1
+    );
+    // The index falls: shorts pay, longs are paid.
+    assert_eq!(
+        position_funding(SIDE_SHORT, 1_000, 0, -1_500_000).unwrap(),
+        2
+    );
+    assert_eq!(
+        position_funding(SIDE_LONG, 1_000, 0, -1_500_000).unwrap(),
+        -1
+    );
+    // A whole number of base units is unchanged.
+    assert_eq!(position_funding(SIDE_LONG, 1_000, 0, 2_000_000).unwrap(), 2);
+    assert_eq!(
+        position_funding(SIDE_SHORT, 1_000, 0, 2_000_000).unwrap(),
+        -2
+    );
 }
 
 #[quasar_test]

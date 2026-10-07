@@ -144,7 +144,10 @@ pub fn total_shares(share_mint_supply: u64) -> Result<u128, ProgramError> {
         .ok_or(LendingError::MathOverflow.into())
 }
 
-/// Borrowed fraction of the pool in basis points (0..=10_000).
+/// Borrowed fraction of the pool in basis points (0..=10_000). Rounded up,
+/// because its only use is the borrow rate, and a floored utilization would
+/// charge the borrower a lower rate. It still never exceeds 10_000, since the
+/// debt is part of the total it is divided by.
 pub fn utilization_bps(
     available: u64,
     borrowed_principal: u128,
@@ -154,7 +157,7 @@ pub fn utilization_bps(
     if total == 0 {
         return Ok(0);
     }
-    mul_div_floor(
+    mul_div_ceil(
         current_debt(borrowed_principal, factor)? as u128,
         BPS_DENOMINATOR,
         total,
@@ -162,6 +165,11 @@ pub fn utilization_bps(
 }
 
 /// Per-second borrow rate (FIXED_POINT_SCALE-scaled) from the kinked curve.
+///
+/// Both divisions round up: the interpolated APR and the per-second rate
+/// derived from it. A rate is what the borrower is charged, so like the debt
+/// it rounds against the borrower. The interpolation still never leaves
+/// `[min, max]`, because the climbed amount is at most the range.
 pub fn borrow_rate_per_second(
     utilization: u128,
     optimal_utilization_bps: u16,
@@ -175,7 +183,7 @@ pub fn borrow_rate_per_second(
             .checked_sub(min_rate_bps as u128)
             .ok_or(LendingError::MathOverflow)?;
         (min_rate_bps as u128)
-            .checked_add(mul_div_floor(
+            .checked_add(mul_div_ceil(
                 range,
                 utilization,
                 optimal_utilization.max(1),
@@ -192,18 +200,20 @@ pub fn borrow_rate_per_second(
             .checked_sub(optimal_utilization)
             .ok_or(LendingError::MathOverflow)?;
         (optimal_rate_bps as u128)
-            .checked_add(mul_div_floor(range, above, span.max(1))?)
+            .checked_add(mul_div_ceil(range, above, span.max(1))?)
             .ok_or(LendingError::MathOverflow)?
     };
     // apr_bps / (BPS_DENOMINATOR * SECONDS_PER_YEAR), carried at FIXED_POINT_SCALE.
     let per_year_denominator = BPS_DENOMINATOR
         .checked_mul(SECONDS_PER_YEAR)
         .ok_or(LendingError::MathOverflow)?;
-    mul_div_floor(apr_bps, FIXED_POINT_SCALE, per_year_denominator)
+    mul_div_ceil(apr_bps, FIXED_POINT_SCALE, per_year_denominator)
 }
 
 /// Advance the accumulation factor for `elapsed_seconds`:
-/// `new_factor = factor * (1 + rate_per_second * elapsed_seconds)`.
+/// `new_factor = factor * (1 + rate_per_second * elapsed_seconds)`, rounded up:
+/// every debt is principal times this factor, so a floored factor would
+/// understate every borrower's debt.
 #[allow(clippy::too_many_arguments)]
 pub fn accrue_factor(
     factor: u128,
@@ -233,7 +243,7 @@ pub fn accrue_factor(
                 .ok_or(LendingError::MathOverflow)?,
         )
         .ok_or(LendingError::MathOverflow)?;
-    mul_div_floor(factor, growth, FIXED_POINT_SCALE)
+    mul_div_ceil(factor, growth, FIXED_POINT_SCALE)
 }
 
 #[allow(clippy::too_many_arguments)]

@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-10-07
+
+### Changed
+
+- **Two refusal tests now assert their error code instead of any failure.** `test_stale_contribution_cannot_refund_from_next_raise` asserts that the stale refund fails with Anchor's `AccountNotInitialized` (3012): the first-raise Contribution account was closed, so its address is empty and Anchor refuses it before the handler runs. `test_reinitialize_with_open_contributions_fails` asserts that `initialize_fundraiser` fails with the System Program's `AccountAlreadyInUse` (custom error 0): the claimed fundraiser still occupies the PDA, so `init` cannot allocate it. No program changes.
+
 ## 2026-10-03
 
 ### Changed

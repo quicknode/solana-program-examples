@@ -440,6 +440,34 @@ fn assert_error<T: std::fmt::Debug>(result: Result<T, String>, expected_error: F
     );
 }
 
+/// The System Program's `SystemError::AccountAlreadyInUse`: `init` asked it to
+/// allocate an address that already holds an account.
+const SYSTEM_ACCOUNT_ALREADY_IN_USE: u32 = 0;
+
+/// Asserts that a transaction failed with the given custom error code, for
+/// errors raised by a program the fundraiser calls rather than by
+/// `FundraiserError`.
+fn assert_error_code<T: std::fmt::Debug>(result: Result<T, String>, expected_code: u32) {
+    let error = result.expect_err("transaction should have failed");
+    let expected_code = format!("Custom({expected_code})");
+    assert!(
+        error.contains(&expected_code),
+        "expected {expected_code}, got: {error}"
+    );
+}
+
+/// Asserts that a transaction's only instruction failed with the given
+/// built-in runtime error, such as `UninitializedAccount`, which Anchor 2
+/// returns as a `ProgramError` rather than as a custom code.
+fn assert_instruction_error<T: std::fmt::Debug>(result: Result<T, String>, expected_error: &str) {
+    let error = result.expect_err("transaction should have failed");
+    let expected = format!("InstructionError(0, {expected_error})");
+    assert!(
+        error.contains(&expected),
+        "expected {expected}, got: {error}"
+    );
+}
+
 #[test]
 fn test_initialize_fundraiser() {
     let mut setup = full_setup();
@@ -1008,11 +1036,11 @@ fn test_reinitialize_with_open_contributions_fails() {
         vec![initialize_instruction],
         &[&setup.maker],
         &setup.maker.pubkey(),
-    );
-    assert!(
-        result.is_err(),
-        "A new fundraiser must not start while the claimed one exists"
-    );
+    )
+    .map_err(|error| format!("{error:?}"));
+    // `init` asks the System Program to allocate the fundraiser's address,
+    // which still holds the claimed fundraiser, so it refuses.
+    assert_error_code(result, SYSTEM_ACCOUNT_ALREADY_IN_USE);
     let fundraiser_state = read_fundraiser_state(&setup.svm, &setup.fundraiser_pda);
     assert!(fundraiser_state.claimed);
 }
@@ -1048,10 +1076,14 @@ fn test_stale_contribution_cannot_refund_from_next_raise() {
 
     // A raise-one contributor tries to take a refund from raise two. Their
     // contribution account was closed with raise one, so there is nothing to
-    // refund.
+    // refund: Anchor refuses the empty address before the handler runs, with
+    // the runtime's `UninitializedAccount`.
     let stale_contributor = &first_raise_contributors[0];
     let fee_payer = stale_contributor.keypair.insecure_clone();
-    assert!(refund(&mut setup, &fee_payer, stale_contributor).is_err());
+    assert_instruction_error(
+        refund(&mut setup, &fee_payer, stale_contributor),
+        "UninitializedAccount",
+    );
     assert_eq!(
         get_token_account_balance(&setup.svm, &setup.vault).unwrap(),
         2 * CONTRIBUTION

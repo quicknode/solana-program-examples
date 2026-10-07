@@ -87,6 +87,15 @@ utilization. Each borrow stores its principal as **scaled debt** (principal ÷
 index at borrow time), so every obligation's debt grows automatically as the
 index advances: no per-obligation accrual loop.
 
+Every division on the way to the factor rounds up, against the borrower: the
+utilization, the climb along the curve, the per-second rate and the factor
+update itself. A debt is principal times the factor, so flooring any of them
+would understate every debt. Suppliers are not overpaid by it: the reserve
+counts its own debt as its total principal times the same factor, ceiled once,
+which is never more than the borrowers' individually ceiled debts add up to
+(`accumulation_factor_rounds_up_against_the_borrower` checks a second accrual
+against both roundings).
+
 Those curve parameters are annual, and the conversion to a per-second rate
 divides by `SECONDS_PER_YEAR`. Elapsed time is the Clock's `unix_timestamp`
 minus the reserve's `last_accrual_timestamp`, so a borrower pays the advertised
@@ -178,7 +187,8 @@ less, which would make the liquidator overpay.
 All arithmetic is integer-only `u128`: no floats, no fixed-point crates. Ratios
 (rates, the index, the exchange rate, obligation values) are scaled by
 `FIXED_POINT_SCALE` (10^18). Every conversion rounds in the program's favour
-(user output floored, debt and the program fee ceiled), so dust cannot be
+(user output floored; debt, the interest that grows it, and the program fee
+ceiled), so dust cannot be
 extracted by repeated
 round-trips; `deposit_redeem_round_trip_creates_no_value` checks this by
 depositing and redeeming 777,777,777 units fifty times against a reserve whose

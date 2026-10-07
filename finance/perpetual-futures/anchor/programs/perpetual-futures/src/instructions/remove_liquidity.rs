@@ -8,7 +8,9 @@ use anchor_spl::{
 
 use crate::constants::{MINIMUM_LIQUIDITY, POOL_SEED, VAULT_SEED};
 use crate::errors::PerpError;
-use crate::instructions::shared::{liquidity_provider_aum, refresh_price_and_funding_within_band};
+use crate::instructions::shared::{
+    liquidity_provider_aum, refresh_price_and_funding_within_band, Rounding,
+};
 use crate::state::Pool;
 
 pub fn handle_remove_liquidity(
@@ -22,7 +24,9 @@ pub fn handle_remove_liquidity(
     let price = refresh_price_and_funding_within_band(pool, &context.accounts.oracle_feed)?;
 
     let lp_supply = context.accounts.lp_mint.supply();
-    let aum = liquidity_provider_aum(pool, price)?;
+    // The pool is valued rounding down, so a fraction of a base unit in the
+    // traders' marked profit/loss lowers what a share redeems for.
+    let aum = liquidity_provider_aum(pool, price, Rounding::Down)?;
     require!(aum > 0, PerpError::PoolInsolvent);
 
     // amount_out = shares * assets-under-management / (supply + MINIMUM_LIQUIDITY),

@@ -22,6 +22,34 @@
   TSLAx at nine decimals on the same feed, so the decimals vary as well; both
   get the story's share counts.
 
+### Fixed
+
+- Rebalance's sell floor rounds up. `minimum_usdc_from_sell` floored the
+  oracle value of what is sold and then floored the slippage tolerance's share
+  of it, so it could sit up to a minor unit below the exact figure. It now
+  comes from the new `asset_value_share_in_usdc_rounded_up`, which rounds the
+  exact product up in one division. Tested by
+  `test_rebalance_sell_floor_rounds_up`: with NVDAx at $200.00000001 a router
+  paying 23,759,998 USDC minor units for 11,999,999 NVDAx minor units (99% of
+  their value is 23,759,998.001188) is refused with the router's
+  `SlippageExceeded`, and one paying 23,759,999 goes through.
+- Deposit values the basket rounding up. `deposit` priced shares as
+  `usdc_amount × total_shares / nav` with each asset's value in `nav` floored,
+  so NAV read up to a minor unit per asset low and a depositor could be minted
+  a share more than their USDC bought, paid for by the existing holders.
+  `deposit` now values each asset with the new
+  `asset_value_in_usdc_rounded_up`, so the floored share count rounds against
+  the depositor. `withdraw` reads no price and is unchanged. Tested by
+  `test_deposit_values_assets_rounding_up`, where a second 1 USDC deposit
+  against a NAV of 999,999.4 mints 1,000,000 shares, not 1,000,001.
+- A partially verified Pyth update is refused. `load_price` read the price at
+  fixed offsets (price at 73) that assume the one-byte encoding of
+  `verification_level`, `Full`. A `Partial { num_signatures }` update encodes
+  it in two bytes, so every later field would be read a byte off. `load_price`
+  now requires the tag at offset 40 to be `Full` (1) and fails with the new
+  `PriceNotFullyVerified` error otherwise. The test feeds now carry the `Full`
+  tag. Tested by `test_partially_verified_price_rejected`.
+
 ## [2026-10-03]
 
 ### Fixed

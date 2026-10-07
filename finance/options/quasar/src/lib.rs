@@ -54,9 +54,27 @@ mod quasar_options {
         )
     }
 
+    /// The five terms are the ones the buyer saw; the purchase is refused
+    /// unless the option still has exactly those terms.
     #[instruction(discriminator = 2)]
-    pub fn buy_option(ctx: Ctx<BuyOptionAccountConstraints>) -> Result<(), ProgramError> {
-        instructions::handle_buy_option(&mut ctx.accounts)
+    pub fn buy_option(
+        ctx: Ctx<BuyOptionAccountConstraints>,
+        kind: u8,
+        underlying_amount: u64,
+        strike_amount: u64,
+        premium: u64,
+        expiry: i64,
+    ) -> Result<(), ProgramError> {
+        instructions::handle_buy_option(
+            &mut ctx.accounts,
+            BuyOptionArguments {
+                kind,
+                underlying_amount,
+                strike_amount,
+                premium,
+                expiry,
+            },
+        )
     }
 
     #[instruction(discriminator = 3)]

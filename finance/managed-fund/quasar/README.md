@@ -106,8 +106,14 @@ withdraw), in index order.
   holdings, nor to choose a trade: rebalancing is sized by the program.
 - Value computations use u128 intermediates with checked arithmetic, flooring
   in the fund's favour: a depositor's shares and a withdrawer's payout round
-  down. The management fee rounds up, so the manager is never minted less than
-  the fee owed.
+  down. Deposit values each asset rounding up
+  (`asset_value_in_usdc_rounded_up`), so NAV is never understated by rounding
+  and the floored share count cannot hand a depositor a share the holders paid
+  for (`test_deposit_values_assets_rounding_up`). The management fee rounds
+  up, so the manager is never minted less than the fee owed. Rebalance's
+  sell-leg slippage floor rounds up too
+  (`asset_value_share_in_usdc_rounded_up`), so it is never looser than the
+  tolerance (`test_rebalance_sell_floor_rounds_up`).
 - The management fee is capped (10% per year) and the slippage tolerance is
   capped (10%), so neither can be configured to drain the fund.
 - Price feeds are validated against the address recorded on the asset config and
@@ -119,6 +125,12 @@ withdraw), in index order.
   wider than 1% of the price (`MAX_CONFIDENCE_BPS`) is rejected too
   (`OracleConfidenceTooWide`). `withdraw` reads no price, so investors can
   always leave in kind.
+- The feed's fields are read at fixed byte offsets that assume its
+  `verification_level` is `Full`, verified by a quorum of Pyth's signers
+  (three of five), so `load_price` checks that tag (offset 40) first and
+  refuses anything else (`PriceNotFullyVerified`). A `Partial` update encodes
+  `verification_level` in two bytes rather than one, which would move every
+  later field a byte along.
 
 ## What the Quasar port does differently
 
@@ -160,7 +172,9 @@ and a USDC-for-asset swap. The fund suite (`managed-fund/src/tests.rs`) drives
 the manager setup (registry, approve asset, fund, add asset) and a two-program
 deposit that deploys USDC into the basket through the router CPI, asserting share
 minting, vault balances, and treasury flow. A second deposit test shows a price
-posted before a cluster restart is rejected until Pyth posts again. The
+posted before a cluster restart is rejected until Pyth posts again, and
+`test_partially_verified_price_rejected` that a `Partial` Pyth update is refused
+while a `Full` one at the same price deposits as before. The
 rebalance tests sign as a stranger and check that a fund at its targets, within
 its threshold, or just rebalanced cannot be traded
 (`test_rebalance_cannot_churn` and its neighbors), and

@@ -13,14 +13,25 @@ differs in the Quasar version.
   and `OptionStatus` enums become the constants in `constants.rs`:
   `KIND_CALL` / `KIND_PUT` and `STATUS_LISTED` / `STATUS_HELD` /
   `STATUS_EXERCISED`.
-- **`write_option` takes its terms as separate arguments** (`kind`,
-  `underlying_amount`, `strike_amount`, `premium`, `expiry`) rather than the
-  Anchor sibling's `OptionTerms` struct.
-- **Every party's token accounts must already exist.** The Anchor version
-  uses `init_if_needed` to create a call holder's underlying account and a
-  put writer's underlying account at the moment they are first paid in that
-  token; here the tests create both token accounts for every character up
-  front.
+- **`write_option` and `buy_option` take their terms as separate
+  arguments** (`kind`, `underlying_amount`, `strike_amount`, `premium`,
+  `expiry`) rather than the Anchor sibling's `OptionTerms` struct. As there,
+  `buy_option` refuses a purchase with `OptionTermsChanged` unless the option
+  still has exactly the terms the buyer passed, so a writer cannot cancel and
+  rewrite the option at the same `id` on worse terms while the purchase is on
+  its way (`buy_option_refuses_a_switched_option`).
+- **The writer's underlying account is created if needed; every other token
+  account must already exist.** `write_option`, `cancel_option`,
+  `reclaim_collateral` and `collect_proceeds` take the writer's underlying
+  account as their associated token account, created with
+  `init(idempotent)` at the writer's expense, so a put writer who has never
+  held the underlying can write, cancel, reclaim and collect
+  (`put_writer_without_an_underlying_account_writes_and_reclaims`,
+  `put_writer_without_an_underlying_account_writes_and_cancels`). The Anchor
+  version also uses `init_if_needed` for a call holder's underlying account
+  at exercise, and creates the writer's quote account in `write_option` and
+  the admin's fee account in `collect_fees`; here the writer's quote account,
+  the admin's fee account and a holder's token accounts must already exist.
 - **The writer's premium account is bound in the handler.** The Anchor
   version derives it as the writer's associated token account; here
   `buy_option` checks that the account passed as `writer_quote` is owned by
@@ -61,7 +72,8 @@ custody ledger against the vault balances after every lifecycle step. Every
 gate has a test
 that proves it shuts and fails with the expected error code: the expiry
 boundary from both sides, cancel after sale, buy after sale or expiry, a
-writer buying their own option, a premium account the writer does not own,
+buy whose terms the writer switched by cancelling and rewriting the option,
+a writer buying their own option, a premium account the writer does not own,
 exercise by a non-holder, collection by a non-writer or before exercise,
 reclaim after exercise, fee collection by a non-admin, a second sweep with
 nothing owed, and the parameter checks at market and write time.

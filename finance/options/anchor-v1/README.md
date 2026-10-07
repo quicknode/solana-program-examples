@@ -122,7 +122,15 @@ any time until someone does.
 
 ### Step 3: Bob buys the option
 
-`buy_option` takes 25 USDC from Bob: 0.25 USDC (the 1% fee) into the quote
+Bob calls `buy_option` with the five terms he read from the option (`kind`,
+`underlying_amount`, `strike_amount`, `premium` and `expiry`, as an
+`OptionTerms`), and the purchase is refused with `OptionTermsChanged` unless
+the option still has exactly those terms. Without that check Alice could
+cancel and write a new option at the same address (the same `id`) at a
+higher premium, on fewer shares, or with a sooner expiry while Bob's
+transaction is on its way, and Bob would pay for an option he never saw. It
+is the same switched-offer defense the escrow's `take_offer` has. The
+purchase itself takes 25 USDC from Bob: 0.25 USDC (the 1% fee) into the quote
 vault, owed to Maria, and 24.75 USDC straight to Alice, as two transfers (a
 venue with a zero fee makes only the first). 25 USDC is a multiple of the
 rate, so nothing rounds; a premium of 10.000001 USDC would owe a fee of
@@ -151,8 +159,12 @@ already had, and gave up everything above $180.
 
 Carol's `write_option(id = 2, kind = Put, underlying_amount = 5 NVDAx,
 strike_amount = 750 USDC, premium = 20 USDC)`, a strike of 150 USDC a share,
-moves 750 USDC into the quote vault. Dave's `buy_option` pays 19.80 USDC to Carol
-and 0.20 USDC to the vault for Maria.
+moves 750 USDC into the quote vault. Carol has never held NVDAx, so she has no
+NVDAx account; `write_option` creates it at her expense, the account
+`collect_proceeds` would pay her shares into had Dave exercised.
+`cancel_option` and `reclaim_collateral` create it too if it is missing.
+Dave's `buy_option` pays 19.80 USDC to Carol and 0.20 USDC to the vault for
+Maria.
 
 ### Step 7: The week passes above $150, and Carol reclaims her collateral
 
@@ -228,12 +240,19 @@ the put from write to exercise and from purchase to expiry and reclaim
 (`test_reclaim_collateral_after_expiry_returns_the_strike_to_the_put_writer`),
 pins every balance to the minor unit, checks that the fee on a premium that is
 not a multiple of the rate rounds up and the writer receives the rest
-(`test_fee_rounds_up_and_the_writer_takes_the_remainder`), counts the token
+(`test_fee_rounds_up_and_the_writer_takes_the_remainder`), follows a put
+writer with no NVDAx account from write to reclaim and from write to cancel
+(`test_put_writer_without_an_underlying_account_writes_and_reclaims`,
+`test_put_writer_without_an_underlying_account_writes_and_cancels`), counts the token
 transfers a purchase makes (two, or one on a zero-fee venue), checks the
 custody ledger against the vault balances after every lifecycle step, and
 checks that every refusal holds
 and fails with the expected error code: the expiry boundary from both sides,
-cancel after sale, buy after sale or expiry, a writer buying their own option,
+cancel after sale, buy after sale or expiry, a buy whose terms the writer
+switched by cancelling and rewriting the option
+(`test_buy_option_refuses_a_switched_option`, with
+`test_buy_option_succeeds_when_the_terms_match` for the matching buy), a
+writer buying their own option,
 exercise by a non-holder, collection by a non-writer or before exercise,
 reclaim after exercise, fee collection by a non-admin, a second sweep with
 nothing owed, and the parameter checks at market and write time.

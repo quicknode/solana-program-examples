@@ -2,6 +2,14 @@ use quasar_lang::{prelude::*, sysvars::Sysvar};
 
 use crate::{errors::FundError, last_restart::LastRestartSlot};
 
+/// Byte offset of the `verification_level` enum tag inside a Pyth
+/// PriceUpdateV2 account: 8 discriminator + 32 write_authority = 40.
+const PYTH_VERIFICATION_LEVEL_OFFSET: usize = 40;
+/// Borsh tag of `VerificationLevel::Full`, a price verified against a quorum
+/// of Pyth's signers. `Partial { num_signatures }` is tag 0 followed by a
+/// one-byte signature count, so it encodes in two bytes rather than one and
+/// moves every later field one byte along. The offsets below assume `Full`.
+const PYTH_VERIFICATION_LEVEL_FULL: u8 = 1;
 // Byte offset of `price` (i64) inside a Pyth PriceUpdateV2 account:
 //   8 discriminator + 32 write_authority + 1 verification_level + 32 feed_id = 73
 const PYTH_PRICE_OFFSET: usize = 73;
@@ -74,7 +82,8 @@ pub struct OraclePrice {
 /// Validate a price feed account against the one the fund registered, then
 /// return its positive, fresh price. `now` is the current unix timestamp.
 /// A price whose confidence interval exceeds `MAX_CONFIDENCE_BPS` is rejected.
-/// A price posted at or before the last cluster restart is rejected too.
+/// A price posted at or before the last cluster restart is rejected too, and
+/// so is an update a quorum of Pyth's signers did not fully verify.
 pub fn load_price(
     price_feed: &AccountView,
     expected_key: &Address,
@@ -88,6 +97,14 @@ pub fn load_price(
     if data.len() < PYTH_POSTED_SLOT_OFFSET + 8 {
         return Err(FundError::InvalidPriceFeed.into());
     }
+    // Refuse anything but a fully verified update. A partially verified one
+    // was signed by fewer than a quorum of Pyth's signers, and its longer
+    // `verification_level` encoding would shift every offset below by a byte,
+    // so its price would be read from the wrong bytes.
+    require!(
+        data[PYTH_VERIFICATION_LEVEL_OFFSET] == PYTH_VERIFICATION_LEVEL_FULL,
+        FundError::PriceNotFullyVerified
+    );
     let price = read_i64(data, PYTH_PRICE_OFFSET)?;
     let conf = read_u64(data, PYTH_CONF_OFFSET)?;
     let exponent = read_i32(data, PYTH_EXPONENT_OFFSET)?;
@@ -165,21 +182,53 @@ pub fn read_token_mint_and_owner(
     Ok((Address::from(mint), Address::from(owner)))
 }
 
-/// `numerator * 10^power / denominator`, floored, for a power of either sign:
-/// a negative power divides by `10^-power` instead. Multiplies before dividing.
-fn mul_pow10_div(numerator: u128, power: i32, denominator: u128) -> Result<u128, ProgramError> {
+/// The fraction `numerator * 10^power / denominator` as a (numerator,
+/// denominator) pair, for a power of either sign: a negative power multiplies
+/// the denominator by `10^-power` instead. Multiplies before dividing.
+fn mul_pow10_fraction(
+    numerator: u128,
+    power: i32,
+    denominator: u128,
+) -> Result<(u128, u128), ProgramError> {
     let scale = 10u128
         .checked_pow(power.unsigned_abs())
         .ok_or(FundError::MathOverflow)?;
-    let (numerator, denominator) = if power >= 0 {
-        (numerator.checked_mul(scale), Some(denominator))
+    if power >= 0 {
+        Ok((
+            numerator
+                .checked_mul(scale)
+                .ok_or(FundError::MathOverflow)?,
+            denominator,
+        ))
     } else {
-        (Some(numerator), denominator.checked_mul(scale))
-    };
+        Ok((
+            numerator,
+            denominator
+                .checked_mul(scale)
+                .ok_or(FundError::MathOverflow)?,
+        ))
+    }
+}
+
+/// `numerator * 10^power / denominator`, floored.
+fn mul_pow10_div(numerator: u128, power: i32, denominator: u128) -> Result<u128, ProgramError> {
+    let (numerator, denominator) = mul_pow10_fraction(numerator, power, denominator)?;
     numerator
-        .ok_or(FundError::MathOverflow)?
-        .checked_div(denominator.ok_or(FundError::MathOverflow)?)
+        .checked_div(denominator)
         .ok_or_else(|| FundError::MathOverflow.into())
+}
+
+/// `numerator * 10^power / denominator`, rounded up.
+fn mul_pow10_div_ceil(
+    numerator: u128,
+    power: i32,
+    denominator: u128,
+) -> Result<u128, ProgramError> {
+    let (numerator, denominator) = mul_pow10_fraction(numerator, power, denominator)?;
+    if denominator == 0 {
+        return Err(FundError::MathOverflow.into());
+    }
+    Ok(numerator.div_ceil(denominator))
 }
 
 /// Value of `amount` asset minor units in USDC minor units. The asset has
@@ -201,6 +250,55 @@ pub fn asset_value_in_usdc(
             .ok_or(FundError::MathOverflow)?,
         power,
         1,
+    )
+}
+
+/// `asset_value_in_usdc` rounded up rather than down. Deposit prices new
+/// shares against net asset value, and a NAV floored per asset is understated,
+/// which would mint the depositor more shares than their USDC buys at the
+/// expense of the holders already in the fund. Rounding each asset's value up
+/// overstates NAV by under one minor unit per asset instead, so the share
+/// count, floored again, rounds against the depositor.
+pub fn asset_value_in_usdc_rounded_up(
+    amount: u128,
+    price: OraclePrice,
+    asset_decimals: u8,
+    usdc_decimals: u8,
+) -> Result<u128, ProgramError> {
+    let power = usdc_decimals as i32 + price.exponent - asset_decimals as i32;
+    mul_pow10_div_ceil(
+        amount
+            .checked_mul(price.price)
+            .ok_or(FundError::MathOverflow)?,
+        power,
+        1,
+    )
+}
+
+/// `share_bps` of the value of `amount` asset minor units in USDC minor units,
+/// `amount * price * share_bps * 10^(usdc_decimals + exponent - asset_decimals)
+/// / 10_000`, rounded up in one division. Rebalance sets its sell leg's
+/// minimum output to this, with `share_bps` the part of the value the
+/// slippage tolerance keeps. Flooring the value and then flooring the share
+/// again would let the floor sit up to a minor unit below the exact figure,
+/// accepting a sale that pays the fund less than its tolerance allows;
+/// rounding the exact product up keeps the floor at or above it.
+pub fn asset_value_share_in_usdc_rounded_up(
+    amount: u128,
+    price: OraclePrice,
+    asset_decimals: u8,
+    usdc_decimals: u8,
+    share_bps: u128,
+) -> Result<u128, ProgramError> {
+    let power = usdc_decimals as i32 + price.exponent - asset_decimals as i32;
+    mul_pow10_div_ceil(
+        amount
+            .checked_mul(price.price)
+            .ok_or(FundError::MathOverflow)?
+            .checked_mul(share_bps)
+            .ok_or(FundError::MathOverflow)?,
+        power,
+        10_000,
     )
 }
 

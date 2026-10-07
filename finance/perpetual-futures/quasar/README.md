@@ -65,6 +65,14 @@ wallets, then exercise:
 - every fee and the maintenance requirement rounding up
   (`fees_and_maintenance_requirement_round_up`), and `basis_points_of` at
   its boundaries
+- profit/loss floored toward negative infinity and funding rounded toward
+  positive infinity, so a fraction of a base unit always goes to the pool
+  (`position_pnl_rounds_against_the_trader`,
+  `position_funding_rounds_against_the_trader`)
+- the pool valued rounding up for a deposit and down for a withdrawal, so
+  liquidity-provider shares are priced against the provider
+  (`add_liquidity_values_the_pool_rounding_up`,
+  `remove_liquidity_values_the_pool_rounding_down`)
 - the haircut: a position opening without full backing, profit paid in full
   while the pool backs it, two winners each paid exactly half when the pool is
   stressed (`haircut_scales_profit_when_pool_stressed`), the insurance fund

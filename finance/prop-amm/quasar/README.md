@@ -43,7 +43,17 @@ the quote math to the minor unit in both directions, the exact 1.65 USDC
 round-trip spread, oracle repricing and re-quoting, the operator's full exit,
 and that every gate shuts: slippage, staleness, restart handling, confidence,
 a feed account owned by another program, pause, zero amounts, inventory
-bounds, parameter bounds, and operator access control. Every refusal test
+bounds, parameter bounds, and operator access control. The oracle reader's
+layout and value checks each have a test: a zero or negative price
+(`swap_rejects_non_positive_price`), a feed at another scale
+(`swap_rejects_oracle_scale_mismatch`), a feed account too short to decode
+(`swap_rejects_oracle_data_too_short`), and a buy too small to deliver one
+minor unit (`swap_rejects_amount_that_rounds_to_zero`). `close_market`
+(discriminator 5) closes both vaults and the market and returns the three
+rents to the operator, refusing with `INVENTORY_NOT_EMPTY` (15) while either
+vault holds tokens; `close_market_returns_all_three_rents`,
+`close_market_refuses_while_a_vault_holds_tokens` and
+`close_market_rejects_non_operator` test it. Every refusal test
 asserts its error code with `fails_with`: the program's own codes from
 `instructions::shared::error`, and `QuasarError::HasOneMismatch` for the
 `has_one(operator)` constraint that refuses an imposter operator.

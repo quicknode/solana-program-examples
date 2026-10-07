@@ -52,6 +52,10 @@ const ONE_WEEK: i64 = 7 * SECONDS_PER_DAY;
 const STANDARD_USDC: u64 = 1_000 * ONE_USDC;
 const FIVE_NVDAX: u64 = 5 * ONE_NVDAX;
 
+// LiteSVM charges the default 5,000 lamports for each transaction's one
+// signature.
+const TRANSACTION_FEE: u64 = 5_000;
+
 fn token_program_id() -> Address {
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         .parse()
@@ -248,6 +252,13 @@ impl Venue {
             .unwrap_or(false)
     }
 
+    fn lamports(&self, address: &Address) -> u64 {
+        self.svm
+            .get_account(address)
+            .map(|account| account.lamports)
+            .unwrap_or(0)
+    }
+
     fn now(&self) -> i64 {
         self.svm.get_sysvar::<Clock>().unix_timestamp
     }
@@ -265,14 +276,34 @@ impl Venue {
     /// associated token accounts. Every character gets one SOL's worth of
     /// lamports and change for rent and fees.
     fn person(&mut self, underlying: u64, quote: u64) -> Person {
+        self.person_with_accounts(underlying, quote, true)
+    }
+
+    /// A character with a quote account only, as a put writer who has never
+    /// held the underlying would be. `underlying` is the address their
+    /// underlying associated token account would have; nothing exists there.
+    fn person_without_underlying_account(&mut self, quote: u64) -> Person {
+        self.person_with_accounts(0, quote, false)
+    }
+
+    fn person_with_accounts(
+        &mut self,
+        underlying: u64,
+        quote: u64,
+        with_underlying_account: bool,
+    ) -> Person {
         let keypair = create_wallet(&mut self.svm, 10_000_000_000).unwrap();
-        let underlying_account = create_associated_token_account(
-            &mut self.svm,
-            &keypair.pubkey(),
-            &self.underlying_mint,
-            &self.payer,
-        )
-        .unwrap();
+        let underlying_account = if with_underlying_account {
+            create_associated_token_account(
+                &mut self.svm,
+                &keypair.pubkey(),
+                &self.underlying_mint,
+                &self.payer,
+            )
+            .unwrap()
+        } else {
+            derive_ata(&keypair.pubkey(), &self.underlying_mint)
+        };
         let quote_account = create_associated_token_account(
             &mut self.svm,
             &keypair.pubkey(),
@@ -393,15 +424,42 @@ impl Venue {
         .expect("writing the put should succeed")
     }
 
+    /// The terms a buyer reads from an option's account before signing a
+    /// purchase.
+    fn listed_terms(&self, option: &Address) -> OptionTerms {
+        let state = self.option_state(option);
+        OptionTerms {
+            kind: state.kind,
+            underlying_amount: state.underlying_amount,
+            strike_amount: state.strike_amount,
+            premium: state.premium,
+            expiry: state.expiry,
+        }
+    }
+
+    /// Buy `option` at the terms it is listed with now.
     fn buy_option(
         &mut self,
         buyer: &Person,
         writer: &Address,
         option: &Address,
     ) -> Result<TransactionMetadata, String> {
+        let terms = self.listed_terms(option);
+        self.buy_option_with_terms(buyer, writer, option, terms)
+    }
+
+    /// Buy `option`, agreeing to `terms`: the terms the buyer saw, which the
+    /// option may no longer have by the time the purchase lands.
+    fn buy_option_with_terms(
+        &mut self,
+        buyer: &Person,
+        writer: &Address,
+        option: &Address,
+        terms: OptionTerms,
+    ) -> Result<TransactionMetadata, String> {
         let instruction = Instruction::new_with_bytes(
             options::id(),
-            &options::instruction::BuyOption {}.data(),
+            &options::instruction::BuyOption { terms }.data(),
             options::accounts::BuyOptionAccountConstraints {
                 buyer: buyer.pubkey(),
                 writer: *writer,
@@ -437,6 +495,8 @@ impl Venue {
                 writer_underlying: writer.underlying,
                 writer_quote: writer.quote,
                 token_program: token_program_id(),
+                associated_token_program: ata_program_id(),
+                system_program: system_program::ID,
             }
             .to_account_metas(None),
         );
@@ -518,6 +578,8 @@ impl Venue {
                 writer_underlying: writer.underlying,
                 writer_quote: writer.quote,
                 token_program: token_program_id(),
+                associated_token_program: ata_program_id(),
+                system_program: system_program::ID,
             }
             .to_account_metas(None),
         );
@@ -870,6 +932,94 @@ fn test_reclaim_collateral_after_expiry_returns_the_strike_to_the_put_writer() {
     venue.assert_vaults_match_ledger();
 }
 
+/// Carol has never held NVDAx, so she has no NVDAx account. Writing the put
+/// creates it at her expense: her lamports pay the option's rent, the new
+/// account's rent and the fee, and nothing else. Dave buys, never exercises,
+/// and at expiry Carol reclaims her 750 USDC; the option's rent comes back to
+/// her to the lamport.
+#[test]
+fn test_put_writer_without_an_underlying_account_writes_and_reclaims() {
+    let mut venue = Venue::new();
+    let carol = venue.person_without_underlying_account(STANDARD_USDC);
+    let dave = venue.person(FIVE_NVDAX, STANDARD_USDC);
+    assert!(venue.svm.get_account(&carol.underlying).is_none());
+    let carol_lamports_before_write = venue.lamports(&carol.pubkey());
+
+    let option = venue.write_put(&carol);
+
+    let underlying_account_rent = venue.lamports(&carol.underlying);
+    let option_rent = venue.lamports(&option);
+    assert!(underlying_account_rent > 0);
+    assert_eq!(venue.balance(&carol.underlying), 0);
+    assert_eq!(
+        venue.lamports(&carol.pubkey()),
+        carol_lamports_before_write - option_rent - underlying_account_rent - TRANSACTION_FEE
+    );
+    let collateral = PUT_STRIKE_AMOUNT;
+    assert_eq!(venue.balance(&carol.quote), STANDARD_USDC - collateral);
+    assert_eq!(venue.balance(&venue.quote_vault), collateral);
+    venue.assert_vaults_match_ledger();
+
+    venue.buy_option(&dave, &carol.pubkey(), &option).unwrap();
+    let fee = 200_000; // 1% of 20 USDC
+    let expiry = venue.option_state(&option).expiry;
+    venue.warp_to(expiry);
+    let carol_lamports_before_reclaim = venue.lamports(&carol.pubkey());
+
+    venue.reclaim_collateral(&carol, &option).unwrap();
+
+    assert_eq!(
+        venue.balance(&carol.quote),
+        STANDARD_USDC + PUT_PREMIUM - fee
+    );
+    assert_eq!(venue.balance(&carol.underlying), 0);
+    assert_eq!(venue.balance(&dave.quote), STANDARD_USDC - PUT_PREMIUM);
+    assert_eq!(venue.balance(&dave.underlying), FIVE_NVDAX);
+    assert_eq!(venue.balance(&venue.quote_vault), fee);
+    assert!(!venue.option_exists(&option));
+    assert_eq!(
+        venue.lamports(&carol.pubkey()),
+        carol_lamports_before_reclaim + option_rent - TRANSACTION_FEE
+    );
+    let market = venue.market_state();
+    assert_eq!(market.quote_owed, 0);
+    assert_eq!(market.underlying_owed, 0);
+    assert_eq!(market.fees_owed, fee);
+    venue.assert_vaults_match_ledger();
+}
+
+/// Carol, with no NVDAx account, writes a put nobody buys and withdraws it.
+/// Her 750 USDC comes back, the option closes with its rent back to her to
+/// the lamport, and the NVDAx account the write created for her stays hers.
+#[test]
+fn test_put_writer_without_an_underlying_account_writes_and_cancels() {
+    let mut venue = Venue::new();
+    let carol = venue.person_without_underlying_account(STANDARD_USDC);
+    assert!(venue.svm.get_account(&carol.underlying).is_none());
+
+    let option = venue.write_put(&carol);
+    assert_eq!(venue.balance(&carol.underlying), 0);
+    assert_eq!(
+        venue.balance(&carol.quote),
+        STANDARD_USDC - PUT_STRIKE_AMOUNT
+    );
+    let option_rent = venue.lamports(&option);
+    let carol_lamports_before_cancel = venue.lamports(&carol.pubkey());
+
+    venue.cancel_option(&carol, &option).unwrap();
+
+    assert_eq!(venue.balance(&carol.quote), STANDARD_USDC);
+    assert_eq!(venue.balance(&carol.underlying), 0);
+    assert_eq!(venue.balance(&venue.quote_vault), 0);
+    assert!(!venue.option_exists(&option));
+    assert_eq!(
+        venue.lamports(&carol.pubkey()),
+        carol_lamports_before_cancel + option_rent - TRANSACTION_FEE
+    );
+    assert_eq!(venue.market_state().quote_owed, 0);
+    venue.assert_vaults_match_ledger();
+}
+
 // ===========================================================================
 // The expiry boundary, from both sides
 // ===========================================================================
@@ -1009,6 +1159,136 @@ fn test_buy_is_refused_once_sold() {
         OptionsError::OptionNotListed,
     );
     assert_eq!(venue.option_state(&option).holder, bob.pubkey());
+}
+
+/// The switched-option attack: Bob reads Alice's call and signs a purchase at
+/// those terms. Before it lands, Alice cancels and writes a new option at the
+/// same address (the same `id`) on worse terms: a higher premium, fewer
+/// shares, a higher strike, or a sooner expiry. Each time, Bob's purchase is
+/// refused with `OptionTermsChanged`, and no USDC moves.
+#[test]
+fn test_buy_option_refuses_a_switched_option() {
+    let mut venue = Venue::new();
+    let alice = venue.person(FIVE_NVDAX, STANDARD_USDC);
+    let bob = venue.person(0, STANDARD_USDC);
+    let option = venue.write_call(&alice);
+    let seen = venue.listed_terms(&option);
+
+    let switches = [
+        OptionTerms {
+            premium: 2 * CALL_PREMIUM,
+            ..seen
+        },
+        OptionTerms {
+            underlying_amount: ONE_NVDAX,
+            ..seen
+        },
+        OptionTerms {
+            strike_amount: CALL_STRIKE_AMOUNT + 100 * ONE_USDC,
+            ..seen
+        },
+        OptionTerms {
+            expiry: seen.expiry - SECONDS_PER_DAY,
+            ..seen
+        },
+    ];
+    for switched in switches {
+        // A fresh blockhash, or the identical cancel and purchase would be
+        // dropped as duplicates of the previous round's.
+        venue.svm.expire_blockhash();
+        venue.cancel_option(&alice, &option).unwrap();
+        let rewritten = venue.write_option(&alice, 1, switched).unwrap();
+        assert_eq!(rewritten, option);
+
+        assert_fails_with(
+            venue.buy_option_with_terms(&bob, &alice.pubkey(), &option, seen),
+            OptionsError::OptionTermsChanged,
+        );
+        assert_eq!(venue.balance(&bob.quote), STANDARD_USDC);
+        assert_eq!(venue.balance(&alice.quote), STANDARD_USDC);
+        assert_eq!(venue.balance(&venue.quote_vault), 0);
+        let state = venue.option_state(&option);
+        assert_eq!(state.status, OptionStatus::Listed);
+        assert_eq!(state.holder, Address::default());
+        assert_eq!(venue.market_state().fees_owed, 0);
+        venue.assert_vaults_match_ledger();
+    }
+}
+
+/// The kind switch: Bob reads Alice's call and signs a purchase at those
+/// terms. Before it lands, Alice cancels and writes a put at the same address
+/// (the same `id`) with every amount and the expiry unchanged, so only the
+/// kind differs. A put would hand Bob the right to sell 5 NVDAx for 900 USDC,
+/// not to buy them. Bob's purchase is refused with `OptionTermsChanged`, and
+/// no USDC moves: Alice's 900 USDC of put collateral stays in the vault.
+#[test]
+fn test_buy_option_refuses_a_call_switched_to_a_put() {
+    let mut venue = Venue::new();
+    let alice = venue.person(FIVE_NVDAX, STANDARD_USDC);
+    let bob = venue.person(0, STANDARD_USDC);
+    let option = venue.write_call(&alice);
+    let seen = venue.listed_terms(&option);
+    assert_eq!(seen.kind, OptionKind::Call);
+
+    venue.cancel_option(&alice, &option).unwrap();
+    let switched = OptionTerms {
+        kind: OptionKind::Put,
+        ..seen
+    };
+    let rewritten = venue.write_option(&alice, 1, switched).unwrap();
+    assert_eq!(rewritten, option);
+    assert_eq!(venue.option_state(&option).kind, OptionKind::Put);
+
+    assert_fails_with(
+        venue.buy_option_with_terms(&bob, &alice.pubkey(), &option, seen),
+        OptionsError::OptionTermsChanged,
+    );
+    assert_eq!(venue.balance(&bob.quote), STANDARD_USDC);
+    assert_eq!(
+        venue.balance(&alice.quote),
+        STANDARD_USDC - CALL_STRIKE_AMOUNT
+    );
+    assert_eq!(venue.balance(&alice.underlying), FIVE_NVDAX);
+    assert_eq!(venue.balance(&venue.quote_vault), CALL_STRIKE_AMOUNT);
+    assert_eq!(venue.balance(&venue.underlying_vault), 0);
+    let state = venue.option_state(&option);
+    assert_eq!(state.status, OptionStatus::Listed);
+    assert_eq!(state.holder, Address::default());
+    assert_eq!(venue.market_state().fees_owed, 0);
+    venue.assert_vaults_match_ledger();
+}
+
+/// A purchase whose terms match the option's goes through: Bob, reading the
+/// rewritten option at a 50 USDC premium, buys it at that premium, paying
+/// 0.50 USDC to the venue and 49.50 USDC to Alice.
+#[test]
+fn test_buy_option_succeeds_when_the_terms_match() {
+    let mut venue = Venue::new();
+    let alice = venue.person(FIVE_NVDAX, STANDARD_USDC);
+    let bob = venue.person(0, STANDARD_USDC);
+    let option = venue.write_call(&alice);
+    let first = venue.listed_terms(&option);
+    venue.cancel_option(&alice, &option).unwrap();
+    let premium = 2 * CALL_PREMIUM;
+    venue
+        .write_option(&alice, 1, OptionTerms { premium, ..first })
+        .unwrap();
+    let seen = venue.listed_terms(&option);
+    assert_eq!(seen.premium, premium);
+
+    venue
+        .buy_option_with_terms(&bob, &alice.pubkey(), &option, seen)
+        .unwrap();
+
+    let fee = 500_000; // 0.50 USDC
+    assert_eq!(venue.balance(&bob.quote), STANDARD_USDC - premium);
+    assert_eq!(venue.balance(&alice.quote), STANDARD_USDC + premium - fee);
+    assert_eq!(venue.balance(&venue.quote_vault), fee);
+    let state = venue.option_state(&option);
+    assert_eq!(state.holder, bob.pubkey());
+    assert_eq!(state.status, OptionStatus::Held);
+    assert_eq!(venue.market_state().fees_owed, fee);
+    venue.assert_vaults_match_ledger();
 }
 
 /// A writer cannot buy their own option. `buyer_quote` and `writer_quote`

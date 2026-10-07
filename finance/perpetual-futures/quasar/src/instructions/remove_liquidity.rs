@@ -2,7 +2,7 @@ use {
     crate::{
         constants::MINIMUM_LIQUIDITY,
         instructions::shared::{
-            err, error, refresh_price_and_funding_within_band, traders_unrealized_pnl,
+            err, error, refresh_price_and_funding_within_band, traders_unrealized_pnl, Rounding,
         },
         state::Pool,
         LpMintPda,
@@ -70,6 +70,9 @@ pub fn handle_remove_liquidity(
         accounts.pool.short_size.get(),
         accounts.pool.short_size_scaled.get(),
         price,
+        // Rounded up, so the pool is valued low and a fraction of a base
+        // unit lowers what a share redeems for.
+        Rounding::Up,
     )?;
     let aum = (accounts.pool.liquidity.get() as i128)
         .checked_sub(traders)

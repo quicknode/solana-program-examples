@@ -5,7 +5,7 @@ use anchor_lang::prelude::*;
 /// two vaults.
 ///
 /// The vaults hold other people's money (writers' collateral, and the strike
-/// payments holders make at exercise), so the two `*_locked` fields say how
+/// payments holders make at exercise), so the two `*_owed` fields say how
 /// much of each vault the market owes and to whom it is owed in aggregate.
 /// Every handler that moves tokens asserts, after its own arithmetic, that
 /// each vault still covers what the market owes.

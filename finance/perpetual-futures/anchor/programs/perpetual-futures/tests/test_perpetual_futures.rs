@@ -8,7 +8,9 @@ use {
         errors::PerpError,
         instructions::{
             initialize_pool::PoolParameters,
-            shared::{basis_points_of, basis_points_of_rounded_down},
+            shared::{
+                basis_points_of, basis_points_of_rounded_down, position_funding, position_pnl,
+            },
         },
         state::{Pool, Position, Side},
     },
@@ -1809,6 +1811,81 @@ fn test_remove_liquidity_capped_at_liquidity() {
     assert_eq!(market.pool_state().liquidity, 0);
     market.assert_vault_matches_ledger();
 }
+/// `add_liquidity` values the pool rounding up. A $5,000 short entered at
+/// $100 and marked at $99.99999999 is worth 4,999,999,999.5 base units, so
+/// traders are up half a base unit. Rounded against the depositor that half
+/// counts as nothing owed, assets-under-management stays at the pool's
+/// 100,000 USDC of liquidity, and a 100,000 USDC deposit is minted exactly
+/// 100,000 USDC of shares. Valuing the short at 4,999,999,999 would read the
+/// pool one base unit low and mint one share more.
+#[test]
+fn test_add_liquidity_values_the_pool_rounding_up() {
+    let mut market = Market::default_market();
+    market.seed_liquidity(100_000 * ONE_USDC);
+    let (trader, trader_collateral) = market.funded_trader(1_000 * ONE_USDC);
+    market
+        .open_position(
+            &trader,
+            trader_collateral,
+            Side::Short,
+            1_000 * ONE_USDC,
+            5_000 * ONE_USDC,
+            0,
+        )
+        .unwrap();
+    market.set_price(dollars(100) - 1);
+
+    let deposit = 100_000 * ONE_USDC;
+    let (provider, provider_collateral) = market.funded_trader(deposit);
+    market
+        .add_liquidity(&provider, provider_collateral, deposit, 0)
+        .unwrap();
+    let provider_lp = derive_ata(&provider.pubkey(), &market.lp_mint);
+    assert_eq!(
+        get_token_account_balance(&market.svm, &provider_lp).unwrap(),
+        100_000 * ONE_USDC
+    );
+    assert_eq!(market.pool_state().liquidity, 200_000 * ONE_USDC);
+    market.assert_vault_matches_ledger();
+}
+
+/// `remove_liquidity` values the pool rounding down. A $5,000 long entered at
+/// $100 and marked at $100.00000001 is worth 5,000,000,000.5 base units, so
+/// traders are up half a base unit. Rounded against the withdrawing provider
+/// that half counts as a whole unit owed, assets-under-management reads
+/// 99,999,999,999, and the provider's 99,999,999,000 shares of 100,000,000,000
+/// redeem 99,999,998,999.00000001, paid as 99,999,998,999. Valuing the long at
+/// 5,000,000,000 would pay 99,999,999,000.
+#[test]
+fn test_remove_liquidity_values_the_pool_rounding_down() {
+    let mut market = Market::default_market();
+    let (provider, provider_collateral) = market.seed_liquidity(100_000 * ONE_USDC);
+    let (trader, trader_collateral) = market.funded_trader(1_000 * ONE_USDC);
+    market
+        .open_position(
+            &trader,
+            trader_collateral,
+            Side::Long,
+            1_000 * ONE_USDC,
+            5_000 * ONE_USDC,
+            0,
+        )
+        .unwrap();
+    market.set_price(dollars(100) + 1);
+
+    let provider_lp = derive_ata(&provider.pubkey(), &market.lp_mint);
+    let shares = get_token_account_balance(&market.svm, &provider_lp).unwrap();
+    assert_eq!(shares, 100_000 * ONE_USDC - 1_000);
+    market
+        .remove_liquidity(&provider, provider_collateral, shares, 0)
+        .unwrap();
+    assert_eq!(
+        get_token_account_balance(&market.svm, &provider_collateral).unwrap(),
+        99_999_998_999
+    );
+    assert_eq!(market.pool_state().liquidity, 1_001);
+    market.assert_vault_matches_ledger();
+}
 
 /// One slot short of the warm-up, a profitable close is refused and the
 /// position stays open.
@@ -2081,14 +2158,15 @@ fn test_fees_and_maintenance_requirement_round_up() {
     assert_eq!(pool.program_fees, 2 * 2_500_001);
 
     // The same position again, taken to an equity of exactly the rounded-up
-    // maintenance requirement: $85.10000004 loses it 744,999,998 base units.
+    // maintenance requirement: $85.10000005 loses it 744,999,997.65 base
+    // units, a loss of 744,999,998 once floored against the trader.
     // The open is byte-identical to the first, so it would carry the same
     // signature and be dropped as already processed without a new blockhash.
     market.svm.expire_blockhash();
     market
         .open_position(&trader, trader_collateral, Side::Long, collateral, size, 0)
         .unwrap();
-    market.set_price(8_510_000_004);
+    market.set_price(8_510_000_005);
     let (liquidator, liquidator_collateral) = market.liquidator();
     market
         .liquidate(&liquidator, &trader.pubkey(), trader_collateral, Side::Long)
@@ -2125,6 +2203,58 @@ fn test_basis_points_of_rounds_up_and_the_insurance_split_rounds_down() {
         2_500_000
     );
     assert_eq!(basis_points_of_rounded_down(1, 5_000).unwrap(), 0);
+}
+
+/// `position_pnl` floors toward negative infinity rather than truncating
+/// toward zero. A position of 1,000 base units entered at 3 and marked at 2
+/// has lost 333.33 base units: truncation would book a loss of 333, floor
+/// books 334, so the fraction goes to the pool. A profit of 333.33 still
+/// books 333, the same as truncation, and a short is floored the same way.
+#[test]
+fn test_position_pnl_rounds_against_the_trader() {
+    assert_eq!(position_pnl(Side::Long, 1_000, 3, 2).unwrap(), -334);
+    assert_eq!(position_pnl(Side::Long, 1_000, 3, 4).unwrap(), 333);
+    assert_eq!(position_pnl(Side::Short, 1_000, 3, 4).unwrap(), -334);
+    assert_eq!(position_pnl(Side::Short, 1_000, 3, 2).unwrap(), 333);
+    // A whole number of base units is unchanged.
+    assert_eq!(position_pnl(Side::Long, 1_000, 4, 2).unwrap(), -500);
+}
+
+/// `position_funding` rounds up, toward positive infinity, so a fraction of a
+/// base unit goes to the pool. A funding index that moves 1,500,000 (in
+/// `FUNDING_PRECISION` units of 10^9) on a position of 1,000 base units is
+/// 1.5 base units. A trader who pays is charged 2, where truncation would
+/// charge 1; a trader who is paid receives 1, the same as truncation. A short
+/// is rounded the same way as a long.
+#[test]
+fn test_position_funding_rounds_against_the_trader() {
+    // The index rises: longs pay, shorts are paid.
+    assert_eq!(
+        position_funding(Side::Long, 1_000, 0, 1_500_000).unwrap(),
+        2
+    );
+    assert_eq!(
+        position_funding(Side::Short, 1_000, 0, 1_500_000).unwrap(),
+        -1
+    );
+    // The index falls: shorts pay, longs are paid.
+    assert_eq!(
+        position_funding(Side::Short, 1_000, 0, -1_500_000).unwrap(),
+        2
+    );
+    assert_eq!(
+        position_funding(Side::Long, 1_000, 0, -1_500_000).unwrap(),
+        -1
+    );
+    // A whole number of base units is unchanged.
+    assert_eq!(
+        position_funding(Side::Long, 1_000, 0, 2_000_000).unwrap(),
+        2
+    );
+    assert_eq!(
+        position_funding(Side::Short, 1_000, 0, 2_000_000).unwrap(),
+        -2
+    );
 }
 
 #[test]

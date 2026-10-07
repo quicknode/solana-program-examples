@@ -5,17 +5,37 @@ use crate::constants::{MARKET_SEED, OPTION_SEED, QUOTE_VAULT_SEED};
 use crate::contract_math;
 use crate::errors::OptionsError;
 use crate::instructions::shared::{check_custody, transfer_from_signer};
+use crate::instructions::write_option::OptionTerms;
 use crate::state::{Market, OptionContract, OptionStatus};
 
 /// Buy a listed option. The premium is the only money that changes hands: the
 /// venue's fee comes out of it into the quote vault, and the rest goes
 /// straight to the writer, whose money it is from this moment whatever the
 /// holder later does. The collateral does not move.
-pub fn handle_buy_option(context: &mut Context<BuyOptionAccountConstraints>) -> Result<()> {
+///
+/// `terms` are the terms the buyer read from the option before signing. A
+/// writer can cancel an option and write a new one at the same address (the
+/// same `id`) with a higher premium, a smaller `underlying_amount`, or a
+/// sooner expiry while the buyer's transaction is on its way, so the purchase
+/// is refused with `OptionTermsChanged` unless every term still matches.
+pub fn handle_buy_option(
+    context: &mut Context<BuyOptionAccountConstraints>,
+    terms: OptionTerms,
+) -> Result<()> {
     let option = &mut context.accounts.option;
     require!(
         option.status == OptionStatus::Listed,
         OptionsError::OptionNotListed
+    );
+    // The switched-option check, before anything moves: the buyer pays only
+    // for the option they saw.
+    require!(
+        option.kind == terms.kind
+            && option.underlying_amount == terms.underlying_amount
+            && option.strike_amount == terms.strike_amount
+            && option.premium == terms.premium
+            && option.expiry == terms.expiry,
+        OptionsError::OptionTermsChanged
     );
     // An option nobody can exercise any more is not for sale.
     let now = Clock::get()?.unix_timestamp;
