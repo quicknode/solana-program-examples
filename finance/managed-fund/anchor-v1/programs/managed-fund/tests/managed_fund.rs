@@ -112,6 +112,34 @@ fn write_price_feed_with_confidence(
     .unwrap();
 }
 
+/// Write a Pyth feed as a partially verified update, laid out as Pyth's
+/// receiver writes one: `verification_level` is `Partial { num_signatures }`,
+/// tag 0 at offset 40 then the signature count at 41, so every later field sits
+/// one byte further along than in a fully verified update.
+fn write_partially_verified_price_feed(
+    svm: &mut LiteSVM,
+    key: Pubkey,
+    price: i64,
+    num_signatures: u8,
+) {
+    let mut data =
+        build_mock_price_update_account(price, DEFAULT_CONFIDENCE, PYTH_EXPONENT, PUBLISH_TIME, 1);
+    data[40] = 0;
+    data.insert(41, num_signatures);
+    let rent = svm.minimum_balance_for_rent_exemption(data.len());
+    svm.set_account(
+        key,
+        SolanaAccount {
+            lamports: rent,
+            data,
+            owner: pyth_receiver_program_id(),
+            executable: false,
+            rent_epoch: 0,
+        },
+    )
+    .unwrap();
+}
+
 const PUBLISH_TIME: i64 = 1_700_000_000;
 /// A tight confidence interval, $0.001 at exponent -8, far inside the 1% limit.
 const DEFAULT_CONFIDENCE: u64 = 100_000;
@@ -1103,6 +1131,38 @@ fn test_deposit_first() {
         get_token_account_balance(&ctx.svm, &ctx.vault_nvda).unwrap(),
         333_333
     );
+}
+
+/// Deposit values each asset rounding up, so the NAV it prices shares against
+/// is never understated. A 1 USDC first deposit leaves the fund holding 160,000
+/// TSLAx minor units, worth exactly 400,000 USDC minor units, and 333,333
+/// NVDAx minor units, worth 599,999.4. Floored per asset the NAV would be
+/// 999,999 and a second 1 USDC deposit would mint
+/// floor(1,000,000 * 1,000,000 / 999,999) = 1,000,001 shares, one more than
+/// its USDC buys, taken from the first holder. Rounded up the NAV is 1,000,000
+/// and the deposit mints floor(1,000,000 * 1,000,000 / 1,000,000) = 1,000,000.
+#[test]
+fn test_deposit_values_assets_rounding_up() {
+    let mut ctx = setup_full();
+    standard_fund(&mut ctx);
+
+    let amount = 1_000_000u64; // 1 USDC
+    let first = fund_user(&mut ctx, amount);
+    do_deposit(&mut ctx, &first, amount, amount);
+    let fund = read_fund(&ctx);
+    assert_eq!(fund.usdc_holdings, 0);
+    assert_eq!(fund.asset_holdings[0], 160_000);
+    assert_eq!(fund.asset_holdings[1], 333_333);
+    assert_eq!(fund.total_shares, 1_000_000);
+
+    let second = fund_user(&mut ctx, amount);
+    let second_share = do_deposit(&mut ctx, &second, amount, 1);
+    assert_eq!(
+        get_token_account_balance(&ctx.svm, &second_share).unwrap(),
+        1_000_000,
+        "a NAV floored per asset would have minted 1,000,001 shares"
+    );
+    assert_eq!(read_fund(&ctx).total_shares, 2_000_000);
 }
 
 #[test]
@@ -2275,5 +2335,48 @@ fn test_wide_confidence_price_rejected() {
     do_rebalance(&mut ctx, 1, 0);
     assert_eq!(read_fund(&ctx).asset_holdings[0], 76_800_000);
     assert_eq!(read_fund(&ctx).asset_holdings[1], 144_000_000);
+    assert_holdings_match_vaults(&ctx);
+}
+
+/// The fund reads a Pyth update at fixed offsets that assume a fully verified
+/// one. A partially verified update, signed by two of the five guardians, is
+/// refused with `PriceNotFullyVerified` rather than read a byte off. Rewritten
+/// as fully verified at the same price, the same deposit prices exactly as
+/// `test_deposit_first` does.
+#[test]
+fn test_partially_verified_price_rejected() {
+    let mut ctx = setup_full();
+    standard_fund(&mut ctx);
+
+    let amount = 1_000_000u64; // 1 USDC
+    let user = fund_user(&mut ctx, amount);
+    write_partially_verified_price_feed(&mut ctx.svm, ctx.price_feed_nvda, NVDA_PRICE, 2);
+    let ix = deposit_instruction(&ctx, &user, amount, amount, deposit_remaining(&ctx));
+    assert_program_error(
+        send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[&user], &user.pubkey()),
+        FundError::PriceNotFullyVerified,
+        "a deposit priced from a partially verified update must fail",
+    );
+
+    set_price_feed(&mut ctx.svm, ctx.price_feed_nvda, NVDA_PRICE);
+    ctx.svm.expire_blockhash();
+    let user_share = do_deposit(&mut ctx, &user, amount, amount);
+    assert_eq!(
+        get_token_account_balance(&ctx.svm, &user_share).unwrap(),
+        amount
+    );
+    assert_eq!(
+        get_token_account_balance(&ctx.svm, &ctx.vault_usdc).unwrap(),
+        0
+    );
+    // 0.4 USDC / 250 = 0.0016 TSLAx; 0.6 USDC / 180 = 0.00333333 NVDAx (floor).
+    assert_eq!(
+        get_token_account_balance(&ctx.svm, &ctx.vault_tsla).unwrap(),
+        160_000
+    );
+    assert_eq!(
+        get_token_account_balance(&ctx.svm, &ctx.vault_nvda).unwrap(),
+        333_333
+    );
     assert_holdings_match_vaults(&ctx);
 }

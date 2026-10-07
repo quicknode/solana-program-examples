@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased - 2026-10-07
+
+### Fixed
+
+- The `place_order` doc comment said ties at one price break on the
+  earliest timestamp. They break on the lowest order id, the order book's
+  sequence number, which is what the matching code compares. Comment
+  only; no behavior changes.
+
 ## Unreleased - 2026-10-05
 
 ### Added

@@ -80,4 +80,11 @@ mod quasar_prop_amm {
     ) -> Result<(), ProgramError> {
         instructions::handle_swap(&mut ctx.accounts, direction, amount_in, minimum_amount_out)
     }
+
+    /// Operator closes the market and both vaults, recovering all three
+    /// rents. Refused while either vault holds tokens.
+    #[instruction(discriminator = 5)]
+    pub fn close_market(ctx: Ctx<CloseMarket>) -> Result<(), ProgramError> {
+        instructions::handle_close_market(&mut ctx.accounts)
+    }
 }

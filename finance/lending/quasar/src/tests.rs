@@ -2147,7 +2147,7 @@ mod clock_warp {
     }
 
     /// The factor after one accrual `seconds` after the last: one multiply by
-    /// `1 + rate_per_second * seconds`, floored, exactly as the program does it.
+    /// `1 + rate_per_second * seconds`, rounded up, exactly as the program does it.
     fn factor_after(reserve: &ReserveState, seconds: u128) -> u128 {
         let factor = u128::from(reserve.borrow_accumulation_factor);
         let utilization = utilization_bps(
@@ -2164,7 +2164,103 @@ mod clock_warp {
             u16::from(reserve.max_borrow_rate_bps),
         )
         .unwrap();
-        factor * (FIXED_POINT_SCALE + rate * seconds) / FIXED_POINT_SCALE
+        (factor * (FIXED_POINT_SCALE + rate * seconds)).div_ceil(FIXED_POINT_SCALE)
+    }
+
+    /// What one accrual does to a reserve, worked out from its stored fields
+    /// with every division rounded one way: `ceil` when `round_up`, `floor`
+    /// otherwise. Returns the utilization, the APR, the per-second rate and the
+    /// new factor, so a test can compare the program's factor with both
+    /// roundings without calling the program's own rate functions.
+    fn accrue_by_hand(
+        reserve: &ReserveState,
+        seconds: u128,
+        round_up: bool,
+    ) -> (u128, u128, u128, u128) {
+        use crate::constants::{BPS_DENOMINATOR, SECONDS_PER_YEAR};
+        let divide = |numerator: u128, denominator: u128| {
+            if round_up {
+                numerator.div_ceil(denominator)
+            } else {
+                numerator / denominator
+            }
+        };
+        let factor = u128::from(reserve.borrow_accumulation_factor);
+        let min_rate = u128::from(u16::from(reserve.min_borrow_rate_bps));
+        let optimal_rate = u128::from(u16::from(reserve.optimal_borrow_rate_bps));
+        let max_rate = u128::from(u16::from(reserve.max_borrow_rate_bps));
+        let optimal_utilization = u128::from(u16::from(reserve.optimal_utilization_bps));
+        // The debt itself is always ceiled; that rounding is not under test here.
+        let debt = (u128::from(reserve.borrowed_principal) * factor).div_ceil(FIXED_POINT_SCALE);
+        let gross = u128::from(u64::from(reserve.available_liquidity)) + debt;
+        let utilization = divide(debt * BPS_DENOMINATOR, gross);
+        let apr_bps = if utilization <= optimal_utilization {
+            min_rate + divide((optimal_rate - min_rate) * utilization, optimal_utilization)
+        } else {
+            optimal_rate
+                + divide(
+                    (max_rate - optimal_rate) * (utilization - optimal_utilization),
+                    BPS_DENOMINATOR - optimal_utilization,
+                )
+        };
+        let rate_per_second = divide(
+            apr_bps * FIXED_POINT_SCALE,
+            BPS_DENOMINATOR * SECONDS_PER_YEAR,
+        );
+        let new_factor = divide(
+            factor * (FIXED_POINT_SCALE + rate_per_second * seconds),
+            FIXED_POINT_SCALE,
+        );
+        (utilization, apr_bps, rate_per_second, new_factor)
+    }
+
+    /// Every debt is principal times the accumulation factor, so every
+    /// division that leads to the factor rounds against the borrower: the
+    /// utilization, the APR read off the curve, the per-second rate, and the
+    /// factor's own growth all round up. The second accrual here starts from a
+    /// factor that is no longer 1.0, so each of the four divisions has a
+    /// remainder and flooring would give a smaller factor; the program's factor
+    /// is the ceiled one.
+    #[test]
+    fn accumulation_factor_rounds_up_against_the_borrower() {
+        let mut world = World::new();
+        world.bootstrap_position();
+        world
+            .borrow(BORROWER, BORROWER_BORROW, 500 * UNIT)
+            .assert_success();
+
+        // The first accrual moves the factor off exactly 1.0.
+        world.warp_seconds(TENTH_OF_A_YEAR);
+        world.refresh_borrow_reserve();
+        let before = world.reserve(world.borrow_reserve);
+        let factor_before = u128::from(before.borrow_accumulation_factor);
+        assert!(factor_before > FIXED_POINT_SCALE);
+
+        let seconds: u128 = 86_400;
+        world.warp_seconds(seconds as i64);
+        world.refresh_borrow_reserve();
+        let factor = u128::from(
+            world
+                .reserve(world.borrow_reserve)
+                .borrow_accumulation_factor,
+        );
+
+        let (utilization_up, apr_up, rate_up, factor_up) = accrue_by_hand(&before, seconds, true);
+        let (utilization_down, apr_down, rate_down, factor_down) =
+            accrue_by_hand(&before, seconds, false);
+        // Every division in the chain has a remainder, so flooring each one
+        // would have charged less.
+        assert_eq!(utilization_up, utilization_down + 1);
+        assert_eq!(apr_up, apr_down + 1);
+        assert!(rate_up > rate_down);
+        assert!(factor_up > factor_down);
+        // The factor's own growth has a remainder too: flooring only that last
+        // step, with the ceiled rate, would give one unit less.
+        let growth_up = FIXED_POINT_SCALE + rate_up * seconds;
+        assert_ne!((factor_before * growth_up) % FIXED_POINT_SCALE, 0);
+        assert_eq!(factor_up, factor_before * growth_up / FIXED_POINT_SCALE + 1);
+
+        assert_eq!(factor, factor_up, "the program's factor is the ceiled one");
     }
 
     /// The rate fields are annual, and a year is a length of wall-clock time, so

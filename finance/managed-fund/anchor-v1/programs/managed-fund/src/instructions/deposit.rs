@@ -8,7 +8,9 @@ use anchor_spl::{
 use mock_swap_router::cpi::accounts::SwapUsdcForAssetAccountConstraints as RouterSwapAccounts;
 
 use crate::error::FundError;
-use crate::oracle::{asset_value_in_usdc, load_price, read_token_amount, usdc_to_asset_amount};
+use crate::oracle::{
+    asset_value_in_usdc_rounded_up, load_price, read_token_amount, usdc_to_asset_amount,
+};
 use crate::state::{AssetConfig, Fund};
 
 #[derive(Accounts)]
@@ -116,6 +118,8 @@ pub fn handle_deposit<'info>(
     // Net asset value over the complete asset set. The assets are exactly indices
     // 0..asset_count, so requiring five accounts per index, in order, each with a
     // matching index, makes it impossible to omit an asset and understate NAV.
+    // Each asset is valued rounding up, so NAV is never understated and the
+    // floored share count below rounds against the depositor, not the holders.
     let remaining = context.remaining_accounts;
     require!(
         remaining.len() == asset_count * 5,
@@ -144,7 +148,7 @@ pub fn handle_deposit<'info>(
         let price = load_price(feed_account, &config.price_feed, now)?;
         let amount = asset_holdings[index];
         nav = nav
-            .checked_add(asset_value_in_usdc(
+            .checked_add(asset_value_in_usdc_rounded_up(
                 amount as u128,
                 price,
                 config.decimals,

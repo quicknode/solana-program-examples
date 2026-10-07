@@ -71,6 +71,13 @@ pub mod prop_amm {
         instructions::handle_set_quote(context, spread_bps, paused)
     }
 
+    /// Operator closes the market and both vaults, recovering all three
+    /// rents. Refused while either vault holds tokens: the operator withdraws
+    /// the inventory first.
+    pub fn close_market(context: &mut Context<CloseMarketAccountConstraints>) -> Result<()> {
+        instructions::handle_close_market(context)
+    }
+
     /// Swap against the operator's quote: buy the base token at oracle plus
     /// spread, or sell it at oracle minus spread. Permissionless.
     /// `minimum_amount_out` is slippage protection; pass `0` to opt out.

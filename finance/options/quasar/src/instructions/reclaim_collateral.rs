@@ -34,11 +34,21 @@ pub struct ReclaimCollateralAccountConstraints {
     pub underlying_vault: Account<Token>,
     #[account(mut)]
     pub quote_vault: Account<Token>,
-    #[account(mut)]
+    /// A call writer's collateral comes back here. A put writer may never
+    /// have held the underlying (or may have closed the account since
+    /// writing), so it is created if needed, at the writer's expense.
+    #[account(
+        mut,
+        init(idempotent),
+        payer = writer,
+        associated_token(mint = underlying_mint, authority = writer, token_program = token_program),
+    )]
     pub writer_underlying: Account<Token>,
     #[account(mut)]
     pub writer_quote: Account<Token>,
     pub token_program: Program<TokenProgram>,
+    pub associated_token_program: Program<AssociatedTokenProgram>,
+    pub system_program: Program<SystemProgram>,
 }
 
 /// The holder let the option expire, so the writer takes the collateral

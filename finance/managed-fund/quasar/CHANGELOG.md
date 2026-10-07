@@ -22,6 +22,16 @@
   TSLAx at nine decimals on the same feed, so the decimals vary as well; both
   get the story's share counts.
 
+### Fixed
+
+- A partially verified Pyth update is refused. `load_price` read the price at
+  fixed offsets (price at 73) that assume the one-byte encoding of
+  `verification_level`, `Full`. A `Partial { num_signatures }` update encodes
+  it in two bytes, so every later field would be read a byte off. `load_price`
+  now requires the tag at offset 40 to be `Full` (1) and fails with the new
+  `PriceNotFullyVerified` error otherwise. The test feeds now carry the `Full`
+  tag. Tested by `test_partially_verified_price_rejected`.
+
 ## [2026-10-03]
 
 ### Fixed

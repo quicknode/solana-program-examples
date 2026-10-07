@@ -139,6 +139,14 @@ Everything else mirrors the Anchor version.
   block's leader, but the runtime bounds how far one block can move it, so an
   elapsed time is out by a second or two at most, which is nothing against an
   annual rate. A timestamp at or before the stored one accrues nothing.
+  Every division on the way to the accumulation factor rounds up, against the
+  borrower: the utilization, the climb along the curve, the per-second rate and
+  the factor update itself, since a debt is principal times the factor.
+  Suppliers are not overpaid by it: the reserve counts its own debt as its
+  total principal times the same factor, ceiled once, which is never more than
+  the borrowers' individually ceiled debts add up to
+  (`accumulation_factor_rounds_up_against_the_borrower` checks a second accrual
+  against both roundings).
 
 ### Instruction handlers (numeric discriminators)
 

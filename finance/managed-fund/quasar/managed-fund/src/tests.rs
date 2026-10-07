@@ -4,7 +4,9 @@
 //! up rates and a Pyth-shaped price feed, and deposits, checking that the
 //! deposit is priced 1:1 on the first deposit and deployed into the basket
 //! through the router CPI. `deposit_rejects_price_from_before_a_restart`
-//! reuses that setup to show a pre-restart price is refused.
+//! reuses that setup to show a pre-restart price is refused, and
+//! `test_partially_verified_price_rejected` to show a partially verified Pyth
+//! update is refused while a fully verified one prices as before.
 //! `donation_does_not_inflate_share_price` shows a donation straight into the
 //! USDC vault leaves the share price alone, and
 //! `deposit_rejects_leg_that_buys_nothing` shows a deposit too small to buy
@@ -97,10 +99,10 @@ fn router_rate_pda(mint: &Pubkey) -> Pubkey {
     Pubkey::find_program_address(&[b"rate", mint.as_ref()], &router_id()).0
 }
 
-// A Pyth PriceUpdateV2-shaped account: `price` (i64) at offset 73, `conf`
-// (u64) at offset 81, `exponent` (i32) at offset 89, `publish_time` (i64) at
-// offset 93, `posted_slot` (u64) at offset 125. The program reads only those
-// five fields. Posted at slot 1, with the -8 exponent of Pyth's crypto USD
+// A Pyth PriceUpdateV2-shaped account: the `verification_level` tag at offset
+// 40 (1, `Full`), `price` (i64) at offset 73, `conf` (u64) at offset 81,
+// `exponent` (i32) at offset 89, `publish_time` (i64) at offset 93,
+// `posted_slot` (u64) at offset 125. The program reads only those six fields. Posted at slot 1, with the -8 exponent of Pyth's crypto USD
 // feeds and a zero confidence interval.
 fn add_pyth_feed(test: &mut Test, price: i64, publish_time: i64) {
     add_pyth_feed_posted_at(test, price, publish_time, 1);
@@ -134,12 +136,34 @@ fn write_price_feed_with_confidence(
     posted_slot: u64,
 ) {
     let mut data = vec![0u8; 200];
+    data[40] = 1; // VerificationLevel::Full
     data[73..81].copy_from_slice(&price.to_le_bytes());
     data[81..89].copy_from_slice(&confidence.to_le_bytes());
     data[89..93].copy_from_slice(&exponent.to_le_bytes());
     data[93..101].copy_from_slice(&publish_time.to_le_bytes());
     data[125..133].copy_from_slice(&posted_slot.to_le_bytes());
     test.set_account(Account::new(feed, FEED_OWNER, 1_000_000, data));
+}
+
+/// Write the single-asset fund's feed as a partially verified update, laid out
+/// as Pyth's receiver writes one: `verification_level` is
+/// `Partial { num_signatures }`, tag 0 at offset 40 then the signature count at
+/// 41, so every later field sits one byte further along than in a fully
+/// verified update.
+fn add_partially_verified_pyth_feed(
+    test: &mut Test,
+    price: i64,
+    publish_time: i64,
+    num_signatures: u8,
+) {
+    let mut data = vec![0u8; 201];
+    data[40] = 0; // VerificationLevel::Partial
+    data[41] = num_signatures;
+    data[74..82].copy_from_slice(&price.to_le_bytes());
+    data[90..94].copy_from_slice(&(-8i32).to_le_bytes());
+    data[94..102].copy_from_slice(&publish_time.to_le_bytes());
+    data[126..134].copy_from_slice(&1u64.to_le_bytes());
+    test.set_account(Account::new(PRICE_FEED, FEED_OWNER, 1_000_000, data));
 }
 
 /// Pin the LastRestartSlot sysvar account, simulating a cluster restart at
@@ -400,6 +424,30 @@ fn deposit_rejects_price_from_before_a_restart(test: &mut Test) {
     send_deposit(test, &w)
         .succeeds()
         .has_tokens(DEPOSITOR_SHARE, DEPOSIT);
+}
+
+/// The fund reads a Pyth update at fixed offsets that assume a fully verified
+/// one. A partially verified update, signed by two of the five guardians, is
+/// refused with `PriceNotFullyVerified` rather than read a byte off. Rewritten
+/// as fully verified at the same price, the same deposit prices exactly as
+/// `deposit_mints_shares_and_deploys_into_the_basket` does.
+#[quasar_test]
+fn test_partially_verified_price_rejected(test: &mut Test) {
+    let w = setup_deposit(test);
+
+    add_partially_verified_pyth_feed(test, PYTH_PRICE, NOW, 2);
+    send_deposit(test, &w).fails_with(FundError::PriceNotFullyVerified);
+
+    const ASSET_OUT: u64 = DEPOSIT * ONE_TOKEN / RATE; // 4
+
+    add_pyth_feed(test, PYTH_PRICE, NOW);
+    send_deposit(test, &w)
+        .succeeds()
+        .has_tokens(DEPOSITOR_SHARE, DEPOSIT)
+        .has_tokens(w.vault_asset, ASSET_OUT)
+        .has_tokens(DEPOSITOR_USDC, 0)
+        .has_tokens(router_treasury_pda(), DEPOSIT)
+        .has_tokens(w.vault_usdc, 0);
 }
 
 /// A depositor's wallet plus their USDC, share, and asset token accounts (the
@@ -930,6 +978,39 @@ fn donate_token(test: &mut Test, owner: Pubkey, from: Pubkey, vault: Pubkey, amo
         data: transfer_data,
     })
     .succeeds();
+}
+
+/// Deposit values each asset rounding up, so the NAV it prices shares against
+/// is never understated. A 1 USDC first deposit leaves the fund holding 160,000
+/// TSLAx minor units, worth exactly 400,000 USDC minor units, and 333,333
+/// NVDAx minor units, worth 599,999.4. Floored per asset the NAV would be
+/// 999,999 and a second 1 USDC deposit would mint
+/// floor(1,000,000 * 1,000,000 / 999,999) = 1,000,001 shares, one more than
+/// its USDC buys, taken from the first holder. Rounded up the NAV is 1,000,000
+/// and the deposit mints floor(1,000,000 * 1,000,000 / 1,000,000) = 1,000,000.
+#[quasar_test]
+fn test_deposit_values_assets_rounding_up(test: &mut Test) {
+    setup_full(test);
+    standard_fund(test);
+
+    let amount = 1_000_000u64; // 1 USDC
+    let first = fund_user(test, amount);
+    do_deposit(test, &first, amount);
+    let (usdc_holdings, asset_holdings) = read_holdings(test);
+    assert_eq!(usdc_holdings, 0);
+    assert_eq!(asset_holdings[0], 160_000);
+    assert_eq!(asset_holdings[1], 333_333);
+    assert_eq!(test.tokens(first.share), 1_000_000);
+
+    let second = fund_user(test, amount);
+    do_deposit(test, &second, amount);
+    assert_eq!(
+        test.tokens(second.share),
+        1_000_000,
+        "a NAV floored per asset would have minted 1,000,001 shares"
+    );
+    let fund = test.read::<Fund>(fund_pda(test));
+    assert_eq!(u64::from(fund.total_shares), 2_000_000);
 }
 
 #[quasar_test]

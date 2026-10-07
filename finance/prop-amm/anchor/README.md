@@ -19,7 +19,7 @@ via Jupiter routing rather than their own user interfaces.
 ## Programs
 
 - **`prop-amm`**: the market. One operator, one base/quote pair, one oracle
-  feed, two vaults, five instruction handlers.
+  feed, two vaults, six instruction handlers.
 - **`mock-price-feed`**: a minimal stand-in for an oracle's
   price feed, so tests can drive deterministic price scenarios. Not for
   production.
@@ -135,6 +135,14 @@ AMM gets from one price to another.
 market still exists but rejects fills: an empty prop AMM refuses rather than
 misprices.
 
+### Step 8: Maria closes the market
+
+`close_market` closes both vaults and the `Market` account and returns all
+three rents to Maria, who paid them at `initialize_market`. Only the operator
+can call it (`address = market.operator`, as on `withdraw_inventory`), and it refuses with
+`InventoryNotEmpty` while either vault holds a single minor unit, including
+tokens someone sent straight to a vault: she withdraws them first.
+
 ## Design notes and further reading
 
 - Production prop AMMs on Solana are closed-source and considerably more
@@ -167,7 +175,17 @@ both directions, the exact round-trip spread, oracle repricing and re-quoting,
 and that every gate shuts: slippage, staleness, a price from before a cluster
 restart, confidence, a feed account owned by another program
 (`test_swap_rejects_price_feed_from_another_program`), pause, zero amounts,
-inventory bounds, parameter bounds, and operator access control. Every
+inventory bounds, parameter bounds, and operator access control. The
+oracle reader's layout and value checks each have a test that drives a swap
+into them: a zero or negative price (`test_swap_rejects_non_positive_price`),
+a feed at another scale than the market pinned
+(`test_swap_rejects_oracle_scale_mismatch`), and a feed account too short to
+decode (`test_swap_rejects_oracle_data_too_short`); so does a buy too small
+to deliver one minor unit (`test_swap_rejects_amount_that_rounds_to_zero`).
+`test_close_market_returns_all_three_rents` closes an emptied market and
+checks the operator gets the three rents back to the lamport;
+`test_close_market_refuses_while_a_vault_holds_tokens` and
+`test_close_market_rejects_non_operator` cover its refusals. Every
 refusal test asserts its error code: `assert_fails_with` for the program's
 own errors and `assert_fails_with_anchor_error` for the constraint that keeps
 the operator's instructions to the operator.

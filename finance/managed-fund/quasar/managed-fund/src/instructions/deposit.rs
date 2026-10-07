@@ -5,7 +5,9 @@ use quasar_lang::sysvars::Sysvar as _;
 use quasar_spl::prelude::*;
 
 use crate::errors::FundError;
-use crate::oracle::{asset_value_in_usdc, load_price, read_token_amount, usdc_to_asset_amount};
+use crate::oracle::{
+    asset_value_in_usdc_rounded_up, load_price, read_token_amount, usdc_to_asset_amount,
+};
 use crate::state::{
     load_asset_config, read_asset_holdings, snapshot_fund, write_asset_holdings, Fund,
     ShareMintPda, UsdcVaultPda, FUND_SEED,
@@ -118,6 +120,8 @@ pub fn handle_deposit(
     let mut asset_holdings = read_asset_holdings(&snapshot.asset_holdings);
 
     // Net asset value over the complete asset set.
+    // Each asset is valued rounding up, so NAV is never understated and the
+    // floored share count below rounds against the depositor, not the holders.
     let mut nav: u128 = usdc_holdings as u128;
     for (index, &amount) in asset_holdings.iter().enumerate().take(asset_count) {
         let config_view = get_view(&remaining, index * ACCOUNTS_PER_ASSET)?;
@@ -138,7 +142,7 @@ pub fn handle_deposit(
 
         let price = load_price(&feed_view, &config.price_feed, now)?;
         nav = nav
-            .checked_add(asset_value_in_usdc(
+            .checked_add(asset_value_in_usdc_rounded_up(
                 amount as u128,
                 price,
                 config.decimals,

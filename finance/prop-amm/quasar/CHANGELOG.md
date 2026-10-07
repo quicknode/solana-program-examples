@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased, 2026-10-07
+
+Add `close_market` (discriminator 5). The market account and its two vaults
+had no close handler, so the rent the operator paid for all three at
+`initialize_market` could never be recovered. The new handler is signed by the
+operator, under the same `has_one(operator)` constraint as
+`withdraw_inventory`; it refuses with the new `INVENTORY_NOT_EMPTY` (15) while
+either vault holds tokens (the operator withdraws first), closes both vaults
+with the market's own seeds, and closes the market account through
+`close(dest = operator)`, so all three rents return to the operator. Tested by
+`close_market_returns_all_three_rents` (rent back to the lamport, all three
+accounts closed), `close_market_refuses_while_a_vault_holds_tokens` (each
+vault on its own) and `close_market_rejects_non_operator`
+(`QuasarError::HasOneMismatch`).
+
+Four refusals had no test. `swap_rejects_non_positive_price` (a zero and a
+negative price), `swap_rejects_oracle_scale_mismatch` (a feed at scale 6 for a
+market pinned at 8), `swap_rejects_oracle_data_too_short` (a 20-byte feed
+account owned by the recorded program) and
+`swap_rejects_amount_that_rounds_to_zero` (a 1-minor-unit USDC buy) now
+assert `NON_POSITIVE_PRICE`, `ORACLE_SCALE_MISMATCH`, `ORACLE_DATA_TOO_SHORT`
+and `AMOUNT_ROUNDS_TO_ZERO`.
+
 ## Unreleased, 2026-10-05
 
 The quasar-test suite mints NVDAx with 8 decimals, its real count, and USDC

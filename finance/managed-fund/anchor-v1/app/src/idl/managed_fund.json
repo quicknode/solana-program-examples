@@ -1052,6 +1052,11 @@
       "code": 6032,
       "name": "OracleConfidenceTooWide",
       "msg": "Pyth price confidence interval is too wide to trust"
+    },
+    {
+      "code": 6033,
+      "name": "PriceNotFullyVerified",
+      "msg": "Pyth price update is not fully verified by the guardian set"
     }
   ],
   "types": [

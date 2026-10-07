@@ -9,7 +9,9 @@ use {
         errors::PerpError,
         instructions::{
             initialize_pool::PoolParameters,
-            shared::{basis_points_of, basis_points_of_rounded_down},
+            shared::{
+                basis_points_of, basis_points_of_rounded_down, position_funding, position_pnl,
+            },
         },
         state::{Pool, Position, Side},
     },
@@ -2128,6 +2130,59 @@ fn test_basis_points_of_rounds_up_and_the_insurance_split_rounds_down() {
         2_500_000
     );
     assert_eq!(basis_points_of_rounded_down(1, 5_000).unwrap(), 0);
+}
+
+/// `position_pnl` floors toward negative infinity rather than truncating
+/// toward zero. A position of 1,000 base units entered at 3 and marked at 2
+/// has lost 333.33 base units: truncation would book a loss of 333, floor
+/// books 334, so the fraction goes to the pool. A profit of 333.33 still
+/// books 333, the same as truncation, and a short is floored the same way.
+#[test]
+fn test_position_pnl_rounds_against_the_trader() {
+    assert_eq!(position_pnl(Side::Long, 1_000, 3, 2).unwrap(), -334);
+    assert_eq!(position_pnl(Side::Long, 1_000, 3, 4).unwrap(), 333);
+    assert_eq!(position_pnl(Side::Short, 1_000, 3, 4).unwrap(), -334);
+    assert_eq!(position_pnl(Side::Short, 1_000, 3, 2).unwrap(), 333);
+    // A whole number of base units is unchanged.
+    assert_eq!(position_pnl(Side::Long, 1_000, 4, 2).unwrap(), -500);
+}
+
+/// `position_funding` rounds up, toward positive infinity, so a fraction of a
+/// base unit goes to the pool. A funding index that moves 1,500,000 (in
+/// `FUNDING_PRECISION` units of 10^9) on a position of 1,000 base units is
+/// 1.5 base units. A trader who pays is charged 2, where truncation would
+/// charge 1; a trader who is paid receives 1, the same as truncation. A short
+/// is rounded the same way as a long: truncating before applying its sign
+/// would have charged a paying short 1.
+#[test]
+fn test_position_funding_rounds_against_the_trader() {
+    // The index rises: longs pay, shorts are paid.
+    assert_eq!(
+        position_funding(Side::Long, 1_000, 0, 1_500_000).unwrap(),
+        2
+    );
+    assert_eq!(
+        position_funding(Side::Short, 1_000, 0, 1_500_000).unwrap(),
+        -1
+    );
+    // The index falls: shorts pay, longs are paid.
+    assert_eq!(
+        position_funding(Side::Short, 1_000, 0, -1_500_000).unwrap(),
+        2
+    );
+    assert_eq!(
+        position_funding(Side::Long, 1_000, 0, -1_500_000).unwrap(),
+        -1
+    );
+    // A whole number of base units is unchanged.
+    assert_eq!(
+        position_funding(Side::Long, 1_000, 0, 2_000_000).unwrap(),
+        2
+    );
+    assert_eq!(
+        position_funding(Side::Short, 1_000, 0, 2_000_000).unwrap(),
+        -2
+    );
 }
 
 #[test]

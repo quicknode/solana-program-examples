@@ -168,10 +168,14 @@ pub struct WriteOptionAccountConstraints {
     )]
     pub quote_vault: Box<InterfaceAccount<TokenAccount>>,
 
-    // A call writer pays collateral from this account; a put writer's copy
-    // is only validated.
+    // A call writer pays collateral from this account. A put writer may never
+    // have held the underlying, so the account is created if needed, at the
+    // writer's expense; it is where `collect_proceeds` pays a put writer, and
+    // `cancel_option` and `reclaim_collateral` take it too. For an account
+    // that exists, the mint and authority constraints apply as before.
     #[account(
-        mut,
+        init_if_needed,
+        payer = writer,
         associated_token::mint = underlying_mint,
         associated_token::authority = writer,
         associated_token::token_program = token_program,

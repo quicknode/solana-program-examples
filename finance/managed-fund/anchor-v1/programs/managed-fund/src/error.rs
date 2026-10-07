@@ -68,4 +68,6 @@ pub enum FundError {
     NotUnderweight,
     #[msg("Pyth price confidence interval is too wide to trust")]
     OracleConfidenceTooWide,
+    #[msg("Pyth price update is not fully verified by the guardian set")]
+    PriceNotFullyVerified,
 }

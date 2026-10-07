@@ -132,9 +132,12 @@ pub fn position_pnl(side: Side, size: u64, entry_price: u64, price: u64) -> Resu
     .ok_or(PerpError::MathOverflow)?;
 
     // Multiply before dividing to keep precision; `entry > 0` is guaranteed.
+    // Floored toward negative infinity rather than truncated toward zero, so a
+    // loss that is not a whole base unit rounds up to the next one and a
+    // profit rounds down: the trader's result is always the lower of the two.
     size.checked_mul(price_change)
         .ok_or(PerpError::MathOverflow)?
-        .checked_div(entry)
+        .checked_div_euclid(entry)
         .ok_or(PerpError::MathOverflow.into())
 }
 
@@ -265,6 +268,11 @@ pub fn credit_fee(pool: &mut Pool, fee: u64) -> Result<()> {
 
 /// Funding a position owes since it opened, in collateral base units. Positive
 /// means the trader pays the pool; negative means the pool pays the trader.
+///
+/// Rounded up, toward positive infinity, so a fraction of a base unit always
+/// goes to the pool: funding the trader pays rounds up to the next whole unit
+/// and funding the trader receives rounds down. The side's sign is applied
+/// before dividing, so a short is rounded the same way as a long.
 pub fn position_funding(
     side: Side,
     size: u64,
@@ -274,16 +282,27 @@ pub fn position_funding(
     let funding_change = pool_funding
         .checked_sub(entry_funding)
         .ok_or(PerpError::MathOverflow)?;
-    let long_owed = (size as i128)
-        .checked_mul(funding_change)
-        .ok_or(PerpError::MathOverflow)?
-        .checked_div(FUNDING_PRECISION)
+    // Longs owe the index's rise and shorts its fall.
+    let owed_change = match side {
+        Side::Long => funding_change,
+        Side::Short => funding_change
+            .checked_neg()
+            .ok_or(PerpError::MathOverflow)?,
+    };
+    let numerator = (size as i128)
+        .checked_mul(owed_change)
         .ok_or(PerpError::MathOverflow)?;
-
-    Ok(match side {
-        Side::Long => long_owed,
-        Side::Short => -long_owed,
-    })
+    let floored = numerator
+        .checked_div_euclid(FUNDING_PRECISION)
+        .ok_or(PerpError::MathOverflow)?;
+    let remainder = numerator
+        .checked_rem_euclid(FUNDING_PRECISION)
+        .ok_or(PerpError::MathOverflow)?;
+    if remainder == 0 {
+        Ok(floored)
+    } else {
+        floored.checked_add(1).ok_or(PerpError::MathOverflow.into())
+    }
 }
 
 /// `basis_points` of `amount`, rounded up: the open, close and liquidation

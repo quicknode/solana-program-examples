@@ -43,8 +43,9 @@ pub mod order_book {
 
     /// Place a bid or ask. Locks the required funds (quote for bids, base
     /// for asks) into the market vault, crosses against the opposing side
-    /// of the book using price-time priority (best price first, earliest
-    /// timestamp at a tie), credits fills to maker/taker `unsettled_*`
+    /// of the book using price-time priority (best price first, lowest
+    /// order id at a tie: the order book's sequence number, so the order
+    /// that rested first), credits fills to maker/taker `unsettled_*`
     /// balances, routes the taker fee to the fee vault, and rests any
     /// unmatched remainder on the book at the caller's limit price.
     ///

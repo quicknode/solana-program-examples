@@ -25,6 +25,7 @@ pub mod error {
     pub const INVALID_DIRECTION: u32 = 12;
     pub const PRICE_PREDATES_RESTART: u32 = 13;
     pub const PRICE_FEED_NOT_FROM_ORACLE: u32 = 14;
+    pub const INVENTORY_NOT_EMPTY: u32 = 15;
 }
 
 #[inline(always)]

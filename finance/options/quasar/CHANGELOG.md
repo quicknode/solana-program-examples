@@ -1,5 +1,34 @@
 # Changelog
 
+## Unreleased, 2026-10-07
+
+`buy_option` takes the five terms the buyer read from the option (`kind`,
+`underlying_amount`, `strike_amount`, `premium` and `expiry`) and refuses
+the purchase with the new error `OptionTermsChanged` unless the option still
+has exactly those terms. Without it a writer could cancel an option and
+write a new one at the same address (the same `id`) at a higher premium, on
+fewer shares or with a sooner expiry while a purchase was on its way, the
+switched-offer attack the escrow's `take_offer` already refuses. New tests
+`buy_option_refuses_a_switched_option` (four switches, each refused with
+nothing moved) and `buy_option_succeeds_when_the_terms_match`. The suite's
+`buy_option` helper passes the option's current terms, and
+`buy_option_with_terms` passes the terms a buyer saw earlier.
+
+`write_option`, `cancel_option`, `reclaim_collateral` and `collect_proceeds`
+take the writer's underlying account as their associated token account and
+create it with `init(idempotent)` if it does not exist, at the writer's
+expense, so a put writer who has never held the underlying can write,
+cancel, reclaim and collect. Each takes the associated token program, and
+the three that did not already take the system program now do. The suite's
+NVDAx accounts are now each character's associated token account. New tests
+`put_writer_without_an_underlying_account_writes_and_reclaims` and
+`put_writer_without_an_underlying_account_writes_and_cancels` start Carol
+with no NVDAx account (`setup_with_carol_holding_no_nvdax_account`) and pin
+her rent and token balances to the minor unit.
+
+The `Market` doc comment names the `*_owed` counters instead of the old
+`*_locked` names.
+
 ## Unreleased, 2026-10-05
 
 The venue's fee rounds up: `split_premium` takes the ceiling of

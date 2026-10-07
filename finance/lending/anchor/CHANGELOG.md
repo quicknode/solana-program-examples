@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased (2026-10-07)
+
+Round interest against the borrower. Every debt is `borrowed_principal`
+times `borrow_accumulation_factor`, and the debt itself was already ceiled,
+but the arithmetic that grows the factor floored at every step, each time in
+the borrower's favor. Five divisions now round up with `mul_div_ceil`:
+`Reserve::utilization_bps` (its only use is the borrow rate), both segments of
+the kinked-curve interpolation in `current_borrow_rate_per_second`, the
+conversion of that APR to a per-second rate, and the factor update in
+`accrue_interest`. The rate still stays within `[min, max]` and utilization
+within 10,000 bps. Suppliers are not overpaid by it: the reserve counts its
+debt as `borrowed_principal` times the same factor, ceiled once, which is never
+more than the sum of the borrowers' individually ceiled debts, so the pool's
+assets never include interest no borrower owes; redemptions still floor and
+the program fee still rounds up. On the book's walkthrough (750 borrowed from
+a 2,000 USDC pool for five weeks) Bob's debt rises from 757.501028 to
+757.508220 USDC. Tested by
+`accumulation_factor_rounds_up_against_the_borrower`, which runs a second
+accrual from a factor no longer at 1.0, checks that flooring would have given
+a smaller utilization, APR, rate and factor, and asserts the program's factor
+is the ceiled one. The test helper `factor_after` in `test_reserve.rs` now
+rounds up too.
+
 ## Unreleased (2026-10-05)
 
 Cap the borrow rate, ratchet the liquidation threshold and keep the bonus

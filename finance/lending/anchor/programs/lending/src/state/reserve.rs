@@ -5,7 +5,7 @@ use crate::constants::{
     SECONDS_PER_YEAR,
 };
 use crate::errors::LendingError;
-use crate::math::{mul_div_ceil, mul_div_floor};
+use crate::math::mul_div_ceil;
 
 /// Signer seeds for a reserve PDA, which is the authority over its liquidity
 /// vault and the mint authority of its share token.
@@ -215,13 +215,16 @@ impl Reserve {
             .ok_or(LendingError::MathOverflow.into())
     }
 
-    /// Borrowed fraction of the pool, in basis points (0..=10_000).
+    /// Borrowed fraction of the pool, in basis points (0..=10_000). Rounded
+    /// up, because its only use is the borrow rate, and a floored utilization
+    /// would charge the borrower a lower rate. It still never exceeds 10_000,
+    /// since the debt is part of the gross liquidity it is divided by.
     pub fn utilization_bps(&self) -> Result<u128> {
         let gross = self.gross_liquidity()?;
         if gross == 0 {
             return Ok(0);
         }
-        mul_div_floor(
+        mul_div_ceil(
             self.current_borrowed_amount()? as u128,
             BPS_DENOMINATOR,
             gross,
@@ -231,6 +234,11 @@ impl Reserve {
     /// Per-second borrow rate (FIXED_POINT_SCALE-scaled) from the kinked curve:
     /// linear from `min` to `optimal` up to the kink, then steeper from `optimal`
     /// to `max` between the kink and full utilization.
+    ///
+    /// Both divisions round up: the interpolated APR and the per-second rate
+    /// derived from it. A rate is what the borrower is charged, so like the
+    /// debt it rounds against the borrower. The interpolation still never
+    /// leaves `[min, max]`, because the climbed amount is at most the range.
     pub fn current_borrow_rate_per_second(&self) -> Result<u128> {
         let utilization = self.utilization_bps()?;
         let optimal_utilization = self.config.optimal_utilization_bps as u128;
@@ -239,7 +247,7 @@ impl Reserve {
             let rate_range = (self.config.optimal_borrow_rate_bps as u128)
                 .checked_sub(self.config.min_borrow_rate_bps as u128)
                 .ok_or(LendingError::MathOverflow)?;
-            let climbed = mul_div_floor(rate_range, utilization, optimal_utilization)?;
+            let climbed = mul_div_ceil(rate_range, utilization, optimal_utilization)?;
             (self.config.min_borrow_rate_bps as u128)
                 .checked_add(climbed)
                 .ok_or(LendingError::MathOverflow)?
@@ -253,7 +261,7 @@ impl Reserve {
             let utilization_range = BPS_DENOMINATOR
                 .checked_sub(optimal_utilization)
                 .ok_or(LendingError::MathOverflow)?;
-            let climbed = mul_div_floor(rate_range, utilization_above, utilization_range)?;
+            let climbed = mul_div_ceil(rate_range, utilization_above, utilization_range)?;
             (self.config.optimal_borrow_rate_bps as u128)
                 .checked_add(climbed)
                 .ok_or(LendingError::MathOverflow)?
@@ -263,14 +271,16 @@ impl Reserve {
         let per_year_denominator = BPS_DENOMINATOR
             .checked_mul(SECONDS_PER_YEAR)
             .ok_or(LendingError::MathOverflow)?;
-        mul_div_floor(apr_bps, FIXED_POINT_SCALE, per_year_denominator)
+        mul_div_ceil(apr_bps, FIXED_POINT_SCALE, per_year_denominator)
     }
 
     /// Advance the accumulation factor for the seconds elapsed since the last
     /// accrual, and record `current_slot` as the slot of this refresh.
     /// `new_factor = old_factor * (1 + rate_per_second * elapsed_seconds)`, a
     /// single multiply per refresh that compounds across refreshes (Solend's
-    /// approach, on the wall clock rather than the slot count).
+    /// approach, on the wall clock rather than the slot count). The product
+    /// rounds up: every debt is principal times this factor, so a floored
+    /// factor would understate every borrower's debt.
     ///
     /// The timestamp is written by each block's leader. The runtime rejects a
     /// block whose time goes backwards, but a timestamp at or before the stored
@@ -294,7 +304,7 @@ impl Reserve {
             let growth_factor = FIXED_POINT_SCALE
                 .checked_add(accrued)
                 .ok_or(LendingError::MathOverflow)?;
-            self.borrow_accumulation_factor = mul_div_floor(
+            self.borrow_accumulation_factor = mul_div_ceil(
                 self.borrow_accumulation_factor,
                 growth_factor,
                 FIXED_POINT_SCALE,

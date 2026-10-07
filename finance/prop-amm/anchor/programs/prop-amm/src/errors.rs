@@ -46,4 +46,7 @@ pub enum PropAmmError {
 
     #[msg("Price feed is not owned by the oracle program the market recorded")]
     PriceFeedNotFromOracle,
+
+    #[msg("Withdraw all inventory from both vaults before closing the market")]
+    InventoryNotEmpty,
 }
