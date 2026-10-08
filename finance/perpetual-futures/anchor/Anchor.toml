@@ -9,7 +9,7 @@ skip-lint = false
 
 [programs.localnet]
 perpetual_futures = "3uCm8Jep469pHUpYQCh6eA6dpYV3ogvTvaRDZBPtw5So"
-mock_switchboard = "FnisQqhF56BxVYh5Wt8xW8wuTVN6STAGnk13MM5SRM7b"
+mock_price_feed = "FnisQqhF56BxVYh5Wt8xW8wuTVN6STAGnk13MM5SRM7b"
 
 [provider]
 cluster = "localnet"

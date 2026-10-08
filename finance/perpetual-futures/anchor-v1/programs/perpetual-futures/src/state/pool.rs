@@ -9,7 +9,7 @@ use anchor_lang::prelude::*;
 #[account]
 #[derive(InitSpace)]
 pub struct Pool {
-    /// Admin: configures the pool and sweeps protocol fees. Not a custody
+    /// Admin: configures the pool and sweeps program fees. Not a custody
     /// escape hatch — it cannot touch liquidity-provider or trader funds.
     pub authority: Pubkey,
 
@@ -18,6 +18,12 @@ pub struct Pool {
     /// Oracle feed this market reads its price from. Stored so handlers can
     /// reject any substituted feed account.
     pub oracle_feed: Pubkey,
+
+    /// The program that owned `oracle_feed` when the pool was created. Every
+    /// price read requires the feed account to still be owned by it, so an
+    /// account at that address written by any other program is refused as a
+    /// price.
+    pub price_feed_program: Pubkey,
 
     /// Decimal places the oracle price is quoted in. Pinned at creation so a
     /// feed that silently changes scale is rejected rather than mis-read.
@@ -30,21 +36,25 @@ pub struct Pool {
     /// Liquidity-provider-owned assets, in collateral base units. Grows with
     /// deposits, trader losses, fees-to-LPs; shrinks with withdrawals and
     /// trader profits. Trader collateral is tracked separately in
-    /// `total_collateral` and is not part of this figure.
+    /// `total_collateral` and is not part of this figure. Together with
+    /// `insurance_fund` it backs trader profit: when the two cannot cover the
+    /// profit traders are owed, every closing winner is paid the same fraction
+    /// of their profit (see `instructions::shared::haircut_ratio`).
     pub liquidity: u64,
-
-    /// Portion of `liquidity` reserved to cover open positions' maximum
-    /// recoverable profit (one notional `size` per position). Liquidity-provider
-    /// withdrawals can only take the free remainder (`liquidity - reserved`), so
-    /// a winning trader can always be paid. Also caps total exposure: a position
-    /// can only open while `reserved + size <= liquidity`.
-    pub reserved_liquidity: u64,
 
     /// Sum of every open position's posted collateral, held in the same vault.
     pub total_collateral: u64,
 
-    /// Protocol fees accrued from open/close fees, awaiting `collect_fees`.
-    pub protocol_fees: u64,
+    /// Program fees accrued from open/close fees, awaiting `collect_fees`.
+    pub program_fees: u64,
+
+    /// Funded by `insurance_fee_bps` of every open and close fee. It pays a
+    /// bankrupt position's deficit (its loss beyond its collateral) before
+    /// liquidity providers bear any of it, pays a winner's profit once
+    /// `liquidity` is exhausted, and counts alongside `liquidity` as backing in
+    /// the haircut. The vault holds `liquidity + total_collateral +
+    /// program_fees + insurance_fund`, plus any tokens sent to it directly.
+    pub insurance_fund: u64,
 
     /// Aggregate long open interest (sum of position `size`), in collateral
     /// base units of notional.
@@ -66,22 +76,44 @@ pub struct Pool {
     /// open and close.
     pub cumulative_funding: i128,
 
-    pub last_funding_slot: u64,
+    /// The Clock's `unix_timestamp` when funding last accrued. Funding runs on
+    /// the wall clock, so what a position costs per hour does not depend on
+    /// the cluster's slot time.
+    pub last_funding_timestamp: i64,
 
-    /// Funding accrued per slot, in `FUNDING_PRECISION` units, applied to the
+    /// Time-weighted moving average of the oracle price, in the pool's
+    /// `oracle_scale` fixed point. Seeded with the oracle price when the pool is
+    /// created. Every handler that reads the oracle credits the seconds since
+    /// the previous read to `last_oracle_price`, the price that read saw.
+    /// Trading and liquidity handlers refuse an oracle price more than
+    /// `max_price_deviation_bps` away from it, so a sudden jump pauses them
+    /// until the average catches up.
+    pub average_price: u64,
+
+    /// The oracle price at the most recent read, in `oracle_scale` fixed point.
+    /// The next read folds it into `average_price` for the seconds in between.
+    pub last_oracle_price: u64,
+
+    /// The Clock's `unix_timestamp` of the most recent fold into
+    /// `average_price`.
+    pub average_price_timestamp: i64,
+
+    /// Funding accrued per second, in `FUNDING_PRECISION` units, applied to the
     /// heavier side. The funding paid by traders accrues to the pool.
-    pub funding_rate_per_slot: u64,
+    pub funding_rate_per_second: u64,
 
     /// Fee charged on notional when opening a position, in basis points.
     pub open_fee_bps: u16,
 
     pub close_fee_bps: u16,
 
-    /// Highest leverage a position may open at (`size <= collateral * max`).
-    pub max_leverage: u16,
+    /// Net collateral a position must post to open, in basis points of its
+    /// notional size: 1_000 allows at most 10x leverage. Always above
+    /// `maintenance_margin_bps`, so no position opens already liquidatable.
+    pub initial_margin_bps: u16,
 
-    /// Equity threshold, in basis points of notional, below which a position is
-    /// liquidatable.
+    /// Equity threshold, in basis points of notional, at or below which a
+    /// position is liquidatable.
     pub maintenance_margin_bps: u16,
 
     /// Reward paid to a liquidator, in basis points of the liquidated notional.
@@ -90,6 +122,21 @@ pub struct Pool {
     /// Maximum oracle confidence band, in basis points of the price, that the
     /// pool will trade against. A wider band is rejected as untrustworthy.
     pub max_confidence_bps: u16,
+
+    /// Widest gap the pool trades across between the oracle price and
+    /// `average_price`, in basis points of `average_price`.
+    pub max_price_deviation_bps: u16,
+
+    /// Fraction of each open and close fee, in basis points, paid into
+    /// `insurance_fund`; the rest goes to `program_fees`.
+    pub insurance_fee_bps: u16,
+
+    /// Slots a position must stay open before `close_position` will pay it a
+    /// profit. Someone who pushes the oracle to a false price cannot open a
+    /// position and take its profit less than this many slots apart; by then the
+    /// price has had that long to correct. A losing position can close, and an
+    /// under-margined one be liquidated, at any time.
+    pub profit_warmup_slots: u64,
 
     /// Bump of this account's own address. The pool owns the custody vault
     /// and is the LP mint's authority, so it signs vault transfers and

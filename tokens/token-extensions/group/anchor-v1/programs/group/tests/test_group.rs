@@ -36,7 +36,8 @@ fn test_initialize_group() {
         .to_account_metas(None),
     );
 
-    send_transaction_from_instructions(&mut svm, vec![instruction], &[&payer], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(&mut svm, vec![instruction], &[&payer], &payer.pubkey())
+        .unwrap();
 
     // Verify mint was created with group pointer extension
     let mint_data = svm

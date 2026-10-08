@@ -4,37 +4,357 @@ All notable changes to this repository are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [2026-09-22] - Transaction v1 example
+## [2026-10-04] - Escrow: the taker signs the terms
 
-Solana's v1 transaction format (SIMD-0385) raises the transaction size limit from
-1,232 to 4,096 bytes and moves the compute budget out of ComputeBudget instructions
-and into the message. It activated on mainnet beta at epoch 1035 (15 September
-2026) and is live on devnet and testnet. Programs need no change for it; tests and
-clients do.
+### Fixed
 
-### Added
+- `finance/escrow` (Anchor v2, Anchor v1, Quasar, native) let a maker switch
+  an offer under a taker. The offer's address is its maker and `id`, so the
+  maker could cancel and re-make the same `id` at worse terms while a
+  taker's `take_offer` was in flight, and the transaction would trade at the
+  new terms. `take_offer` now takes `minimum_token_a_out` and
+  `maximum_token_b_in`, and refuses the take with the new `OfferTermsChanged`
+  error before any token moves if the vault holds less token A or the offer
+  wants more token B. Tested by `test_take_offer_rejects_switched_offer` and
+  `test_take_offer_rejects_switched_offer_wanting_more_token_b` in each copy;
+  the Kani model gains `proof_take_offer_honors_taker_terms`.
 
-- `basics/transaction-v1/`, in Anchor v2, Anchor v1, Pinocchio and native Rust: a
-  program that stores a 3,000 byte document in one instruction, which only fits in a
-  v1 transaction. Its LiteSVM tests build the v1 transactions by hand, measure them
-  against both size limits, and show the config fields that replace ComputeBudget
-  instructions, including that an unset field means zero rather than the default.
-  The four directories are standalone Cargo workspaces on LiteSVM 0.16.0, the first
-  release that executes v1 transactions.
-- `docs/transaction-v1.md`: what v1 changes, where it is live, and which of the
-  tools the examples build on can send it, checked against the pinned versions.
+## [2026-10-03] - Managed Fund rejects wide-confidence prices
 
-### Note
+### Fixed
 
-- Every other example's tests still send legacy transactions, and keep passing.
-  The Anchor v1 examples are already on LiteSVM 0.16 (see the Anchor 1.2.0 entry
-  below), so any of them could send a v1 transaction; `solana-kite`'s
-  `send_transaction_from_instructions` builds legacy ones. The root workspace, which
-  holds every Anchor v2, native and Pinocchio example, stays on LiteSVM 0.13.1
-  because `anchor-v2-testing` pins it exactly, and 0.13.1 and 0.16.0 pin different
-  `solana-instruction` 3.x patch releases, so one lockfile cannot hold both. The
-  Quasar examples wait on `quasar-svm`, still on a `solana-message` without the
-  `v1` module. The root `Cargo.toml` says why the example is not a member.
+- `finance/managed-fund` (Anchor v2, Anchor v1, Quasar) ignored the
+  confidence interval on its Pyth prices. `load_price` now rejects a price
+  whose interval exceeds 1% of the price (`MAX_CONFIDENCE_BPS`, new
+  `OracleConfidenceTooWide` error), so deposit and rebalance are refused while
+  publishers disagree; withdraw reads no price and still pays out in kind.
+  Tested by `test_wide_confidence_price_rejected` in each copy. The web apps'
+  IDLs gain the error.
+
+## [2026-10-03] - Fundraiser: `close_contributor` is `close_contribution`
+
+### Changed
+
+- `finance/fundraiser` (Anchor v2, Anchor v1, Quasar) renames the account that
+  records one contributor's contributions from `Contributor` to
+  `Contribution`, and its closing handler from `close_contributor` to
+  `close_contribution`: the handler closes that account, not the contributor.
+  The PDA seed prefix becomes `"contribution"`, the Fundraiser's
+  `open_contributor_accounts` becomes `open_contributions`, and the
+  `ContributorAccountsOpen` error becomes `ContributionsOpen`. No behavior
+  changes.
+
+## [2026-10-03] - Order book tests cover the costliest cancel
+
+`cancel_order` finds an order's place in the tree by walking its side from the
+best price down, so its cost grows with the number of resting orders. Both
+Anchor copies gain `full_side_cancel_of_the_last_scanned_order_fits_the_default_budget`,
+which fills the bid side to its 512 orders, cancels the bid the walk reaches
+last, and checks it stays inside the default 200,000-unit instruction budget.
+It measures 50,078 compute units in the Anchor v2 copy and 57,383 in the v1
+copy. No program behavior changes.
+
+## [2026-10-02] - Token Swap (Quasar): reserves live at PDAs of the pool
+
+### Changed
+
+- `finance/token-swap/quasar` creates `pool_a` and `pool_b` at PDAs of the
+  pool (`[b"pool_a", pool_config]`, `[b"pool_b", pool_config]`) instead of at
+  addresses the client chose, as the order book's Quasar version does for its
+  vaults. Clients no longer pass the reserves to `initialize_pool`.
+
+## [2026-10-02] - Token Swap (Quasar): reserves are bound to the pool
+
+### Fixed
+
+- `finance/token-swap/quasar` accepted any token accounts as `pool_a` and
+  `pool_b` in `deposit_liquidity`, `withdraw_liquidity`, `swap_tokens` and
+  `claim_admin_fees`, so a trader could price a swap from a token account of
+  their own and drain the real reserve on the other side. `PoolConfig` now
+  records both reserves and every handler checks them (`InvalidPoolVault`).
+  The Anchor v1 and v2 versions already bound them as associated token
+  accounts of the pool.
+- `finance/token-swap/quasar`'s `swap_tokens` re-checks the invariant against
+  the vault balances after its transfers, rather than against computed ones.
+
+## [2026-10-01] - Managed Fund's video script is removed
+
+### Removed
+
+- `finance/managed-fund/VIDEO_SCRIPT.md`, the only video script in the
+  repository. It narrated an older version of the program: an `invest`
+  handler that no longer exists, whitelisting, idle USDC in the fund, and
+  figures that no test checks. The `PRODUCT.md` files no longer list it, and
+  `test_full_lifecycle`'s doc comment points at the book's Managed Fund
+  chapter, which narrates the same figures.
+
+## [2026-10-01] - Managed Fund: decimal-aware valuation and permissionless rebalancing
+
+### Fixed
+
+- `finance/managed-fund` valued every asset as if it had six decimals and a
+  Pyth exponent of −8. It now reads each feed's exponent and records each
+  mint's decimals, in Anchor v2, Anchor v1 and Quasar.
+
+### Changed
+
+- `finance/managed-fund`'s `rebalance` is permissionless and computes its own
+  trade from oracle prices and target weights, once drift passes a threshold
+  fixed at fund creation, so no caller, the manager included, can churn the
+  fund. See the example's changelogs.
+
+## [2026-09-28] - Token Fundraiser is renamed Fundraiser
+
+Contributors to the fundraiser receive no token, only a refund if the target is
+missed, so "Token Fundraiser" described something the program does not do.
+
+### Changed
+
+- `finance/token-fundraiser` is now `finance/fundraiser`, in Anchor v2, Anchor
+  v1 and Quasar, with its Kani proofs. The Quasar crate is `quasar-fundraiser`
+  and the proofs crate `fundraiser-kani-proofs`; the Anchor programs were
+  already named `fundraiser`. Accounts, instruction handlers and behavior are
+  unchanged.
+- `README.md`, `llms.txt` and the example's READMEs say it was formerly Token
+  Fundraiser, and `finance/token-fundraiser/README.md` points old links to the
+  new location.
+
+## [2026-09-28] - Vault Strategy is renamed Managed Fund
+
+The example called Vault Strategy is a manager-run fund: investors deposit for
+shares priced at net asset value, and a manager allocates the pool across a
+basket of approved assets. Finance calls that a managed fund, the onchain
+equivalent of a mutual fund. It is not an index fund, whose weights follow an
+outside index with no manager choosing them. "Vault" also meant two things in
+the example: the whole product, and the single-asset token accounts it owns.
+Now it means only the token accounts.
+
+### Changed
+
+- `finance/vault-strategy` is now `finance/managed-fund`, in Anchor v2, Anchor
+  v1 and Quasar, with its Kani proofs and web app. The program crate is
+  `managed-fund` (library `managed_fund`; Quasar `quasar-managed-fund`), the
+  `Strategy` account is `Fund`, `initialize_strategy` is `initialize_fund`, the
+  `StrategyNotFullyAllocated` error is `FundNotFullyAllocated`, and the error
+  enum `VaultError` is `FundError`. The fund PDA's seed is `"fund"` instead of
+  `"strategy"`, so fund addresses change, and `initialize_fund` and `Fund`
+  have new Anchor discriminators. The program IDs and the programs' behavior
+  are unchanged, and every test passes under its new name.
+- The web app's IDL, client and environment variables follow the rename
+  (`VITE_STRATEGY_INDEX` is `VITE_FUND_INDEX`, `VITE_VAULT_PROGRAM_ID` is
+  `VITE_FUND_PROGRAM_ID`).
+- `README.md` and `llms.txt` list the example as Managed Fund and say it was
+  formerly Vault Strategy, and each of its READMEs says so too, so a search for
+  either name finds it. `finance/vault-strategy/README.md` stays behind as a
+  pointer to the new location for anyone following an old link.
+
+## [2026-09-25] - Anchor v1 is the current stable Anchor
+
+The README described Anchor v2 as Anchor's current major version and Anchor v1
+as a previous version on long-term support. Anchor v1 is the current stable
+release (1.2.0) and Anchor v2 is a release candidate (2.0.0-rc.1), so the
+documentation now says so.
+
+### Changed
+
+- `README.md` lists Anchor v1 first, as the current major version, and Anchor v2
+  as the upcoming, unreleased rewrite. Every example's links and the CI badges
+  follow the same order.
+- The note at the top of every `anchor-v1/README.md` names 1.2.0 as the current
+  stable Anchor release instead of an LTS line.
+- `CONTRIBUTING.md` describes the two Anchor directories the same way, and
+  `llms.txt` names Anchor 1.2 rather than 1.1.
+
+## [2026-09-23] - The order book evicts its worst order when a side is full
+
+A side of the order book refused every new resting order once it was full, so
+anyone willing to lock the minimum order size and pay rent for each slot could
+fill a side with orders far from the spread and keep every new order on that
+side out for as long as they liked. The market authority had no remedy, and
+the market PDA's seeds are the two mints, so the pair could not move to a new
+market. Now an order that beats a full side's worst price evicts that order
+and rests in its place. The evicted order is refunded through its owner's
+unsettled balance, exactly as `cancel_order` refunds it, and stamped
+`Cancelled`. An order that does not beat the worst price still gets
+`OrderBookFull`. The caller passes the worst order and its owner's
+`MarketUser` after the maker pairs, or only the order when it is their own.
+The capacity was also misstated: a side holds 512 orders, not 1024, because
+every order after the first adds a leaf and an inner node to the side's
+1024-node tree. All three variants (Anchor v2, Anchor v1, Quasar) change,
+with the same five tests in each.
+
+## [2026-09-23] - Anchor v1 copies match their v2 counterparts where the version allows
+
+A scan of every `anchor/` and `anchor-v1/` pair, comparing function names,
+error variants, account fields, constants and seeds, and listing every v2
+program commit since July that left its v1 copy untouched, found these
+differences that the Anchor version does not force:
+
+- The transfer-hook `counter` and `account-data-as-seed` v1 copies still had
+  the bug v2 fixed in August: the hook computed the new transfer count and
+  dropped it, because `counter_account` was not `mut`, so the count read one
+  after every transfer. Both now write the count back and report an overflow
+  with the new `CounterOverflow` error instead of `AmountTooBig`, and each
+  test reads the counter back after the hooked transfer.
+- Interest-bearing (v1): `check_mint_data` becomes `check_rate_authority`
+  with v2's signature, taking the parsed `InterestBearingConfig`. The
+  handlers read the extension with anchor-spl's `get_mint_extension_data`.
+- Account fields that v2 declares `pub` are `pub` in the v1 copies of
+  account-data, checking-accounts, program-derived-addresses, rent,
+  transfer-sol and nft-operations.
+- Order book (v1): `OrderTreeRoot` derives `Default` like the v2 copy,
+  replacing a hand-written impl.
+
+What the scan still reports is forced by the Anchor version: v2's
+transfer-hook `entrypoint` fallback, the local session-token reader that
+replaces the v1-only `session-keys` crate, the `last_restart_slot` syscall
+wrapper (the v1 copies make the same restart check through the sysvar), the
+wincode span in rent, zero-copy padding, the Pyth account traits, and the
+betting market's borrow-release helper.
+
+## [2026-09-23] - Order book tests cover the deepest critbit path
+
+A critbit tree does not rebalance, so asks at doubling prices stretch the path
+to the best ask by one level each, up to 64 levels from the price half of the
+128-bit key. Both Anchor copies of the order book gain two tests:
+`doubling_prices_build_the_deepest_path_prices_allow` builds that path and reads
+its depth from the account, and
+`deepest_path_adds_little_compute_to_insert_fill_and_cancel` checks that
+inserting, filling, and canceling at the bottom of it each cost less than 15,000
+compute units more than on a shallow book, and stay inside the default
+200,000-unit instruction budget. The README no longer says the tree stays
+shallow whatever order keys arrive in, or that Phoenix uses the same structure
+(it uses a red-black tree). No program behavior changes.
+
+## [2026-09-23] - Finance examples point their production oracle path at Pyth
+
+The oracle network that the lending, perpetual futures and prop AMM examples
+modeled their price feeds on has shut down. The perpetual futures and prop AMM
+mock oracle program is now `mock-price-feed` in both Anchor variants, with the
+same program ID, instructions and account layout. Every production-path comment
+and README in the three examples, across Anchor v2, Anchor v1 and Quasar, now
+points at a Pyth `PriceUpdateV2` account, which `basics/pyth` reads. No program
+behavior changes.
+
+## [2026-09-23] - The token fundraiser and order book Anchor v1 copies catch up
+
+Under the old rule that `anchor-v1/` copies were frozen, two v1 copies were
+left behind by changes to their v2 counterparts. Now that the copies track
+each other, both are ported.
+
+- Token fundraiser (Anchor v1): `close_contributor` and the
+  `FundraiserStillOpen` error, so a contributor to a successful raise can take
+  back their Contributor account's rent. Same two tests as the v2 copy.
+- Order book (Anchor v1): the base, quote, and fee vaults are PDAs of the
+  market at `["base_vault", market]`, `["quote_vault", market]` and
+  `["fee_vault", market]`, so a client derives them instead of generating and
+  signing with three extra keys. The tests derive them too.
+
+## [2026-09-23] - Anchor v1 copies track their Anchor v2 counterparts
+
+CONTRIBUTING.md described each `anchor-v1/` copy as a frozen snapshot that
+changed only to keep its build green. Several v2 examples have since gained
+behavior their v1 copies lack, so a reader on the v1 LTS line was learning a
+different program from the one the v2 copy and the book describe.
+
+- CONTRIBUTING.md now says a change to what an example does goes into both
+  copies, and the copies differ only where the Anchor version forces it.
+- The betting market's Anchor v1 copy gains the draft state and betting close
+  time from the v2 copy: `open_betting`, `betting_closes_at`, the
+  `EventNotDraft`, `NotEnoughOutcomes`, `CloseTimeInPast`, `BettingClosed` and
+  `BettingStillOpen` errors, a draft-or-open `cancel_event`, and the same new
+  tests.
+
+## [2026-09-22] - Lending interest and perpetual futures funding accrue by the wall clock
+
+Both programs accrued over elapsed slots, so a rate quoted per year or per
+hour depended on a guess at the slot length. The lending reserve's
+`slots_per_year` default assumed 400 ms slots and charged twice the advertised
+APR once the network moved to 200 ms. Interest and funding now accrue for the
+seconds between the Clock's `unix_timestamp` and a stored
+`last_accrual_timestamp` (lending) or `last_funding_timestamp` (perpetual
+futures). `slots_per_year` is removed from `ReserveConfig`, and
+`funding_rate_per_slot` is now `funding_rate_per_second`. A timestamp at or
+before the stored one accrues nothing. In the Anchor variants,
+`update_reserve_config` now accrues at the old curve before storing a new one;
+the Quasar lending variant drops its `update_slots_per_year` instruction.
+Price freshness is still counted in slots. All three variants (Anchor v2,
+Anchor v1, Quasar) of both programs change.
+
+## [2026-09-22] - Betting market events have a draft state and a close time
+
+The betting market locked its outcome list implicitly, by refusing
+`add_outcome` once `total_pool` was nonzero. Anyone could bet one minor unit on
+a half-built market to freeze it with a single outcome, and the admin's
+`add_outcome` and the first bet could land in either order in the same slot.
+Nothing stopped bets between the real-world result and settlement, either:
+`place_bet` accepted stakes until `settle_event` ran.
+
+- Events start as `Draft`. `add_outcome` works only on a draft (else the new
+  `EventNotDraft`, which replaces `BettingAlreadyStarted`), and a new admin
+  handler, `open_betting`, moves a draft with at least two outcomes (else
+  `NotEnoughOutcomes`) to `Open`. `place_bet` on a draft fails with
+  `EventNotOpen`, so the outcome list is final before any money can arrive.
+- `initialize_event` takes a `betting_closes_at` timestamp, which must be in the
+  future (else `CloseTimeInPast`) and is stored on the event. `place_bet`
+  requires `now < betting_closes_at` (else `BettingClosed`) and `settle_event`
+  requires `now >= betting_closes_at` (else `BettingStillOpen`).
+- `cancel_event` accepts a draft as well as an open event.
+- Changed in the Anchor v2 and Quasar ports, with new tests for each rule, and
+  two new Kani proofs: the betting and settlement windows partition time, and a
+  lifecycle model in which the outcome list never changes once money is in the
+  pool. The Anchor v1 port is a frozen snapshot and does not change.
+
+## [2026-09-22] - The first-deposit minimum is counted in every share divisor
+
+The token swap and perpetual futures examples both withhold a minimum from the
+first deposit's LP shares, but only one side of their share math counted it.
+
+- Token swap: `withdraw_liquidity` divided by `lp_supply + MINIMUM_LIQUIDITY`,
+  but `deposit_liquidity` minted later deposits against the bare `lp_supply`.
+  Every later depositor was minted slightly fewer LP tokens than they could
+  redeem; a donation to the vaults as large as a victim's deposit, rather than
+  101 times it, rounded that deposit down; and once every LP token was burned
+  the pool could never take a deposit again, since the floor's reserves stayed
+  behind with a supply of zero to divide by. Later deposits now divide by
+  `lp_supply + MINIMUM_LIQUIDITY` as well, in all three ports.
+- Perpetual futures: `add_liquidity` withheld 1,000 shares from the first
+  deposit but both `add_liquidity` and `remove_liquidity` divided by the bare
+  share supply, so the withheld value belonged to the share holders pro rata
+  and locked nothing. Shares are priced against `Pool.liquidity` rather than
+  the vault balance, so a direct donation moves nothing, but a provider who is
+  also the pool's only trader can grow `liquidity` with their own funding
+  payments. A new test does exactly that: the attacker opens the pool with one
+  share, pays about 1,000 USDC of funding into it, and against the old program
+  withdraws about 1,500 USDC after a victim deposits. Both handlers now divide
+  by the share supply plus `MINIMUM_LIQUIDITY`, and a pool whose providers have
+  all left prices the next deposit against the locked slice instead of
+  bootstrapping it, in all three ports.
+- The token swap's Kani crate models the deposit formula and proves a deposit
+  followed by a withdrawal returns at most the deposit and loses less than one
+  LP token's worth, a bound the bare-supply formula fails.
+- The Anchor v1 ports take the same fixes, since they correct share
+  accounting rather than add features.
+
+## [2026-09-22] - Vault strategy ignores donations
+
+The vault strategy valued itself and paid withdrawals from its vaults' token
+balances, and anyone can transfer tokens into a vault. A dust-sized first
+deposit followed by a donation could price one share above the next deposit
+and round it down to zero shares: the first-depositor inflation attack.
+
+- `finance/vault-strategy` (Anchor v2, Anchor v1 and Quasar) records what the
+  strategy holds, `usdc_holdings` and `asset_holdings`, updated by `deposit`,
+  `withdraw` and `rebalance` with what each transfer actually moved, and prices
+  shares and pays withdrawals from those records. Donated tokens are outside
+  the fund, and `rebalance` can neither sell nor spend them
+  (`InsufficientHoldings`), as the lending example already ignores donations.
+- A deposit so small that a swap returns none of its asset is rejected with
+  `DepositTooSmall`; it would otherwise mint shares against a fund worth
+  nothing and make every later deposit divide by zero.
+- Tests in all three ports run the attack, the Kani crate proves recorded
+  holdings never exceed vault balances and that a donation cannot dilute the
+  next deposit, and the web apps read the recorded holdings.
 
 ## [2026-09-22] - Vault strategy rejects prices from before a cluster restart
 

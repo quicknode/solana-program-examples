@@ -2,18 +2,18 @@ use anchor_lang::prelude::*;
 
 use crate::state::Event;
 
-use crate::{error::BettingError, Bet, EventStatus, User};
+use crate::{error::BettingError, Bet, EventStatus};
 
-// A losing bet pays nothing, but it still occupies a slot in the bettor's
-// User index and holds rent. Closing it frees the slot (so the bettor can
-// open a new position) and returns the rent. Winning bets must go through
-// claim_winnings instead, which also pays out the stake and winnings.
+// A losing bet pays nothing, but its account still holds rent. Closing it
+// returns the rent to the bettor. Winning bets must go through claim_winnings
+// instead, which also pays out the stake and winnings.
 #[derive(Accounts)]
 pub struct CloseLosingBetAccountConstraints {
     #[account(mut, address = bet.bettor)]
     pub bettor: Signer,
 
     #[account(
+        mut,
         seeds = [b"event", event.event_id.to_le_bytes()],
         bump = event.bump,
         address = bet.event,
@@ -27,13 +27,6 @@ pub struct CloseLosingBetAccountConstraints {
         bump = bet.bump,
     )]
     pub bet: BorshAccount<Bet>,
-
-    #[account(
-        mut,
-        seeds = [b"user", bettor.address().as_ref()],
-        bump = user.bump,
-    )]
-    pub user: BorshAccount<User>,
 }
 
 pub fn handle_close_losing_bet(
@@ -48,7 +41,14 @@ pub fn handle_close_losing_bet(
         BettingError::BetWon
     );
 
-    let bet_key = context.accounts.bet.address();
-    context.accounts.user.remove_bet(bet_key)?;
+    // This Bet account closes when the handler returns, so the event's count
+    // of open bets drops by one.
+    context.accounts.event.open_bets = context
+        .accounts
+        .event
+        .open_bets
+        .checked_sub(1)
+        .ok_or(BettingError::MathOverflow)?;
+
     Ok(())
 }

@@ -1,31 +1,15 @@
 use anchor_lang::prelude::*;
 use anchor_spl::{
     associated_token::AssociatedToken,
-    token_interface::{self, Mint, MintTo, TokenAccount, TokenInterface, TransferChecked},
+    token_interface::{Mint, TokenAccount, TokenInterface},
 };
 
 use crate::{
     constants::{LIQUIDITY_SEED, MINIMUM_LIQUIDITY},
     errors::AmmError,
+    liquidity::{deposit_and_mint_lp_tokens, LiquidityDepositAccounts},
     state::PoolConfig,
 };
-
-/// Integer sqrt via Newton's method. Operates on `u128` so it can handle the
-/// product `amount_a * amount_b` (each is a `u64`, product can fill the full
-/// `u128`). Floors the result, which matches Uniswap V2's `Math.sqrt` and
-/// keeps the initial-deposit LP-mint rounding in the pool's favour.
-fn integer_sqrt(n: u128) -> u128 {
-    if n < 2 {
-        return n;
-    }
-    let mut x = n;
-    let mut y = x.div_ceil(2);
-    while y < x {
-        x = y;
-        y = (x + n / x) / 2;
-    }
-    x
-}
 
 pub fn handle_deposit_liquidity(
     context: &mut Context<DepositLiquidityAccountConstraints>,
@@ -41,8 +25,6 @@ pub fn handle_deposit_liquidity(
     {
         return err!(AmmError::InsufficientBalance);
     }
-    let mut amount_a = amount_a;
-    let mut amount_b = amount_b;
 
     // Clamp the caller's (amount_a, amount_b) to the current pool ratio.
     //
@@ -75,40 +57,45 @@ pub fn handle_deposit_liquidity(
         .amount()
         .checked_sub(pool_config.admin_fees_owed_b)
         .ok_or(AmmError::MathOverflow)?;
-    // Defining pool creation like this allows attackers to frontrun pool creation with bad ratios
-    let pool_creation = effective_pool_a == 0 && effective_pool_b == 0;
-    (amount_a, amount_b) = if pool_creation {
-        // Add as is if there is no liquidity. Admin fees can't be owed yet
-        // (no swap has happened), so the initial-deposit math is unchanged.
-        (amount_a, amount_b)
+
+    // Every pool opens with its creator's deposit in `initialize_pool`, and
+    // neither a withdrawal nor a swap can empty a reserve (the
+    // `MINIMUM_LIQUIDITY` floor stays behind, and a swap's output is always
+    // less than the reserve it comes from), so both effective reserves are
+    // positive here. The check keeps the ratio math from dividing by zero if
+    // that ever stopped being true, rather than letting a depositor set the
+    // price of a pool that has none.
+    require!(
+        effective_pool_a > 0 && effective_pool_b > 0,
+        AmmError::EmptyPoolReserve
+    );
+
+    // amount_b_required = amount_a * effective_pool_b / effective_pool_a.
+    // Round down: this can only ever ask the depositor for *less* token B
+    // than perfect-ratio, which favours the pool by a sub-base-unit and
+    // matches Uniswap V2.
+    let amount_b_required = (amount_a as u128)
+        .checked_mul(effective_pool_b as u128)
+        .ok_or(AmmError::MathOverflow)?
+        .checked_div(effective_pool_a as u128)
+        .ok_or(AmmError::MathOverflow)?;
+    let (amount_a, amount_b) = if amount_b_required <= amount_b as u128 {
+        // The depositor's `amount_b` is enough to cover the ratio; use
+        // the full `amount_a` and clamp `amount_b` down.
+        let amount_b_required =
+            u64::try_from(amount_b_required).map_err(|_| AmmError::MathOverflow)?;
+        (amount_a, amount_b_required)
     } else {
-        // amount_b_required = amount_a * effective_pool_b / effective_pool_a.
-        // Round down: this can only ever ask the depositor for *less* token B
-        // than perfect-ratio, which favours the pool by a sub-base-unit and
-        // matches Uniswap V2.
-        let amount_b_required = (amount_a as u128)
-            .checked_mul(effective_pool_b as u128)
+        // `amount_b` is the binding side; use the full `amount_b` and
+        // clamp `amount_a` down to what the ratio needs.
+        let amount_a_required = (amount_b as u128)
+            .checked_mul(effective_pool_a as u128)
             .ok_or(AmmError::MathOverflow)?
-            .checked_div(effective_pool_a as u128)
+            .checked_div(effective_pool_b as u128)
             .ok_or(AmmError::MathOverflow)?;
-        if amount_b_required <= amount_b as u128 {
-            // The depositor's `amount_b` is enough to cover the ratio; use
-            // the full `amount_a` and clamp `amount_b` down.
-            let amount_b_required =
-                u64::try_from(amount_b_required).map_err(|_| AmmError::MathOverflow)?;
-            (amount_a, amount_b_required)
-        } else {
-            // `amount_b` is the binding side; use the full `amount_b` and
-            // clamp `amount_a` down to what the ratio needs.
-            let amount_a_required = (amount_b as u128)
-                .checked_mul(effective_pool_a as u128)
-                .ok_or(AmmError::MathOverflow)?
-                .checked_div(effective_pool_b as u128)
-                .ok_or(AmmError::MathOverflow)?;
-            let amount_a_required =
-                u64::try_from(amount_a_required).map_err(|_| AmmError::MathOverflow)?;
-            (amount_a_required, amount_b)
-        }
+        let amount_a_required =
+            u64::try_from(amount_a_required).map_err(|_| AmmError::MathOverflow)?;
+        (amount_a_required, amount_b)
     };
 
     // After clamping, both sides must contribute something. If either side
@@ -116,65 +103,50 @@ pub fn handle_deposit_liquidity(
     // ratio (e.g. a depositor offering 1 base unit of A against a pool where
     // 1 A is worth less than 1 base unit of B). Fail rather than letting an
     // LP mint zero-priced shares.
-    if !pool_creation && (amount_a == 0 || amount_b == 0) {
+    if amount_a == 0 || amount_b == 0 {
         return err!(AmmError::DepositAmountTooSmall);
     }
 
-    // LP-mint math. Two branches:
-    //   - Initial deposit (pool creation): `liquidity = sqrt(a * b) - MINIMUM_LIQUIDITY`.
-    //     The `MINIMUM_LIQUIDITY` floor is never minted to anyone: the first
-    //     depositor receives `sqrt(a * b) - MINIMUM_LIQUIDITY` LP tokens, and
-    //     withdraw_liquidity adds the floor back into its supply denominator,
-    //     so the floor's share of the reserves stays in the pool, claimable by
-    //     nobody while any LP supply exists. This stops the first depositor
-    //     from draining the pool to a sub-minor-unit ratio. (Uniswap V2
-    //     instead mints the floor to the zero address; here, if every LP
-    //     token is burned, the floor's leftover reserves simply seed the next
-    //     bootstrap deposit.)
-    //   - Subsequent deposit: `liquidity = min(a * supply / pool_a, b * supply / pool_b)`.
-    //     This is the canonical Uniswap V2 formula: mint LP tokens in
-    //     proportion to the depositor's share of each reserve, taking the
-    //     smaller side as the binding constraint. After the ratio clamp
-    //     above, both sides give the same result; `min` is kept as an
-    //     invariant safety net and to match the published formula.
+    // LP-mint math: `liquidity = min(a * total / pool_a, b * total / pool_b)`
+    // with `total = lp_supply + MINIMUM_LIQUIDITY`. This is the canonical
+    // Uniswap V2 formula: mint LP tokens in proportion to the depositor's
+    // share of each reserve, taking the smaller side as the binding
+    // constraint. After the ratio clamp above, both sides give the same
+    // result; `min` is kept as an invariant safety net and to match the
+    // published formula (Uniswap V2's `totalSupply` includes the floor it
+    // minted to the zero address). `total` must be the same divisor
+    // withdraw_liquidity uses: dividing by the bare mint supply here would
+    // mint every depositor slightly less than they could redeem, and would
+    // let a donation merely as large as a victim's deposit round that
+    // deposit down to zero LP tokens, where counting the floor makes the
+    // attacker donate at least `MINIMUM_LIQUIDITY + 1` times the deposit.
+    // The floor itself is withheld from the creator's deposit in
+    // `initialize_pool` (see `liquidity::initial_lp_amount`).
     //
-    // All math is in `u128` with checked arithmetic. `amount * supply` can
-    // overflow `u64` (both are `u64`), but `u128` absorbs it: max product
-    // is `(2^64 - 1)^2 < 2^128`. We multiply before dividing to keep
-    // precision, then round down (floor) so the pool keeps any sub-unit
-    // rounding dust - protocol-favouring rounding, per the financial-math
-    // rules.
-    let liquidity: u64 = if pool_creation {
-        let product = (amount_a as u128)
-            .checked_mul(amount_b as u128)
-            .ok_or(AmmError::MathOverflow)?;
-        let sqrt_product = integer_sqrt(product);
-        let sqrt_product_u64 = u64::try_from(sqrt_product).map_err(|_| AmmError::MathOverflow)?;
-        if sqrt_product_u64 < MINIMUM_LIQUIDITY {
-            return err!(AmmError::DepositTooSmall);
-        }
-        sqrt_product_u64
-            .checked_sub(MINIMUM_LIQUIDITY)
-            .ok_or(AmmError::MathOverflow)?
-    } else {
-        let total_supply = context.accounts.liquidity_provider_mint.supply() as u128;
-        let liquidity_from_a = (amount_a as u128)
-            .checked_mul(total_supply)
-            .ok_or(AmmError::MathOverflow)?
-            .checked_div(effective_pool_a as u128)
-            .ok_or(AmmError::MathOverflow)?;
-        let liquidity_from_b = (amount_b as u128)
-            .checked_mul(total_supply)
-            .ok_or(AmmError::MathOverflow)?
-            .checked_div(effective_pool_b as u128)
-            .ok_or(AmmError::MathOverflow)?;
-        let liquidity = liquidity_from_a.min(liquidity_from_b);
-        u64::try_from(liquidity).map_err(|_| AmmError::MathOverflow)?
-    };
+    // All math is in `u128` with checked arithmetic. `amount * total` can
+    // overflow `u64`, but `u128` absorbs it for any supply a real mint can
+    // reach, and the checked multiply reports the rest. We multiply before
+    // dividing to keep precision, then round down (floor) so the pool keeps
+    // any sub-unit rounding dust - program-favouring rounding, per the
+    // financial-math rules.
+    let total_supply = (context.accounts.liquidity_provider_mint.supply() as u128)
+        .checked_add(MINIMUM_LIQUIDITY as u128)
+        .ok_or(AmmError::MathOverflow)?;
+    let liquidity_from_a = (amount_a as u128)
+        .checked_mul(total_supply)
+        .ok_or(AmmError::MathOverflow)?
+        .checked_div(effective_pool_a as u128)
+        .ok_or(AmmError::MathOverflow)?;
+    let liquidity_from_b = (amount_b as u128)
+        .checked_mul(total_supply)
+        .ok_or(AmmError::MathOverflow)?
+        .checked_div(effective_pool_b as u128)
+        .ok_or(AmmError::MathOverflow)?;
+    let liquidity: u64 = u64::try_from(liquidity_from_a.min(liquidity_from_b))
+        .map_err(|_| AmmError::MathOverflow)?;
 
     if liquidity == 0 {
-        // Subsequent deposit too small relative to existing LP supply.
-        // (Initial deposits hit the `MINIMUM_LIQUIDITY` check above.)
+        // Deposit too small relative to the existing LP supply.
         return err!(AmmError::DepositTooSmall);
     }
 
@@ -191,72 +163,26 @@ pub fn handle_deposit_liquidity(
         AmmError::DepositBelowMinimum
     );
 
-    // Transfer tokens to the pool using transfer_checked. transfer_checked
-    // includes the mint and decimals in the CPI, which guards callers against
-    // decimal-mismatch bugs (and is the modern recommended path).
-    token_interface::transfer_checked(
-        CpiContext::new(
-            context.accounts.token_program.address(),
-            TransferChecked {
-                from: context.accounts.token_a.to_cpi_handle_mut(),
-                mint: context.accounts.mint_a.to_cpi_handle(),
-                to: context.accounts.pool_a.to_cpi_handle_mut(),
-                authority: context.accounts.depositor.cpi_handle(),
-            },
-        ),
+    // `pool_config` is loaded read-only here, so there is nothing to take
+    // back after the mint releases its borrow.
+    deposit_and_mint_lp_tokens(
+        LiquidityDepositAccounts {
+            token_program: &context.accounts.token_program,
+            pool_config: &mut context.accounts.pool_config,
+            mint_a: &context.accounts.mint_a,
+            mint_b: &context.accounts.mint_b,
+            pool_a: &mut context.accounts.pool_a,
+            pool_b: &mut context.accounts.pool_b,
+            depositor: &context.accounts.depositor,
+            depositor_token_a: &mut context.accounts.token_a,
+            depositor_token_b: &mut context.accounts.token_b,
+            liquidity_provider_mint: &mut context.accounts.liquidity_provider_mint,
+            liquidity_provider_token: &mut context.accounts.liquidity_provider_token,
+        },
         amount_a,
-        context.accounts.mint_a.decimals(),
-    )?;
-    token_interface::transfer_checked(
-        CpiContext::new(
-            context.accounts.token_program.address(),
-            TransferChecked {
-                from: context.accounts.token_b.to_cpi_handle_mut(),
-                mint: context.accounts.mint_b.to_cpi_handle(),
-                to: context.accounts.pool_b.to_cpi_handle_mut(),
-                authority: context.accounts.depositor.cpi_handle(),
-            },
-        ),
         amount_b,
-        context.accounts.mint_b.decimals(),
-    )?;
-
-    // Mint the liquidity to the user. `pool_config` is the LP mint's
-    // authority and signs with its own seeds.
-    let config_bytes = context.accounts.pool_config.config.to_bytes();
-    let mint_a_bytes = context.accounts.mint_a.address().to_bytes();
-    let mint_b_bytes = context.accounts.mint_b.address().to_bytes();
-    let pool_config_bump = [context.accounts.pool_config.bump];
-    let signer_seeds: &[&[&[u8]]] = &[&[
-        config_bytes.as_ref(),
-        mint_a_bytes.as_ref(),
-        mint_b_bytes.as_ref(),
-        &pool_config_bump,
-    ]];
-
-    // `pool_config` signs the CPI below. It is a data account holding a live
-    // borrow on its buffer, which the runtime would reject when the CPI
-    // borrows the same account, so hand the borrow back for the duration. It
-    // is loaded read-only here, so there is nothing to take back afterwards.
-    context.accounts.pool_config.release_borrow()?;
-
-    token_interface::mint_to(
-        CpiContext::new_with_signer(
-            context.accounts.token_program.address(),
-            MintTo {
-                mint: context.accounts.liquidity_provider_mint.to_cpi_handle_mut(),
-                to: context
-                    .accounts
-                    .liquidity_provider_token
-                    .to_cpi_handle_mut(),
-                authority: context.accounts.pool_config.to_cpi_handle(),
-            },
-            signer_seeds,
-        ),
         liquidity,
-    )?;
-
-    Ok(())
+    )
 }
 
 #[derive(Accounts)]
@@ -272,7 +198,7 @@ pub struct DepositLiquidityAccountConstraints {
     )]
     pub pool_config: Box<BorshAccount<PoolConfig>>,
 
-    /// The account paying for all rents
+    /// Makes the deposit and receives the LP tokens.
     pub depositor: Signer,
 
     #[account(

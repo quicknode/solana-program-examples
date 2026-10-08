@@ -1,7 +1,7 @@
 use {
     crate::{
-        constants::{BASIS_POINTS_DENOMINATOR, MAX_LEVERAGE_CEILING},
-        instructions::shared::{err, error},
+        constants::{BASIS_POINTS_DENOMINATOR, MAX_FUNDING_RATE_PER_SECOND},
+        instructions::shared::{err, error, read_feed_price},
         state::{Pool, PoolInner},
         LpMintPda, VaultPda,
     },
@@ -21,7 +21,9 @@ pub struct InitializePool {
     )]
     pub pool: Account<Pool>,
     pub collateral_mint: Account<Mint>,
-    /// CHECK: stored on the pool; every read validates layout, scale, freshness.
+    /// CHECK: its key and its owning program are stored on the pool; every
+    /// read, including the one here that seeds the average price, requires
+    /// that owner and validates layout, scale, freshness.
     pub oracle_feed: UncheckedAccount,
     /// Liquidity-provider share mint; the pool account is its mint authority.
     #[account(
@@ -52,17 +54,22 @@ pub struct InitializePool {
 pub fn handle_initialize_pool(
     accounts: &mut InitializePool,
     oracle_scale: u32,
-    funding_rate_per_slot: u64,
+    funding_rate_per_second: u64,
     open_fee_bps: u16,
     close_fee_bps: u16,
-    max_leverage: u16,
+    initial_margin_bps: u16,
     maintenance_margin_bps: u16,
     liquidation_fee_bps: u16,
     max_confidence_bps: u16,
+    max_price_deviation_bps: u16,
+    insurance_fee_bps: u16,
+    profit_warmup_slots: u64,
     bumps: &InitializePoolBumps,
 ) -> Result<(), ProgramError> {
     let denominator = BASIS_POINTS_DENOMINATOR as u16;
-    if !(1..=MAX_LEVERAGE_CEILING).contains(&max_leverage) {
+    // The rate never changes after this, so bounding it here bounds it for the
+    // life of the pool.
+    if funding_rate_per_second > MAX_FUNDING_RATE_PER_SECOND {
         return Err(err(error::INVALID_PARAMETER));
     }
     if open_fee_bps >= denominator
@@ -82,35 +89,74 @@ pub fn handle_initialize_pool(
     if maintenance_margin_bps <= close_fee_bps {
         return Err(err(error::INVALID_PARAMETER));
     }
+    // A position must open with more margin than it is liquidated at, or it
+    // could be liquidated in the same slot it opened. At most 100% of
+    // notional: more than that would demand collateral above the position's
+    // size.
+    if initial_margin_bps <= maintenance_margin_bps {
+        return Err(err(error::INITIAL_MARGIN_NOT_ABOVE_MAINTENANCE));
+    }
+    if initial_margin_bps > denominator {
+        return Err(err(error::INVALID_PARAMETER));
+    }
     if max_confidence_bps == 0 || max_confidence_bps >= denominator {
         return Err(err(error::INVALID_PARAMETER));
     }
+    // At 10_000 every fee would go to the insurance fund and none to the
+    // program.
+    if insurance_fee_bps >= denominator {
+        return Err(err(error::INVALID_PARAMETER));
+    }
+    // Zero would refuse every price move, however small. At 100% or more the
+    // band could never refuse a fall, since the oracle price is always
+    // positive.
+    if max_price_deviation_bps == 0 || max_price_deviation_bps >= denominator {
+        return Err(err(error::INVALID_PRICE_DEVIATION));
+    }
 
-    let slot = accounts.clock.slot.get();
+    // Record the feed's owning program, and seed the average with a validated
+    // oracle price, so the owner check and the band are in force from the
+    // first trade.
+    let price_feed_program = *accounts.oracle_feed.to_account_view().owner();
+    let initial_price = read_feed_price(
+        &accounts.oracle_feed,
+        &price_feed_program,
+        oracle_scale,
+        accounts.clock.slot.get(),
+        max_confidence_bps,
+    )?;
+    let unix_timestamp = accounts.clock.unix_timestamp.get();
     accounts.pool.set_inner(PoolInner {
         authority: *accounts.authority.address(),
         collateral_mint: *accounts.collateral_mint.address(),
         oracle_feed: *accounts.oracle_feed.address(),
+        price_feed_program,
         custody_vault: *accounts.custody_vault.address(),
         lp_mint: *accounts.lp_mint.address(),
         oracle_scale,
         liquidity: 0,
-        reserved_liquidity: 0,
         total_collateral: 0,
-        protocol_fees: 0,
+        program_fees: 0,
+        insurance_fund: 0,
         long_size: 0,
         short_size: 0,
         long_size_scaled: 0,
         short_size_scaled: 0,
         cumulative_funding: 0,
-        last_funding_slot: slot,
-        funding_rate_per_slot,
+        last_funding_timestamp: unix_timestamp,
+        average_price: initial_price,
+        last_oracle_price: initial_price,
+        average_price_timestamp: unix_timestamp,
+        funding_rate_per_second,
         open_fee_bps,
         close_fee_bps,
-        max_leverage,
+        initial_margin_bps,
         maintenance_margin_bps,
         liquidation_fee_bps,
         max_confidence_bps,
+        max_price_deviation_bps,
+        insurance_fee_bps,
+        profit_warmup_slots,
         bump: bumps.pool,
     });
     Ok(())

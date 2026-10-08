@@ -1,13 +1,11 @@
 use {
     anchor_lang::{
-        solana_program::{
-            instruction::Instruction,
-            pubkey::Pubkey,
-            system_program,
-        },
+        solana_program::{instruction::Instruction, pubkey::Pubkey, system_program},
         InstructionData, ToAccountMetas,
     },
+    borsh::BorshDeserialize,
     litesvm::LiteSVM,
+    solana_keypair::Keypair,
     solana_kite::{
         create_wallet, send_transaction_from_instructions,
         token_extensions::{
@@ -17,9 +15,23 @@ use {
         },
         transfer_hook::{build_hook_accounts, get_hook_accounts_address, HookAccount},
     },
-    solana_keypair::Keypair,
     solana_signer::Signer,
 };
+
+/// Deserialize the CounterAccount (8-byte discriminator + fields).
+#[derive(BorshDeserialize)]
+struct CounterAccountData {
+    _discriminator: [u8; 8],
+    counter: u64,
+    _bump: u8,
+}
+
+fn read_counter(svm: &LiteSVM, counter_pda: &Pubkey) -> u64 {
+    let account = svm.get_account(counter_pda).unwrap();
+    CounterAccountData::deserialize(&mut &account.data[..])
+        .unwrap()
+        .counter
+}
 
 fn associated_token_program_id() -> Pubkey {
     "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
@@ -59,36 +71,21 @@ fn test_transfer_hook_counter() {
     .unwrap();
     svm.expire_blockhash();
 
-    let extra_account_meta_list =
-        get_hook_accounts_address(&mint, &program_id);
+    let extra_account_meta_list = get_hook_accounts_address(&mint, &program_id);
 
     // Step 2: Create token accounts and mint tokens
     let recipient = Keypair::new();
     let amount: u64 = 100 * 10u64.pow(decimals as u32);
 
-    let source_ata = create_token_extensions_account(
-        &mut svm,
-        &payer.pubkey(),
-        &mint,
-        &payer,
-    ).unwrap();
+    let source_ata =
+        create_token_extensions_account(&mut svm, &payer.pubkey(), &mint, &payer).unwrap();
     svm.expire_blockhash();
 
-    let dest_ata = create_token_extensions_account(
-        &mut svm,
-        &recipient.pubkey(),
-        &mint,
-        &payer,
-    ).unwrap();
+    let dest_ata =
+        create_token_extensions_account(&mut svm, &recipient.pubkey(), &mint, &payer).unwrap();
     svm.expire_blockhash();
 
-    mint_tokens_to_token_extensions_account(
-        &mut svm,
-        &mint,
-        &source_ata,
-        amount,
-        &payer,
-    ).unwrap();
+    mint_tokens_to_token_extensions_account(&mut svm, &mint, &source_ata, amount, &payer).unwrap();
     svm.expire_blockhash();
 
     // Step 3: Initialize ExtraAccountMetaList (also creates counter PDA)
@@ -106,7 +103,8 @@ fn test_transfer_hook_counter() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![init_extra_ix], &[&payer], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(&mut svm, vec![init_extra_ix], &[&payer], &payer.pubkey())
+        .unwrap();
     svm.expire_blockhash();
 
     // Step 4: Transfer with hook (this triggers the counter increment)
@@ -129,8 +127,13 @@ fn test_transfer_hook_counter() {
         transfer_amount,
         decimals,
         &extra_accounts,
-    ).unwrap();
+    )
+    .unwrap();
     svm.expire_blockhash();
+
+    // The hook writes the incremented count back, so it survives the transfer.
+    let counter_after = read_counter(&svm, &counter_pda);
+    assert_eq!(counter_after, 1, "hook should have recorded one transfer");
 
     // Step 5: Try calling transfer_hook directly (should fail - not transferring)
     let direct_hook_ix = Instruction::new_with_bytes(
@@ -146,7 +149,12 @@ fn test_transfer_hook_counter() {
         }
         .to_account_metas(None),
     );
-    let result = send_transaction_from_instructions(&mut svm, vec![direct_hook_ix], &[&payer], &payer.pubkey());
+    let result = send_transaction_from_instructions(
+        &mut svm,
+        vec![direct_hook_ix],
+        &[&payer],
+        &payer.pubkey(),
+    );
     assert!(
         result.is_err(),
         "Calling transfer_hook directly should fail because token is not transferring"

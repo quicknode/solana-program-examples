@@ -9,7 +9,8 @@ use {
     solana_keypair::Keypair,
     solana_kite::{
         create_associated_token_account, create_token_mint, create_wallet,
-        get_token_account_balance, mint_tokens_to_token_account, send_transaction_from_instructions,
+        get_token_account_balance, mint_tokens_to_token_account,
+        send_transaction_from_instructions,
     },
     solana_signer::Signer,
 };
@@ -185,8 +186,14 @@ fn setup_transfer_fixture() -> TransferFixture {
     let mint = create_token_mint(&mut svm, &authority, MINT_DECIMALS, None).unwrap();
     let user_pda_token_account =
         create_associated_token_account(&mut svm, &user_pda, &mint, &authority).unwrap();
-    mint_tokens_to_token_account(&mut svm, &mint, &user_pda_token_account, MINT_AMOUNT, &authority)
-        .unwrap();
+    mint_tokens_to_token_account(
+        &mut svm,
+        &mint,
+        &user_pda_token_account,
+        MINT_AMOUNT,
+        &authority,
+    )
+    .unwrap();
 
     let recipient = Keypair::new();
     let recipient_token_account =
@@ -295,7 +302,10 @@ fn test_transfer_tokens_with_valid_signature_moves_tokens_and_increments_nonce()
         get_token_account_balance(&fixture.svm, &fixture.user_pda_token_account).unwrap(),
         MINT_AMOUNT - TRANSFER_AMOUNT
     );
-    assert_eq!(read_user_account(&fixture.svm, &fixture.user_account).nonce, 1);
+    assert_eq!(
+        read_user_account(&fixture.svm, &fixture.user_account).nonce,
+        1
+    );
 }
 
 #[test]
@@ -336,14 +346,20 @@ fn test_transfer_tokens_replayed_signature_fails() {
         &[&fixture.authority],
         &authority_pubkey,
     );
-    assert!(replay_result.is_err(), "replayed signature must be rejected");
+    assert!(
+        replay_result.is_err(),
+        "replayed signature must be rejected"
+    );
 
     // Exactly one transfer happened.
     assert_eq!(
         get_token_account_balance(&fixture.svm, &fixture.recipient_token_account).unwrap(),
         TRANSFER_AMOUNT
     );
-    assert_eq!(read_user_account(&fixture.svm, &fixture.user_account).nonce, 1);
+    assert_eq!(
+        read_user_account(&fixture.svm, &fixture.user_account).nonce,
+        1
+    );
 }
 
 #[test]
@@ -383,7 +399,10 @@ fn test_transfer_tokens_signature_over_different_amount_fails() {
         get_token_account_balance(&fixture.svm, &fixture.recipient_token_account).unwrap(),
         0
     );
-    assert_eq!(read_user_account(&fixture.svm, &fixture.user_account).nonce, 0);
+    assert_eq!(
+        read_user_account(&fixture.svm, &fixture.user_account).nonce,
+        0
+    );
 }
 
 #[test]

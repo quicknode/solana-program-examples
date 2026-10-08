@@ -1,6 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token_interface::{
-    transfer_checked, Mint, TokenAccount, TokenInterface, TransferChecked,
+    close_account, transfer_checked, CloseAccount, Mint, TokenAccount, TokenInterface,
+    TransferChecked,
 };
 
 use crate::constants::{
@@ -20,6 +21,16 @@ use crate::state::{Obligation, PriceFeed, Reserve};
 /// more collateral than the obligation holds, the call fails with
 /// `LiquidationTooLarge` — silently capping the seizure would make the
 /// liquidator pay full price for less collateral.
+///
+/// A seizure that takes the last share of the collateral reserve removes the
+/// deposit entry and closes that reserve's collateral vault. The whole vault
+/// balance goes to the liquidator first, so share tokens someone sent straight
+/// to the vault cannot keep it open. The vault's rent goes into the obligation
+/// account itself, not to the owner's wallet: liquidation then takes no
+/// account the borrower controls, so nothing the borrower does to their wallet
+/// can make it fail, and the owner can still liquidate their own position. The
+/// rent returns to the owner, who paid it, when `close_obligation` closes the
+/// obligation with every lamport it holds.
 ///
 /// Self-liquidation (the owner liquidating their own position) is not blocked:
 /// it is only possible while unhealthy and is economically pointless, matching
@@ -44,8 +55,14 @@ pub fn handle_liquidate_obligation(
         LendingError::ObligationHealthy
     );
 
-    let repay_price = context.accounts.repay_price_feed.price_scaled(slot)?;
-    let collateral_price = context.accounts.collateral_price_feed.price_scaled(slot)?;
+    let repay_price = context
+        .accounts
+        .repay_price_feed
+        .price_scaled(slot, repay_reserve.config.max_confidence_bps)?;
+    let collateral_price = context
+        .accounts
+        .collateral_price_feed
+        .price_scaled(slot, collateral_reserve.config.max_confidence_bps)?;
 
     let borrow_index = obligation.find_borrow(repay_reserve.key())?;
     let collateral_index = obligation.find_collateral(collateral_reserve.key())?;
@@ -61,7 +78,8 @@ pub fn handle_liquidate_obligation(
         repay_reserve.config.close_factor_bps as u128,
         BPS_DENOMINATOR,
     )?;
-    let repay = liquidity_amount.min(u64::try_from(max_repay).map_err(|_| LendingError::MathOverflow)?);
+    let repay =
+        liquidity_amount.min(u64::try_from(max_repay).map_err(|_| LendingError::MathOverflow)?);
     require!(repay > 0, LendingError::ZeroAmount);
 
     // Collateral to seize: value of the repayment plus the bonus, converted into
@@ -89,7 +107,7 @@ pub fn handle_liquidate_obligation(
     )?;
     let seize_shares = mul_div_floor(
         seize_liquidity as u128,
-        collateral_reserve.share_mint_supply as u128,
+        collateral_reserve.total_shares()?,
         collateral_reserve.total_liquidity()?.max(1),
     )?;
     let seize_shares = u64::try_from(seize_shares).map_err(|_| LendingError::MathOverflow)?;
@@ -99,8 +117,8 @@ pub fn handle_liquidate_obligation(
         LendingError::LiquidationTooLarge
     );
 
-    let scaled_removed =
-        mul_div_floor(repay as u128, FIXED_POINT_SCALE, accumulation_factor)?.min(borrowed_principal);
+    let scaled_removed = mul_div_floor(repay as u128, FIXED_POINT_SCALE, accumulation_factor)?
+        .min(borrowed_principal);
 
     // Effects: repay side.
     {
@@ -116,7 +134,7 @@ pub fn handle_liquidate_obligation(
     }
 
     // Effects: obligation debt and collateral.
-    let (lending_market, owner, obligation_bump) = {
+    let (lending_market, owner, obligation_bump, empties_vault) = {
         let obligation = &mut context.accounts.obligation;
         obligation.borrows[borrow_index].borrowed_principal = borrowed_principal
             .checked_sub(scaled_removed)
@@ -127,11 +145,23 @@ pub fn handle_liquidate_obligation(
         obligation.deposits[collateral_index].deposited_shares = deposited_shares
             .checked_sub(seize_shares)
             .ok_or(LendingError::MathOverflow)?;
-        if obligation.deposits[collateral_index].deposited_shares == 0 {
+        let empties_vault = obligation.deposits[collateral_index].deposited_shares == 0;
+        if empties_vault {
             obligation.deposits.remove(collateral_index);
         }
         obligation.stale = true;
-        (obligation.lending_market, obligation.owner, obligation.bump)
+        (
+            obligation.lending_market,
+            obligation.owner,
+            obligation.bump,
+            empties_vault,
+        )
+    };
+    // Emptying the entry sweeps the vault, donations included, so it can close.
+    let seize_transfer = if empties_vault {
+        context.accounts.obligation_collateral_vault.amount
+    } else {
+        seize_shares
     };
 
     // Interactions: liquidator repays, then receives the seized share tokens.
@@ -150,21 +180,47 @@ pub fn handle_liquidate_obligation(
     )?;
 
     let bump = [obligation_bump];
-    let seeds: [&[u8]; 4] = [OBLIGATION_SEED, lending_market.as_ref(), owner.as_ref(), &bump];
+    let seeds: [&[u8]; 4] = [
+        OBLIGATION_SEED,
+        lending_market.as_ref(),
+        owner.as_ref(),
+        &bump,
+    ];
     transfer_checked(
         CpiContext::new_with_signer(
             context.accounts.token_program.key(),
             TransferChecked {
-                from: context.accounts.obligation_collateral_vault.to_account_info(),
+                from: context
+                    .accounts
+                    .obligation_collateral_vault
+                    .to_account_info(),
                 mint: context.accounts.collateral_share_mint.to_account_info(),
-                to: context.accounts.liquidator_collateral_dest.to_account_info(),
+                to: context
+                    .accounts
+                    .liquidator_collateral_dest
+                    .to_account_info(),
                 authority: context.accounts.obligation.to_account_info(),
             },
             &[&seeds],
         ),
-        seize_shares,
+        seize_transfer,
         context.accounts.collateral_share_mint.decimals,
     )?;
+
+    if empties_vault {
+        close_account(CpiContext::new_with_signer(
+            context.accounts.token_program.key(),
+            CloseAccount {
+                account: context
+                    .accounts
+                    .obligation_collateral_vault
+                    .to_account_info(),
+                destination: context.accounts.obligation.to_account_info(),
+                authority: context.accounts.obligation.to_account_info(),
+            },
+            &[&seeds],
+        ))?;
+    }
 
     Ok(())
 }

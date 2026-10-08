@@ -1,5 +1,8 @@
 use anchor_lang::prelude::*;
-use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
+use anchor_spl::{
+    associated_token::AssociatedToken,
+    token_interface::{Mint, TokenAccount, TokenInterface},
+};
 
 use crate::constants::{MARKET_SEED, OPTION_SEED, QUOTE_VAULT_SEED, UNDERLYING_VAULT_SEED};
 use crate::contract_math;
@@ -19,11 +22,9 @@ pub fn handle_cancel_option(context: Context<CancelOptionAccountConstraints>) ->
 
     let collateral = contract_math::collateral_amount(
         option.kind,
-        option.contracts,
-        option.underlying_per_contract,
-        option.strike_per_contract,
-    )
-    .ok_or(OptionsError::MathOverflow)?;
+        option.underlying_amount,
+        option.strike_amount,
+    );
     let kind = option.kind;
 
     let market = &mut context.accounts.market;
@@ -31,8 +32,8 @@ pub fn handle_cancel_option(context: Context<CancelOptionAccountConstraints>) ->
     let mut quote_after = context.accounts.quote_vault.amount;
     match kind {
         OptionKind::Call => {
-            market.underlying_locked = market
-                .underlying_locked
+            market.underlying_owed = market
+                .underlying_owed
                 .checked_sub(collateral)
                 .ok_or(OptionsError::MathOverflow)?;
             underlying_after = underlying_after
@@ -40,8 +41,8 @@ pub fn handle_cancel_option(context: Context<CancelOptionAccountConstraints>) ->
                 .ok_or(OptionsError::CustodyInvariantViolated)?;
         }
         OptionKind::Put => {
-            market.quote_locked = market
-                .quote_locked
+            market.quote_owed = market
+                .quote_owed
                 .checked_sub(collateral)
                 .ok_or(OptionsError::MathOverflow)?;
             quote_after = quote_after
@@ -115,8 +116,13 @@ pub struct CancelOptionAccountConstraints<'info> {
     )]
     pub quote_vault: Box<InterfaceAccount<'info, TokenAccount>>,
 
+    // A call writer's collateral comes back here. A put writer may never have
+    // held the underlying (or may have closed the account since writing), so
+    // it is created if needed, at the writer's expense, as `collect_proceeds`
+    // does.
     #[account(
-        mut,
+        init_if_needed,
+        payer = writer,
         associated_token::mint = underlying_mint,
         associated_token::authority = writer,
         associated_token::token_program = token_program,
@@ -132,4 +138,6 @@ pub struct CancelOptionAccountConstraints<'info> {
     pub writer_quote: Box<InterfaceAccount<'info, TokenAccount>>,
 
     pub token_program: Interface<'info, TokenInterface>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
+    pub system_program: Program<'info, System>,
 }

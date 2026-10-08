@@ -1,13 +1,10 @@
 use {
     anchor_lang::{
-        solana_program::{
-            instruction::Instruction,
-            pubkey::Pubkey,
-            system_program,
-        },
+        solana_program::{instruction::Instruction, pubkey::Pubkey, system_program},
         InstructionData, ToAccountMetas,
     },
     litesvm::LiteSVM,
+    solana_keypair::Keypair,
     solana_kite::{
         create_wallet, send_transaction_from_instructions,
         token_extensions::{
@@ -16,7 +13,6 @@ use {
             TOKEN_EXTENSIONS_PROGRAM_ID,
         },
     },
-    solana_keypair::Keypair,
     solana_signer::Signer,
 };
 
@@ -48,7 +44,13 @@ fn test_create_non_transferable_mint_and_attempt_transfer() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![initialize_ix], &[&payer, &mint_keypair], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        vec![initialize_ix],
+        &[&payer, &mint_keypair],
+        &payer.pubkey(),
+    )
+    .unwrap();
     svm.expire_blockhash();
 
     // Verify mint account was created and has extension data
@@ -63,12 +65,9 @@ fn test_create_non_transferable_mint_and_attempt_transfer() {
 
     // Step 2: Create ATAs for sender and recipient
     let recipient = Keypair::new();
-    let source_ata = create_token_extensions_account(
-        &mut svm,
-        &payer.pubkey(),
-        &mint_keypair.pubkey(),
-        &payer,
-    ).unwrap();
+    let source_ata =
+        create_token_extensions_account(&mut svm, &payer.pubkey(), &mint_keypair.pubkey(), &payer)
+            .unwrap();
     svm.expire_blockhash();
 
     let dest_ata = create_token_extensions_account(
@@ -76,7 +75,8 @@ fn test_create_non_transferable_mint_and_attempt_transfer() {
         &recipient.pubkey(),
         &mint_keypair.pubkey(),
         &payer,
-    ).unwrap();
+    )
+    .unwrap();
     svm.expire_blockhash();
 
     // Step 3: Mint 1 token to sender
@@ -86,7 +86,8 @@ fn test_create_non_transferable_mint_and_attempt_transfer() {
         &source_ata,
         1,
         &payer,
-    ).unwrap();
+    )
+    .unwrap();
     svm.expire_blockhash();
 
     // Step 4: Attempt transfer - should fail because mint is NonTransferable

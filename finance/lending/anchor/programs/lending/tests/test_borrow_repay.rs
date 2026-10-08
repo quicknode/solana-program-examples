@@ -3,7 +3,10 @@ mod common;
 use anchor_v2_testing::{Keypair, Signer};
 use lending::errors::LendingError;
 
-use common::{ata, default_config, dollars, Env, ReserveHandle};
+use common::{
+    ata, cents, default_config, dollars, narrow_band, widest_accepted_band, Env, ReserveHandle,
+    DEFAULT_MAX_CONFIDENCE_BPS,
+};
 
 /// One market with a collateral reserve and a separately-supplied borrow
 /// reserve, plus a borrower who has posted 1000 units of collateral (value
@@ -92,6 +95,107 @@ fn borrow_with_stale_price_feed_is_rejected() {
         100_000_000,
     );
     common::assert_program_error!(result, LendingError::StalePriceFeed);
+}
+
+/// A price the oracle is unsure of is no price to lend against. The
+/// collateral feed is read by `refresh_obligation`, so the band is refused
+/// there, before the borrow handler runs; once the publisher posts a narrow
+/// band again the same borrow goes through.
+#[test]
+fn borrow_against_collateral_priced_with_a_wide_band_is_rejected() {
+    let (mut env, collateral, borrow, borrower, obligation) = setup();
+
+    // Twice the band the reserve allows.
+    let wide_band = 2 * widest_accepted_band(dollars(1), DEFAULT_MAX_CONFIDENCE_BPS);
+    env.set_price_with_confidence(collateral.mint, dollars(1), wide_band);
+    let result = env.try_borrow(
+        &borrower,
+        obligation,
+        &[&collateral],
+        &[],
+        &borrow,
+        100_000_000,
+    );
+    // The collateral cannot be valued against a price the oracle is unsure of.
+    common::assert_program_error!(result, LendingError::OracleConfidenceTooWide);
+
+    // Warp so the retry is not byte-identical to the rejected borrow.
+    env.warp_slots(1);
+    env.set_price(collateral.mint, dollars(1));
+    env.set_price(borrow.mint, dollars(1));
+    env.try_borrow(
+        &borrower,
+        obligation,
+        &[&collateral],
+        &[],
+        &borrow,
+        100_000_000,
+    )
+    .unwrap();
+    assert_eq!(
+        env.token_balance(ata(&borrower.pubkey(), &borrow.mint)),
+        100_000_000
+    );
+}
+
+/// The borrowed token's feed is read by the borrow handler itself, which
+/// applies the same limit, so a wide band on that side is refused too.
+#[test]
+fn borrow_of_a_token_priced_with_a_wide_band_is_rejected() {
+    let (mut env, collateral, borrow, borrower, obligation) = setup();
+
+    let wide_band = 2 * widest_accepted_band(dollars(1), DEFAULT_MAX_CONFIDENCE_BPS);
+    env.set_price_with_confidence(borrow.mint, dollars(1), wide_band);
+    let result = env.try_borrow(
+        &borrower,
+        obligation,
+        &[&collateral],
+        &[],
+        &borrow,
+        100_000_000,
+    );
+    common::assert_program_error!(result, LendingError::OracleConfidenceTooWide);
+}
+
+/// The limit is inclusive: a band of exactly `max_confidence_bps` of the
+/// price is accepted, and one unit wider is refused. At $1.23 the 1% limit is
+/// 12,300,000,000,000,000 in the mantissa's units, with no rounding to hide
+/// behind.
+#[test]
+fn confidence_band_at_the_limit_passes_and_one_unit_over_fails() {
+    let (mut env, collateral, borrow, borrower, obligation) = setup();
+    let price = cents(123);
+    let limit = widest_accepted_band(price, DEFAULT_MAX_CONFIDENCE_BPS);
+    assert_eq!(limit, 12_300_000_000_000_000);
+
+    env.set_price_with_confidence(collateral.mint, price, limit + 1);
+    let result = env.try_borrow(
+        &borrower,
+        obligation,
+        &[&collateral],
+        &[],
+        &borrow,
+        100_000_000,
+    );
+    // One unit past the limit must be refused.
+    common::assert_program_error!(result, LendingError::OracleConfidenceTooWide);
+
+    env.warp_slots(1);
+    env.set_price_with_confidence(collateral.mint, price, limit);
+    env.set_price_with_confidence(borrow.mint, dollars(1), narrow_band(dollars(1)));
+    env.try_borrow(
+        &borrower,
+        obligation,
+        &[&collateral],
+        &[],
+        &borrow,
+        100_000_000,
+    )
+    .unwrap();
+    assert_eq!(
+        env.token_balance(ata(&borrower.pubkey(), &borrow.mint)),
+        100_000_000
+    );
 }
 
 /// A cluster restart passes hours of wall-clock time in zero slots, so a price
@@ -197,6 +301,107 @@ fn withdraw_blocked_while_borrowed_then_allowed_after_repay() {
     .unwrap();
     assert_eq!(
         env.token_balance(ata(&borrower.pubkey(), &collateral.share_mint)),
+        1_000_000_000
+    );
+}
+
+/// A borrower who owes nothing must never be locked in by the oracle. With no
+/// borrows the collateral backs nothing, so the withdraw handler reads no
+/// price and needs no refresh, and the whole deposit comes out while the feed
+/// is stale. The refreshed path is tried first to show the feed really is
+/// stale: `refresh_obligation` reads the price and refuses it.
+#[test]
+fn debt_free_withdraw_needs_no_price_and_no_refresh() {
+    let (mut env, collateral, _borrow, borrower, obligation) = setup();
+    let user_share = ata(&borrower.pubkey(), &collateral.share_mint);
+    let vault = env.obligation_share_vault(&collateral, obligation);
+    assert_eq!(env.token_balance(user_share), 0);
+    assert_eq!(env.token_balance(vault), 1_000_000_000);
+
+    // Advance well past the staleness window without re-publishing prices.
+    env.warp_slots(50);
+    let refreshed = env.try_withdraw_collateral(
+        &borrower,
+        obligation,
+        &[&collateral],
+        &[],
+        &collateral,
+        1_000_000_000,
+    );
+    common::assert_program_error!(refreshed, LendingError::StalePriceFeed);
+
+    env.try_withdraw_collateral_without_refresh(&borrower, obligation, &collateral, 1_000_000_000)
+        .unwrap();
+    assert_eq!(env.token_balance(user_share), 1_000_000_000);
+    // The last share out closes the vault.
+    assert!(!env.account_is_open(vault));
+    let state = env.obligation(obligation);
+    assert!(state.deposits.is_empty());
+    assert!(state.borrows.is_empty());
+    assert!(state.stale);
+}
+
+/// Repaying the last unit removes the borrow entry, so a borrower who has
+/// fully repaid is debt-free and withdraws without a price, like one who
+/// never borrowed.
+#[test]
+fn withdraw_after_full_repay_needs_no_price() {
+    let (mut env, collateral, borrow, borrower, obligation) = setup();
+    env.try_borrow(
+        &borrower,
+        obligation,
+        &[&collateral],
+        &[],
+        &borrow,
+        500_000_000,
+    )
+    .unwrap();
+    env.repay(&borrower, obligation, &borrow, 500_000_000);
+    assert!(env.obligation(obligation).borrows.is_empty());
+
+    env.warp_slots(50);
+    env.try_withdraw_collateral_without_refresh(&borrower, obligation, &collateral, 1_000_000_000)
+        .unwrap();
+    assert_eq!(
+        env.token_balance(ata(&borrower.pubkey(), &collateral.share_mint)),
+        1_000_000_000
+    );
+    assert!(env.obligation(obligation).deposits.is_empty());
+}
+
+/// With debt outstanding every check stays: a stale price refuses the
+/// refreshed withdrawal, and skipping the refresh is refused as stale too.
+#[test]
+fn withdraw_with_debt_is_refused_while_the_price_is_stale() {
+    let (mut env, collateral, borrow, borrower, obligation) = setup();
+    env.try_borrow(
+        &borrower,
+        obligation,
+        &[&collateral],
+        &[],
+        &borrow,
+        100_000_000,
+    )
+    .unwrap();
+
+    env.warp_slots(50);
+    let refreshed = env.try_withdraw_collateral(
+        &borrower,
+        obligation,
+        &[&collateral],
+        &[&borrow],
+        &collateral,
+        1,
+    );
+    common::assert_program_error!(refreshed, LendingError::StalePriceFeed);
+
+    let unrefreshed =
+        env.try_withdraw_collateral_without_refresh(&borrower, obligation, &collateral, 1);
+    common::assert_program_error!(unrefreshed, LendingError::ObligationStale);
+
+    // Nothing moved.
+    assert_eq!(
+        env.token_balance(env.obligation_share_vault(&collateral, obligation)),
         1_000_000_000
     );
 }

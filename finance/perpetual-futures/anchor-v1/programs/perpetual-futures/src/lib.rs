@@ -1,9 +1,10 @@
 use anchor_lang::prelude::*;
 
 mod constants;
-mod errors;
 // Public so the LiteSVM integration tests can build instruction arguments
-// (`PoolParameters`, `Side`) against the program's own types.
+// (`PoolParameters`, `Side`) against the program's own types, and match
+// failures against `PerpError` codes.
+pub mod errors;
 pub mod instructions;
 pub mod state;
 
@@ -75,17 +76,20 @@ pub mod perpetual_futures {
         instructions::handle_liquidate_position(context)
     }
 
-    /// The pool operator sweeps the accumulated protocol fees from the vault.
-    pub fn collect_fees(context: Context<CollectFeesAccountConstraints>) -> Result<()> {
-        instructions::handle_collect_fees(context)
+    /// Read the oracle, credit the seconds since the previous read to the
+    /// price that read saw, record the current price for the next read, and
+    /// accrue funding up to now. Permissionless: after a genuine price move
+    /// takes the oracle outside the pool's band, anyone can call this
+    /// repeatedly as time passes to walk the average toward the new price until
+    /// trading resumes.
+    pub fn update_price_average(
+        context: Context<UpdatePriceAverageAccountConstraints>,
+    ) -> Result<()> {
+        instructions::handle_update_price_average(context)
     }
 
-    /// The pool operator retunes the per-slot funding rate, accruing at the
-    /// old rate first.
-    pub fn set_funding_rate(
-        context: Context<SetFundingRateAccountConstraints>,
-        funding_rate_per_slot: u64,
-    ) -> Result<()> {
-        instructions::handle_set_funding_rate(context, funding_rate_per_slot)
+    /// The pool operator sweeps the accumulated program fees from the vault.
+    pub fn collect_fees(context: Context<CollectFeesAccountConstraints>) -> Result<()> {
+        instructions::handle_collect_fees(context)
     }
 }

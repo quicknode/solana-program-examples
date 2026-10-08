@@ -1,0 +1,40 @@
+[package]
+name = "managed-fund"
+version = "0.1.0"
+description = "Manager-run investment fund with NAV-based shares"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "managed_fund"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
+anchor-debug = []
+custom-heap = []
+custom-panic = []
+
+[dependencies]
+anchor-lang = { version = "1.2.0", features = ["init-if-needed"] }
+anchor-spl = "1.2.0"
+# For the LastRestartSlot sysvar (not re-exported by anchor-lang): the oracle
+# rejects prices from before a cluster restart. Same major as the
+# solana-sysvar anchor-lang itself uses, so only one copy is compiled in.
+solana-sysvar = "3"
+mock-swap-router = { path = "../mock-swap-router", features = ["cpi"] }
+
+[dev-dependencies]
+litesvm = "0.16.0"
+solana-account = "4.3.0"
+solana-signer = "3.0.0"
+solana-keypair = "3.0.1"
+solana-kite = "0.5.0"
+borsh = "1.6.1"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }

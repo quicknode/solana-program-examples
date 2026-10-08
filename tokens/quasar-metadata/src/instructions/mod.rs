@@ -637,7 +637,7 @@ impl MetadataCpi for crate::MetadataProgram {}
 impl MetadataCpi for AccountView {}
 
 // ---------------------------------------------------------------------------
-// Kani proof harnesses for Metaplex metadata instruction data layout
+// Kani model-check harnesses for Metaplex metadata instruction data layout
 // ---------------------------------------------------------------------------
 //
 // Each harness replicates the unsafe `MaybeUninit` + pointer-write pattern used

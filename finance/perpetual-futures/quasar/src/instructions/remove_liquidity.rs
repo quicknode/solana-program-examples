@@ -1,6 +1,9 @@
 use {
     crate::{
-        instructions::shared::{err, error, refresh_price_and_funding, traders_unrealized_pnl},
+        constants::MINIMUM_LIQUIDITY,
+        instructions::shared::{
+            err, error, refresh_price_and_funding_within_band, traders_unrealized_pnl, Rounding,
+        },
         state::Pool,
         LpMintPda,
     },
@@ -52,7 +55,13 @@ pub fn handle_remove_liquidity(
     }
 
     let slot = accounts.clock.slot.get();
-    let price = refresh_price_and_funding(&mut accounts.pool, &accounts.oracle_feed, slot)?;
+    let unix_timestamp = accounts.clock.unix_timestamp.get();
+    let price = refresh_price_and_funding_within_band(
+        &mut accounts.pool,
+        &accounts.oracle_feed,
+        slot,
+        unix_timestamp,
+    )?;
 
     let lp_supply = accounts.lp_mint.supply();
     let traders = traders_unrealized_pnl(
@@ -61,6 +70,9 @@ pub fn handle_remove_liquidity(
         accounts.pool.short_size.get(),
         accounts.pool.short_size_scaled.get(),
         price,
+        // Rounded up, so the pool is valued low and a fraction of a base
+        // unit lowers what a share redeems for.
+        Rounding::Up,
     )?;
     let aum = (accounts.pool.liquidity.get() as i128)
         .checked_sub(traders)
@@ -69,24 +81,28 @@ pub fn handle_remove_liquidity(
         return Err(err(error::POOL_INSOLVENT));
     }
 
+    // The withheld minimum counts as shares nobody holds, as it does in
+    // add_liquidity, so its slice of the pool never leaves.
+    let total_shares = (lp_supply as u128)
+        .checked_add(MINIMUM_LIQUIDITY as u128)
+        .ok_or(ProgramError::ArithmeticOverflow)?;
     let amount_out = (shares as u128)
         .checked_mul(aum as u128)
         .ok_or(ProgramError::ArithmeticOverflow)?
-        .checked_div(lp_supply as u128)
+        .checked_div(total_shares)
         .ok_or(ProgramError::ArithmeticOverflow)?;
     let amount_out = u64::try_from(amount_out).map_err(|_| ProgramError::ArithmeticOverflow)?;
 
     if amount_out == 0 {
         return Err(err(error::AMOUNT_ROUNDS_TO_ZERO));
     }
-    // Only free liquidity can leave; the reserved portion backs open positions.
-    let free_liquidity = accounts
-        .pool
-        .liquidity
-        .get()
-        .checked_sub(accounts.pool.reserved_liquidity.get())
-        .ok_or(ProgramError::ArithmeticOverflow)?;
-    if amount_out > free_liquidity {
+    // Shares are priced against assets-under-management, which counts traders'
+    // unrealized losses as the providers' gain. Those losses are still in the
+    // traders' collateral until their positions close, so a withdrawal is
+    // capped at `liquidity`, the tokens the providers own now. While traders
+    // are up instead, the pricing already keeps a withdrawal below `liquidity`
+    // minus their profit, leaving that profit's backing in the pool.
+    if amount_out > accounts.pool.liquidity.get() {
         return Err(err(error::INSUFFICIENT_LIQUIDITY));
     }
     if amount_out < minimum_amount_out {

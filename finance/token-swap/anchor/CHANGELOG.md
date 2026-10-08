@@ -1,5 +1,58 @@
 # Changelog
 
+## Unreleased (2026-10-05)
+
+`swap_tokens` rounds the trading fee up: `fee_amount` is `input * fee /
+10_000` rounded to the next whole minor unit, and the admin's slice of it,
+`fee_amount * admin_share_bps / 10_000`, rounds up the same way, so a fee
+that is not a whole number of minor units costs the trader one unit more
+rather than the pool one unit less, and the admin's share rounds against the
+LPs. The trader's side, `taxed_input`, is the input minus the rounded-up fee.
+A 500 bps fee on 1_000_001 minor units is 50_000.05, charged as 50_001, and
+the admin's 1667 bps of a 25_000 fee is 4_167.5, owed as 4_168
+(`test_swap_fee_rounds_up`, and `test_claim_admin_fees` asserts the exact
+amounts). The Kani harness `proof_fee_split_bounds` checks the rounding
+direction.
+
+`initialize_pool` refuses a deposit whose square root equals
+`MINIMUM_LIQUIDITY` as well as one below it, so the smallest pool that opens
+leaves its creator at least 1 LP token: a pool opened with `sqrt(100 * 100)`
+would mint its creator nothing. `test_initialize_pool_rejects_sqrt_equal_to_floor`
+checks both sides of the boundary.
+
+## Unreleased (2026-10-04)
+
+`initialize_pool` now takes the creator's first deposit: it gains `amount_a`
+and `amount_b` arguments and the `creator`, `creator_token_a`,
+`creator_token_b` and `liquidity_provider_token` accounts, moves both amounts
+into the reserves it creates, and mints the creator
+`sqrt(amount_a * amount_b) - MINIMUM_LIQUIDITY` LP tokens. A zero on either
+side fails with the new `EmptyInitialDeposit`. A pool created empty let
+whoever deposited first set its price, and clamped the creator's own deposit
+to that ratio. `deposit_liquidity` no longer has a pool-creation branch: it
+refuses an empty effective reserve with `EmptyPoolReserve`, whose message now
+reads "Pool reserves must both be positive to deposit or swap". The
+square-root arithmetic (`initial_lp_amount`) and the transfers and LP mint
+both handlers end with (`deposit_and_mint_lp_tokens`) live in the new
+`liquidity` module, so there is one copy of each. New tests:
+`test_initialize_pool_takes_first_deposit`,
+`test_initialize_pool_rejects_zero_amount_a`,
+`test_initialize_pool_rejects_zero_amount_b` and
+`test_pool_creation_cannot_be_front_run`, which runs the front-run (a hostile
+ratio deposited right after the pool opens is clamped to the creator's price)
+and checks that a deposit against an empty reserve is refused; every other
+test opens its pool through `initialize_pool`.
+
+## 2026-09-22
+
+`deposit_liquidity` now mints later deposits against the LP supply plus
+`MINIMUM_LIQUIDITY`, the divisor `withdraw_liquidity` already used. Dividing by
+the bare supply minted every depositor slightly less than they could redeem,
+let a donation as large as a victim's deposit (rather than 101 times it) round
+that deposit down to zero LP tokens, and left a pool whose LP tokens were all
+burned unable to take another deposit. New tests cover the donation attack and
+the deposit into an emptied pool.
+
 ## 2026-09-10
 
 Removed the separate dataless signer PDA (seeds `[config, mint_a, mint_b,

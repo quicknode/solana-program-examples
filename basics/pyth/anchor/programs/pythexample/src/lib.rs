@@ -22,7 +22,7 @@ pub enum PythExampleError {
 }
 
 #[program]
-pub mod anchor_test {
+pub mod pythexample {
     use super::*;
 
     pub fn read_price(context: &mut Context<ReadPriceAccountConstraints>) -> Result<()> {
@@ -71,10 +71,10 @@ pub struct ReadPriceAccountConstraints {
 
 #[derive(Clone, Debug, PartialEq, Eq, wincode::SchemaRead, wincode::SchemaWrite)]
 pub enum VerificationLevel {
-    /// Partially verified: only `num_signatures` of the Wormhole guardians
-    /// were checked against the price update.
+    /// Partially verified: only `num_signatures` of the Pyth guardian set's
+    /// signatures were checked, fewer than its quorum of three of five.
     Partial { num_signatures: u8 },
-    /// Fully verified against the full guardian set.
+    /// Verified against a quorum of the guardian set.
     Full,
 }
 

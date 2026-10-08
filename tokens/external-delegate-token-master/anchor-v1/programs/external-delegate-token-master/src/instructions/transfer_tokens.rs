@@ -3,7 +3,9 @@ use anchor_spl::token_interface::{
     transfer_checked, Mint, TokenAccount, TokenInterface, TransferChecked,
 };
 
-use crate::{build_transfer_authorization_message, verify_ethereum_signature, ErrorCode, UserAccount};
+use crate::{
+    build_transfer_authorization_message, verify_ethereum_signature, ErrorCode, UserAccount,
+};
 
 #[derive(Accounts)]
 pub struct TransferTokensAccountConstraints<'info> {
@@ -51,8 +53,8 @@ pub fn handler(
         ErrorCode::InvalidSignature
     );
 
-    // Consume the nonce before the transfer CPI (checks-effects-interactions),
-    // so this signature can never authorize a second execution.
+    // Consume the nonce, so this signature can never authorize a second
+    // execution.
     let user_account = &mut context.accounts.user_account;
     user_account.nonce = user_account
         .nonce

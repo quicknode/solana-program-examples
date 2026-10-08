@@ -1,7 +1,8 @@
 use anchor_lang::prelude::*;
 
 mod constants;
-mod errors;
+// Public so the LiteSVM integration tests can match `PropAmmError` codes.
+pub mod errors;
 mod last_restart;
 // Public so the LiteSVM integration tests can build instruction arguments
 // (`MarketParameters`, `Direction`) against the program's own types.
@@ -68,6 +69,13 @@ pub mod prop_amm {
         paused: bool,
     ) -> Result<()> {
         instructions::handle_set_quote(context, spread_bps, paused)
+    }
+
+    /// Operator closes the market and both vaults, recovering all three
+    /// rents. Refused while either vault holds tokens: the operator withdraws
+    /// the inventory first.
+    pub fn close_market(context: &mut Context<CloseMarketAccountConstraints>) -> Result<()> {
+        instructions::handle_close_market(context)
     }
 
     /// Swap against the operator's quote: buy the base token at oracle plus

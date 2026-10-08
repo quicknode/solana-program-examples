@@ -1,16 +1,22 @@
-//! Kani proof harnesses for the constant-product AMM (`finance/token-swap`).
+//! Kani model-check harnesses for the constant-product AMM
+//! (`finance/token-swap`).
 //!
 //! Inspired by aeyakovenko/percolator, which uses the Kani model checker to
-//! prove the mathematical correctness of a DeFi engine's pure numeric core.
+//! check the arithmetic of a DeFi engine's pure numeric core.
 //!
-//! The on-chain instructions (`swap_tokens`, `deposit_liquidity`,
-//! `withdraw_liquidity`) hand the actual token movement to the SPL token
-//! program via CPIs that Kani cannot symbolically execute. But the *interesting*
-//! part — the constant-product curve, the fee split, the integer square root
-//! used for the initial LP mint, and the proportional-withdraw math — is pure
-//! integer arithmetic. This crate reproduces those formulas faithfully (same
-//! `u128` widening, same multiply-before-divide, same floor rounding) and proves
-//! the invariants the program depends on.
+//! Kani marks a harness with `#[kani::proof]`, which is why the crate is
+//! `kani-proofs` and the harnesses are named `proof_*`; each one is a model
+//! check, which tries every value of its declared inputs, not a formal proof.
+//!
+//! The on-chain instructions (`initialize_pool`, `swap_tokens`,
+//! `deposit_liquidity`, `withdraw_liquidity`) hand the actual token movement
+//! to the SPL token program via CPIs that Kani cannot symbolically execute.
+//! But the *interesting* part — the constant-product curve, the fee split, the
+//! integer square root `initialize_pool` uses for the creator's LP mint, and
+//! the proportional deposit and withdraw math — is pure integer arithmetic. This crate reproduces those formulas
+//! faithfully (same `u128` widening, same multiply-before-divide, the fee
+//! rounded up and everything paid out rounded down) and checks the
+//! invariants the program depends on.
 //!
 //! Constants mirror `constants.rs`.
 
@@ -26,17 +32,19 @@ pub const MINIMUM_LIQUIDITY: u128 = 100;
 // ===========================================================================
 
 /// `(fee_amount, admin_portion, taxed_input)` as computed at the top of
-/// `handle_swap_tokens`. Returns `None` on the same overflow paths the program
-/// maps to `AmmError::MathOverflow`.
+/// `handle_swap_tokens`: the fee is `input * fee_bps / 10_000` rounded up,
+/// the admin's slice is `fee * admin_share_bps / 10_000` rounded up, and the
+/// trader's side is what remains. Returns `None` on the same overflow paths
+/// the program maps to `AmmError::MathOverflow`.
 ///
 /// `fee_bps` and `admin_share_bps` are validated `< 10_000` in `initialize_config`.
 pub fn fee_split(input_amount: u64, fee_bps: u16, admin_share_bps: u16) -> Option<(u64, u64, u64)> {
     let fee_amount = (input_amount as u128)
         .checked_mul(fee_bps as u128)?
-        .checked_div(BASIS_POINTS_DIVISOR)?;
+        .div_ceil(BASIS_POINTS_DIVISOR);
     let admin_portion = fee_amount
         .checked_mul(admin_share_bps as u128)?
-        .checked_div(BASIS_POINTS_DIVISOR)?;
+        .div_ceil(BASIS_POINTS_DIVISOR);
     let fee_amount: u64 = u64::try_from(fee_amount).ok()?;
     let admin_portion: u64 = u64::try_from(admin_portion).ok()?;
     let taxed_input = input_amount.checked_sub(fee_amount)?;
@@ -46,7 +54,10 @@ pub fn fee_split(input_amount: u64, fee_bps: u16, admin_share_bps: u16) -> Optio
 /// The fee never exceeds the input, the admin slice never exceeds the fee, and
 /// the taxed input plus fee reconstitutes the input exactly. These are the
 /// preconditions the rest of `swap_tokens` (the `checked_sub` for `taxed_input`,
-/// the `u64::try_from` casts) silently relies on.
+/// the `u64::try_from` casts) silently relies on. The harness also checks the
+/// rounding direction: each of the two quotients is the smallest integer at
+/// or above the exact fraction, so a fee that is not a whole number of minor
+/// units is charged one unit over, and never one unit under.
 #[cfg(kani)]
 #[kani::proof]
 #[kani::solver(cadical)]
@@ -72,6 +83,15 @@ fn proof_fee_split_bounds() {
     assert!(admin <= fee); // admin slice is a fraction of the fee
     assert_eq!(taxed as u128 + fee as u128, input as u128); // nothing lost
     assert_eq!(taxed, input - fee);
+
+    // Rounded up: `fee` is at or above the exact fraction, and one unit less
+    // would be below it. The same for the admin's slice of the fee.
+    let exact_fee = input as u128 * fee_bps as u128;
+    assert!(fee as u128 * BASIS_POINTS_DIVISOR >= exact_fee);
+    assert!((fee as u128) * BASIS_POINTS_DIVISOR < exact_fee + BASIS_POINTS_DIVISOR);
+    let exact_admin = fee as u128 * admin_share_bps as u128;
+    assert!(admin as u128 * BASIS_POINTS_DIVISOR >= exact_admin);
+    assert!((admin as u128) * BASIS_POINTS_DIVISOR < exact_admin + BASIS_POINTS_DIVISOR);
 }
 
 // ===========================================================================
@@ -96,7 +116,7 @@ pub fn swap_output(taxed_input: u64, this_reserve: u64, other_reserve: u64) -> O
 ///
 /// This models the full reserve transition the on-chain `require!(new_invariant
 /// >= invariant)` checks: the input side grows by `taxed_input` plus the LP
-/// slice of the fee (`lp_fee`), the output side shrinks by `output`. We prove
+/// slice of the fee (`lp_fee`), the output side shrinks by `output`. We check
 /// the post-trade product dominates the pre-trade product for *every* reserve
 /// configuration and input — the model checker's analogue of "the pool can
 /// never be drained below the curve".
@@ -109,10 +129,10 @@ fn proof_swap_preserves_constant_product() {
     let taxed_input: u64 = kani::any();
     let lp_fee: u64 = kani::any(); // fee_amount - admin_portion, stays in pool
 
-    // Bounded model checking: this proof multiplies two symbolic reserves
+    // Bounded model checking: this harness multiplies two symbolic reserves
     // (`new_in * new_out`), the worst case for a bit-precise solver. Cap each
-    // quantity at 1023 so the four-variable nonlinear search stays fast; the
-    // algebraic identity it verifies — (ra+t)(rb-floor(t*rb/(ra+t))) >= ra*rb —
+    // quantity at 63 so the four-variable nonlinear search stays fast; the
+    // algebraic identity it checks, (ra+t)(rb-floor(t*rb/(ra+t))) >= ra*rb,
     // is scale-invariant, so the bounded domain exercises the same rounding
     // edges as the full u64 range.
     kani::assume(reserve_in <= 63);
@@ -127,7 +147,7 @@ fn proof_swap_preserves_constant_product() {
 
     // Reserve transition (effective reserves):
     let new_in = reserve_in as u128 + taxed_input as u128 + lp_fee as u128;
-    let new_out = reserve_out as u128 - output as u128; // proves output <= reserve_out (no underflow)
+    let new_out = reserve_out as u128 - output as u128; // checks output <= reserve_out (no underflow)
 
     let old_k = (reserve_in as u128) * (reserve_out as u128);
     let new_k = new_in * new_out;
@@ -155,7 +175,7 @@ fn proof_swap_cannot_fully_drain_when_reserve_positive() {
     assert!(output < other_reserve, "output must leave the pool solvent");
 }
 
-/// FINDING (now FIXED in the program) — this proof is the justification for the
+/// FINDING (now FIXED in the program) — this harness is the justification for the
 /// fix. It characterizes *why* `swap_tokens` must reject empty reserves: when an
 /// input-side effective reserve is exactly `0`, the curve outputs the ENTIRE
 /// opposite reserve (`output == other_reserve`), draining that side — and the
@@ -171,16 +191,17 @@ fn proof_swap_cannot_fully_drain_when_reserve_positive() {
 /// already make it unreachable in normal operation; the guard means solvency no
 /// longer *depends* on that reachability argument.
 ///
-/// We keep this as a *positive* proof (every assertion below holds) characterizing
-/// the raw `swap_output` formula at the boundary — not a `#[kani::should_panic]`,
-/// which would have started failing the moment the `require!` fix landed.
+/// We keep this as a *positive* model check (every assertion below holds)
+/// characterizing the raw `swap_output` formula at the boundary — not a
+/// `#[kani::should_panic]`, which would have started failing the moment the
+/// `require!` fix landed.
 #[cfg(kani)]
 #[kani::proof]
 #[kani::solver(cadical)]
 fn proof_swap_at_zero_reserve_drains_whole_pool() {
     let other_reserve: u64 = kani::any();
     let taxed_input: u64 = kani::any();
-    // Bounded model checking: proving `floor(taxed*other/taxed) == other` for all
+    // Bounded model checking: checking `floor(taxed*other/taxed) == other` for all
     // inputs is a symbolic exact-division (divisor == a factor of the numerator),
     // costlier than the old refute-by-counterexample form, so bound tightly.
     kani::assume(other_reserve >= 1 && other_reserve <= 255);
@@ -199,12 +220,14 @@ fn proof_swap_at_zero_reserve_drains_whole_pool() {
 }
 
 // ===========================================================================
-// 3. Integer square root  (deposit_liquidity.rs :: integer_sqrt)
+// 3. Integer square root  (liquidity.rs :: integer_sqrt)
 // ===========================================================================
 
-/// Verbatim copy of `deposit_liquidity::integer_sqrt` (Newton's method, floor).
+/// Verbatim copy of `liquidity::integer_sqrt` (Newton's method, floor), which
+/// `liquidity::initial_lp_amount` calls for the deposit that opens a pool in
+/// `initialize_pool`.
 ///
-/// Only the `#[cfg(kani)]` proof and the unit tests call it, so a plain
+/// Only the `#[cfg(kani)]` harness and the unit tests call it, so a plain
 /// `cargo build` of the library sees no caller.
 #[allow(dead_code)]
 fn integer_sqrt(n: u128) -> u128 {
@@ -221,8 +244,9 @@ fn integer_sqrt(n: u128) -> u128 {
 }
 
 /// `integer_sqrt` returns the exact floor of the real square root:
-/// `r*r <= n < (r+1)*(r+1)`. This is what makes the initial-deposit LP mint
-/// (`sqrt(a*b) - MINIMUM_LIQUIDITY`) correct and protocol-favouring.
+/// `r*r <= n < (r+1)*(r+1)`. This is what makes the creator's LP mint in
+/// `initialize_pool` (`sqrt(a*b) - MINIMUM_LIQUIDITY`, in
+/// `liquidity::initial_lp_amount`) correct and program-favouring.
 ///
 /// `n` is bounded so `(r+1)^2` cannot overflow `u128` and so the Newton
 /// iteration's unwind stays tractable; the property is value-general within the
@@ -237,7 +261,7 @@ fn proof_integer_sqrt_is_floor() {
     // 128-bit division (`n / x`) in its body, which the model checker must
     // unroll and bit-blast — the single most expensive shape for a SAT
     // backend. Capping `n` at 255 keeps the unroll short (<=10 iterations, so
-    // `unwind(11)` proves termination) and the `r*r` / `(r+1)*(r+1)` products
+    // `unwind(11)` checks termination) and the `r*r` / `(r+1)*(r+1)` products
     // small, while still exercising every floor-rounding boundary up to r = 15.
     kani::assume(n <= 255);
 
@@ -289,21 +313,110 @@ fn proof_withdraw_never_exceeds_reserve() {
 }
 
 // ===========================================================================
-// 5. Deposit ratio clamp  (deposit_liquidity.rs)
+// 5. Proportional deposit  (deposit_liquidity.rs)
+// ===========================================================================
+
+/// `lp_out = amount * (lp_supply + MINIMUM_LIQUIDITY) / effective_reserve`,
+/// floored: one side of the subsequent-deposit formula in
+/// `handle_deposit_liquidity` (the program takes the `min` over both sides).
+/// The divisor is the same `lp_supply + MINIMUM_LIQUIDITY` that
+/// `withdraw_amount` uses, so a minted LP token and a burned one are the same
+/// fraction of the pool.
+pub fn deposit_lp_amount(amount: u64, effective_reserve: u64, lp_supply: u64) -> Option<u64> {
+    let total = (lp_supply as u128).checked_add(MINIMUM_LIQUIDITY)?;
+    let out = (amount as u128)
+        .checked_mul(total)?
+        .checked_div(effective_reserve as u128)?;
+    u64::try_from(out).ok()
+}
+
+/// A deposit followed at once by a withdrawal of the LP tokens it minted
+/// returns at most what was deposited, and less than one base unit plus one
+/// LP token's worth short of it. The upper bound means no round trip creates
+/// value; the lower bound means the depositor is minted the share they paid
+/// for. The lower bound holds only because deposit and withdraw divide by the
+/// same supply: dividing the deposit by the bare mint supply (without
+/// `MINIMUM_LIQUIDITY`) under-mints every depositor by the floor's fraction of
+/// the pool and fails it.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::solver(cadical)]
+fn proof_deposit_withdraw_round_trip_is_fair() {
+    let amount: u64 = kani::any();
+    let reserve: u64 = kani::any();
+    let lp_supply: u64 = kani::any();
+
+    // Bounded model checking: two symbolic divisors (the reserve, then the
+    // new supply), the most expensive shape for the solver, so the inputs
+    // stay small. The inequalities are scale-free, and `MINIMUM_LIQUIDITY`
+    // keeps its real value of 100, so the floor still dominates a small
+    // supply the way it does in a freshly seeded pool.
+    kani::assume(amount <= 31);
+    kani::assume(reserve >= 1 && reserve <= 31);
+    kani::assume(lp_supply <= 31);
+
+    let minted = deposit_lp_amount(amount, reserve, lp_supply).expect("computes");
+    // The program rejects a deposit that mints nothing (`DepositTooSmall`).
+    kani::assume(minted > 0);
+
+    let new_supply = lp_supply + minted;
+    let new_reserve = reserve + amount;
+    let out = withdraw_amount(minted, new_reserve, new_supply).expect("computes");
+
+    // Never more than was put in.
+    assert!(out <= amount);
+    // Short by less than one base unit plus one LP token's worth of reserve:
+    // (out + 1) * (total + minted) + reserve > amount * (total + minted).
+    let total_after = new_supply as u128 + MINIMUM_LIQUIDITY;
+    assert!((out as u128 + 1) * total_after + reserve as u128 > amount as u128 * total_after);
+}
+
+/// The price of the donation (inflation) attack. An attacker who holds
+/// `attacker_lp` LP tokens and wants a victim's deposit of `amount` to mint
+/// zero LP tokens must push the reserve to more than
+/// `amount * (attacker_lp + MINIMUM_LIQUIDITY)`: with the floor in the divisor,
+/// even an attacker holding a single LP token must make the reserve at least
+/// `MINIMUM_LIQUIDITY + 1` times the victim's deposit.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::solver(cadical)]
+fn proof_rounding_a_deposit_to_zero_needs_floor_times_donation() {
+    let amount: u64 = kani::any();
+    let reserve: u64 = kani::any();
+    let attacker_lp: u64 = kani::any();
+
+    // Bounded model checking (symbolic divisor). The reserve bound sits above
+    // `(MINIMUM_LIQUIDITY + 1) * amount` for small amounts so both outcomes
+    // are reachable.
+    kani::assume(amount >= 1 && amount <= 15);
+    kani::assume(reserve >= 1 && reserve <= 4095);
+    kani::assume(attacker_lp >= 1 && attacker_lp <= 15);
+
+    let minted = deposit_lp_amount(amount, reserve, attacker_lp).expect("computes");
+    if minted == 0 {
+        assert!(reserve as u128 > amount as u128 * (attacker_lp as u128 + MINIMUM_LIQUIDITY));
+        assert!(reserve as u128 > amount as u128 * (MINIMUM_LIQUIDITY + 1));
+    }
+}
+
+// ===========================================================================
+// 6. Deposit ratio clamp  (deposit_liquidity.rs)
 // ===========================================================================
 
 /// Models the Uniswap-V2 ratio clamp in `handle_deposit_liquidity`: given the
 /// caller's upper-bound `(amount_a, amount_b)` and the current effective
 /// reserves, return the clamped pair actually deposited. `None` on the overflow
-/// paths.
+/// paths and, as the program's `EmptyPoolReserve` check, on an empty reserve:
+/// every pool opens with its creator's deposit in `initialize_pool`, so
+/// `deposit_liquidity` never sets a price.
 pub fn clamp_to_ratio(
     amount_a: u64,
     amount_b: u64,
     effective_pool_a: u64,
     effective_pool_b: u64,
 ) -> Option<(u64, u64)> {
-    if effective_pool_a == 0 && effective_pool_b == 0 {
-        return Some((amount_a, amount_b)); // pool creation: take as-is
+    if effective_pool_a == 0 || effective_pool_b == 0 {
+        return None;
     }
     let amount_b_required = (amount_a as u128)
         .checked_mul(effective_pool_b as u128)?
@@ -336,8 +449,8 @@ fn proof_deposit_clamp_never_exceeds_request() {
     // i.e. symbolic-÷-symbolic 128-bit division, over four symbolic variables.
     // Bound them tightly to stay tractable; the clamp identity is scale-free.
     kani::assume(amount_a <= 31 && amount_b <= 31);
-    // Existing pool: both reserves non-zero (the pool-creation branch is the
-    // trivial identity, proven by construction).
+    // Both reserves non-zero, as they are in every pool `initialize_pool`
+    // opened.
     kani::assume(pool_a >= 1 && pool_a <= 31);
     kani::assume(pool_b >= 1 && pool_b <= 31);
 
@@ -356,11 +469,28 @@ mod tests {
 
     #[test]
     fn fee_split_basic() {
-        // 1% fee, 50% admin share, on 10_000 input.
+        // 1% fee, 50% admin share, on 10_000 input: both exact.
         let (fee, admin, taxed) = fee_split(10_000, 100, 5_000).unwrap();
         assert_eq!(fee, 100);
         assert_eq!(admin, 50);
         assert_eq!(taxed, 9_900);
+    }
+
+    #[test]
+    fn fee_split_rounds_up() {
+        // 5% fee on 1_000_001 is 50_000.05, charged as 50_001; the admin's
+        // 1667 bps of that is 8_335.17, owed as 8_336. The trader's side is
+        // the remainder.
+        let (fee, admin, taxed) = fee_split(1_000_001, 500, 1_667).unwrap();
+        assert_eq!(fee, 50_001);
+        assert_eq!(admin, 8_336);
+        assert_eq!(taxed, 950_000);
+        // The book's walkthrough: 100 USDC at 30 bps, admin share 1667 bps,
+        // both exact.
+        let (fee, admin, taxed) = fee_split(100_000_000, 30, 1_667).unwrap();
+        assert_eq!(fee, 300_000);
+        assert_eq!(admin, 50_010);
+        assert_eq!(taxed, 99_700_000);
     }
 
     #[test]
@@ -388,8 +518,46 @@ mod tests {
     }
 
     #[test]
+    fn deposit_basic() {
+        // Doubling a pool whose first deposit minted sqrt(a*b) = 2_000_000
+        // (1_999_900 held, 100 floor) mints the full 2_000_000: the second
+        // depositor owns as much of the pool as the first deposit's whole
+        // supply, floor included.
+        assert_eq!(
+            deposit_lp_amount(4_000_000, 4_000_000, 1_999_900).unwrap(),
+            2_000_000
+        );
+    }
+
+    #[test]
+    fn deposit_then_withdraw_returns_the_deposit() {
+        // Same doubling: burning the 2_000_000 just minted from the doubled
+        // 8_000_000 reserve returns the 4_000_000 deposited, to the unit.
+        let minted = deposit_lp_amount(4_000_000, 4_000_000, 1_999_900).unwrap();
+        assert_eq!(
+            withdraw_amount(minted, 8_000_000, 1_999_900 + minted).unwrap(),
+            4_000_000
+        );
+    }
+
+    #[test]
+    fn donation_attack_price() {
+        // The attacker holds 1 LP token, so 101 units share the reserve. A
+        // 1_000 deposit rounds to zero only once the reserve passes
+        // 1_000 * 101 = 101_000.
+        assert_eq!(deposit_lp_amount(1_000, 101_000, 1).unwrap(), 1);
+        assert_eq!(deposit_lp_amount(1_000, 101_001, 1).unwrap(), 0);
+    }
+
+    #[test]
     fn clamp_basic() {
         // Pool 1:2, offer (10, 100) -> needs 20 B for 10 A; B is plentiful.
         assert_eq!(clamp_to_ratio(10, 100, 1_000, 2_000).unwrap(), (10, 20));
+    }
+
+    #[test]
+    fn clamp_refuses_an_empty_reserve() {
+        assert_eq!(clamp_to_ratio(10, 100, 0, 2_000), None);
+        assert_eq!(clamp_to_ratio(10, 100, 1_000, 0), None);
     }
 }

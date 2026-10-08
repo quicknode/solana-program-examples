@@ -5,7 +5,7 @@ use anchor_lang::prelude::*;
 /// two vaults.
 ///
 /// The vaults hold other people's money (writers' collateral, and the strike
-/// payments holders make at exercise), so the two `*_locked` fields say how
+/// payments holders make at exercise), so the two `*_owed` fields say how
 /// much of each vault the market owes and to whom it is owed in aggregate.
 /// Every handler that moves tokens asserts, after its own arithmetic, that
 /// each vault still covers what the market owes.
@@ -28,11 +28,11 @@ pub struct Market {
 
     /// Underlying minor units the vault owes: call writers' collateral, plus
     /// put holders' deliveries awaiting the writer's `collect_proceeds`.
-    pub underlying_locked: u64,
+    pub underlying_owed: u64,
 
     /// Quote minor units the vault owes: put writers' collateral, plus call
     /// holders' strike payments awaiting the writer's `collect_proceeds`.
-    pub quote_locked: u64,
+    pub quote_owed: u64,
 
     /// Quote minor units held in the quote vault for the admin, accrued from
     /// the fee on each premium and swept by `collect_fees`.

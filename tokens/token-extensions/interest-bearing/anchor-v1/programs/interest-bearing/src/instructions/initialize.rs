@@ -1,15 +1,19 @@
 use anchor_lang::prelude::*;
 use anchor_lang::system_program::{create_account, CreateAccount};
 use anchor_spl::{
+    token_2022::spl_token_2022::extension::interest_bearing_mint::InterestBearingConfig,
     token_2022::{
         initialize_mint2,
         spl_token_2022::{extension::ExtensionType, pod::PodMint},
         InitializeMint2,
     },
-    token_interface::{interest_bearing_mint_initialize, InterestBearingMintInitialize, Token2022},
+    token_interface::{
+        get_mint_extension_data, interest_bearing_mint_initialize, InterestBearingMintInitialize,
+        Token2022,
+    },
 };
 
-use crate::check_mint_data;
+use crate::check_rate_authority;
 
 #[derive(Accounts)]
 pub struct InitializeAccountConstraints<'info> {
@@ -40,8 +44,8 @@ pub fn handler(context: Context<InitializeAccountConstraints>, rate: i16) -> Res
                 to: context.accounts.mint_account.to_account_info(),
             },
         ),
-        lamports,                          // Lamports
-        mint_size as u64,                  // Space
+        lamports,                              // Lamports
+        mint_size as u64,                      // Space
         &context.accounts.token_program.key(), // Owner Program
     )?;
 
@@ -67,14 +71,14 @@ pub fn handler(context: Context<InitializeAccountConstraints>, rate: i16) -> Res
                 mint: context.accounts.mint_account.to_account_info(),
             },
         ),
-        2,                               // decimals
+        2,                                   // decimals
         &context.accounts.payer.key(),       // mint authority
         Some(&context.accounts.payer.key()), // freeze authority
     )?;
 
-    check_mint_data(
+    let config = get_mint_extension_data::<InterestBearingConfig>(
         &context.accounts.mint_account.to_account_info(),
-        &context.accounts.payer.key(),
     )?;
+    check_rate_authority(&config, &context.accounts.payer.key())?;
     Ok(())
 }

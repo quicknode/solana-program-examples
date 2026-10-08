@@ -65,9 +65,23 @@ pub enum ErrorCode {
     #[msg("Maker order and maker MarketUser owner mismatch")]
     MakerOwnerMismatch,
 
-    #[msg("Only the market authority can withdraw fees")]
+    #[msg("Only the market authority can withdraw fees, pause the market, or resume it")]
     NotMarketAuthority,
 
     #[msg("Order book account does not match the market's order book")]
     InvalidOrderBook,
+
+    #[msg(
+        "Book side is full: pass the worst resting order and its owner's MarketUser to evict it"
+    )]
+    MissingEvictedAccounts,
+
+    #[msg("Evicted order provided is not the worst resting order on the full side")]
+    EvictedAccountMismatch,
+
+    #[msg("Order is still open or partially filled: cancel it before closing its account")]
+    OrderNotClosable,
+
+    #[msg("MarketUser still has open orders or an unsettled balance")]
+    MarketUserNotClosable,
 }

@@ -2,7 +2,9 @@ use anchor_lang::prelude::*;
 
 use crate::state::{Market, MarketUser, MARKET_USER_SEED};
 
-pub fn handle_initialize_market_user(context: Context<InitializeMarketUserAccountConstraints>) -> Result<()> {
+pub fn handle_initialize_market_user(
+    context: Context<InitializeMarketUserAccountConstraints>,
+) -> Result<()> {
     let market_user = &mut context.accounts.market_user;
     market_user.market = context.accounts.market.key();
     market_user.owner = context.accounts.owner.key();

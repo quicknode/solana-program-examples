@@ -1,6 +1,8 @@
 //! quasar-test integration tests for the constant-product AMM: config and
-//! pool creation, deposits (including the ratio-clamp regression tests),
-//! withdrawals, swaps, admin-fee claims, and every slippage guard rail.
+//! pool creation (which takes the creator's first deposit), deposits
+//! (including the ratio-clamp regression tests and the front-run that the
+//! first deposit closes), withdrawals, swaps, admin-fee claims, and every
+//! slippage guard rail.
 
 use {
     crate::{
@@ -9,8 +11,8 @@ use {
             InitializePoolInstruction, SwapTokensInstruction, WithdrawLiquidityInstruction,
         },
         error::AmmError,
-        state::Config,
-        ConfigPda, LiquidityMintPda, PoolPda,
+        state::{Config, PoolConfig},
+        ConfigPda, LiquidityMintPda, PoolAPda, PoolBPda, PoolPda,
     },
     quasar_test::prelude::*,
 };
@@ -28,11 +30,24 @@ fn mul_div(amount: u64, numerator: u64, denominator: u64) -> u64 {
     .expect("mul_div: result exceeds u64")
 }
 
+/// `amount * numerator / denominator` rounded up, in u128 with checked ops.
+/// Mirrors the program's fee math: the swap fee and the admin's slice of it
+/// both round against the trader and the LPs.
+fn mul_div_ceil(amount: u64, numerator: u64, denominator: u64) -> u64 {
+    u64::try_from(
+        (amount as u128)
+            .checked_mul(numerator as u128)
+            .expect("mul_div_ceil: product overflow")
+            .div_ceil(denominator as u128),
+    )
+    .expect("mul_div_ceil: result exceeds u64")
+}
+
 /// Constant-product quote mirroring the program's swap math, on effective
 /// reserves: output = taxed_input * pool_out / (pool_in + taxed_input), where
-/// taxed_input = input - input * fee_bps / 10_000. All products in u128.
+/// taxed_input = input - ceil(input * fee_bps / 10_000). All products in u128.
 fn expected_swap_output(input: u64, fee_bps: u64, pool_in: u64, pool_out: u64) -> u64 {
-    let fee_amount = mul_div(input, fee_bps, crate::BASIS_POINTS_DIVISOR);
+    let fee_amount = mul_div_ceil(input, fee_bps, crate::BASIS_POINTS_DIVISOR);
     let taxed_input = input.checked_sub(fee_amount).expect("fee exceeds input");
     let divisor = pool_in.checked_add(taxed_input).expect("reserve overflow");
     mul_div(taxed_input, pool_out, divisor)
@@ -48,13 +63,11 @@ const ADMIN: Pubkey = Pubkey::new_from_array([1; 32]);
 const PAYER: Pubkey = Pubkey::new_from_array([2; 32]);
 const MINT_A: Pubkey = Pubkey::new_from_array([3; 32]);
 const MINT_B: Pubkey = Pubkey::new_from_array([4; 32]);
-const POOL_A: Pubkey = Pubkey::new_from_array([5; 32]);
-const POOL_B: Pubkey = Pubkey::new_from_array([6; 32]);
-// The pool-seeding depositor.
-const SEEDER: Pubkey = Pubkey::new_from_array([7; 32]);
-const SEEDER_TOKEN_A: Pubkey = Pubkey::new_from_array([8; 32]);
-const SEEDER_TOKEN_B: Pubkey = Pubkey::new_from_array([9; 32]);
-const SEEDER_LP: Pubkey = Pubkey::new_from_array([10; 32]);
+// The pool's creator, whose first deposit opens it in `initialize_pool`.
+const CREATOR: Pubkey = Pubkey::new_from_array([7; 32]);
+const CREATOR_TOKEN_A: Pubkey = Pubkey::new_from_array([8; 32]);
+const CREATOR_TOKEN_B: Pubkey = Pubkey::new_from_array([9; 32]);
+const CREATOR_LP: Pubkey = Pubkey::new_from_array([10; 32]);
 // A second, independent depositor.
 const DEPOSITOR: Pubkey = Pubkey::new_from_array([11; 32]);
 const DEPOSITOR_TOKEN_A: Pubkey = Pubkey::new_from_array([12; 32]);
@@ -72,6 +85,22 @@ const BAD_ACTOR: Pubkey = Pubkey::new_from_array([22; 32]);
 const BAD_TOKEN_A: Pubkey = Pubkey::new_from_array([23; 32]);
 const BAD_TOKEN_B: Pubkey = Pubkey::new_from_array([24; 32]);
 
+/// The pool's address, derived as the program derives it.
+fn pool_config_address(test: &Test) -> Pubkey {
+    let config = test.derive_pda(ConfigPda::seeds());
+    test.derive_pda(PoolPda::seeds(&config, &MINT_A, &MINT_B))
+}
+
+/// The pool's token A reserve, a PDA of the pool.
+fn pool_a(test: &Test) -> Pubkey {
+    test.derive_pda(PoolAPda::seeds(&pool_config_address(test)))
+}
+
+/// The pool's token B reserve, a PDA of the pool.
+fn pool_b(test: &Test) -> Pubkey {
+    test.derive_pda(PoolBPda::seeds(&pool_config_address(test)))
+}
+
 struct PoolEnv {
     pool_config: Pubkey,
     lp_mint: Pubkey,
@@ -87,31 +116,62 @@ fn initialize_config(test: &mut Test, fee: u16, admin_share_bps: u16) -> Outcome
     })
 }
 
-/// Creates config + two mints + pool.
-fn setup_pool(test: &mut Test) -> PoolEnv {
+/// Creates the config and the two mints: everything a pool needs except
+/// itself, so a test can build an `initialize_pool` the pool refuses.
+fn setup_config_and_mints(test: &mut Test) {
     initialize_config(test, POOL_FEE_BPS as u16, ADMIN_SHARE_BPS).succeeds();
 
     // Pre-populate mint accounts (no onchain minting needed for tests).
     test.add(Mint::new(PAYER).at(MINT_A).decimals(6));
     test.add(Mint::new(PAYER).at(MINT_B).decimals(6));
+}
 
-    // initialize_pool: the pool_config and LP-mint PDAs are derived by the
-    // builder; pool_a/pool_b are non-PDA token accounts the program creates
-    // at the given addresses, owned by pool_config.
+/// `initialize_pool` with the creator's first deposit of `amount_a` /
+/// `amount_b`, taken from `CREATOR_TOKEN_A` / `CREATOR_TOKEN_B`, which must
+/// already hold them. The pool_config, LP-mint and reserve PDAs are all
+/// derived by the builder; the reserves are owned by pool_config.
+fn send_initialize_pool(test: &mut Test, amount_a: u64, amount_b: u64) -> Outcome {
     test.send(InitializePoolInstruction {
         mint_a: MINT_A,
         mint_b: MINT_B,
-        pool_a: POOL_A,
-        pool_b: POOL_B,
+        creator: CREATOR,
+        creator_token_a: CREATOR_TOKEN_A,
+        creator_token_b: CREATOR_TOKEN_B,
+        liquidity_provider_token: CREATOR_LP,
         payer: PAYER,
+        amount_a,
+        amount_b,
     })
-    .succeeds();
+}
+
+/// Creates config + two mints + a pool opened with the creator's deposit of
+/// exactly `amount_a` / `amount_b`. The creator's LP tokens are at
+/// `CREATOR_LP`.
+fn setup_pool(test: &mut Test, amount_a: u64, amount_b: u64) -> PoolEnv {
+    setup_config_and_mints(test);
+    fund(
+        test,
+        CREATOR,
+        CREATOR_TOKEN_A,
+        CREATOR_TOKEN_B,
+        amount_a,
+        amount_b,
+    );
+    send_initialize_pool(test, amount_a, amount_b).succeeds();
 
     let config = test.derive_pda(ConfigPda::seeds());
     PoolEnv {
         pool_config: test.derive_pda(PoolPda::seeds(&config, &MINT_A, &MINT_B)),
         lp_mint: test.derive_pda(LiquidityMintPda::seeds(&config, &MINT_A, &MINT_B)),
     }
+}
+
+/// Overwrites an SPL token account's balance in place (the `amount` is the
+/// u64 at bytes 64..72), for states no instruction can produce.
+fn set_token_balance(test: &mut Test, address: Pubkey, amount: u64) {
+    let mut account = test.account(address).expect("token account missing");
+    account.data[64..72].copy_from_slice(&amount.to_le_bytes());
+    test.set_account(account);
 }
 
 /// Fund a depositor wallet with token A/B accounts holding the given amounts.
@@ -151,8 +211,8 @@ fn deposit(
         depositor,
         mint_a: MINT_A,
         mint_b: MINT_B,
-        pool_a: POOL_A,
-        pool_b: POOL_B,
+        pool_a: pool_a(test),
+        pool_b: pool_b(test),
         liquidity_provider_token: lp_token,
         token_a,
         token_b,
@@ -161,31 +221,6 @@ fn deposit(
         amount_b,
         minimum_lp_tokens_out,
     })
-}
-
-/// Fund the seeding depositor and deposit `amount_a` / `amount_b`, with no LP
-/// floor (pool-setup helper, not a slippage test). Returns the LP balance.
-fn seed_pool(test: &mut Test, amount_a: u64, amount_b: u64) -> u64 {
-    fund(
-        test,
-        SEEDER,
-        SEEDER_TOKEN_A,
-        SEEDER_TOKEN_B,
-        amount_a,
-        amount_b,
-    );
-    deposit(
-        test,
-        SEEDER,
-        SEEDER_TOKEN_A,
-        SEEDER_TOKEN_B,
-        SEEDER_LP,
-        amount_a,
-        amount_b,
-        0,
-    )
-    .succeeds();
-    test.tokens(SEEDER_LP)
 }
 
 fn swap(
@@ -201,8 +236,8 @@ fn swap(
         trader,
         mint_a: MINT_A,
         mint_b: MINT_B,
-        pool_a: POOL_A,
-        pool_b: POOL_B,
+        pool_a: pool_a(test),
+        pool_b: pool_b(test),
         token_a,
         token_b,
         payer: PAYER,
@@ -221,8 +256,8 @@ fn claim_fees(
     test.send(ClaimAdminFeesInstruction {
         mint_a: MINT_A,
         mint_b: MINT_B,
-        pool_a: POOL_A,
-        pool_b: POOL_B,
+        pool_a: pool_a(test),
+        pool_b: pool_b(test),
         admin,
         admin_token_a,
         admin_token_b,
@@ -245,28 +280,20 @@ fn initialize_config_records_admin_and_fees(test: &mut Test) {
 #[quasar_test]
 fn initialize_config_rejects_invalid_fee(test: &mut Test) {
     // fee >= 10_000 → invalid.
-    let outcome = initialize_config(test, 10_000, 1_667);
-    assert!(
-        outcome.is_err(),
-        "initialize_config should have failed with invalid fee"
-    );
+    initialize_config(test, 10_000, 1_667).fails_with(AmmError::InvalidFee);
 }
 
 #[quasar_test]
 fn initialize_config_rejects_invalid_admin_share(test: &mut Test) {
     // admin_share_bps >= 10_000 → invalid.
-    let outcome = initialize_config(test, 30, 10_000);
-    assert!(
-        outcome.is_err(),
-        "initialize_config should have failed with admin_share_bps >= 10000"
-    );
+    initialize_config(test, 30, 10_000).fails_with(AmmError::AdminShareTooHigh);
 }
 
 // ─── initialize_pool ─────────────────────────────────────────────────────────────
 
 #[quasar_test]
 fn initialize_pool_creates_pool_config_and_lp_mint(test: &mut Test) {
-    let env = setup_pool(test);
+    let env = setup_pool(test, 4_000_000, 1_000_000);
     // The pool_config PDA must now exist and be owned by our program.
     let pc = test
         .account(env.pool_config)
@@ -291,7 +318,7 @@ fn initialize_pool_creates_pool_config_and_lp_mint(test: &mut Test) {
         expected,
         "LP mint authority must be pool_config"
     );
-    for reserve in [POOL_A, POOL_B] {
+    for reserve in [pool_a(test), pool_b(test)] {
         let account = test.account(reserve).expect("reserve missing");
         assert_eq!(
             &account.data[32..64],
@@ -301,29 +328,254 @@ fn initialize_pool_creates_pool_config_and_lp_mint(test: &mut Test) {
     }
 }
 
-// ─── deposit_liquidity ───────────────────────────────────────────────────────
+/// The pool opens with the creator's deposit: both reserves hold it, the
+/// creator's balances fell by it, the creator holds
+/// `sqrt(a * b) - MINIMUM_LIQUIDITY` LP tokens, and that is the whole LP
+/// supply, so the floor is minted to nobody.
+#[quasar_test]
+fn initialize_pool_takes_first_deposit(test: &mut Test) {
+    setup_config_and_mints(test);
+    fund(
+        test,
+        CREATOR,
+        CREATOR_TOKEN_A,
+        CREATOR_TOKEN_B,
+        5_000_000,
+        2_000_000,
+    );
+    let config = test.derive_pda(ConfigPda::seeds());
+    let lp_mint = test.derive_pda(LiquidityMintPda::seeds(&config, &MINT_A, &MINT_B));
+
+    send_initialize_pool(test, 4_000_000, 1_000_000)
+        .succeeds()
+        .has_tokens(pool_a(test), 4_000_000)
+        .has_tokens(pool_b(test), 1_000_000)
+        .has_tokens(CREATOR_TOKEN_A, 5_000_000 - 4_000_000)
+        .has_tokens(CREATOR_TOKEN_B, 2_000_000 - 1_000_000)
+        // sqrt(4_000_000 * 1_000_000) = 2_000_000, minus the 100 floor.
+        .has_tokens(CREATOR_LP, 2_000_000 - crate::MINIMUM_LIQUIDITY)
+        .has_supply(lp_mint, 2_000_000 - crate::MINIMUM_LIQUIDITY);
+}
+
+/// A pool cannot open empty on either side: the first deposit sets the
+/// price, and a zero reserve has none. Nothing is created when the
+/// instruction fails.
+#[quasar_test]
+fn initialize_pool_rejects_zero_amount_a(test: &mut Test) {
+    setup_config_and_mints(test);
+    fund(
+        test,
+        CREATOR,
+        CREATOR_TOKEN_A,
+        CREATOR_TOKEN_B,
+        4_000_000,
+        1_000_000,
+    );
+    send_initialize_pool(test, 0, 1_000_000).fails_with(AmmError::EmptyInitialDeposit);
+    assert!(
+        test.account(pool_config_address(test)).is_none(),
+        "no pool must exist after the refused initialize_pool"
+    );
+}
+
+/// Pools are keyed by an ordered pair: creating the (B, A) pool beside the
+/// (A, B) pool would split the pair's liquidity across two pools, so the
+/// reversed order is refused. A pool of a mint against itself never reaches
+/// the order check: the same address in the `mint_a` and `mint_b` slots is a
+/// duplicate account, which Quasar's account parsing refuses with
+/// `AccountBorrowFailed` before any handler code runs. The creator holds
+/// enough of both tokens for the deposit, so the order check is what fails.
+#[quasar_test]
+fn initialize_pool_rejects_unordered_mints(test: &mut Test) {
+    setup_pool(test, 4_000_000, 1_000_000);
+    fund(
+        test,
+        CREATOR,
+        CREATOR_TOKEN_A,
+        CREATOR_TOKEN_B,
+        4_000_000,
+        1_000_000,
+    );
+    let reversed_lp = Pubkey::new_from_array([28; 32]);
+
+    test.send(InitializePoolInstruction {
+        mint_a: MINT_B,
+        mint_b: MINT_A,
+        creator: CREATOR,
+        creator_token_a: CREATOR_TOKEN_B,
+        creator_token_b: CREATOR_TOKEN_A,
+        liquidity_provider_token: reversed_lp,
+        payer: PAYER,
+        amount_a: 1_000_000,
+        amount_b: 4_000_000,
+    })
+    .fails_with(AmmError::InvalidMintOrder);
+    let config = test.derive_pda(ConfigPda::seeds());
+    assert!(
+        test.account(test.derive_pda(PoolPda::seeds(&config, &MINT_B, &MINT_A)))
+            .is_none(),
+        "the reversed pool must not exist"
+    );
+
+    test.send(InitializePoolInstruction {
+        mint_a: MINT_A,
+        mint_b: MINT_A,
+        creator: CREATOR,
+        creator_token_a: CREATOR_TOKEN_A,
+        creator_token_b: CREATOR_TOKEN_A,
+        liquidity_provider_token: reversed_lp,
+        payer: PAYER,
+        amount_a: 1_000_000,
+        amount_b: 1_000_000,
+    })
+    .fails(ProgramError::Runtime("AccountBorrowFailed".into()));
+}
 
 #[quasar_test]
-fn deposit_liquidity_initial(test: &mut Test) {
-    setup_pool(test);
+fn initialize_pool_rejects_zero_amount_b(test: &mut Test) {
+    setup_config_and_mints(test);
+    fund(
+        test,
+        CREATOR,
+        CREATOR_TOKEN_A,
+        CREATOR_TOKEN_B,
+        4_000_000,
+        1_000_000,
+    );
+    send_initialize_pool(test, 4_000_000, 0).fails_with(AmmError::EmptyInitialDeposit);
+    assert!(
+        test.account(pool_config_address(test)).is_none(),
+        "no pool must exist after the refused initialize_pool"
+    );
+}
 
-    let amount_a = 1_000_000u64;
-    let amount_b = 4_000_000u64;
-    let lp_balance = seed_pool(test, amount_a, amount_b);
+/// The floor boundary. A deposit whose square root is exactly
+/// `MINIMUM_LIQUIDITY` would open a pool and mint its creator nothing, so it
+/// is refused with `DepositTooSmall` and nothing is created; one unit above
+/// it opens the pool and leaves the creator 1 LP token.
+#[quasar_test]
+fn initialize_pool_rejects_sqrt_equal_to_floor(test: &mut Test) {
+    setup_config_and_mints(test);
+    let one_above_floor = crate::MINIMUM_LIQUIDITY + 1;
+    fund(
+        test,
+        CREATOR,
+        CREATOR_TOKEN_A,
+        CREATOR_TOKEN_B,
+        one_above_floor,
+        one_above_floor,
+    );
+    // sqrt(100 * 100) = 100 = MINIMUM_LIQUIDITY.
+    send_initialize_pool(test, crate::MINIMUM_LIQUIDITY, crate::MINIMUM_LIQUIDITY)
+        .fails_with(AmmError::DepositTooSmall);
+    assert!(
+        test.account(pool_config_address(test)).is_none(),
+        "no pool must exist after the refused initialize_pool"
+    );
 
-    // LP token account must exist with a non-zero balance, and the pool
-    // reserves must have received the tokens.
-    assert!(lp_balance > 0, "expected LP tokens, got 0");
-    assert_eq!(test.tokens(POOL_A), amount_a);
-    assert_eq!(test.tokens(POOL_B), amount_b);
+    // sqrt(101 * 101) = 101: the smallest pool that opens.
+    send_initialize_pool(test, one_above_floor, one_above_floor)
+        .succeeds()
+        .has_tokens(CREATOR_LP, 1);
+}
+
+// ─── deposit_liquidity ───────────────────────────────────────────────────────
+
+/// The front-run. Maria (the creator) opens an ACME/USDC pool with 400 ACME
+/// and 900 USDC, a price of 2.25 USDC per ACME, in one `initialize_pool`
+/// call; the pool is created, funded and priced before anyone else can
+/// touch it. Mallory then calls `deposit_liquidity` at once with a hostile
+/// ratio, 400 ACME and 100 USDC (0.25 USDC per ACME). Her deposit is clamped
+/// to Maria's ratio: her 100 USDC binds, only 44.444444 of her 400 ACME is
+/// taken, and the pool still prices at 2.25 afterwards. The last part of the
+/// test checks the refusal in code: a `deposit_liquidity` against a pool whose
+/// effective reserves are zero fails with `EmptyPoolReserve`, so no
+/// instruction lets a pool with no reserves take a depositor's ratio as its
+/// price. (`initialize_pool` is the only instruction that creates a pool, and
+/// `initialize_pool_rejects_zero_amount_a` / `_b` show it refuses a zero
+/// side.)
+#[quasar_test]
+fn pool_creation_cannot_be_front_run(test: &mut Test) {
+    let one: u64 = 10u64.pow(6); // both mints have 6 decimals
+    setup_config_and_mints(test);
+    // ACME is `MINT_A`, USDC is `MINT_B`.
+    fund(
+        test,
+        CREATOR,
+        CREATOR_TOKEN_A,
+        CREATOR_TOKEN_B,
+        400 * one,
+        900 * one,
+    );
+    send_initialize_pool(test, 400 * one, 900 * one)
+        .succeeds()
+        .has_tokens(pool_a(test), 400 * one)
+        .has_tokens(pool_b(test), 900 * one);
+
+    // Mallory, with 400 ACME and 100 USDC, deposits all of both at once.
+    fund(
+        test,
+        DEPOSITOR,
+        DEPOSITOR_TOKEN_A,
+        DEPOSITOR_TOKEN_B,
+        400 * one,
+        100 * one,
+    );
+    deposit(
+        test,
+        DEPOSITOR,
+        DEPOSITOR_TOKEN_A,
+        DEPOSITOR_TOKEN_B,
+        DEPOSITOR_LP,
+        400 * one,
+        100 * one,
+        0,
+    )
+    .succeeds();
+
+    // 400 ACME would need 900 USDC at Maria's price, more than Mallory
+    // offered, so her 100 USDC binds: 100 * 400 / 900 = 44.444444 ACME.
+    let acme_taken = 400 * one - test.tokens(DEPOSITOR_TOKEN_A);
+    let usdc_taken = 100 * one - test.tokens(DEPOSITOR_TOKEN_B);
+    assert_eq!(acme_taken, 44_444_444);
+    assert_eq!(usdc_taken, 100 * one);
+    let pool_a_amount = test.tokens(pool_a(test));
+    let pool_b_amount = test.tokens(pool_b(test));
+    assert_eq!(pool_a_amount, 444_444_444);
+    assert_eq!(pool_b_amount, 1_000 * one);
+    // The price is still 2.25 USDC per ACME, to the cent.
+    let price_in_cents = (pool_b_amount as u128) * 100 / (pool_a_amount as u128);
+    assert_eq!(price_in_cents, 225);
+    // Mallory is minted her share and nothing more: the LP supply is
+    // sqrt(400 * 900) = 600 (floor included), and 100 USDC is a ninth of
+    // the 900 in the pool, so min(44.444444 * 600 / 400, 100 * 600 / 900)
+    // = 66.666666 LP tokens.
+    assert_eq!(test.tokens(DEPOSITOR_LP), 66_666_666);
+
+    // The pool can never be in this state through the program, so put it
+    // there by hand: zero the token-A reserve's balance and show the handler
+    // refuses to price a pool with an empty reserve. The balance check runs
+    // first, so give Mallory the USDC she offers.
+    set_token_balance(test, pool_a(test), 0);
+    set_token_balance(test, DEPOSITOR_TOKEN_B, 100 * one);
+    deposit(
+        test,
+        DEPOSITOR,
+        DEPOSITOR_TOKEN_A,
+        DEPOSITOR_TOKEN_B,
+        DEPOSITOR_LP,
+        300 * one,
+        100 * one,
+        0,
+    )
+    .fails_with(AmmError::EmptyPoolReserve);
 }
 
 #[quasar_test]
 fn deposit_liquidity_subsequent_proportional(test: &mut Test) {
-    setup_pool(test);
-
-    // Initial deposit: 1:4 ratio.
-    let lp1_bal = seed_pool(test, 1_000_000, 4_000_000);
+    // The pool opens at a 1:4 ratio.
+    setup_pool(test, 1_000_000, 4_000_000);
+    let lp1_bal = test.tokens(CREATOR_LP);
 
     // Second depositor with the same 1:4 ratio gets proportional LP tokens.
     fund(
@@ -347,18 +599,55 @@ fn deposit_liquidity_subsequent_proportional(test: &mut Test) {
     .succeeds();
     let lp2_bal = test.tokens(DEPOSITOR_LP);
 
-    // Half the first deposit → should get roughly half the LP tokens.
-    assert!(
-        lp2_bal > 0 && lp2_bal <= lp1_bal,
-        "second depositor LP={} should be > 0 and <= first LP={}",
-        lp2_bal,
-        lp1_bal
+    // Half the creator's deposit mints half of that deposit's sqrt(a * b):
+    // the LP it received plus the unminted floor, since deposits divide by
+    // the same `supply + MINIMUM_LIQUIDITY` that withdrawals do.
+    assert_eq!(lp1_bal, 2_000_000 - crate::MINIMUM_LIQUIDITY);
+    assert_eq!(lp2_bal, (lp1_bal + crate::MINIMUM_LIQUIDITY) / 2);
+}
+
+/// Once every LP token is burned the floor's share of the reserves is still
+/// in the pool, so the next deposit is clamped to the floor's ratio and mints
+/// against the floor alone. Dividing by the bare supply of zero would mint
+/// nothing and leave the pool unable to take deposits again.
+#[quasar_test]
+fn deposit_after_every_lp_token_is_burned(test: &mut Test) {
+    setup_pool(test, 4_000_000, 4_000_000);
+    let lp_balance = test.tokens(CREATOR_LP);
+
+    // 3_999_900 * 4_000_000 / 4_000_000 of each side leaves; the floor's 100
+    // of each side stays.
+    withdraw(test, CREATOR, CREATOR_LP, RECV_A, RECV_B, lp_balance, 0, 0)
+        .succeeds()
+        .has_tokens(pool_a(test), crate::MINIMUM_LIQUIDITY)
+        .has_tokens(pool_b(test), crate::MINIMUM_LIQUIDITY);
+
+    // 1_000_000 * (0 + 100) / 100 = 1_000_000 LP tokens.
+    fund(
+        test,
+        DEPOSITOR,
+        DEPOSITOR_TOKEN_A,
+        DEPOSITOR_TOKEN_B,
+        1_000_000,
+        1_000_000,
     );
+    deposit(
+        test,
+        DEPOSITOR,
+        DEPOSITOR_TOKEN_A,
+        DEPOSITOR_TOKEN_B,
+        DEPOSITOR_LP,
+        1_000_000,
+        1_000_000,
+        0,
+    )
+    .succeeds()
+    .has_tokens(DEPOSITOR_LP, 1_000_000);
 }
 
 #[quasar_test]
 fn deposit_insufficient_funds_rejected(test: &mut Test) {
-    setup_pool(test);
+    setup_pool(test, 1_000_000, 1_000_000);
 
     // Fund with only 100 of each but request 1_000_000.
     fund(
@@ -389,11 +678,11 @@ fn deposit_insufficient_funds_rejected(test: &mut Test) {
 /// balance check. The correct try-A-then-B clamp scales token B DOWN instead.
 #[quasar_test]
 fn deposit_clamps_down_never_up(test: &mut Test) {
-    setup_pool(test);
-
-    // Seed at a 4:1 ratio so pool_a > pool_b.
+    // Open at a 4:1 ratio so pool_a > pool_b.
     let (pool_seed_a, pool_seed_b) = (4_000_000u64, 1_000_000u64);
-    let lp_supply = seed_pool(test, pool_seed_a, pool_seed_b);
+    setup_pool(test, pool_seed_a, pool_seed_b);
+    // Later deposits divide by the LP supply plus the unminted floor.
+    let total_supply = test.tokens(CREATOR_LP) + crate::MINIMUM_LIQUIDITY;
 
     // Depositor offers 1_000_000 of each and holds exactly that much. The
     // old logic would try to pull 4_000_000 token A (scaling A UP); the
@@ -409,7 +698,7 @@ fn deposit_clamps_down_never_up(test: &mut Test) {
     );
 
     let expected_b_pulled = mul_div(stated_a, pool_seed_b, pool_seed_a);
-    let expected_lp = mul_div(stated_a, lp_supply, pool_seed_a);
+    let expected_lp = mul_div(stated_a, total_supply, pool_seed_a);
 
     deposit(
         test,
@@ -425,8 +714,8 @@ fn deposit_clamps_down_never_up(test: &mut Test) {
     // Exact amounts pulled: all of A, ratio-clamped B, nothing more.
     .has_tokens(DEPOSITOR_TOKEN_A, 0)
     .has_tokens(DEPOSITOR_TOKEN_B, stated_b - expected_b_pulled)
-    .has_tokens(POOL_A, pool_seed_a + stated_a)
-    .has_tokens(POOL_B, pool_seed_b + expected_b_pulled)
+    .has_tokens(pool_a(test), pool_seed_a + stated_a)
+    .has_tokens(pool_b(test), pool_seed_b + expected_b_pulled)
     // LP mint must be proportional.
     .has_tokens(DEPOSITOR_LP, expected_lp);
 }
@@ -436,11 +725,11 @@ fn deposit_clamps_down_never_up(test: &mut Test) {
 /// `amount_b` is used and `amount_a` is the side that covers the ratio.
 #[quasar_test]
 fn deposit_clamps_down_other_side(test: &mut Test) {
-    setup_pool(test);
-
-    // Seed at a 1:4 ratio so pool_b > pool_a.
+    // Open at a 1:4 ratio so pool_b > pool_a.
     let (pool_seed_a, pool_seed_b) = (1_000_000u64, 4_000_000u64);
-    let lp_supply = seed_pool(test, pool_seed_a, pool_seed_b);
+    setup_pool(test, pool_seed_a, pool_seed_b);
+    // Later deposits divide by the LP supply plus the unminted floor.
+    let total_supply = test.tokens(CREATOR_LP) + crate::MINIMUM_LIQUIDITY;
 
     let (stated_a, stated_b) = (1_000_000u64, 1_000_000u64);
     fund(
@@ -455,7 +744,7 @@ fn deposit_clamps_down_other_side(test: &mut Test) {
     // amount_b_required for the full stated_a would be 4_000_000 > stated_b,
     // so amount_b binds: all of B is used and A is clamped down.
     let expected_a_pulled = mul_div(stated_b, pool_seed_a, pool_seed_b);
-    let expected_lp = mul_div(stated_b, lp_supply, pool_seed_b);
+    let expected_lp = mul_div(stated_b, total_supply, pool_seed_b);
 
     deposit(
         test,
@@ -470,18 +759,18 @@ fn deposit_clamps_down_other_side(test: &mut Test) {
     .succeeds()
     .has_tokens(DEPOSITOR_TOKEN_A, stated_a - expected_a_pulled)
     .has_tokens(DEPOSITOR_TOKEN_B, 0)
-    .has_tokens(POOL_A, pool_seed_a + expected_a_pulled)
-    .has_tokens(POOL_B, pool_seed_b + stated_b)
+    .has_tokens(pool_a(test), pool_seed_a + expected_a_pulled)
+    .has_tokens(pool_b(test), pool_seed_b + stated_b)
     // LP mint must be proportional.
     .has_tokens(DEPOSITOR_LP, expected_lp);
 }
 
 #[quasar_test]
 fn deposit_slippage_rejected(test: &mut Test) {
-    setup_pool(test);
-
     let (pool_seed_a, pool_seed_b) = (1_000_000u64, 1_000_000u64);
-    let lp_supply = seed_pool(test, pool_seed_a, pool_seed_b);
+    setup_pool(test, pool_seed_a, pool_seed_b);
+    // Later deposits divide by the LP supply plus the unminted floor.
+    let total_supply = test.tokens(CREATOR_LP) + crate::MINIMUM_LIQUIDITY;
 
     let (stated_a, stated_b) = (500_000u64, 500_000u64);
     fund(
@@ -494,7 +783,7 @@ fn deposit_slippage_rejected(test: &mut Test) {
     );
 
     // The pool will mint exactly this much; ask for one more.
-    let exact_lp = mul_div(stated_a, lp_supply, pool_seed_a);
+    let exact_lp = mul_div(stated_a, total_supply, pool_seed_a);
     deposit(
         test,
         DEPOSITOR,
@@ -519,12 +808,12 @@ fn deposit_slippage_rejected(test: &mut Test) {
         "token B must be untouched after revert"
     );
     assert_eq!(
-        test.tokens(POOL_A),
+        test.tokens(pool_a(test)),
         pool_seed_a,
         "pool_a must be untouched after revert"
     );
     assert_eq!(
-        test.tokens(POOL_B),
+        test.tokens(pool_b(test)),
         pool_seed_b,
         "pool_b must be untouched after revert"
     );
@@ -547,8 +836,8 @@ fn withdraw(
         depositor,
         mint_a: MINT_A,
         mint_b: MINT_B,
-        pool_a: POOL_A,
-        pool_b: POOL_B,
+        pool_a: pool_a(test),
+        pool_b: pool_b(test),
         liquidity_provider_token: lp_token,
         token_a: recv_a,
         token_b: recv_b,
@@ -561,10 +850,10 @@ fn withdraw(
 
 #[quasar_test]
 fn withdraw_liquidity_pays_the_proportional_share(test: &mut Test) {
-    setup_pool(test);
     let amount_a = 2_000_000u64;
     let amount_b = 2_000_000u64;
-    let lp_balance = seed_pool(test, amount_a, amount_b);
+    setup_pool(test, amount_a, amount_b);
+    let lp_balance = test.tokens(CREATOR_LP);
     assert!(lp_balance > 0);
 
     // Withdraw half the LP tokens.
@@ -572,7 +861,7 @@ fn withdraw_liquidity_pays_the_proportional_share(test: &mut Test) {
 
     // Expected proportional share, mirroring the program's formula:
     //   amount_out = lp_amount * reserve / (lp_supply + MINIMUM_LIQUIDITY)
-    // The depositor holds the entire LP supply, so supply == lp_balance.
+    // The creator holds the entire LP supply, so supply == lp_balance.
     let divisor = lp_balance
         .checked_add(crate::MINIMUM_LIQUIDITY)
         .expect("divisor overflow");
@@ -584,8 +873,8 @@ fn withdraw_liquidity_pays_the_proportional_share(test: &mut Test) {
     // the quote, so the floors must be met.
     withdraw(
         test,
-        SEEDER,
-        SEEDER_LP,
+        CREATOR,
+        CREATOR_LP,
         RECV_A,
         RECV_B,
         withdraw_amount,
@@ -597,13 +886,13 @@ fn withdraw_liquidity_pays_the_proportional_share(test: &mut Test) {
     .has_tokens(RECV_A, expected_a)
     .has_tokens(RECV_B, expected_b)
     // LP tokens were burned.
-    .has_tokens(SEEDER_LP, lp_balance - withdraw_amount);
+    .has_tokens(CREATOR_LP, lp_balance - withdraw_amount);
 }
 
 #[quasar_test]
 fn withdraw_slippage_rejected(test: &mut Test) {
-    setup_pool(test);
-    let lp_balance = seed_pool(test, 2_000_000, 2_000_000);
+    setup_pool(test, 2_000_000, 2_000_000);
+    let lp_balance = test.tokens(CREATOR_LP);
 
     let withdraw_amount = lp_balance / 2;
     let divisor = lp_balance
@@ -614,8 +903,8 @@ fn withdraw_slippage_rejected(test: &mut Test) {
     // Floor on token A set just above what the pool will pay out.
     withdraw(
         test,
-        SEEDER,
-        SEEDER_LP,
+        CREATOR,
+        CREATOR_LP,
         RECV_A,
         RECV_B,
         withdraw_amount,
@@ -626,17 +915,17 @@ fn withdraw_slippage_rejected(test: &mut Test) {
 
     // Nothing moved: pool reserves and the LP balance are unchanged.
     assert_eq!(
-        test.tokens(POOL_A),
+        test.tokens(pool_a(test)),
         2_000_000,
         "pool_a must be untouched after revert"
     );
     assert_eq!(
-        test.tokens(POOL_B),
+        test.tokens(pool_b(test)),
         2_000_000,
         "pool_b must be untouched after revert"
     );
     assert_eq!(
-        test.tokens(SEEDER_LP),
+        test.tokens(CREATOR_LP),
         lp_balance,
         "LP balance must be untouched after revert"
     );
@@ -646,11 +935,8 @@ fn withdraw_slippage_rejected(test: &mut Test) {
 
 #[quasar_test]
 fn swap_a_to_b_conserves_balances(test: &mut Test) {
-    setup_pool(test);
-
-    // Seed the pool with liquidity first.
     let (pool_seed_a, pool_seed_b) = (10_000_000u64, 10_000_000u64);
-    seed_pool(test, pool_seed_a, pool_seed_b);
+    setup_pool(test, pool_seed_a, pool_seed_b);
 
     // Trader swaps 100_000 token A for token B (the output account is created
     // by init(idempotent)).
@@ -679,15 +965,14 @@ fn swap_a_to_b_conserves_balances(test: &mut Test) {
     // what the pool sent; nothing is minted or lost in transit.
     .has_tokens(TRADER_TOKEN_A, trader_funding - input)
     .has_tokens(TRADER_TOKEN_B, expected_output)
-    .has_tokens(POOL_A, pool_seed_a + input)
-    .has_tokens(POOL_B, pool_seed_b - expected_output);
+    .has_tokens(pool_a(test), pool_seed_a + input)
+    .has_tokens(pool_b(test), pool_seed_b - expected_output);
 }
 
 #[quasar_test]
 fn swap_b_to_a_conserves_balances(test: &mut Test) {
-    setup_pool(test);
     let (pool_seed_a, pool_seed_b) = (10_000_000u64, 10_000_000u64);
-    seed_pool(test, pool_seed_a, pool_seed_b);
+    setup_pool(test, pool_seed_a, pool_seed_b);
 
     let trader_funding = 1_000_000u64;
     test.add(Wallet::new().at(TRADER));
@@ -712,14 +997,13 @@ fn swap_b_to_a_conserves_balances(test: &mut Test) {
     .succeeds()
     .has_tokens(TRADER_TOKEN_B, trader_funding - input)
     .has_tokens(TRADER_TOKEN_A, expected_output)
-    .has_tokens(POOL_B, pool_seed_b + input)
-    .has_tokens(POOL_A, pool_seed_a - expected_output);
+    .has_tokens(pool_b(test), pool_seed_b + input)
+    .has_tokens(pool_a(test), pool_seed_a - expected_output);
 }
 
 #[quasar_test]
 fn swap_slippage_rejected(test: &mut Test) {
-    setup_pool(test);
-    seed_pool(test, 10_000_000, 10_000_000);
+    setup_pool(test, 10_000_000, 10_000_000);
 
     test.add(Wallet::new().at(TRADER));
     test.add(
@@ -749,25 +1033,145 @@ fn swap_slippage_rejected(test: &mut Test) {
         "trader balance must be untouched after revert"
     );
     assert_eq!(
-        test.tokens(POOL_A),
+        test.tokens(pool_a(test)),
         10_000_000,
         "pool_a must be untouched after revert"
     );
     assert_eq!(
-        test.tokens(POOL_B),
+        test.tokens(pool_b(test)),
         10_000_000,
         "pool_b must be untouched after revert"
     );
+}
+
+/// A swap that names a token account of its own as `pool_a` must be refused.
+/// Without the `has_one(pool_a)` check the handler would price the trade from
+/// that account's one-unit balance, send the trader's input into it (back to
+/// the trader), and pay out nearly all of `pool_b` from the real reserve.
+#[quasar_test]
+fn swap_rejects_substituted_pool_vault(test: &mut Test) {
+    setup_pool(test, 10_000_000, 10_000_000);
+
+    test.add(Wallet::new().at(BAD_ACTOR));
+    test.add(
+        TokenAccount::new(MINT_A, BAD_ACTOR)
+            .at(BAD_TOKEN_A)
+            .amount(1_000_001),
+    );
+    // A second mint-A account the attacker owns, holding one unit, passed as
+    // the pool's token A reserve.
+    let fake_pool_a = Pubkey::new_from_array([25; 32]);
+    test.add(
+        TokenAccount::new(MINT_A, BAD_ACTOR)
+            .at(fake_pool_a)
+            .amount(1),
+    );
+
+    test.send(SwapTokensInstruction {
+        trader: BAD_ACTOR,
+        mint_a: MINT_A,
+        mint_b: MINT_B,
+        pool_a: fake_pool_a,
+        pool_b: pool_b(test),
+        token_a: BAD_TOKEN_A,
+        token_b: BAD_TOKEN_B,
+        payer: PAYER,
+        input_is_token_a: true,
+        input_amount: 1_000_000,
+        min_output_amount: 1,
+    })
+    .fails_with(AmmError::InvalidPoolVault);
+
+    assert_eq!(
+        test.tokens(pool_b(test)),
+        10_000_000,
+        "pool_b must be untouched after the refused swap"
+    );
+}
+
+/// A pool with one funded reserve and one empty one cannot be reached through
+/// the program (every pool opens with its creator's deposit of both tokens,
+/// and no swap or withdrawal empties a side), so the test empties `pool_a` by
+/// hand. Pricing a swap from that would pay the trader the whole of `pool_b`
+/// for any input (`input * b / (0 + input) = b`), and the invariant check
+/// would pass because the pre-trade product is zero, so the swap is refused.
+#[quasar_test]
+fn swap_rejects_empty_reserve(test: &mut Test) {
+    setup_pool(test, 5_000_000, 5_000_000);
+    let pool_b = pool_b(test);
+    set_token_balance(test, pool_a(test), 0);
+    fund(test, TRADER, TRADER_TOKEN_A, TRADER_TOKEN_B, 1_000_000, 0);
+
+    swap(
+        test,
+        TRADER,
+        TRADER_TOKEN_A,
+        TRADER_TOKEN_B,
+        true,
+        1_000_000,
+        1,
+    )
+    .fails_with(AmmError::EmptyPoolReserve);
+
+    assert_eq!(
+        test.tokens(pool_b),
+        5_000_000,
+        "pool_b must be untouched after the refused swap"
+    );
+    assert_eq!(test.tokens(TRADER_TOKEN_B), 0);
+}
+
+/// A deposit that names the depositor's own token accounts as the reserves
+/// must be refused. Without the `has_one` checks the LP tokens minted would be
+/// priced from those accounts' balances, and the deposit would land in them.
+#[quasar_test]
+fn deposit_rejects_substituted_pool_vaults(test: &mut Test) {
+    setup_pool(test, 10_000_000, 10_000_000);
+
+    fund(
+        test,
+        BAD_ACTOR,
+        BAD_TOKEN_A,
+        BAD_TOKEN_B,
+        1_000_000,
+        1_000_000,
+    );
+    let fake_pool_a = Pubkey::new_from_array([25; 32]);
+    let fake_pool_b = Pubkey::new_from_array([26; 32]);
+    test.add(
+        TokenAccount::new(MINT_A, BAD_ACTOR)
+            .at(fake_pool_a)
+            .amount(1),
+    );
+    test.add(
+        TokenAccount::new(MINT_B, BAD_ACTOR)
+            .at(fake_pool_b)
+            .amount(1),
+    );
+
+    test.send(DepositLiquidityInstruction {
+        depositor: BAD_ACTOR,
+        mint_a: MINT_A,
+        mint_b: MINT_B,
+        pool_a: fake_pool_a,
+        pool_b: fake_pool_b,
+        liquidity_provider_token: Pubkey::new_from_array([27; 32]),
+        token_a: BAD_TOKEN_A,
+        token_b: BAD_TOKEN_B,
+        payer: PAYER,
+        amount_a: 1_000_000,
+        amount_b: 1_000_000,
+        minimum_lp_tokens_out: 0,
+    })
+    .fails_with(AmmError::InvalidPoolVault);
 }
 
 // ─── claim_admin_fees ────────────────────────────────────────────────────────
 
 #[quasar_test]
 fn claim_admin_fees_pays_the_admin(test: &mut Test) {
-    setup_pool(test);
-
-    // Seed pool and do a swap so fees accumulate.
-    seed_pool(test, 10_000_000, 10_000_000);
+    // Open the pool and do a swap so fees accumulate.
+    setup_pool(test, 10_000_000, 10_000_000);
     test.add(Wallet::new().at(TRADER));
     test.add(
         TokenAccount::new(MINT_A, TRADER)
@@ -790,20 +1194,71 @@ fn claim_admin_fees_pays_the_admin(test: &mut Test) {
     test.add(TokenAccount::new(MINT_A, ADMIN).at(ADMIN_TOKEN_A));
     test.add(TokenAccount::new(MINT_B, ADMIN).at(ADMIN_TOKEN_B));
 
-    claim_fees(test, ADMIN, ADMIN_TOKEN_A, ADMIN_TOKEN_B).succeeds();
+    // A was the input side: 500_000 at 30 bps is a 1_500 fee, of which
+    // 1_500 * 1_667 / 10_000 = 250.05 is the admin's, owed as 251 because
+    // the admin's slice rounds up against the LPs. The claim pays exactly
+    // that and nothing on the B side.
+    let expected_admin_a = mul_div_ceil(
+        mul_div_ceil(500_000, POOL_FEE_BPS, crate::BASIS_POINTS_DIVISOR),
+        ADMIN_SHARE_BPS as u64,
+        crate::BASIS_POINTS_DIVISOR,
+    );
+    assert_eq!(expected_admin_a, 251);
+    claim_fees(test, ADMIN, ADMIN_TOKEN_A, ADMIN_TOKEN_B)
+        .succeeds()
+        .has_tokens(ADMIN_TOKEN_A, expected_admin_a)
+        .has_tokens(ADMIN_TOKEN_B, 0);
+    let pool = test.read::<PoolConfig>(pool_config_address(test));
+    assert_eq!(u64::from(pool.admin_fees_owed_a), 0);
+}
 
-    // After the claim, admin_token_a should have received some fees (A was
-    // the input side).
-    assert!(
-        test.tokens(ADMIN_TOKEN_A) > 0,
-        "admin should have received token-A fees"
+/// The fee rounds against the trader. 100_001 of A at 30 bps is a fee of
+/// 300.003, charged as 301; the admin's 1_667 bps of that is 50.18, owed as
+/// 51. The curve prices the 99_700 that remain:
+/// `99_700 * 10_000_000 / (10_000_000 + 99_700) = 98_715`.
+#[quasar_test]
+fn swap_fee_rounds_up(test: &mut Test) {
+    setup_pool(test, 10_000_000, 10_000_000);
+    test.add(Wallet::new().at(TRADER));
+    test.add(
+        TokenAccount::new(MINT_A, TRADER)
+            .at(TRADER_TOKEN_A)
+            .amount(1_000_000),
+    );
+
+    let input = 100_001u64;
+    assert_eq!(
+        mul_div_ceil(input, POOL_FEE_BPS, crate::BASIS_POINTS_DIVISOR),
+        301
+    );
+    assert_eq!(
+        expected_swap_output(input, POOL_FEE_BPS, 10_000_000, 10_000_000),
+        98_715
+    );
+    swap(
+        test,
+        TRADER,
+        TRADER_TOKEN_A,
+        TRADER_TOKEN_B,
+        true,
+        input,
+        98_715,
+    )
+    .succeeds()
+    // The trader pays the whole input; the fee is taken from it.
+    .has_tokens(pool_a(test), 10_000_000 + input)
+    .has_tokens(TRADER_TOKEN_B, 98_715);
+    let pool = test.read::<PoolConfig>(pool_config_address(test));
+    assert_eq!(
+        u64::from(pool.admin_fees_owed_a),
+        51,
+        "the admin's slice rounds up"
     );
 }
 
 #[quasar_test]
 fn claim_admin_fees_rejects_non_admin(test: &mut Test) {
-    setup_pool(test);
-    seed_pool(test, 10_000_000, 10_000_000);
+    setup_pool(test, 10_000_000, 10_000_000);
 
     // Swap to accumulate some fees.
     test.add(Wallet::new().at(TRADER));
@@ -828,9 +1283,5 @@ fn claim_admin_fees_rejects_non_admin(test: &mut Test) {
     test.add(TokenAccount::new(MINT_A, BAD_ACTOR).at(BAD_TOKEN_A));
     test.add(TokenAccount::new(MINT_B, BAD_ACTOR).at(BAD_TOKEN_B));
 
-    let outcome = claim_fees(test, BAD_ACTOR, BAD_TOKEN_A, BAD_TOKEN_B);
-    assert!(
-        outcome.is_err(),
-        "unauthorized claim_admin_fees should fail"
-    );
+    claim_fees(test, BAD_ACTOR, BAD_TOKEN_A, BAD_TOKEN_B).fails_with(AmmError::Unauthorized);
 }

@@ -22,6 +22,8 @@ pub enum LendingError {
     PricePredatesRestart,
     #[msg("Price feed reported a non-positive price")]
     InvalidOraclePrice,
+    #[msg("Price feed is too uncertain to value against: its confidence band exceeds the reserve's limit")]
+    OracleConfidenceTooWide,
     #[msg("Borrow would exceed the obligation's allowed borrow value")]
     BorrowTooLarge,
     #[msg("Withdraw would leave the obligation undercollateralized")]
@@ -38,6 +40,14 @@ pub enum LendingError {
     MarketMismatch,
     #[msg("Repay amount would seize more collateral than the obligation holds")]
     LiquidationTooLarge,
-    #[msg("No protocol fees are available to collect")]
+    #[msg("No program fees are available to collect")]
     NothingToCollect,
+    #[msg("Obligation still holds collateral or debt and cannot be closed")]
+    ObligationNotEmpty,
+    #[msg("Borrow rate is above the program's ceiling of 30,000 bps (300% a year)")]
+    BorrowRateAboveCeiling,
+    #[msg("A config update may not lower a reserve's liquidation threshold")]
+    RiskLimitLowered,
+    #[msg("Liquidation threshold is too high for the collateral to pay the liquidation bonus")]
+    LiquidationBonusUnpayable,
 }

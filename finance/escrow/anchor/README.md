@@ -8,7 +8,7 @@
 
 This Solana [program](https://solana.com/docs/terminology#program) is an **escrow** - it lets a **maker** swap a specific amount of one token for a desired amount of another token with a **taker**, atomically and without either party having to trust the other.
 
-For example: Alice offers 10 USDC and wants 100 WIF in return. The program holds Alice's USDC in a vault until someone delivers the WIF, then releases both sides in a single transaction. Neither party can take the other's tokens and run, and there is no spread or middleman fee on the swap.
+For example: Alice offers 250 USDC and wants 1 TSLAx in return. The program holds Alice's USDC in a vault until someone delivers the TSLAx, then releases both sides in a single transaction. Neither party can take the other's tokens and run, and there is no spread or middleman fee on the swap.
 
 See also the [native](../native/) and [Quasar](../quasar/) variants of the same program.
 
@@ -21,9 +21,11 @@ The maker pays the rent for the offer account and the vault, and every path that
 
 ## Lifecycle
 
-A maker opens an offer with `make_offer`, passing the `id`, `token_a_offered_amount`, and `token_b_wanted_amount`. The maker signs and pays all rent. The handler creates the offer PDA and the vault, creates the maker's token-B associated token account if needed (paid by the maker, so the eventual taker never funds a maker-owned account), moves the offered token A into the vault with `transfer_checked`, and records the offer state.
+A maker opens an offer with `make_offer`, passing the `id`, `token_a_offered_amount`, and `token_b_wanted_amount`. The maker signs and pays all rent. The handler creates the offer PDA and the vault, creates the maker's token-B associated token account if needed (paid by the maker, so the eventual taker never funds a maker-owned account), moves the offered token A into the vault with `transfer_checked`, and records the offer state. It refuses an offer with zero tokens on either side (`ZeroAmount`). An offer of a token for itself never reaches the handler: the maker's token-A and token-B accounts would be the same account, which Anchor refuses (`ConstraintDuplicateMutableAccount`).
 
-A taker settles the offer with `take_offer`. The taker signs. Anchor's constraints bind every account to the stored offer state (`address = offer.maker` on the maker and `address = offer.token_mint_a` / `address = offer.token_mint_b` on the mints, associated-token constraints on the vault and all token accounts, and the PDA seeds on the offer itself). The handler sends the wanted token B from the taker to the maker, releases the vault's token A to the taker signed by the offer PDA, and closes both the vault and the offer account back to the maker, who paid their rent. The taker's own token-A account is created on the fly if needed, paid by the taker.
+A taker settles the offer with `take_offer`, passing `minimum_token_a_out` (the least token A the taker accepts from the vault) and `maximum_token_b_in` (the most token B the taker will pay). The taker signs, so the bounds are the terms the taker agreed to. Anchor's constraints bind every account to the stored offer state (`address = offer.maker` on the maker and `address = offer.token_mint_a` / `address = offer.token_mint_b` on the mints, associated-token constraints on the vault and all token accounts, and the PDA seeds on the offer itself). The handler sends the wanted token B from the taker to the maker, releases the vault's token A to the taker signed by the offer PDA, and closes both the vault and the offer account back to the maker, who paid their rent. The taker's own token-A account is created on the fly if needed, paid by the taker.
+
+The two bounds close a bait and switch. An offer's address comes from its maker and `id`, so while a taker's transaction is in flight the maker could cancel the offer and make it again under the same `id` at worse terms, and the transaction would land on the new offer at the same address. Before any token moves, `take_offer` refuses the take with `OfferTermsChanged` if the vault holds less token A than `minimum_token_a_out` or the offer wants more token B than `maximum_token_b_in`. On the ordinary path a client passes the terms it read from the offer: the vault's balance and the `token_b_wanted_amount`.
 
 A maker abandons an offer with `cancel_offer`. Only the maker can call it; without it, an unwanted offer would lock the maker's tokens in the vault forever. The handler returns the vault's token A to the maker and closes the vault and offer accounts, refunding both rents to the maker.
 
@@ -45,7 +47,7 @@ The tests are Rust integration tests running against [LiteSVM](https://www.ancho
 cargo test
 ```
 
-(`anchor test` runs the same command, per `Anchor.toml`.) The tests cover the make/take flow, the make/cancel flow, rejection of a non-maker cancel, token balances on every leg, and the rent refunds (the maker's lamports recover the offer and vault rent after both take and cancel).
+(`anchor test` runs the same command, per `Anchor.toml`.) The tests tell the story above: token A is USDC, minted at 6 decimals, token B is TSLAx at 8, and Alice offers 250 USDC (250,000,000 minor units) for 1 TSLAx (100,000,000 minor units), which Bob takes. Both start with the standard wallet of 1 SOL and 1,000 USDC, and Bob also holds 1 TSLAx, so the take leaves him at 1,250 USDC and no TSLAx. They cover the make/take flow, the make/cancel flow, rejection of a non-maker cancel (Anchor's `ConstraintAddress`, 2012), rejection of a take that lands on an offer the maker cancelled and re-made at worse terms (`test_take_offer_rejects_switched_offer` for 1 USDC instead of 250, `test_take_offer_rejects_switched_offer_wanting_more_token_b` for 2 TSLAx instead of 1), rejection of offers with zero tokens on either side (`ZeroAmount`) or the same token on both (`ConstraintDuplicateMutableAccount`, 2040), token balances on every leg, and the rent refunds (the maker's lamports recover the offer and vault rent after both take and cancel). Every refusal test asserts the error code it expects.
 
 ## FAQ
 
@@ -61,9 +63,9 @@ Yes. Escrow is the smallest complete finance program: one state PDA, one vault, 
 
 Build with `anchor build`, then run `cargo test`. The tests are Rust integration tests against [LiteSVM](https://www.anchor-lang.com/docs/testing/litesvm), so no local validator is needed.
 
-### How is this escrow program verified?
+### How is this escrow program tested?
 
-Two ways: LiteSVM integration tests covering the make, take, and cancel flows, and [Kani](https://github.com/model-checking/kani) proofs in [`../kani-proofs/`](../kani-proofs/) that check the money-math invariants over all possible inputs, not just test cases.
+Two ways: LiteSVM integration tests covering the make, take, and cancel flows, and [Kani](https://github.com/model-checking/kani) model checks in [`../kani-proofs/`](../kani-proofs/) that check the arithmetic invariants for every input in their declared ranges, not just test cases.
 
 ## Credit
 

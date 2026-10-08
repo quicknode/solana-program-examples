@@ -19,8 +19,8 @@ via Jupiter routing rather than their own user interfaces.
 ## Programs
 
 - **`prop-amm`**: the market. One operator, one base/quote pair, one oracle
-  feed, two vaults, five instruction handlers.
-- **`mock-switchboard`**: a minimal stand-in for a Switchboard On-Demand
+  feed, two vaults, six instruction handlers.
+- **`mock-price-feed`**: a minimal stand-in for an oracle's
   price feed, so tests can drive deterministic price scenarios. Not for
   production.
 
@@ -67,11 +67,13 @@ during fast markets their quotes vanish and return minutes later.
 
 ### Oracle staleness and confidence
 
-Every swap re-validates the feed: the price must be positive, at the pinned
-scale, no older than 150 slots (~1 minute), stamped after the most recent
-cluster restart (the `LastRestartSlot` sysvar; a halt passes hours of
-wall-clock time in zero slots), and its confidence band must be inside
-`max_confidence_bps`. For this design the staleness bound is not
+Every swap re-validates the feed: the feed account must be owned by the
+program the market recorded at creation (`PriceFeedNotFromOracle` otherwise;
+the layout alone says nothing about who wrote the bytes), the price must be
+positive, at the pinned scale, no older than 150 slots (~1 minute), stamped
+after the most recent cluster restart (the `LastRestartSlot` sysvar; a halt
+passes hours of wall-clock time in zero slots), and its confidence band must
+be inside `max_confidence_bps`. For this design the staleness bound is not
 hygiene, it is the business: a quote priced off an old number is a free
 option for whoever notices first.
 
@@ -80,16 +82,17 @@ option for whoever notices first.
 ### Participants
 
 - **Maria** operates the market-making firm.
-- **Alice** and **Bob** trade NVDAx (tokenized NVIDIA stock, 6 decimals)
-  against USDC.
+- **Alice** and **Bob** trade NVDAx (tokenized NVIDIA stock, 8 decimals)
+  against USDC (6 decimals).
 - The oracle quotes NVDAx at **$165** with 8 decimals of scale.
 
 ### Step 1: Maria opens the market
 
 `initialize_market` creates the `Market` account (PDA of the mint pair) and
 the two vaults, which the market account itself owns and signs for, and pins
-the oracle feed, its scale, a 10 bps spread, and a 1% confidence limit. One market per pair:
-the deployment is the firm.
+the oracle feed, the program that owns it (`price_feed_program`, read from
+the feed account's owner), its scale, a 10 bps spread, and a 1% confidence
+limit. One market per pair: the deployment is the firm.
 
 ### Step 2: Maria stocks the inventory
 
@@ -100,14 +103,18 @@ nobody else to account for.
 ### Step 3: Alice buys 5 NVDAx at the ask
 
 At $165 with a 10 bps spread the ask is $165.165. Alice's `swap`
-(`Direction::BuyBase`) spends exactly 1,651.65 USDC for 10 NVDAx;
-whether she bought 1 or 500, the unit price would be the same.
+(`Direction::BuyBase`) spends exactly 825.825 USDC for 5 NVDAx;
+whether she bought 1 or 500, the unit price would be the same. The fill is
+exact in USDC's six decimals because the ask has three decimal places of a
+dollar, and 5 is a whole number of NVDAx whatever the token's decimals: the
+quote math scales the base and quote amounts by their own mints' decimals,
+which need not match.
 
 ### Step 4: Bob sells 5 NVDAx at the bid
 
 The bid is $164.835, so Bob's `swap` (`Direction::SellBase`) receives
-exactly 1,648.35 USDC. A round trip through both sides costs exactly the
-3.30 USDC spread: the spread is the fee, and it lands in the inventory,
+exactly 824.175 USDC. A round trip through both sides costs exactly the
+1.65 USDC spread: the spread is the fee, and it lands in the inventory,
 not in a fee ledger.
 
 ### Step 5: The oracle reprices; the quote follows
@@ -128,6 +135,14 @@ AMM gets from one price to another.
 market still exists but rejects fills: an empty prop AMM refuses rather than
 misprices.
 
+### Step 8: Maria closes the market
+
+`close_market` closes both vaults and the `Market` account and returns all
+three rents to Maria, who paid them at `initialize_market`. Only the operator
+can call it (`address = market.operator`, as on `withdraw_inventory`), and it refuses with
+`InventoryNotEmpty` while either vault holds a single minor unit, including
+tokens someone sent straight to a vault: she withdraws them first.
+
 ## Design notes and further reading
 
 - Production prop AMMs on Solana are closed-source and considerably more
@@ -138,14 +153,11 @@ misprices.
 - Lifinity's public design notes and the Helius write-up
   "Solana's Proprietary AMM Revolution" are good next reads.
 - The oracle reader deliberately reads raw bytes at fixed offsets and
-  documents how to swap in `switchboard_on_demand::PullFeedAccountData::
-  parse_and_verify(...)` for production.
+  documents how to read a Pyth `PriceUpdateV2` account
+  instead in production.
 
 ## Limitations
 
-- The oracle feed's owning program is not verified: the operator picks the
-  feed, and a bad choice loses the operator's money, not the traders'. A
-  production reader must still check the account owner.
 - One flat spread both ways; no inventory skew, no size-dependent pricing.
 - `paused` is the only circuit breaker; production venues also bound
   per-slot volume and single-fill size.
@@ -157,11 +169,26 @@ anchor build
 cargo test
 ```
 
-The LiteSVM suite (`programs/prop-amm/tests/test_prop_amm.rs`) verifies the
-quote math to the minor unit in both directions, the exact round-trip spread,
-oracle repricing and re-quoting, and that every gate shuts: slippage,
-staleness, confidence, pause, zero amounts, inventory bounds, and operator
-access control.
+The LiteSVM suite (`programs/prop-amm/tests/test_prop_amm.rs`) mints NVDAx
+with 8 decimals and USDC with 6, verifies the quote math to the minor unit in
+both directions, the exact round-trip spread, oracle repricing and re-quoting,
+and that every gate shuts: slippage, staleness, a price from before a cluster
+restart, confidence, a feed account owned by another program
+(`test_swap_rejects_price_feed_from_another_program`), pause, zero amounts,
+inventory bounds, parameter bounds, and operator access control. The
+oracle reader's layout and value checks each have a test that drives a swap
+into them: a zero or negative price (`test_swap_rejects_non_positive_price`),
+a feed at another scale than the market pinned
+(`test_swap_rejects_oracle_scale_mismatch`), and a feed account too short to
+decode (`test_swap_rejects_oracle_data_too_short`); so does a buy too small
+to deliver one minor unit (`test_swap_rejects_amount_that_rounds_to_zero`).
+`test_close_market_returns_all_three_rents` closes an emptied market and
+checks the operator gets the three rents back to the lamport;
+`test_close_market_refuses_while_a_vault_holds_tokens` and
+`test_close_market_rejects_non_operator` cover its refusals. Every
+refusal test asserts its error code: `assert_fails_with` for the program's
+own errors and `assert_fails_with_anchor_error` for the constraint that keeps
+the operator's instructions to the operator.
 
 ## FAQ
 
@@ -179,4 +206,4 @@ The spread is the fee: buyers pay the oracle price plus `spread_bps`, sellers re
 
 ### What stops the venue from quoting a stale price?
 
-Every `swap` re-validates the feed: the price must be fresh (no older than 150 slots), stamped after the most recent cluster restart, at the pinned scale, and inside the configured confidence band. A stale quote is a free option for whoever notices first, so the staleness checks are the business model, not hygiene.
+Every `swap` re-validates the feed: the feed account must be owned by the program the market recorded at creation, and the price must be fresh (no older than 150 slots), stamped after the most recent cluster restart, at the pinned scale, and inside the configured confidence band. A stale quote is a free option for whoever notices first, so the staleness checks are the business model, not hygiene.

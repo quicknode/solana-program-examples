@@ -2,9 +2,7 @@ use {
     crate::{
         constants::STATUS_HELD,
         errors::OptionsError,
-        instructions::shared::{
-            check_custody, may_reclaim, sub_locked, transfer_from_vault, Terms,
-        },
+        instructions::shared::{check_custody, may_reclaim, sub_owed, transfer_from_vault, Terms},
         state::{Market, OptionContract},
     },
     quasar_lang::{prelude::*, sysvars::Sysvar as _},
@@ -36,11 +34,21 @@ pub struct ReclaimCollateralAccountConstraints {
     pub underlying_vault: Account<Token>,
     #[account(mut)]
     pub quote_vault: Account<Token>,
-    #[account(mut)]
+    /// A call writer's collateral comes back here. A put writer may never
+    /// have held the underlying (or may have closed the account since
+    /// writing), so it is created if needed, at the writer's expense.
+    #[account(
+        mut,
+        init(idempotent),
+        payer = writer,
+        associated_token(mint = underlying_mint, authority = writer, token_program = token_program),
+    )]
     pub writer_underlying: Account<Token>,
     #[account(mut)]
     pub writer_quote: Account<Token>,
     pub token_program: Program<TokenProgram>,
+    pub associated_token_program: Program<AssociatedTokenProgram>,
+    pub system_program: Program<SystemProgram>,
 }
 
 /// The holder let the option expire, so the writer takes the collateral
@@ -64,23 +72,22 @@ pub fn handle_reclaim_collateral(
 
     let terms = Terms {
         kind: accounts.option.kind,
-        contracts: accounts.option.contracts.get(),
-        underlying_per_contract: accounts.option.underlying_per_contract.get(),
-        strike_per_contract: accounts.option.strike_per_contract.get(),
+        underlying_amount: accounts.option.underlying_amount.get(),
+        strike_amount: accounts.option.strike_amount.get(),
     };
-    let collateral = terms.collateral_amount()?;
+    let collateral = terms.collateral_amount();
 
     let mut underlying_after = accounts.underlying_vault.amount();
     let mut quote_after = accounts.quote_vault.amount();
     if terms.is_call() {
-        sub_locked(
-            &mut accounts.market.underlying_locked,
+        sub_owed(
+            &mut accounts.market.underlying_owed,
             &mut underlying_after,
             collateral,
         )?;
     } else {
-        sub_locked(
-            &mut accounts.market.quote_locked,
+        sub_owed(
+            &mut accounts.market.quote_owed,
             &mut quote_after,
             collateral,
         )?;

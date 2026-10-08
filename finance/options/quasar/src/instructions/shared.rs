@@ -1,7 +1,8 @@
 //! The pure contract math and the custody check, ported from the Anchor
-//! sibling (`options::contract_math` and `instructions::shared`). There is no
-//! division anywhere in settlement: every amount is a product of two of the
-//! option's integers, and the only rounding is the floor in the fee split.
+//! sibling (`options::contract_math` and `instructions::shared`). Settlement
+//! does no arithmetic at all: the option stores the two amounts that change
+//! hands, and the only rounding is in the fee split, where the fee rounds up
+//! and the writer takes the remainder.
 
 use {
     crate::{
@@ -17,9 +18,8 @@ use {
 #[derive(Clone, Copy)]
 pub struct Terms {
     pub kind: u8,
-    pub contracts: u64,
-    pub underlying_per_contract: u64,
-    pub strike_per_contract: u64,
+    pub underlying_amount: u64,
+    pub strike_amount: u64,
 }
 
 impl Terms {
@@ -27,36 +27,22 @@ impl Terms {
         self.kind == KIND_CALL
     }
 
-    /// `contracts * underlying_per_contract`.
-    pub fn underlying_total(&self) -> Result<u64, ProgramError> {
-        self.contracts
-            .checked_mul(self.underlying_per_contract)
-            .ok_or_else(|| OptionsError::MathOverflow.into())
-    }
-
-    /// `contracts * strike_per_contract`.
-    pub fn strike_total(&self) -> Result<u64, ProgramError> {
-        self.contracts
-            .checked_mul(self.strike_per_contract)
-            .ok_or_else(|| OptionsError::MathOverflow.into())
-    }
-
     /// What the writer posts: the underlying for a call, the strike for a put.
-    pub fn collateral_amount(&self) -> Result<u64, ProgramError> {
+    pub fn collateral_amount(&self) -> u64 {
         if self.is_call() {
-            self.underlying_total()
+            self.underlying_amount
         } else {
-            self.strike_total()
+            self.strike_amount
         }
     }
 
     /// What the holder pays at exercise and the writer later collects: the
     /// mirror of `collateral_amount`, in the other token.
-    pub fn exercise_payment(&self) -> Result<u64, ProgramError> {
+    pub fn exercise_payment(&self) -> u64 {
         if self.is_call() {
-            self.strike_total()
+            self.strike_amount
         } else {
-            self.underlying_total()
+            self.underlying_amount
         }
     }
 }
@@ -71,13 +57,19 @@ pub fn require_valid_kind(kind: u8) -> Result<(), ProgramError> {
 }
 
 /// Split a premium into the venue's fee and the writer's share. The fee
-/// floors, so the writer receives the rounding minor unit.
+/// rounds up, in the venue's favor, and the writer receives the premium minus
+/// the fee: a fee that floored would hand the writer the rounding minor unit
+/// on every sale whose premium is not a multiple of the rate. The two shares
+/// always sum to the premium. With the rate under 100% the fee never exceeds
+/// the premium, but a premium of a single minor unit rounds entirely into the
+/// fee.
 pub fn split_premium(premium: u64, fee_bps: u16) -> Result<(u64, u64), ProgramError> {
+    // The product of a u64 and a u16 is far below u128::MAX, so the ceiling
+    // division cannot overflow.
     let fee = (premium as u128)
         .checked_mul(fee_bps as u128)
         .ok_or(OptionsError::MathOverflow)?
-        .checked_div(BASIS_POINTS_DENOMINATOR as u128)
-        .ok_or(OptionsError::MathOverflow)?;
+        .div_ceil(BASIS_POINTS_DENOMINATOR as u128);
     let fee = u64::try_from(fee).map_err(|_| OptionsError::MathOverflow)?;
     let to_writer = premium.checked_sub(fee).ok_or(OptionsError::MathOverflow)?;
     Ok((fee, to_writer))
@@ -103,11 +95,11 @@ pub fn check_custody(
     quote_after: u64,
 ) -> Result<(), ProgramError> {
     require!(
-        underlying_after >= market.underlying_locked.get(),
+        underlying_after >= market.underlying_owed.get(),
         OptionsError::CustodyInvariantViolated
     );
     let quote_owed = market
-        .quote_locked
+        .quote_owed
         .get()
         .checked_add(market.fees_owed.get())
         .ok_or(OptionsError::MathOverflow)?;
@@ -119,11 +111,7 @@ pub fn check_custody(
 }
 
 /// Add `amount` to a ledger counter and to the matching projected balance.
-pub fn add_locked(
-    counter: &mut PodU64,
-    balance: &mut u64,
-    amount: u64,
-) -> Result<(), ProgramError> {
+pub fn add_owed(counter: &mut PodU64, balance: &mut u64, amount: u64) -> Result<(), ProgramError> {
     counter.set(
         counter
             .get()
@@ -138,11 +126,7 @@ pub fn add_locked(
 
 /// Subtract `amount` from a ledger counter and from the matching projected
 /// balance. A balance that cannot cover the subtraction is a custody failure.
-pub fn sub_locked(
-    counter: &mut PodU64,
-    balance: &mut u64,
-    amount: u64,
-) -> Result<(), ProgramError> {
+pub fn sub_owed(counter: &mut PodU64, balance: &mut u64, amount: u64) -> Result<(), ProgramError> {
     counter.set(
         counter
             .get()

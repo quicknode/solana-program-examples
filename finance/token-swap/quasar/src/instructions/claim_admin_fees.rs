@@ -19,6 +19,8 @@ pub struct ClaimAdminFeesAccountConstraints {
     #[account(
         mut,
         address = PoolPda::seeds(config.address(), mint_a.address(), mint_b.address()),
+        has_one(pool_a) @ AmmError::InvalidPoolVault,
+        has_one(pool_b) @ AmmError::InvalidPoolVault,
     )]
     pub pool_config: Account<PoolConfig>,
     pub mint_a: Account<Mint>,
@@ -71,16 +73,19 @@ pub fn handle_claim_admin_fees(
         Seed::from(&bump as &[u8]),
     ];
 
-    // Effects: zero the accumulators before the transfer CPIs
-    // (Checks-Effects-Interactions). If a CPI fails the whole transaction
-    // reverts, so resetting the onchain bookkeeping first is safe.
+    // Zero the accumulators. If a transfer below fails, the whole transaction
+    // reverts, so the accumulators keep their values.
     let config_addr = *accounts.pool_config.config();
     let mint_a_addr = *accounts.pool_config.mint_a();
     let mint_b_addr = *accounts.pool_config.mint_b();
+    let pool_a_addr = *accounts.pool_config.pool_a();
+    let pool_b_addr = *accounts.pool_config.pool_b();
     accounts.pool_config.set_inner(PoolConfigInner {
         config: config_addr,
         mint_a: mint_a_addr,
         mint_b: mint_b_addr,
+        pool_a: pool_a_addr,
+        pool_b: pool_b_addr,
         admin_fees_owed_a: 0,
         admin_fees_owed_b: 0,
     });

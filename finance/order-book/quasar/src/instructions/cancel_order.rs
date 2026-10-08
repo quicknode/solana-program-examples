@@ -2,7 +2,7 @@ use quasar_lang::prelude::*;
 
 use crate::errors::OrderBookError;
 use crate::state::{
-    load_order_book_mut, remaining_quantity, remove_open_order, snapshot_market_user,
+    credit_unfilled_lock, load_order_book_mut, remove_open_order, snapshot_market_user,
     snapshot_order, Market, MarketUser, Order, OrderSide, OrderStatus,
 };
 
@@ -47,55 +47,19 @@ pub fn handle_cancel_order(
     // Funds the order had locked in the vault are now owed back to the owner.
     // Credit the appropriate unsettled balance; settle_funds moves those funds
     // from the vault to the owner's token account.
-    let remaining = remaining_quantity(order.original_quantity, order.filled_quantity);
-    if remaining > 0 {
-        let quote_lot_size = u64::from(accounts.market.quote_lot_size);
-        let base_lot_size = u64::from(accounts.market.base_lot_size);
-        let mut market_user = snapshot_market_user(&accounts.market_user);
-        match side {
-            OrderSide::Bid => {
-                // raw_quote = price × remaining × quote_lot_size (u128 to
-                // mirror the bid-lock formula in place_order).
-                let quote_amount: u64 = (order.price as u128)
-                    .checked_mul(remaining as u128)
-                    .ok_or(OrderBookError::NumericalOverflow)?
-                    .checked_mul(quote_lot_size as u128)
-                    .ok_or(OrderBookError::NumericalOverflow)?
-                    .try_into()
-                    .map_err(|_| OrderBookError::NumericalOverflow)?;
-                market_user.unsettled_quote = market_user
-                    .unsettled_quote
-                    .checked_add(quote_amount)
-                    .ok_or(OrderBookError::NumericalOverflow)?;
-            }
-            OrderSide::Ask => {
-                let base_amount: u64 = (remaining as u128)
-                    .checked_mul(base_lot_size as u128)
-                    .ok_or(OrderBookError::NumericalOverflow)?
-                    .try_into()
-                    .map_err(|_| OrderBookError::NumericalOverflow)?;
-                market_user.unsettled_base = market_user
-                    .unsettled_base
-                    .checked_add(base_amount)
-                    .ok_or(OrderBookError::NumericalOverflow)?;
-            }
-        }
-        remove_open_order(
-            &mut market_user.open_orders,
-            &mut market_user.open_orders_len,
-            order.order_id,
-        );
-        accounts.market_user.set_inner(market_user);
-    } else {
-        // No locked remainder, but the id is still tracked as open - drop it.
-        let mut market_user = snapshot_market_user(&accounts.market_user);
-        remove_open_order(
-            &mut market_user.open_orders,
-            &mut market_user.open_orders_len,
-            order.order_id,
-        );
-        accounts.market_user.set_inner(market_user);
-    }
+    let mut market_user = snapshot_market_user(&accounts.market_user);
+    credit_unfilled_lock(
+        &order,
+        u64::from(accounts.market.base_lot_size),
+        u64::from(accounts.market.quote_lot_size),
+        &mut market_user,
+    )?;
+    remove_open_order(
+        &mut market_user.open_orders,
+        &mut market_user.open_orders_len,
+        order.order_id,
+    );
+    accounts.market_user.set_inner(market_user);
 
     // Remove the leaf from the slab. The side comes from the Order account, so
     // no cross-side scan is needed.

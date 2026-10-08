@@ -5,19 +5,34 @@
 use {
     crate::{
         cpi::{
-            DepositInventoryInstruction, InitializeMarketInstruction, SetQuoteInstruction,
-            SwapInstruction, WithdrawInventoryInstruction,
+            CloseMarketInstruction, DepositInventoryInstruction, InitializeMarketInstruction,
+            SetQuoteInstruction, SwapInstruction, WithdrawInventoryInstruction,
         },
+        instructions::shared::error,
         state::Market,
         BaseVaultPda, QuoteVaultPda,
     },
+    quasar_lang::error::QuasarError,
     quasar_test::prelude::*,
 };
 
-// Both tokens have 6 decimals: base is NVDAx (tokenized NVIDIA stock), quote
-// is USDC.
-const ONE_TOKEN: u64 = 1_000_000;
-// The oracle quotes prices with 8 decimals, so $165 is 165 * 10^8.
+// The base is NVDAx (tokenized NVIDIA stock), which has 8 decimals; the quote
+// is USDC, which has 6. The program reads both from the mints, so nothing in
+// the quote math assumes they match.
+const NVDAX_DECIMALS: u8 = 8;
+const ONE_NVDAX: u64 = 100_000_000;
+const USDC_DECIMALS: u8 = 6;
+const ONE_USDC: u64 = 1_000_000;
+
+// The walkthrough trade: at $165 with a 10 bps spread the ask is $165.165 and
+// the bid $164.835, so 5 NVDAx costs 825.825 USDC and sells for 824.175. Both
+// are exact in USDC's six decimals because the ask and bid have only three
+// decimal places of a dollar, and 5 is a whole number of NVDAx whatever the
+// token's decimals.
+const FIVE_NVDAX: u64 = 5 * ONE_NVDAX;
+const FIVE_NVDAX_AT_THE_ASK: u64 = 825_825_000; // 825.825 USDC
+const FIVE_NVDAX_AT_THE_BID: u64 = 824_175_000; // 824.175 USDC
+                                                // The oracle quotes prices with 8 decimals, so $165 is 165 * 10^8.
 const ORACLE_SCALE: u32 = 8;
 const SPREAD_BPS: u16 = 10;
 const MAX_CONFIDENCE_BPS: u16 = 100;
@@ -45,6 +60,8 @@ const TRADER_QUOTE: Pubkey = Pubkey::new_from_array([9; 32]);
 const MALLORY: Pubkey = Pubkey::new_from_array([10; 32]);
 const MALLORY_BASE: Pubkey = Pubkey::new_from_array([11; 32]);
 const MALLORY_QUOTE: Pubkey = Pubkey::new_from_array([12; 32]);
+// A program that is not the one the market recorded as its feed's owner.
+const OTHER_PROGRAM: Pubkey = Pubkey::new_from_array([13; 32]);
 
 fn dollars(whole: i128) -> i128 {
     whole * 10i128.pow(ORACLE_SCALE)
@@ -70,15 +87,23 @@ fn set_clock(test: &mut Test) {
 }
 
 /// A feed account in this program's layout: price (i128), scale (u32),
-/// last_update_slot (u64), confidence (u64). The tests own this; production
-/// reads a real feed.
+/// last_update_slot (u64), confidence (u64), owned by the system program,
+/// which the market therefore records as the feed's owning program. The tests
+/// own this; production reads a real feed.
 fn set_feed_at_slot(test: &mut Test, price: i128, slot: u64, confidence: u64) {
+    set_feed_owned_by(test, system_program::ID, price, slot, confidence);
+}
+
+/// Write the feed account at `FEED` with `owner` as its owning program. The
+/// bytes are the same whoever owns it, so a copy owned by another program
+/// still decodes as a fresh, confident price at the pinned scale.
+fn set_feed_owned_by(test: &mut Test, owner: Pubkey, price: i128, slot: u64, confidence: u64) {
     let mut data = Vec::with_capacity(36);
     data.extend_from_slice(&price.to_le_bytes());
     data.extend_from_slice(&ORACLE_SCALE.to_le_bytes());
     data.extend_from_slice(&slot.to_le_bytes());
     data.extend_from_slice(&confidence.to_le_bytes());
-    test.set_account(Account::new(FEED, system_program::ID, 1_000_000, data));
+    test.set_account(Account::new(FEED, owner, 1_000_000, data));
 }
 
 fn set_feed(test: &mut Test, price: i128, confidence: u64) {
@@ -131,19 +156,19 @@ struct Env {
 /// and an initialized (but unstocked) market at `spread_bps`.
 fn base_world(test: &mut Test, spread_bps: u16) -> (Env, Outcome) {
     test.add(Wallet::new().at(OPERATOR));
-    test.add(Mint::new(OPERATOR).at(BASE_MINT).decimals(6));
-    test.add(Mint::new(OPERATOR).at(QUOTE_MINT).decimals(6));
+    test.add(Mint::new(OPERATOR).at(BASE_MINT).decimals(NVDAX_DECIMALS));
+    test.add(Mint::new(OPERATOR).at(QUOTE_MINT).decimals(USDC_DECIMALS));
     set_feed(test, dollars(165), 0);
     set_clock(test);
     test.add(
         TokenAccount::new(BASE_MINT, OPERATOR)
             .at(OPERATOR_BASE)
-            .amount(10_000 * ONE_TOKEN),
+            .amount(10_000 * ONE_NVDAX),
     );
     test.add(
         TokenAccount::new(QUOTE_MINT, OPERATOR)
             .at(OPERATOR_QUOTE)
-            .amount(10_000_000 * ONE_TOKEN),
+            .amount(10_000_000 * ONE_USDC),
     );
     let outcome = init_market(test, spread_bps);
     let market = test.derive_pda(Market::seeds(&BASE_MINT, &QUOTE_MINT));
@@ -190,8 +215,8 @@ fn setup(test: &mut Test) -> Env {
         OPERATOR,
         OPERATOR_BASE,
         OPERATOR_QUOTE,
-        1_000 * ONE_TOKEN,
-        200_000 * ONE_TOKEN,
+        1_000 * ONE_NVDAX,
+        200_000 * ONE_USDC,
     )
     .succeeds();
     env
@@ -276,13 +301,60 @@ fn withdraw_inventory(
     })
 }
 
+fn close_market(test: &mut Test, env: &Env, signer: Pubkey) -> Outcome {
+    test.send(CloseMarketInstruction {
+        operator: signer,
+        base_mint: BASE_MINT,
+        quote_mint: QUOTE_MINT,
+        base_vault: env.base_vault,
+        quote_vault: env.quote_vault,
+    })
+}
+
+/// A plain SPL Token `transfer_checked` (instruction 12) of `amount` minor
+/// units from `from_account` (owned by `sender`) straight into `vault`.
+/// Nothing in the market program runs: this is a third party donating tokens
+/// to a vault, not the operator's `deposit_inventory`.
+fn donate_to_vault(
+    test: &mut Test,
+    sender: Pubkey,
+    from_account: Pubkey,
+    mint: Pubkey,
+    decimals: u8,
+    vault: Pubkey,
+    amount: u64,
+) {
+    let before = test.tokens(vault);
+    let mut data = vec![12u8];
+    data.extend_from_slice(&amount.to_le_bytes());
+    data.push(decimals);
+    test.send(Instruction {
+        program_id: SPL_TOKEN_PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(from_account, false),
+            AccountMeta::new_readonly(mint, false),
+            AccountMeta::new(vault, false),
+            AccountMeta::new_readonly(sender, true),
+        ],
+        data,
+    })
+    .succeeds()
+    .has_tokens(vault, before + amount);
+}
+
+/// Write raw bytes as the feed account, owned by the program the market
+/// recorded, so only the layout and value checks can refuse it.
+fn set_feed_data(test: &mut Test, data: Vec<u8>) {
+    test.set_account(Account::new(FEED, system_program::ID, 1_000_000, data));
+}
+
 #[quasar_test]
 fn initialize_market_creates_market_and_stocked_vaults(test: &mut Test) {
     let env = setup(test);
     // The market and both vaults were created, and the inventory landed.
     assert!(test.account(env.market).is_some());
-    assert_eq!(test.tokens(env.base_vault), 1_000 * ONE_TOKEN);
-    assert_eq!(test.tokens(env.quote_vault), 200_000 * ONE_TOKEN);
+    assert_eq!(test.tokens(env.base_vault), 1_000 * ONE_NVDAX);
+    assert_eq!(test.tokens(env.quote_vault), 200_000 * ONE_USDC);
     // The market account itself is the token authority of both vaults (the
     // owner field is bytes 32..64 of the SPL Token account layout).
     let vault_owner =
@@ -296,7 +368,7 @@ fn initialize_market_creates_market_and_stocked_vaults(test: &mut Test) {
 #[quasar_test]
 fn swap_buys_base_at_the_ask(test: &mut Test) {
     let env = setup(test);
-    let quote_in = 825_825_000;
+    let quote_in = FIVE_NVDAX_AT_THE_ASK;
     fund_trader(test, TRADER, TRADER_BASE, TRADER_QUOTE, 0, quote_in);
 
     swap(
@@ -307,14 +379,14 @@ fn swap_buys_base_at_the_ask(test: &mut Test) {
         TRADER_QUOTE,
         DIRECTION_BUY_BASE,
         quote_in,
-        5 * ONE_TOKEN,
+        FIVE_NVDAX,
     )
     .succeeds()
-    .has_tokens(TRADER_BASE, 5 * ONE_TOKEN)
+    .has_tokens(TRADER_BASE, FIVE_NVDAX)
     .has_tokens(TRADER_QUOTE, 0)
     // Conservation: the vaults moved by exactly the two legs of the fill.
-    .has_tokens(env.base_vault, 995 * ONE_TOKEN)
-    .has_tokens(env.quote_vault, 200_000 * ONE_TOKEN + quote_in);
+    .has_tokens(env.base_vault, 995 * ONE_NVDAX)
+    .has_tokens(env.quote_vault, 200_000 * ONE_USDC + quote_in);
 }
 
 /// Bob sells 5 NVDAx. At $165 with a 10 bps spread the bid is $164.835, so
@@ -322,7 +394,7 @@ fn swap_buys_base_at_the_ask(test: &mut Test) {
 #[quasar_test]
 fn swap_sells_base_at_the_bid(test: &mut Test) {
     let env = setup(test);
-    fund_trader(test, TRADER, TRADER_BASE, TRADER_QUOTE, 5 * ONE_TOKEN, 0);
+    fund_trader(test, TRADER, TRADER_BASE, TRADER_QUOTE, FIVE_NVDAX, 0);
 
     swap(
         test,
@@ -331,12 +403,14 @@ fn swap_sells_base_at_the_bid(test: &mut Test) {
         TRADER_BASE,
         TRADER_QUOTE,
         DIRECTION_SELL_BASE,
-        5 * ONE_TOKEN,
-        824_175_000,
+        FIVE_NVDAX,
+        FIVE_NVDAX_AT_THE_BID,
     )
     .succeeds()
     .has_tokens(TRADER_BASE, 0)
-    .has_tokens(TRADER_QUOTE, 824_175_000);
+    .has_tokens(TRADER_QUOTE, FIVE_NVDAX_AT_THE_BID)
+    .has_tokens(env.base_vault, 1_005 * ONE_NVDAX)
+    .has_tokens(env.quote_vault, 200_000 * ONE_USDC - FIVE_NVDAX_AT_THE_BID);
 }
 
 /// A buy immediately followed by a sell of the same 5 NVDAx costs exactly
@@ -344,7 +418,7 @@ fn swap_sells_base_at_the_bid(test: &mut Test) {
 #[quasar_test]
 fn round_trip_costs_exactly_the_spread(test: &mut Test) {
     let env = setup(test);
-    let quote_in = 825_825_000;
+    let quote_in = FIVE_NVDAX_AT_THE_ASK;
     fund_trader(test, TRADER, TRADER_BASE, TRADER_QUOTE, 0, quote_in);
 
     swap(
@@ -365,13 +439,15 @@ fn round_trip_costs_exactly_the_spread(test: &mut Test) {
         TRADER_BASE,
         TRADER_QUOTE,
         DIRECTION_SELL_BASE,
-        5 * ONE_TOKEN,
+        FIVE_NVDAX,
         0,
     )
     .succeeds()
     .has_tokens(TRADER_BASE, 0)
+    // 825.825 in, 824.175 back: the market kept 1.65 USDC.
     .has_tokens(TRADER_QUOTE, quote_in - 1_650_000)
-    .has_tokens(env.quote_vault, 200_000 * ONE_TOKEN + 1_650_000);
+    .has_tokens(env.base_vault, 1_000 * ONE_NVDAX)
+    .has_tokens(env.quote_vault, 200_000 * ONE_USDC + 1_650_000);
 }
 
 /// When the oracle reprices, the quote follows instantly. At $170 the ask is
@@ -391,10 +467,10 @@ fn quote_follows_the_oracle(test: &mut Test) {
         TRADER_QUOTE,
         DIRECTION_BUY_BASE,
         quote_in,
-        5 * ONE_TOKEN,
+        FIVE_NVDAX,
     )
     .succeeds()
-    .has_tokens(TRADER_BASE, 5 * ONE_TOKEN);
+    .has_tokens(TRADER_BASE, FIVE_NVDAX);
 }
 
 /// The operator re-quotes to a 50 bps spread; the next fill prices at
@@ -414,10 +490,10 @@ fn set_quote_changes_the_spread(test: &mut Test) {
         TRADER_QUOTE,
         DIRECTION_BUY_BASE,
         quote_in,
-        5 * ONE_TOKEN,
+        FIVE_NVDAX,
     )
     .succeeds()
-    .has_tokens(TRADER_BASE, 5 * ONE_TOKEN);
+    .has_tokens(TRADER_BASE, FIVE_NVDAX);
 }
 
 /// The operator can withdraw every token in both vaults at any time — its
@@ -431,48 +507,246 @@ fn operator_can_withdraw_everything_and_swaps_then_fail(test: &mut Test) {
         OPERATOR,
         OPERATOR_BASE,
         OPERATOR_QUOTE,
-        1_000 * ONE_TOKEN,
-        200_000 * ONE_TOKEN,
+        1_000 * ONE_NVDAX,
+        200_000 * ONE_USDC,
     )
     .succeeds()
     .has_tokens(env.base_vault, 0)
-    .has_tokens(env.quote_vault, 0);
+    .has_tokens(env.quote_vault, 0)
+    .has_tokens(OPERATOR_BASE, 10_000 * ONE_NVDAX)
+    .has_tokens(OPERATOR_QUOTE, 10_000_000 * ONE_USDC);
 
-    fund_trader(test, TRADER, TRADER_BASE, TRADER_QUOTE, 0, 825_825_000);
-    assert!(
-        swap(
-            test,
-            &env,
-            TRADER,
-            TRADER_BASE,
-            TRADER_QUOTE,
-            DIRECTION_BUY_BASE,
-            825_825_000,
-            0
-        )
-        .is_err(),
-        "a swap against an empty inventory must fail"
+    fund_trader(
+        test,
+        TRADER,
+        TRADER_BASE,
+        TRADER_QUOTE,
+        0,
+        FIVE_NVDAX_AT_THE_ASK,
     );
+    swap(
+        test,
+        &env,
+        TRADER,
+        TRADER_BASE,
+        TRADER_QUOTE,
+        DIRECTION_BUY_BASE,
+        FIVE_NVDAX_AT_THE_ASK,
+        0,
+    )
+    .fails_with(error::INSUFFICIENT_INVENTORY);
+}
+
+/// Maria withdraws every token, then closes the market. The market account
+/// and both vaults are gone, and the three rents she paid at
+/// `initialize_market` come back to her to the lamport.
+#[quasar_test]
+fn close_market_returns_all_three_rents(test: &mut Test) {
+    let env = setup(test);
+    withdraw_inventory(
+        test,
+        &env,
+        OPERATOR,
+        OPERATOR_BASE,
+        OPERATOR_QUOTE,
+        1_000 * ONE_NVDAX,
+        200_000 * ONE_USDC,
+    )
+    .succeeds();
+
+    let operator_before = test.lamports(OPERATOR);
+    let rents =
+        test.lamports(env.market) + test.lamports(env.base_vault) + test.lamports(env.quote_vault);
+    assert!(rents > 0);
+
+    close_market(test, &env, OPERATOR)
+        .succeeds()
+        .is_closed(env.market)
+        .is_closed(env.base_vault)
+        .is_closed(env.quote_vault)
+        .has_lamports(OPERATOR, operator_before + rents);
+    // The inventory went back through `withdraw_inventory`, so the operator
+    // holds every token it started with.
+    assert_eq!(test.tokens(OPERATOR_BASE), 10_000 * ONE_NVDAX);
+    assert_eq!(test.tokens(OPERATOR_QUOTE), 10_000_000 * ONE_USDC);
+}
+
+/// The market cannot close while either vault holds a single minor unit: the
+/// operator withdraws first. Each vault's check is exercised on its own.
+#[quasar_test]
+fn close_market_refuses_while_a_vault_holds_tokens(test: &mut Test) {
+    let env = setup(test);
+    close_market(test, &env, OPERATOR).fails_with(error::INVENTORY_NOT_EMPTY);
+
+    // Base vault empty, quote vault still stocked.
+    withdraw_inventory(
+        test,
+        &env,
+        OPERATOR,
+        OPERATOR_BASE,
+        OPERATOR_QUOTE,
+        1_000 * ONE_NVDAX,
+        0,
+    )
+    .succeeds();
+    close_market(test, &env, OPERATOR).fails_with(error::INVENTORY_NOT_EMPTY);
+
+    // Quote vault empty, one minor unit of base back in the base vault.
+    withdraw_inventory(
+        test,
+        &env,
+        OPERATOR,
+        OPERATOR_BASE,
+        OPERATOR_QUOTE,
+        0,
+        200_000 * ONE_USDC,
+    )
+    .succeeds();
+    deposit_inventory(test, &env, OPERATOR, OPERATOR_BASE, OPERATOR_QUOTE, 1, 0).succeeds();
+    close_market(test, &env, OPERATOR).fails_with(error::INVENTORY_NOT_EMPTY);
+    assert!(test.account(env.market).is_some());
+
+    withdraw_inventory(test, &env, OPERATOR, OPERATOR_BASE, OPERATOR_QUOTE, 1, 0).succeeds();
+    close_market(test, &env, OPERATOR)
+        .succeeds()
+        .is_closed(env.market);
+}
+
+/// Nobody can wedge the close or slip tokens past it by sending them straight
+/// to a vault. After Maria withdraws everything, a stranger sends one minor
+/// unit of NVDAx into the base vault with a plain token transfer, not
+/// `deposit_inventory`, and the close is refused; then one minor unit of USDC
+/// into the quote vault, and the close is refused again. Maria withdraws each
+/// donation like any other inventory and the market closes.
+#[quasar_test]
+fn close_market_refuses_tokens_sent_straight_to_a_vault(test: &mut Test) {
+    let env = setup(test);
+    withdraw_inventory(
+        test,
+        &env,
+        OPERATOR,
+        OPERATOR_BASE,
+        OPERATOR_QUOTE,
+        1_000 * ONE_NVDAX,
+        200_000 * ONE_USDC,
+    )
+    .succeeds();
+    fund_trader(test, MALLORY, MALLORY_BASE, MALLORY_QUOTE, 1, 1);
+
+    donate_to_vault(
+        test,
+        MALLORY,
+        MALLORY_BASE,
+        BASE_MINT,
+        NVDAX_DECIMALS,
+        env.base_vault,
+        1,
+    );
+    close_market(test, &env, OPERATOR).fails_with(error::INVENTORY_NOT_EMPTY);
+    assert!(test.account(env.market).is_some());
+    withdraw_inventory(test, &env, OPERATOR, OPERATOR_BASE, OPERATOR_QUOTE, 1, 0).succeeds();
+
+    donate_to_vault(
+        test,
+        MALLORY,
+        MALLORY_QUOTE,
+        QUOTE_MINT,
+        USDC_DECIMALS,
+        env.quote_vault,
+        1,
+    );
+    close_market(test, &env, OPERATOR).fails_with(error::INVENTORY_NOT_EMPTY);
+    assert!(test.account(env.market).is_some());
+    withdraw_inventory(test, &env, OPERATOR, OPERATOR_BASE, OPERATOR_QUOTE, 0, 1).succeeds();
+
+    close_market(test, &env, OPERATOR)
+        .succeeds()
+        .is_closed(env.market);
+    // The operator now holds its own inventory plus both donated units.
+    assert_eq!(test.tokens(OPERATOR_BASE), 10_000 * ONE_NVDAX + 1);
+    assert_eq!(test.tokens(OPERATOR_QUOTE), 10_000_000 * ONE_USDC + 1);
+}
+
+/// A closed market cannot fill. Its account is gone, so a swap naming it
+/// fails before any token moves, and the trader keeps every token.
+#[quasar_test]
+fn swap_against_a_closed_market_fails(test: &mut Test) {
+    let env = setup(test);
+    withdraw_inventory(
+        test,
+        &env,
+        OPERATOR,
+        OPERATOR_BASE,
+        OPERATOR_QUOTE,
+        1_000 * ONE_NVDAX,
+        200_000 * ONE_USDC,
+    )
+    .succeeds();
+    close_market(test, &env, OPERATOR)
+        .succeeds()
+        .is_closed(env.market);
+
+    fund_trader(
+        test,
+        TRADER,
+        TRADER_BASE,
+        TRADER_QUOTE,
+        0,
+        FIVE_NVDAX_AT_THE_ASK,
+    );
+    // The closed market's address is an empty system account, so the
+    // runtime's owner check refuses it as `IllegalOwner` before the handler
+    // runs.
+    swap(
+        test,
+        &env,
+        TRADER,
+        TRADER_BASE,
+        TRADER_QUOTE,
+        DIRECTION_BUY_BASE,
+        FIVE_NVDAX_AT_THE_ASK,
+        0,
+    )
+    .fails(ProgramError::Runtime("IllegalOwner".into()));
+    assert_eq!(test.tokens(TRADER_BASE), 0);
+    assert_eq!(test.tokens(TRADER_QUOTE), FIVE_NVDAX_AT_THE_ASK);
+}
+
+#[quasar_test]
+fn close_market_rejects_non_operator(test: &mut Test) {
+    let env = setup(test);
+    withdraw_inventory(
+        test,
+        &env,
+        OPERATOR,
+        OPERATOR_BASE,
+        OPERATOR_QUOTE,
+        1_000 * ONE_NVDAX,
+        200_000 * ONE_USDC,
+    )
+    .succeeds();
+    test.add(Wallet::new().at(MALLORY));
+    close_market(test, &env, MALLORY).fails_with(QuasarError::HasOneMismatch);
+    assert!(test.account(env.market).is_some());
 }
 
 #[quasar_test]
 fn withdraw_more_than_inventory_fails(test: &mut Test) {
     let env = setup(test);
-    assert!(
-        withdraw_inventory(
-            test,
-            &env,
-            OPERATOR,
-            OPERATOR_BASE,
-            OPERATOR_QUOTE,
-            1_001 * ONE_TOKEN,
-            0
-        )
-        .is_err(),
-        "withdrawing more than the vault holds must fail"
-    );
+    withdraw_inventory(
+        test,
+        &env,
+        OPERATOR,
+        OPERATOR_BASE,
+        OPERATOR_QUOTE,
+        1_001 * ONE_NVDAX,
+        0,
+    )
+    .fails_with(error::INSUFFICIENT_INVENTORY);
 }
 
+/// `has_one(operator)` on the market is the whole access control, so an
+/// imposter is refused by Quasar's constraint check before the handler runs.
 #[quasar_test]
 fn deposit_rejects_non_operator(test: &mut Test) {
     let env = setup(test);
@@ -481,74 +755,62 @@ fn deposit_rejects_non_operator(test: &mut Test) {
         MALLORY,
         MALLORY_BASE,
         MALLORY_QUOTE,
-        ONE_TOKEN,
-        ONE_TOKEN,
+        ONE_NVDAX,
+        ONE_USDC,
     );
-    assert!(
-        deposit_inventory(
-            test,
-            &env,
-            MALLORY,
-            MALLORY_BASE,
-            MALLORY_QUOTE,
-            ONE_TOKEN,
-            0
-        )
-        .is_err(),
-        "deposit_inventory must reject a non-operator signer"
-    );
+    deposit_inventory(
+        test,
+        &env,
+        MALLORY,
+        MALLORY_BASE,
+        MALLORY_QUOTE,
+        ONE_NVDAX,
+        0,
+    )
+    .fails_with(QuasarError::HasOneMismatch);
 }
 
 #[quasar_test]
 fn withdraw_rejects_non_operator(test: &mut Test) {
     let env = setup(test);
     fund_trader(test, MALLORY, MALLORY_BASE, MALLORY_QUOTE, 0, 0);
-    assert!(
-        withdraw_inventory(
-            test,
-            &env,
-            MALLORY,
-            MALLORY_BASE,
-            MALLORY_QUOTE,
-            ONE_TOKEN,
-            0
-        )
-        .is_err(),
-        "withdraw_inventory must reject a non-operator signer"
-    );
+    withdraw_inventory(
+        test,
+        &env,
+        MALLORY,
+        MALLORY_BASE,
+        MALLORY_QUOTE,
+        ONE_NVDAX,
+        0,
+    )
+    .fails_with(QuasarError::HasOneMismatch);
 }
 
 #[quasar_test]
 fn set_quote_rejects_non_operator(test: &mut Test) {
     setup(test);
     test.add(Wallet::new().at(MALLORY));
-    assert!(
-        set_quote(test, MALLORY, 500, 1).is_err(),
-        "set_quote must reject a non-operator signer"
-    );
+    set_quote(test, MALLORY, 500, 1).fails_with(QuasarError::HasOneMismatch);
 }
 
 /// A fill below the caller's minimum is rejected, not filled worse.
 #[quasar_test]
 fn swap_rejects_slippage(test: &mut Test) {
     let env = setup(test);
-    let quote_in = 825_825_000;
+    let quote_in = FIVE_NVDAX_AT_THE_ASK;
     fund_trader(test, TRADER, TRADER_BASE, TRADER_QUOTE, 0, quote_in);
     // The fill would be exactly 5 NVDAx; demand one minor unit more.
-    assert!(
-        swap(
-            test,
-            &env,
-            TRADER,
-            TRADER_BASE,
-            TRADER_QUOTE,
-            DIRECTION_BUY_BASE,
-            quote_in,
-            5 * ONE_TOKEN + 1
-        )
-        .is_err(),
-        "a fill below minimum_amount_out must be rejected"
-    );
+    swap(
+        test,
+        &env,
+        TRADER,
+        TRADER_BASE,
+        TRADER_QUOTE,
+        DIRECTION_BUY_BASE,
+        quote_in,
+        FIVE_NVDAX + 1,
+    )
+    .fails_with(error::SLIPPAGE_EXCEEDED);
 }
 
 /// An oracle price older than the staleness bound cannot be traded against:
@@ -557,21 +819,25 @@ fn swap_rejects_slippage(test: &mut Test) {
 fn swap_rejects_stale_price(test: &mut Test) {
     let env = setup(test);
     make_price_stale(test);
-    fund_trader(test, TRADER, TRADER_BASE, TRADER_QUOTE, 0, 825_825_000);
-    assert!(
-        swap(
-            test,
-            &env,
-            TRADER,
-            TRADER_BASE,
-            TRADER_QUOTE,
-            DIRECTION_BUY_BASE,
-            825_825_000,
-            0
-        )
-        .is_err(),
-        "a stale oracle price must be rejected"
+    fund_trader(
+        test,
+        TRADER,
+        TRADER_BASE,
+        TRADER_QUOTE,
+        0,
+        FIVE_NVDAX_AT_THE_ASK,
     );
+    swap(
+        test,
+        &env,
+        TRADER,
+        TRADER_BASE,
+        TRADER_QUOTE,
+        DIRECTION_BUY_BASE,
+        FIVE_NVDAX_AT_THE_ASK,
+        0,
+    )
+    .fails_with(error::STALE_PRICE);
 }
 
 /// A cluster restart passes hours of wall-clock time in zero slots, so a
@@ -580,27 +846,31 @@ fn swap_rejects_stale_price(test: &mut Test) {
 #[quasar_test]
 fn swap_rejects_price_from_before_a_restart(test: &mut Test) {
     let env = setup(test);
-    fund_trader(test, TRADER, TRADER_BASE, TRADER_QUOTE, 0, 825_825_000 * 2);
+    fund_trader(
+        test,
+        TRADER,
+        TRADER_BASE,
+        TRADER_QUOTE,
+        0,
+        FIVE_NVDAX_AT_THE_ASK * 2,
+    );
 
     // The feed is stamped at `SLOT - 5`: fresh by the 150-slot staleness
     // bound, but published before a restart at `SLOT - 3`, so only the
     // restart check can catch it.
     set_feed_at_slot(test, dollars(165), SLOT - 5, 0);
     set_last_restart_slot(test, SLOT - 3);
-    assert!(
-        swap(
-            test,
-            &env,
-            TRADER,
-            TRADER_BASE,
-            TRADER_QUOTE,
-            DIRECTION_BUY_BASE,
-            825_825_000,
-            0
-        )
-        .is_err(),
-        "a pre-restart price must be rejected even inside the staleness bound"
-    );
+    swap(
+        test,
+        &env,
+        TRADER,
+        TRADER_BASE,
+        TRADER_QUOTE,
+        DIRECTION_BUY_BASE,
+        FIVE_NVDAX_AT_THE_ASK,
+        0,
+    )
+    .fails_with(error::PRICE_PREDATES_RESTART);
 
     // Publishing after the restart (at `SLOT`) reopens the market.
     set_feed(test, dollars(165), 0);
@@ -611,7 +881,55 @@ fn swap_rejects_price_from_before_a_restart(test: &mut Test) {
         TRADER_BASE,
         TRADER_QUOTE,
         DIRECTION_BUY_BASE,
-        825_825_000,
+        FIVE_NVDAX_AT_THE_ASK,
+        0,
+    )
+    .succeeds();
+}
+
+/// The market records the program that owns its feed at creation and refuses
+/// a price from a feed account owned by any other program, however well its
+/// bytes decode. The feed is swapped for a byte-identical copy owned by an
+/// unrelated program, and the refusal is by the owner alone: the same bytes
+/// owned by the recorded program again are accepted.
+#[quasar_test]
+fn swap_rejects_price_feed_from_another_program(test: &mut Test) {
+    let env = setup(test);
+    assert_eq!(
+        test.read::<Market>(env.market).price_feed_program,
+        system_program::ID
+    );
+    fund_trader(
+        test,
+        TRADER,
+        TRADER_BASE,
+        TRADER_QUOTE,
+        0,
+        FIVE_NVDAX_AT_THE_ASK,
+    );
+
+    set_feed_owned_by(test, OTHER_PROGRAM, dollars(165), SLOT, 0);
+    swap(
+        test,
+        &env,
+        TRADER,
+        TRADER_BASE,
+        TRADER_QUOTE,
+        DIRECTION_BUY_BASE,
+        FIVE_NVDAX_AT_THE_ASK,
+        0,
+    )
+    .fails_with(error::PRICE_FEED_NOT_FROM_ORACLE);
+
+    set_feed(test, dollars(165), 0);
+    swap(
+        test,
+        &env,
+        TRADER,
+        TRADER_BASE,
+        TRADER_QUOTE,
+        DIRECTION_BUY_BASE,
+        FIVE_NVDAX_AT_THE_ASK,
         0,
     )
     .succeeds();
@@ -623,8 +941,42 @@ fn swap_rejects_price_from_before_a_restart(test: &mut Test) {
 fn swap_rejects_wide_confidence(test: &mut Test) {
     let env = setup(test);
     set_feed(test, dollars(165), 200_000_000);
-    fund_trader(test, TRADER, TRADER_BASE, TRADER_QUOTE, 0, 825_825_000);
-    assert!(
+    fund_trader(
+        test,
+        TRADER,
+        TRADER_BASE,
+        TRADER_QUOTE,
+        0,
+        FIVE_NVDAX_AT_THE_ASK,
+    );
+    swap(
+        test,
+        &env,
+        TRADER,
+        TRADER_BASE,
+        TRADER_QUOTE,
+        DIRECTION_BUY_BASE,
+        FIVE_NVDAX_AT_THE_ASK,
+        0,
+    )
+    .fails_with(error::ORACLE_CONFIDENCE_TOO_WIDE);
+}
+
+/// A zero or negative oracle price is not a price. The market refuses to
+/// quote against either rather than divide by it or flip the spread.
+#[quasar_test]
+fn swap_rejects_non_positive_price(test: &mut Test) {
+    let env = setup(test);
+    fund_trader(
+        test,
+        TRADER,
+        TRADER_BASE,
+        TRADER_QUOTE,
+        0,
+        FIVE_NVDAX_AT_THE_ASK,
+    );
+    for price in [0, -dollars(165)] {
+        set_feed(test, price, 0);
         swap(
             test,
             &env,
@@ -632,12 +984,95 @@ fn swap_rejects_wide_confidence(test: &mut Test) {
             TRADER_BASE,
             TRADER_QUOTE,
             DIRECTION_BUY_BASE,
-            825_825_000,
-            0
+            FIVE_NVDAX_AT_THE_ASK,
+            0,
         )
-        .is_err(),
-        "a confidence band wider than max_confidence_bps must be rejected"
+        .fails_with(error::NON_POSITIVE_PRICE);
+    }
+}
+
+/// A market pinned to a feed with 8 decimals of scale refuses a feed that
+/// reports 6: read at the wrong scale, $165 would be $1.65.
+#[quasar_test]
+fn swap_rejects_oracle_scale_mismatch(test: &mut Test) {
+    let env = setup(test);
+    let mut data = Vec::with_capacity(36);
+    data.extend_from_slice(&(165i128 * 10i128.pow(6)).to_le_bytes());
+    data.extend_from_slice(&(ORACLE_SCALE - 2).to_le_bytes());
+    data.extend_from_slice(&SLOT.to_le_bytes());
+    data.extend_from_slice(&0u64.to_le_bytes());
+    set_feed_data(test, data);
+    fund_trader(
+        test,
+        TRADER,
+        TRADER_BASE,
+        TRADER_QUOTE,
+        0,
+        FIVE_NVDAX_AT_THE_ASK,
     );
+    swap(
+        test,
+        &env,
+        TRADER,
+        TRADER_BASE,
+        TRADER_QUOTE,
+        DIRECTION_BUY_BASE,
+        FIVE_NVDAX_AT_THE_ASK,
+        0,
+    )
+    .fails_with(error::ORACLE_SCALE_MISMATCH);
+}
+
+/// A feed account owned by the recorded oracle program but too short to hold
+/// the price layout is refused before a byte of it is decoded.
+#[quasar_test]
+fn swap_rejects_oracle_data_too_short(test: &mut Test) {
+    let env = setup(test);
+    // The layout needs 36 bytes; keep the price and the scale.
+    let mut data = Vec::with_capacity(20);
+    data.extend_from_slice(&dollars(165).to_le_bytes());
+    data.extend_from_slice(&ORACLE_SCALE.to_le_bytes());
+    set_feed_data(test, data);
+    fund_trader(
+        test,
+        TRADER,
+        TRADER_BASE,
+        TRADER_QUOTE,
+        0,
+        FIVE_NVDAX_AT_THE_ASK,
+    );
+    swap(
+        test,
+        &env,
+        TRADER,
+        TRADER_BASE,
+        TRADER_QUOTE,
+        DIRECTION_BUY_BASE,
+        FIVE_NVDAX_AT_THE_ASK,
+        0,
+    )
+    .fails_with(error::ORACLE_DATA_TOO_SHORT);
+}
+
+/// One minor unit of USDC (0.000001) at the $165.165 ask buys 0.0000000060546
+/// NVDAx, which floors to zero minor units. The market refuses rather than
+/// take the trader's input for nothing.
+#[quasar_test]
+fn swap_rejects_amount_that_rounds_to_zero(test: &mut Test) {
+    let env = setup(test);
+    fund_trader(test, TRADER, TRADER_BASE, TRADER_QUOTE, 0, 1);
+    swap(
+        test,
+        &env,
+        TRADER,
+        TRADER_BASE,
+        TRADER_QUOTE,
+        DIRECTION_BUY_BASE,
+        1,
+        0,
+    )
+    .fails_with(error::AMOUNT_ROUNDS_TO_ZERO);
+    assert_eq!(test.tokens(TRADER_QUOTE), 1);
 }
 
 /// While the operator has pulled its quotes, nobody can swap; unpausing
@@ -647,21 +1082,25 @@ fn swap_rejects_when_paused(test: &mut Test) {
     let env = setup(test);
     set_quote(test, OPERATOR, SPREAD_BPS, 1).succeeds();
 
-    fund_trader(test, TRADER, TRADER_BASE, TRADER_QUOTE, 0, 825_825_000);
-    assert!(
-        swap(
-            test,
-            &env,
-            TRADER,
-            TRADER_BASE,
-            TRADER_QUOTE,
-            DIRECTION_BUY_BASE,
-            825_825_000,
-            0
-        )
-        .is_err(),
-        "a paused market must reject swaps"
+    fund_trader(
+        test,
+        TRADER,
+        TRADER_BASE,
+        TRADER_QUOTE,
+        0,
+        FIVE_NVDAX_AT_THE_ASK,
     );
+    swap(
+        test,
+        &env,
+        TRADER,
+        TRADER_BASE,
+        TRADER_QUOTE,
+        DIRECTION_BUY_BASE,
+        FIVE_NVDAX_AT_THE_ASK,
+        0,
+    )
+    .fails_with(error::MARKET_PAUSED);
 
     set_quote(test, OPERATOR, SPREAD_BPS, 0).succeeds();
     swap(
@@ -671,8 +1110,8 @@ fn swap_rejects_when_paused(test: &mut Test) {
         TRADER_BASE,
         TRADER_QUOTE,
         DIRECTION_BUY_BASE,
-        825_825_000,
-        5 * ONE_TOKEN,
+        FIVE_NVDAX_AT_THE_ASK,
+        FIVE_NVDAX,
     )
     .succeeds();
 }
@@ -680,21 +1119,18 @@ fn swap_rejects_when_paused(test: &mut Test) {
 #[quasar_test]
 fn swap_rejects_zero_amount(test: &mut Test) {
     let env = setup(test);
-    fund_trader(test, TRADER, TRADER_BASE, TRADER_QUOTE, 0, ONE_TOKEN);
-    assert!(
-        swap(
-            test,
-            &env,
-            TRADER,
-            TRADER_BASE,
-            TRADER_QUOTE,
-            DIRECTION_BUY_BASE,
-            0,
-            0
-        )
-        .is_err(),
-        "a zero-amount swap must be rejected"
-    );
+    fund_trader(test, TRADER, TRADER_BASE, TRADER_QUOTE, 0, ONE_USDC);
+    swap(
+        test,
+        &env,
+        TRADER,
+        TRADER_BASE,
+        TRADER_QUOTE,
+        DIRECTION_BUY_BASE,
+        0,
+        0,
+    )
+    .fails_with(error::ZERO_AMOUNT);
 }
 
 /// A buy bigger than the base inventory is rejected whole — a prop AMM never
@@ -706,37 +1142,34 @@ fn swap_rejects_insufficient_inventory(test: &mut Test) {
     // but the vault only holds 1,000 NVDAx.
     let quote_in = 181_681_500_000;
     fund_trader(test, TRADER, TRADER_BASE, TRADER_QUOTE, 0, quote_in);
-    assert!(
-        swap(
-            test,
-            &env,
-            TRADER,
-            TRADER_BASE,
-            TRADER_QUOTE,
-            DIRECTION_BUY_BASE,
-            quote_in,
-            0
-        )
-        .is_err(),
-        "a swap larger than the inventory must be rejected"
-    );
+    swap(
+        test,
+        &env,
+        TRADER,
+        TRADER_BASE,
+        TRADER_QUOTE,
+        DIRECTION_BUY_BASE,
+        quote_in,
+        0,
+    )
+    .fails_with(error::INSUFFICIENT_INVENTORY);
 }
 
 #[quasar_test]
 fn initialize_market_rejects_zero_spread(test: &mut Test) {
     let (_env, outcome) = base_world(test, 0);
-    assert!(outcome.is_err(), "a zero spread must be rejected");
+    outcome.fails_with(error::INVALID_PARAMETER);
 }
 
 #[quasar_test]
 fn initialize_market_rejects_full_spread(test: &mut Test) {
     let (_env, outcome) = base_world(test, 10_000);
-    assert!(outcome.is_err(), "a 100% spread must be rejected");
+    outcome.fails_with(error::INVALID_PARAMETER);
 }
 
 #[quasar_test]
 fn set_quote_rejects_invalid_spread(test: &mut Test) {
     setup(test);
-    assert!(set_quote(test, OPERATOR, 0, 0).is_err());
-    assert!(set_quote(test, OPERATOR, 10_000, 0).is_err());
+    set_quote(test, OPERATOR, 0, 0).fails_with(error::INVALID_PARAMETER);
+    set_quote(test, OPERATOR, 10_000, 0).fails_with(error::INVALID_PARAMETER);
 }

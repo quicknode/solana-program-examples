@@ -9,7 +9,7 @@ skip-lint = false
 
 [programs.localnet]
 prop_amm = "9ZMtJFtn5n4wwpEeXXG5paFQakcDtrd3ova5ptJL4VT1"
-mock_switchboard = "BdFYarCfgMJhC26dFN6JXKVx4kUEM3k2wYaNjyjFrvAD"
+mock_price_feed = "BdFYarCfgMJhC26dFN6JXKVx4kUEM3k2wYaNjyjFrvAD"
 
 [provider]
 cluster = "localnet"

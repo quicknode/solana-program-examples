@@ -2,7 +2,7 @@
 
 This Solana program is an **escrow** written directly against `solana-program`, with no framework. It lets a **maker** swap a specific amount of one token for a desired amount of another token with a **taker**, atomically and without either party having to trust the other.
 
-For example: Alice offers 10 USDC and wants 100 WIF in return. The program holds Alice's USDC in a vault until someone delivers the WIF, then releases both sides in a single transaction.
+For example: Alice offers 250 USDC and wants 1 TSLAx in return. The program holds Alice's USDC in a vault until someone delivers the TSLAx, then releases both sides in a single transaction.
 
 See also the [Anchor](../anchor/) and [Quasar](../quasar/) variants of the same program.
 
@@ -17,11 +17,13 @@ The maker pays the rent for the offer account and the vault (and for their own m
 
 A maker opens an offer with the `MakeOffer` instruction, passing the offer `id`, the amount of token A offered, and the amount of token B wanted. The maker signs and pays all rent. The handler derives and creates the offer PDA, creates the vault, creates the maker's mint B token account if needed (so the eventual taker never pays rent for a maker-owned account), and moves the offered token A into the vault with `transfer_checked`. It then verifies the vault holds exactly the offered amount before writing the offer state.
 
-A taker settles the offer with the `TakeOffer` instruction. The taker signs. The handler validates every passed account against the stored offer state (maker, both mints, the vault address, and the offer PDA itself), requires the maker's mint B token account to already exist, and lazily creates the taker's mint A token account (rent paid by the taker, since it is the taker's own account). It then transfers the wanted token B from the taker to the maker, releases the vault's token A to the taker signed by the offer PDA, and verifies conservation with checked arithmetic: the taker gained exactly the vault balance and the maker gained exactly the wanted amount. Finally it closes the vault and the offer account, refunding both rents to the maker.
+A taker settles the offer with the `TakeOffer` instruction, passing `minimum_token_a_out` (the least token A the taker accepts from the vault) and `maximum_token_b_in` (the most token B the taker will pay). The taker signs, so the bounds are the terms the taker agreed to. The handler validates every passed account against the stored offer state (maker, both mints, the vault address, and the offer PDA itself), requires the maker's mint B token account to already exist, and lazily creates the taker's mint A token account (rent paid by the taker, since it is the taker's own account). It then transfers the wanted token B from the taker to the maker, releases the vault's token A to the taker signed by the offer PDA, and verifies conservation with checked arithmetic: the taker gained exactly the vault balance and the maker gained exactly the wanted amount. Finally it closes the vault and the offer account, refunding both rents to the maker.
+
+The two bounds close a bait and switch. An offer's address comes from its maker and `id`, so while a taker's transaction is in flight the maker could cancel the offer and make it again under the same `id` at worse terms, and the transaction would land on the new offer at the same address. Before any token moves, the handler refuses the take with `OfferTermsChanged` if the vault holds less token A than `minimum_token_a_out` or the offer wants more token B than `maximum_token_b_in`. On the ordinary path a client passes the terms it read from the offer: the vault's balance and the `token_b_wanted_amount`.
 
 A maker abandons an offer with the `CancelOffer` instruction. Only the maker can call it; without it, an unwanted offer would lock the maker's tokens in the vault forever. The handler validates the accounts against the offer state, returns the vault's token A to the maker's token account, verifies the maker received exactly the vault balance, and closes the vault and offer accounts back to the maker.
 
-Errors are reported through the named `EscrowError` enum in `program/src/error.rs` (key mismatches, missing maker token account, conservation violations, arithmetic overflow).
+Errors are reported through the named `EscrowError` enum in `program/src/error.rs` (key mismatches, missing maker token account, conservation violations, arithmetic overflow, and `OfferTermsChanged` for a take whose terms no longer hold).
 
 ## Setup
 
@@ -43,4 +45,4 @@ The Rust + [LiteSVM](https://www.anchor-lang.com/docs/testing/litesvm) tests loa
 cargo test --manifest-path=./program/Cargo.toml
 ```
 
-The tests cover the make/take flow, the make/cancel flow, rejection of a non-maker cancel, token balances on every leg, and the rent refunds (the maker's lamports recover the offer and vault rent after both take and cancel).
+The tests tell the story above: mint A is USDC, minted at 6 decimals, mint B is TSLAx at 8, and the maker offers 250 USDC (250,000,000 minor units) for 1 TSLAx (100,000,000 minor units), which the taker takes. Both start with the standard wallet of 1 SOL and 1,000 USDC, and the taker also holds 1 TSLAx, so the take leaves the taker at 1,250 USDC and no TSLAx. They cover the make/take flow, the make/cancel flow, rejection of a non-maker cancel (`MakerMismatch`), rejection of a take that lands on an offer the maker cancelled and re-made at worse terms (`test_take_offer_rejects_switched_offer` for 1 USDC instead of 250, `test_take_offer_rejects_switched_offer_wanting_more_token_b` for 2 TSLAx instead of 1), rejection of offers with zero tokens on either side (`ZeroAmount`) or the same token on both (`SameMint`), token balances on every leg, and the rent refunds (the maker's lamports recover the offer and vault rent after both take and cancel). Every refusal test asserts the error code it expects.

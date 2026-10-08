@@ -35,24 +35,25 @@ pub fn handle_swap_tokens(
     //
     // u128 + checked arithmetic: `input * fee` can overflow u64 (both are
     // u64-sized in practice; fee is u16 but the multiplication grows fast).
-    // Multiply before divide to preserve precision; floor on the divide is
-    // protocol-favouring (the trader pays slightly more fee on rounding,
-    // not less).
+    // Multiply before divide to preserve precision. Both divisions round up:
+    // a fee that is not a whole number of minor units costs the trader one
+    // more unit rather than the pool one less, and the admin's slice of it
+    // rounds up against the LPs for the same reason. The trader's side,
+    // `taxed_input`, is what remains after the ceiled fee.
     let config = &context.accounts.config;
     let fee_amount = (input_amount as u128)
         .checked_mul(config.fee as u128)
         .ok_or(AmmError::MathOverflow)?
-        .checked_div(BASIS_POINTS_DIVISOR as u128)
-        .ok_or(AmmError::MathOverflow)?;
+        .div_ceil(BASIS_POINTS_DIVISOR as u128);
     let admin_portion = fee_amount
         .checked_mul(config.admin_share_bps as u128)
         .ok_or(AmmError::MathOverflow)?
-        .checked_div(BASIS_POINTS_DIVISOR as u128)
-        .ok_or(AmmError::MathOverflow)?;
-    // Narrow back to u64 for storage / transfer. The fee can never exceed
-    // `input` (`fee_amount <= input * 9999 / 10_000 < input`, and `input`
-    // is u64), so the cast is safe - but use try_into anyway to make the
-    // invariant explicit in the type system.
+        .div_ceil(BASIS_POINTS_DIVISOR as u128);
+    // Narrow back to u64 for storage / transfer. `fee < 10_000`, so
+    // `input * fee < input * 10_000` and the ceiling of the quotient is at
+    // most `input`, a u64; the admin portion is at most the fee by the same
+    // argument. The casts cannot fail, but `try_from` keeps the bound
+    // explicit in the type system.
     let fee_amount: u64 = u64::try_from(fee_amount).map_err(|_| AmmError::MathOverflow)?;
     let admin_portion: u64 = u64::try_from(admin_portion).map_err(|_| AmmError::MathOverflow)?;
     // The LP portion stays in the pool reserves (as today - it's "less output
@@ -102,7 +103,7 @@ pub fn handle_swap_tokens(
     //
     // u128 + checked: the numerator `taxed_input * reserve` can fill the
     // full u128 (both factors are u64). Multiply before divide to keep
-    // precision. Floor on the divide is protocol-favouring (the pool keeps
+    // precision. Floor on the divide is program-favouring (the pool keeps
     // sub-base-unit rounding, the trader gets slightly less output) - same
     // direction as Uniswap V2.
     let (this_reserve, other_reserve) = if input_is_token_a {
@@ -145,8 +146,8 @@ pub fn handle_swap_tokens(
     let mint_a_bytes = context.accounts.mint_a.address().to_bytes();
     let mint_b_bytes = context.accounts.mint_b.address().to_bytes();
 
-    // Effects: update admin_fees before CPIs (Checks-Effects-Interactions).
-    // The fee always comes off the input side, so the admin's claim accumulates
+    // Add the admin's slice of the fee to what the pool owes them. The fee
+    // always comes off the input side, so the admin's claim accumulates
     // in the same token.
     {
         let pool_config = &mut context.accounts.pool_config;

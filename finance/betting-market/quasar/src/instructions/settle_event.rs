@@ -1,8 +1,10 @@
-use quasar_lang::prelude::*;
+use quasar_lang::{prelude::*, sysvars::Sysvar as _};
 use quasar_spl::prelude::*;
 
 use crate::errors::BettingError;
-use crate::state::{snapshot_event, Config, Event, EventStatus, EventVaultPda, Outcome};
+use crate::state::{
+    may_settle, snapshot_event, Config, Event, EventStatus, EventVaultPda, Outcome,
+};
 
 use super::transfer_from_vault;
 
@@ -54,6 +56,13 @@ pub fn handle_settle_event(
         accounts.event.status == EventStatus::Open as u8,
         BettingError::EventNotOpen
     );
+    // Settling before the close time would let the admin end a market early
+    // on bettors who were promised the full window.
+    let now: i64 = Clock::get()?.unix_timestamp.into();
+    require!(
+        may_settle(now, i64::from(accounts.event.betting_closes_at)),
+        BettingError::BettingStillOpen
+    );
     let winning_pool = u64::from(accounts.winning_outcome.total_amount);
     require!(winning_pool > 0, BettingError::OutcomeHasNoBets);
 
@@ -69,13 +78,15 @@ pub fn handle_settle_event(
         .ok_or(BettingError::MathOverflow)?;
 
     // The fee is only ever charged on the losing side, so a winner can never
-    // receive less than they staked.
+    // receive less than they staked. It rounds up, in the program's favor:
+    // fee = ceil(losing_pool * fee_bps / 10_000), and the winners share what
+    // the fee leaves. fee_bps never exceeds 10_000, so the fee never exceeds
+    // the losing pool.
     let fee_bps = u16::from(accounts.event.fee_bps);
     let fee: u64 = (losing_pool as u128)
         .checked_mul(fee_bps as u128)
         .ok_or(BettingError::MathOverflow)?
-        .checked_div(BPS_DENOMINATOR)
-        .ok_or(BettingError::MathOverflow)?
+        .div_ceil(BPS_DENOMINATOR)
         .try_into()
         .map_err(|_| BettingError::MathOverflow)?;
     let distributable_losing_pool = losing_pool

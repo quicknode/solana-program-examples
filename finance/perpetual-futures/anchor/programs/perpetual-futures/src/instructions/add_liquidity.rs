@@ -8,7 +8,9 @@ use anchor_spl::{
 
 use crate::constants::{MINIMUM_LIQUIDITY, POOL_SEED, VAULT_SEED};
 use crate::errors::PerpError;
-use crate::instructions::shared::{liquidity_provider_aum, refresh_price_and_funding};
+use crate::instructions::shared::{
+    liquidity_provider_aum, refresh_price_and_funding_within_band, Rounding,
+};
 use crate::state::Pool;
 
 pub fn handle_add_liquidity(
@@ -19,22 +21,42 @@ pub fn handle_add_liquidity(
     require!(amount > 0, PerpError::ZeroAmount);
 
     let pool = &mut context.accounts.pool;
-    let price = refresh_price_and_funding(pool, &context.accounts.oracle_feed)?;
+    let price = refresh_price_and_funding_within_band(pool, &context.accounts.oracle_feed)?;
 
     let lp_supply = context.accounts.lp_mint.supply();
-    let shares: u64 = if lp_supply == 0 {
+    let shares: u64 = if lp_supply == 0 && pool.liquidity == 0 {
         // Bootstrap: shares track collateral one-for-one, less the withheld
         // minimum, so the share supply can never start at a dust amount.
         amount
             .checked_sub(MINIMUM_LIQUIDITY)
             .ok_or(PerpError::DepositTooSmall)?
     } else {
-        // shares = amount * supply / assets-under-management, floored so the
-        // depositor never receives more than their pro-rata claim.
-        let aum = liquidity_provider_aum(pool, price)?;
+        // shares = amount * (supply + MINIMUM_LIQUIDITY) / assets-under-management,
+        // floored so the depositor never receives more than their pro-rata
+        // claim. The withheld minimum counts as shares that nobody holds, here
+        // and in remove_liquidity, so its slice of the pool is locked for good.
+        // That lock is what stops share inflation: `liquidity` rises with
+        // every funding payment and trader loss, and a provider who is also
+        // the pool's only trader can pay those to themselves, so an attacker
+        // holding one share could otherwise make each share expensive enough
+        // to round a later deposit down and take part of it. With the minimum
+        // in the divisor their one share is 1 of 1_001, and whatever they pay
+        // in is spread across shares they cannot redeem.
+        //
+        // The same divisor covers a pool whose providers have all left: the
+        // minimum's slice is still in `liquidity`, so the next deposit is
+        // priced against it rather than bootstrapped.
+        //
+        // The pool is valued rounding up, so a fraction of a base unit in the
+        // traders' marked profit/loss raises the price of a share rather than
+        // lowering it.
+        let aum = liquidity_provider_aum(pool, price, Rounding::Up)?;
         require!(aum > 0, PerpError::PoolInsolvent);
+        let total_shares = (lp_supply as u128)
+            .checked_add(MINIMUM_LIQUIDITY as u128)
+            .ok_or(PerpError::MathOverflow)?;
         (amount as u128)
-            .checked_mul(lp_supply as u128)
+            .checked_mul(total_shares)
             .ok_or(PerpError::MathOverflow)?
             .checked_div(aum as u128)
             .ok_or(PerpError::MathOverflow)?

@@ -23,7 +23,10 @@ pub struct UpdateFieldAccountConstraints<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn process_update_field(context: Context<UpdateFieldAccountConstraints>, args: UpdateFieldArgs) -> Result<()> {
+pub fn process_update_field(
+    context: Context<UpdateFieldAccountConstraints>,
+    args: UpdateFieldArgs,
+) -> Result<()> {
     let UpdateFieldArgs { field, value } = args;
 
     // Convert to Field type from spl_token_metadata_interface

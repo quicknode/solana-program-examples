@@ -1,36 +1,44 @@
-# Token-swap (AMM): Kani proofs
+# Token-swap (AMM): Kani model checks
 
-Formal-verification harnesses for the constant-product AMM, in the spirit of
+Kani model-check harnesses for the constant-product AMM, in the spirit of
 [`aeyakovenko/percolator`](https://github.com/aeyakovenko/percolator), which
-uses the [Kani](https://github.com/model-checking/kani) model checker to prove
-the mathematical correctness of a DeFi engine.
+uses the [Kani](https://github.com/model-checking/kani) model checker to check
+the arithmetic of a DeFi engine.
 
-## What is verified
+Kani marks a harness with `#[kani::proof]`, which is why the crate is
+`kani-proofs` and the harnesses are named `proof_*`; each one is a model check:
+it tries every value of its declared inputs and reports either that every
+assertion held or the input that breaks one.
+
+## What is checked
 
 The on-chain instructions hand token movement to the SPL token program through
 CPIs that Kani cannot symbolically execute, but the *interesting* part, the
-constant-product curve, the fee split, the integer square root used for the
-initial LP mint, and the proportional-withdraw math, is pure integer
-arithmetic. This crate reproduces those formulas faithfully (same `u128`
-widening, multiply-before-divide, floor rounding) and proves their invariants:
+constant-product curve, the fee split, the integer square root `initialize_pool`
+uses for the creator's LP mint, and the proportional deposit and withdraw math,
+is pure integer arithmetic. This crate reproduces those formulas faithfully (same `u128`
+widening, multiply-before-divide, the fee rounded up and everything paid out rounded
+down) and checks their invariants:
 
-- `proof_fee_split_bounds`: `fee <= input`, `admin_portion <= fee`, and `taxed_input + fee == input`.
+- `proof_fee_split_bounds`: `fee <= input`, `admin_portion <= fee`, `taxed_input + fee == input`, and both the fee and the admin's slice of it are the exact fraction rounded up, never down.
 - `proof_swap_preserves_constant_product`: **The core safety property**: a swap never decreases `k = reserve_in * reserve_out`.
 - `proof_swap_cannot_fully_drain_when_reserve_positive`: With a non-empty input reserve, output is always `< other_reserve` (pool stays solvent).
-- `proof_swap_at_zero_reserve_drains_whole_pool`: **Finding**, proven as a positive characterization (see below).
+- `proof_swap_at_zero_reserve_drains_whole_pool`: **Finding**, checked as a positive characterization (see below).
 - `proof_integer_sqrt_is_floor`: `integer_sqrt` returns the exact floor: `r² <= n < (r+1)²`.
 - `proof_withdraw_never_exceeds_reserve`: An LP can never withdraw more than the reserve holds (the `MINIMUM_LIQUIDITY` floor guarantees it).
-- `proof_deposit_clamp_never_exceeds_request`: The ratio clamp never spends more of either token than the caller offered.
+- `proof_deposit_withdraw_round_trip_is_fair`: Burning the LP tokens a deposit just minted returns at most the deposit, and less than one minor unit plus one LP token's worth short of it. The lower bound holds only because deposit and withdraw both divide by `lp_supply + MINIMUM_LIQUIDITY`; a deposit divided by the bare supply fails it.
+- `proof_rounding_a_deposit_to_zero_needs_floor_times_donation`: For a later deposit to mint zero LP tokens, the reserve must exceed the deposit times `attacker_lp + MINIMUM_LIQUIDITY`, so an attacker holding one LP token must donate about `MINIMUM_LIQUIDITY + 1` times the victim's deposit.
+- `proof_deposit_clamp_never_exceeds_request`: The ratio clamp never spends more of either token than the caller offered. The model refuses an empty reserve as `deposit_liquidity` does with `EmptyPoolReserve`; every pool opens with its creator's deposit in `initialize_pool`.
 
 ## Bounded model checking
 
-Several harnesses verify **nonlinear 128-bit arithmetic** (e.g.
+Several harnesses check **nonlinear 128-bit arithmetic** (e.g.
 `reserve_in * reserve_out`, and worst of all `amount * pool_b / pool_a` where
 the *divisor* is symbolic), the hardest case for a bit-precise model checker.
 Kani bit-blasts the full multiplier/divider into SAT. Following percolator's own
 practice (it bounds inputs to ranges like `±500`), these harnesses constrain
 their symbolic inputs to a representative range so the solver stays fast. The
-identities being proven are scale-invariant, so the bounded domain still
+identities being checked are scale-invariant, so the bounded domain still
 exercises every rounding boundary. The bound is per-harness, sized to its
 difficulty:
 
@@ -40,11 +48,13 @@ difficulty:
 - `proof_swap_at_zero_reserve_drains_whole_pool`: `<= 255`, runs in ~15s
 - `proof_integer_sqrt_is_floor`: `n <= 255`, `unwind(11)`, runs in ~33s
 - `proof_withdraw_never_exceeds_reserve`: `<= 4095`, runs in ~5s
+- `proof_deposit_withdraw_round_trip_is_fair`: `<= 31` (two symbolic divisors), runs in ~18s
+- `proof_rounding_a_deposit_to_zero_needs_floor_times_donation`: deposit and attacker LP `<= 15`, reserve `<= 4095`, runs in ~2s
 - `proof_deposit_clamp_never_exceeds_request`: `<= 31` (symbolic divisor), runs in ~3s
 
-The whole suite verifies in ~90s of solver time. This is why these proofs run
-**weekly in CI** (the `kani.yml` `verify` job), not on every push/PR. A fast
-unit-test job runs per push/PR.
+The whole suite runs in about two minutes of solver time. This is why these
+model checks run **weekly in CI** (the `kani.yml` `verify` job), not on every
+push/PR. A fast unit-test job runs per push/PR.
 
 ## Finding (now fixed): full drain at a zero effective reserve
 
@@ -68,12 +78,13 @@ require!(
 
 so the drained state is unreachable on-chain regardless of any reachability
 argument. Reaching `effective_reserve == 0` was already a degenerate state the
-deposit path prevents (the `MINIMUM_LIQUIDITY` floor keeps the bootstrap product
+rest of the program prevents (`initialize_pool` opens every pool with both
+reserves positive, the `MINIMUM_LIQUIDITY` floor keeps the bootstrap product
 positive, and `proof_swap_preserves_constant_product` shows ordinary swaps keep
 both sides positive), so this was a latent edge, not a live exploit, but the
 guard means solvency no longer *depends* on that argument.
 
-The harness is kept as a **positive** proof (every assertion holds: `output ==
+The harness is kept as a **positive** model check (every assertion holds: `output ==
 other_reserve` and `0 >= 0`) characterizing the raw `swap_output` formula at the
 boundary, which is exactly the justification for the program guard. It is not a
 `#[kani::should_panic]`, which would have started failing the moment the
@@ -85,7 +96,7 @@ boundary, which is exactly the justification for the program guard. It is not a
 # Plain unit tests (no Kani required):
 cargo test
 
-# Formal verification (requires Kani):
+# Kani model checks (requires Kani):
 cargo install --locked kani-verifier && cargo kani setup   # one-time
 cargo kani
 ```

@@ -59,7 +59,7 @@ pub fn handle_withdraw_liquidity(
     //
     // u128 + checked: `lp_amount * reserve` can fill the full u128 (both
     // factors are u64). Multiply before divide to preserve precision; floor
-    // is protocol-favouring (sub-base-unit rounding stays with the pool,
+    // is program-favouring (sub-base-unit rounding stays with the pool,
     // grows LP value for everyone still in).
     //
     // Both amounts are computed up-front (before the slippage checks) so

@@ -1,15 +1,15 @@
 use anchor_lang::prelude::*;
 
 // The global, single Config account. Its `admin` is the only key allowed to
-// create events, add outcomes, settle, and cancel. `token_mint` fixes the one
-// asset every market in this deployment accepts as a stake.
+// create events, add outcomes, open betting, settle, and cancel. `token_mint`
+// fixes the one asset every market in this deployment accepts as a stake.
 #[account(borsh)]
 #[derive(InitSpace)]
 pub struct Config {
     pub admin: Address,
     pub token_mint: Address,
     pub fee_recipient: Address,
-    // Protocol fee, in basis points, that new events copy into their own
+    // Program fee, in basis points, that new events copy into their own
     // `fee_bps` at creation. Settlement charges the event's copy, so changing
     // this value only affects events created afterwards.
     pub default_fee_bps: u16,

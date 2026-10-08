@@ -35,7 +35,13 @@ pub mod mint_nft {
         symbol: String,
         uri: String,
     ) -> Result<()> {
-        instructions::mint_nft::handle_mint_nft(&mut context.accounts, &context.bumps, name, symbol, uri)
+        instructions::mint_nft::handle_mint_nft(
+            &mut context.accounts,
+            &context.bumps,
+            name,
+            symbol,
+            uri,
+        )
     }
 
     /// Verify an NFT as a member of the collection.

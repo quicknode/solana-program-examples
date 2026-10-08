@@ -15,16 +15,16 @@ pub mod checking_account_program {
 // This is a simple example and does not include all possible constraints and types
 #[derive(Accounts)]
 pub struct CheckingAccountsAccountConstraints<'info> {
-    payer: Signer<'info>, // checks account is signer
+    pub payer: Signer<'info>, // checks account is signer
 
     /// CHECK: No checks performed, example of an unchecked account
     #[account(mut)]
-    account_to_create: UncheckedAccount<'info>,
+    pub account_to_create: UncheckedAccount<'info>,
     /// CHECK: Perform owner check using constraint
     #[account(
         mut,
         owner = id()
     )]
-    account_to_change: UncheckedAccount<'info>,
-    system_program: Program<'info, System>, // checks account is executable, and is the system program
+    pub account_to_change: UncheckedAccount<'info>,
+    pub system_program: Program<'info, System>, // checks account is executable, and is the system program
 }

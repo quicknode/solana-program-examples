@@ -27,11 +27,13 @@ pub fn handle_swap(
     require!(!market.paused, PropAmmError::MarketPaused);
     require!(amount_in > 0, PropAmmError::ZeroAmount);
 
-    // Freshness, scale, and confidence are all enforced inside the read. For a
-    // market maker the staleness bound is the business itself: a quote priced
-    // off an old number is a free option for whoever notices first.
+    // The feed's owning program, freshness, scale, and confidence are all
+    // enforced inside the read. For a market maker the staleness bound is the
+    // business itself: a quote priced off an old number is a free option for
+    // whoever notices first.
     let oracle_price = read_oracle_price(
         &context.accounts.oracle_feed,
+        &market.price_feed_program,
         market.oracle_scale,
         market.max_confidence_bps,
     )?;

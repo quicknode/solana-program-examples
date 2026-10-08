@@ -23,13 +23,8 @@ pub fn handle_collect_proceeds(
     );
 
     let kind = option.kind;
-    let proceeds = contract_math::exercise_payment(
-        kind,
-        option.contracts,
-        option.underlying_per_contract,
-        option.strike_per_contract,
-    )
-    .ok_or(OptionsError::MathOverflow)?;
+    let proceeds =
+        contract_math::exercise_payment(kind, option.underlying_amount, option.strike_amount);
 
     let market = &mut context.accounts.market;
     let mut underlying_after = context.accounts.underlying_vault.amount();
@@ -37,8 +32,8 @@ pub fn handle_collect_proceeds(
     match kind {
         // A call's proceeds are the strike, in the quote token.
         OptionKind::Call => {
-            market.quote_locked = market
-                .quote_locked
+            market.quote_owed = market
+                .quote_owed
                 .checked_sub(proceeds)
                 .ok_or(OptionsError::MathOverflow)?;
             quote_after = quote_after
@@ -47,8 +42,8 @@ pub fn handle_collect_proceeds(
         }
         // A put's proceeds are the delivered underlying.
         OptionKind::Put => {
-            market.underlying_locked = market
-                .underlying_locked
+            market.underlying_owed = market
+                .underlying_owed
                 .checked_sub(proceeds)
                 .ok_or(OptionsError::MathOverflow)?;
             underlying_after = underlying_after

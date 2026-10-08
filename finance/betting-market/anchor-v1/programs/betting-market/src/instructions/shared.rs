@@ -1,7 +1,8 @@
 use anchor_lang::prelude::*;
 
 use anchor_spl::token_interface::{
-    transfer_checked, Mint, TokenAccount, TokenInterface, TransferChecked,
+    close_account, transfer_checked, CloseAccount, Mint, TokenAccount, TokenInterface,
+    TransferChecked,
 };
 
 // Move tokens from a wallet-owned account into the vault. The authority is a
@@ -46,10 +47,31 @@ pub fn transfer_tokens_from_vault<'info>(
         to: to.to_account_info(),
         authority: event.clone(),
     };
-    let cpi_context = CpiContext::new_with_signer(
-        token_program.key(),
-        transfer_accounts,
-        &signer_seeds,
-    );
+    let cpi_context =
+        CpiContext::new_with_signer(token_program.key(), transfer_accounts, &signer_seeds);
     transfer_checked(cpi_context, amount, mint.decimals)
+}
+
+// Close the (already empty) vault, signed by the Event PDA, sending its rent
+// to `destination`.
+pub fn close_vault<'info>(
+    vault: &InterfaceAccount<'info, TokenAccount>,
+    destination: &AccountInfo<'info>,
+    event: &AccountInfo<'info>,
+    token_program: &Interface<'info, TokenInterface>,
+    event_id: u64,
+    event_bump: u8,
+) -> Result<()> {
+    let event_id_bytes = event_id.to_le_bytes();
+    let seeds = &[b"event".as_ref(), event_id_bytes.as_ref(), &[event_bump]];
+    let signer_seeds = [&seeds[..]];
+
+    let close_accounts = CloseAccount {
+        account: vault.to_account_info(),
+        destination: destination.clone(),
+        authority: event.clone(),
+    };
+    let cpi_context =
+        CpiContext::new_with_signer(token_program.key(), close_accounts, &signer_seeds);
+    close_account(cpi_context)
 }

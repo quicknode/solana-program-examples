@@ -1,0 +1,39 @@
+use quasar_lang::prelude::*;
+
+#[error_code]
+pub enum FundraiserError {
+    /// The target amount has not been raised, so the maker cannot withdraw.
+    // 6000 is the conventional Anchor-compatible starting offset for
+    // program-specific error codes (Quasar's #[error_code] starts at 0
+    // unless told otherwise; framework errors occupy 3000+).
+    TargetNotMet = 6000,
+    /// The target amount was raised, so contributors cannot claim refunds.
+    TargetMet,
+    /// The fundraising window has closed, so contributions are rejected.
+    FundraiserEnded,
+    /// The fundraising window is still open, so refunds are rejected.
+    FundraiserNotEnded,
+    /// An amount argument was zero or otherwise unusable.
+    InvalidAmount,
+    /// A duration argument was zero, which would create a fundraiser that
+    /// could never accept contributions.
+    InvalidDuration,
+    /// Checked arithmetic overflowed or underflowed.
+    MathOverflow,
+    /// A token balance after a transfer did not match the expected value.
+    BalanceMismatch,
+    /// The fundraiser has already been claimed.
+    FundraiserClaimed,
+    /// The fundraiser has not been claimed, so the contribution account closes
+    /// through refund.
+    FundraiserNotClaimed,
+    /// Contribution accounts for this fundraiser are still open, so it cannot
+    /// close yet.
+    ContributionsOpen,
+    /// Contributions to an unclaimed fundraiser have not all been refunded,
+    /// so closing its vault would strand them.
+    RefundsOutstanding,
+    /// A contribution was below one major unit of the raised token
+    /// (`10^decimals` minor units).
+    ContributionTooSmall,
+}

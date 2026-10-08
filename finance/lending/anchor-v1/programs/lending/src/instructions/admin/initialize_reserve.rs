@@ -6,7 +6,10 @@ use crate::constants::{
 };
 use crate::state::{LendingMarket, PriceFeed, Reserve, ReserveConfig};
 
-pub fn handle_initialize_reserve(context: Context<InitializeReserve>, config: ReserveConfig) -> Result<()> {
+pub fn handle_initialize_reserve(
+    context: Context<InitializeReserve>,
+    config: ReserveConfig,
+) -> Result<()> {
     config.validate()?;
 
     let reserve = &mut context.accounts.reserve;
@@ -20,8 +23,10 @@ pub fn handle_initialize_reserve(context: Context<InitializeReserve>, config: Re
     reserve.share_mint_supply = 0;
     reserve.borrowed_principal = 0;
     reserve.borrow_accumulation_factor = FIXED_POINT_SCALE;
-    reserve.last_update_slot = Clock::get()?.slot;
-    reserve.accumulated_protocol_fees = 0;
+    let clock = Clock::get()?;
+    reserve.last_update_slot = clock.slot;
+    reserve.last_accrual_timestamp = clock.unix_timestamp;
+    reserve.accumulated_program_fees = 0;
     reserve.config = config;
     reserve.bump = context.bumps.reserve;
     Ok(())

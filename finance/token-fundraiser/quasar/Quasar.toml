@@ -1,9 +1,0 @@
-[project]
-name = "quasar-token-fundraiser"
-
-[testing]
-command = { program = "cargo", args = ["test"] }
-
-[clients]
-path = "target/client"
-targets = ["rust"]

@@ -13,6 +13,27 @@ use {
     },
 };
 
+/// Mirrors `constants::MINIMUM_LIQUIDITY`: the LP units withheld from the
+/// first deposit and never minted. Deposits and withdrawals both count them as
+/// supply.
+const MINIMUM_LIQUIDITY: u64 = 100;
+
+/// Mirrors `constants::BASIS_POINTS_DIVISOR`.
+const BASIS_POINTS_DIVISOR: u64 = 10_000;
+
+/// The swap fee as `swap_tokens` computes it: `input * fee_bps / 10_000`,
+/// rounded up, so a fee that is not a whole number of minor units costs the
+/// trader one more unit.
+fn ceiled_fee(input: u64, fee_bps: u64) -> u64 {
+    (input * fee_bps).div_ceil(BASIS_POINTS_DIVISOR)
+}
+
+/// The admin's slice of a fee as `swap_tokens` computes it:
+/// `fee * admin_share_bps / 10_000`, rounded up against the LPs.
+fn ceiled_admin_portion(fee: u64, admin_share_bps: u64) -> u64 {
+    (fee * admin_share_bps).div_ceil(BASIS_POINTS_DIVISOR)
+}
+
 fn token_program_id() -> Address {
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         .parse()
@@ -59,6 +80,7 @@ struct TestSetup {
     svm: LiteSVM,
     program_id: Address,
     payer: Keypair,
+    /// The config admin, who also opens the pool and is its first LP.
     admin: Keypair,
     config_key: Address,
     mint_a: Address,
@@ -72,7 +94,31 @@ struct TestSetup {
     liquidity_account: Address,
 }
 
-fn full_setup() -> TestSetup {
+/// v2's `#[error_code]` does not log the variant name, so a failed transaction
+/// carries only the numeric custom code: the enum discriminant plus anchor's
+/// default 6000 offset. Assert on that rather than on a name that is no longer
+/// in the logs.
+const ANCHOR_ERROR_OFFSET: u32 = 6000;
+
+/// Assert that a transaction failed with the given custom error code. LiteSVM
+/// puts the failure, including `Custom(<code>)`, in the error's `Debug`
+/// output; `name` only labels the assertion message.
+fn assert_custom_error<T, E: std::fmt::Debug>(result: Result<T, E>, code: u32, name: &str) {
+    let err = format!("{:?}", result.err().expect("transaction must fail"));
+    assert!(
+        err.contains(&format!("Custom({code})")),
+        "expected {name} (Custom({code})), got: {err}"
+    );
+}
+
+/// Assert that a transaction failed with the named program error.
+fn assert_error_code<T, E: std::fmt::Debug>(result: Result<T, E>, expected: AmmError, name: &str) {
+    assert_custom_error(result, expected as u32 + ANCHOR_ERROR_OFFSET, name);
+}
+
+/// Everything up to, but not including, the pool: the config, two ordered
+/// mints, and the admin's token accounts holding 100 of each token.
+fn setup_config_and_mints() -> TestSetup {
     let (mut svm, program_id, payer) = setup();
     let admin = create_wallet(&mut svm, 100_000_000_000).unwrap();
 
@@ -143,33 +189,6 @@ fn full_setup() -> TestSetup {
     )
     .unwrap();
 
-    // Create Pool
-    let initialize_pool_ix = Instruction::new_with_bytes(
-        program_id,
-        &swap_example::instruction::InitializePool {}.data(),
-        swap_example::accounts::InitializePoolAccountConstraints {
-            config: config_key,
-            pool_config: pool_config_key,
-            liquidity_provider_mint,
-            mint_a,
-            mint_b,
-            pool_a,
-            pool_b,
-            payer: payer.pubkey(),
-            token_program: token_program_id(),
-            associated_token_program: ata_program_id(),
-            system_program: system_program::ID,
-        }
-        .to_account_metas(None),
-    );
-    send_transaction_from_instructions(
-        &mut svm,
-        vec![initialize_pool_ix],
-        &[&payer],
-        &payer.pubkey(),
-    )
-    .unwrap();
-
     TestSetup {
         svm,
         program_id,
@@ -188,18 +207,53 @@ fn full_setup() -> TestSetup {
     }
 }
 
-/// v2's `#[error_code]` does not log the variant name, so a failed transaction
-/// carries only the numeric custom code: the enum discriminant plus anchor's
-/// default 6000 offset. Assert on that rather than on a name that is no longer
-/// in the logs.
-const ANCHOR_ERROR_OFFSET: u32 = 6000;
+/// Helper: build an `initialize_pool` ix in which the admin opens the pool
+/// with `amount_a` of token A and `amount_b` of token B.
+fn initialize_pool_ix(ts: &TestSetup, amount_a: u64, amount_b: u64) -> Instruction {
+    Instruction::new_with_bytes(
+        ts.program_id,
+        &swap_example::instruction::InitializePool { amount_a, amount_b }.data(),
+        swap_example::accounts::InitializePoolAccountConstraints {
+            config: ts.config_key,
+            pool_config: ts.pool_config_key,
+            liquidity_provider_mint: ts.liquidity_provider_mint,
+            mint_a: ts.mint_a,
+            mint_b: ts.mint_b,
+            pool_a: ts.pool_a,
+            pool_b: ts.pool_b,
+            creator: ts.admin.pubkey(),
+            creator_token_a: ts.holder_account_a,
+            creator_token_b: ts.holder_account_b,
+            liquidity_provider_token: ts.liquidity_account,
+            payer: ts.payer.pubkey(),
+            token_program: token_program_id(),
+            associated_token_program: ata_program_id(),
+            system_program: system_program::ID,
+        }
+        .to_account_metas(None),
+    )
+}
 
-fn assert_program_error(message: &str, expected: AmmError, name: &str) {
-    let code = expected as u32 + ANCHOR_ERROR_OFFSET;
-    assert!(
-        message.contains(&format!("Custom({code})")),
-        "expected {name} (Custom({code})), got: {message}"
-    );
+fn send_initialize_pool(ts: &mut TestSetup, amount_a: u64, amount_b: u64) -> Result<(), String> {
+    let ix = initialize_pool_ix(ts, amount_a, amount_b);
+    send_transaction_from_instructions(
+        &mut ts.svm,
+        vec![ix],
+        &[&ts.payer, &ts.admin],
+        &ts.payer.pubkey(),
+    )
+    .map(|_| ())
+    .map_err(|e| format!("{e:?}"))
+}
+
+/// The config, the mints, and a pool the admin opened with `initial_a` of
+/// token A and `initial_b` of token B, so the pool's price is
+/// `initial_a : initial_b` and the admin holds
+/// `sqrt(initial_a * initial_b) - MINIMUM_LIQUIDITY` LP tokens.
+fn setup_pool(initial_a: u64, initial_b: u64) -> TestSetup {
+    let mut ts = setup_config_and_mints();
+    send_initialize_pool(&mut ts, initial_a, initial_b).expect("open the pool");
+    ts
 }
 
 #[test]
@@ -247,7 +301,7 @@ fn test_initialize_config() {
 /// signs the transfers out of the reserves and the LP mint/burn CPIs.
 #[test]
 fn test_pool_config_owns_reserves_and_lp_mint() {
-    let ts = full_setup();
+    let ts = setup_pool(4_000_000, 1_000_000);
     let expected: &[u8] = ts.pool_config_key.as_ref();
 
     // SPL token account layout: mint (32 bytes), then owner (32 bytes).
@@ -260,7 +314,7 @@ fn test_pool_config_owns_reserves_and_lp_mint() {
         );
     }
 
-    // SPL mint layout: COption<Pubkey> mint_authority = 4-byte tag (1 = Some)
+    // SPL mint layout: COption<Address> mint_authority = 4-byte tag (1 = Some)
     // followed by the 32-byte pubkey.
     let mint = ts
         .svm
@@ -278,32 +332,130 @@ fn test_pool_config_owns_reserves_and_lp_mint() {
     );
 }
 
+/// `initialize_pool` creates the pool and takes the creator's deposit in the
+/// same instruction: the reserves hold the two amounts, the creator holds
+/// `sqrt(amount_a * amount_b) - MINIMUM_LIQUIDITY` LP tokens, and the LP
+/// mint's supply is that same number, because the withheld floor is never
+/// minted to anyone.
 #[test]
-fn test_deposit_liquidity() {
-    let mut ts = full_setup();
-    let deposit_amount_a: u64 = 4_000_000;
-    let deposit_amount_b: u64 = 1_000_000;
+fn test_initialize_pool_takes_first_deposit() {
+    let mut ts = setup_config_and_mints();
+    let holder_a_before = get_token_account_balance(&ts.svm, &ts.holder_account_a).unwrap();
+    let holder_b_before = get_token_account_balance(&ts.svm, &ts.holder_account_b).unwrap();
 
-    let deposit_ix = Instruction::new_with_bytes(
+    send_initialize_pool(&mut ts, 4_000_000, 1_000_000).expect("open the pool");
+
+    assert_eq!(
+        get_token_account_balance(&ts.svm, &ts.pool_a).unwrap(),
+        4_000_000
+    );
+    assert_eq!(
+        get_token_account_balance(&ts.svm, &ts.pool_b).unwrap(),
+        1_000_000
+    );
+    assert_eq!(
+        holder_a_before - get_token_account_balance(&ts.svm, &ts.holder_account_a).unwrap(),
+        4_000_000
+    );
+    assert_eq!(
+        holder_b_before - get_token_account_balance(&ts.svm, &ts.holder_account_b).unwrap(),
+        1_000_000
+    );
+    // sqrt(4_000_000 * 1_000_000) = 2_000_000, minus the 100 floor.
+    assert_eq!(
+        get_token_account_balance(&ts.svm, &ts.liquidity_account).unwrap(),
+        2_000_000 - MINIMUM_LIQUIDITY
+    );
+    // SPL mint layout: 4-byte COption tag + 32-byte authority, then the
+    // u64 supply at byte 36.
+    let lp_mint = ts.svm.get_account(&ts.liquidity_provider_mint).unwrap();
+    let lp_supply = u64::from_le_bytes(lp_mint.data[36..44].try_into().unwrap());
+    assert_eq!(lp_supply, 2_000_000 - MINIMUM_LIQUIDITY);
+}
+
+/// A pool cannot open empty on either side: the first deposit sets the
+/// price, and a zero reserve has none. Nothing is created when the
+/// instruction fails.
+#[test]
+fn test_initialize_pool_rejects_zero_amount_a() {
+    let mut ts = setup_config_and_mints();
+    assert_error_code(
+        send_initialize_pool(&mut ts, 0, 1_000_000),
+        AmmError::EmptyInitialDeposit,
+        "EmptyInitialDeposit",
+    );
+    assert!(ts.svm.get_account(&ts.pool_config_key).is_none());
+}
+
+#[test]
+fn test_initialize_pool_rejects_zero_amount_b() {
+    let mut ts = setup_config_and_mints();
+    assert_error_code(
+        send_initialize_pool(&mut ts, 4_000_000, 0),
+        AmmError::EmptyInitialDeposit,
+        "EmptyInitialDeposit",
+    );
+    assert!(ts.svm.get_account(&ts.pool_config_key).is_none());
+}
+
+/// A liquidity provider other than the admin: a funded wallet with token
+/// accounts for both mints and the address of its (not yet created) LP token
+/// account.
+struct Depositor {
+    wallet: Keypair,
+    token_a: Address,
+    token_b: Address,
+    lp_token: Address,
+}
+
+/// Helper: create a wallet holding `amount_a` of token A and `amount_b` of
+/// token B.
+fn fund_depositor(ts: &mut TestSetup, amount_a: u64, amount_b: u64) -> Depositor {
+    let wallet = create_wallet(&mut ts.svm, 10_000_000_000).unwrap();
+    let token_a =
+        create_associated_token_account(&mut ts.svm, &wallet.pubkey(), &ts.mint_a, &ts.payer)
+            .unwrap();
+    let token_b =
+        create_associated_token_account(&mut ts.svm, &wallet.pubkey(), &ts.mint_b, &ts.payer)
+            .unwrap();
+    mint_tokens_to_token_account(&mut ts.svm, &ts.mint_a, &token_a, amount_a, &ts.admin).unwrap();
+    mint_tokens_to_token_account(&mut ts.svm, &ts.mint_b, &token_b, amount_b, &ts.admin).unwrap();
+    let lp_token = derive_ata(&wallet.pubkey(), &ts.liquidity_provider_mint);
+    Depositor {
+        wallet,
+        token_a,
+        token_b,
+        lp_token,
+    }
+}
+
+/// Helper: `deposit_liquidity` of up to `amount_a` and `amount_b` by a
+/// depositor other than the admin, with no LP floor.
+fn send_deposit_from(
+    ts: &mut TestSetup,
+    depositor: &Depositor,
+    amount_a: u64,
+    amount_b: u64,
+) -> Result<(), String> {
+    let ix = Instruction::new_with_bytes(
         ts.program_id,
         &swap_example::instruction::DepositLiquidity {
-            amount_a: deposit_amount_a,
-            amount_b: deposit_amount_b,
-            // 0 = no slippage floor for this baseline test
+            amount_a,
+            amount_b,
             minimum_lp_tokens_out: 0,
         }
         .data(),
         swap_example::accounts::DepositLiquidityAccountConstraints {
             pool_config: ts.pool_config_key,
-            depositor: ts.admin.pubkey(),
+            depositor: depositor.wallet.pubkey(),
             liquidity_provider_mint: ts.liquidity_provider_mint,
             mint_a: ts.mint_a,
             mint_b: ts.mint_b,
             pool_a: ts.pool_a,
             pool_b: ts.pool_b,
-            liquidity_provider_token: ts.liquidity_account,
-            token_a: ts.holder_account_a,
-            token_b: ts.holder_account_b,
+            liquidity_provider_token: depositor.lp_token,
+            token_a: depositor.token_a,
+            token_b: depositor.token_b,
             payer: ts.payer.pubkey(),
             token_program: token_program_id(),
             associated_token_program: ata_program_id(),
@@ -311,59 +463,116 @@ fn test_deposit_liquidity() {
         }
         .to_account_metas(None),
     );
-
     send_transaction_from_instructions(
         &mut ts.svm,
-        vec![deposit_ix],
-        &[&ts.payer, &ts.admin],
+        vec![ix],
+        &[&ts.payer, &depositor.wallet],
         &ts.payer.pubkey(),
     )
-    .unwrap();
+    .map(|_| ())
+    .map_err(|e| format!("{e:?}"))
+}
 
-    // Verify liquidity tokens were minted
-    let liq_amount = get_token_account_balance(&ts.svm, &ts.liquidity_account).unwrap();
-    assert!(liq_amount > 0, "Should have received liquidity tokens");
+/// The front-run. Maria (the admin) opens an ACME/USDC pool with 400 ACME
+/// and 900 USDC, a price of 2.25 USDC per ACME, in one `initialize_pool`
+/// call; the pool is created, funded and priced before anyone else can
+/// touch it. Mallory then calls `deposit_liquidity` at once with a hostile
+/// ratio, 400 ACME and 100 USDC (0.25 USDC per ACME). Her deposit is clamped
+/// to Maria's ratio: her 100 USDC binds, only 44.444444 of her 400 ACME is
+/// taken, and the pool still prices at 2.25 afterwards. The last part of the
+/// test checks the refusal in code: a `deposit_liquidity` against a pool whose
+/// effective reserves are zero fails with `EmptyPoolReserve`, so no
+/// instruction lets a pool with no reserves take a depositor's ratio as its
+/// price. (`initialize_pool` is the only instruction that creates a pool, and
+/// `test_initialize_pool_rejects_zero_amount_a` / `_b` show it refuses a
+/// zero side.)
+#[test]
+fn test_pool_creation_cannot_be_front_run() {
+    let one: u64 = 10u64.pow(6); // both mints have 6 decimals
+    let mut ts = setup_config_and_mints();
+    // Maria is the admin. The setup gives her 100 of each token; top her up
+    // to the 400 ACME (token A) and 900 USDC (token B) she opens with.
+    mint_tokens_to_token_account(
+        &mut ts.svm,
+        &ts.mint_a,
+        &ts.holder_account_a,
+        300 * one,
+        &ts.admin,
+    )
+    .unwrap();
+    mint_tokens_to_token_account(
+        &mut ts.svm,
+        &ts.mint_b,
+        &ts.holder_account_b,
+        800 * one,
+        &ts.admin,
+    )
+    .unwrap();
+    send_initialize_pool(&mut ts, 400 * one, 900 * one).expect("Maria opens the pool");
+    assert_eq!(
+        get_token_account_balance(&ts.svm, &ts.pool_a).unwrap(),
+        400 * one
+    );
+    assert_eq!(
+        get_token_account_balance(&ts.svm, &ts.pool_b).unwrap(),
+        900 * one
+    );
+
+    let mallory = fund_depositor(&mut ts, 400 * one, 100 * one);
+    send_deposit_from(&mut ts, &mallory, 400 * one, 100 * one)
+        .expect("a deposit at the wrong ratio is clamped, not refused");
+
+    // 400 ACME would need 900 USDC at Maria's price, more than Mallory
+    // offered, so her 100 USDC binds: 100 * 400 / 900 = 44.444444 ACME.
+    let acme_taken = 400 * one - get_token_account_balance(&ts.svm, &mallory.token_a).unwrap();
+    let usdc_taken = 100 * one - get_token_account_balance(&ts.svm, &mallory.token_b).unwrap();
+    assert_eq!(acme_taken, 44_444_444);
+    assert_eq!(usdc_taken, 100 * one);
+    let pool_a = get_token_account_balance(&ts.svm, &ts.pool_a).unwrap();
+    let pool_b = get_token_account_balance(&ts.svm, &ts.pool_b).unwrap();
+    assert_eq!(pool_a, 444_444_444);
+    assert_eq!(pool_b, 1_000 * one);
+    // The price is still 2.25 USDC per ACME, to the cent.
+    let price_in_cents = (pool_b as u128) * 100 / (pool_a as u128);
+    assert_eq!(price_in_cents, 225);
+    // Mallory is minted her share and nothing more: the LP supply is
+    // sqrt(400 * 900) = 600 (floor included), and 100 USDC is a ninth of
+    // the 900 in the pool, so min(44.444444 * 600 / 400, 100 * 600 / 900)
+    // = 66.666666 LP tokens.
+    assert_eq!(
+        get_token_account_balance(&ts.svm, &mallory.lp_token).unwrap(),
+        66_666_666
+    );
+
+    // The pool can never be in this state through the program, so put it
+    // there by hand: zero the token-A reserve's balance (an SPL token
+    // account; the `amount` is the u64 at bytes 64..72) and show the handler
+    // refuses to price a pool with an empty reserve.
+    let mut reserve = ts.svm.get_account(&ts.pool_a).unwrap();
+    reserve.data[64..72].copy_from_slice(&0u64.to_le_bytes());
+    ts.svm.set_account(ts.pool_a, reserve).unwrap();
+    // The balance check runs first, so give Mallory the USDC she offers
+    // (a new blockhash, or this mint is byte-identical to the one in
+    // `fund_depositor` and litesvm rejects it as already processed).
+    ts.svm.expire_blockhash();
+    mint_tokens_to_token_account(
+        &mut ts.svm,
+        &ts.mint_b,
+        &mallory.token_b,
+        100 * one,
+        &ts.admin,
+    )
+    .unwrap();
+    assert_error_code(
+        send_deposit_from(&mut ts, &mallory, 300 * one, 100 * one),
+        AmmError::EmptyPoolReserve,
+        "EmptyPoolReserve",
+    );
 }
 
 #[test]
 fn test_swap_a_to_b() {
-    let mut ts = full_setup();
-
-    // Deposit liquidity first
-    let deposit_ix = Instruction::new_with_bytes(
-        ts.program_id,
-        &swap_example::instruction::DepositLiquidity {
-            amount_a: 4_000_000,
-            amount_b: 1_000_000,
-            // 0 = no slippage floor for this setup deposit
-            minimum_lp_tokens_out: 0,
-        }
-        .data(),
-        swap_example::accounts::DepositLiquidityAccountConstraints {
-            pool_config: ts.pool_config_key,
-            depositor: ts.admin.pubkey(),
-            liquidity_provider_mint: ts.liquidity_provider_mint,
-            mint_a: ts.mint_a,
-            mint_b: ts.mint_b,
-            pool_a: ts.pool_a,
-            pool_b: ts.pool_b,
-            liquidity_provider_token: ts.liquidity_account,
-            token_a: ts.holder_account_a,
-            token_b: ts.holder_account_b,
-            payer: ts.payer.pubkey(),
-            token_program: token_program_id(),
-            associated_token_program: ata_program_id(),
-            system_program: system_program::ID,
-        }
-        .to_account_metas(None),
-    );
-    send_transaction_from_instructions(
-        &mut ts.svm,
-        vec![deposit_ix],
-        &[&ts.payer, &ts.admin],
-        &ts.payer.pubkey(),
-    )
-    .unwrap();
+    let mut ts = setup_pool(4_000_000, 1_000_000);
 
     // Get balances before swap
     let before_b = get_token_account_balance(&ts.svm, &ts.holder_account_b).unwrap();
@@ -412,43 +621,7 @@ fn test_swap_a_to_b() {
 
 #[test]
 fn test_withdraw_liquidity() {
-    let mut ts = full_setup();
-
-    // Deposit liquidity
-    let deposit_ix = Instruction::new_with_bytes(
-        ts.program_id,
-        &swap_example::instruction::DepositLiquidity {
-            amount_a: 4_000_000,
-            amount_b: 4_000_000,
-            // 0 = no slippage floor for this setup deposit
-            minimum_lp_tokens_out: 0,
-        }
-        .data(),
-        swap_example::accounts::DepositLiquidityAccountConstraints {
-            pool_config: ts.pool_config_key,
-            depositor: ts.admin.pubkey(),
-            liquidity_provider_mint: ts.liquidity_provider_mint,
-            mint_a: ts.mint_a,
-            mint_b: ts.mint_b,
-            pool_a: ts.pool_a,
-            pool_b: ts.pool_b,
-            liquidity_provider_token: ts.liquidity_account,
-            token_a: ts.holder_account_a,
-            token_b: ts.holder_account_b,
-            payer: ts.payer.pubkey(),
-            token_program: token_program_id(),
-            associated_token_program: ata_program_id(),
-            system_program: system_program::ID,
-        }
-        .to_account_metas(None),
-    );
-    send_transaction_from_instructions(
-        &mut ts.svm,
-        vec![deposit_ix],
-        &[&ts.payer, &ts.admin],
-        &ts.payer.pubkey(),
-    )
-    .unwrap();
+    let mut ts = setup_pool(4_000_000, 4_000_000);
 
     // Get liquidity token balance
     let liq_amount = get_token_account_balance(&ts.svm, &ts.liquidity_account).unwrap();
@@ -494,85 +667,6 @@ fn test_withdraw_liquidity() {
     // Liquidity balance should be 0
     let liq_amount = get_token_account_balance(&ts.svm, &ts.liquidity_account).unwrap();
     assert_eq!(liq_amount, 0, "Liquidity should be fully withdrawn");
-}
-
-/// Helper: do a deposit and one A->B swap on top of `full_setup`.
-/// Returns the swap input amount (token A base units) for fee-arithmetic checks.
-fn deposit_and_swap_a_to_b(
-    ts: &mut TestSetup,
-    deposit_a: u64,
-    deposit_b: u64,
-    swap_in_a: u64,
-) -> u64 {
-    let deposit_ix = Instruction::new_with_bytes(
-        ts.program_id,
-        &swap_example::instruction::DepositLiquidity {
-            amount_a: deposit_a,
-            amount_b: deposit_b,
-            // 0 = no slippage floor for setup deposits in helpers
-            minimum_lp_tokens_out: 0,
-        }
-        .data(),
-        swap_example::accounts::DepositLiquidityAccountConstraints {
-            pool_config: ts.pool_config_key,
-            depositor: ts.admin.pubkey(),
-            liquidity_provider_mint: ts.liquidity_provider_mint,
-            mint_a: ts.mint_a,
-            mint_b: ts.mint_b,
-            pool_a: ts.pool_a,
-            pool_b: ts.pool_b,
-            liquidity_provider_token: ts.liquidity_account,
-            token_a: ts.holder_account_a,
-            token_b: ts.holder_account_b,
-            payer: ts.payer.pubkey(),
-            token_program: token_program_id(),
-            associated_token_program: ata_program_id(),
-            system_program: system_program::ID,
-        }
-        .to_account_metas(None),
-    );
-    send_transaction_from_instructions(
-        &mut ts.svm,
-        vec![deposit_ix],
-        &[&ts.payer, &ts.admin],
-        &ts.payer.pubkey(),
-    )
-    .unwrap();
-
-    let swap_ix = Instruction::new_with_bytes(
-        ts.program_id,
-        &swap_example::instruction::SwapTokens {
-            input_is_token_a: true,
-            input_amount: swap_in_a,
-            min_output_amount: 1,
-        }
-        .data(),
-        swap_example::accounts::SwapTokensAccountConstraints {
-            config: ts.config_key,
-            pool_config: ts.pool_config_key,
-            trader: ts.admin.pubkey(),
-            mint_a: ts.mint_a,
-            mint_b: ts.mint_b,
-            pool_a: ts.pool_a,
-            pool_b: ts.pool_b,
-            token_a: ts.holder_account_a,
-            token_b: ts.holder_account_b,
-            payer: ts.payer.pubkey(),
-            token_program: token_program_id(),
-            associated_token_program: ata_program_id(),
-            system_program: system_program::ID,
-        }
-        .to_account_metas(None),
-    );
-    send_transaction_from_instructions(
-        &mut ts.svm,
-        vec![swap_ix],
-        &[&ts.payer, &ts.admin],
-        &ts.payer.pubkey(),
-    )
-    .unwrap();
-
-    swap_in_a
 }
 
 /// Helper: build a `claim_admin_fees` instruction for the standard setup.
@@ -634,17 +728,19 @@ fn swap_a_to_b(ts: &mut TestSetup, input_amount: u64) {
 
 #[test]
 fn test_claim_admin_fees() {
-    let mut ts = full_setup();
+    let mut ts = setup_pool(4_000_000, 1_000_000);
     // fee = 500 bps (5%), admin_share_bps = 1667 (~1/6).
-    // Per the swap: fee_amount = input * 500 / 10_000 = input * 5 / 100
-    //               admin_portion = fee_amount * 1667 / 10_000
+    // Per the swap: fee_amount = ceil(input * 500 / 10_000)
+    //               admin_portion = ceil(fee_amount * 1667 / 10_000)
     // Swap input is on the A side, so admin's claim accumulates in mint A.
+    // 1_000_000 in: a 50_000 fee, of which 50_000 * 1667 / 10_000 = 8_335
+    // exactly is the admin's.
     let swap_in = 1_000_000u64;
-    deposit_and_swap_a_to_b(&mut ts, 4_000_000, 1_000_000, swap_in);
+    swap_a_to_b(&mut ts, swap_in);
 
-    let fee_amount = swap_in * 500 / 10_000;
-    let expected_admin_a = fee_amount * 1667 / 10_000;
-    assert!(expected_admin_a > 0, "expected admin portion > 0");
+    let fee_amount = ceiled_fee(swap_in, 500);
+    let expected_admin_a = ceiled_admin_portion(fee_amount, 1667);
+    assert_eq!(expected_admin_a, 8_335);
 
     // ---- Phase 1: first claim transfers the accumulated A-side fees ----
     let admin_balance_a_before = get_token_account_balance(&ts.svm, &ts.holder_account_a).unwrap();
@@ -677,11 +773,13 @@ fn test_claim_admin_fees() {
     // This proves the accumulators were truly reset (not just zeroed in
     // memory): a fresh swap accrues new fees from a clean baseline, and the
     // next claim transfers exactly that new amount.
+    // 500_000 in: a 25_000 fee, of which 25_000 * 1667 / 10_000 = 4_167.5
+    // is the admin's, rounded up to 4_168 against the LPs.
     let swap_in_2 = 500_000u64;
     swap_a_to_b(&mut ts, swap_in_2);
-    let fee_amount_2 = swap_in_2 * 500 / 10_000;
-    let expected_admin_a_2 = fee_amount_2 * 1667 / 10_000;
-    assert!(expected_admin_a_2 > 0, "expected second admin portion > 0");
+    let fee_amount_2 = ceiled_fee(swap_in_2, 500);
+    let expected_admin_a_2 = ceiled_admin_portion(fee_amount_2, 1667);
+    assert_eq!(expected_admin_a_2, 4_168);
 
     let balance_a_pre_claim_2 = get_token_account_balance(&ts.svm, &ts.holder_account_a).unwrap();
 
@@ -735,12 +833,7 @@ fn test_claim_admin_fees() {
         &[&ts.payer, &ts.admin],
         &ts.payer.pubkey(),
     );
-    assert!(
-        result.is_err(),
-        "claim with both accumulators at zero must revert"
-    );
-    let err_msg = format!("{:?}", result.unwrap_err());
-    assert_program_error(&err_msg, AmmError::NothingToClaim, "NothingToClaim");
+    assert_error_code(result, AmmError::NothingToClaim, "NothingToClaim");
 
     // Balance unchanged - the revert rolled back any partial state.
     let balance_a_after_third_claim =
@@ -753,10 +846,10 @@ fn test_claim_admin_fees() {
 
 #[test]
 fn test_claim_admin_fees_rejects_non_admin() {
-    let mut ts = full_setup();
+    let mut ts = setup_pool(4_000_000, 1_000_000);
     // Need at least one swap so the program has a reason to reach the claim
     // handler (not strictly required, but matches the realistic flow).
-    deposit_and_swap_a_to_b(&mut ts, 4_000_000, 1_000_000, 1_000_000);
+    swap_a_to_b(&mut ts, 1_000_000);
 
     // Create a non-admin actor with their own ATAs and try to claim.
     let attacker = create_wallet(&mut ts.svm, 100_000_000_000).unwrap();
@@ -793,10 +886,7 @@ fn test_claim_admin_fees_rejects_non_admin() {
         &[&ts.payer, &attacker],
         &ts.payer.pubkey(),
     );
-    assert!(
-        result.is_err(),
-        "claim_admin_fees by a non-admin signer must fail"
-    );
+    assert_custom_error(result, 2012, "ConstraintAddress");
 }
 
 /// Helper: issue a `deposit_liquidity` ix with the given amounts. Lets a test
@@ -855,11 +945,9 @@ fn send_deposit(ts: &mut TestSetup, amount_a: u64, amount_b: u64) -> Result<(), 
 /// matching amounts unchanged and that LP tokens are minted.
 #[test]
 fn test_deposit_into_funded_pool_at_correct_ratio() {
-    let mut ts = full_setup();
+    let mut ts = setup_pool(4_000_000, 1_000_000);
 
-    // Seed the pool at a 4:1 ratio. This hits the pool-creation branch, which
-    // is unchanged by the fix.
-    send_deposit(&mut ts, 4_000_000, 1_000_000).expect("initial deposit");
+    // The pool opened at a 4:1 ratio.
 
     let pool_a_before = get_token_account_balance(&ts.svm, &ts.pool_a).unwrap();
     let pool_b_before = get_token_account_balance(&ts.svm, &ts.pool_b).unwrap();
@@ -892,10 +980,7 @@ fn test_deposit_into_funded_pool_at_correct_ratio() {
 /// should be clamped down; `amount_a` should be used in full.
 #[test]
 fn test_deposit_clamps_excess_amount_b() {
-    let mut ts = full_setup();
-
-    // Seed at 4:1.
-    send_deposit(&mut ts, 4_000_000, 1_000_000).expect("initial deposit");
+    let mut ts = setup_pool(4_000_000, 1_000_000);
 
     let pool_a_before = get_token_account_balance(&ts.svm, &ts.pool_a).unwrap();
     let pool_b_before = get_token_account_balance(&ts.svm, &ts.pool_b).unwrap();
@@ -931,10 +1016,7 @@ fn test_deposit_clamps_excess_amount_b() {
 /// should be clamped down; `amount_b` should be used in full.
 #[test]
 fn test_deposit_clamps_excess_amount_a() {
-    let mut ts = full_setup();
-
-    // Seed at 4:1.
-    send_deposit(&mut ts, 4_000_000, 1_000_000).expect("initial deposit");
+    let mut ts = setup_pool(4_000_000, 1_000_000);
 
     let pool_a_before = get_token_account_balance(&ts.svm, &ts.pool_a).unwrap();
     let pool_b_before = get_token_account_balance(&ts.svm, &ts.pool_b).unwrap();
@@ -964,13 +1046,12 @@ fn test_deposit_clamps_excess_amount_a() {
 /// effective-reserves subtraction works under real swap fees.
 #[test]
 fn test_deposit_after_swap_uses_shifted_effective_ratio() {
-    let mut ts = full_setup();
+    let mut ts = setup_pool(10_000_000, 10_000_000);
 
-    // Seed at 100:100 (1:1) so the post-swap ratio is dramatic and easy to
+    // Opened at 1:1 so the post-swap ratio is dramatic and easy to
     // sanity-check.
-    send_deposit(&mut ts, 10_000_000, 10_000_000).expect("initial deposit");
-
-    // Swap 1M of A in. With fee = 500 bps and admin_share = 1667 bps:
+    // Swap 1M of A in. With fee = 500 bps and admin_share = 1667 bps, both
+    // rounded up (exact here):
     //   fee_amount = 50_000
     //   admin_portion = 50_000 * 1667 / 10_000 = 8_335 (accrues on side A)
     //   taxed_input = 950_000
@@ -1071,61 +1152,75 @@ fn test_deposit_after_swap_uses_shifted_effective_ratio() {
 /// zero contribution.
 #[test]
 fn test_deposit_too_small_for_ratio_reverts() {
-    let mut ts = full_setup();
+    let mut ts = setup_pool(4_000_000, 1_000_000);
 
-    // Seed at 4M:1M (A is "cheaper" - 4 A per 1 B). To force amount_b to
+    // Opened at 4M:1M (A is "cheaper" - 4 A per 1 B). To force amount_b to
     // round down to zero, the depositor must offer < 4 base units of A
     // (so amount_b_required = amount_a * 1M / 4M = 0). We offer 1 base unit
     // of A and a large amount_b.
-    send_deposit(&mut ts, 4_000_000, 1_000_000).expect("initial deposit");
-
-    let result = send_deposit(&mut ts, 1, 1_000_000);
-    assert!(
-        result.is_err(),
-        "sub-ratio deposit should revert (clamped amount rounds to zero)"
+    assert_error_code(
+        send_deposit(&mut ts, 1, 1_000_000),
+        AmmError::DepositAmountTooSmall,
+        "DepositAmountTooSmall",
     );
 }
 
 /// Test F: LP-mint correctness for a subsequent deposit at the current ratio.
-/// With the Uniswap V2 formula `min(a*supply/pool_a, b*supply/pool_b)`, an
+/// With the Uniswap V2 formula `min(a*total/pool_a, b*total/pool_b)`, where
+/// `total` is the LP supply plus the unminted `MINIMUM_LIQUIDITY` floor, an
 /// equal-ratio deposit must mint LP tokens exactly proportional to its share
 /// of the pool. Previously the program used `sqrt(a*b)` for *all* deposits,
 /// which over- or under-minted depending on pool size and broke
 /// proportionality.
 #[test]
 fn test_lp_mint_proportional_to_share_of_pool() {
-    let mut ts = full_setup();
+    let mut ts = setup_pool(4_000_000, 1_000_000);
 
-    // Initial deposit: 4M : 1M. sqrt(4M * 1M) = 2_000_000. Minus
-    // MINIMUM_LIQUIDITY (100) → depositor LP balance = 1_999_900, which is
+    // The pool opened with 4M : 1M. sqrt(4M * 1M) = 2_000_000. Minus
+    // MINIMUM_LIQUIDITY (100) → creator LP balance = 1_999_900, which is
     // also the total LP supply (we don't mint the locked floor anywhere).
-    send_deposit(&mut ts, 4_000_000, 1_000_000).expect("initial deposit");
-
     let lp_supply_initial = get_token_account_balance(&ts.svm, &ts.liquidity_account).unwrap();
     let expected_initial: u64 = 2_000_000 - 100;
     assert_eq!(
         lp_supply_initial, expected_initial,
-        "initial LP supply should equal sqrt(a*b) - MINIMUM_LIQUIDITY"
+        "the creator's LP balance should equal sqrt(a*b) - MINIMUM_LIQUIDITY"
     );
 
     // Second deposit at the same 4:1 ratio doubles the pool. The proportional
-    // formula must mint exactly `lp_supply_initial` more LP (so the depositor
-    // doubles their stake).
+    // formula must mint exactly `lp_supply_initial + MINIMUM_LIQUIDITY` more
+    // LP: the first deposit's whole `sqrt(a*b)`, floor included, because the
+    // second depositor owns exactly as much of the pool as it does.
     let lp_before_second = get_token_account_balance(&ts.svm, &ts.liquidity_account).unwrap();
-    // Same depositor + same args as the first deposit → identical tx
-    // signature. Bump the blockhash so litesvm doesn't reject the second
-    // tx as `AlreadyProcessed`.
-    ts.svm.expire_blockhash();
     send_deposit(&mut ts, 4_000_000, 1_000_000).expect("second deposit");
     let lp_after_second = get_token_account_balance(&ts.svm, &ts.liquidity_account).unwrap();
 
     let minted_on_second = lp_after_second - lp_before_second;
-    // min(4M * 1_999_900 / 4M, 1M * 1_999_900 / 1M) = 1_999_900.
-    let expected_second: u64 = 1_999_900;
+    // min(4M * 2_000_000 / 4M, 1M * 2_000_000 / 1M) = 2_000_000.
+    let expected_second: u64 = 2_000_000;
     assert_eq!(
         minted_on_second, expected_second,
-        "second deposit (same ratio, same size) should mint the same LP \
-         amount as the initial deposit minus the locked floor"
+        "second deposit (same ratio, same size) should mint the initial \
+         deposit's LP amount plus the locked floor"
+    );
+
+    // Minted and burned LP tokens are the same fraction of the pool, so
+    // burning what the second deposit minted returns that deposit exactly.
+    // Dividing the deposit by the bare supply would have minted 1_999_900
+    // here, redeemable for only 3_999_900 of the 4_000_000 A deposited.
+    let pool_a_before = get_token_account_balance(&ts.svm, &ts.pool_a).unwrap();
+    let withdraw = withdraw_ix_with_min(&ts, minted_on_second, 0, 0);
+    send_transaction_from_instructions(
+        &mut ts.svm,
+        vec![withdraw],
+        &[&ts.payer, &ts.admin],
+        &ts.payer.pubkey(),
+    )
+    .expect("withdraw the second deposit's LP");
+    let pool_a_after = get_token_account_balance(&ts.svm, &ts.pool_a).unwrap();
+    assert_eq!(
+        pool_a_before - pool_a_after,
+        4_000_000,
+        "burning the second deposit's LP returns the A it deposited"
     );
 }
 
@@ -1135,12 +1230,12 @@ fn test_lp_mint_proportional_to_share_of_pool() {
 /// keep shares honest.
 #[test]
 fn test_lp_mint_after_swap_uses_effective_reserves() {
-    let mut ts = full_setup();
+    let mut ts = setup_pool(10_000_000, 10_000_000);
 
     // Seed 10M : 10M, then swap A→B so the pool shifts off 1:1.
-    send_deposit(&mut ts, 10_000_000, 10_000_000).expect("initial deposit");
     let lp_after_initial = get_token_account_balance(&ts.svm, &ts.liquidity_account).unwrap();
-    let total_supply_before_second = lp_after_initial;
+    // The divisor counts the unminted MINIMUM_LIQUIDITY floor as supply.
+    let total_supply_before_second = lp_after_initial + MINIMUM_LIQUIDITY;
 
     let swap_in = 1_000_000u64;
     swap_a_to_b(&mut ts, swap_in);
@@ -1161,7 +1256,7 @@ fn test_lp_mint_after_swap_uses_effective_reserves() {
     let deposit_a =
         ((deposit_b as u128) * (effective_pool_a as u128) / (effective_pool_b as u128)) as u64;
 
-    // Expected LP minted = min(a*supply/pool_a, b*supply/pool_b) using the
+    // Expected LP minted = min(a*total/pool_a, b*total/pool_b) using the
     // *clamped* (a, b) the program actually transfers. After clamp at the
     // exact ratio, the binding side is whichever clamp picks: in
     // deposit_liquidity, `amount_b_required = amount_a * pool_b / pool_a`.
@@ -1184,6 +1279,92 @@ fn test_lp_mint_after_swap_uses_effective_reserves() {
     assert_eq!(
         minted, expected_liquidity,
         "LP minted on post-swap deposit must match share-of-effective-pool math"
+    );
+}
+
+/// Test H: the donation (inflation) attack. An attacker opens the pool with
+/// the smallest deposit that clears the floor, so they hold 1 LP token and 101
+/// units of supply share the reserves (their 1 plus the unminted 100). They
+/// then donate straight to the vaults to make each unit of supply expensive,
+/// hoping a later deposit rounds down to zero LP tokens. Because deposits
+/// divide by the same `supply + MINIMUM_LIQUIDITY` as withdrawals, a donation
+/// as large as the victim's deposit is nowhere near enough: the victim is
+/// minted their share, and the attacker cannot get the donation back, because
+/// 100 of the 101 units it was spread over belong to no one.
+#[test]
+fn test_donation_cannot_round_a_later_deposit_to_zero() {
+    let mut ts = setup_pool(101, 101);
+
+    // sqrt(101 * 101) = 101, minus the 100 floor: the attacker holds 1 LP.
+    assert_eq!(
+        get_token_account_balance(&ts.svm, &ts.liquidity_account).unwrap(),
+        1
+    );
+
+    // The donation: tokens sent straight to the vaults, no LP minted.
+    let donation: u64 = 1_000_000;
+    mint_tokens_to_token_account(&mut ts.svm, &ts.mint_a, &ts.pool_a, donation, &ts.admin).unwrap();
+    mint_tokens_to_token_account(&mut ts.svm, &ts.mint_b, &ts.pool_b, donation, &ts.admin).unwrap();
+
+    // The victim deposits exactly as much as was donated. Dividing by the
+    // bare supply of 1 would mint 1_000_000 * 1 / 1_000_101 = 0 LP tokens.
+    let victim = fund_depositor(&mut ts, donation, donation);
+    send_deposit_from(&mut ts, &victim, donation, donation)
+        .expect("victim deposit mints LP tokens");
+
+    // 1_000_000 * 101 / 1_000_101 = 100 LP tokens.
+    assert_eq!(
+        get_token_account_balance(&ts.svm, &victim.lp_token).unwrap(),
+        100
+    );
+
+    // The attacker exits. Their 1 LP token is 1 of 201 units of supply over a
+    // 2_000_101 reserve: 9_950 of each token, back from a 1_000_101 outlay.
+    let attacker_exit = withdraw_ix_with_min(&ts, 1, 0, 0);
+    let attacker_a_before = get_token_account_balance(&ts.svm, &ts.holder_account_a).unwrap();
+    send_transaction_from_instructions(
+        &mut ts.svm,
+        vec![attacker_exit],
+        &[&ts.payer, &ts.admin],
+        &ts.payer.pubkey(),
+    )
+    .expect("attacker withdraws");
+    let attacker_a_back =
+        get_token_account_balance(&ts.svm, &ts.holder_account_a).unwrap() - attacker_a_before;
+    assert_eq!(attacker_a_back, 9_950);
+    assert!(
+        attacker_a_back < donation / 100,
+        "the attacker recovers under 1% of the donation"
+    );
+}
+
+/// Test I: once every LP token is burned, the floor's share of the reserves
+/// is still in the pool, so the next deposit is clamped to the floor's ratio
+/// and mints against the floor alone. Dividing by the bare supply of
+/// zero would mint nothing and leave the pool unable to take deposits again.
+#[test]
+fn test_deposit_after_every_lp_token_is_burned() {
+    let mut ts = setup_pool(4_000_000, 4_000_000);
+    let lp = get_token_account_balance(&ts.svm, &ts.liquidity_account).unwrap();
+
+    // Burn all 3_999_900 LP tokens: 3_999_900 * 4_000_000 / 4_000_000 of
+    // each side leaves, and the floor's 100 of each side stays.
+    let withdraw_all = withdraw_ix_with_min(&ts, lp, 0, 0);
+    send_transaction_from_instructions(
+        &mut ts.svm,
+        vec![withdraw_all],
+        &[&ts.payer, &ts.admin],
+        &ts.payer.pubkey(),
+    )
+    .expect("withdraw everything");
+    assert_eq!(get_token_account_balance(&ts.svm, &ts.pool_a).unwrap(), 100);
+    assert_eq!(get_token_account_balance(&ts.svm, &ts.pool_b).unwrap(), 100);
+
+    // 1_000_000 * (0 + 100) / 100 = 1_000_000 LP tokens.
+    send_deposit(&mut ts, 1_000_000, 1_000_000).expect("deposit into the emptied pool");
+    assert_eq!(
+        get_token_account_balance(&ts.svm, &ts.liquidity_account).unwrap(),
+        1_000_000
     );
 }
 
@@ -1296,9 +1477,8 @@ fn withdraw_ix_with_min(
 /// at a worse rate.
 #[test]
 fn test_swap_reverts_when_output_below_min() {
-    let mut ts = full_setup();
-    // Seed a 4:1 pool so 1M of A out gives ~237k of B after a 5% fee.
-    send_deposit(&mut ts, 4_000_000, 1_000_000).expect("seed");
+    let mut ts = setup_pool(4_000_000, 1_000_000);
+    // A 4:1 pool, so 1M of A in gives ~237k of B after a 5% fee.
 
     // First: prove the swap *would* succeed with a permissive floor.
     let baseline_ix = swap_a_to_b_ix(&ts, 1_000_000, 1);
@@ -1317,8 +1497,7 @@ fn test_swap_reverts_when_output_below_min() {
     // Reset and try the same swap with `min_output_amount = actual + 1`. It
     // must revert because the pool can't beat the previous output (in fact
     // it can't even match it - the first swap shifted the ratio).
-    let mut ts = full_setup();
-    send_deposit(&mut ts, 4_000_000, 1_000_000).expect("seed");
+    let mut ts = setup_pool(4_000_000, 1_000_000);
     let too_high = actual_output + 1;
     let strict_ix = swap_a_to_b_ix(&ts, 1_000_000, too_high);
     let result = send_transaction_from_instructions(
@@ -1327,8 +1506,7 @@ fn test_swap_reverts_when_output_below_min() {
         &[&ts.payer, &ts.admin],
         &ts.payer.pubkey(),
     );
-    let err = format!("{:?}", result.expect_err("must revert"));
-    assert_program_error(&err, AmmError::SlippageExceeded, "SlippageExceeded");
+    assert_error_code(result, AmmError::SlippageExceeded, "SlippageExceeded");
 }
 
 /// Slippage test: a deposit with `minimum_lp_tokens_out` strictly higher
@@ -1336,19 +1514,19 @@ fn test_swap_reverts_when_output_below_min() {
 /// `DepositBelowMinimum`.
 #[test]
 fn test_deposit_reverts_when_lp_below_min() {
-    let mut ts = full_setup();
-    // Seed pool so the second deposit goes through the proportional branch.
-    send_deposit(&mut ts, 4_000_000, 1_000_000).expect("seed");
+    let mut ts = setup_pool(4_000_000, 1_000_000);
 
     // Compute the LP that a `(4M, 1M)` deposit at the current ratio would
     // mint, using the same formula as the program (no probe tx needed):
-    //   liquidity = min(a*supply/pool_a, b*supply/pool_b)
-    // Effective reserves == raw reserves here because no swaps have happened.
-    let lp_supply = get_token_account_balance(&ts.svm, &ts.liquidity_account).unwrap();
+    //   liquidity = min(a*total/pool_a, b*total/pool_b)
+    // where total = LP supply + MINIMUM_LIQUIDITY. Effective reserves == raw
+    // reserves here because no swaps have happened.
+    let total_supply =
+        get_token_account_balance(&ts.svm, &ts.liquidity_account).unwrap() + MINIMUM_LIQUIDITY;
     let pool_a_amount = get_token_account_balance(&ts.svm, &ts.pool_a).unwrap();
     let pool_b_amount = get_token_account_balance(&ts.svm, &ts.pool_b).unwrap();
-    let lp_from_a = (4_000_000u128 * lp_supply as u128) / pool_a_amount as u128;
-    let lp_from_b = (1_000_000u128 * lp_supply as u128) / pool_b_amount as u128;
+    let lp_from_a = (4_000_000u128 * total_supply as u128) / pool_a_amount as u128;
+    let lp_from_b = (1_000_000u128 * total_supply as u128) / pool_b_amount as u128;
     let achievable_lp = lp_from_a.min(lp_from_b) as u64;
 
     // Require *strictly more* than that - the deposit must revert.
@@ -1359,8 +1537,7 @@ fn test_deposit_reverts_when_lp_below_min() {
         &[&ts.payer, &ts.admin],
         &ts.payer.pubkey(),
     );
-    let err = format!("{:?}", result.expect_err("must revert"));
-    assert_program_error(&err, AmmError::DepositBelowMinimum, "DepositBelowMinimum");
+    assert_error_code(result, AmmError::DepositBelowMinimum, "DepositBelowMinimum");
 
     // Sanity: the same deposit with `achievable_lp` as the floor succeeds.
     let ok_ix = deposit_ix_with_min_lp(&ts, 4_000_000, 1_000_000, achievable_lp);
@@ -1378,8 +1555,7 @@ fn test_deposit_reverts_when_lp_below_min() {
 /// revert with `WithdrawalBelowMinimum`.
 #[test]
 fn test_withdraw_reverts_when_below_min() {
-    let mut ts = full_setup();
-    send_deposit(&mut ts, 4_000_000, 4_000_000).expect("seed");
+    let mut ts = setup_pool(4_000_000, 4_000_000);
     let lp = get_token_account_balance(&ts.svm, &ts.liquidity_account).unwrap();
 
     // Burning half the LP at a 4M:4M pool returns ~2M of each side, but the
@@ -1392,9 +1568,8 @@ fn test_withdraw_reverts_when_below_min() {
         &[&ts.payer, &ts.admin],
         &ts.payer.pubkey(),
     );
-    let err = format!("{:?}", result.expect_err("must revert (A side)"));
-    assert_program_error(
-        &err,
+    assert_error_code(
+        result,
         AmmError::WithdrawalBelowMinimum,
         "WithdrawalBelowMinimum",
     );
@@ -1407,9 +1582,8 @@ fn test_withdraw_reverts_when_below_min() {
         &[&ts.payer, &ts.admin],
         &ts.payer.pubkey(),
     );
-    let err_b = format!("{:?}", result_b.expect_err("must revert (B side)"));
-    assert_program_error(
-        &err_b,
+    assert_error_code(
+        result_b,
         AmmError::WithdrawalBelowMinimum,
         "WithdrawalBelowMinimum",
     );
@@ -1420,8 +1594,7 @@ fn test_withdraw_reverts_when_below_min() {
 /// hatch and must still succeed.
 #[test]
 fn test_swap_with_zero_min_output_still_succeeds() {
-    let mut ts = full_setup();
-    send_deposit(&mut ts, 4_000_000, 1_000_000).expect("seed");
+    let mut ts = setup_pool(4_000_000, 1_000_000);
 
     let before_b = get_token_account_balance(&ts.svm, &ts.holder_account_b).unwrap();
     let ix = swap_a_to_b_ix(&ts, 1_000_000, 0);
@@ -1472,10 +1645,9 @@ fn swap_b_to_a_ix(ts: &TestSetup, input_amount: u64, min_output_amount: u64) -> 
 /// `input_amount`, so the trader underpaid for every B→A swap).
 #[test]
 fn test_swap_b_to_a_trader_pays_full_input() {
-    let mut ts = full_setup();
-    // Seed at 4:1 so the B side is the scarce asset and a B→A swap returns a
-    // multiple of its input in A.
-    send_deposit(&mut ts, 4_000_000, 1_000_000).expect("seed");
+    let mut ts = setup_pool(4_000_000, 1_000_000);
+    // Opened at 4:1 so the B side is the scarce asset and a B→A swap returns
+    // a multiple of its input in A.
 
     let holder_a_before = get_token_account_balance(&ts.svm, &ts.holder_account_a).unwrap();
     let holder_b_before = get_token_account_balance(&ts.svm, &ts.holder_account_b).unwrap();
@@ -1524,8 +1696,7 @@ fn test_swap_b_to_a_trader_pays_full_input() {
 /// variant so both directions of the symmetric flow are exercised.
 #[test]
 fn test_invariant_holds_after_b_to_a_swap() {
-    let mut ts = full_setup();
-    send_deposit(&mut ts, 4_000_000, 1_000_000).expect("seed");
+    let mut ts = setup_pool(4_000_000, 1_000_000);
 
     let pool_a_before = get_token_account_balance(&ts.svm, &ts.pool_a).unwrap();
     let pool_b_before = get_token_account_balance(&ts.svm, &ts.pool_b).unwrap();
@@ -1567,8 +1738,7 @@ fn test_invariant_holds_after_b_to_a_swap() {
 /// gave away too much" bugs - verify the happy path doesn't trip it.
 #[test]
 fn test_invariant_holds_after_normal_swap() {
-    let mut ts = full_setup();
-    send_deposit(&mut ts, 4_000_000, 1_000_000).expect("seed");
+    let mut ts = setup_pool(4_000_000, 1_000_000);
 
     // Read effective reserves before.
     let pool_a_before = get_token_account_balance(&ts.svm, &ts.pool_a).unwrap();
@@ -1598,5 +1768,61 @@ fn test_invariant_holds_after_normal_swap() {
         k_after >= k_before,
         "effective invariant must not decrease across a fee-paying swap: \
          before={k_before}, after={k_after}"
+    );
+}
+
+/// The floor boundary. A deposit whose square root is exactly
+/// `MINIMUM_LIQUIDITY` would open a pool and mint its creator nothing, so it
+/// is refused with `DepositTooSmall` and nothing is created; one unit above
+/// it opens the pool and leaves the creator 1 LP token.
+#[test]
+fn test_initialize_pool_rejects_sqrt_equal_to_floor() {
+    let mut ts = setup_config_and_mints();
+    // sqrt(100 * 100) = 100 = MINIMUM_LIQUIDITY.
+    assert_error_code(
+        send_initialize_pool(&mut ts, MINIMUM_LIQUIDITY, MINIMUM_LIQUIDITY),
+        AmmError::DepositTooSmall,
+        "DepositTooSmall",
+    );
+    assert!(ts.svm.get_account(&ts.pool_config_key).is_none());
+
+    // sqrt(101 * 101) = 101: the smallest pool that opens.
+    send_initialize_pool(&mut ts, MINIMUM_LIQUIDITY + 1, MINIMUM_LIQUIDITY + 1)
+        .expect("a square root one above the floor opens the pool");
+    assert_eq!(
+        get_token_account_balance(&ts.svm, &ts.liquidity_account).unwrap(),
+        1
+    );
+}
+
+/// The fee rounds against the trader. 1_000_001 of A at 500 bps is a fee of
+/// 50_000.05, charged as 50_001; the admin's 1667 bps of that is 8_335.17,
+/// owed as 8_336. The curve prices the 950_000 that remain:
+/// `950_000 * 1_000_000 / (4_000_000 + 950_000) = 191_919`.
+#[test]
+fn test_swap_fee_rounds_up() {
+    let mut ts = setup_pool(4_000_000, 1_000_000);
+    let holder_b_before = get_token_account_balance(&ts.svm, &ts.holder_account_b).unwrap();
+
+    let input = 1_000_001u64;
+    assert_eq!(ceiled_fee(input, 500), 50_001);
+    assert_eq!(ceiled_admin_portion(50_001, 1667), 8_336);
+    swap_a_to_b(&mut ts, input);
+
+    let admin_owed_a: u64 = {
+        let account = ts.svm.get_account(&ts.pool_config_key).unwrap();
+        let start = 8 + 32 * 3;
+        u64::from_le_bytes(account.data[start..start + 8].try_into().unwrap())
+    };
+    assert_eq!(admin_owed_a, 8_336, "the admin's slice rounds up");
+    assert_eq!(
+        get_token_account_balance(&ts.svm, &ts.holder_account_b).unwrap() - holder_b_before,
+        191_919,
+        "the output is priced from the input minus the rounded-up fee"
+    );
+    assert_eq!(
+        get_token_account_balance(&ts.svm, &ts.pool_a).unwrap(),
+        4_000_000 + input,
+        "the trader pays the whole input; the fee is taken from it"
     );
 }

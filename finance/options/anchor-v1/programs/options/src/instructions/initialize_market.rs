@@ -30,8 +30,8 @@ pub fn handle_initialize_market(
     market.quote_mint = context.accounts.quote_mint.key();
     market.underlying_vault = context.accounts.underlying_vault.key();
     market.quote_vault = context.accounts.quote_vault.key();
-    market.underlying_locked = 0;
-    market.quote_locked = 0;
+    market.underlying_owed = 0;
+    market.quote_owed = 0;
     market.fees_owed = 0;
     market.fee_bps = fee_bps;
     market.bump = context.bumps.market;

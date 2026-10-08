@@ -162,8 +162,8 @@ fn handle_transfer_tokens(
         return Err(ExternalDelegateError::InvalidSignature.into());
     }
 
-    // Consume the nonce before the transfer CPI (checks-effects-interactions),
-    // so this signature can never authorize a second execution.
+    // Consume the nonce, so this signature can never authorize a second
+    // execution.
     let next_nonce = nonce
         .checked_add(1)
         .ok_or(ExternalDelegateError::NonceOverflow)?;

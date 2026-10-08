@@ -1,0 +1,96 @@
+pub mod error;
+pub mod instructions;
+pub mod oracle;
+pub mod state;
+
+use anchor_lang::prelude::*;
+
+pub use instructions::*;
+pub use state::*;
+
+declare_id!("VLT5W7bqhRN4nCdRpXm8UfHRxZd9EuZGqiSAkGHQfGh");
+
+#[program]
+pub mod managed_fund {
+    use super::*;
+
+    /// Create the curator record for an approved-asset set, owned by `authority`
+    /// (not a manager). The set itself lives in per-asset ApprovedAsset accounts.
+    pub fn initialize_registry(
+        context: Context<InitializeRegistryAccountConstraints>,
+    ) -> Result<()> {
+        instructions::initialize_registry::handle_initialize_registry(context)
+    }
+
+    /// Approve a mint and bind it to its official price feed. Registry authority only.
+    pub fn approve_asset(
+        context: Context<ApproveAssetAccountConstraints>,
+        price_feed: Pubkey,
+    ) -> Result<()> {
+        instructions::approve_asset::handle_approve_asset(context, price_feed)
+    }
+
+    /// Open a fund at a caller-chosen index, e.g. index 0 derives the PDA
+    /// from seeds `"fund" + 0`. Manager pays and becomes the fund's manager.
+    pub fn initialize_fund(
+        context: Context<InitializeFundAccountConstraints>,
+        index: u64,
+        fee_bps: u16,
+        max_slippage_bps: u16,
+        rebalance_threshold_bps: u16,
+        swap_router: Pubkey,
+    ) -> Result<()> {
+        instructions::initialize_fund::handle_initialize_fund(
+            context,
+            index,
+            fee_bps,
+            max_slippage_bps,
+            rebalance_threshold_bps,
+            swap_router,
+        )
+    }
+
+    /// Add a curator-approved asset to the fund at the next index. Manager only.
+    pub fn add_asset(context: Context<AddAssetAccountConstraints>, weight_bps: u16) -> Result<()> {
+        instructions::add_asset::handle_add_asset(context, weight_bps)
+    }
+
+    /// Change an asset's target weight, or set it to zero to retire it. Manager only.
+    pub fn set_weight(
+        context: Context<SetWeightAccountConstraints>,
+        weight_bps: u16,
+    ) -> Result<()> {
+        instructions::set_weight::handle_set_weight(context, weight_bps)
+    }
+
+    pub fn deposit<'info>(
+        context: Context<'info, DepositAccountConstraints<'info>>,
+        usdc_amount: u64,
+        minimum_shares: u64,
+    ) -> Result<()> {
+        instructions::deposit::handle_deposit(context, usdc_amount, minimum_shares)
+    }
+
+    pub fn collect_fees(context: Context<CollectFeesAccountConstraints>) -> Result<()> {
+        instructions::collect_fees::handle_collect_fees(context)
+    }
+
+    pub fn withdraw<'info>(
+        context: Context<'info, WithdrawAccountConstraints<'info>>,
+        shares_to_burn: u64,
+        min_usdc_out: u64,
+    ) -> Result<()> {
+        instructions::withdraw::handle_withdraw(context, shares_to_burn, min_usdc_out)
+    }
+
+    /// Sell an asset that has drifted above its target weight and buy one below
+    /// its target. Anyone may call it: the program computes the trade, so the
+    /// caller chooses only which pair to restore.
+    pub fn rebalance<'info>(
+        context: Context<'info, RebalanceAccountConstraints<'info>>,
+        sell_index: u8,
+        buy_index: u8,
+    ) -> Result<()> {
+        instructions::rebalance::handle_rebalance(context, sell_index, buy_index)
+    }
+}

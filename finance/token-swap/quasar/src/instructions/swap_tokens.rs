@@ -19,6 +19,8 @@ pub struct SwapTokensAccountConstraints {
     #[account(
         mut,
         address = PoolPda::seeds(config.address(), mint_a.address(), mint_b.address()),
+        has_one(pool_a) @ AmmError::InvalidPoolVault,
+        has_one(pool_b) @ AmmError::InvalidPoolVault,
     )]
     pub pool_config: Account<PoolConfig>,
     pub trader: Signer,
@@ -79,19 +81,24 @@ pub fn handle_swap_tokens(
     // `pool_config.admin_fees_owed_<input_side>` and is swept later by
     // `claim_admin_fees`. This saves a CPI per swap. u128 + checked: the
     // intermediate `input * fee` can overflow u64; multiply before divide.
+    // Both divisions round up: a fee that is not a whole number of minor
+    // units costs the trader one more unit rather than the pool one less,
+    // and the admin's slice of it rounds up against the LPs for the same
+    // reason. `taxed_input`, the trader's side, is what remains after the
+    // ceiled fee. `fee < 10_000`, so the ceiling of `input * fee / 10_000`
+    // is at most `input` and fits a u64; the admin portion is at most the
+    // fee by the same argument.
     let fee = accounts.config.fee() as u128;
     let admin_share_bps = accounts.config.admin_share_bps() as u128;
     let fee_amount_u128 = (input as u128)
         .checked_mul(fee)
         .ok_or(AmmError::MathOverflow)?
-        .checked_div(BASIS_POINTS_DIVISOR as u128)
-        .ok_or(AmmError::MathOverflow)?;
+        .div_ceil(BASIS_POINTS_DIVISOR as u128);
     let fee_amount = u64::try_from(fee_amount_u128).map_err(|_| AmmError::MathOverflow)?;
     let admin_portion_u128 = (fee_amount as u128)
         .checked_mul(admin_share_bps)
         .ok_or(AmmError::MathOverflow)?
-        .checked_div(BASIS_POINTS_DIVISOR as u128)
-        .ok_or(AmmError::MathOverflow)?;
+        .div_ceil(BASIS_POINTS_DIVISOR as u128);
     let admin_portion = u64::try_from(admin_portion_u128).map_err(|_| AmmError::MathOverflow)?;
     let taxed_input = input
         .checked_sub(fee_amount)
@@ -112,6 +119,22 @@ pub fn handle_swap_tokens(
     let effective_pool_b = pool_b_raw
         .checked_sub(owed_b)
         .ok_or(AmmError::MathOverflow)?;
+
+    // Refuse to trade against an empty reserve. If the input side's effective
+    // reserve were 0, the constant-product formula below would output the
+    // ENTIRE opposite reserve (output = taxed_input * other / (0 + taxed_input)
+    // = other), draining that side - and the end-of-swap
+    // `new_invariant >= invariant` check would NOT catch it, because the
+    // pre-trade product k = 0 * other = 0 makes `0 >= 0` hold vacuously. A
+    // bootstrapped pool keeps both sides positive (the MINIMUM_LIQUIDITY floor
+    // on the first deposit, and swaps preserve the product), but tokens sent
+    // straight to a reserve before the first deposit leave one side funded and
+    // the other empty, and the curve's solvency must not rest on that never
+    // happening.
+    require!(
+        effective_pool_a > 0 && effective_pool_b > 0,
+        AmmError::EmptyPoolReserve
+    );
 
     let output_u128 = if input_is_token_a {
         (taxed_input as u128)
@@ -147,12 +170,10 @@ pub fn handle_swap_tokens(
         .checked_mul(effective_pool_b as u128)
         .ok_or(AmmError::MathOverflow)?;
 
-    // Effects (Checks-Effects-Interactions): accumulate the admin's slice on
-    // the *input* side before any transfer CPI. The fee always comes off the
-    // input, so the admin's claim grows in the input token. Writing state
-    // before the interactions is the safe ordering - a failed CPI reverts the
-    // whole transaction, so the accumulator update can never outlive a failed
-    // transfer.
+    // Accumulate the admin's slice on the *input* side. The fee always comes
+    // off the input, so the admin's claim grows in the input token. A failed
+    // transfer reverts the whole transaction, so the accumulator update can
+    // never outlive a failed transfer.
     let (new_owed_a, new_owed_b) = if input_is_token_a {
         (
             owed_a
@@ -171,10 +192,14 @@ pub fn handle_swap_tokens(
     let config_addr = *accounts.pool_config.config();
     let mint_a_addr = *accounts.pool_config.mint_a();
     let mint_b_addr = *accounts.pool_config.mint_b();
+    let pool_a_addr = *accounts.pool_config.pool_a();
+    let pool_b_addr = *accounts.pool_config.pool_b();
     accounts.pool_config.set_inner(PoolConfigInner {
         config: config_addr,
         mint_a: mint_a_addr,
         mint_b: mint_b_addr,
+        pool_a: pool_a_addr,
+        pool_b: pool_b_addr,
         admin_fees_owed_a: new_owed_a,
         admin_fees_owed_b: new_owed_b,
     });
@@ -242,22 +267,18 @@ pub fn handle_swap_tokens(
             .invoke()?;
     }
 
-    // Verify invariant holds on the LP-claimable (effective) reserves.
-    // u128 + checked throughout - a raw `+`/`-` could wrap on extreme values.
-    let new_pool_a_raw = (pool_a_raw as u128)
-        .checked_add(if input_is_token_a { input as u128 } else { 0 })
-        .ok_or(AmmError::MathOverflow)?
-        .checked_sub(if !input_is_token_a { output as u128 } else { 0 })
-        .ok_or(AmmError::MathOverflow)?;
-    let new_pool_b_raw = (pool_b_raw as u128)
-        .checked_add(if !input_is_token_a { input as u128 } else { 0 })
-        .ok_or(AmmError::MathOverflow)?
-        .checked_sub(if input_is_token_a { output as u128 } else { 0 })
-        .ok_or(AmmError::MathOverflow)?;
-    let new_effective_a = new_pool_a_raw
+    // Verify invariant holds on the LP-claimable (effective) reserves, read
+    // from the vaults after the transfers have landed rather than computed
+    // from the amounts this handler meant to move. A check on computed figures
+    // only re-runs the math above; reading the vaults also catches a transfer
+    // that moved something other than what the math said. Quasar token
+    // accounts are zero-copy, so `amount()` reads the runtime buffer the CPIs
+    // just wrote and there is nothing to reload.
+    // u128 + checked throughout - a raw `-` could wrap on extreme values.
+    let new_effective_a = (accounts.pool_a.amount() as u128)
         .checked_sub(new_owed_a as u128)
         .ok_or(AmmError::MathOverflow)?;
-    let new_effective_b = new_pool_b_raw
+    let new_effective_b = (accounts.pool_b.amount() as u128)
         .checked_sub(new_owed_b as u128)
         .ok_or(AmmError::MathOverflow)?;
     let new_invariant = new_effective_a

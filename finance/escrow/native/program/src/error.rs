@@ -23,6 +23,15 @@ pub enum EscrowError {
 
     #[error("Arithmetic overflow")]
     ArithmeticOverflow,
+
+    #[error("An offer must offer and want more than zero tokens")]
+    ZeroAmount,
+
+    #[error("An offer must exchange two different tokens")]
+    SameMint,
+
+    #[error("The offer pays less token A, or wants more token B, than the taker agreed to")]
+    OfferTermsChanged,
 }
 
 impl From<EscrowError> for ProgramError {

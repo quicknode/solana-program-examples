@@ -1,0 +1,73 @@
+use anchor_lang::prelude::*;
+
+#[error_code]
+pub enum FundError {
+    #[msg("Shares minted are below the minimum - slippage exceeded")]
+    SlippageTooHigh,
+    #[msg("USDC out is below minimum - slippage exceeded")]
+    UsdcSlippage,
+    #[msg("Swap output deviates from the oracle price by more than the allowed slippage")]
+    SwapSlippageExceeded,
+    #[msg("Max slippage exceeds the maximum allowed configuration")]
+    SlippageConfigTooHigh,
+    #[msg("Asset mint is not part of this fund")]
+    AssetNotFound,
+    #[msg("Fund already holds the maximum number of assets")]
+    TooManyAssets,
+    #[msg("Asset is already part of this fund")]
+    DuplicateAsset,
+    #[msg("Total target weight would exceed 10000 basis points")]
+    WeightOverflow,
+    #[msg("Fund weights must sum to 100% before it can accept deposits")]
+    FundNotFullyAllocated,
+    #[msg("Wrong number of asset accounts supplied for the fund's assets")]
+    IncompleteAssetAccounts,
+    #[msg("An asset account does not match the fund's registered asset")]
+    InvalidAssetAccount,
+    #[msg("Token account could not be read")]
+    InvalidVaultAccount,
+    #[msg("Recipient token account is not owned by the withdrawing user")]
+    InvalidRecipient,
+    #[msg("Registry does not match the fund's registered registry")]
+    InvalidRegistry,
+    #[msg("No time has elapsed since last fee accrual")]
+    NoTimeElapsed,
+    #[msg("Arithmetic overflow")]
+    MathOverflow,
+    #[msg("Cannot withdraw zero shares")]
+    ZeroShares,
+    #[msg("Cannot deposit zero USDC")]
+    ZeroDeposit,
+    #[msg("Total shares are zero - cannot compute proportional withdraw")]
+    ZeroTotalShares,
+    #[msg("Price feed account does not match the registered feed")]
+    InvalidPriceFeed,
+    #[msg("Pyth price is zero or negative")]
+    NegativePrice,
+    #[msg("Pyth price feed is stale")]
+    StalePriceFeed,
+    #[msg("Sell and buy assets must be different")]
+    SameMint,
+    #[msg("USDC mint does not match the fund's registered USDC mint")]
+    InvalidUsdcMint,
+    #[msg("Swap router program does not match the fund's registered swap router")]
+    InvalidSwapRouter,
+    #[msg("Management fee exceeds the maximum allowed")]
+    FeeTooHigh,
+    #[msg("Price feed is stale: it predates the last cluster restart")]
+    PricePredatesRestart,
+    #[msg("Deposit is too small: a deployment leg would buy none of its asset")]
+    DepositTooSmall,
+    #[msg("Rebalance spends more than the fund's recorded holdings")]
+    InsufficientHoldings,
+    #[msg("Rebalance threshold is outside the allowed range")]
+    RebalanceThresholdOutOfRange,
+    #[msg("The asset to sell is not far enough above its target weight to rebalance")]
+    DriftBelowThreshold,
+    #[msg("The asset to buy is not below its target weight")]
+    NotUnderweight,
+    #[msg("Pyth price confidence interval is too wide to trust")]
+    OracleConfidenceTooWide,
+    #[msg("Pyth price update is not fully verified by a quorum of Pyth's signers")]
+    PriceNotFullyVerified,
+}

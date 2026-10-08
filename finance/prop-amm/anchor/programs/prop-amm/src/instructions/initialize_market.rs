@@ -54,6 +54,7 @@ pub fn handle_initialize_market(
     market.base_mint = *context.accounts.base_mint.address();
     market.quote_mint = *context.accounts.quote_mint.address();
     market.oracle_feed = *context.accounts.oracle_feed.address();
+    market.price_feed_program = *context.accounts.oracle_feed.account().owner();
     market.base_vault = *context.accounts.base_vault.address();
     market.quote_vault = *context.accounts.quote_vault.address();
     market.oracle_scale = parameters.oracle_scale;
@@ -88,9 +89,10 @@ pub struct InitializeMarketAccountConstraints {
 
     pub quote_mint: Box<InterfaceAccount<Mint>>,
 
-    /// CHECK: The oracle feed account. Its key is stored on the market and
-    /// every read validates the layout, scale, and freshness; it is never
-    /// trusted by type. Swap for a real Switchboard feed in production.
+    /// CHECK: The oracle feed account. Its key and its owning program are
+    /// stored on the market, and every read requires that owner and validates
+    /// the layout, scale, and freshness; it is never trusted by type. Swap for
+    /// a real Pyth price feed in production.
     pub oracle_feed: UncheckedAccount,
 
     // The market account itself is the token authority of both vaults and

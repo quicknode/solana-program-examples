@@ -59,7 +59,13 @@ pub fn handle_liquidate_position(
     bumps: &LiquidatePositionBumps,
 ) -> Result<(), ProgramError> {
     let slot = accounts.clock.slot.get();
-    let price = refresh_price_and_funding(&mut accounts.pool, &accounts.oracle_feed, slot)?;
+    let unix_timestamp = accounts.clock.unix_timestamp.get();
+    let price = refresh_price_and_funding(
+        &mut accounts.pool,
+        &accounts.oracle_feed,
+        slot,
+        unix_timestamp,
+    )?;
 
     let side = accounts.position.side;
     let size = accounts.position.size.get();
@@ -81,11 +87,17 @@ pub fn handle_liquidate_position(
         .checked_sub(funding)
         .ok_or(ProgramError::ArithmeticOverflow)?;
 
+    // Liquidatable only once equity has fallen to or below the maintenance
+    // margin, rounded up against the trader. A healthy position can only be
+    // closed by its owner.
     let maintenance = basis_points_of(size, accounts.pool.maintenance_margin_bps.get())?;
     if equity > maintenance as i128 {
         return Err(err(error::POSITION_HEALTHY));
     }
 
+    // The liquidator's reward comes out of whatever equity remains. Whatever
+    // part of the fee the equity cannot cover is forgiven: neither the
+    // insurance fund nor the liquidity providers pay it.
     let remaining_equity =
         u64::try_from(equity.max(0)).map_err(|_| ProgramError::ArithmeticOverflow)?;
     let liquidation_fee = basis_points_of(size, accounts.pool.liquidation_fee_bps.get())?;
@@ -96,15 +108,6 @@ pub fn handle_liquidate_position(
 
     remove_open_interest(&mut accounts.pool, side, size, size_scaled)?;
 
-    // Release the position's reserved liquidity now that it is closing.
-    let new_reserved = accounts
-        .pool
-        .reserved_liquidity
-        .get()
-        .checked_sub(size)
-        .ok_or(ProgramError::ArithmeticOverflow)?;
-    accounts.pool.reserved_liquidity.set(new_reserved);
-
     let new_total_collateral = accounts
         .pool
         .total_collateral
@@ -113,9 +116,27 @@ pub fn handle_liquidate_position(
         .ok_or(ProgramError::ArithmeticOverflow)?;
     accounts.pool.total_collateral.set(new_total_collateral);
 
-    // The pool keeps the position's collateral minus whatever equity is paid out.
+    // A position whose equity is below zero lost more than its collateral. The
+    // insurance fund pays that deficit as far as it can, and the liquidity
+    // providers bear only the rest.
+    let deficit = u64::try_from(equity.min(0).unsigned_abs())
+        .map_err(|_| ProgramError::ArithmeticOverflow)?;
+    let insurance_payment = deficit.min(accounts.pool.insurance_fund.get());
+    let new_insurance_fund = accounts
+        .pool
+        .insurance_fund
+        .get()
+        .checked_sub(insurance_payment)
+        .ok_or(ProgramError::ArithmeticOverflow)?;
+    accounts.pool.insurance_fund.set(new_insurance_fund);
+
+    // The pool keeps the position's collateral minus whatever equity is paid
+    // out, and the insurance fund's payment toward the deficit moves, inside
+    // the vault, from `insurance_fund` to `liquidity`.
     let liquidity_delta = (collateral as i128)
         .checked_sub(remaining_equity as i128)
+        .ok_or(ProgramError::ArithmeticOverflow)?
+        .checked_add(insurance_payment as i128)
         .ok_or(ProgramError::ArithmeticOverflow)?;
     let new_liquidity = (accounts.pool.liquidity.get() as i128)
         .checked_add(liquidity_delta)

@@ -15,10 +15,19 @@ pub enum BettingError {
     NothingToClaim,
     BetWon,
     ZeroAmount,
-    TooManyBets,
-    BetNotInUserIndex,
     MathOverflow,
-    BettingAlreadyStarted,
+    EventNotDraft,
     DescriptionTooLong,
     LabelTooLong,
+    NotEnoughOutcomes,
+    CloseTimeInPast,
+    BettingClosed,
+    BettingStillOpen,
+    /// The event has not been settled or cancelled, so its accounts cannot be
+    /// closed yet.
+    EventNotFinished,
+    /// Bet accounts are still open, so closing now would strand their claims.
+    BetsStillOpen,
+    /// Outcome accounts are still open, so the event cannot be closed yet.
+    OutcomesStillOpen,
 }

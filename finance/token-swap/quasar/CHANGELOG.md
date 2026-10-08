@@ -1,5 +1,114 @@
 # Changelog
 
+## Unreleased (2026-10-05)
+
+### Changed
+
+- `swap_tokens` rounds the trading fee up: `fee_amount` is
+  `input * fee / 10_000` rounded to the next whole minor unit, and the
+  admin's slice of it, `fee_amount * admin_share_bps / 10_000`, rounds up the
+  same way, so a fee that is not a whole number of minor units costs the
+  trader one unit more rather than the pool one unit less, and the admin's
+  share rounds against the LPs. The trader's side, `taxed_input`, is the
+  input minus the rounded-up fee. A 30 bps fee on 100_001 minor units is
+  300.003, charged as 301, and the admin's 1_667 bps of a 1_500 fee is 250.05,
+  owed as 251 (`swap_fee_rounds_up`; `claim_admin_fees_pays_the_admin` asserts
+  the exact amount).
+- `initialize_pool` refuses a deposit whose square root equals
+  `MINIMUM_LIQUIDITY` as well as one below it, so the smallest pool that opens
+  leaves its creator at least 1 LP token: a pool opened with
+  `sqrt(100 * 100)` would mint its creator nothing.
+  `initialize_pool_rejects_sqrt_equal_to_floor` checks both sides of the
+  boundary.
+- `initialize_config_rejects_invalid_fee`,
+  `initialize_config_rejects_invalid_admin_share` and
+  `claim_admin_fees_rejects_non_admin` assert `InvalidFee`,
+  `AdminShareTooHigh` and `Unauthorized` rather than any failure.
+
+## Unreleased (2026-10-04)
+
+### Changed
+
+- `initialize_pool` now takes the creator's first deposit: it gains `amount_a`
+  and `amount_b` arguments and the `creator`, `creator_token_a`,
+  `creator_token_b` and `liquidity_provider_token` accounts, moves both
+  amounts into the reserves it creates, and mints the creator
+  `sqrt(amount_a * amount_b) - MINIMUM_LIQUIDITY` LP tokens. A zero on either
+  side fails with the new `EmptyInitialDeposit`. A pool created empty let
+  whoever deposited first set its price, and clamped the creator's own
+  deposit to that ratio. `deposit_liquidity` no longer has a pool-creation
+  branch: it refuses an empty effective reserve with `EmptyPoolReserve`, the
+  error `swap_tokens` already returns for one. The square-root arithmetic (`initial_lp_amount`) and the transfers
+  and LP mint both handlers end with (`deposit_and_mint_lp_tokens`) live in
+  the new `liquidity` module, so there is one copy of each. New tests:
+  `initialize_pool_takes_first_deposit`,
+  `initialize_pool_rejects_zero_amount_a`,
+  `initialize_pool_rejects_zero_amount_b` and
+  `pool_creation_cannot_be_front_run`, which runs the front-run (a hostile
+  ratio deposited right after the pool opens is clamped to the creator's
+  price) and checks that a deposit against an empty reserve is refused; every
+  other test opens its pool through `initialize_pool`.
+  `swap_rejects_empty_reserve` now empties a reserve by hand, since no pool
+  exists without a deposit any more.
+
+## [2026-10-04] - Mint order and empty reserves
+
+### Fixed
+
+- `initialize_pool` accepted its two mints in either order, so a pair could
+  have an (X, Y) pool and a (Y, X) pool side by side, splitting its liquidity.
+  It now requires `mint_a` to sort strictly below `mint_b` and fails with the
+  new `InvalidMintOrder` error otherwise, as the Anchor versions do.
+  `initialize_pool_rejects_unordered_mints` tries the reversed pair.
+- `swap_tokens` priced a trade against an empty reserve. Tokens sent straight
+  to `pool_b` before the first deposit leave `pool_a` empty, and a swap of any
+  size into `pool_a` was then paid all of `pool_b`, with the invariant check
+  passing because the pre-trade product was zero. It now refuses a swap while
+  either LP-claimable reserve is zero, with the new `EmptyPoolReserve` error,
+  as the Anchor versions do. `swap_rejects_empty_reserve` funds `pool_b` alone
+  and tries the swap.
+
+## [2026-10-02] - Reserves at PDAs
+
+### Changed
+
+- `pool_a` and `pool_b` are PDAs of the pool, at seeds `[b"pool_a",
+  pool_config]` and `[b"pool_b", pool_config]` (`PoolAPda`, `PoolBPda`), where
+  before they were token accounts at addresses the client chose.
+  `initialize_pool` creates them there with `init` rather than
+  `init(idempotent)`, so a client finds a pool's reserves from the pool's
+  address alone, and the instruction builder derives them. `PoolConfig` still
+  records both addresses and every handler still checks them with `has_one`.
+
+## [2026-10-02]
+
+### Fixed
+
+- `deposit_liquidity`, `withdraw_liquidity`, `swap_tokens` and
+  `claim_admin_fees` took `pool_a` and `pool_b` with no check that they were
+  the pool's reserves. A swap could name any mint-A token account the trader
+  owned as `pool_a`: the handler priced the trade from that account's balance,
+  sent the input into it, and paid out of the real `pool_b`. `PoolConfig` now
+  records both reserve addresses at `initialize_pool`, and the four handlers
+  check them with `has_one(pool_a)` and `has_one(pool_b)`, failing with the new
+  `InvalidPoolVault` error. `swap_rejects_substituted_pool_vault` and
+  `deposit_rejects_substituted_pool_vaults` run the attack. `PoolConfig` grows
+  by 64 bytes, so pools created before this change cannot be read by it.
+- `swap_tokens` re-checked the constant-product invariant against reserves it
+  computed from the amounts it meant to transfer. It now reads both vaults'
+  balances after the transfers land, as the Anchor versions do.
+
+## [2026-09-22]
+
+### Fixed
+
+- `deposit_liquidity` now mints later deposits against the LP supply plus
+  `MINIMUM_LIQUIDITY`, the divisor `withdraw_liquidity` already used. Dividing
+  by the bare supply minted every depositor slightly less than they could
+  redeem, let a donation as large as a victim's deposit round that deposit down
+  to zero LP tokens, and left a pool whose LP tokens were all burned unable to
+  take another deposit.
+
 ## [2026-09-10]
 
 ### Changed

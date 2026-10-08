@@ -2,7 +2,7 @@ use quasar_lang::prelude::*;
 use quasar_spl::prelude::*;
 
 use crate::errors::BettingError;
-use crate::state::{remove_bet, snapshot_user, Bet, Event, EventStatus, EventVaultPda, User};
+use crate::state::{snapshot_event, Bet, Event, EventStatus, EventVaultPda};
 
 use super::transfer_from_vault;
 
@@ -13,7 +13,7 @@ pub struct ClaimRefundAccountConstraints {
 
     pub token_mint: Account<Mint>,
 
-    #[account(address = Event::seeds(event.event_id.into()))]
+    #[account(mut, address = Event::seeds(event.event_id.into()))]
     pub event: Account<Event>,
 
     // Closing the Bet ends the position: the rent goes back to the bettor and a
@@ -25,9 +25,6 @@ pub struct ClaimRefundAccountConstraints {
         has_one(event),
     )]
     pub bet: Account<Bet>,
-
-    #[account(mut, address = User::seeds(bettor.address()))]
-    pub user: Account<User>,
 
     #[account(mut)]
     pub bettor_token_account: Account<Token>,
@@ -62,14 +59,16 @@ pub fn handle_claim_refund(
         BettingError::EventNotCancelled
     );
 
-    let stake = u64::from(accounts.bet.amount);
+    // This Bet account closes when the handler returns, so the event's count
+    // of open bets drops by one before any tokens move.
+    let mut event = snapshot_event(&accounts.event);
+    event.open_bets = event
+        .open_bets
+        .checked_sub(1)
+        .ok_or(BettingError::MathOverflow)?;
+    accounts.event.set_inner(event);
 
-    // Drop the Bet from the bettor's index before the transfer (effects before
-    // interactions); the Bet account itself closes when the instruction ends.
-    let bet_key = *accounts.bet.address();
-    let mut user = snapshot_user(&accounts.user);
-    remove_bet(&mut user.bets, &mut user.bet_count, &bet_key)?;
-    accounts.user.set_inner(user);
+    let stake = u64::from(accounts.bet.amount);
 
     let event_id = u64::from(accounts.event.event_id);
     let event_bump = accounts.event.bump;

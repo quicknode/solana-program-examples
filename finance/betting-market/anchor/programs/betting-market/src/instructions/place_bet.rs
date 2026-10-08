@@ -1,13 +1,13 @@
 use anchor_lang::prelude::*;
 
-use crate::state::Event;
+use crate::state::{betting_is_open, Event};
 use anchor_spl::mint;
 use anchor_spl::{
     associated_token::AssociatedToken,
     token_interface::{Mint, TokenAccount, TokenInterface},
 };
 
-use crate::{error::BettingError, Bet, Config, EventStatus, Outcome, User, MAX_BETS_PER_USER};
+use crate::{error::BettingError, Bet, Config, EventStatus, Outcome};
 
 use super::transfer_tokens_to_vault;
 
@@ -63,15 +63,6 @@ pub struct PlaceBetAccountConstraints {
     )]
     pub bet: Box<BorshAccount<Bet>>,
 
-    #[account(
-        init_if_needed,
-        payer = bettor,
-        space = User::DISCRIMINATOR.len() + User::INIT_SPACE,
-        seeds = [b"user", bettor.address().as_ref()],
-        bump
-    )]
-    pub user: Box<BorshAccount<User>>,
-
     pub associated_token_program: Program<AssociatedToken>,
     pub token_program: Interface<'static, TokenInterface>,
     pub system_program: Program<System>,
@@ -85,6 +76,11 @@ pub fn handle_place_bet(
     require!(
         context.accounts.event.status == EventStatus::Open,
         BettingError::EventNotOpen
+    );
+    let now = Clock::get()?.unix_timestamp;
+    require!(
+        betting_is_open(now, context.accounts.event.betting_closes_at),
+        BettingError::BettingClosed
     );
 
     transfer_tokens_to_vault(
@@ -100,9 +96,7 @@ pub fn handle_place_bet(
     let event_key = *context.accounts.event.address();
     let outcome_key = *context.accounts.outcome.address();
     let outcome_index = context.accounts.outcome.index;
-    let bet_key = *context.accounts.bet.address();
     let bet_bump = context.bumps.bet;
-    let user_bump = context.bumps.user;
 
     let bet = &mut context.accounts.bet;
     // A fresh init_if_needed Bet has amount 0; that is how we tell a first bet
@@ -137,18 +131,11 @@ pub fn handle_place_bet(
         .total_pool
         .checked_add(amount)
         .ok_or(BettingError::MathOverflow)?;
-
-    let user = &mut context.accounts.user;
-    if user.authority == Address::default() {
-        user.authority = bettor_key;
-        user.bump = user_bump;
-    }
     if is_new_bet {
-        require!(
-            user.bets.len() < MAX_BETS_PER_USER,
-            BettingError::TooManyBets
-        );
-        user.bets.push(bet_key);
+        event.open_bets = event
+            .open_bets
+            .checked_add(1)
+            .ok_or(BettingError::MathOverflow)?;
     }
 
     Ok(())

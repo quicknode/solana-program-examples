@@ -11,11 +11,17 @@ declare_id!("BJHEDXSQfD9kBFvhw8ZCGmPFRihzvbMoxoHUKpXdpn4D");
 pub mod metadata {
     use super::*;
 
-    pub fn initialize(context: Context<InitializeAccountConstraints>, args: TokenMetadataArgs) -> Result<()> {
+    pub fn initialize(
+        context: Context<InitializeAccountConstraints>,
+        args: TokenMetadataArgs,
+    ) -> Result<()> {
         process_initialize(context, args)
     }
 
-    pub fn update_field(context: Context<UpdateFieldAccountConstraints>, args: UpdateFieldArgs) -> Result<()> {
+    pub fn update_field(
+        context: Context<UpdateFieldAccountConstraints>,
+        args: UpdateFieldArgs,
+    ) -> Result<()> {
         process_update_field(context, args)
     }
 

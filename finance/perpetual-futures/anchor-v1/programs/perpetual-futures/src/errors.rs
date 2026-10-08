@@ -14,8 +14,8 @@ pub enum PerpError {
     #[msg("Arithmetic overflow")]
     MathOverflow,
 
-    #[msg("Requested leverage exceeds the pool maximum")]
-    LeverageTooHigh,
+    #[msg("Position is too large for its collateral: net collateral is below the pool's initial margin")]
+    InitialMarginNotMet,
 
     #[msg("Pool parameter is outside the allowed range")]
     InvalidParameter,
@@ -38,7 +38,7 @@ pub enum PerpError {
     #[msg("Fill price is worse than the caller's acceptable price")]
     SlippageExceeded,
 
-    #[msg("Pool does not have enough free liquidity to satisfy this request")]
+    #[msg("Withdrawal is larger than the pool's liquidity: part of the shares' value is still in open positions")]
     InsufficientLiquidity,
 
     #[msg("Posted collateral does not cover the open fee")]
@@ -53,9 +53,26 @@ pub enum PerpError {
     #[msg("Position equity is below maintenance margin; it must be liquidated, not closed")]
     PositionNotHealthy,
 
-    #[msg("No protocol fees are available to collect")]
+    #[msg("No program fees are available to collect")]
     NothingToClaim,
 
     #[msg("Oracle price is stale: it predates the last cluster restart")]
     PricePredatesRestart,
+
+    #[msg("Initial margin is at or below the maintenance margin: positions could open already liquidatable")]
+    InitialMarginNotAboveMaintenance,
+
+    #[msg("Maximum price deviation is outside the allowed range: it must be above zero and below 10,000 basis points")]
+    InvalidPriceDeviation,
+
+    #[msg("Oracle price is too far from the pool's average price: trading pauses until the average catches up")]
+    PriceOutsideBand,
+
+    #[msg(
+        "Profit cannot be taken yet: the position has not been open for the pool's profit warm-up"
+    )]
+    ProfitNotMatured,
+
+    #[msg("Price feed is not owned by the oracle program the pool recorded")]
+    PriceFeedNotFromOracle,
 }

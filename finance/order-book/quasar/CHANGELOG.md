@@ -1,5 +1,72 @@
 # Changelog
 
+## Unreleased - 2026-10-05
+
+### Added
+
+- `close_order` and `close_market_user`, so a participant's rent comes
+  back. Nothing closed an `Order` or `MarketUser` account before, so every
+  order and every registration cost its owner the rent for good.
+  `close_order` closes a Filled or Cancelled order to its owner, who signs;
+  both statuses have already left the slab and the owner's open-order list,
+  and a cancel has already credited its refund, so nothing refers to the
+  account. An Open or PartiallyFilled order gets the new `OrderNotClosable`.
+  `close_market_user` closes the owner's `MarketUser` when `open_orders_len`
+  is zero and both unsettled balances are zero, else the new
+  `MarketUserNotClosable`; the owner can register again afterwards. Either
+  signed by anyone but the owner gets `Unauthorized`. Discriminators 8 and
+  9. Tests: `close_order_returns_a_cancelled_orders_rent`,
+  `close_order_returns_a_filled_orders_rent`,
+  `close_order_refuses_a_resting_order`,
+  `close_order_refuses_a_partially_filled_order`,
+  `close_order_refuses_a_non_owner`,
+  `close_market_user_returns_rent_when_nothing_is_open_or_owed`,
+  `close_market_user_refuses_an_open_order`,
+  `close_market_user_refuses_an_unsettled_balance`,
+  `close_market_user_refuses_a_non_owner`.
+
+### Changed
+
+- The tests mint NVDAx with its onchain 8 decimals over USDC's 6, so
+  `base_lot_size` is 100: a 5-lot ask locks 500 raw base and the pause
+  tests' 7-lot ask locks 700. The README's two-lot example uses the same
+  figures.
+
+## Unreleased - 2026-10-04
+
+### Added
+
+- `pause_market` and `resume_market`, signed by the market authority
+  (anyone else gets `NotMarketAuthority`). `pause_market` clears
+  `Market.is_active`, which `initialize_market` set and nothing cleared, so
+  the `MarketPaused` refusal in `place_order` can now happen.
+  `resume_market` sets the flag again. A pause stops new orders and nothing
+  else: `cancel_order`, `settle_funds` and `withdraw_fees` do not read the
+  flag. Tests: `pause_market_refuses_new_orders_with_market_paused`,
+  `paused_market_still_cancels_and_settles_a_resting_order`,
+  `paused_market_still_pays_out_fills_and_withdraws_fees`,
+  `resume_market_accepts_orders_again`,
+  `only_the_market_authority_can_pause_or_resume`.
+
+## 2026-09-23
+
+### Added
+
+- A full side of the book evicts instead of refusing. When a side already
+  holds its 512 orders, an order that beats the side's worst price removes
+  that worst order and rests in its place. The evicted order is refunded
+  through its owner's unsettled balance, as a cancel is, and stamped
+  Cancelled. An order that does not beat the worst price still gets
+  `OrderBookFull`. The caller passes the worst order and its owner's
+  `MarketUser` after the maker pairs, or only the order when it is their
+  own. New errors: `MissingEvictedAccounts`, `EvictedAccountMismatch`.
+
+### Fixed
+
+- A side holds 512 orders, not 1024: every order after the first adds a
+  leaf and an inner node to the side's 1024-node tree. `MAX_ORDERS_PER_SIDE`
+  now says so.
+
 ## 2026-09-22
 
 ### Changed

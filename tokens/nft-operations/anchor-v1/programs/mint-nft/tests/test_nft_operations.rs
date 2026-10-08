@@ -5,9 +5,7 @@ use {
     },
     litesvm::LiteSVM,
     solana_keypair::Keypair,
-    solana_kite::{
-        create_wallet, get_token_account_balance, send_transaction_from_instructions,
-    },
+    solana_kite::{create_wallet, get_token_account_balance, send_transaction_from_instructions},
     solana_signer::Signer,
 };
 
@@ -70,7 +68,9 @@ fn derive_edition_pda(mint: &Pubkey) -> Pubkey {
 /// caller-supplied metadata strings landed in the Metaplex metadata account
 /// without fully deserializing the Metaplex layout.
 fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
-    haystack.windows(needle.len()).any(|window| window == needle)
+    haystack
+        .windows(needle.len())
+        .any(|window| window == needle)
 }
 
 fn setup() -> (LiteSVM, Pubkey, Keypair) {
@@ -137,9 +137,7 @@ fn test_create_collection() {
     assert!(!mint_account.data.is_empty());
 
     // Verify metadata exists and carries the caller-supplied name
-    let meta_account = svm
-        .get_account(&metadata)
-        .expect("Metadata should exist");
+    let meta_account = svm.get_account(&metadata).expect("Metadata should exist");
     assert!(!meta_account.data.is_empty());
     assert!(
         contains_bytes(&meta_account.data, b"Example Collection"),
@@ -356,13 +354,8 @@ fn test_verify_collection() {
         .to_account_metas(None),
     );
 
-    send_transaction_from_instructions(
-        &mut svm,
-        vec![verify_ix],
-        &[&payer],
-        &payer.pubkey(),
-    )
-    .unwrap();
+    send_transaction_from_instructions(&mut svm, vec![verify_ix], &[&payer], &payer.pubkey())
+        .unwrap();
 
     // Verify the metadata still exists after verification
     let nft_meta = svm

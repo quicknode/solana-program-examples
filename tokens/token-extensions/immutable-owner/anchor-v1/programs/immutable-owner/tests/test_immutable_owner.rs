@@ -8,11 +8,11 @@ use {
         InstructionData, ToAccountMetas,
     },
     litesvm::LiteSVM,
+    solana_keypair::Keypair,
     solana_kite::{
         create_wallet, send_transaction_from_instructions,
         token_extensions::{create_token_extensions_mint, TOKEN_EXTENSIONS_PROGRAM_ID},
     },
-    solana_keypair::Keypair,
     solana_signer::Signer,
 };
 
@@ -77,7 +77,13 @@ fn test_create_token_account_with_immutable_owner() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![initialize_ix], &[&payer, &token_keypair], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        vec![initialize_ix],
+        &[&payer, &token_keypair],
+        &payer.pubkey(),
+    )
+    .unwrap();
     svm.expire_blockhash();
 
     // Verify token account was created
@@ -98,7 +104,12 @@ fn test_create_token_account_with_immutable_owner() {
         Some(&new_owner.pubkey()),
         2, // AuthorityType::AccountOwner
     );
-    let result = send_transaction_from_instructions(&mut svm, vec![set_authority_ix], &[&payer], &payer.pubkey());
+    let result = send_transaction_from_instructions(
+        &mut svm,
+        vec![set_authority_ix],
+        &[&payer],
+        &payer.pubkey(),
+    );
     assert!(
         result.is_err(),
         "Setting a new owner should fail due to ImmutableOwner extension"

@@ -652,6 +652,7 @@ dependencies = [
  "anchor-v2-testing",
  "borsh 1.7.0",
  "solana-address 2.6.1",
+ "solana-clock 3.1.1",
  "solana-kite",
  "spl-associated-token-account",
  "spl-token",
@@ -2552,6 +2553,24 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ca88d725a0a943b096803bd34e73a4437208b6077654cc4ecb2947a5f91618d"
 
 [[package]]
+name = "managed-fund"
+version = "0.1.0"
+dependencies = [
+ "anchor-lang",
+ "anchor-spl",
+ "anchor-v2-testing",
+ "borsh 1.7.0",
+ "mock-swap-router",
+ "pinocchio 0.11.2",
+ "solana-account 3.4.0",
+ "solana-address 2.6.1",
+ "solana-clock 3.1.1",
+ "solana-kite",
+ "solana-sysvar 3.1.1",
+ "wincode 0.5.5",
+]
+
+[[package]]
 name = "memchr"
 version = "2.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2648,7 +2667,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "mock_switchboard"
+name = "mock_price_feed"
 version = "0.1.0"
 dependencies = [
  "anchor-lang",
@@ -2657,7 +2676,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "mock_switchboard_prop_amm"
+name = "mock_price_feed_prop_amm"
 version = "0.1.0"
 dependencies = [
  "anchor-lang",
@@ -2895,6 +2914,7 @@ dependencies = [
  "anchor-spl",
  "anchor-v2-testing",
  "borsh 1.7.0",
+ "litesvm",
  "solana-address 2.6.1",
  "solana-clock 3.1.1",
  "solana-kite",
@@ -3083,7 +3103,7 @@ dependencies = [
  "anchor-spl",
  "anchor-v2-testing",
  "borsh 1.7.0",
- "mock_switchboard",
+ "mock_price_feed",
  "pinocchio 0.11.2",
  "solana-address 2.6.1",
  "solana-clock 3.1.1",
@@ -3373,7 +3393,7 @@ dependencies = [
  "anchor-spl",
  "anchor-v2-testing",
  "borsh 1.7.0",
- "mock_switchboard_prop_amm",
+ "mock_price_feed_prop_amm",
  "pinocchio 0.11.2",
  "solana-address 2.6.1",
  "solana-clock 3.1.1",
@@ -7460,22 +7480,6 @@ checksum = "0200d0fc04d809396c2ad43f3c95da3582a2556eba8d453c1087f4120ee352ff"
 dependencies = [
  "fnv",
  "lazy_static",
-]
-
-[[package]]
-name = "vault-strategy"
-version = "0.1.0"
-dependencies = [
- "anchor-lang",
- "anchor-spl",
- "anchor-v2-testing",
- "borsh 1.7.0",
- "mock-swap-router",
- "solana-account 3.4.0",
- "solana-address 2.6.1",
- "solana-clock 3.1.1",
- "solana-kite",
- "wincode 0.5.5",
 ]
 
 [[package]]

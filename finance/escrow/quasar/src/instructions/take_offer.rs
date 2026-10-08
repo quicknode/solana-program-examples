@@ -1,5 +1,8 @@
 use {
-    crate::state::Offer, quasar_lang::cpi::Seed, quasar_lang::prelude::*, quasar_spl::prelude::*,
+    crate::{error::EscrowError, state::Offer},
+    quasar_lang::cpi::Seed,
+    quasar_lang::prelude::*,
+    quasar_spl::prelude::*,
 };
 
 #[derive(Accounts)]
@@ -42,6 +45,23 @@ pub struct TakeOfferAccountConstraints {
     pub rent: Sysvar<Rent>,
     pub token_program: Program<TokenProgram>,
     pub system_program: Program<SystemProgram>,
+}
+
+/// Refuse the take unless the offer still holds the terms the taker signed
+/// for: at least `minimum_token_a_out` of token A in the vault, and no more
+/// than `maximum_token_b_in` of token B wanted. Runs before any transfer.
+#[inline(always)]
+pub fn handle_check_offer_terms(
+    accounts: &TakeOfferAccountConstraints,
+    minimum_token_a_out: u64,
+    maximum_token_b_in: u64,
+) -> Result<(), ProgramError> {
+    require!(
+        accounts.vault.amount() >= minimum_token_a_out
+            && u64::from(accounts.offer.receive) <= maximum_token_b_in,
+        EscrowError::OfferTermsChanged
+    );
+    Ok(())
 }
 
 #[inline(always)]

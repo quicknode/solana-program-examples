@@ -6,10 +6,11 @@ use {
         logic::{accrue, now, price_scaled, snapshot_obligation, snapshot_reserve, SCALE},
         math::{
             current_debt, market_value, mul_div_ceil, mul_div_floor, net_total_liquidity,
-            value_to_amount, Rounding,
+            total_shares, value_to_amount, Rounding,
         },
         state::{
             LendingMarket, Obligation, ObligationInner, ObligationVaultPda, PriceFeed, Reserve,
+            ReserveInner,
         },
     },
     quasar_lang::{cpi::Seed, prelude::*},
@@ -157,7 +158,7 @@ impl BorrowObligationLiquidity {
     #[inline(always)]
     pub fn run(&mut self, amount: u64) -> Result<(), ProgramError> {
         require!(amount > 0, LendingError::ZeroAmount);
-        let slot = now()?;
+        let (slot, timestamp) = now()?;
 
         require_keys_eq!(
             self.obligation.collateral_reserve,
@@ -176,9 +177,9 @@ impl BorrowObligationLiquidity {
         );
 
         let mut collateral = snapshot_reserve(&self.collateral_reserve);
-        accrue(&mut collateral, slot)?;
+        accrue(&mut collateral, slot, timestamp)?;
         let mut borrow = snapshot_reserve(&self.borrow_reserve);
-        accrue(&mut borrow, slot)?;
+        accrue(&mut borrow, slot, timestamp)?;
         let mut obligation = snapshot_obligation(&self.obligation);
         if obligation.borrow_reserve != Address::default() {
             require_keys_eq!(
@@ -193,17 +194,17 @@ impl BorrowObligationLiquidity {
             collateral.available_liquidity,
             collateral.borrowed_principal,
             collateral.borrow_accumulation_factor,
-            collateral.accumulated_protocol_fees,
+            collateral.accumulated_program_fees,
         )?;
         let collateral_liquidity = mul_div_floor(
             obligation.deposited_shares as u128,
             collateral_total,
-            (collateral.share_mint_supply as u128).max(1),
+            total_shares(collateral.share_mint_supply)?,
         )?;
         let collateral_value = market_value(
             u64::try_from(collateral_liquidity).map_err(|_| LendingError::MathOverflow)?,
             collateral.liquidity_decimals,
-            price_scaled(&self.collateral_price, slot)?,
+            price_scaled(&self.collateral_price, slot, collateral.max_confidence_bps)?,
             Rounding::Down,
         )?;
         let allowed = mul_div_floor(
@@ -213,7 +214,7 @@ impl BorrowObligationLiquidity {
         )?;
 
         // Existing debt value + the new borrow, both rounded up.
-        let borrow_price = price_scaled(&self.borrow_price, slot)?;
+        let borrow_price = price_scaled(&self.borrow_price, slot, borrow.max_confidence_bps)?;
         let existing_debt = current_debt(
             obligation.borrowed_principal,
             borrow.borrow_accumulation_factor,
@@ -300,7 +301,7 @@ impl RepayObligationLiquidity {
     #[inline(always)]
     pub fn run(&mut self, amount: u64) -> Result<(), ProgramError> {
         require!(amount > 0, LendingError::ZeroAmount);
-        let slot = now()?;
+        let (slot, timestamp) = now()?;
 
         require_keys_eq!(
             self.obligation.borrow_reserve,
@@ -309,7 +310,7 @@ impl RepayObligationLiquidity {
         );
 
         let mut borrow = snapshot_reserve(&self.borrow_reserve);
-        accrue(&mut borrow, slot)?;
+        accrue(&mut borrow, slot, timestamp)?;
         let mut obligation = snapshot_obligation(&self.obligation);
 
         let debt = current_debt(
@@ -356,6 +357,23 @@ impl RepayObligationLiquidity {
 // withdraw_obligation_collateral
 // ---------------------------------------------------------------------------
 
+/// Withdraw posted share-token collateral.
+///
+/// With debt outstanding this is a health-dependent action: both price feeds
+/// must be fresh and the debt must still fit under the borrow limit of the
+/// collateral that remains. With no debt the collateral backs nothing, so no
+/// price is read and no health check runs: the whole deposit can come out
+/// whatever the feeds are doing, since a borrower who owes nothing must never
+/// be locked in by a stale or silent oracle. The collateral price account is
+/// still checked to be the collateral reserve's own, but its value is not
+/// read; the borrow reserve and borrow price accounts are ignored.
+///
+/// A withdrawal that takes the last share closes the collateral vault and
+/// returns its rent to the owner, who paid it when
+/// `deposit_obligation_collateral` created the vault (`init(idempotent)`
+/// creates it again on a later deposit). The whole vault balance goes to the
+/// owner first, so share tokens someone sent straight to the vault cannot keep
+/// it open or block the withdrawal.
 #[derive(Accounts)]
 pub struct WithdrawObligationCollateral {
     #[account(mut)]
@@ -365,6 +383,7 @@ pub struct WithdrawObligationCollateral {
     pub obligation: Account<Obligation>,
     #[account(mut, has_one(lending_market), has_one(share_mint))]
     pub collateral_reserve: Account<Reserve>,
+    /// Read only when the obligation has debt.
     pub collateral_price: Account<PriceFeed>,
     pub share_mint: Account<Mint>,
     /// Pass the borrow reserve + price when the obligation has debt; ignored when
@@ -382,7 +401,7 @@ impl WithdrawObligationCollateral {
     #[inline(always)]
     pub fn run(&mut self, shares: u64) -> Result<(), ProgramError> {
         require!(shares > 0, LendingError::ZeroAmount);
-        let slot = now()?;
+        let (slot, timestamp) = now()?;
 
         require_keys_eq!(
             self.obligation.collateral_reserve,
@@ -396,68 +415,29 @@ impl WithdrawObligationCollateral {
         );
 
         let mut collateral = snapshot_reserve(&self.collateral_reserve);
-        accrue(&mut collateral, slot)?;
+        accrue(&mut collateral, slot, timestamp)?;
         let mut obligation = snapshot_obligation(&self.obligation);
         require!(
             obligation.deposited_shares >= shares,
             LendingError::WithdrawTooLarge
         );
-
-        // Remaining collateral value after withdrawing `shares`.
         let remaining_shares = obligation.deposited_shares - shares;
-        let collateral_total = net_total_liquidity(
-            collateral.available_liquidity,
-            collateral.borrowed_principal,
-            collateral.borrow_accumulation_factor,
-            collateral.accumulated_protocol_fees,
-        )?;
-        let remaining_liquidity = mul_div_floor(
-            remaining_shares as u128,
-            collateral_total,
-            (collateral.share_mint_supply as u128).max(1),
-        )?;
-        let remaining_value = market_value(
-            u64::try_from(remaining_liquidity).map_err(|_| LendingError::MathOverflow)?,
-            collateral.liquidity_decimals,
-            price_scaled(&self.collateral_price, slot)?,
-            Rounding::Down,
-        )?;
-        let allowed = mul_div_floor(
-            remaining_value,
-            collateral.loan_to_value_bps as u128,
-            BPS_DENOMINATOR,
-        )?;
 
-        // Debt value (zero when the obligation has no borrow).
-        let debt_value = if obligation.borrowed_principal > 0 {
-            require_keys_eq!(
-                obligation.borrow_reserve,
-                *self.borrow_reserve.address(),
-                LendingError::WrongReserve
-            );
-            require_keys_eq!(
-                self.borrow_reserve.price_feed,
-                *self.borrow_price.address(),
-                LendingError::WrongReserve
-            );
-            let mut borrow = snapshot_reserve(&self.borrow_reserve);
-            accrue(&mut borrow, slot)?;
-            let debt = current_debt(
-                obligation.borrowed_principal,
-                borrow.borrow_accumulation_factor,
-            )?;
-            market_value(
-                debt,
-                borrow.liquidity_decimals,
-                price_scaled(&self.borrow_price, slot)?,
-                Rounding::Up,
-            )?
-        } else {
-            0
-        };
-        require!(debt_value <= allowed, LendingError::WithdrawTooLarge);
+        // With debt, the collateral that remains must still cover it at fresh
+        // prices. Without debt there is nothing to cover, and no price is read.
+        if obligation.borrowed_principal > 0 {
+            self.require_debt_covered_by(&collateral, remaining_shares, slot, timestamp)?;
+        }
 
         obligation.deposited_shares = remaining_shares;
+        let empties_vault = remaining_shares == 0;
+        // Emptying the position sweeps the vault, donations included, so it
+        // can close.
+        let transfer_amount = if empties_vault {
+            self.obligation_vault.amount()
+        } else {
+            shares
+        };
 
         let decimals = self.share_mint.decimals;
         let lending_market = obligation.lending_market;
@@ -473,10 +453,122 @@ impl WithdrawObligationCollateral {
                 &self.share_mint,
                 &self.owner_share,
                 &self.obligation,
-                shares,
+                transfer_amount,
                 decimals,
             )
-            .invoke_signed(&seeds)
+            .invoke_signed(&seeds)?;
+        if empties_vault {
+            self.token_program
+                .close_account(&self.obligation_vault, &self.owner, &self.obligation)
+                .invoke_signed(&seeds)?;
+        }
+        Ok(())
+    }
+
+    /// The health check for a withdrawal from an obligation with debt: value
+    /// the `remaining_shares` of collateral at a fresh price, floored, and the
+    /// debt at a fresh price, ceiled, and refuse unless the debt fits under
+    /// the remaining collateral's loan-to-value.
+    #[inline(always)]
+    fn require_debt_covered_by(
+        &self,
+        collateral: &ReserveInner,
+        remaining_shares: u64,
+        slot: u64,
+        timestamp: i64,
+    ) -> Result<(), ProgramError> {
+        let obligation = snapshot_obligation(&self.obligation);
+        let collateral_total = net_total_liquidity(
+            collateral.available_liquidity,
+            collateral.borrowed_principal,
+            collateral.borrow_accumulation_factor,
+            collateral.accumulated_program_fees,
+        )?;
+        let remaining_liquidity = mul_div_floor(
+            remaining_shares as u128,
+            collateral_total,
+            total_shares(collateral.share_mint_supply)?,
+        )?;
+        let remaining_value = market_value(
+            u64::try_from(remaining_liquidity).map_err(|_| LendingError::MathOverflow)?,
+            collateral.liquidity_decimals,
+            price_scaled(&self.collateral_price, slot, collateral.max_confidence_bps)?,
+            Rounding::Down,
+        )?;
+        let allowed = mul_div_floor(
+            remaining_value,
+            collateral.loan_to_value_bps as u128,
+            BPS_DENOMINATOR,
+        )?;
+
+        require_keys_eq!(
+            obligation.borrow_reserve,
+            *self.borrow_reserve.address(),
+            LendingError::WrongReserve
+        );
+        require_keys_eq!(
+            self.borrow_reserve.price_feed,
+            *self.borrow_price.address(),
+            LendingError::WrongReserve
+        );
+        let mut borrow = snapshot_reserve(&self.borrow_reserve);
+        accrue(&mut borrow, slot, timestamp)?;
+        let debt = current_debt(
+            obligation.borrowed_principal,
+            borrow.borrow_accumulation_factor,
+        )?;
+        let debt_value = market_value(
+            debt,
+            borrow.liquidity_decimals,
+            price_scaled(&self.borrow_price, slot, borrow.max_confidence_bps)?,
+            Rounding::Up,
+        )?;
+        require!(debt_value <= allowed, LendingError::WithdrawTooLarge);
+        Ok(())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// close_obligation
+// ---------------------------------------------------------------------------
+
+/// Close an obligation that holds nothing, returning its rent to the owner.
+///
+/// The obligation must have no deposited shares and no borrowed principal:
+/// repaying the last unit zeroes the principal, and withdrawing the last share
+/// zeroes the deposit, so both being zero means the position is fully
+/// unwound. Closing one that still holds either would strand the collateral
+/// in its vault, or forgive the debt, so the handler refuses with
+/// `ObligationNotEmpty`. Only the owner may close it (`has_one(owner)`), since
+/// the rent is theirs and a stranger could otherwise close a position its
+/// owner means to use again. The account itself closes through the
+/// `close(dest = owner)` constraint once the handler returns, which hands the
+/// owner every lamport it holds: its own rent, plus the rent of a collateral
+/// vault a liquidation emptied and closed into it.
+#[derive(Accounts)]
+pub struct CloseObligation {
+    #[account(mut)]
+    pub owner: Signer,
+    pub lending_market: Account<LendingMarket>,
+    #[account(
+        mut,
+        close(dest = owner),
+        has_one(owner),
+        has_one(lending_market),
+        address = Obligation::seeds(lending_market.address(), owner.address())
+    )]
+    pub obligation: Account<Obligation>,
+}
+
+impl CloseObligation {
+    #[inline(always)]
+    pub fn run(&mut self) -> Result<(), ProgramError> {
+        let obligation = snapshot_obligation(&self.obligation);
+        require!(
+            obligation.deposited_shares == 0 && obligation.borrowed_principal == 0,
+            LendingError::ObligationNotEmpty
+        );
+        Ok(())
     }
 }
 
@@ -484,6 +576,14 @@ impl WithdrawObligationCollateral {
 // liquidate_obligation
 // ---------------------------------------------------------------------------
 
+/// A seizure that takes the last share closes the collateral vault. The whole
+/// vault balance goes to the liquidator first, so share tokens someone sent
+/// straight to the vault cannot keep it open. The vault's rent goes into the
+/// obligation account itself, not to the owner's wallet: liquidation then
+/// takes no account the borrower controls, so nothing the borrower does to
+/// their wallet can make it fail, and the owner can still liquidate their own
+/// position. The rent returns to the owner, who paid it, when
+/// `close_obligation` closes the obligation with every lamport it holds.
 #[derive(Accounts)]
 pub struct LiquidateObligation {
     #[account(mut)]
@@ -519,7 +619,7 @@ impl LiquidateObligation {
     #[inline(always)]
     pub fn run(&mut self, amount: u64) -> Result<(), ProgramError> {
         require!(amount > 0, LendingError::ZeroAmount);
-        let slot = now()?;
+        let (slot, timestamp) = now()?;
 
         require_keys_eq!(
             self.obligation.collateral_reserve,
@@ -543,25 +643,26 @@ impl LiquidateObligation {
         );
 
         let mut collateral = snapshot_reserve(&self.collateral_reserve);
-        accrue(&mut collateral, slot)?;
+        accrue(&mut collateral, slot, timestamp)?;
         let mut borrow = snapshot_reserve(&self.borrow_reserve);
-        accrue(&mut borrow, slot)?;
+        accrue(&mut borrow, slot, timestamp)?;
         let mut obligation = snapshot_obligation(&self.obligation);
 
-        let collateral_price = price_scaled(&self.collateral_price, slot)?;
-        let borrow_price = price_scaled(&self.borrow_price, slot)?;
+        let collateral_price =
+            price_scaled(&self.collateral_price, slot, collateral.max_confidence_bps)?;
+        let borrow_price = price_scaled(&self.borrow_price, slot, borrow.max_confidence_bps)?;
 
         // Health: unhealthy when debt value exceeds collateral value * liquidation threshold.
         let collateral_total = net_total_liquidity(
             collateral.available_liquidity,
             collateral.borrowed_principal,
             collateral.borrow_accumulation_factor,
-            collateral.accumulated_protocol_fees,
+            collateral.accumulated_program_fees,
         )?;
         let collateral_liquidity = mul_div_floor(
             obligation.deposited_shares as u128,
             collateral_total,
-            (collateral.share_mint_supply as u128).max(1),
+            total_shares(collateral.share_mint_supply)?,
         )?;
         let collateral_value = market_value(
             u64::try_from(collateral_liquidity).map_err(|_| LendingError::MathOverflow)?,
@@ -617,7 +718,7 @@ impl LiquidateObligation {
         )?;
         let seize_shares = mul_div_floor(
             seize_liquidity as u128,
-            collateral.share_mint_supply as u128,
+            total_shares(collateral.share_mint_supply)?,
             collateral_total.max(1),
         )?;
         let seize_shares = u64::try_from(seize_shares).map_err(|_| LendingError::MathOverflow)?;
@@ -649,6 +750,14 @@ impl LiquidateObligation {
             .deposited_shares
             .checked_sub(seize_shares)
             .ok_or(LendingError::MathOverflow)?;
+        let empties_vault = obligation.deposited_shares == 0;
+        // Emptying the position sweeps the vault, donations included, so it
+        // can close.
+        let seize_transfer = if empties_vault {
+            self.obligation_vault.amount()
+        } else {
+            seize_shares
+        };
 
         let share_decimals = self.share_mint.decimals;
         let borrow_decimals = borrow.liquidity_decimals;
@@ -679,9 +788,15 @@ impl LiquidateObligation {
                 &self.share_mint,
                 &self.liquidator_collateral,
                 &self.obligation,
-                seize_shares,
+                seize_transfer,
                 share_decimals,
             )
-            .invoke_signed(&seeds)
+            .invoke_signed(&seeds)?;
+        if empties_vault {
+            self.token_program
+                .close_account(&self.obligation_vault, &self.obligation, &self.obligation)
+                .invoke_signed(&seeds)?;
+        }
+        Ok(())
     }
 }

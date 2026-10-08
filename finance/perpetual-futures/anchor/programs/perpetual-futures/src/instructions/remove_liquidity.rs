@@ -6,9 +6,11 @@ use anchor_spl::{
     },
 };
 
-use crate::constants::{POOL_SEED, VAULT_SEED};
+use crate::constants::{MINIMUM_LIQUIDITY, POOL_SEED, VAULT_SEED};
 use crate::errors::PerpError;
-use crate::instructions::shared::{liquidity_provider_aum, refresh_price_and_funding};
+use crate::instructions::shared::{
+    liquidity_provider_aum, refresh_price_and_funding_within_band, Rounding,
+};
 use crate::state::Pool;
 
 pub fn handle_remove_liquidity(
@@ -19,31 +21,37 @@ pub fn handle_remove_liquidity(
     require!(shares > 0, PerpError::ZeroAmount);
 
     let pool = &mut context.accounts.pool;
-    let price = refresh_price_and_funding(pool, &context.accounts.oracle_feed)?;
+    let price = refresh_price_and_funding_within_band(pool, &context.accounts.oracle_feed)?;
 
     let lp_supply = context.accounts.lp_mint.supply();
-    let aum = liquidity_provider_aum(pool, price)?;
+    // The pool is valued rounding down, so a fraction of a base unit in the
+    // traders' marked profit/loss lowers what a share redeems for.
+    let aum = liquidity_provider_aum(pool, price, Rounding::Down)?;
     require!(aum > 0, PerpError::PoolInsolvent);
 
-    // amount_out = shares * assets-under-management / supply, floored.
+    // amount_out = shares * assets-under-management / (supply + MINIMUM_LIQUIDITY),
+    // floored. The withheld minimum counts as shares nobody holds, as it does
+    // in add_liquidity, so its slice of the pool never leaves.
+    let total_shares = (lp_supply as u128)
+        .checked_add(MINIMUM_LIQUIDITY as u128)
+        .ok_or(PerpError::MathOverflow)?;
     let amount_out: u64 = (shares as u128)
         .checked_mul(aum as u128)
         .ok_or(PerpError::MathOverflow)?
-        .checked_div(lp_supply as u128)
+        .checked_div(total_shares)
         .ok_or(PerpError::MathOverflow)?
         .try_into()
         .map_err(|_| PerpError::MathOverflow)?;
 
     require!(amount_out > 0, PerpError::AmountRoundsToZero);
-    // Only free liquidity can leave: the portion reserved to cover open
-    // positions' payouts stays put, so a winning trader can always be paid. A
-    // provider wanting more must wait for positions to close.
-    let free_liquidity = pool
-        .liquidity
-        .checked_sub(pool.reserved_liquidity)
-        .ok_or(PerpError::MathOverflow)?;
+    // Shares are priced against assets-under-management, which counts traders'
+    // unrealized losses as the providers' gain. Those losses are still in the
+    // traders' collateral until their positions close, so a withdrawal is
+    // capped at `liquidity`, the tokens the providers own now. While traders
+    // are up instead, the pricing already keeps a withdrawal below `liquidity`
+    // minus their profit, leaving that profit's backing in the pool.
     require!(
-        amount_out <= free_liquidity,
+        amount_out <= pool.liquidity,
         PerpError::InsufficientLiquidity
     );
     require!(

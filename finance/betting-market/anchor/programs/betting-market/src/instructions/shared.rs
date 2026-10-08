@@ -3,7 +3,8 @@ use anchor_lang::prelude::*;
 use crate::state::Event;
 
 use anchor_spl::token_interface::{
-    transfer_checked, Mint, TokenAccount, TokenInterface, TransferChecked,
+    close_account, transfer_checked, CloseAccount, Mint, TokenAccount, TokenInterface,
+    TransferChecked,
 };
 
 // Move tokens from a wallet-owned account into the vault. The authority is a
@@ -78,4 +79,27 @@ pub fn transfer_tokens_from_vault(
     let cpi_context =
         CpiContext::new_with_signer(token_program.address(), transfer_accounts, &signer_seeds);
     transfer_checked(cpi_context, amount, decimals)
+}
+
+// Close the (already empty) vault, signed by the Event PDA, sending its rent
+// to `destination`. As with `transfer_tokens_from_vault`, the caller releases
+// the event's borrow before this CPI and reacquires it afterwards.
+pub fn close_vault(
+    vault: &mut InterfaceAccount<TokenAccount>,
+    destination: &mut Signer,
+    event: &EventSigner,
+    token_program: &Interface<'static, TokenInterface>,
+) -> Result<()> {
+    let event_id_bytes = event.id.to_le_bytes();
+    let seeds = &[b"event".as_ref(), event_id_bytes.as_ref(), &[event.bump]];
+    let signer_seeds = [&seeds[..]];
+
+    let close_accounts = CloseAccount {
+        account: vault.cpi_handle_mut(),
+        destination: destination.cpi_handle_mut(),
+        authority: CpiHandle::readonly(&event.view),
+    };
+    let cpi_context =
+        CpiContext::new_with_signer(token_program.address(), close_accounts, &signer_seeds);
+    close_account(cpi_context)
 }

@@ -2,8 +2,8 @@ use anchor_lang::prelude::*;
 
 pub mod constants;
 pub mod errors;
-pub mod math;
 pub mod instructions;
+pub mod math;
 pub mod state;
 
 use instructions::*;
@@ -22,7 +22,10 @@ pub mod lending {
         instructions::handle_initialize_lending_market(context, market_id)
     }
 
-    pub fn initialize_reserve(context: Context<InitializeReserve>, config: ReserveConfig) -> Result<()> {
+    pub fn initialize_reserve(
+        context: Context<InitializeReserve>,
+        config: ReserveConfig,
+    ) -> Result<()> {
         instructions::handle_initialize_reserve(context, config)
     }
 
@@ -33,16 +36,17 @@ pub mod lending {
         instructions::handle_update_reserve_config(context, config)
     }
 
-    pub fn collect_protocol_fees(context: Context<CollectProtocolFees>) -> Result<()> {
-        instructions::handle_collect_protocol_fees(context)
+    pub fn collect_program_fees(context: Context<CollectProgramFees>) -> Result<()> {
+        instructions::handle_collect_program_fees(context)
     }
 
     pub fn set_price(
         context: Context<SetPrice>,
         price_mantissa: i128,
         exponent: i32,
+        confidence: u64,
     ) -> Result<()> {
-        instructions::handle_set_price(context, price_mantissa, exponent)
+        instructions::handle_set_price(context, price_mantissa, exponent, confidence)
     }
 
     pub fn refresh_reserve(context: Context<RefreshReserve>) -> Result<()> {
@@ -69,6 +73,10 @@ pub mod lending {
 
     pub fn refresh_obligation(context: Context<RefreshObligation>) -> Result<()> {
         instructions::handle_refresh_obligation(context)
+    }
+
+    pub fn close_obligation(context: Context<CloseObligation>) -> Result<()> {
+        instructions::handle_close_obligation(context)
     }
 
     pub fn deposit_obligation_collateral(

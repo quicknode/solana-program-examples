@@ -9,11 +9,12 @@ use crate::state::OrderSide;
 
 pub const ORDER_BOOK_SEED: &[u8] = b"order_book";
 
-/// Per-side capacity. 1024 leaves is enough for any realistic depth a single
-/// market quotes; at 88 bytes per node that's ~90 KB per side, so the whole
-/// OrderBook account fits in ~180 KB - well under Solana's per-account ceiling
-/// and well within the rent budget a market authority is happy to fund once.
-pub const MAX_ORDERS_PER_SIDE: usize = MAX_TREE_NODES;
+/// Per-side capacity, in resting orders. Every order after the first adds a
+/// leaf and an inner node to the tree, so the side's `MAX_TREE_NODES` slots
+/// hold half as many orders. At 88 bytes per node that's ~90 KB per side, so
+/// the whole OrderBook account fits in ~180 KB. When a side is full,
+/// `place_order` evicts the worst-priced order to make room for a better one.
+pub const MAX_ORDERS_PER_SIDE: usize = MAX_TREE_NODES / 2;
 
 /// Combined order book: two critbit trees plus a shared monotonic seq_num
 /// counter that gives every order a unique tie-break and acts as the public
@@ -59,7 +60,10 @@ pub const ORDER_BOOK_ACCOUNT_SIZE: usize = 8 + std::mem::size_of::<OrderBook>();
 // + 8 (next_order_id) + 1 (bump) + 7 (pad) + 2 * (12 + 88*1024)
 // = 64 + 2 * 90124 = 180312 bytes for the struct itself.
 const _: () = {
-    assert!(std::mem::size_of::<OrderBook>() == 32 + 8 + 8 + 8 + 1 + 7 + 2 * (1 + 3 + 4 + 4 + 4 + NODE_SIZE * MAX_TREE_NODES));
+    assert!(
+        std::mem::size_of::<OrderBook>()
+            == 32 + 8 + 8 + 8 + 1 + 7 + 2 * (1 + 3 + 4 + 4 + 4 + NODE_SIZE * MAX_TREE_NODES)
+    );
 };
 
 /// A compact view of one resting order for the matching engine. Returned
@@ -183,6 +187,22 @@ impl OrderBook {
         })
     }
 
+    /// Resting-order view of the worst-priced leaf on `side`, if any: the
+    /// order eviction removes when the side is full.
+    pub fn worst(&self, side: OrderSide) -> Option<RestingOrderView> {
+        let (root, nodes) = match side {
+            OrderSide::Bid => (&self.bids_root, &self.bids),
+            OrderSide::Ask => (&self.asks_root, &self.asks),
+        };
+        let (_handle, leaf) = nodes.worst_leaf(root)?;
+        Some(RestingOrderView {
+            order_id: leaf.order_id,
+            price: leaf.price(),
+            quantity: leaf.quantity,
+            owner: leaf.owner,
+        })
+    }
+
     /// Number of resting orders on a side. O(1).
     pub fn count(&self, side: OrderSide) -> u32 {
         match side {
@@ -244,15 +264,6 @@ impl OrderBook {
         match side {
             OrderSide::Bid => self.bids.is_full(),
             OrderSide::Ask => self.asks.is_full(),
-        }
-    }
-}
-
-impl Default for OrderTreeRoot {
-    fn default() -> Self {
-        Self {
-            maybe_node: 0,
-            leaf_count: 0,
         }
     }
 }

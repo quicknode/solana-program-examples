@@ -4,15 +4,15 @@ use anchor_lang::prelude::*;
 #[derive(Accounts)]
 pub struct CreateAddressInfoAccountConstraints<'info> {
     #[account(mut)]
-    payer: Signer<'info>,
+    pub payer: Signer<'info>,
 
     #[account(
         init,
         payer = payer,
         space = AddressInfo::DISCRIMINATOR.len() + AddressInfo::INIT_SPACE,
     )]
-    address_info: Account<'info, AddressInfo>,
-    system_program: Program<'info, System>,
+    pub address_info: Account<'info, AddressInfo>,
+    pub system_program: Program<'info, System>,
 }
 
 pub fn handle_create_address_info(

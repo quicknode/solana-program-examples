@@ -62,6 +62,8 @@ fn non_owner_cannot_write_market_price_feed() {
         data: lending::instruction::SetPrice {
             price_mantissa: common::dollars(1_000_000), // an absurd price
             exponent: common::PRICE_EXPONENT,
+            // Never read: the owner check rejects the instruction first.
+            confidence: 0,
         }
         .data(),
     };
@@ -71,8 +73,10 @@ fn non_owner_cannot_write_market_price_feed() {
         &[&attacker],
         &attacker.pubkey(),
     );
+    // `SetPrice` binds the signer with `has_one = owner` on the market, so
+    // the refusal is Anchor's constraint error, not one of the program's.
     assert!(
-        result.is_err(),
+        format!("{:?}", result.unwrap_err()).contains("ConstraintHasOne"),
         "only the market owner may write its price feed"
     );
 }

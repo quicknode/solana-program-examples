@@ -90,7 +90,10 @@ fn test_create_spl_token() {
     let mint_account = svm
         .get_account(&mint_keypair.pubkey())
         .expect("Mint account should exist");
-    assert!(!mint_account.data.is_empty(), "Mint account should have data");
+    assert!(
+        !mint_account.data.is_empty(),
+        "Mint account should have data"
+    );
 
     // Verify the metadata account was created
     let meta_account = svm
@@ -141,5 +144,8 @@ fn test_create_nft() {
     let mint_account = svm
         .get_account(&mint_keypair.pubkey())
         .expect("Mint account should exist");
-    assert!(!mint_account.data.is_empty(), "Mint account should have data");
+    assert!(
+        !mint_account.data.is_empty(),
+        "Mint account should have data"
+    );
 }

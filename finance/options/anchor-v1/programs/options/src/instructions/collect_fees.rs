@@ -11,7 +11,7 @@ use crate::state::Market;
 
 /// The admin sweeps the fees the venue has earned on premiums. `fees_owed`
 /// is the only part of the quote vault the admin can reach: the collateral
-/// and strike payments beside it are locked to their writers and holders.
+/// and strike payments beside it are owed to their writers and holders.
 pub fn handle_collect_fees(context: Context<CollectFeesAccountConstraints>) -> Result<()> {
     let market = &mut context.accounts.market;
     let amount = market.fees_owed;

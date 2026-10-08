@@ -22,16 +22,26 @@ pub enum BettingError {
     BetWon,
     #[msg("The bet amount must be greater than zero")]
     ZeroAmount,
-    #[msg("This bettor already holds the maximum number of open positions")]
-    TooManyBets,
-    #[msg("This bet is not in the bettor's User index")]
-    BetNotInUserIndex,
     #[msg("Arithmetic overflow")]
     MathOverflow,
-    #[msg("Outcomes can only be added before any bets are placed")]
-    BettingAlreadyStarted,
+    #[msg("Outcomes can only be added, and betting opened, while the event is a draft")]
+    EventNotDraft,
     #[msg("The event description is too long")]
     DescriptionTooLong,
     #[msg("The outcome label is too long")]
     LabelTooLong,
+    #[msg("An event needs at least two outcomes before betting opens")]
+    NotEnoughOutcomes,
+    #[msg("The betting close time must be in the future")]
+    CloseTimeInPast,
+    #[msg("Betting on this event has closed")]
+    BettingClosed,
+    #[msg("Betting on this event is still open, so it cannot be settled yet")]
+    BettingStillOpen,
+    #[msg("The event has not been settled or cancelled, so its accounts cannot be closed yet")]
+    EventNotFinished,
+    #[msg("Bet accounts are still open, so closing now would strand their claims")]
+    BetsStillOpen,
+    #[msg("Outcome accounts are still open, so the event cannot be closed yet")]
+    OutcomesStillOpen,
 }

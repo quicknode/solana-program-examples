@@ -2,7 +2,7 @@ use {
     crate::{
         constants::STATUS_EXERCISED,
         errors::OptionsError,
-        instructions::shared::{check_custody, sub_locked, transfer_from_vault, Terms},
+        instructions::shared::{check_custody, sub_owed, transfer_from_vault, Terms},
         state::{Market, OptionContract},
     },
     quasar_lang::prelude::*,
@@ -34,12 +34,20 @@ pub struct CollectProceedsAccountConstraints {
     pub underlying_vault: Account<Token>,
     #[account(mut)]
     pub quote_vault: Account<Token>,
-    /// Unlike the Anchor sibling, both writer accounts must already exist.
-    #[account(mut)]
+    /// A put writer is paid in the underlying, which they may never have
+    /// held, so the account is created if needed, at the writer's expense.
+    #[account(
+        mut,
+        init(idempotent),
+        payer = writer,
+        associated_token(mint = underlying_mint, authority = writer, token_program = token_program),
+    )]
     pub writer_underlying: Account<Token>,
     #[account(mut)]
     pub writer_quote: Account<Token>,
     pub token_program: Program<TokenProgram>,
+    pub associated_token_program: Program<AssociatedTokenProgram>,
+    pub system_program: Program<SystemProgram>,
 }
 
 /// The writer collects what the holder paid at exercise: the strike for a
@@ -54,25 +62,20 @@ pub fn handle_collect_proceeds(
     );
     let terms = Terms {
         kind: accounts.option.kind,
-        contracts: accounts.option.contracts.get(),
-        underlying_per_contract: accounts.option.underlying_per_contract.get(),
-        strike_per_contract: accounts.option.strike_per_contract.get(),
+        underlying_amount: accounts.option.underlying_amount.get(),
+        strike_amount: accounts.option.strike_amount.get(),
     };
-    let proceeds = terms.exercise_payment()?;
+    let proceeds = terms.exercise_payment();
 
     let mut underlying_after = accounts.underlying_vault.amount();
     let mut quote_after = accounts.quote_vault.amount();
     if terms.is_call() {
         // A call's proceeds are the strike, in the quote token.
-        sub_locked(
-            &mut accounts.market.quote_locked,
-            &mut quote_after,
-            proceeds,
-        )?;
+        sub_owed(&mut accounts.market.quote_owed, &mut quote_after, proceeds)?;
     } else {
         // A put's proceeds are the delivered underlying.
-        sub_locked(
-            &mut accounts.market.underlying_locked,
+        sub_owed(
+            &mut accounts.market.underlying_owed,
             &mut underlying_after,
             proceeds,
         )?;

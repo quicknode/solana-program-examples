@@ -1,7 +1,10 @@
-//! Kani proof harnesses for the order-book program (`finance/order-book`).
+//! Kani harnesses for the order-book program (`finance/order-book`).
 //!
 //! Inspired by aeyakovenko/percolator, which uses the Kani model checker to
-//! prove the mathematical correctness of a DeFi engine's pure numeric core.
+//! check the arithmetic of a DeFi engine's pure numeric core. Kani marks a
+//! harness with `#[kani::proof]`, which is why the crate is `kani-proofs` and
+//! the harnesses are named `proof_*`; each one is a model check over every value
+//! of the inputs it declares.
 //!
 //! The on-chain instructions move tokens through SPL CPIs that Kani cannot
 //! symbolically execute, but the program's *interesting* logic is pure:
@@ -13,7 +16,7 @@
 //!
 //! This crate reproduces those formulas faithfully (same `u128` widening,
 //! multiply-before-divide, ceiling rounding, `min` / `saturating_sub`) and
-//! proves the invariants the program depends on. Several harnesses verify
+//! checks the invariants the program depends on. Several harnesses check
 //! nonlinear 128-bit arithmetic, so — as percolator does — they use bounded
 //! model checking: symbolic inputs are constrained to a representative range so
 //! the bit-precise solver stays fast. The identities are scale-invariant, so a
@@ -98,8 +101,8 @@ fn proof_matching_conserves_quantity() {
 }
 
 /// Every emitted fill clears at a price that crosses the taker's limit, and
-/// never fills more than the resting leaf holds. Verified by re-walking the
-/// book and checking each step (the model `break`s on the first non-crosser,
+/// never fills more than the resting leaf holds. The harness re-walks the
+/// book and checks each step (the model `break`s on the first non-crosser,
 /// exactly like `plan_fills`).
 #[cfg(kani)]
 #[kani::proof]
@@ -278,7 +281,7 @@ mod tests {
         assert_eq!(ceil_fee(1, 5_000).unwrap(), 1);
         // gross 10_000, bps 30 -> exactly 30.
         assert_eq!(ceil_fee(10_000, 30).unwrap(), 30);
-        // gross 1, bps 1 -> ceil(0.0001) == 1 (rounds up in protocol favour).
+        // gross 1, bps 1 -> ceil(0.0001) == 1 (rounds up in the program's favour).
         assert_eq!(ceil_fee(1, 1).unwrap(), 1);
         // never exceeds gross.
         assert!(ceil_fee(10_000, 10_000).unwrap() <= 10_000);

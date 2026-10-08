@@ -44,7 +44,8 @@ fn handle_check_mint_data(accounts: &mut InitializeAccountConstraints) -> Result
     // while anchor-lang 1.0 uses 3.x - structurally identical but different semver types
     let mint_with_extension = StateWithExtensions::<MintState>::unpack(&mint_data)
         .map_err(|_| ProgramError::InvalidAccountData)?;
-    let extension_data = mint_with_extension.get_extension::<TransferHookExtension>()
+    let extension_data = mint_with_extension
+        .get_extension::<TransferHookExtension>()
         .map_err(|_| ProgramError::InvalidAccountData)?;
 
     assert_eq!(

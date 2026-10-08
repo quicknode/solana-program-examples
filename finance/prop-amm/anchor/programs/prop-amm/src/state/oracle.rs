@@ -5,16 +5,20 @@ use crate::constants::{BASIS_POINTS_DENOMINATOR, MAX_PRICE_STALENESS_SLOTS};
 use crate::errors::PropAmmError;
 
 // Byte layout of the feed account this program reads. It matches the
-// `mock_switchboard::MockFeed` account: an 8-byte Anchor discriminator followed
+// `mock_price_feed::MockFeed` account: an 8-byte Anchor discriminator followed
 // by `authority: Address (32)`, `price: i128 (16)`, `scale: u32 (4)`,
 // `last_update_slot: u64 (8)`, `confidence: u64 (8)`.
 //
 // We read the raw bytes rather than deserializing the mock account type so this
-// program stays decoupled from the mock. To consume a real Switchboard
-// On-Demand feed, replace the offsets below with a call to
-// `switchboard_on_demand::PullFeedAccountData::parse_and_verify(...)`, which
-// also checks the Ed25519 signatures over the price update — the only other
-// change is the feed account's owning program ID.
+// program stays decoupled from the mock. To consume a real Pyth feed, take the
+// account as a `PriceUpdateV2` instead of reading offsets: from the
+// `pyth-solana-receiver-sdk` crate, or the vendored copy in `basics/pyth` on
+// Anchor 2. The Pyth Receiver program writes that account only after checking
+// the Pyth guardian set's signatures over the update, and the account type's
+// owner check rejects any account that program does not own. Map
+// `price_message.price`, `exponent` (the scale is its negation), `conf`, and
+// `publish_time` or `posted_slot` onto the checks below, and also check
+// `feed_id` and `verification_level`.
 //
 // A real feed reports a value plus a `confidence` band (a standard-deviation-like
 // uncertainty). This reader rejects a price whose band is too wide relative to
@@ -22,12 +26,13 @@ use crate::errors::PropAmmError;
 // market maker it is existential: quoting a tight spread around a price the
 // oracle itself is unsure of is how inventory walks out the door.
 //
-// The feed account's owning program is NOT checked here: the market trusts
-// whatever feed address its operator configured, which is inside the trust
-// model (the operator quotes its own capital against its own oracle choice; a
-// bad feed loses the operator's money, not the traders'). A production reader
-// must still verify the account owner is the oracle program, which
-// `parse_and_verify` does.
+// The feed account must be owned by the oracle program the market recorded
+// at creation (`Market::price_feed_program`, read from the feed's `owner` at
+// that moment). The layout above says nothing about who wrote the bytes, so
+// without the owner check any account laid out like a feed would be accepted
+// as a price. The operator picks the feed, and a bad choice loses the
+// operator's capital rather than the traders', so the market trusts the
+// program it recorded and refuses a feed account from any other.
 const PRICE_OFFSET: usize = 8 + 32;
 const SCALE_OFFSET: usize = PRICE_OFFSET + 16;
 const LAST_UPDATE_SLOT_OFFSET: usize = SCALE_OFFSET + 4;
@@ -37,15 +42,22 @@ const FEED_MINIMUM_LENGTH: usize = CONFIDENCE_OFFSET + 8;
 /// Read and validate the oracle price from `feed`.
 ///
 /// Returns the price as a `u64` in the market's `expected_scale` fixed point.
-/// Rejects a stale price (older than `MAX_PRICE_STALENESS_SLOTS`), a
-/// non-positive price, a feed whose scale differs from the market's pinned
-/// scale, and a price whose confidence band exceeds `max_confidence_bps` of
-/// the price.
+/// Rejects a feed account owned by any program other than `oracle_program`,
+/// a stale price (older than `MAX_PRICE_STALENESS_SLOTS`), a non-positive
+/// price, a feed whose scale differs from the market's pinned scale, and a
+/// price whose confidence band exceeds `max_confidence_bps` of the price.
 pub fn read_oracle_price(
     feed: &AccountView,
+    oracle_program: &Address,
     expected_scale: u32,
     max_confidence_bps: u16,
 ) -> Result<u64> {
+    require_keys_eq!(
+        *feed.owner(),
+        *oracle_program,
+        PropAmmError::PriceFeedNotFromOracle
+    );
+
     let data = feed.try_borrow()?;
     require!(
         data.len() >= FEED_MINIMUM_LENGTH,

@@ -24,7 +24,10 @@ pub struct InitializeAccountConstraints<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn process_initialize(context: Context<InitializeAccountConstraints>, args: TokenMetadataArgs) -> Result<()> {
+pub fn process_initialize(
+    context: Context<InitializeAccountConstraints>,
+    args: TokenMetadataArgs,
+) -> Result<()> {
     let TokenMetadataArgs { name, symbol, uri } = args;
 
     // Define token metadata

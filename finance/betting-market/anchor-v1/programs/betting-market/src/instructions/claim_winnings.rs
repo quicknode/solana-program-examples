@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
 
-use crate::{error::BettingError, Bet, Event, EventStatus, User};
+use crate::{error::BettingError, Bet, Event, EventStatus};
 
 use super::transfer_tokens_from_vault;
 
@@ -14,6 +14,7 @@ pub struct ClaimWinningsAccountConstraints<'info> {
     pub token_mint: InterfaceAccount<'info, Mint>,
 
     #[account(
+        mut,
         seeds = [b"event", event.event_id.to_le_bytes().as_ref()],
         bump = event.bump,
     )]
@@ -30,13 +31,6 @@ pub struct ClaimWinningsAccountConstraints<'info> {
         bump = bet.bump,
     )]
     pub bet: Account<'info, Bet>,
-
-    #[account(
-        mut,
-        seeds = [b"user", bettor.key().as_ref()],
-        bump = user.bump,
-    )]
-    pub user: Account<'info, User>,
 
     #[account(
         mut,
@@ -67,6 +61,15 @@ pub fn handle_claim_winnings(context: Context<ClaimWinningsAccountConstraints>) 
         BettingError::NothingToClaim
     );
 
+    // This Bet account closes when the handler returns, so the event's count
+    // of open bets drops by one before any tokens move.
+    context.accounts.event.open_bets = context
+        .accounts
+        .event
+        .open_bets
+        .checked_sub(1)
+        .ok_or(BettingError::MathOverflow)?;
+
     let stake = context.accounts.bet.amount;
     // Total staked on the winning outcome, and the losers' stakes after the fee.
     let winning_pool = context.accounts.event.winning_pool;
@@ -89,12 +92,6 @@ pub fn handle_claim_winnings(context: Context<ClaimWinningsAccountConstraints>) 
     let payout = stake
         .checked_add(winnings)
         .ok_or(BettingError::MathOverflow)?;
-
-    // The position is over, so drop the Bet from the bettor's index before the
-    // transfer (effects before interactions); the Bet account itself closes
-    // when the instruction finishes.
-    let bet_key = context.accounts.bet.key();
-    context.accounts.user.remove_bet(&bet_key)?;
 
     let event_id = context.accounts.event.event_id;
     let event_bump = context.accounts.event.bump;

@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-use crate::state::Event;
+use crate::state::{may_settle, Event};
 use anchor_spl::mint;
 use anchor_spl::{
     associated_token::AssociatedToken,
@@ -77,6 +77,13 @@ pub fn handle_settle_event(
         context.accounts.event.status == EventStatus::Open,
         BettingError::EventNotOpen
     );
+    // Settling before the close time would let the admin end a market early
+    // on bettors who were promised the full window.
+    let now = Clock::get()?.unix_timestamp;
+    require!(
+        may_settle(now, context.accounts.event.betting_closes_at),
+        BettingError::BettingStillOpen
+    );
     require!(
         context.accounts.winning_outcome.total_amount > 0,
         BettingError::OutcomeHasNoBets
@@ -88,8 +95,11 @@ pub fn handle_settle_event(
 
     // Winners always get their own stake back; the fee is only ever charged on
     // the losing side, so a winner can never receive less than they staked.
-    let fee =
-        (losing_pool as u128 * context.accounts.event.fee_bps as u128 / BPS_DENOMINATOR) as u64;
+    // The fee rounds up, in the program's favor: fee = ceil(losing_pool *
+    // fee_bps / 10_000), and the winners share what the fee leaves. fee_bps
+    // never exceeds 10_000, so the fee never exceeds the losing pool.
+    let fee = (losing_pool as u128 * context.accounts.event.fee_bps as u128)
+        .div_ceil(BPS_DENOMINATOR) as u64;
     let distributable_losing_pool = losing_pool - fee;
 
     if fee > 0 {

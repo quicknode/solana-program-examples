@@ -16,11 +16,24 @@ use {
     },
 };
 
+/// The terms the taker signs for. An offer's address is its maker and id, so
+/// a maker can cancel and re-make the same id at worse terms while the
+/// taker's transaction is in flight; these bounds make that transaction fail
+/// instead of trading at the new terms.
 #[derive(BorshDeserialize, BorshSerialize, Debug)]
-pub struct TakeOffer {}
+pub struct TakeOffer {
+    /// The least token A the taker accepts from the vault.
+    pub minimum_token_a_out: u64,
+    /// The most token B the taker will pay.
+    pub maximum_token_b_in: u64,
+}
 
 impl TakeOffer {
-    pub fn process(program_id: &Pubkey, accounts: &[AccountInfo<'_>]) -> ProgramResult {
+    pub fn process(
+        program_id: &Pubkey,
+        accounts: &[AccountInfo<'_>],
+        args: TakeOffer,
+    ) -> ProgramResult {
         let [offer_info, token_mint_a, token_mint_b, maker_token_account_b, taker_token_account_a, taker_token_account_b, vault, maker, taker, token_program, associated_token_program, system_program] =
             accounts
         else {
@@ -65,6 +78,17 @@ impl TakeOffer {
         assert_is_associated_token_account(taker_token_account_a.key, taker.key, token_mint_a.key)?;
         assert_is_associated_token_account(vault.key, offer_info.key, token_mint_a.key)?;
 
+        // Refuse the take unless the offer still holds the terms the taker
+        // signed for: at least `minimum_token_a_out` of token A in the vault,
+        // and no more than `maximum_token_b_in` of token B wanted. This runs
+        // before any account is created or any token moves.
+        let vault_amount_a = TokenAccount::unpack(&vault.data.borrow())?.amount;
+        if vault_amount_a < args.minimum_token_a_out
+            || offer.token_b_wanted_amount > args.maximum_token_b_in
+        {
+            return Err(EscrowError::OfferTermsChanged.into());
+        }
+
         // Create the taker's token A account if needed. The taker pays this
         // rent: it is the taker's own account.
         if taker_token_account_a.lamports() == 0 {
@@ -94,7 +118,6 @@ impl TakeOffer {
             return Err(EscrowError::MakerTokenAccountBNotInitialized.into());
         }
 
-        let vault_amount_a = TokenAccount::unpack(&vault.data.borrow())?.amount;
         let taker_amount_a_before_transfer =
             TokenAccount::unpack(&taker_token_account_a.data.borrow())?.amount;
         let maker_amount_b_before_transfer =

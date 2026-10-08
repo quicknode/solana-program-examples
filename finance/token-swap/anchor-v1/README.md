@@ -1,8 +1,8 @@
 # Solana Token Swap AMM (Anchor)
 
 > [!NOTE]
-> This is the **Anchor v1** copy of this example, kept for programs staying on the
-> Anchor v1 LTS line. Every `anchor` command on this page needs the v1 CLI:
+> This is the **Anchor v1** copy of this example, on Anchor 1.2.0, the current
+> stable Anchor release. Every `anchor` command on this page needs the v1 CLI:
 > `avm install 1.2.0 && avm use 1.2.0`. The Anchor v2 version of this example is in
 > [`../anchor`](../anchor/).
 
@@ -18,7 +18,7 @@ See also: [Token Swap overview](../README.md) and the [repository catalog](../..
 
 ## Setup
 
-From this directory (`finance/token-swap/anchor/`):
+From this directory (`finance/token-swap/anchor-v1/`):
 
 ```bash
 anchor build
@@ -44,7 +44,7 @@ Read the program `programs/` source and `Anchor.toml` for deployed program IDs. 
 
 ### How does an AMM work on Solana?
 
-An automated market maker replaces the order book with a liquidity pool: anyone can create a pool with `initialize_pool`, fund it with `deposit_liquidity`, and trade against it with `swap_tokens`. Prices come from the constant-product invariant on the pool's balances, and liquidity providers earn a share of trading fees. Solana exchanges like Raydium and Orca use this design.
+An automated market maker replaces the order book with a liquidity pool: anyone can open a pool with `initialize_pool`, which takes the creator's first deposit of both tokens and so sets the pool's opening price; later providers add to it with `deposit_liquidity`, and traders trade against it with `swap_tokens`. Prices come from the constant-product invariant on the pool's balances, and liquidity providers earn a share of trading fees. Solana exchanges like Raydium and Orca use this design.
 
 ### How is slippage handled?
 
@@ -52,4 +52,4 @@ An automated market maker replaces the order book with a liquidity pool: anyone 
 
 ### Where is the full walkthrough for this example?
 
-The example-level [Token Swap overview](../README.md) covers the pool math, LP tokens, and lifecycle; this page covers the Anchor build and test commands. The money math has [Kani](https://github.com/model-checking/kani) proofs in [`../kani-proofs/`](../kani-proofs/).
+The example-level [Token Swap overview](../README.md) covers the pool math, LP tokens, and lifecycle; this page covers the Anchor build and test commands. The arithmetic has [Kani](https://github.com/model-checking/kani) model checks in [`../kani-proofs/`](../kani-proofs/).

@@ -14,30 +14,36 @@ use {
         errors::OptionsError,
         state::{Market, OptionContract, QuoteVaultPda, UnderlyingVaultPda},
     },
+    quasar_lang::error::QuasarError,
     quasar_test::prelude::*,
 };
 
-// Both tokens have 6 decimals: the underlying is NVDAx (tokenized NVIDIA
-// stock) and the quote is USDC.
-const ONE_TOKEN: u64 = 1_000_000;
+// The underlying is NVDAx (tokenized NVIDIA stock), which has 8 decimals,
+// and the quote is USDC, which has 6: one NVDAx is 100_000_000 minor units
+// and one USDC is 1_000_000.
+const NVDAX_DECIMALS: u8 = 8;
+const USDC_DECIMALS: u8 = 6;
+const ONE_NVDAX: u64 = 100_000_000;
+const ONE_USDC: u64 = 1_000_000;
 // The venue charges 1% of every premium.
 const FEE_BPS: u16 = 100;
 
-// The walkthrough's call: 5 contracts, each on 1 NVDAx, strike 180 USDC,
-// asking 25 USDC for the option. And the put: strike 150 USDC, asking 20 USDC.
-const CONTRACTS: u64 = 5;
-const ONE_NVDAX_PER_CONTRACT: u64 = ONE_TOKEN;
-const CALL_STRIKE: u64 = 180 * ONE_TOKEN;
-const CALL_PREMIUM: u64 = 25 * ONE_TOKEN;
-const PUT_STRIKE: u64 = 150 * ONE_TOKEN;
-const PUT_PREMIUM: u64 = 20 * ONE_TOKEN;
+// The walkthrough's call: 5 NVDAx at a 180 USDC strike per share, so the
+// holder pays 5 x 180 = 900 USDC on exercise, asking 25 USDC for the option.
+// And the put: 5 NVDAx at 150 USDC, so 750 USDC, asking 20 USDC.
+const CALL_UNDERLYING: u64 = 5 * ONE_NVDAX;
+const CALL_STRIKE_AMOUNT: u64 = 900 * ONE_USDC;
+const CALL_PREMIUM: u64 = 25 * ONE_USDC;
+const PUT_UNDERLYING: u64 = 5 * ONE_NVDAX;
+const PUT_STRIKE_AMOUNT: u64 = 750 * ONE_USDC;
+const PUT_PREMIUM: u64 = 20 * ONE_USDC;
 const CALL_ID: u64 = 1;
 const PUT_ID: u64 = 2;
 
 // Every character starts with the standard wallet of 1,000 USDC; the story
 // hands the writers 5 NVDAx.
-const STANDARD_USDC: u64 = 1_000 * ONE_TOKEN;
-const FIVE_NVDAX: u64 = 5 * ONE_TOKEN;
+const STANDARD_USDC: u64 = 1_000 * ONE_USDC;
+const FIVE_NVDAX: u64 = 5 * ONE_NVDAX;
 
 // A fixed unix timestamp the clock is warped to before anything is written,
 // so the expiry a week later is deterministic.
@@ -45,25 +51,32 @@ const START_TIME: i64 = 1_750_000_000;
 const SECONDS_PER_DAY: i64 = 24 * 60 * 60;
 const EXPIRY: i64 = START_TIME + 7 * SECONDS_PER_DAY;
 
-// Deterministic addresses.
+/// A wallet's NVDAx associated token account: the account the program's
+/// writer handlers require and create.
+const fn nvdax_account(wallet: Pubkey) -> Pubkey {
+    quasar_spl::get_associated_token_address_const(&wallet, &NVDAX_MINT).0
+}
+
+// Deterministic addresses. Each NVDAx account is the wallet's associated
+// token account.
 const MARIA: Pubkey = Pubkey::new_from_array([1; 32]);
 const NVDAX_MINT: Pubkey = Pubkey::new_from_array([2; 32]);
 const USDC_MINT: Pubkey = Pubkey::new_from_array([3; 32]);
 const MARIA_USDC: Pubkey = Pubkey::new_from_array([4; 32]);
 const ALICE: Pubkey = Pubkey::new_from_array([5; 32]);
-const ALICE_NVDAX: Pubkey = Pubkey::new_from_array([6; 32]);
+const ALICE_NVDAX: Pubkey = nvdax_account(ALICE);
 const ALICE_USDC: Pubkey = Pubkey::new_from_array([7; 32]);
 const BOB: Pubkey = Pubkey::new_from_array([8; 32]);
-const BOB_NVDAX: Pubkey = Pubkey::new_from_array([9; 32]);
+const BOB_NVDAX: Pubkey = nvdax_account(BOB);
 const BOB_USDC: Pubkey = Pubkey::new_from_array([10; 32]);
 const CAROL: Pubkey = Pubkey::new_from_array([11; 32]);
-const CAROL_NVDAX: Pubkey = Pubkey::new_from_array([12; 32]);
+const CAROL_NVDAX: Pubkey = nvdax_account(CAROL);
 const CAROL_USDC: Pubkey = Pubkey::new_from_array([13; 32]);
 const DAVE: Pubkey = Pubkey::new_from_array([14; 32]);
-const DAVE_NVDAX: Pubkey = Pubkey::new_from_array([15; 32]);
+const DAVE_NVDAX: Pubkey = nvdax_account(DAVE);
 const DAVE_USDC: Pubkey = Pubkey::new_from_array([16; 32]);
 const MALLORY: Pubkey = Pubkey::new_from_array([17; 32]);
-const MALLORY_NVDAX: Pubkey = Pubkey::new_from_array([18; 32]);
+const MALLORY_NVDAX: Pubkey = nvdax_account(MALLORY);
 const MALLORY_USDC: Pubkey = Pubkey::new_from_array([19; 32]);
 // A second USDC account of Alice's, for the self-purchase test.
 const ALICE_OTHER_USDC: Pubkey = Pubkey::new_from_array([20; 32]);
@@ -96,12 +109,18 @@ const DAVE_P: Person = person(DAVE, DAVE_NVDAX, DAVE_USDC);
 const MALLORY_P: Person = person(MALLORY, MALLORY_NVDAX, MALLORY_USDC);
 
 fn add_person(test: &mut Test, who: &Person, nvdax: u64, usdc: u64) {
-    test.add(Wallet::new().at(who.wallet));
+    add_person_without_nvdax_account(test, who, usdc);
     test.add(
         TokenAccount::new(NVDAX_MINT, who.wallet)
             .at(who.nvdax)
             .amount(nvdax),
     );
+}
+
+/// A character with a wallet and a USDC account only, as a put writer who
+/// has never held NVDAx would be. Nothing exists at `who.nvdax`.
+fn add_person_without_nvdax_account(test: &mut Test, who: &Person, usdc: u64) {
+    test.add(Wallet::new().at(who.wallet));
     test.add(
         TokenAccount::new(USDC_MINT, who.wallet)
             .at(who.usdc)
@@ -121,14 +140,27 @@ fn initialize_market(test: &mut Test, fee_bps: u16, quote_mint: Pubkey) -> Outco
 /// Mints, the clock at `START_TIME`, Maria's wallet, and a venue at
 /// `FEE_BPS`. Alice and Dave hold 5 NVDAx; everyone holds 1,000 USDC.
 fn setup_with_fee(test: &mut Test, fee_bps: u16) -> Env {
+    setup_with(test, fee_bps, true)
+}
+
+/// Like `setup`, but Carol has no NVDAx account at all.
+fn setup_with_carol_holding_no_nvdax_account(test: &mut Test) -> Env {
+    setup_with(test, FEE_BPS, false)
+}
+
+fn setup_with(test: &mut Test, fee_bps: u16, carol_has_nvdax_account: bool) -> Env {
     test.add(Wallet::new().at(MARIA));
     test.add(TokenAccount::new(USDC_MINT, MARIA).at(MARIA_USDC).amount(0));
-    test.add(Mint::new(MARIA).at(NVDAX_MINT).decimals(6));
-    test.add(Mint::new(MARIA).at(USDC_MINT).decimals(6));
+    test.add(Mint::new(MARIA).at(NVDAX_MINT).decimals(NVDAX_DECIMALS));
+    test.add(Mint::new(MARIA).at(USDC_MINT).decimals(USDC_DECIMALS));
     test.warp_to_timestamp(START_TIME);
     add_person(test, &ALICE_P, FIVE_NVDAX, STANDARD_USDC);
     add_person(test, &BOB_P, 0, STANDARD_USDC);
-    add_person(test, &CAROL_P, 0, STANDARD_USDC);
+    if carol_has_nvdax_account {
+        add_person(test, &CAROL_P, 0, STANDARD_USDC);
+    } else {
+        add_person_without_nvdax_account(test, &CAROL_P, STANDARD_USDC);
+    }
     add_person(test, &DAVE_P, FIVE_NVDAX, STANDARD_USDC);
     add_person(test, &MALLORY_P, 0, STANDARD_USDC);
     initialize_market(test, fee_bps, USDC_MINT).succeeds();
@@ -151,9 +183,8 @@ fn write_option(
     writer: &Person,
     id: u64,
     kind: u8,
-    contracts: u64,
-    underlying_per_contract: u64,
-    strike_per_contract: u64,
+    underlying_amount: u64,
+    strike_amount: u64,
     premium: u64,
     expiry: i64,
 ) -> Outcome {
@@ -163,13 +194,11 @@ fn write_option(
         quote_mint: USDC_MINT,
         underlying_vault: env.underlying_vault,
         quote_vault: env.quote_vault,
-        writer_underlying: writer.nvdax,
         writer_quote: writer.usdc,
         id,
         kind,
-        contracts,
-        underlying_per_contract,
-        strike_per_contract,
+        underlying_amount,
+        strike_amount,
         premium,
         expiry,
     })
@@ -187,9 +216,8 @@ fn write_call(test: &mut Test, env: &Env) -> Pubkey {
         &ALICE_P,
         CALL_ID,
         KIND_CALL,
-        CONTRACTS,
-        ONE_NVDAX_PER_CONTRACT,
-        CALL_STRIKE,
+        CALL_UNDERLYING,
+        CALL_STRIKE_AMOUNT,
         CALL_PREMIUM,
         EXPIRY,
     )
@@ -205,9 +233,8 @@ fn write_put(test: &mut Test, env: &Env) -> Pubkey {
         &CAROL_P,
         PUT_ID,
         KIND_PUT,
-        CONTRACTS,
-        ONE_NVDAX_PER_CONTRACT,
-        PUT_STRIKE,
+        PUT_UNDERLYING,
+        PUT_STRIKE_AMOUNT,
         PUT_PREMIUM,
         EXPIRY,
     )
@@ -215,8 +242,41 @@ fn write_put(test: &mut Test, env: &Env) -> Pubkey {
     option_pda(test, env, &CAROL_P, PUT_ID)
 }
 
+/// An option's five terms, as a buyer reads them before signing.
+#[derive(Clone, Copy)]
+struct Terms {
+    kind: u8,
+    underlying_amount: u64,
+    strike_amount: u64,
+    premium: u64,
+    expiry: i64,
+}
+
+fn listed_terms(test: &Test, env: &Env, writer: &Person, id: u64) -> Terms {
+    let state = test.read::<OptionContract>(option_pda(test, env, writer, id));
+    Terms {
+        kind: state.kind,
+        underlying_amount: state.underlying_amount.into(),
+        strike_amount: state.strike_amount.into(),
+        premium: state.premium.into(),
+        expiry: state.expiry.into(),
+    }
+}
+
+/// Buy at the terms the option is listed with now.
 fn buy_option(test: &mut Test, env: &Env, buyer: &Person, writer: &Person, id: u64) -> Outcome {
-    test.send(BuyOptionInstruction {
+    let terms = listed_terms(test, env, writer, id);
+    buy_option_with_terms(test, env, buyer, writer, id, terms)
+}
+
+fn buy_instruction(
+    env: &Env,
+    buyer: &Person,
+    writer: &Person,
+    id: u64,
+    terms: Terms,
+) -> BuyOptionInstruction {
+    BuyOptionInstruction {
         buyer: buyer.wallet,
         writer: writer.wallet,
         option_id_seed: id,
@@ -225,7 +285,25 @@ fn buy_option(test: &mut Test, env: &Env, buyer: &Person, writer: &Person, id: u
         quote_vault: env.quote_vault,
         buyer_quote: buyer.usdc,
         writer_quote: writer.usdc,
-    })
+        kind: terms.kind,
+        underlying_amount: terms.underlying_amount,
+        strike_amount: terms.strike_amount,
+        premium: terms.premium,
+        expiry: terms.expiry,
+    }
+}
+
+/// Buy agreeing to `terms`: the terms the buyer saw, which the option may no
+/// longer have by the time the purchase lands.
+fn buy_option_with_terms(
+    test: &mut Test,
+    env: &Env,
+    buyer: &Person,
+    writer: &Person,
+    id: u64,
+    terms: Terms,
+) -> Outcome {
+    test.send(buy_instruction(env, buyer, writer, id, terms))
 }
 
 fn cancel_option(test: &mut Test, env: &Env, writer: &Person, id: u64) -> Outcome {
@@ -236,7 +314,6 @@ fn cancel_option(test: &mut Test, env: &Env, writer: &Person, id: u64) -> Outcom
         quote_mint: USDC_MINT,
         underlying_vault: env.underlying_vault,
         quote_vault: env.quote_vault,
-        writer_underlying: writer.nvdax,
         writer_quote: writer.usdc,
     })
 }
@@ -269,7 +346,6 @@ fn collect_proceeds(test: &mut Test, env: &Env, writer: &Person, id: u64) -> Out
         quote_mint: USDC_MINT,
         underlying_vault: env.underlying_vault,
         quote_vault: env.quote_vault,
-        writer_underlying: writer.nvdax,
         writer_quote: writer.usdc,
     })
 }
@@ -282,7 +358,6 @@ fn reclaim_collateral(test: &mut Test, env: &Env, writer: &Person, id: u64) -> O
         quote_mint: USDC_MINT,
         underlying_vault: env.underlying_vault,
         quote_vault: env.quote_vault,
-        writer_underlying: writer.nvdax,
         writer_quote: writer.usdc,
     })
 }
@@ -310,14 +385,25 @@ fn assert_vaults_match_ledger(test: &Test, env: &Env) {
     let market = test.read::<Market>(env.market);
     assert_eq!(
         test.tokens(env.underlying_vault),
-        u64::from(market.underlying_locked),
-        "underlying vault must hold exactly the locked underlying"
+        u64::from(market.underlying_owed),
+        "underlying vault must hold exactly the underlying owed"
     );
     assert_eq!(
         test.tokens(env.quote_vault),
-        u64::from(market.quote_locked) + u64::from(market.fees_owed),
-        "quote vault must hold exactly the locked quote plus the fees owed"
+        u64::from(market.quote_owed) + u64::from(market.fees_owed),
+        "quote vault must hold exactly the quote owed plus the fees owed"
     );
+}
+
+/// How many CPIs the transaction's one instruction made: each one logs a
+/// `Program <id> invoke [2]` line. The handlers here call no program but the
+/// token program, so this is the number of token transfers.
+fn cpi_count(outcome: &Outcome) -> usize {
+    outcome
+        .logs()
+        .iter()
+        .filter(|log| log.ends_with("invoke [2]"))
+        .count()
 }
 
 // ===========================================================================
@@ -334,10 +420,10 @@ fn market_owns_both_vaults(test: &mut Test) {
     assert_eq!(token_authority(test, env.quote_vault), env.market);
 }
 
-/// Alice writes 5 covered calls on her 5 NVDAx. The whole 5 NVDAx moves into
+/// Alice writes a covered call on her 5 NVDAx. The whole 5 NVDAx moves into
 /// the vault at once; the option is listed for a 25 USDC premium.
 #[quasar_test]
-fn write_call_locks_the_underlying(test: &mut Test) {
+fn write_call_moves_underlying_into_vault(test: &mut Test) {
     let env = setup(test);
     let option = write_call(test, &env);
 
@@ -348,36 +434,70 @@ fn write_call_locks_the_underlying(test: &mut Test) {
     assert_eq!(state.holder, Pubkey::default());
     assert_eq!(state.kind, KIND_CALL);
     assert_eq!(state.status, STATUS_LISTED);
-    assert_eq!(u64::from(state.contracts), CONTRACTS);
-    assert_eq!(u64::from(state.strike_per_contract), CALL_STRIKE);
+    assert_eq!(u64::from(state.underlying_amount), CALL_UNDERLYING);
+    assert_eq!(u64::from(state.strike_amount), CALL_STRIKE_AMOUNT);
     assert_eq!(u64::from(state.premium), CALL_PREMIUM);
     assert_eq!(i64::from(state.expiry), EXPIRY);
     assert_eq!(
-        u64::from(test.read::<Market>(env.market).underlying_locked),
+        u64::from(test.read::<Market>(env.market).underlying_owed),
         FIVE_NVDAX
     );
     assert_vaults_match_ledger(test, &env);
 }
 
 /// Bob buys the option. He pays 25 USDC: 1% (0.25 USDC) to the venue, the rest
-/// straight to Alice. The 5 NVDAx do not move.
+/// straight to Alice, as two transfers. The 5 NVDAx do not move.
 #[quasar_test]
 fn buy_option_pays_the_premium_minus_the_fee(test: &mut Test) {
     let env = setup(test);
     let option = write_call(test, &env);
 
     let fee = 250_000; // 0.25 USDC
-    buy_option(test, &env, &BOB_P, &ALICE_P, CALL_ID)
+    let purchase = buy_option(test, &env, &BOB_P, &ALICE_P, CALL_ID);
+    purchase
         .succeeds()
         .has_tokens(BOB_USDC, STANDARD_USDC - CALL_PREMIUM)
         .has_tokens(ALICE_USDC, STANDARD_USDC + CALL_PREMIUM - fee)
         .has_tokens(env.quote_vault, fee);
+    // One transfer to Alice, one to the vault.
+    assert_eq!(cpi_count(&purchase), 2);
     // The underlying vault is not part of a buy, and did not move.
     assert_eq!(test.tokens(env.underlying_vault), FIVE_NVDAX);
 
     let state = test.read::<OptionContract>(option);
     assert_eq!(state.holder, BOB);
     assert_eq!(state.status, STATUS_HELD);
+    assert_eq!(u64::from(test.read::<Market>(env.market).fees_owed), fee);
+    assert_vaults_match_ledger(test, &env);
+}
+
+/// A premium that is not a multiple of the rate: 10.000001 USDC at 1% is a
+/// fee of 0.100001 USDC, 0.10000001 rounded up to the minor unit, and the
+/// writer receives the premium minus the fee. The venue, not the writer,
+/// takes the rounding unit.
+#[quasar_test]
+fn fee_rounds_up_and_the_writer_takes_the_remainder(test: &mut Test) {
+    let env = setup(test);
+    let premium = 10 * ONE_USDC + 1;
+    write_option(
+        test,
+        &env,
+        &ALICE_P,
+        CALL_ID,
+        KIND_CALL,
+        CALL_UNDERLYING,
+        CALL_STRIKE_AMOUNT,
+        premium,
+        EXPIRY,
+    )
+    .succeeds();
+
+    let fee = 100_001; // 0.100001 USDC
+    buy_option(test, &env, &BOB_P, &ALICE_P, CALL_ID)
+        .succeeds()
+        .has_tokens(BOB_USDC, STANDARD_USDC - premium)
+        .has_tokens(ALICE_USDC, STANDARD_USDC + premium - fee)
+        .has_tokens(env.quote_vault, fee);
     assert_eq!(u64::from(test.read::<Market>(env.market).fees_owed), fee);
     assert_vaults_match_ledger(test, &env);
 }
@@ -390,17 +510,16 @@ fn exercise_call_swaps_the_strike_for_the_underlying(test: &mut Test) {
     let option = write_call(test, &env);
     buy_option(test, &env, &BOB_P, &ALICE_P, CALL_ID).succeeds();
 
-    let strike_total = 900 * ONE_TOKEN;
     exercise_option(test, &env, &BOB_P, &ALICE_P, CALL_ID)
         .succeeds()
         .has_tokens(BOB_NVDAX, FIVE_NVDAX)
-        .has_tokens(BOB_USDC, STANDARD_USDC - CALL_PREMIUM - strike_total)
+        .has_tokens(BOB_USDC, STANDARD_USDC - CALL_PREMIUM - CALL_STRIKE_AMOUNT)
         .has_tokens(env.underlying_vault, 0)
-        .has_tokens(env.quote_vault, strike_total + 250_000);
+        .has_tokens(env.quote_vault, CALL_STRIKE_AMOUNT + 250_000);
 
     let market = test.read::<Market>(env.market);
-    assert_eq!(u64::from(market.underlying_locked), 0);
-    assert_eq!(u64::from(market.quote_locked), strike_total);
+    assert_eq!(u64::from(market.underlying_owed), 0);
+    assert_eq!(u64::from(market.quote_owed), CALL_STRIKE_AMOUNT);
     assert_eq!(test.read::<OptionContract>(option).status, STATUS_EXERCISED);
     assert_vaults_match_ledger(test, &env);
 }
@@ -417,19 +536,19 @@ fn collect_proceeds_pays_the_writer_and_closes_the_option(test: &mut Test) {
         .succeeds()
         .has_tokens(
             ALICE_USDC,
-            STANDARD_USDC + 900 * ONE_TOKEN + CALL_PREMIUM - 250_000,
+            STANDARD_USDC + CALL_STRIKE_AMOUNT + CALL_PREMIUM - 250_000,
         )
         .has_tokens(ALICE_NVDAX, 0)
         .is_closed(option);
 
     let market = test.read::<Market>(env.market);
-    assert_eq!(u64::from(market.quote_locked), 0);
+    assert_eq!(u64::from(market.quote_owed), 0);
     assert_eq!(u64::from(market.fees_owed), 250_000);
     assert_vaults_match_ledger(test, &env);
 }
 
 /// Maria sweeps the venue's fee. Only the 0.25 USDC of fees leaves the
-/// vault; the strike payment sitting beside it stays locked to Alice.
+/// vault; the strike payment sitting beside it stays owed to Alice.
 #[quasar_test]
 fn collect_fees_pays_only_the_fees_owed(test: &mut Test) {
     let env = setup(test);
@@ -440,7 +559,7 @@ fn collect_fees_pays_only_the_fees_owed(test: &mut Test) {
     collect_fees(test, &env, MARIA, MARIA_USDC)
         .succeeds()
         .has_tokens(MARIA_USDC, 250_000)
-        .has_tokens(env.quote_vault, 900 * ONE_TOKEN);
+        .has_tokens(env.quote_vault, CALL_STRIKE_AMOUNT);
     assert_eq!(u64::from(test.read::<Market>(env.market).fees_owed), 0);
     assert_vaults_match_ledger(test, &env);
 
@@ -452,13 +571,13 @@ fn collect_fees_pays_only_the_fees_owed(test: &mut Test) {
 // The put, and the option that expires unexercised
 // ===========================================================================
 
-/// Carol writes 5 cash-secured puts at a 150 strike: 750 USDC of collateral.
-/// Dave buys them for 20 USDC, then delivers his 5 NVDAx for the 750 USDC.
+/// Carol writes a cash-secured put on 5 NVDAx at a 150 strike: 750 USDC of
+/// collateral. Dave buys it for 20 USDC, then delivers his 5 NVDAx for the 750 USDC.
 #[quasar_test]
 fn put_lifecycle_delivers_the_underlying_for_the_strike(test: &mut Test) {
     let env = setup(test);
     let option = write_put(test, &env);
-    let collateral = 750 * ONE_TOKEN;
+    let collateral = PUT_STRIKE_AMOUNT;
     assert_eq!(test.tokens(CAROL_USDC), STANDARD_USDC - collateral);
     assert_eq!(test.tokens(env.quote_vault), collateral);
     assert_vaults_match_ledger(test, &env);
@@ -477,8 +596,8 @@ fn put_lifecycle_delivers_the_underlying_for_the_strike(test: &mut Test) {
         .has_tokens(env.underlying_vault, FIVE_NVDAX)
         .has_tokens(env.quote_vault, fee);
     let market = test.read::<Market>(env.market);
-    assert_eq!(u64::from(market.underlying_locked), FIVE_NVDAX);
-    assert_eq!(u64::from(market.quote_locked), 0);
+    assert_eq!(u64::from(market.underlying_owed), FIVE_NVDAX);
+    assert_eq!(u64::from(market.quote_owed), 0);
     assert_vaults_match_ledger(test, &env);
 
     collect_proceeds(test, &env, &CAROL_P, PUT_ID)
@@ -486,7 +605,7 @@ fn put_lifecycle_delivers_the_underlying_for_the_strike(test: &mut Test) {
         .has_tokens(CAROL_NVDAX, FIVE_NVDAX)
         .is_closed(option);
     assert_eq!(
-        u64::from(test.read::<Market>(env.market).underlying_locked),
+        u64::from(test.read::<Market>(env.market).underlying_owed),
         0
     );
     assert_vaults_match_ledger(test, &env);
@@ -509,9 +628,114 @@ fn reclaim_collateral_after_expiry_returns_it_to_the_writer(test: &mut Test) {
     // Bob is not part of the reclaim: he is left with nothing to claim.
     assert_eq!(test.tokens(BOB_USDC), STANDARD_USDC - CALL_PREMIUM);
     assert_eq!(
-        u64::from(test.read::<Market>(env.market).underlying_locked),
+        u64::from(test.read::<Market>(env.market).underlying_owed),
         0
     );
+    assert_vaults_match_ledger(test, &env);
+}
+
+/// Dave never exercises: the week passes above the 150 strike. At expiry
+/// Carol takes her 750 USDC of collateral back, keeping the 19.80 USDC of
+/// premium, and the option closes with its rent back to her. Dave keeps his
+/// 5 NVDAx and is out the 20 USDC he paid; the venue's 0.20 USDC fee stays in
+/// the vault for Maria.
+#[quasar_test]
+fn reclaim_collateral_after_expiry_returns_the_strike_to_the_put_writer(test: &mut Test) {
+    let env = setup(test);
+    let option = write_put(test, &env);
+    buy_option(test, &env, &DAVE_P, &CAROL_P, PUT_ID).succeeds();
+    let fee = 200_000; // 1% of 20 USDC
+    let carol_lamports_before = test.lamports(CAROL);
+
+    test.warp_to_timestamp(EXPIRY);
+    reclaim_collateral(test, &env, &CAROL_P, PUT_ID)
+        .succeeds()
+        .has_tokens(CAROL_USDC, STANDARD_USDC + PUT_PREMIUM - fee)
+        .has_tokens(CAROL_NVDAX, 0)
+        .has_tokens(env.quote_vault, fee)
+        .has_tokens(env.underlying_vault, 0)
+        .is_closed(option);
+    assert_eq!(test.tokens(DAVE_USDC), STANDARD_USDC - PUT_PREMIUM);
+    assert_eq!(test.tokens(DAVE_NVDAX), FIVE_NVDAX);
+    assert!(
+        test.lamports(CAROL) > carol_lamports_before,
+        "the option's rent must return to the writer"
+    );
+    let market = test.read::<Market>(env.market);
+    assert_eq!(u64::from(market.quote_owed), 0);
+    assert_eq!(u64::from(market.underlying_owed), 0);
+    assert_eq!(u64::from(market.fees_owed), fee);
+    assert_vaults_match_ledger(test, &env);
+}
+
+/// Carol has never held NVDAx, so she has no NVDAx account. Writing the put
+/// creates it at her expense: her lamports pay the option's rent and the new
+/// account's rent, and nothing else. Dave buys, never exercises, and at
+/// expiry Carol reclaims her 750 USDC; the option's rent comes back to her to
+/// the lamport.
+#[quasar_test]
+fn put_writer_without_an_underlying_account_writes_and_reclaims(test: &mut Test) {
+    let env = setup_with_carol_holding_no_nvdax_account(test);
+    assert!(test.account(CAROL_NVDAX).is_none());
+    let carol_lamports_before_write = test.lamports(CAROL);
+
+    let option = write_put(test, &env);
+
+    let nvdax_account_rent = test.lamports(CAROL_NVDAX);
+    let option_rent = test.lamports(option);
+    assert!(nvdax_account_rent > 0);
+    assert_eq!(test.tokens(CAROL_NVDAX), 0);
+    assert_eq!(token_authority(test, CAROL_NVDAX), CAROL);
+    assert_eq!(
+        test.lamports(CAROL),
+        carol_lamports_before_write - option_rent - nvdax_account_rent
+    );
+    assert_eq!(test.tokens(CAROL_USDC), STANDARD_USDC - PUT_STRIKE_AMOUNT);
+    assert_eq!(test.tokens(env.quote_vault), PUT_STRIKE_AMOUNT);
+    assert_vaults_match_ledger(test, &env);
+
+    buy_option(test, &env, &DAVE_P, &CAROL_P, PUT_ID).succeeds();
+    let fee = 200_000; // 1% of 20 USDC
+    test.warp_to_timestamp(EXPIRY);
+    let carol_lamports_before_reclaim = test.lamports(CAROL);
+
+    reclaim_collateral(test, &env, &CAROL_P, PUT_ID)
+        .succeeds()
+        .has_tokens(CAROL_USDC, STANDARD_USDC + PUT_PREMIUM - fee)
+        .has_tokens(CAROL_NVDAX, 0)
+        .has_tokens(env.quote_vault, fee)
+        .has_lamports(CAROL, carol_lamports_before_reclaim + option_rent)
+        .is_closed(option);
+    assert_eq!(test.tokens(DAVE_USDC), STANDARD_USDC - PUT_PREMIUM);
+    assert_eq!(test.tokens(DAVE_NVDAX), FIVE_NVDAX);
+    let market = test.read::<Market>(env.market);
+    assert_eq!(u64::from(market.quote_owed), 0);
+    assert_eq!(u64::from(market.underlying_owed), 0);
+    assert_eq!(u64::from(market.fees_owed), fee);
+    assert_vaults_match_ledger(test, &env);
+}
+
+/// Carol, with no NVDAx account, writes a put nobody buys and withdraws it.
+/// Her 750 USDC comes back, and the option closes with its rent back to her
+/// to the lamport.
+#[quasar_test]
+fn put_writer_without_an_underlying_account_writes_and_cancels(test: &mut Test) {
+    let env = setup_with_carol_holding_no_nvdax_account(test);
+    assert!(test.account(CAROL_NVDAX).is_none());
+
+    let option = write_put(test, &env);
+    assert_eq!(test.tokens(CAROL_NVDAX), 0);
+    let option_rent = test.lamports(option);
+    let carol_lamports_before_cancel = test.lamports(CAROL);
+
+    cancel_option(test, &env, &CAROL_P, PUT_ID)
+        .succeeds()
+        .has_tokens(CAROL_USDC, STANDARD_USDC)
+        .has_tokens(CAROL_NVDAX, 0)
+        .has_tokens(env.quote_vault, 0)
+        .has_lamports(CAROL, carol_lamports_before_cancel + option_rent)
+        .is_closed(option);
+    assert_eq!(u64::from(test.read::<Market>(env.market).quote_owed), 0);
     assert_vaults_match_ledger(test, &env);
 }
 
@@ -583,7 +807,7 @@ fn cancel_unsold_option_works_after_expiry(test: &mut Test) {
     cancel_option(test, &env, &CAROL_P, PUT_ID)
         .succeeds()
         .has_tokens(CAROL_USDC, STANDARD_USDC);
-    assert_eq!(u64::from(test.read::<Market>(env.market).quote_locked), 0);
+    assert_eq!(u64::from(test.read::<Market>(env.market).quote_owed), 0);
     assert_vaults_match_ledger(test, &env);
 }
 
@@ -610,14 +834,155 @@ fn buy_is_refused_once_sold(test: &mut Test) {
     assert_eq!(test.read::<OptionContract>(option).holder, BOB);
 }
 
+/// The switched-option attack: Bob reads Alice's call and signs a purchase at
+/// those terms. Before it lands, Alice cancels and writes a new option at the
+/// same address (the same `id`) on worse terms: a higher premium, fewer
+/// shares, a higher strike, or a sooner expiry. Each time, Bob's purchase is
+/// refused with `OptionTermsChanged`, and no USDC moves.
+#[quasar_test]
+fn buy_option_refuses_a_switched_option(test: &mut Test) {
+    let env = setup(test);
+    let option = write_call(test, &env);
+    let seen = listed_terms(test, &env, &ALICE_P, CALL_ID);
+
+    let switches = [
+        Terms {
+            premium: 2 * CALL_PREMIUM,
+            ..seen
+        },
+        Terms {
+            underlying_amount: ONE_NVDAX,
+            ..seen
+        },
+        Terms {
+            strike_amount: CALL_STRIKE_AMOUNT + 100 * ONE_USDC,
+            ..seen
+        },
+        Terms {
+            expiry: seen.expiry - SECONDS_PER_DAY,
+            ..seen
+        },
+    ];
+    for switched in switches {
+        cancel_option(test, &env, &ALICE_P, CALL_ID).succeeds();
+        write_option(
+            test,
+            &env,
+            &ALICE_P,
+            CALL_ID,
+            switched.kind,
+            switched.underlying_amount,
+            switched.strike_amount,
+            switched.premium,
+            switched.expiry,
+        )
+        .succeeds();
+
+        buy_option_with_terms(test, &env, &BOB_P, &ALICE_P, CALL_ID, seen)
+            .fails_with(OptionsError::OptionTermsChanged);
+        assert_eq!(test.tokens(BOB_USDC), STANDARD_USDC);
+        assert_eq!(test.tokens(ALICE_USDC), STANDARD_USDC);
+        assert_eq!(test.tokens(env.quote_vault), 0);
+        let state = test.read::<OptionContract>(option);
+        assert_eq!(state.status, STATUS_LISTED);
+        assert_eq!(state.holder, Pubkey::default());
+        assert_eq!(u64::from(test.read::<Market>(env.market).fees_owed), 0);
+        assert_vaults_match_ledger(test, &env);
+    }
+}
+
+/// The kind switch: Bob reads Alice's call and signs a purchase at those
+/// terms. Before it lands, Alice cancels and writes a put at the same address
+/// (the same `id`) with every amount and the expiry unchanged, so only the
+/// kind differs. A put would hand Bob the right to sell 5 NVDAx for 900 USDC,
+/// not to buy them. Bob's purchase is refused with `OptionTermsChanged`, and
+/// no USDC moves: Alice's 900 USDC of put collateral stays in the vault.
+#[quasar_test]
+fn buy_option_refuses_a_call_switched_to_a_put(test: &mut Test) {
+    let env = setup(test);
+    let option = write_call(test, &env);
+    let seen = listed_terms(test, &env, &ALICE_P, CALL_ID);
+    assert_eq!(seen.kind, KIND_CALL);
+
+    cancel_option(test, &env, &ALICE_P, CALL_ID).succeeds();
+    write_option(
+        test,
+        &env,
+        &ALICE_P,
+        CALL_ID,
+        KIND_PUT,
+        seen.underlying_amount,
+        seen.strike_amount,
+        seen.premium,
+        seen.expiry,
+    )
+    .succeeds();
+    assert_eq!(option_pda(test, &env, &ALICE_P, CALL_ID), option);
+    assert_eq!(test.read::<OptionContract>(option).kind, KIND_PUT);
+
+    buy_option_with_terms(test, &env, &BOB_P, &ALICE_P, CALL_ID, seen)
+        .fails_with(OptionsError::OptionTermsChanged);
+    assert_eq!(test.tokens(BOB_USDC), STANDARD_USDC);
+    assert_eq!(test.tokens(ALICE_USDC), STANDARD_USDC - CALL_STRIKE_AMOUNT);
+    assert_eq!(test.tokens(ALICE_NVDAX), FIVE_NVDAX);
+    assert_eq!(test.tokens(env.quote_vault), CALL_STRIKE_AMOUNT);
+    assert_eq!(test.tokens(env.underlying_vault), 0);
+    let state = test.read::<OptionContract>(option);
+    assert_eq!(state.status, STATUS_LISTED);
+    assert_eq!(state.holder, Pubkey::default());
+    assert_eq!(u64::from(test.read::<Market>(env.market).fees_owed), 0);
+    assert_vaults_match_ledger(test, &env);
+}
+
+/// A purchase whose terms match the option's goes through: Bob, reading the
+/// rewritten option at a 50 USDC premium, buys it at that premium, paying
+/// 0.50 USDC to the venue and 49.50 USDC to Alice.
+#[quasar_test]
+fn buy_option_succeeds_when_the_terms_match(test: &mut Test) {
+    let env = setup(test);
+    let option = write_call(test, &env);
+    cancel_option(test, &env, &ALICE_P, CALL_ID).succeeds();
+    let premium = 2 * CALL_PREMIUM;
+    write_option(
+        test,
+        &env,
+        &ALICE_P,
+        CALL_ID,
+        KIND_CALL,
+        CALL_UNDERLYING,
+        CALL_STRIKE_AMOUNT,
+        premium,
+        EXPIRY,
+    )
+    .succeeds();
+    let seen = listed_terms(test, &env, &ALICE_P, CALL_ID);
+    assert_eq!(seen.premium, premium);
+
+    let fee = 500_000; // 0.50 USDC
+    buy_option_with_terms(test, &env, &BOB_P, &ALICE_P, CALL_ID, seen)
+        .succeeds()
+        .has_tokens(BOB_USDC, STANDARD_USDC - premium)
+        .has_tokens(ALICE_USDC, STANDARD_USDC + premium - fee)
+        .has_tokens(env.quote_vault, fee);
+    let state = test.read::<OptionContract>(option);
+    assert_eq!(state.holder, BOB);
+    assert_eq!(state.status, STATUS_HELD);
+    assert_eq!(u64::from(test.read::<Market>(env.market).fees_owed), fee);
+    assert_vaults_match_ledger(test, &env);
+}
+
 /// A writer cannot buy their own option: their address would sit in the `buyer`
-/// and `writer` slots at once, which the runtime refuses before the handler
-/// runs, whichever of their token accounts the premium is paid from.
+/// and `writer` slots at once, so the runtime hands the program the second as
+/// a duplicate of the first, and Quasar's account parsing refuses the
+/// duplicate with `AccountBorrowFailed` before any handler code runs,
+/// whichever of their token accounts the premium is paid from. The option
+/// stays listed and no USDC moves.
 #[quasar_test]
 fn writer_cannot_buy_their_own_option(test: &mut Test) {
     let env = setup(test);
     let option = write_call(test, &env);
-    assert!(buy_option(test, &env, &ALICE_P, &ALICE_P, CALL_ID).is_err());
+    buy_option(test, &env, &ALICE_P, &ALICE_P, CALL_ID)
+        .fails(ProgramError::Runtime("AccountBorrowFailed".into()));
 
     test.add(
         TokenAccount::new(USDC_MINT, ALICE)
@@ -625,9 +990,12 @@ fn writer_cannot_buy_their_own_option(test: &mut Test) {
             .amount(STANDARD_USDC),
     );
     let alice_from_other_account = person(ALICE, ALICE_NVDAX, ALICE_OTHER_USDC);
-    assert!(buy_option(test, &env, &alice_from_other_account, &ALICE_P, CALL_ID).is_err());
+    buy_option(test, &env, &alice_from_other_account, &ALICE_P, CALL_ID)
+        .fails(ProgramError::Runtime("AccountBorrowFailed".into()));
     assert_eq!(test.read::<OptionContract>(option).status, STATUS_LISTED);
+    assert_eq!(test.tokens(ALICE_USDC), STANDARD_USDC);
     assert_eq!(test.tokens(ALICE_OTHER_USDC), STANDARD_USDC);
+    assert_eq!(u64::from(test.read::<Market>(env.market).fees_owed), 0);
 }
 
 /// A buyer cannot route the premium to their own account by passing it as
@@ -636,17 +1004,8 @@ fn writer_cannot_buy_their_own_option(test: &mut Test) {
 fn buy_refuses_a_premium_account_the_writer_does_not_own(test: &mut Test) {
     let env = setup(test);
     write_call(test, &env);
-    let mut instruction: Instruction = BuyOptionInstruction {
-        buyer: BOB,
-        writer: ALICE,
-        option_id_seed: CALL_ID,
-        underlying_mint: NVDAX_MINT,
-        quote_mint: USDC_MINT,
-        quote_vault: env.quote_vault,
-        buyer_quote: BOB_USDC,
-        writer_quote: ALICE_USDC,
-    }
-    .into();
+    let terms = listed_terms(test, &env, &ALICE_P, CALL_ID);
+    let mut instruction: Instruction = buy_instruction(&env, &BOB_P, &ALICE_P, CALL_ID, terms).into();
     // Account order matches the `#[derive(Accounts)]` struct: writer_quote is
     // the last account before the token program.
     let writer_quote_index = instruction
@@ -660,15 +1019,19 @@ fn buy_refuses_a_premium_account_the_writer_does_not_own(test: &mut Test) {
     assert_eq!(test.tokens(MALLORY_USDC), STANDARD_USDC);
 }
 
-/// Only the holder can exercise.
+/// Only the holder can exercise: an unsold option has no holder, and a stranger
+/// is not the holder of a sold one. Both refusals are the option's
+/// `has_one(holder)` constraint.
 #[quasar_test]
 fn exercise_is_refused_for_anyone_but_the_holder(test: &mut Test) {
     let env = setup(test);
     write_call(test, &env);
     // Unsold: the holder field is all zeroes, which no signer can match.
-    assert!(exercise_option(test, &env, &MALLORY_P, &ALICE_P, CALL_ID).is_err());
+    exercise_option(test, &env, &MALLORY_P, &ALICE_P, CALL_ID)
+        .fails_with(QuasarError::HasOneMismatch);
     buy_option(test, &env, &BOB_P, &ALICE_P, CALL_ID).succeeds();
-    assert!(exercise_option(test, &env, &MALLORY_P, &ALICE_P, CALL_ID).is_err());
+    exercise_option(test, &env, &MALLORY_P, &ALICE_P, CALL_ID)
+        .fails_with(QuasarError::HasOneMismatch);
     assert_eq!(test.tokens(env.underlying_vault), FIVE_NVDAX);
 }
 
@@ -681,10 +1044,13 @@ fn collect_proceeds_needs_an_exercised_option_and_the_writer(test: &mut Test) {
     collect_proceeds(test, &env, &ALICE_P, CALL_ID).fails_with(OptionsError::OptionNotExercised);
 
     exercise_option(test, &env, &BOB_P, &ALICE_P, CALL_ID).succeeds();
-    // A non-writer's signature derives a different option PDA, so the
-    // account check fails before the handler runs.
-    assert!(collect_proceeds(test, &env, &BOB_P, CALL_ID).is_err());
-    assert_eq!(test.tokens(env.quote_vault), 900 * ONE_TOKEN + 250_000);
+    // A non-writer's signature derives a different option PDA: an address
+    // nobody created, so the runtime hands the program an empty account owned
+    // by the system program, and Quasar refuses to read it as an
+    // `OptionContract` with `IllegalOwner` before the handler runs.
+    collect_proceeds(test, &env, &BOB_P, CALL_ID)
+        .fails(ProgramError::Runtime("IllegalOwner".into()));
+    assert_eq!(test.tokens(env.quote_vault), CALL_STRIKE_AMOUNT + 250_000);
 }
 
 /// An exercised option has no collateral left to reclaim, whatever the clock
@@ -704,7 +1070,7 @@ fn collect_fees_is_refused_for_anyone_but_the_admin(test: &mut Test) {
     let env = setup(test);
     write_call(test, &env);
     buy_option(test, &env, &BOB_P, &ALICE_P, CALL_ID).succeeds();
-    assert!(collect_fees(test, &env, MALLORY, MALLORY_USDC).is_err());
+    collect_fees(test, &env, MALLORY, MALLORY_USDC).fails_with(QuasarError::HasOneMismatch);
     assert_eq!(
         u64::from(test.read::<Market>(env.market).fees_owed),
         250_000
@@ -716,24 +1082,22 @@ fn collect_fees_is_refused_for_anyone_but_the_admin(test: &mut Test) {
 // ===========================================================================
 
 #[quasar_test]
-fn write_option_rejects_zero_quantities_and_a_free_premium(test: &mut Test) {
+fn write_option_rejects_zero_amounts_and_a_free_premium(test: &mut Test) {
     let env = setup(test);
     let attempts = [
-        (0, ONE_NVDAX_PER_CONTRACT, CALL_STRIKE, CALL_PREMIUM),
-        (CONTRACTS, 0, CALL_STRIKE, CALL_PREMIUM),
-        (CONTRACTS, ONE_NVDAX_PER_CONTRACT, 0, CALL_PREMIUM),
-        (CONTRACTS, ONE_NVDAX_PER_CONTRACT, CALL_STRIKE, 0),
+        (0, CALL_STRIKE_AMOUNT, CALL_PREMIUM),
+        (CALL_UNDERLYING, 0, CALL_PREMIUM),
+        (CALL_UNDERLYING, CALL_STRIKE_AMOUNT, 0),
     ];
-    for (offset, (contracts, per_contract, strike, premium)) in attempts.into_iter().enumerate() {
+    for (offset, (underlying_amount, strike_amount, premium)) in attempts.into_iter().enumerate() {
         write_option(
             test,
             &env,
             &ALICE_P,
             10 + offset as u64,
             KIND_CALL,
-            contracts,
-            per_contract,
-            strike,
+            underlying_amount,
+            strike_amount,
             premium,
             EXPIRY,
         )
@@ -751,9 +1115,8 @@ fn write_option_rejects_an_unknown_kind(test: &mut Test) {
         &ALICE_P,
         20,
         2,
-        CONTRACTS,
-        ONE_NVDAX_PER_CONTRACT,
-        CALL_STRIKE,
+        CALL_UNDERLYING,
+        CALL_STRIKE_AMOUNT,
         CALL_PREMIUM,
         EXPIRY,
     )
@@ -771,9 +1134,8 @@ fn write_option_rejects_an_expiry_that_has_passed(test: &mut Test) {
             &ALICE_P,
             30,
             KIND_CALL,
-            CONTRACTS,
-            ONE_NVDAX_PER_CONTRACT,
-            CALL_STRIKE,
+            CALL_UNDERLYING,
+            CALL_STRIKE_AMOUNT,
             CALL_PREMIUM,
             expiry,
         )
@@ -781,51 +1143,38 @@ fn write_option_rejects_an_expiry_that_has_passed(test: &mut Test) {
     }
 }
 
-/// An option whose collateral would overflow is refused before anyone pays for it.
-#[quasar_test]
-fn write_option_rejects_a_lot_whose_collateral_overflows(test: &mut Test) {
-    let env = setup(test);
-    write_option(
-        test,
-        &env,
-        &ALICE_P,
-        40,
-        KIND_CALL,
-        u64::MAX,
-        2,
-        CALL_STRIKE,
-        CALL_PREMIUM,
-        EXPIRY,
-    )
-    .fails_with(OptionsError::MathOverflow);
-}
-
 #[quasar_test]
 fn initialize_market_rejects_a_full_fee(test: &mut Test) {
     test.add(Wallet::new().at(MARIA));
-    test.add(Mint::new(MARIA).at(NVDAX_MINT).decimals(6));
-    test.add(Mint::new(MARIA).at(USDC_MINT).decimals(6));
+    test.add(Mint::new(MARIA).at(NVDAX_MINT).decimals(NVDAX_DECIMALS));
+    test.add(Mint::new(MARIA).at(USDC_MINT).decimals(USDC_DECIMALS));
     initialize_market(test, 10_000, USDC_MINT).fails_with(OptionsError::InvalidParameter);
 }
 
-/// One mint on both sides is refused by the runtime before the handler's own
-/// check runs: the same account cannot be loaded into two slots.
+/// One mint on both sides is refused before the handler's own check runs: the
+/// runtime hands the program the second slot as a duplicate of the first, and
+/// Quasar's account parsing refuses it with `AccountBorrowFailed`.
 #[quasar_test]
 fn initialize_market_rejects_the_same_mint_on_both_sides(test: &mut Test) {
     test.add(Wallet::new().at(MARIA));
-    test.add(Mint::new(MARIA).at(NVDAX_MINT).decimals(6));
-    assert!(initialize_market(test, FEE_BPS, NVDAX_MINT).is_err());
+    test.add(Mint::new(MARIA).at(NVDAX_MINT).decimals(NVDAX_DECIMALS));
+    initialize_market(test, FEE_BPS, NVDAX_MINT)
+        .fails(ProgramError::Runtime("AccountBorrowFailed".into()));
 }
 
-/// A venue run at cost is a valid choice: the writer receives the whole
-/// premium and no fee transfer is attempted.
+/// A venue run at cost is a valid choice: with a zero fee the writer
+/// receives the whole premium in one transfer, and `buy_option` makes no
+/// fee transfer at all rather than one for zero.
 #[quasar_test]
 fn zero_fee_venue_pays_the_writer_the_whole_premium(test: &mut Test) {
     let env = setup_with_fee(test, 0);
     write_call(test, &env);
-    buy_option(test, &env, &BOB_P, &ALICE_P, CALL_ID)
+    let purchase = buy_option(test, &env, &BOB_P, &ALICE_P, CALL_ID);
+    purchase
         .succeeds()
         .has_tokens(ALICE_USDC, STANDARD_USDC + CALL_PREMIUM);
+    // The transfer to Alice, and nothing to the vault.
+    assert_eq!(cpi_count(&purchase), 1);
     assert_eq!(u64::from(test.read::<Market>(env.market).fees_owed), 0);
     assert_vaults_match_ledger(test, &env);
 }

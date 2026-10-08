@@ -106,4 +106,38 @@ mod quasar_order_book {
     pub fn withdraw_fees(ctx: Ctx<WithdrawFeesAccountConstraints>) -> Result<(), ProgramError> {
         instructions::withdraw_fees::handle_withdraw_fees(&mut ctx.accounts)
     }
+
+    /// Stop the market taking new orders: `place_order` is refused with
+    /// `MarketPaused` until `resume_market`. Cancels, settlements and fee
+    /// withdrawals keep working while the market is paused. Only the
+    /// market's stored `authority` may call this.
+    #[instruction(discriminator = 6)]
+    pub fn pause_market(ctx: Ctx<PauseMarketAccountConstraints>) -> Result<(), ProgramError> {
+        instructions::pause_market::handle_pause_market(&mut ctx.accounts)
+    }
+
+    /// Reopen a paused market so `place_order` accepts orders again. Only
+    /// the market's stored `authority` may call this.
+    #[instruction(discriminator = 7)]
+    pub fn resume_market(ctx: Ctx<ResumeMarketAccountConstraints>) -> Result<(), ProgramError> {
+        instructions::resume_market::handle_resume_market(&mut ctx.accounts)
+    }
+
+    /// Close a Filled or Cancelled order's account and return its rent to
+    /// the order's owner, who signs. An order still resting on the book
+    /// (Open or PartiallyFilled) is refused with `OrderNotClosable`.
+    #[instruction(discriminator = 8)]
+    pub fn close_order(ctx: Ctx<CloseOrderAccountConstraints>) -> Result<(), ProgramError> {
+        instructions::close_order::handle_close_order(&mut ctx.accounts)
+    }
+
+    /// Close the owner's MarketUser account for this market and return its
+    /// rent to them. Refused with `MarketUserNotClosable` while the account
+    /// lists an open order or holds an unsettled balance.
+    #[instruction(discriminator = 9)]
+    pub fn close_market_user(
+        ctx: Ctx<CloseMarketUserAccountConstraints>,
+    ) -> Result<(), ProgramError> {
+        instructions::close_market_user::handle_close_market_user(&mut ctx.accounts)
+    }
 }

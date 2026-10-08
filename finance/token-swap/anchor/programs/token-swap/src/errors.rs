@@ -12,6 +12,10 @@ pub enum AmmError {
     #[msg("Admin share must be less than 10000 basis points")]
     AdminShareTooHigh,
 
+    // Returned by `initialize_pool` when `sqrt(amount_a * amount_b)` is at or
+    // below `MINIMUM_LIQUIDITY`, so withholding the floor would leave the
+    // creator nothing, and by `deposit_liquidity` when a later deposit is too
+    // small a share of the pool to mint a single LP token.
     #[msg("Depositing too little liquidity")]
     DepositTooSmall,
 
@@ -79,10 +83,19 @@ pub enum AmmError {
     #[msg("mint_a must be less than mint_b for canonical pool ordering")]
     InvalidMintOrder,
 
-    // Returned by `swap_tokens` when either LP-claimable (effective) reserve is
-    // zero. Swapping against an empty reserve would let the constant-product
-    // curve drain the opposite side while the invariant check passes vacuously
-    // (k = 0 >= 0), so the swap is rejected outright.
-    #[msg("Pool reserves must both be positive to swap")]
+    // Returned by `swap_tokens` and `deposit_liquidity` when either
+    // LP-claimable (effective) reserve is zero. Swapping against an empty
+    // reserve would let the constant-product curve drain the opposite side
+    // while the invariant check passes vacuously (k = 0 >= 0), and a deposit
+    // into an empty pool would set its price, so both are rejected outright.
+    // Every pool opens with its creator's deposit, and neither a withdrawal
+    // nor a swap can empty a reserve, so the state is not reachable.
+    #[msg("Pool reserves must both be positive to deposit or swap")]
     EmptyPoolReserve,
+
+    // Returned by `initialize_pool` when either amount is zero. The deposit
+    // that opens a pool sets its price (the ratio of its reserves), so a pool
+    // is never created without one.
+    #[msg("A pool cannot open empty: the first deposit sets its price")]
+    EmptyInitialDeposit,
 }

@@ -26,6 +26,7 @@ pub fn get_extra_account_metas() -> Result<Vec<ExtraAccountMeta>> {
             ],
             false,
             false,
-        ).map_err(|_| ProgramError::InvalidArgument)?, // [2] destination token account
+        )
+        .map_err(|_| ProgramError::InvalidArgument)?, // [2] destination token account
     ])
 }

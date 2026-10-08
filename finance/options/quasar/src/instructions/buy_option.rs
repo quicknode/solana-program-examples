@@ -2,12 +2,23 @@ use {
     crate::{
         constants::{STATUS_HELD, STATUS_LISTED},
         errors::OptionsError,
-        instructions::shared::{add_locked, check_custody, may_exercise, split_premium},
+        instructions::shared::{add_owed, check_custody, may_exercise, split_premium},
         state::{Market, OptionContract},
     },
     quasar_lang::{prelude::*, sysvars::Sysvar as _},
     quasar_spl::prelude::*,
 };
+
+/// The terms the buyer read from the option before signing, bundled so the
+/// handler signature stays readable.
+#[derive(Clone, Copy)]
+pub struct BuyOptionArguments {
+    pub kind: u8,
+    pub underlying_amount: u64,
+    pub strike_amount: u64,
+    pub premium: u64,
+    pub expiry: i64,
+}
 
 #[derive(Accounts)]
 pub struct BuyOptionAccountConstraints {
@@ -47,11 +58,30 @@ pub struct BuyOptionAccountConstraints {
 /// Buy a listed option. The premium is the only money that changes hands: the
 /// venue's fee comes out of it into the quote vault, and the rest goes
 /// straight to the writer. The collateral does not move.
+///
+/// `arguments` are the terms the buyer read from the option before signing. A
+/// writer can cancel an option and write a new one at the same address (the
+/// same `id`) with a higher premium, a smaller `underlying_amount`, or a
+/// sooner expiry while the buyer's transaction is on its way, so the purchase
+/// is refused with `OptionTermsChanged` unless every term still matches.
 #[inline(always)]
-pub fn handle_buy_option(accounts: &mut BuyOptionAccountConstraints) -> Result<(), ProgramError> {
+pub fn handle_buy_option(
+    accounts: &mut BuyOptionAccountConstraints,
+    arguments: BuyOptionArguments,
+) -> Result<(), ProgramError> {
     require!(
         accounts.option.status == STATUS_LISTED,
         OptionsError::OptionNotListed
+    );
+    // The switched-option check, before anything moves: the buyer pays only
+    // for the option they saw.
+    require!(
+        accounts.option.kind == arguments.kind
+            && accounts.option.underlying_amount.get() == arguments.underlying_amount
+            && accounts.option.strike_amount.get() == arguments.strike_amount
+            && accounts.option.premium.get() == arguments.premium
+            && accounts.option.expiry.get() == arguments.expiry,
+        OptionsError::OptionTermsChanged
     );
     // An option nobody can exercise any more is not for sale.
     let now: i64 = Clock::get()?.unix_timestamp.into();
@@ -66,8 +96,10 @@ pub fn handle_buy_option(accounts: &mut BuyOptionAccountConstraints) -> Result<(
         OptionsError::InvalidParameter
     );
     // A writer cannot buy their own option: the same address would sit in the
-    // `buyer` and `writer` slots at once, which the runtime refuses before
-    // this handler runs.
+    // `buyer` and `writer` slots at once, so the runtime hands the program the
+    // second as a duplicate of the first, and Quasar's account parsing refuses
+    // the duplicate with `AccountBorrowFailed` before this handler runs,
+    // whichever of the writer's token accounts the premium would come from.
 
     let (fee, to_writer) =
         split_premium(accounts.option.premium.get(), accounts.market.fee_bps.get())?;
@@ -76,8 +108,8 @@ pub fn handle_buy_option(accounts: &mut BuyOptionAccountConstraints) -> Result<(
     accounts.option.holder = *accounts.buyer.address();
     accounts.option.status = STATUS_HELD;
     let mut quote_after = accounts.quote_vault.amount();
-    add_locked(&mut accounts.market.fees_owed, &mut quote_after, fee)?;
-    let underlying_after = accounts.market.underlying_locked.get();
+    add_owed(&mut accounts.market.fees_owed, &mut quote_after, fee)?;
+    let underlying_after = accounts.market.underlying_owed.get();
     check_custody(&accounts.market, underlying_after, quote_after)?;
 
     accounts

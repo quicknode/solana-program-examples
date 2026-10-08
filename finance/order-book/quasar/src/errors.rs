@@ -27,10 +27,24 @@ pub enum OrderBookError {
     MakerAccountMismatch,
     MissingMakerAccounts,
     MakerOwnerMismatch,
+    /// `withdraw_fees`, `pause_market` or `resume_market` signed by anyone
+    /// but `market.authority`.
     NotMarketAuthority,
     InvalidOrderBook,
     InvalidOrderBookOwner,
     OrderBookAlreadyInitialized,
     OrderIdMismatch,
     InvalidSide,
+    /// A full side, and the worst resting order (with its owner's MarketUser)
+    /// was not passed after the maker pairs.
+    MissingEvictedAccounts,
+    /// The order passed for eviction is not the side's worst, or the
+    /// MarketUser passed is not its owner's.
+    EvictedAccountMismatch,
+    /// `close_order` on an Open or PartiallyFilled order: it still rests on
+    /// the book, so cancel it first.
+    OrderNotClosable,
+    /// `close_market_user` while the account lists an open order or holds
+    /// an unsettled balance.
+    MarketUserNotClosable,
 }

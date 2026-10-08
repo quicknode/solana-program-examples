@@ -7,7 +7,11 @@
 //! the vaults, and - in the matching block near the bottom - cross incoming
 //! orders against resting orders using price-time priority, charge the
 //! configured taker fee to a fee vault, and drain the fee vault via
-//! `withdraw_fees`.
+//! `withdraw_fees`. The pause block checks that `pause_market` stops new
+//! orders and nothing else, and that `resume_market` reopens the market. The
+//! closing block at the end checks that `close_order` and
+//! `close_market_user` give a finished order's and an idle user's rent back
+//! to the owner, and refuse while anything still rests or is owed.
 
 use {
     anchor_lang::{
@@ -25,7 +29,7 @@ use {
     },
     anchor_v2_testing::{Keypair, LiteSVM, Signer},
     solana_kite::{
-        create_associated_token_account, create_token_mint, create_wallet,
+        create_associated_token_account, create_token_mint, create_wallet, get_sol_balance,
         get_token_account_balance, mint_tokens_to_token_account,
         send_transaction_from_instructions,
     },
@@ -62,7 +66,7 @@ const QUOTE_DECIMALS: u8 = 6; // USDC
 const FEE_BASIS_POINTS: u16 = 10;
 
 // Mirror of the program's fee rounding: ceiling division so the fee rounds
-// in the protocol's favour (flooring would leak dust to the maker per fill).
+// in the program's favour (flooring would leak dust to the maker per fill).
 const fn fee_ceil(gross: u64) -> u64 {
     ((gross as u128 * FEE_BASIS_POINTS as u128 + 9_999) / 10_000) as u64
 }
@@ -75,9 +79,10 @@ const MIN_ORDER_SIZE: u64 = 1;
 // order placed in the tests with room to spare.
 const TRADER_STARTING_BALANCE: u64 = 1_000_000_000;
 
-// Shared order sizing - chosen so price * quantity stays well inside u64
-// and the seller's ask sits at the same price as the buyer's bid (matching
-// is not implemented, they just coexist in the book).
+// Shared order sizing for the tests that place a single order and then
+// cancel or settle it - chosen so price * quantity stays well inside u64. No
+// test places both, so the bid and the ask never cross; the matching tests
+// further down choose their own prices.
 const BID_PRICE: u64 = 100;
 const BID_QUANTITY: u64 = 10;
 const ASK_PRICE: u64 = 100;
@@ -396,7 +401,11 @@ fn build_place_order_with_makers_ix(
     ix
 }
 
-fn build_withdraw_fees_ix(sc: &Scenario, authority_quote_account: Address) -> Instruction {
+fn build_withdraw_fees_ix(
+    sc: &Scenario,
+    authority: &Address,
+    authority_quote_account: Address,
+) -> Instruction {
     Instruction::new_with_bytes(
         sc.program_id,
         &order_book::instruction::WithdrawFees {}.data(),
@@ -405,8 +414,32 @@ fn build_withdraw_fees_ix(sc: &Scenario, authority_quote_account: Address) -> In
             fee_vault: sc.fee_vault,
             authority_quote_account,
             quote_mint: sc.quote_mint,
-            authority: sc.authority.pubkey(),
+            authority: *authority,
             token_program: token_program_id(),
+        }
+        .to_account_metas(None),
+    )
+}
+
+fn build_pause_market_ix(sc: &Scenario, authority: &Address) -> Instruction {
+    Instruction::new_with_bytes(
+        sc.program_id,
+        &order_book::instruction::PauseMarket {}.data(),
+        order_book::accounts::PauseMarketAccountConstraints {
+            market: sc.market,
+            authority: *authority,
+        }
+        .to_account_metas(None),
+    )
+}
+
+fn build_resume_market_ix(sc: &Scenario, authority: &Address) -> Instruction {
+    Instruction::new_with_bytes(
+        sc.program_id,
+        &order_book::instruction::ResumeMarket {}.data(),
+        order_book::accounts::ResumeMarketAccountConstraints {
+            market: sc.market,
+            authority: *authority,
         }
         .to_account_metas(None),
     )
@@ -454,6 +487,33 @@ fn build_settle_funds_ix(
             quote_mint: sc.quote_mint,
             owner: *owner,
             token_program: token_program_id(),
+        }
+        .to_account_metas(None),
+    )
+}
+
+fn build_close_order_ix(sc: &Scenario, owner: &Address, order_id: u64) -> Instruction {
+    let order = order_pda(&sc.program_id, &sc.market, order_id);
+    Instruction::new_with_bytes(
+        sc.program_id,
+        &order_book::instruction::CloseOrder {}.data(),
+        order_book::accounts::CloseOrderAccountConstraints {
+            market: sc.market,
+            order,
+            owner: *owner,
+        }
+        .to_account_metas(None),
+    )
+}
+
+fn build_close_market_user_ix(sc: &Scenario, owner: &Address, market_user: Address) -> Instruction {
+    Instruction::new_with_bytes(
+        sc.program_id,
+        &order_book::instruction::CloseMarketUser {}.data(),
+        order_book::accounts::CloseMarketUserAccountConstraints {
+            market: sc.market,
+            market_user,
+            owner: *owner,
         }
         .to_account_metas(None),
     )
@@ -593,7 +653,7 @@ fn initialize_market_user_tracks_market_and_owner() {
 }
 
 #[test]
-fn place_bid_locks_quote_in_vault() {
+fn place_bid_moves_quote_into_vault() {
     let mut sc = full_setup();
     initialize_market_and_users(&mut sc);
 
@@ -639,7 +699,7 @@ fn place_bid_locks_quote_in_vault() {
 }
 
 #[test]
-fn place_ask_locks_base_in_vault() {
+fn place_ask_moves_base_into_vault() {
     let mut sc = full_setup();
     initialize_market_and_users(&mut sc);
 
@@ -691,9 +751,14 @@ fn place_order_rejects_zero_price() {
         0,
         BID_QUANTITY,
     );
-    let result =
-        send_transaction_from_instructions(&mut sc.svm, vec![ix], &[&sc.buyer], &sc.buyer.pubkey());
-    assert!(result.is_err(), "order at price 0 must be rejected");
+    let error = failure_text(
+        &mut sc.svm,
+        vec![ix],
+        &[&sc.buyer],
+        &sc.buyer.pubkey(),
+        "order at price 0 must be rejected",
+    );
+    assert_fails_with(&error, order_book::errors::ErrorCode::InvalidPrice);
 }
 
 #[test]
@@ -742,12 +807,14 @@ fn place_order_rejects_unaligned_tick() {
         unaligned_price,
         BID_QUANTITY,
     );
-    let result =
-        send_transaction_from_instructions(&mut sc.svm, vec![ix], &[&sc.buyer], &sc.buyer.pubkey());
-    assert!(
-        result.is_err(),
-        "unaligned price must be rejected by tick check"
+    let error = failure_text(
+        &mut sc.svm,
+        vec![ix],
+        &[&sc.buyer],
+        &sc.buyer.pubkey(),
+        "unaligned price must be rejected by tick check",
     );
+    assert_fails_with(&error, order_book::errors::ErrorCode::InvalidTickSize);
 }
 
 #[test]
@@ -794,16 +861,14 @@ fn place_order_rejects_below_min_order_size() {
         ASK_PRICE,
         too_small_quantity,
     );
-    let result = send_transaction_from_instructions(
+    let error = failure_text(
         &mut sc.svm,
         vec![ix],
         &[&sc.seller],
         &sc.seller.pubkey(),
+        "quantity below min_order_size must be rejected",
     );
-    assert!(
-        result.is_err(),
-        "quantity below min_order_size must be rejected"
-    );
+    assert_fails_with(&error, order_book::errors::ErrorCode::BelowMinOrderSize);
 }
 
 #[test]
@@ -893,16 +958,14 @@ fn cancel_order_rejects_non_owner() {
         sc.seller_market_user,
         bid_order_id,
     );
-    let result = send_transaction_from_instructions(
+    let error = failure_text(
         &mut sc.svm,
         vec![attack_ix],
         &[&sc.seller],
         &sc.seller.pubkey(),
+        "non-owner must not be able to cancel an order",
     );
-    assert!(
-        result.is_err(),
-        "non-owner must not be able to cancel an order"
-    );
+    assert_fails_with(&error, order_book::errors::ErrorCode::Unauthorized);
 }
 
 #[test]
@@ -1008,13 +1071,13 @@ fn cancel_and_settle_bid_refunds_full_quote() {
     );
 }
 
-// Regression test for the fee-drain attack on settle_funds. Pre-fix,
-// `SettleFundsAccountConstraints` did not bind `quote_vault` to `market.quote_vault` via
-// an address constraint, so a caller could pass `market.fee_vault` (same mint and
-// same authority) where `quote_vault` was expected and drain accumulated
-// taker fees while spending their own unsettled_quote credit. The
-// address constraint now bound on the vault field must surface this
-// as `ConstraintHasOne` (anchor error 2001) before any transfer runs.
+// The fee-drain attack on settle_funds: the fee vault has the same mint and
+// the same authority as the quote vault, so a caller who passes
+// `market.fee_vault` where `quote_vault` belongs would be paid accumulated
+// taker fees against their own unsettled_quote credit. The constraint
+// `address = market.quote_vault @ ErrorCode::InvalidQuoteVault` on the
+// `quote_vault` field refuses the call with `InvalidQuoteVault`
+// before any transfer runs.
 #[test]
 fn settle_funds_rejects_fee_vault_substituted_for_quote_vault() {
     let mut sc = full_setup();
@@ -1069,16 +1132,14 @@ fn settle_funds_rejects_fee_vault_substituted_for_quote_vault() {
         .to_account_metas(None),
     );
 
-    let result = send_transaction_from_instructions(
+    let error = failure_text(
         &mut sc.svm,
         vec![attack_ix],
         &[&sc.buyer],
         &sc.buyer.pubkey(),
+        "settle_funds must reject fee_vault substituted for quote_vault",
     );
-    assert!(
-        result.is_err(),
-        "settle_funds must reject fee_vault substituted for quote_vault"
-    );
+    assert_fails_with(&error, order_book::errors::ErrorCode::InvalidQuoteVault);
 }
 
 #[test]
@@ -1095,13 +1156,14 @@ fn initialize_market_rejects_zero_tick_size() {
         QUOTE_LOT_SIZE,
         MIN_ORDER_SIZE,
     );
-    let result = send_transaction_from_instructions(
+    let error = failure_text(
         &mut sc.svm,
         vec![create_ix, ix],
         &[&sc.authority, &sc.order_book],
         &sc.authority.pubkey(),
+        "tick_size == 0 must be rejected",
     );
-    assert!(result.is_err(), "tick_size == 0 must be rejected");
+    assert_fails_with(&error, order_book::errors::ErrorCode::InvalidTickSize);
 }
 
 #[test]
@@ -1117,13 +1179,14 @@ fn initialize_market_rejects_zero_base_lot_size() {
         QUOTE_LOT_SIZE,
         MIN_ORDER_SIZE,
     );
-    let result = send_transaction_from_instructions(
+    let error = failure_text(
         &mut sc.svm,
         vec![create_ix, ix],
         &[&sc.authority, &sc.order_book],
         &sc.authority.pubkey(),
+        "base_lot_size == 0 must be rejected",
     );
-    assert!(result.is_err(), "base_lot_size == 0 must be rejected");
+    assert_fails_with(&error, order_book::errors::ErrorCode::InvalidBaseLotSize);
 }
 
 #[test]
@@ -1139,13 +1202,14 @@ fn initialize_market_rejects_zero_quote_lot_size() {
         0,
         MIN_ORDER_SIZE,
     );
-    let result = send_transaction_from_instructions(
+    let error = failure_text(
         &mut sc.svm,
         vec![create_ix, ix],
         &[&sc.authority, &sc.order_book],
         &sc.authority.pubkey(),
+        "quote_lot_size == 0 must be rejected",
     );
-    assert!(result.is_err(), "quote_lot_size == 0 must be rejected");
+    assert_fails_with(&error, order_book::errors::ErrorCode::InvalidQuoteLotSize);
 }
 
 #[test]
@@ -1163,16 +1227,14 @@ fn initialize_market_rejects_oversized_fee() {
         QUOTE_LOT_SIZE,
         MIN_ORDER_SIZE,
     );
-    let result = send_transaction_from_instructions(
+    let error = failure_text(
         &mut sc.svm,
         vec![create_ix, ix],
         &[&sc.authority, &sc.order_book],
         &sc.authority.pubkey(),
+        "fee_basis_points above 10_000 must be rejected",
     );
-    assert!(
-        result.is_err(),
-        "fee_basis_points above 10_000 must be rejected"
-    );
+    assert_fails_with(&error, order_book::errors::ErrorCode::InvalidFeeBasisPoints);
 }
 
 // ---------------------------------------------------------------------------
@@ -1526,7 +1588,7 @@ fn taker_partially_filled_remainder_rests_on_book() {
     // The taker's own Order PDA holds the true remaining-on-book quantity
     // (original_quantity - filled_quantity). On-book quantity isn't stored
     // on OrderEntry directly - see state/order_book.rs - so this is the
-    // source of truth both here and at runtime.
+    // field the program reads both here and at runtime.
     assert_eq!(
         TAKER_BID_QUANTITY - taker_filled,
         TAKER_BID_QUANTITY - MAKER_ASK_QUANTITY
@@ -1842,7 +1904,7 @@ fn taker_bid_gets_price_improvement_from_resting_ask() {
 #[test]
 fn fee_rounds_up_when_gross_is_not_a_bps_multiple() {
     // Rounding regression: with fee_bps = 10, a gross of 501 quote tokens
-    // gives 501 * 10 / 10_000 = 0.501, which must round UP to 1 (protocol-
+    // gives 501 * 10 / 10_000 = 0.501, which must round UP to 1 (program-
     // favouring ceiling), not down to 0. A floor here would let makers
     // fill fee-free with many small orders.
     let mut sc = full_setup();
@@ -2021,7 +2083,7 @@ fn authority_can_withdraw_fees_after_match() {
         EXPECTED_FEE
     );
 
-    let withdraw_ix = build_withdraw_fees_ix(&sc, authority_quote_ata);
+    let withdraw_ix = build_withdraw_fees_ix(&sc, &sc.authority.pubkey(), authority_quote_ata);
     send_transaction_from_instructions(
         &mut sc.svm,
         vec![withdraw_ix],
@@ -2038,6 +2100,81 @@ fn authority_can_withdraw_fees_after_match() {
     assert_eq!(
         get_token_account_balance(&sc.svm, &authority_quote_ata).unwrap(),
         EXPECTED_FEE
+    );
+}
+
+#[test]
+fn withdraw_fees_rejects_a_non_authority_signer() {
+    // The same fill as `authority_can_withdraw_fees_after_match`, so the fee
+    // vault holds something worth taking; then the buyer, not the authority,
+    // signs `withdraw_fees` with their own quote ATA as the destination.
+    let mut sc = full_setup();
+    initialize_market_and_users(&mut sc);
+
+    const MAKER_ASK_ID: u64 = 1;
+    const PRICE: u64 = 2000;
+    const QUANTITY: u64 = 50;
+    const GROSS: u64 = PRICE * QUANTITY * QUOTE_LOT_SIZE;
+    const EXPECTED_FEE: u64 = fee_ceil(GROSS);
+
+    let ask_ix = build_place_order_ix(
+        &sc,
+        &sc.seller,
+        sc.seller_market_user,
+        sc.seller_base_ata,
+        sc.seller_quote_ata,
+        order_book::state::OrderSide::Ask,
+        MAKER_ASK_ID,
+        PRICE,
+        QUANTITY,
+    );
+    send_transaction_from_instructions(
+        &mut sc.svm,
+        vec![ask_ix],
+        &[&sc.seller],
+        &sc.seller.pubkey(),
+    )
+    .unwrap();
+
+    const TAKER_BID_ID: u64 = 2;
+    let bid_ix = build_place_order_with_makers_ix(
+        &sc,
+        &sc.buyer,
+        sc.buyer_market_user,
+        sc.buyer_base_ata,
+        sc.buyer_quote_ata,
+        order_book::state::OrderSide::Bid,
+        TAKER_BID_ID,
+        PRICE,
+        QUANTITY,
+        &[(MAKER_ASK_ID, sc.seller_market_user)],
+    );
+    send_transaction_from_instructions(&mut sc.svm, vec![bid_ix], &[&sc.buyer], &sc.buyer.pubkey())
+        .unwrap();
+    assert_eq!(
+        get_token_account_balance(&sc.svm, &sc.fee_vault).unwrap(),
+        EXPECTED_FEE
+    );
+
+    let attack_ix = build_withdraw_fees_ix(&sc, &sc.buyer.pubkey(), sc.buyer_quote_ata);
+    let error = failure_text(
+        &mut sc.svm,
+        vec![attack_ix],
+        &[&sc.buyer],
+        &sc.buyer.pubkey(),
+        "a trader must not be able to withdraw the fee vault",
+    );
+    assert_fails_with(&error, order_book::errors::ErrorCode::NotMarketAuthority);
+
+    // The fee stays in the vault and the buyer's quote balance is what the
+    // fill left: the starting balance less the gross they paid.
+    assert_eq!(
+        get_token_account_balance(&sc.svm, &sc.fee_vault).unwrap(),
+        EXPECTED_FEE
+    );
+    assert_eq!(
+        get_token_account_balance(&sc.svm, &sc.buyer_quote_ata).unwrap(),
+        TRADER_STARTING_BALANCE - GROSS
     );
 }
 
@@ -2138,5 +2275,1393 @@ fn settle_funds_after_match_pays_out_both_unsettled_balances() {
     assert_eq!(
         get_token_account_balance(&sc.svm, &sc.seller_quote_ata).unwrap(),
         EXPECTED_NET_QUOTE_TO_SELLER
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Worst-case tree depth
+//
+// A critbit tree does not rebalance. Asks at prices 2, 4, 8, ..., 2^63 each
+// set a new highest price bit, so each one adds an inner node above all the
+// cheaper asks and the path to the best ask becomes a chain. The tree key is
+// 128 bits with the price in the top 64, so prices alone can stretch a path
+// to at most 64 inner nodes, and no path can ever exceed 128. These tests
+// build that chain and check that inserting, matching, and canceling at the
+// bottom of it still costs little compared with a shallow book.
+// ---------------------------------------------------------------------------
+
+// Each extra seller can hold MAX_OPEN_ORDERS_PER_USER resting orders.
+const MAX_OPEN_ORDERS_PER_USER: usize = 20;
+
+// Doubling prices 2^1 ..= 2^63. Together with the probe asks at price 1
+// placed underneath them, that is every power of two a u64 price can hold.
+const CHAIN_PRICE_EXPONENTS: std::ops::RangeInclusive<u32> = 1..=63;
+
+// The probe orders sit at the bottom of the chain, at the lowest price.
+const PROBE_PRICE: u64 = 1;
+
+// The most compute a worst-case path may add to any one instruction,
+// compared with the same instruction on a book holding only the probes.
+const MAX_EXTRA_COMPUTE_UNITS_FROM_DEPTH: u64 = 15_000;
+
+// What the runtime grants an instruction that does not request more.
+const DEFAULT_INSTRUCTION_COMPUTE_UNITS: u64 = 200_000;
+
+// Inner nodes between the root and a leaf, as read from the account bytes.
+// Offsets come from the program's own types, so a layout change moves them
+// with it.
+fn best_ask_depth(svm: &LiteSVM, order_book: &Address) -> usize {
+    use order_book::state::{slab::NodeTag, OrderBook};
+
+    const DISCRIMINATOR_LEN: usize = 8;
+    // OrderTreeNodes: order_tree_type (1) + padding (3) + bump_index (4)
+    // + free_list_len (4) + free_list_head (4), then the node array.
+    const NODES_OFFSET_IN_TREE: usize = 16;
+    // InnerNode: tag (1) + padding (3) + prefix_len (4) + key (16), then
+    // children[0], the left (lower-key) child.
+    const LEFT_CHILD_OFFSET_IN_NODE: usize = 24;
+
+    let data = svm.get_account(order_book).unwrap().data;
+    let asks_root = DISCRIMINATOR_LEN + std::mem::offset_of!(OrderBook, asks_root);
+    let asks_nodes =
+        DISCRIMINATOR_LEN + std::mem::offset_of!(OrderBook, asks) + NODES_OFFSET_IN_TREE;
+    let read_u32 = |offset: usize| u32::from_le_bytes(data[offset..offset + 4].try_into().unwrap());
+
+    let mut handle = read_u32(asks_root) as usize;
+    let mut depth = 0;
+    loop {
+        let node = asks_nodes + handle * order_book::state::slab::NODE_SIZE;
+        if data[node] == NodeTag::LeafNode as u8 {
+            return depth;
+        }
+        assert_eq!(data[node], NodeTag::InnerNode as u8);
+        // Asks sort lowest key first, so the best ask is always leftmost.
+        handle = read_u32(node + LEFT_CHILD_OFFSET_IN_NODE) as usize;
+        depth += 1;
+    }
+}
+
+// Send one instruction and return the compute units it used.
+fn send_and_measure(svm: &mut LiteSVM, instruction: Instruction, signer: &Keypair) -> u64 {
+    let message = anchor_v2_testing::Message::new_with_blockhash(
+        &[instruction],
+        Some(&signer.pubkey()),
+        &svm.latest_blockhash(),
+    );
+    let transaction = anchor_v2_testing::VersionedTransaction::try_new(
+        anchor_v2_testing::VersionedMessage::Legacy(message),
+        &[signer],
+    )
+    .unwrap();
+    svm.send_transaction(transaction)
+        .unwrap()
+        .compute_units_consumed
+}
+
+// Creating an order account makes Anchor search for its PDA bump, starting at
+// 255 and paying for every seed that lands on the curve. Tests running in
+// parallel draw their mints from shared key generation, so the market's
+// address, and with it how long that search takes, changes from run to run.
+// It has nothing to do with the book's depth, so the comparison takes it out.
+// Anchor v2 hashes each candidate with sol_sha256 and checks it against the
+// curve, which together cost this many units per rejected bump.
+const BUMP_ATTEMPT_UNITS: u64 = 334;
+
+fn order_bump_search_units(program_id: &Address, market: &Address, order_id: u64) -> u64 {
+    let (_, bump) = Address::find_program_address(
+        &[ORDER_SEED, market.as_ref(), &order_id.to_le_bytes()],
+        program_id,
+    );
+    (u8::MAX - bump) as u64 * BUMP_ATTEMPT_UNITS
+}
+
+// A fresh seller with base tokens and a market user account.
+fn add_funded_seller(sc: &mut Scenario) -> (Keypair, Address, Address, Address) {
+    let seller = create_wallet(&mut sc.svm, 10_000_000_000).unwrap();
+    let base_ata =
+        create_associated_token_account(&mut sc.svm, &seller.pubkey(), &sc.base_mint, &sc.payer)
+            .unwrap();
+    let quote_ata =
+        create_associated_token_account(&mut sc.svm, &seller.pubkey(), &sc.quote_mint, &sc.payer)
+            .unwrap();
+    mint_tokens_to_token_account(
+        &mut sc.svm,
+        &sc.base_mint,
+        &base_ata,
+        TRADER_STARTING_BALANCE,
+        &sc.authority,
+    )
+    .unwrap();
+    let market_user = market_user_pda(&sc.program_id, &sc.market, &seller.pubkey());
+    let instruction = build_initialize_market_user_ix(sc, &seller.pubkey());
+    send_transaction_from_instructions(
+        &mut sc.svm,
+        vec![instruction],
+        &[&seller],
+        &seller.pubkey(),
+    )
+    .unwrap();
+    (seller, base_ata, quote_ata, market_user)
+}
+
+// Insert and fill exclude the order PDA's bump search; see
+// order_bump_search_units.
+struct ProbeCosts {
+    // Inner nodes above the second probe ask once it rests.
+    depth: usize,
+    insert: u64,
+    fill: u64,
+    cancel: u64,
+}
+
+// Optionally build the doubling-price chain, then run the same three probes
+// at the bottom of it: rest an ask at PROBE_PRICE, rest a second one behind
+// it, fill the first with a taker bid, and cancel the second.
+fn run_probes_at_bottom_of_book(build_chain: bool) -> ProbeCosts {
+    use order_book::state::OrderSide;
+
+    let mut sc = full_setup();
+    initialize_market_and_users(&mut sc);
+    let mut next_order_id: u64 = 1;
+
+    if build_chain {
+        let chain_prices: Vec<u64> = CHAIN_PRICE_EXPONENTS
+            .map(|exponent| 1u64 << exponent)
+            .collect();
+        for sellers_orders in chain_prices.chunks(MAX_OPEN_ORDERS_PER_USER) {
+            let (seller, base_ata, quote_ata, market_user) = add_funded_seller(&mut sc);
+            for &price in sellers_orders {
+                let instruction = build_place_order_ix(
+                    &sc,
+                    &seller,
+                    market_user,
+                    base_ata,
+                    quote_ata,
+                    OrderSide::Ask,
+                    next_order_id,
+                    price,
+                    MIN_ORDER_SIZE,
+                );
+                send_transaction_from_instructions(
+                    &mut sc.svm,
+                    vec![instruction],
+                    &[&seller],
+                    &seller.pubkey(),
+                )
+                .unwrap();
+                next_order_id += 1;
+            }
+        }
+    }
+
+    let first_probe_id = next_order_id;
+    let instruction = build_place_order_ix(
+        &sc,
+        &sc.seller,
+        sc.seller_market_user,
+        sc.seller_base_ata,
+        sc.seller_quote_ata,
+        OrderSide::Ask,
+        first_probe_id,
+        PROBE_PRICE,
+        MIN_ORDER_SIZE,
+    );
+    let insert = send_and_measure(&mut sc.svm, instruction, &sc.seller)
+        - order_bump_search_units(&sc.program_id, &sc.market, first_probe_id);
+
+    let second_probe_id = first_probe_id + 1;
+    let instruction = build_place_order_ix(
+        &sc,
+        &sc.seller,
+        sc.seller_market_user,
+        sc.seller_base_ata,
+        sc.seller_quote_ata,
+        OrderSide::Ask,
+        second_probe_id,
+        PROBE_PRICE,
+        MIN_ORDER_SIZE,
+    );
+    send_and_measure(&mut sc.svm, instruction, &sc.seller);
+    let depth = best_ask_depth(&sc.svm, &sc.order_book.pubkey());
+
+    let taker_bid_id = second_probe_id + 1;
+    let instruction = build_place_order_with_makers_ix(
+        &sc,
+        &sc.buyer,
+        sc.buyer_market_user,
+        sc.buyer_base_ata,
+        sc.buyer_quote_ata,
+        OrderSide::Bid,
+        taker_bid_id,
+        PROBE_PRICE,
+        MIN_ORDER_SIZE,
+        &[(first_probe_id, sc.seller_market_user)],
+    );
+    let fill = send_and_measure(&mut sc.svm, instruction, &sc.buyer)
+        - order_bump_search_units(&sc.program_id, &sc.market, taker_bid_id);
+    let first_probe = order_pda(&sc.program_id, &sc.market, first_probe_id);
+    assert_eq!(
+        read_order_fill_and_status(&sc.svm, &first_probe).1,
+        ORDER_STATUS_FILLED
+    );
+
+    let instruction = build_cancel_order_ix(
+        &sc,
+        &sc.seller.pubkey(),
+        sc.seller_market_user,
+        second_probe_id,
+    );
+    let cancel = send_and_measure(&mut sc.svm, instruction, &sc.seller);
+
+    ProbeCosts {
+        depth,
+        insert,
+        fill,
+        cancel,
+    }
+}
+
+#[test]
+fn doubling_prices_build_the_deepest_path_prices_allow() {
+    // 63 chain asks plus two probes at price 1: the chain gives 63 inner
+    // nodes above price 1, and the second probe splits from the first on a
+    // sequence-number bit, adding one more.
+    let deep = run_probes_at_bottom_of_book(true);
+    assert_eq!(deep.depth, 64);
+
+    let shallow = run_probes_at_bottom_of_book(false);
+    assert_eq!(shallow.depth, 1);
+}
+
+#[test]
+fn deepest_path_adds_little_compute_to_insert_fill_and_cancel() {
+    let deep = run_probes_at_bottom_of_book(true);
+    let shallow = run_probes_at_bottom_of_book(false);
+
+    for (operation, deep_units, shallow_units) in [
+        ("insert", deep.insert, shallow.insert),
+        ("fill", deep.fill, shallow.fill),
+        ("cancel", deep.cancel, shallow.cancel),
+    ] {
+        println!("{operation}: {shallow_units} CU on a shallow book, {deep_units} CU at depth 64");
+        assert!(
+            deep_units - shallow_units < MAX_EXTRA_COMPUTE_UNITS_FROM_DEPTH,
+            "{operation} costs {deep_units} CU at depth 64 against {shallow_units} CU on a shallow book"
+        );
+        assert!(deep_units < DEFAULT_INSTRUCTION_COMPUTE_UNITS);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Eviction: a full side makes room for a better order
+// ---------------------------------------------------------------------------
+//
+// A side's 1024 tree nodes hold 512 resting orders, because every order after
+// the first adds a leaf and an inner node. These tests fill the bid side with
+// 512 one-lot bids, one per price from EVICTION_WORST_BID_PRICE upward, so the
+// worst bid is the first one placed: order ID 1, at the lowest price.
+
+const ORDERS_PER_SIDE: u64 = 512;
+// One under the 20-order cap, so every filler can still place an order of
+// their own (the self-eviction test needs that).
+const ORDERS_PER_FILLER: u64 = 19;
+const EVICTION_WORST_BID_PRICE: u64 = 100;
+const EVICTION_ORDER_QUANTITY: u64 = 1;
+const EVICTION_BETTER_BID_PRICE: u64 = 10_000;
+const WORST_BID_ORDER_ID: u64 = 1;
+const ORDER_STATUS_CANCELLED: u8 = 3;
+
+/// The runtime reports a program error as `Custom(n)`, and `#[error_code]`
+/// numbers the variants from 6000, so this is the text a failed transaction
+/// carries for `code`.
+fn custom_error(code: order_book::errors::ErrorCode) -> String {
+    format!("Custom({})", code as u32 + 6000)
+}
+
+/// Sends instructions that must fail and returns the failure text, so the
+/// caller can assert on the error code with `assert_fails_with`. Panics with
+/// `must_fail` if the transaction goes through.
+fn failure_text(
+    svm: &mut LiteSVM,
+    instructions: Vec<Instruction>,
+    signers: &[&Keypair],
+    payer: &Address,
+    must_fail: &str,
+) -> String {
+    match send_transaction_from_instructions(svm, instructions, signers, payer) {
+        Ok(_) => panic!("{must_fail}"),
+        Err(error) => format!("{error:?}"),
+    }
+}
+
+/// Asserts that a failure text carries `code`: the one error the call under
+/// test must refuse with, not merely some error.
+fn assert_fails_with(error: &str, code: order_book::errors::ErrorCode) {
+    let expected = custom_error(code);
+    assert!(
+        error.contains(&expected),
+        "expected the failure to carry {expected}, got: {error}"
+    );
+}
+
+struct Trader {
+    keypair: Keypair,
+    market_user: Address,
+    base_ata: Address,
+    quote_ata: Address,
+}
+
+fn create_trader(sc: &mut Scenario) -> Trader {
+    let keypair = create_wallet(&mut sc.svm, 10_000_000_000).unwrap();
+    let base_ata =
+        create_associated_token_account(&mut sc.svm, &keypair.pubkey(), &sc.base_mint, &sc.payer)
+            .unwrap();
+    let quote_ata =
+        create_associated_token_account(&mut sc.svm, &keypair.pubkey(), &sc.quote_mint, &sc.payer)
+            .unwrap();
+    mint_tokens_to_token_account(
+        &mut sc.svm,
+        &sc.quote_mint,
+        &quote_ata,
+        TRADER_STARTING_BALANCE,
+        &sc.authority,
+    )
+    .unwrap();
+    let init_ix = build_initialize_market_user_ix(sc, &keypair.pubkey());
+    send_transaction_from_instructions(&mut sc.svm, vec![init_ix], &[&keypair], &keypair.pubkey())
+        .unwrap();
+    let market_user = market_user_pda(&sc.program_id, &sc.market, &keypair.pubkey());
+    Trader {
+        keypair,
+        market_user,
+        base_ata,
+        quote_ata,
+    }
+}
+
+/// Fill the bid side to capacity. Returns the fillers in order; the first one
+/// owns the worst bid, `WORST_BID_ORDER_ID`.
+fn fill_bid_side(sc: &mut Scenario) -> Vec<Trader> {
+    let mut fillers: Vec<Trader> = vec![];
+    for order_id in 1..=ORDERS_PER_SIDE {
+        if (order_id - 1) % ORDERS_PER_FILLER == 0 {
+            fillers.push(create_trader(sc));
+        }
+        let filler = fillers.last().unwrap();
+        let price = EVICTION_WORST_BID_PRICE + (order_id - 1);
+        let ix = build_place_order_ix(
+            sc,
+            &filler.keypair,
+            filler.market_user,
+            filler.base_ata,
+            filler.quote_ata,
+            order_book::state::OrderSide::Bid,
+            order_id,
+            price,
+            EVICTION_ORDER_QUANTITY,
+        );
+        send_transaction_from_instructions(
+            &mut sc.svm,
+            vec![ix],
+            &[&filler.keypair],
+            &filler.keypair.pubkey(),
+        )
+        .unwrap_or_else(|error| panic!("bid {order_id} should rest: {error:?}"));
+    }
+    fillers
+}
+
+#[allow(clippy::too_many_arguments)]
+fn place_bid(
+    sc: &mut Scenario,
+    trader: &Trader,
+    order_id: u64,
+    price: u64,
+    evicted_pairs: &[(u64, Address)],
+) -> Result<(), String> {
+    let ix = build_place_order_with_makers_ix(
+        sc,
+        &trader.keypair,
+        trader.market_user,
+        trader.base_ata,
+        trader.quote_ata,
+        order_book::state::OrderSide::Bid,
+        order_id,
+        price,
+        EVICTION_ORDER_QUANTITY,
+        evicted_pairs,
+    );
+    send_transaction_from_instructions(
+        &mut sc.svm,
+        vec![ix],
+        &[&trader.keypair],
+        &trader.keypair.pubkey(),
+    )
+    .map_err(|error| format!("{error:?}"))
+}
+
+fn read_open_order_count(svm: &LiteSVM, market_user: &Address) -> u32 {
+    // After the two unsettled balances comes the Borsh Vec length prefix.
+    let offset = USER_ACCOUNT_UNSETTLED_QUOTE_OFFSET + 8;
+    let data = svm.get_account(market_user).unwrap().data;
+    u32::from_le_bytes(data[offset..offset + 4].try_into().unwrap())
+}
+
+#[test]
+fn full_side_refuses_an_order_no_better_than_its_worst() {
+    let mut sc = full_setup();
+    initialize_market_and_users(&mut sc);
+    let fillers = fill_bid_side(&mut sc);
+    let next_order_id = ORDERS_PER_SIDE + 1;
+
+    // Worse than the worst bid, and equal to it: equal is not better,
+    // because the resting bid got there first.
+    for price in [EVICTION_WORST_BID_PRICE - 1, EVICTION_WORST_BID_PRICE] {
+        let error = place_bid(
+            &mut sc,
+            &fillers[1],
+            next_order_id,
+            price,
+            &[(WORST_BID_ORDER_ID, fillers[0].market_user)],
+        )
+        .expect_err("a bid no better than the worst must not evict it");
+        assert!(
+            error.contains(&custom_error(order_book::errors::ErrorCode::OrderBookFull)),
+            "{error}"
+        );
+    }
+
+    let (_, status) = read_order_fill_and_status(
+        &sc.svm,
+        &order_pda(&sc.program_id, &sc.market, WORST_BID_ORDER_ID),
+    );
+    assert_eq!(status, ORDER_STATUS_OPEN);
+}
+
+#[test]
+fn better_order_evicts_the_worst_and_rests() {
+    let mut sc = full_setup();
+    initialize_market_and_users(&mut sc);
+    let fillers = fill_bid_side(&mut sc);
+    let newcomer = create_trader(&mut sc);
+    let new_order_id = ORDERS_PER_SIDE + 1;
+
+    place_bid(
+        &mut sc,
+        &newcomer,
+        new_order_id,
+        EVICTION_BETTER_BID_PRICE,
+        &[(WORST_BID_ORDER_ID, fillers[0].market_user)],
+    )
+    .unwrap();
+
+    let evicted_order = order_pda(&sc.program_id, &sc.market, WORST_BID_ORDER_ID);
+    let (_, evicted_status) = read_order_fill_and_status(&sc.svm, &evicted_order);
+    assert_eq!(evicted_status, ORDER_STATUS_CANCELLED);
+
+    // The evicted bid's whole lock is owed back to its owner, exactly as a
+    // cancel would owe it.
+    let (_, evicted_unsettled_quote) = read_user_unsettled(&sc.svm, &fillers[0].market_user);
+    assert_eq!(
+        evicted_unsettled_quote,
+        EVICTION_WORST_BID_PRICE * EVICTION_ORDER_QUANTITY * QUOTE_LOT_SIZE
+    );
+    assert_eq!(
+        read_open_order_count(&sc.svm, &fillers[0].market_user),
+        (ORDERS_PER_FILLER - 1) as u32
+    );
+
+    let (_, new_status) = read_order_fill_and_status(
+        &sc.svm,
+        &order_pda(&sc.program_id, &sc.market, new_order_id),
+    );
+    assert_eq!(new_status, ORDER_STATUS_OPEN);
+    assert_eq!(read_open_order_count(&sc.svm, &newcomer.market_user), 1);
+
+    // The side is still full, and its worst bid is now order 2, one tick up.
+    let error = place_bid(
+        &mut sc,
+        &newcomer,
+        new_order_id + 1,
+        EVICTION_WORST_BID_PRICE + 1,
+        &[(WORST_BID_ORDER_ID + 1, fillers[0].market_user)],
+    )
+    .expect_err("the side is still full after an eviction");
+    assert!(
+        error.contains(&custom_error(order_book::errors::ErrorCode::OrderBookFull)),
+        "{error}"
+    );
+}
+
+#[test]
+fn evicted_maker_settles_their_refund() {
+    let mut sc = full_setup();
+    initialize_market_and_users(&mut sc);
+    let fillers = fill_bid_side(&mut sc);
+    let newcomer = create_trader(&mut sc);
+
+    let evicted = &fillers[0];
+    let quote_before = get_token_account_balance(&sc.svm, &evicted.quote_ata).unwrap();
+
+    place_bid(
+        &mut sc,
+        &newcomer,
+        ORDERS_PER_SIDE + 1,
+        EVICTION_BETTER_BID_PRICE,
+        &[(WORST_BID_ORDER_ID, evicted.market_user)],
+    )
+    .unwrap();
+
+    let settle_ix = build_settle_funds_ix(
+        &sc,
+        &evicted.keypair.pubkey(),
+        evicted.market_user,
+        evicted.base_ata,
+        evicted.quote_ata,
+    );
+    send_transaction_from_instructions(
+        &mut sc.svm,
+        vec![settle_ix],
+        &[&evicted.keypair],
+        &evicted.keypair.pubkey(),
+    )
+    .unwrap();
+
+    let quote_after = get_token_account_balance(&sc.svm, &evicted.quote_ata).unwrap();
+    assert_eq!(
+        quote_after - quote_before,
+        EVICTION_WORST_BID_PRICE * EVICTION_ORDER_QUANTITY * QUOTE_LOT_SIZE
+    );
+    assert_eq!(read_user_unsettled(&sc.svm, &evicted.market_user), (0, 0));
+}
+
+#[test]
+fn eviction_rejects_missing_or_wrong_evicted_accounts() {
+    let mut sc = full_setup();
+    initialize_market_and_users(&mut sc);
+    let fillers = fill_bid_side(&mut sc);
+    let newcomer = create_trader(&mut sc);
+    let new_order_id = ORDERS_PER_SIDE + 1;
+
+    let error = place_bid(
+        &mut sc,
+        &newcomer,
+        new_order_id,
+        EVICTION_BETTER_BID_PRICE,
+        &[],
+    )
+    .expect_err("a full side needs the evicted order named");
+    assert!(
+        error.contains(&custom_error(
+            order_book::errors::ErrorCode::MissingEvictedAccounts
+        )),
+        "{error}"
+    );
+
+    // Order 2 is resting, but it is not the worst bid.
+    let error = place_bid(
+        &mut sc,
+        &newcomer,
+        new_order_id,
+        EVICTION_BETTER_BID_PRICE,
+        &[(WORST_BID_ORDER_ID + 1, fillers[0].market_user)],
+    )
+    .expect_err("only the worst order may be evicted");
+    assert!(
+        error.contains(&custom_error(
+            order_book::errors::ErrorCode::EvictedAccountMismatch
+        )),
+        "{error}"
+    );
+
+    // The right order, with someone else's MarketUser to credit.
+    let error = place_bid(
+        &mut sc,
+        &newcomer,
+        new_order_id,
+        EVICTION_BETTER_BID_PRICE,
+        &[(WORST_BID_ORDER_ID, fillers[1].market_user)],
+    )
+    .expect_err("the refund must go to the evicted order's owner");
+    assert!(
+        error.contains(&custom_error(
+            order_book::errors::ErrorCode::EvictedAccountMismatch
+        )),
+        "{error}"
+    );
+
+    let (_, status) = read_order_fill_and_status(
+        &sc.svm,
+        &order_pda(&sc.program_id, &sc.market, WORST_BID_ORDER_ID),
+    );
+    assert_eq!(status, ORDER_STATUS_OPEN);
+}
+
+#[test]
+fn trader_can_evict_their_own_worst_order() {
+    let mut sc = full_setup();
+    initialize_market_and_users(&mut sc);
+    let fillers = fill_bid_side(&mut sc);
+    let owner = &fillers[0];
+    let new_order_id = ORDERS_PER_SIDE + 1;
+
+    // Only the evicted order is passed: the owner's MarketUser is already the
+    // instruction's `market_user`, and Anchor refuses it a second time.
+    let mut ix = build_place_order_ix(
+        &sc,
+        &owner.keypair,
+        owner.market_user,
+        owner.base_ata,
+        owner.quote_ata,
+        order_book::state::OrderSide::Bid,
+        new_order_id,
+        EVICTION_BETTER_BID_PRICE,
+        EVICTION_ORDER_QUANTITY,
+    );
+    ix.accounts.push(AccountMeta::new(
+        order_pda(&sc.program_id, &sc.market, WORST_BID_ORDER_ID),
+        false,
+    ));
+    send_transaction_from_instructions(
+        &mut sc.svm,
+        vec![ix],
+        &[&owner.keypair],
+        &owner.keypair.pubkey(),
+    )
+    .unwrap();
+
+    let (_, evicted_status) = read_order_fill_and_status(
+        &sc.svm,
+        &order_pda(&sc.program_id, &sc.market, WORST_BID_ORDER_ID),
+    );
+    assert_eq!(evicted_status, ORDER_STATUS_CANCELLED);
+    let (_, unsettled_quote) = read_user_unsettled(&sc.svm, &owner.market_user);
+    assert_eq!(
+        unsettled_quote,
+        EVICTION_WORST_BID_PRICE * EVICTION_ORDER_QUANTITY * QUOTE_LOT_SIZE
+    );
+    // One order out, one order in.
+    assert_eq!(
+        read_open_order_count(&sc.svm, &owner.market_user),
+        ORDERS_PER_FILLER as u32
+    );
+}
+
+#[test]
+fn full_side_cancel_of_the_last_scanned_order_fits_the_default_budget() {
+    // `cancel_order` finds the order's tree key by walking the side from the
+    // best price down, so on a full bid side the worst bid is the last of
+    // 512 leaves it reads. That is the most compute a cancel can cost.
+    let mut sc = full_setup();
+    initialize_market_and_users(&mut sc);
+    let fillers = fill_bid_side(&mut sc);
+
+    let instruction = build_cancel_order_ix(
+        &sc,
+        &fillers[0].keypair.pubkey(),
+        fillers[0].market_user,
+        WORST_BID_ORDER_ID,
+    );
+    let units = send_and_measure(&mut sc.svm, instruction, &fillers[0].keypair);
+    println!("cancel of the last of {ORDERS_PER_SIDE} bids scanned: {units} CU");
+    assert!(units < DEFAULT_INSTRUCTION_COMPUTE_UNITS, "{units} CU");
+
+    let (_, status) = read_order_fill_and_status(
+        &sc.svm,
+        &order_pda(&sc.program_id, &sc.market, WORST_BID_ORDER_ID),
+    );
+    assert_eq!(status, ORDER_STATUS_CANCELLED);
+}
+
+// ---------------------------------------------------------------------------
+// Pause and resume: a pause stops new orders and nothing else.
+// ---------------------------------------------------------------------------
+
+// The pause tests share one resting ask and one crossing bid. Chosen apart
+// from the suite's other sizes so a balance that matches is this test's own.
+const PAUSE_ASK_ID: u64 = 1;
+const PAUSE_BID_ID: u64 = 2;
+const PAUSE_PRICE: u64 = 1_300;
+const PAUSE_QUANTITY: u64 = 7;
+const PAUSE_GROSS: u64 = PAUSE_PRICE * PAUSE_QUANTITY * QUOTE_LOT_SIZE;
+const PAUSE_LOCKED_BASE: u64 = PAUSE_QUANTITY * BASE_LOT_SIZE;
+
+/// Sign `pause_market` or `resume_market` as `signer`.
+fn send_market_switch(
+    svm: &mut LiteSVM,
+    instruction: Instruction,
+    signer: &Keypair,
+) -> Result<(), String> {
+    send_transaction_from_instructions(svm, vec![instruction], &[signer], &signer.pubkey())
+        .map_err(|error| format!("{error:?}"))
+}
+
+/// The seller places the pause tests' ask. Returns the program's error text
+/// when the market refuses it.
+fn place_pause_ask(sc: &mut Scenario) -> Result<(), String> {
+    let ix = build_place_order_ix(
+        sc,
+        &sc.seller,
+        sc.seller_market_user,
+        sc.seller_base_ata,
+        sc.seller_quote_ata,
+        order_book::state::OrderSide::Ask,
+        PAUSE_ASK_ID,
+        PAUSE_PRICE,
+        PAUSE_QUANTITY,
+    );
+    send_transaction_from_instructions(&mut sc.svm, vec![ix], &[&sc.seller], &sc.seller.pubkey())
+        .map_err(|error| format!("{error:?}"))
+}
+
+#[test]
+fn pause_market_refuses_new_orders_with_market_paused() {
+    let mut sc = full_setup();
+    initialize_market_and_users(&mut sc);
+
+    let pause_ix = build_pause_market_ix(&sc, &sc.authority.pubkey());
+    send_market_switch(&mut sc.svm, pause_ix, &sc.authority).unwrap();
+
+    let error = place_pause_ask(&mut sc).expect_err("a paused market must not take an order");
+    assert!(
+        error.contains(&custom_error(order_book::errors::ErrorCode::MarketPaused)),
+        "{error}"
+    );
+    // The refused ask locked nothing.
+    assert_eq!(
+        get_token_account_balance(&sc.svm, &sc.base_vault).unwrap(),
+        0
+    );
+    assert_eq!(
+        get_token_account_balance(&sc.svm, &sc.seller_base_ata).unwrap(),
+        TRADER_STARTING_BALANCE
+    );
+}
+
+#[test]
+fn paused_market_still_cancels_and_settles_a_resting_order() {
+    let mut sc = full_setup();
+    initialize_market_and_users(&mut sc);
+
+    place_pause_ask(&mut sc).unwrap();
+    assert_eq!(
+        get_token_account_balance(&sc.svm, &sc.base_vault).unwrap(),
+        PAUSE_LOCKED_BASE
+    );
+
+    let pause_ix = build_pause_market_ix(&sc, &sc.authority.pubkey());
+    send_market_switch(&mut sc.svm, pause_ix, &sc.authority).unwrap();
+
+    // The ask was placed before the pause; its owner can still cancel it
+    // and take the locked NVDAx back out while the market is paused.
+    let cancel_ix = build_cancel_order_ix(
+        &sc,
+        &sc.seller.pubkey(),
+        sc.seller_market_user,
+        PAUSE_ASK_ID,
+    );
+    let settle_ix = build_settle_funds_ix(
+        &sc,
+        &sc.seller.pubkey(),
+        sc.seller_market_user,
+        sc.seller_base_ata,
+        sc.seller_quote_ata,
+    );
+    send_transaction_from_instructions(
+        &mut sc.svm,
+        vec![cancel_ix, settle_ix],
+        &[&sc.seller],
+        &sc.seller.pubkey(),
+    )
+    .unwrap();
+
+    let (_, status) = read_order_fill_and_status(
+        &sc.svm,
+        &order_pda(&sc.program_id, &sc.market, PAUSE_ASK_ID),
+    );
+    assert_eq!(status, ORDER_STATUS_CANCELLED);
+    assert_eq!(
+        get_token_account_balance(&sc.svm, &sc.base_vault).unwrap(),
+        0
+    );
+    assert_eq!(
+        get_token_account_balance(&sc.svm, &sc.seller_base_ata).unwrap(),
+        TRADER_STARTING_BALANCE
+    );
+}
+
+#[test]
+fn paused_market_still_pays_out_fills_and_withdraws_fees() {
+    let mut sc = full_setup();
+    initialize_market_and_users(&mut sc);
+
+    let authority_quote_ata = create_associated_token_account(
+        &mut sc.svm,
+        &sc.authority.pubkey(),
+        &sc.quote_mint,
+        &sc.payer,
+    )
+    .unwrap();
+
+    // A fill before the pause leaves the seller owed quote in their
+    // unsettled balance and the fee vault holding the taker fee.
+    place_pause_ask(&mut sc).unwrap();
+    let bid_ix = build_place_order_with_makers_ix(
+        &sc,
+        &sc.buyer,
+        sc.buyer_market_user,
+        sc.buyer_base_ata,
+        sc.buyer_quote_ata,
+        order_book::state::OrderSide::Bid,
+        PAUSE_BID_ID,
+        PAUSE_PRICE,
+        PAUSE_QUANTITY,
+        &[(PAUSE_ASK_ID, sc.seller_market_user)],
+    );
+    send_transaction_from_instructions(&mut sc.svm, vec![bid_ix], &[&sc.buyer], &sc.buyer.pubkey())
+        .unwrap();
+    let expected_fee = fee_ceil(PAUSE_GROSS);
+    assert_eq!(
+        get_token_account_balance(&sc.svm, &sc.fee_vault).unwrap(),
+        expected_fee
+    );
+
+    let pause_ix = build_pause_market_ix(&sc, &sc.authority.pubkey());
+    send_market_switch(&mut sc.svm, pause_ix, &sc.authority).unwrap();
+
+    // The maker's settlement goes through while paused.
+    let settle_ix = build_settle_funds_ix(
+        &sc,
+        &sc.seller.pubkey(),
+        sc.seller_market_user,
+        sc.seller_base_ata,
+        sc.seller_quote_ata,
+    );
+    send_transaction_from_instructions(
+        &mut sc.svm,
+        vec![settle_ix],
+        &[&sc.seller],
+        &sc.seller.pubkey(),
+    )
+    .unwrap();
+    assert_eq!(
+        get_token_account_balance(&sc.svm, &sc.seller_quote_ata).unwrap(),
+        PAUSE_GROSS - expected_fee
+    );
+
+    // So does the authority's fee withdrawal.
+    let withdraw_ix = build_withdraw_fees_ix(&sc, &sc.authority.pubkey(), authority_quote_ata);
+    send_transaction_from_instructions(
+        &mut sc.svm,
+        vec![withdraw_ix],
+        &[&sc.authority],
+        &sc.authority.pubkey(),
+    )
+    .unwrap();
+    assert_eq!(
+        get_token_account_balance(&sc.svm, &sc.fee_vault).unwrap(),
+        0
+    );
+    assert_eq!(
+        get_token_account_balance(&sc.svm, &authority_quote_ata).unwrap(),
+        expected_fee
+    );
+}
+
+#[test]
+fn resume_market_accepts_orders_again() {
+    let mut sc = full_setup();
+    initialize_market_and_users(&mut sc);
+
+    let pause_ix = build_pause_market_ix(&sc, &sc.authority.pubkey());
+    send_market_switch(&mut sc.svm, pause_ix, &sc.authority).unwrap();
+    let error = place_pause_ask(&mut sc).expect_err("a paused market must not take an order");
+    assert!(
+        error.contains(&custom_error(order_book::errors::ErrorCode::MarketPaused)),
+        "{error}"
+    );
+
+    let resume_ix = build_resume_market_ix(&sc, &sc.authority.pubkey());
+    send_market_switch(&mut sc.svm, resume_ix, &sc.authority).unwrap();
+
+    // The same ask, refused a moment ago, now rests and locks its base. Its
+    // bytes are identical to the refused transaction's, so it needs a fresh
+    // blockhash to be taken as a new transaction.
+    sc.svm.expire_blockhash();
+    place_pause_ask(&mut sc).unwrap();
+    assert_eq!(
+        get_token_account_balance(&sc.svm, &sc.base_vault).unwrap(),
+        PAUSE_LOCKED_BASE
+    );
+}
+
+#[test]
+fn only_the_market_authority_can_pause_or_resume() {
+    let mut sc = full_setup();
+    initialize_market_and_users(&mut sc);
+
+    // A trader signing `pause_market` is refused, and the market stays open:
+    // the ask goes through afterwards.
+    let pause_ix = build_pause_market_ix(&sc, &sc.buyer.pubkey());
+    let error = send_market_switch(&mut sc.svm, pause_ix, &sc.buyer)
+        .expect_err("only the market authority may pause");
+    assert!(
+        error.contains(&custom_error(
+            order_book::errors::ErrorCode::NotMarketAuthority
+        )),
+        "{error}"
+    );
+    place_pause_ask(&mut sc).unwrap();
+
+    // Once the authority has paused, a trader signing `resume_market` is
+    // refused too, and the market stays paused: the buyer's bid is refused.
+    let pause_ix = build_pause_market_ix(&sc, &sc.authority.pubkey());
+    send_market_switch(&mut sc.svm, pause_ix, &sc.authority).unwrap();
+    let resume_ix = build_resume_market_ix(&sc, &sc.buyer.pubkey());
+    let error = send_market_switch(&mut sc.svm, resume_ix, &sc.buyer)
+        .expect_err("only the market authority may resume");
+    assert!(
+        error.contains(&custom_error(
+            order_book::errors::ErrorCode::NotMarketAuthority
+        )),
+        "{error}"
+    );
+    let bid_ix = build_place_order_ix(
+        &sc,
+        &sc.buyer,
+        sc.buyer_market_user,
+        sc.buyer_base_ata,
+        sc.buyer_quote_ata,
+        order_book::state::OrderSide::Bid,
+        PAUSE_BID_ID,
+        PAUSE_PRICE,
+        PAUSE_QUANTITY,
+    );
+    let error = send_transaction_from_instructions(
+        &mut sc.svm,
+        vec![bid_ix],
+        &[&sc.buyer],
+        &sc.buyer.pubkey(),
+    )
+    .map_err(|error| format!("{error:?}"))
+    .expect_err("a paused market must not take an order");
+    assert!(
+        error.contains(&custom_error(order_book::errors::ErrorCode::MarketPaused)),
+        "{error}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Closing accounts: a finished order and an idle MarketUser give their rent
+// back to the owner who paid it. Every test here uses the seller's ask of
+// CLOSE_QUANTITY lots at CLOSE_PRICE (order CLOSE_ASK_ID), and the ones that
+// need a fill cross it with the buyer's bid (order CLOSE_BID_ID).
+// ---------------------------------------------------------------------------
+
+const CLOSE_PRICE: u64 = 100;
+const CLOSE_QUANTITY: u64 = 5;
+const CLOSE_ASK_ID: u64 = 1;
+const CLOSE_BID_ID: u64 = 2;
+
+// A closed account has no lamports and no data. Anchor's `close` constraint
+// moves the rent out and hands the account back to the system program.
+fn account_is_open(svm: &LiteSVM, address: &Address) -> bool {
+    svm.get_account(address)
+        .is_some_and(|account| account.lamports > 0 && !account.data.is_empty())
+}
+
+// The lamports an open account holds, which closing it returns to whoever
+// paid its rent.
+fn rent_of(svm: &LiteSVM, address: &Address) -> u64 {
+    svm.get_account(address).unwrap().lamports
+}
+
+// What one transaction with a single signer costs its fee payer, measured by
+// sending `wallet` a zero-lamport transfer to itself: nothing else in that
+// transaction moves lamports. A fresh blockhash first, so repeated
+// measurements are distinct transactions.
+fn transaction_fee(svm: &mut LiteSVM, wallet: &Keypair) -> u64 {
+    let address = wallet.pubkey();
+    svm.expire_blockhash();
+    let before = get_sol_balance(svm, &address);
+    send_transaction_from_instructions(
+        svm,
+        vec![system_instruction::transfer(&address, &address, 0)],
+        &[wallet],
+        &address,
+    )
+    .unwrap();
+    before - get_sol_balance(svm, &address)
+}
+
+/// The seller rests the closing tests' ask.
+fn place_close_ask(sc: &mut Scenario) {
+    let ask_ix = build_place_order_ix(
+        sc,
+        &sc.seller,
+        sc.seller_market_user,
+        sc.seller_base_ata,
+        sc.seller_quote_ata,
+        order_book::state::OrderSide::Ask,
+        CLOSE_ASK_ID,
+        CLOSE_PRICE,
+        CLOSE_QUANTITY,
+    );
+    send_transaction_from_instructions(
+        &mut sc.svm,
+        vec![ask_ix],
+        &[&sc.seller],
+        &sc.seller.pubkey(),
+    )
+    .unwrap();
+}
+
+/// The buyer crosses the seller's ask with a bid of `quantity` lots at the
+/// same price: the whole ask when `quantity` is CLOSE_QUANTITY, part of it
+/// otherwise.
+fn cross_close_ask(sc: &mut Scenario, quantity: u64) {
+    let bid_ix = build_place_order_with_makers_ix(
+        sc,
+        &sc.buyer,
+        sc.buyer_market_user,
+        sc.buyer_base_ata,
+        sc.buyer_quote_ata,
+        order_book::state::OrderSide::Bid,
+        CLOSE_BID_ID,
+        CLOSE_PRICE,
+        quantity,
+        &[(CLOSE_ASK_ID, sc.seller_market_user)],
+    );
+    send_transaction_from_instructions(&mut sc.svm, vec![bid_ix], &[&sc.buyer], &sc.buyer.pubkey())
+        .unwrap();
+}
+
+/// The seller cancels their ask, which credits its locked base to their
+/// unsettled balance.
+fn cancel_close_ask(sc: &mut Scenario) {
+    let cancel_ix =
+        build_cancel_order_ix(sc, &sc.seller.pubkey(), sc.seller_market_user, CLOSE_ASK_ID);
+    send_transaction_from_instructions(
+        &mut sc.svm,
+        vec![cancel_ix],
+        &[&sc.seller],
+        &sc.seller.pubkey(),
+    )
+    .unwrap();
+}
+
+/// The seller settles, emptying their unsettled balances.
+fn settle_seller(sc: &mut Scenario) {
+    let settle_ix = build_settle_funds_ix(
+        sc,
+        &sc.seller.pubkey(),
+        sc.seller_market_user,
+        sc.seller_base_ata,
+        sc.seller_quote_ata,
+    );
+    send_transaction_from_instructions(
+        &mut sc.svm,
+        vec![settle_ix],
+        &[&sc.seller],
+        &sc.seller.pubkey(),
+    )
+    .unwrap();
+}
+
+/// Sends `close_ix`, which closes `account`, signed and paid by `owner`.
+/// Asserts the account is gone afterwards and that the owner's balance rose
+/// by exactly the account's rent, less the transaction fee.
+fn assert_close_returns_rent(
+    svm: &mut LiteSVM,
+    close_ix: Instruction,
+    account: &Address,
+    owner: &Keypair,
+) {
+    let rent = rent_of(svm, account);
+    let fee = transaction_fee(svm, owner);
+    let before = get_sol_balance(svm, &owner.pubkey());
+
+    send_transaction_from_instructions(svm, vec![close_ix], &[owner], &owner.pubkey()).unwrap();
+
+    assert!(!account_is_open(svm, account));
+    assert_eq!(get_sol_balance(svm, &owner.pubkey()), before + rent - fee);
+}
+
+#[test]
+fn close_order_returns_a_cancelled_orders_rent() {
+    let mut sc = full_setup();
+    initialize_market_and_users(&mut sc);
+
+    place_close_ask(&mut sc);
+    cancel_close_ask(&mut sc);
+
+    let ask = order_pda(&sc.program_id, &sc.market, CLOSE_ASK_ID);
+    let close_ix = build_close_order_ix(&sc, &sc.seller.pubkey(), CLOSE_ASK_ID);
+    assert_close_returns_rent(&mut sc.svm, close_ix, &ask, &sc.seller);
+
+    // Closing the order touches neither the refund it had already credited
+    // nor the vault that still holds the tokens until settlement.
+    let (seller_base, _) = read_user_unsettled(&sc.svm, &sc.seller_market_user);
+    assert_eq!(seller_base, CLOSE_QUANTITY * BASE_LOT_SIZE);
+    assert_eq!(
+        get_token_account_balance(&sc.svm, &sc.base_vault).unwrap(),
+        CLOSE_QUANTITY * BASE_LOT_SIZE
+    );
+}
+
+#[test]
+fn close_order_returns_a_filled_orders_rent() {
+    let mut sc = full_setup();
+    initialize_market_and_users(&mut sc);
+
+    place_close_ask(&mut sc);
+    cross_close_ask(&mut sc, CLOSE_QUANTITY);
+
+    // Both the maker's ask and the taker's bid filled in full; each owner
+    // closes their own.
+    let ask = order_pda(&sc.program_id, &sc.market, CLOSE_ASK_ID);
+    let close_ask_ix = build_close_order_ix(&sc, &sc.seller.pubkey(), CLOSE_ASK_ID);
+    assert_close_returns_rent(&mut sc.svm, close_ask_ix, &ask, &sc.seller);
+    let bid = order_pda(&sc.program_id, &sc.market, CLOSE_BID_ID);
+    let close_bid_ix = build_close_order_ix(&sc, &sc.buyer.pubkey(), CLOSE_BID_ID);
+    assert_close_returns_rent(&mut sc.svm, close_bid_ix, &bid, &sc.buyer);
+
+    // The fills' credits are untouched: they live on the MarketUser
+    // accounts, not on the orders.
+    let (buyer_base, _) = read_user_unsettled(&sc.svm, &sc.buyer_market_user);
+    assert_eq!(buyer_base, CLOSE_QUANTITY * BASE_LOT_SIZE);
+    let gross_quote = CLOSE_PRICE * CLOSE_QUANTITY * QUOTE_LOT_SIZE;
+    let (_, seller_quote) = read_user_unsettled(&sc.svm, &sc.seller_market_user);
+    assert_eq!(seller_quote, gross_quote - fee_ceil(gross_quote));
+}
+
+#[test]
+fn close_order_refuses_a_resting_order() {
+    let mut sc = full_setup();
+    initialize_market_and_users(&mut sc);
+
+    place_close_ask(&mut sc);
+
+    let close_ix = build_close_order_ix(&sc, &sc.seller.pubkey(), CLOSE_ASK_ID);
+    let error = failure_text(
+        &mut sc.svm,
+        vec![close_ix],
+        &[&sc.seller],
+        &sc.seller.pubkey(),
+        "an order resting on the book must not close",
+    );
+    assert_fails_with(&error, order_book::errors::ErrorCode::OrderNotClosable);
+    assert!(account_is_open(
+        &sc.svm,
+        &order_pda(&sc.program_id, &sc.market, CLOSE_ASK_ID)
+    ));
+}
+
+#[test]
+fn close_order_refuses_a_partially_filled_order() {
+    let mut sc = full_setup();
+    initialize_market_and_users(&mut sc);
+
+    place_close_ask(&mut sc);
+    cross_close_ask(&mut sc, CLOSE_QUANTITY - 1);
+
+    let ask = order_pda(&sc.program_id, &sc.market, CLOSE_ASK_ID);
+    let (_, status) = read_order_fill_and_status(&sc.svm, &ask);
+    assert_eq!(status, ORDER_STATUS_PARTIALLY_FILLED);
+
+    let close_ix = build_close_order_ix(&sc, &sc.seller.pubkey(), CLOSE_ASK_ID);
+    let error = failure_text(
+        &mut sc.svm,
+        vec![close_ix],
+        &[&sc.seller],
+        &sc.seller.pubkey(),
+        "a partially filled order still rests on the book and must not close",
+    );
+    assert_fails_with(&error, order_book::errors::ErrorCode::OrderNotClosable);
+    assert!(account_is_open(&sc.svm, &ask));
+}
+
+#[test]
+fn close_order_refuses_a_non_owner() {
+    let mut sc = full_setup();
+    initialize_market_and_users(&mut sc);
+
+    place_close_ask(&mut sc);
+    cancel_close_ask(&mut sc);
+
+    // The order is closable, but only by the seller: the buyer signing for
+    // it would be paid the seller's rent.
+    let attack_ix = build_close_order_ix(&sc, &sc.buyer.pubkey(), CLOSE_ASK_ID);
+    let error = failure_text(
+        &mut sc.svm,
+        vec![attack_ix],
+        &[&sc.buyer],
+        &sc.buyer.pubkey(),
+        "a non-owner must not close an order",
+    );
+    assert_fails_with(&error, order_book::errors::ErrorCode::Unauthorized);
+    assert!(account_is_open(
+        &sc.svm,
+        &order_pda(&sc.program_id, &sc.market, CLOSE_ASK_ID)
+    ));
+}
+
+#[test]
+fn close_market_user_returns_rent_when_nothing_is_open_or_owed() {
+    let mut sc = full_setup();
+    initialize_market_and_users(&mut sc);
+
+    // Place, cancel and settle, so the account has been through a full
+    // cycle and is back to nothing open and nothing owed.
+    place_close_ask(&mut sc);
+    cancel_close_ask(&mut sc);
+    settle_seller(&mut sc);
+    assert_eq!(read_open_order_count(&sc.svm, &sc.seller_market_user), 0);
+    assert_eq!(read_user_unsettled(&sc.svm, &sc.seller_market_user), (0, 0));
+
+    let close_ix = build_close_market_user_ix(&sc, &sc.seller.pubkey(), sc.seller_market_user);
+    assert_close_returns_rent(&mut sc.svm, close_ix, &sc.seller_market_user, &sc.seller);
+
+    // The seller can come back to the market: the PDA is free to create
+    // again.
+    let reinit_ix = build_initialize_market_user_ix(&sc, &sc.seller.pubkey());
+    send_transaction_from_instructions(
+        &mut sc.svm,
+        vec![reinit_ix],
+        &[&sc.seller],
+        &sc.seller.pubkey(),
+    )
+    .unwrap();
+    assert!(account_is_open(&sc.svm, &sc.seller_market_user));
+}
+
+#[test]
+fn close_market_user_refuses_an_open_order() {
+    let mut sc = full_setup();
+    initialize_market_and_users(&mut sc);
+
+    place_close_ask(&mut sc);
+
+    let close_ix = build_close_market_user_ix(&sc, &sc.seller.pubkey(), sc.seller_market_user);
+    let error = failure_text(
+        &mut sc.svm,
+        vec![close_ix],
+        &[&sc.seller],
+        &sc.seller.pubkey(),
+        "a MarketUser with an open order must not close",
+    );
+    assert_fails_with(&error, order_book::errors::ErrorCode::MarketUserNotClosable);
+    assert!(account_is_open(&sc.svm, &sc.seller_market_user));
+}
+
+#[test]
+fn close_market_user_refuses_an_unsettled_balance() {
+    let mut sc = full_setup();
+    initialize_market_and_users(&mut sc);
+
+    // Cancelled but not settled: nothing is open, but the refund is still
+    // owed through this account and would be lost with it.
+    place_close_ask(&mut sc);
+    cancel_close_ask(&mut sc);
+    assert_eq!(read_open_order_count(&sc.svm, &sc.seller_market_user), 0);
+
+    let close_ix = build_close_market_user_ix(&sc, &sc.seller.pubkey(), sc.seller_market_user);
+    let error = failure_text(
+        &mut sc.svm,
+        vec![close_ix],
+        &[&sc.seller],
+        &sc.seller.pubkey(),
+        "a MarketUser owed an unsettled balance must not close",
+    );
+    assert_fails_with(&error, order_book::errors::ErrorCode::MarketUserNotClosable);
+    assert!(account_is_open(&sc.svm, &sc.seller_market_user));
+}
+
+#[test]
+fn close_market_user_refuses_a_non_owner() {
+    let mut sc = full_setup();
+    initialize_market_and_users(&mut sc);
+
+    // The seller's account is closable, but the buyer signing for it would
+    // be paid the seller's rent.
+    let attack_ix = build_close_market_user_ix(&sc, &sc.buyer.pubkey(), sc.seller_market_user);
+    let error = failure_text(
+        &mut sc.svm,
+        vec![attack_ix],
+        &[&sc.buyer],
+        &sc.buyer.pubkey(),
+        "a non-owner must not close a MarketUser",
+    );
+    assert_fails_with(&error, order_book::errors::ErrorCode::Unauthorized);
+    assert!(account_is_open(&sc.svm, &sc.seller_market_user));
+}
+
+#[test]
+fn evicted_order_and_its_owners_market_user_close_after_settling() {
+    let mut sc = full_setup();
+    initialize_market_and_users(&mut sc);
+    let fillers = fill_bid_side(&mut sc);
+    let newcomer = create_trader(&mut sc);
+    let evicted = &fillers[0];
+
+    // A better bid evicts the worst one, which eviction stamps Cancelled and
+    // refunds through its owner's unsettled balance.
+    place_bid(
+        &mut sc,
+        &newcomer,
+        ORDERS_PER_SIDE + 1,
+        EVICTION_BETTER_BID_PRICE,
+        &[(WORST_BID_ORDER_ID, evicted.market_user)],
+    )
+    .unwrap();
+    let worst_order = order_pda(&sc.program_id, &sc.market, WORST_BID_ORDER_ID);
+    let (_, status) = read_order_fill_and_status(&sc.svm, &worst_order);
+    assert_eq!(status, ORDER_STATUS_CANCELLED);
+
+    // The evicted owner's other bids (IDs 2 through ORDERS_PER_FILLER) still
+    // rest, so they cancel those to have nothing open, then settle every
+    // refund to have nothing owed.
+    for order_id in WORST_BID_ORDER_ID + 1..=ORDERS_PER_FILLER {
+        let cancel_ix = build_cancel_order_ix(
+            &sc,
+            &evicted.keypair.pubkey(),
+            evicted.market_user,
+            order_id,
+        );
+        send_transaction_from_instructions(
+            &mut sc.svm,
+            vec![cancel_ix],
+            &[&evicted.keypair],
+            &evicted.keypair.pubkey(),
+        )
+        .unwrap();
+    }
+    let settle_ix = build_settle_funds_ix(
+        &sc,
+        &evicted.keypair.pubkey(),
+        evicted.market_user,
+        evicted.base_ata,
+        evicted.quote_ata,
+    );
+    send_transaction_from_instructions(
+        &mut sc.svm,
+        vec![settle_ix],
+        &[&evicted.keypair],
+        &evicted.keypair.pubkey(),
+    )
+    .unwrap();
+    assert_eq!(read_open_order_count(&sc.svm, &evicted.market_user), 0);
+    assert_eq!(read_user_unsettled(&sc.svm, &evicted.market_user), (0, 0));
+
+    // The evicted order closes to its owner, then the owner's MarketUser.
+    let close_order_ix = build_close_order_ix(&sc, &evicted.keypair.pubkey(), WORST_BID_ORDER_ID);
+    assert_close_returns_rent(&mut sc.svm, close_order_ix, &worst_order, &evicted.keypair);
+    let close_user_ix =
+        build_close_market_user_ix(&sc, &evicted.keypair.pubkey(), evicted.market_user);
+    assert_close_returns_rent(
+        &mut sc.svm,
+        close_user_ix,
+        &evicted.market_user,
+        &evicted.keypair,
     );
 }

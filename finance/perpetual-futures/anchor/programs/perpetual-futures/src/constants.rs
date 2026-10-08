@@ -6,8 +6,8 @@ use anchor_lang::prelude::*;
 pub const BASIS_POINTS_DENOMINATOR: u64 = 10_000;
 
 /// Fixed-point precision for the cumulative funding index. The index is carried
-/// as `i128` scaled by this factor so per-slot funding (a tiny ratio) keeps its
-/// precision when integrated over many slots.
+/// as `i128` scaled by this factor so per-second funding (a tiny ratio) keeps its
+/// precision when integrated over many seconds.
 pub const FUNDING_PRECISION: i128 = 1_000_000_000;
 
 /// Fixed-point precision for the aggregate `size / entry_price` accumulators the
@@ -15,12 +15,22 @@ pub const FUNDING_PRECISION: i128 = 1_000_000_000;
 /// from two running sums instead of iterating every open position.
 pub const SIZE_PRECISION: u128 = 1_000_000_000;
 
+/// Fixed-point precision for the haircut ratio `h`, the fraction of their
+/// profit every closing winner is paid. `HAIRCUT_PRECISION` is `h = 1` (profit
+/// paid in full); a smaller value pays that fraction of it. A winner's profit is
+/// multiplied by `h` and divided by this, rounding down, so rounding never pays
+/// a winner more than that fraction.
+pub const HAIRCUT_PRECISION: u128 = 1_000_000_000;
+
 /// Liquidity-provider shares withheld from the first deposit. The first
 /// depositor receives `deposit - MINIMUM_LIQUIDITY` shares rather than the full
-/// amount, the same convention Uniswap V2 uses, so the share supply can never be
-/// driven to a dust amount that rounding could exploit. (Share value here is
-/// priced off tracked liquidity, not the vault token balance, so a direct
-/// donation to the vault cannot move it.)
+/// amount, the same convention Uniswap V2 uses, and both `add_liquidity` and
+/// `remove_liquidity` divide by the share supply plus this minimum, so the
+/// withheld shares belong to nobody and their slice of the pool never leaves.
+/// Share value is priced off tracked liquidity, not the vault token balance,
+/// so a direct donation to the vault cannot move it; but a provider who is also
+/// the only trader can grow `liquidity` with their own funding payments and
+/// losses, and it is the locked minimum that makes that cost them.
 #[constant]
 pub const MINIMUM_LIQUIDITY: u64 = 1_000;
 
@@ -30,10 +40,26 @@ pub const MINIMUM_LIQUIDITY: u64 = 1_000;
 /// lowers over time, so the window tightens on its own and never loosens.
 pub const MAX_PRICE_STALENESS_SLOTS: u64 = 150;
 
-/// Upper bound on the per-pool `max_leverage` parameter, so a pool cannot be
-/// configured with an absurd leverage that makes every position instantly
-/// liquidatable on the smallest price move.
-pub const MAX_LEVERAGE_CEILING: u16 = 100;
+/// How many seconds of oracle prices the pool's `average_price` follows. Each
+/// fold moves the average toward the price seen at the previous read by
+/// `elapsed / window` of the gap between them, and an interval of a full window
+/// or more replaces the average with that price. Ten minutes is long enough
+/// that a price seen at two reads six seconds apart, about as long as a faulty
+/// or manipulated oracle print lasts, moves the average by one percent of its
+/// jump, and short enough that a genuine move is back inside the band within
+/// minutes of repeated reads. Counted on the Clock's `unix_timestamp`,
+/// like funding: it is a span of wall-clock time, and the second or two of
+/// leader drift changes a fold's weight by well under one percent.
+#[constant]
+pub const PRICE_AVERAGE_WINDOW_SECONDS: i64 = 600;
+
+/// Upper bound on the per-pool `funding_rate_per_second` parameter, in
+/// `FUNDING_PRECISION` units: 277 billionths of a position's size per second,
+/// just under 0.1% of its size per hour. The rate is fixed when the pool is
+/// created, so everyone who opens a position or deposits liquidity has seen it,
+/// and no position can be charged or paid funding faster than this.
+#[constant]
+pub const MAX_FUNDING_RATE_PER_SECOND: u64 = 277;
 
 #[constant]
 pub const POOL_SEED: &[u8] = b"pool";

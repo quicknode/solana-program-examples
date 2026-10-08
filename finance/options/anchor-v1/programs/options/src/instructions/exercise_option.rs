@@ -33,11 +33,8 @@ pub fn handle_exercise_option(context: Context<ExerciseOptionAccountConstraints>
     );
 
     let kind = option.kind;
-    let underlying_total =
-        contract_math::underlying_total(option.contracts, option.underlying_per_contract)
-            .ok_or(OptionsError::MathOverflow)?;
-    let strike_total = contract_math::strike_total(option.contracts, option.strike_per_contract)
-        .ok_or(OptionsError::MathOverflow)?;
+    let underlying_amount = option.underlying_amount;
+    let strike_amount = option.strike_amount;
 
     // Effects: the option is exercised, and the vault now owes the writer the
     // payment instead of owing the holder the collateral.
@@ -48,38 +45,38 @@ pub fn handle_exercise_option(context: Context<ExerciseOptionAccountConstraints>
     let quote_before = context.accounts.quote_vault.amount;
     let (underlying_after, quote_after) = match kind {
         OptionKind::Call => {
-            market.underlying_locked = market
-                .underlying_locked
-                .checked_sub(underlying_total)
+            market.underlying_owed = market
+                .underlying_owed
+                .checked_sub(underlying_amount)
                 .ok_or(OptionsError::MathOverflow)?;
-            market.quote_locked = market
-                .quote_locked
-                .checked_add(strike_total)
+            market.quote_owed = market
+                .quote_owed
+                .checked_add(strike_amount)
                 .ok_or(OptionsError::MathOverflow)?;
             (
                 underlying_before
-                    .checked_sub(underlying_total)
+                    .checked_sub(underlying_amount)
                     .ok_or(OptionsError::CustodyInvariantViolated)?,
                 quote_before
-                    .checked_add(strike_total)
+                    .checked_add(strike_amount)
                     .ok_or(OptionsError::MathOverflow)?,
             )
         }
         OptionKind::Put => {
-            market.quote_locked = market
-                .quote_locked
-                .checked_sub(strike_total)
+            market.quote_owed = market
+                .quote_owed
+                .checked_sub(strike_amount)
                 .ok_or(OptionsError::MathOverflow)?;
-            market.underlying_locked = market
-                .underlying_locked
-                .checked_add(underlying_total)
+            market.underlying_owed = market
+                .underlying_owed
+                .checked_add(underlying_amount)
                 .ok_or(OptionsError::MathOverflow)?;
             (
                 underlying_before
-                    .checked_add(underlying_total)
+                    .checked_add(underlying_amount)
                     .ok_or(OptionsError::MathOverflow)?,
                 quote_before
-                    .checked_sub(strike_total)
+                    .checked_sub(strike_amount)
                     .ok_or(OptionsError::CustodyInvariantViolated)?,
             )
         }
@@ -95,7 +92,7 @@ pub fn handle_exercise_option(context: Context<ExerciseOptionAccountConstraints>
                 &context.accounts.quote_mint,
                 &mut context.accounts.quote_vault,
                 &context.accounts.holder,
-                strike_total,
+                strike_amount,
             )?;
             transfer_from_vault(
                 &context.accounts.token_program,
@@ -103,7 +100,7 @@ pub fn handle_exercise_option(context: Context<ExerciseOptionAccountConstraints>
                 &context.accounts.underlying_mint,
                 &mut context.accounts.holder_underlying,
                 market,
-                underlying_total,
+                underlying_amount,
             )
         }
         OptionKind::Put => {
@@ -113,7 +110,7 @@ pub fn handle_exercise_option(context: Context<ExerciseOptionAccountConstraints>
                 &context.accounts.underlying_mint,
                 &mut context.accounts.underlying_vault,
                 &context.accounts.holder,
-                underlying_total,
+                underlying_amount,
             )?;
             transfer_from_vault(
                 &context.accounts.token_program,
@@ -121,7 +118,7 @@ pub fn handle_exercise_option(context: Context<ExerciseOptionAccountConstraints>
                 &context.accounts.quote_mint,
                 &mut context.accounts.holder_quote,
                 market,
-                strike_total,
+                strike_amount,
             )
         }
     }

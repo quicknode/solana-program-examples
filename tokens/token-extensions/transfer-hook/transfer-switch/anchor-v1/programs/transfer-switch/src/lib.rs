@@ -34,7 +34,10 @@ pub mod transfer_switch {
     }
 
     #[instruction(discriminator = ExecuteInstruction::SPL_DISCRIMINATOR_SLICE)]
-    pub fn transfer_hook(mut context: Context<TransferHookAccountConstraints>, _amount: u64) -> Result<()> {
+    pub fn transfer_hook(
+        mut context: Context<TransferHookAccountConstraints>,
+        _amount: u64,
+    ) -> Result<()> {
         handle_assert_is_transferring(&mut context.accounts)?;
         handle_assert_switch_is_on(&mut context.accounts)
     }

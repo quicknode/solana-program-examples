@@ -9,7 +9,7 @@
 A Kamino/Solend-style borrow/lend program on Solana: suppliers earn interest on deposits,
 borrowers post collateral and draw other assets against it, and liquidators keep
 the market solvent. It demonstrates the techniques the most-used Solana lending
-protocols share: share-token deposit accounting, a utilization-based interest
+programs share: share-token deposit accounting, a utilization-based interest
 index, oracle-priced obligation health, and close-factor-capped liquidation.
 
 ## Purpose
@@ -50,45 +50,81 @@ crosses the liquidation threshold and a liquidator can close part of the positio
 - **`Obligation`**: one per borrower per market: the share-token collateral
   posted and the liquidity borrowed, with cached quote-currency valuations. PDA
   seeds `["obligation", market, owner]`.
-- **`PriceFeed`**: a price for one token (see Oracle below).
+- **`PriceFeed`**: a price for one token, with the publisher's confidence
+  band (see Oracle below).
 
 ### Share tokens (the deposit claim)
 
 Supplying liquidity mints share tokens; redeeming burns them. The exchange rate
-is `total_liquidity / share_supply`, where `total_liquidity = available_liquidity
-+ current_debt`. `available_liquidity` (not the vault's raw token balance) is the
-source of truth, so a token donated directly to the vault cannot inflate the rate,
-closing the classic empty-pool inflation attack. The first deposit mints 1:1.
+is `total_liquidity / total_shares`, where `total_liquidity = available_liquidity
++ current_debt` and `total_shares` is the share supply plus `MINIMUM_SHARES`.
+The program prices shares from `available_liquidity`, not the vault's raw token balance,
+so a token donated directly to the vault cannot inflate the rate.
+
+That alone does not close the empty-pool inflation attack, because
+`total_liquidity` also counts interest owed on borrows, and a supplier can
+borrow. A lone supplier holding one share borrows a single base unit from their
+own reserve; debt rounds up, so a second later it reads as two, and the share is
+worth two units without anything having been minted. Deposits and redemptions
+round in the pool's favor, so depositing the most that still mints one share
+and redeeming it leaves the remainder with the only other share, the attacker's
+own, and the price climbs about half again each round. After 49 rounds one share
+is worth about 690 USDC, a 1,000 USDC deposit mints one share, and the attacker's
+share redeems half the pool: 155 USDC of profit on a debt they repay. So the
+first deposit mints 1:1 less `MINIMUM_SHARES` (1,000), which are never minted and
+count as shares nobody holds in every conversion between shares and liquidity:
+deposit, redeem, collateral valuation, collateral withdrawal and liquidation.
+The attacker's one share is then 1 of 1,001, and what the rounding leaves behind
+goes mostly to shares nobody can redeem.
 
 ### Interest: a kinked curve and a cumulative index
 
 Each `refresh_reserve` advances `borrow_accumulation_factor` by
-`(1 + rate_per_slot * elapsed_slots)`. `rate_per_slot` comes from a kinked
+`(1 + rate_per_second * elapsed_seconds)`. `rate_per_second` comes from a kinked
 utilization curve: linear from `min_borrow_rate_bps` to `optimal_borrow_rate_bps`
 up to `optimal_utilization_bps`, then steeper to `max_borrow_rate_bps` at full
 utilization. Each borrow stores its principal as **scaled debt** (principal ÷
 index at borrow time), so every obligation's debt grows automatically as the
 index advances: no per-obligation accrual loop.
 
-Those curve parameters are annual, and the conversion to a per-slot rate divides
-by `config.slots_per_year`. That divisor is the cluster's slot time expressed as
-a count, which is why it is configuration and not a constant: Solana lowers the
-slot time over time, and a reserve left on an old figure charges borrowers more
-per day than the APR it advertises, with nothing in the program changed to say
-so. Read the current slot time off the cluster you deploy against (two
-[`getBlockTime`](https://solana.com/docs/rpc/http/getblocktime) results a known
-number of slots apart) and keep the reserve in step with
-`update_reserve_config`.
+Every division on the way to the factor rounds up, against the borrower: the
+utilization, the climb along the curve, the per-second rate and the factor
+update itself. A debt is principal times the factor, so flooring any of them
+would understate every debt. Suppliers are not overpaid by it: the reserve
+counts its own debt as its total principal times the same factor, ceiled once,
+which is never more than the borrowers' individually ceiled debts add up to
+(`accumulation_factor_rounds_up_against_the_borrower` checks a second accrual
+against both roundings).
 
-### Protocol fees (how the market earns)
+Those curve parameters are annual, and the conversion to a per-second rate
+divides by `SECONDS_PER_YEAR`. Elapsed time is the Clock's `unix_timestamp`
+minus the reserve's `last_accrual_timestamp`, so a borrower pays the advertised
+APR over a real year whatever the cluster's slot time is. Counting slots instead
+would need a slots-per-year divisor, which is a guess at the slot length: the
+network changes that length by feature gate, and does not deliver it exactly
+between changes. The timestamp is written by each block's leader, but the
+runtime bounds how far one block can move it, so an elapsed time is out by a
+second or two at most, which is nothing against an annual rate. A timestamp at
+or before the stored one accrues nothing. `update_reserve_config` accrues at the
+old curve before storing a new one, so the seconds already elapsed are charged
+at the rates that applied to them.
+
+The reserve still records `last_update_slot`, for a different job: handlers that
+read the reserve's value require the refresh to have run in the current slot.
+
+### Program fees (how the market earns)
 
 Borrowers owe the full interest, but suppliers don't receive all of it. On each
 accrual the reserve keeps `config.reserve_factor_bps` of the freshly accrued
-interest in `accumulated_protocol_fees`; only the remainder lifts the supplier
-exchange rate. Those fees are carved out of `total_liquidity`, so they never
-count as a supplier claim, and the market owner withdraws them with
-**`collect_protocol_fees`** (paid out of the reserve's available liquidity).
-This spread between the borrow rate and the supply rate is the protocol's revenue.
+interest in `accumulated_program_fees`, rounded up (`mul_div_ceil`), since a
+fee is the program's cut and rounds against the user; only the remainder lifts
+the supplier exchange rate, so the two parts sum to the interest and never
+exceed it (`program_fee_rounds_up_and_suppliers_take_the_remainder` checks a
+second's interest of 3 units, of which the fee is 1). Those fees are carved out
+of `total_liquidity`, so they never count as a supplier claim, and the market
+owner withdraws them with **`collect_program_fees`** (paid out of the reserve's
+available liquidity). This spread between the borrow rate and the supply rate
+is the program's revenue.
 
 ### Obligation health
 
@@ -98,6 +134,41 @@ and `unhealthy_borrow_value` (Σ collateral value × `liquidation_threshold_bps`
 Borrowing and withdrawing are gated by `allowed_borrow_value`; an obligation is
 liquidatable once `borrowed_value > unhealthy_borrow_value`. Collateral is valued
 rounding down and debt rounding up, so health is always judged conservatively.
+
+An obligation with no borrows has nothing for its collateral to back, so
+`withdraw_obligation_collateral` reads no price and needs no refresh for it:
+the whole deposit comes out whatever the feed is doing, since a borrower who
+owes nothing must never be locked in by a stale or silent oracle
+(`debt_free_withdraw_needs_no_price_and_no_refresh`). With debt outstanding
+every check stays (`withdraw_with_debt_is_refused_while_the_price_is_stale`).
+Once the collateral is out, `close_obligation` returns the account's rent to
+the owner; it refuses with `ObligationNotEmpty` while any collateral or debt
+remains, and only the owner may close it.
+
+Each reserve's collateral vault closes when its last share leaves. The rent
+was paid by the obligation's owner when `deposit_obligation_collateral`
+created the vault (`init_if_needed` creates it again on a later deposit). A
+withdrawal that empties the vault returns that rent to the owner straight
+away. A liquidation that empties it closes it into the obligation account
+instead, so liquidation takes no account the borrower controls
+(`seizing_all_collateral_closes_the_vault_into_the_obligation`), and the owner
+can still liquidate their own position, partly
+(`owner_can_liquidate_their_own_obligation`) or down to an empty vault
+(`owner_can_liquidate_their_own_obligation_to_empty`). `close_obligation` later
+hands the owner the obligation's own rent and the vault's together
+(`close_obligation_after_full_liquidation_returns_both_rents_to_the_owner`),
+and a later deposit recreates the vault
+(`redeposit_after_full_liquidation_recreates_the_vault`).
+Either way the whole vault balance moves out before the vault closes, so share
+tokens someone sent straight to the vault cannot keep it open or block the
+withdrawal (`donated_shares_cannot_keep_the_vault_open`,
+`seizing_all_collateral_sweeps_donated_shares_to_the_liquidator`).
+
+Every account the program creates for a borrower closes, with its rent
+returned, once the position is fully unwound. An obligation that a
+liquidation leaves holding debt and no collateral is not unwound:
+`close_obligation` refuses it until that debt is repaid
+(`close_obligation_refused_while_debt_remains_after_full_liquidation`).
 
 Every handler that pairs an obligation with a reserve requires both to belong to
 the same `LendingMarket` (`MarketMismatch` otherwise), so each market is an
@@ -113,67 +184,118 @@ less, which would make the liquidator overpay.
 
 ### Fixed-point math
 
-All money math is integer-only `u128`: no floats, no fixed-point crates. Ratios
+All arithmetic is integer-only `u128`: no floats, no fixed-point crates. Ratios
 (rates, the index, the exchange rate, obligation values) are scaled by
-`FIXED_POINT_SCALE` (10^18). Every conversion rounds in the protocol's favour
-(user output floored, debt ceiled), so dust cannot be extracted by repeated
-round-trips.
+`FIXED_POINT_SCALE` (10^18). Every conversion rounds in the program's favour
+(user output floored; debt, the interest that grows it, and the program fee
+ceiled), so dust cannot be
+extracted by repeated
+round-trips; `deposit_redeem_round_trip_creates_no_value` checks this by
+depositing and redeeming 777,777,777 units fifty times against a reserve whose
+exchange rate interest has moved off one-to-one, and asserts the supplier never
+holds more than they started with.
 
 ### Oracle
 
-`PriceFeed` mirrors a Switchboard On-Demand pull feed: a signed mantissa, an
-exponent (`price = mantissa * 10^exponent`), and the slot the price was written.
-Freshness is checked in **slots** (`MAX_PRICE_STALENESS_SLOTS`), not wall-clock
-time, plus one check slots alone cannot make: a cluster restart passes hours of
-wall-clock time in zero slots, so `price_scaled` also rejects any price stamped
-at or before the `LastRestartSlot` sysvar's slot, pausing valuation until the
-publisher posts again. The feed PDA is seeded by `[b"price_feed", market, mint]` (scoped to a
+`PriceFeed` mirrors an oracle price feed such as Pyth's: a signed mantissa, an
+exponent (`price = mantissa * 10^exponent`), a **confidence** band in the
+mantissa's units (how far the publisher's sources disagree, half the width of
+the interval around the price), and the slot the price was written.
+`price_scaled` makes three checks before any handler values anything at the
+price:
+
+- Freshness is checked in **slots** (`MAX_PRICE_STALENESS_SLOTS`), not
+  wall-clock time, plus one check slots alone cannot make: a cluster restart
+  passes hours of wall-clock time in zero slots, so a price stamped at or
+  before the `LastRestartSlot` sysvar's slot is rejected
+  (`PricePredatesRestart`), pausing valuation until the publisher posts again.
+- The price must be positive (`InvalidOraclePrice`).
+- The confidence band must be no wider than the reserve's
+  `max_confidence_bps` of the price, with the comparison multiplied out as
+  `confidence × 10,000 ≤ price × max_confidence_bps` in `u128` so no division
+  truncates. A wider band is refused with `OracleConfidenceTooWide`: the oracle
+  is reporting that it does not know the price, and a borrow, withdrawal or
+  liquidation valued at a number the oracle itself doubts would be lending
+  against a guess. The limit lives in the reserve config beside the loan-to-value
+  and liquidation thresholds, so a market owner tunes it per asset, and
+  `validate()` rejects a limit above 100% or of zero, which would refuse every
+  live price and freeze every obligation holding the asset.
+
+The feed PDA is seeded by `[b"price_feed", market, mint]` (scoped to a
 market, not to any individual) and only that market's `owner` may write it
 (`set_price` checks `address = lending_market.owner`). So prices can't be squatted, a reserve
 trusts exactly its own market's feed for the mint, and isolated markets can
 price the same asset independently.
 
-The `set_price` handler writes the feed directly so the LiteSVM tests are
-deterministic; in production a reserve points at the real Switchboard feed and the
-program decodes `PullFeedAccountData` (`price_mantissa = current_result.value`,
-`exponent = -18`, `last_updated_slot = current_result.slot`) instead, and should
-also reject results whose confidence interval is too wide. Switchboard is used
-rather than Pyth here for its lower compute cost.
+The `set_price` handler takes the mantissa, exponent and confidence band and
+writes the feed directly so the LiteSVM tests are deterministic; in production
+a reserve points at a Pyth price feed and the program reads its `PriceUpdateV2`
+account instead, as [`basics/pyth`](../../../basics/pyth/) does, after checking
+the update's `feed_id`: `price_mantissa` is `price_message.price`, `exponent`
+is `price_message.exponent`, `confidence` is `price_message.conf`, and
+`last_updated_slot` is `posted_slot`.
 
 ### Custody
 
 Supplied liquidity sits in program-owned vault PDAs, and posted collateral sits in
 per-obligation vault PDAs whose authority is the obligation PDA. The market owner
 can update reserve risk parameters (`update_reserve_config`) and withdraw the
-protocol's earned fees (`collect_protocol_fees`), but has no path to a supplier's
+program's earned fees (`collect_program_fees`), but has no path to a supplier's
 deposits or a borrower's collateral: there is no admin escape hatch over user funds.
+
+`update_reserve_config` takes effect at once on a reserve with open loans, so
+three limits protect the people already there:
+
+- **A borrow rate ceiling.** `ReserveConfig::validate` refuses any of
+  `min_borrow_rate_bps`, `optimal_borrow_rate_bps` or `max_borrow_rate_bps`
+  above `BORROW_RATE_CEILING_BPS` (30,000 bps, 300% a year) with
+  `BorrowRateAboveCeiling`, at `initialize_reserve` and on every update. Without
+  it the curve could be set to any u16, up to 655% a year.
+- **The liquidation threshold only rises.** `update_reserve_config` refuses a
+  config whose `liquidation_threshold_bps` is lower than the reserve's current
+  value with `RiskLimitLowered`, so an update can never move the line an open
+  borrow is measured against and make it liquidatable on the spot. The
+  loan-to-value is not ratcheted: it limits only new borrows and withdrawals
+  by an indebted borrower, so the owner may lower it, down to 0, to stop new
+  borrowing against an asset that has become dangerous
+  (`accepts_lowering_loan_to_value`).
+- **The bonus is always payable.** `ReserveConfig::validate` refuses a config
+  where `liquidation_threshold_bps * (10_000 + liquidation_bonus_bps)` exceeds
+  `10_000 * 10_000` with `LiquidationBonusUnpayable`, at `initialize_reserve`
+  and on every update. A position becomes liquidatable once its debt passes the
+  threshold share of its collateral, and the liquidator takes that debt plus
+  the bonus in collateral, so the bound keeps a liquidation at the threshold
+  payable from the collateral rather than leaving the suppliers bad debt.
+  Because the threshold can never come back down, this also stops a mistaken
+  raise from locking that loss into the reserve. The default 80% threshold
+  with a 5% bonus gives 8,000 × 10,500 = 84,000,000, inside the bound.
 
 ### Known limits
 
 - **Tokens with transfer fees are not supported.** The program uses
   `token_interface`, so Token Extensions mints are accepted, but a transfer-fee
   extension would make the vault receive less than the recorded deposit and the
-  accounting would overstate `available_liquidity`. Production protocols
+  accounting would overstate `available_liquidity`. Production lending programs
   whitelist mints; a market owner here must only create reserves for tokens
   without transfer fees.
-- **Reserve config changes act immediately.** Lowering a reserve's
-  `liquidation_threshold_bps` can make existing obligations liquidatable at
-  once; production governance phases such changes in.
 - This is an example. Deploying any program that custodies funds calls for a
   professional security audit first.
 
 ### Instruction handlers
 
 Admin: `initialize_lending_market`, `initialize_reserve`, `update_reserve_config`, `set_price`,
-`collect_protocol_fees`.
+`collect_program_fees`.
 Supply side: `refresh_reserve`, `deposit_reserve_liquidity`,
 `redeem_reserve_collateral`. Borrow side: `initialize_obligation`, `refresh_obligation`,
 `deposit_obligation_collateral`, `withdraw_obligation_collateral`,
-`borrow_obligation_liquidity`, `repay_obligation_liquidity`, `liquidate_obligation`.
+`borrow_obligation_liquidity`, `repay_obligation_liquidity`, `liquidate_obligation`,
+`close_obligation`.
 
 Value-dependent handlers require the reserves and the obligation to have been
 refreshed in the same transaction, so a typical action transaction is
-`[refresh_reserve …, refresh_obligation, <action>]`.
+`[refresh_reserve …, refresh_obligation, <action>]`. A withdrawal from an
+obligation with no borrows is the exception: it values nothing, so it is sent
+on its own.
 
 ## Setup
 
@@ -190,23 +312,24 @@ anchor test    # or: cargo test     - runs the LiteSVM integration tests
 `anchor build` (or `cargo build-sbf`) must run first: the tests load the compiled
 `target/deploy/lending.so` via `include_bytes!`. The suite covers the
 non-happy-path branches: interest accrual, borrowing at the LTV limit, stale
-reserve/price rejection, liquidation of an unhealthy obligation after a price
-move, the share-inflation guard, and rounding edges.
+reserve/price rejection, a price whose confidence band is too wide, liquidation
+of an unhealthy obligation after a price move, the share-inflation guard, and
+rounding edges.
 
 ## FAQ
 
-### How does a lending protocol work on Solana?
+### How does a lending program work on Solana?
 
 Suppliers deposit a token with `deposit_reserve_liquidity` and receive share tokens that grow in value as borrowers pay interest. Borrowers post those shares as collateral (`deposit_obligation_collateral`) and draw a different token with `borrow_obligation_liquidity`, up to a loan-to-value limit. When a position's collateral no longer covers its debt, anyone can call `liquidate_obligation` to repay part of the debt in exchange for discounted collateral.
 
 ### How does interest accrue without looping over every account?
 
-Through a cumulative accumulation factor: `refresh_reserve` advances a per-reserve factor along a utilization-based rate curve, and each obligation stores the index value from its last interaction. The gap between the two is the interest owed, so no per-account accrual loop is needed. This is the same technique the most-used Solana lending protocols share.
+Through a cumulative accumulation factor: `refresh_reserve` advances a per-reserve factor along a utilization-based rate curve, and each obligation stores the index value from its last interaction. The gap between the two is the interest owed, so no per-account accrual loop is needed. This is the same technique the most-used Solana lending programs share.
 
-### How are prices fed into the protocol?
+### How are prices fed into the program?
 
-The admin `set_price` instruction handler stands in for an oracle feed in this example. `refresh_obligation` re-values collateral and debt at those prices before any borrow, withdraw, or liquidation is allowed, and stale reserves or prices are rejected.
+The admin `set_price` instruction handler stands in for an oracle feed in this example, writing a price and its confidence band. `refresh_obligation` re-values collateral and debt at those prices before any borrow, withdraw, or liquidation is allowed; stale reserves, stale prices, and prices whose confidence band is wider than the reserve's `max_confidence_bps` are rejected.
 
-### How is this lending program tested and verified?
+### How is this lending program tested?
 
-`anchor build` then `cargo test` runs LiteSVM integration tests covering interest accrual, borrowing at the LTV limit, liquidation after a price move, and the share-inflation guard. The money math also has [Kani](https://github.com/model-checking/kani) proofs in [`../kani-proofs/`](../kani-proofs/).
+`anchor build` then `cargo test` runs LiteSVM integration tests covering interest accrual, borrowing at the LTV limit, liquidation after a price move, and the share-inflation guard. The arithmetic also has [Kani](https://github.com/model-checking/kani) model checks in [`../kani-proofs/`](../kani-proofs/).

@@ -40,7 +40,7 @@ pub fn handle_refresh_obligation(context: &mut Context<RefreshObligation>) -> Re
         let liquidity = mul_div_floor(
             collateral.deposited_shares as u128,
             reserve.total_liquidity()?,
-            (reserve.share_mint_supply as u128).max(1),
+            reserve.total_shares()?,
         )?;
         let liquidity = u64::try_from(liquidity).map_err(|_| LendingError::MathOverflow)?;
         let value = market_value(
@@ -106,7 +106,8 @@ pub fn handle_refresh_obligation(context: &mut Context<RefreshObligation>) -> Re
 /// Read the next `[reserve, price_feed]` pair from `remaining_accounts`,
 /// checking it matches the obligation's stored reserve, belongs to the
 /// obligation's lending market, and that both the reserve (refreshed this
-/// slot) and the price (fresh) are usable.
+/// slot) and the price (fresh, and no wider a confidence band than the
+/// reserve allows) are usable.
 fn read_pair(
     accounts: &[AccountView],
     cursor: &mut usize,
@@ -163,7 +164,7 @@ fn read_pair(
         <PriceFeed as wincode::SchemaRead<anchor_lang::BorshConfig>>::get(&mut payload)
             .map_err(|_| LendingError::InvalidObligationAccount)?
     };
-    let price_scaled = price_feed.price_scaled(slot)?;
+    let price_scaled = price_feed.price_scaled(slot, reserve.config.max_confidence_bps)?;
 
     Ok((reserve, price_scaled))
 }

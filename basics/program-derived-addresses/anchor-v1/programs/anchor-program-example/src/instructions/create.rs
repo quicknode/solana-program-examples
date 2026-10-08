@@ -4,7 +4,7 @@ use anchor_lang::prelude::*;
 #[derive(Accounts)]
 pub struct CreatePageVisitsAccountConstraints<'info> {
     #[account(mut)]
-    payer: Signer<'info>,
+    pub payer: Signer<'info>,
 
     #[account(
         init,
@@ -16,8 +16,8 @@ pub struct CreatePageVisitsAccountConstraints<'info> {
         ],
         bump,
     )]
-    page_visits: Account<'info, PageVisits>,
-    system_program: Program<'info, System>,
+    pub page_visits: Account<'info, PageVisits>,
+    pub system_program: Program<'info, System>,
 }
 
 pub fn handle_create_page_visits(

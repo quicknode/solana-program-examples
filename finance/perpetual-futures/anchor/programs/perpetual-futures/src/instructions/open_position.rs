@@ -4,9 +4,11 @@ use anchor_spl::{
     token_interface::{transfer_checked, Mint, TokenAccount, TokenInterface, TransferChecked},
 };
 
-use crate::constants::{POOL_SEED, POSITION_SEED, VAULT_SEED};
+use crate::constants::{BASIS_POINTS_DENOMINATOR, POOL_SEED, POSITION_SEED, VAULT_SEED};
 use crate::errors::PerpError;
-use crate::instructions::shared::{basis_points_of, refresh_price_and_funding, scale_size};
+use crate::instructions::shared::{
+    basis_points_of, credit_fee, refresh_price_and_funding_within_band, scale_size,
+};
 use crate::state::{Pool, Position, Side};
 
 pub fn handle_open_position(
@@ -19,7 +21,7 @@ pub fn handle_open_position(
     require!(collateral_amount > 0 && size > 0, PerpError::ZeroAmount);
 
     let pool = &mut context.accounts.pool;
-    let price = refresh_price_and_funding(pool, &context.accounts.oracle_feed)?;
+    let price = refresh_price_and_funding_within_band(pool, &context.accounts.oracle_feed)?;
 
     // Slippage: a long must not fill above the caller's limit, a short not
     // below it. `0` opts out.
@@ -32,35 +34,32 @@ pub fn handle_open_position(
     }
 
     // The open fee is taken out of the posted collateral; the rest backs the
-    // position. Leverage and margin are measured against this net collateral.
+    // position, and the initial margin is measured against this net collateral.
     let open_fee = basis_points_of(size, pool.open_fee_bps)?;
     let net_collateral = collateral_amount
         .checked_sub(open_fee)
         .ok_or(PerpError::InsufficientCollateral)?;
     require!(net_collateral > 0, PerpError::ZeroAmount);
 
-    let max_notional = (net_collateral as u128)
-        .checked_mul(pool.max_leverage as u128)
+    // Initial margin: net collateral must be at least `initial_margin_bps` of
+    // the notional size, compared as `net_collateral * 10_000 >= size * bps`
+    // so nothing is rounded. `initialize_pool` keeps the initial margin above
+    // the maintenance margin, so a position that passes this check opens with
+    // equity above the liquidation threshold.
+    let collateral_scaled = (net_collateral as u128)
+        .checked_mul(BASIS_POINTS_DENOMINATOR as u128)
         .ok_or(PerpError::MathOverflow)?;
-    require!(size as u128 <= max_notional, PerpError::LeverageTooHigh);
-
-    // Refuse a position that would open already inside the liquidation band.
-    let maintenance = basis_points_of(size, pool.maintenance_margin_bps)?;
-    require!(net_collateral > maintenance, PerpError::PositionNotHealthy);
-
-    // Reserve liquidity to cover this position's maximum recoverable profit
-    // (its notional `size`). The reserve must be backed by liquidity-provider
-    // capital, which also caps total open interest at the pool's liquidity.
-    let new_reserved = pool
-        .reserved_liquidity
-        .checked_add(size)
+    let required_scaled = (size as u128)
+        .checked_mul(pool.initial_margin_bps as u128)
         .ok_or(PerpError::MathOverflow)?;
     require!(
-        new_reserved <= pool.liquidity,
-        PerpError::InsufficientLiquidity
+        collateral_scaled >= required_scaled,
+        PerpError::InitialMarginNotMet
     );
-    pool.reserved_liquidity = new_reserved;
 
+    // Nothing is set aside to back this position's profit, and the pool's
+    // liquidity does not limit its size: `close_position` pays each winner the
+    // fraction of their profit the pool can back (see `haircut_ratio`).
     let size_scaled = scale_size(size, price)?;
 
     // Effects: record the position and the pool's new aggregates before moving
@@ -74,16 +73,14 @@ pub fn handle_open_position(
     position.entry_price = price;
     position.size_scaled = size_scaled;
     position.entry_funding = pool.cumulative_funding;
+    position.entry_slot = Clock::get()?.slot;
     position.bump = context.bumps.position;
 
     pool.total_collateral = pool
         .total_collateral
         .checked_add(net_collateral)
         .ok_or(PerpError::MathOverflow)?;
-    pool.protocol_fees = pool
-        .protocol_fees
-        .checked_add(open_fee)
-        .ok_or(PerpError::MathOverflow)?;
+    credit_fee(pool, open_fee)?;
 
     match side {
         Side::Long => {

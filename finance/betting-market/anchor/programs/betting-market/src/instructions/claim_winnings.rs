@@ -4,7 +4,7 @@ use crate::state::Event;
 use anchor_spl::mint;
 use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
 
-use crate::{error::BettingError, Bet, EventStatus, User};
+use crate::{error::BettingError, Bet, EventStatus};
 
 use super::{transfer_tokens_from_vault, EventSigner};
 
@@ -16,9 +16,10 @@ pub struct ClaimWinningsAccountConstraints {
     #[account(mint::token_program = token_program)]
     pub token_mint: InterfaceAccount<Mint>,
 
-    // `mut` so the borrow released for the vault CPI below can be reacquired:
-    // v2 has no read-only reacquire, and the derive dereferences `event` again
-    // when it checks the constraints that name it.
+    // `mut` because the handler lowers `open_bets`, and because the borrow
+    // released for the vault CPI below has to be reacquired: v2 has no
+    // read-only reacquire, and the derive dereferences `event` again when it
+    // checks the constraints that name it.
     #[account(
         mut,
         seeds = [b"event", event.event_id.to_le_bytes()],
@@ -36,13 +37,6 @@ pub struct ClaimWinningsAccountConstraints {
         bump = bet.bump,
     )]
     pub bet: BorshAccount<Bet>,
-
-    #[account(
-        mut,
-        seeds = [b"user", bettor.address().as_ref()],
-        bump = user.bump,
-    )]
-    pub user: BorshAccount<User>,
 
     #[account(
         mut,
@@ -73,6 +67,15 @@ pub fn handle_claim_winnings(context: &mut Context<ClaimWinningsAccountConstrain
         BettingError::NothingToClaim
     );
 
+    // This Bet account closes when the handler returns, so the event's count
+    // of open bets drops by one before any tokens move.
+    context.accounts.event.open_bets = context
+        .accounts
+        .event
+        .open_bets
+        .checked_sub(1)
+        .ok_or(BettingError::MathOverflow)?;
+
     let stake = context.accounts.bet.amount;
     // Total staked on the winning outcome, and the losers' stakes after the fee.
     let winning_pool = context.accounts.event.winning_pool;
@@ -95,12 +98,6 @@ pub fn handle_claim_winnings(context: &mut Context<ClaimWinningsAccountConstrain
     let payout = stake
         .checked_add(winnings)
         .ok_or(BettingError::MathOverflow)?;
-
-    // The position is over, so drop the Bet from the bettor's index before the
-    // transfer (effects before interactions); the Bet account itself closes
-    // when the instruction finishes.
-    let bet_key = context.accounts.bet.address();
-    context.accounts.user.remove_bet(bet_key)?;
 
     // Gather the signing material before the borrow goes away.
     let event_signer = EventSigner::new(&context.accounts.event);

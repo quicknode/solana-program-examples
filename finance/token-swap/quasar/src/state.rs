@@ -25,8 +25,8 @@ pub struct Config {
 ///
 /// Holds the metadata that identifies a single pool: which `Config` it belongs
 /// to and which two mints it trades. The actual pool reserves live in separate
-/// token accounts (`pool_a`, `pool_b`) that this account owns - they are not
-/// stored here. This struct is the pool's *configuration*, not its state.
+/// token accounts (`pool_a`, `pool_b`) that this account owns; their balances
+/// are not stored here, only their addresses. This struct is the pool's *configuration*, not its state.
 ///
 /// This account is also the pool's signing authority: it owns both reserves,
 /// is the mint authority of the LP mint, and signs the transfers out of the
@@ -46,6 +46,15 @@ pub struct PoolConfig {
     pub mint_a: Address,
     /// Mint of token B.
     pub mint_b: Address,
+    /// The pool's token A reserve, recorded by `initialize_pool`. Every
+    /// handler that touches the reserves checks the account it is handed
+    /// against this address (`has_one(pool_a)`), because a token account's
+    /// mint and authority do not identify it: anyone can create another
+    /// token account of mint A, and a swap that read its reserves from one
+    /// would price the trade from a balance the caller chose.
+    pub pool_a: Address,
+    /// The pool's token B reserve, recorded and checked as `pool_a` is.
+    pub pool_b: Address,
     /// Admin's accumulated fee claim on token A, in base units. Sits
     /// physically in `pool_a` but excluded from the LP curve and from
     /// LP-withdrawable amounts. Swept by `claim_admin_fees`.

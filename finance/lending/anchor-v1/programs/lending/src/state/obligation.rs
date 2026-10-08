@@ -75,7 +75,11 @@ impl Obligation {
     /// Index of the collateral entry for `reserve`, creating an empty one if the
     /// obligation has room. Used when posting collateral.
     pub fn upsert_collateral(&mut self, reserve: Pubkey) -> Result<usize> {
-        if let Some(index) = self.deposits.iter().position(|entry| entry.reserve == reserve) {
+        if let Some(index) = self
+            .deposits
+            .iter()
+            .position(|entry| entry.reserve == reserve)
+        {
             return Ok(index);
         }
         require!(
@@ -93,7 +97,11 @@ impl Obligation {
     /// Index of the borrow entry for `reserve`, creating an empty one if the
     /// obligation has room. Used when borrowing.
     pub fn upsert_borrow(&mut self, reserve: Pubkey) -> Result<usize> {
-        if let Some(index) = self.borrows.iter().position(|entry| entry.reserve == reserve) {
+        if let Some(index) = self
+            .borrows
+            .iter()
+            .position(|entry| entry.reserve == reserve)
+        {
             return Ok(index);
         }
         require!(

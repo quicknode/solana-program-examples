@@ -49,3 +49,26 @@ pub fn transfer_from_vault(
         .transfer_checked(vault, mint, to, event, amount, decimals)
         .invoke_signed(&seeds)
 }
+
+/// Close the (already empty) vault, signed by the Event PDA, sending its rent
+/// to `destination`.
+#[inline(always)]
+pub fn close_vault(
+    token_program: &Program<TokenProgram>,
+    vault: &impl AsAccountView,
+    destination: &impl AsAccountView,
+    event: &impl AsAccountView,
+    event_id: u64,
+    event_bump: u8,
+) -> Result<(), ProgramError> {
+    let event_id_bytes = event_id.to_le_bytes();
+    let bump = [event_bump];
+    let seeds = [
+        Seed::from(EVENT_SEED),
+        Seed::from(event_id_bytes.as_ref()),
+        Seed::from(bump.as_ref()),
+    ];
+    token_program
+        .close_account(vault, destination, event)
+        .invoke_signed(&seeds)
+}

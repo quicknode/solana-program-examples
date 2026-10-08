@@ -1,8 +1,11 @@
 use anchor_lang::prelude::*;
 
-use crate::constants::{BPS_DENOMINATOR, FIXED_POINT_SCALE, RESERVE_SEED};
+use crate::constants::{
+    BORROW_RATE_CEILING_BPS, BPS_DENOMINATOR, FIXED_POINT_SCALE, MINIMUM_SHARES, RESERVE_SEED,
+    SECONDS_PER_YEAR,
+};
 use crate::errors::LendingError;
-use crate::math::{mul_div_ceil, mul_div_floor};
+use crate::math::mul_div_ceil;
 
 /// Signer seeds for a reserve PDA, which is the authority over its liquidity
 /// vault and the mint authority of its share token.
@@ -43,7 +46,7 @@ pub struct Reserve {
     pub liquidity_decimals: u8,
 
     /// Base units sitting in `liquidity_vault`, available to borrow or redeem.
-    /// This is the source of truth for the pool size, not the vault's token
+    /// The program reads the pool size from this field, not the vault's token
     /// balance, so a raw token donation cannot move the exchange rate.
     pub available_liquidity: u64,
 
@@ -52,7 +55,9 @@ pub struct Reserve {
     /// burning share tokens directly via the token program (outside this
     /// program) makes the real mint supply drift below this mirror; that drift
     /// only lowers what the burner could have redeemed, so the pool never pays
-    /// out more than it holds.
+    /// out more than it holds. The `MINIMUM_SHARES` withheld from the first
+    /// deposit are never minted and are not counted here; `total_shares` adds
+    /// them.
     pub share_mint_supply: u64,
 
     /// Total borrowed principal. The live debt is
@@ -63,13 +68,21 @@ pub struct Reserve {
     /// Starts at FIXED_POINT_SCALE (1.0) and only ever multiplies by factors >= 1.
     pub borrow_accumulation_factor: u128,
 
+    /// The slot of the last refresh. Handlers that read the reserve's value
+    /// require it to equal the current slot, so the refresh ran in this
+    /// transaction. This is a freshness check, not the accrual clock.
     pub last_update_slot: u64,
 
-    /// Liquidity owed to the market owner: the protocol's cut of accrued
+    /// The Clock's `unix_timestamp` at the last accrual. Interest accrues for
+    /// the seconds since, so it follows wall-clock time whatever the slot
+    /// length is.
+    pub last_accrual_timestamp: i64,
+
+    /// Liquidity owed to the market owner: the program's cut of accrued
     /// interest (`config.reserve_factor_bps`). It is carved out of
     /// `total_liquidity` so it never inflates the share exchange rate, and the
-    /// owner withdraws it with `collect_protocol_fees`.
-    pub accumulated_protocol_fees: u64,
+    /// owner withdraws it with `collect_program_fees`.
+    pub accumulated_program_fees: u64,
 
     pub config: ReserveConfig,
 
@@ -87,7 +100,7 @@ pub struct ReserveConfig {
     pub liquidation_bonus_bps: u16,
     /// Maximum fraction of a borrow that one liquidation may repay.
     pub close_factor_bps: u16,
-    /// Share of accrued borrow interest kept by the protocol (the rest lifts the
+    /// Share of accrued borrow interest kept by the program (the rest lifts the
     /// supplier exchange rate). This is how the market owner earns.
     pub reserve_factor_bps: u16,
     /// Utilization at which the borrow rate reaches `optimal_borrow_rate_bps`.
@@ -98,14 +111,11 @@ pub struct ReserveConfig {
     pub optimal_borrow_rate_bps: u16,
     /// Borrow APR at 100% utilization.
     pub max_borrow_rate_bps: u16,
-    /// Slots in a year: the divisor that turns the APR fields above into the
-    /// per-slot rate interest actually accrues at. This is the cluster's slot
-    /// time expressed as a count, so it belongs in configuration rather than in
-    /// a constant. The protocol lowers the slot time over time, and a value left
-    /// behind here charges borrowers at the wrong wall-clock rate while every
-    /// other number in this struct still reads correctly. The owner updates it
-    /// with `update_reserve_config` when the slot time changes.
-    pub slots_per_year: u64,
+    /// Widest confidence band, as a fraction of the price, this reserve's
+    /// price feed may report and still be valued against. A wider band is
+    /// refused (`OracleConfidenceTooWide`), so no borrow, withdrawal or
+    /// liquidation is priced off a quote the oracle itself is unsure of.
+    pub max_confidence_bps: u16,
 }
 
 impl ReserveConfig {
@@ -117,11 +127,16 @@ impl ReserveConfig {
                 && within_bps(self.liquidation_bonus_bps)
                 && within_bps(self.close_factor_bps)
                 && within_bps(self.reserve_factor_bps)
-                && within_bps(self.optimal_utilization_bps),
+                && within_bps(self.optimal_utilization_bps)
+                && within_bps(self.max_confidence_bps),
             LendingError::InvalidConfig
         );
         // A zero close factor would make every liquidation a no-op.
         require!(self.close_factor_bps > 0, LendingError::InvalidConfig);
+        // A zero confidence limit admits only a price whose band is zero, which
+        // an oracle reports for no traded asset, so the reserve could never be
+        // valued and every obligation holding it would be frozen.
+        require!(self.max_confidence_bps > 0, LendingError::InvalidConfig);
         // The kink must be strictly inside (0, 100%) so neither rate slope divides by zero.
         require!(
             self.optimal_utilization_bps > 0
@@ -133,19 +148,36 @@ impl ReserveConfig {
             self.loan_to_value_bps <= self.liquidation_threshold_bps,
             LendingError::InvalidConfig
         );
+        // A liquidation at the threshold must be able to pay its bonus out of
+        // the collateral: the debt is at most `threshold` of the collateral's
+        // value, and the liquidator takes that debt plus the bonus, so
+        // `threshold * (1 + bonus)` may not exceed 100%. Both fields are at
+        // most 10,000 here, so the product fits a u128 with room to spare.
+        require!(
+            (self.liquidation_threshold_bps as u128)
+                * (BPS_DENOMINATOR + self.liquidation_bonus_bps as u128)
+                <= BPS_DENOMINATOR * BPS_DENOMINATOR,
+            LendingError::LiquidationBonusUnpayable
+        );
+        // No point on the rate curve may exceed the ceiling, so an owner
+        // cannot reprice open loans to an arbitrary rate.
+        require!(
+            self.min_borrow_rate_bps <= BORROW_RATE_CEILING_BPS
+                && self.optimal_borrow_rate_bps <= BORROW_RATE_CEILING_BPS
+                && self.max_borrow_rate_bps <= BORROW_RATE_CEILING_BPS,
+            LendingError::BorrowRateAboveCeiling
+        );
         require!(
             self.min_borrow_rate_bps <= self.optimal_borrow_rate_bps
                 && self.optimal_borrow_rate_bps <= self.max_borrow_rate_bps,
             LendingError::InvalidConfig
         );
-        // Zero would divide by zero when converting the APR to a per-slot rate.
-        require!(self.slots_per_year > 0, LendingError::InvalidConfig);
         Ok(())
     }
 }
 
 impl Reserve {
-    /// Live total debt owed to the pool, rounded up (protocol-favourable).
+    /// Live total debt owed to the pool, rounded up (program-favourable).
     pub fn current_borrowed_amount(&self) -> Result<u64> {
         let amount = mul_div_ceil(
             self.borrowed_principal,
@@ -155,7 +187,7 @@ impl Reserve {
         u64::try_from(amount).map_err(|_| LendingError::MathOverflow.into())
     }
 
-    /// Available liquidity plus live debt, before the protocol's fee is removed.
+    /// Available liquidity plus live debt, before the program's fee is removed.
     /// Used for the utilization ratio, which is about how much of the pool is lent
     /// out, independent of who owns the interest.
     pub fn gross_liquidity(&self) -> Result<u128> {
@@ -165,26 +197,47 @@ impl Reserve {
     }
 
     /// The pool size the share token is a claim on: gross liquidity minus the
-    /// protocol fees owed to the owner, which belong to no supplier.
+    /// program fees owed to the owner, which belong to no supplier.
     pub fn total_liquidity(&self) -> Result<u128> {
         self.gross_liquidity()?
-            .checked_sub(self.accumulated_protocol_fees as u128)
+            .checked_sub(self.accumulated_program_fees as u128)
             .ok_or(LendingError::MathOverflow.into())
     }
 
-    /// Borrowed fraction of the pool, in basis points (0..=10_000).
+    /// The share count every conversion between shares and liquidity divides
+    /// by: the outstanding supply plus the `MINIMUM_SHARES` withheld from the
+    /// first deposit, which belong to nobody and so never redeem.
+    pub fn total_shares(&self) -> Result<u128> {
+        (self.share_mint_supply as u128)
+            .checked_add(MINIMUM_SHARES as u128)
+            .ok_or(LendingError::MathOverflow.into())
+    }
+
+    /// Borrowed fraction of the pool, in basis points (0..=10_000). Rounded
+    /// up, because its only use is the borrow rate, and a floored utilization
+    /// would charge the borrower a lower rate. It still never exceeds 10_000,
+    /// since the debt is part of the gross liquidity it is divided by.
     pub fn utilization_bps(&self) -> Result<u128> {
         let gross = self.gross_liquidity()?;
         if gross == 0 {
             return Ok(0);
         }
-        mul_div_floor(self.current_borrowed_amount()? as u128, BPS_DENOMINATOR, gross)
+        mul_div_ceil(
+            self.current_borrowed_amount()? as u128,
+            BPS_DENOMINATOR,
+            gross,
+        )
     }
 
-    /// Per-slot borrow rate (FIXED_POINT_SCALE-scaled) from the kinked curve:
+    /// Per-second borrow rate (FIXED_POINT_SCALE-scaled) from the kinked curve:
     /// linear from `min` to `optimal` up to the kink, then steeper from `optimal`
     /// to `max` between the kink and full utilization.
-    pub fn current_borrow_rate_per_slot(&self) -> Result<u128> {
+    ///
+    /// Both divisions round up: the interpolated APR and the per-second rate
+    /// derived from it. A rate is what the borrower is charged, so like the
+    /// debt it rounds against the borrower. The interpolation still never
+    /// leaves `[min, max]`, because the climbed amount is at most the range.
+    pub fn current_borrow_rate_per_second(&self) -> Result<u128> {
         let utilization = self.utilization_bps()?;
         let optimal_utilization = self.config.optimal_utilization_bps as u128;
 
@@ -192,7 +245,7 @@ impl Reserve {
             let rate_range = (self.config.optimal_borrow_rate_bps as u128)
                 .checked_sub(self.config.min_borrow_rate_bps as u128)
                 .ok_or(LendingError::MathOverflow)?;
-            let climbed = mul_div_floor(rate_range, utilization, optimal_utilization)?;
+            let climbed = mul_div_ceil(rate_range, utilization, optimal_utilization)?;
             (self.config.min_borrow_rate_bps as u128)
                 .checked_add(climbed)
                 .ok_or(LendingError::MathOverflow)?
@@ -206,60 +259,78 @@ impl Reserve {
             let utilization_range = BPS_DENOMINATOR
                 .checked_sub(optimal_utilization)
                 .ok_or(LendingError::MathOverflow)?;
-            let climbed = mul_div_floor(rate_range, utilization_above, utilization_range)?;
+            let climbed = mul_div_ceil(rate_range, utilization_above, utilization_range)?;
             (self.config.optimal_borrow_rate_bps as u128)
                 .checked_add(climbed)
                 .ok_or(LendingError::MathOverflow)?
         };
 
-        // apr_bps / (BPS_DENOMINATOR * slots_per_year), carried at FIXED_POINT_SCALE.
+        // apr_bps / (BPS_DENOMINATOR * SECONDS_PER_YEAR), carried at FIXED_POINT_SCALE.
         let per_year_denominator = BPS_DENOMINATOR
-            .checked_mul(self.config.slots_per_year as u128)
+            .checked_mul(SECONDS_PER_YEAR)
             .ok_or(LendingError::MathOverflow)?;
-        mul_div_floor(apr_bps, FIXED_POINT_SCALE, per_year_denominator)
+        mul_div_ceil(apr_bps, FIXED_POINT_SCALE, per_year_denominator)
     }
 
-    /// Advance the accumulation factor for the slots elapsed since the last refresh.
-    /// `new_factor = old_factor * (1 + rate_per_slot * elapsed_slots)`, a single
-    /// multiply per refresh that compounds across refreshes (Solend's approach).
-    pub fn accrue_interest(&mut self, current_slot: u64) -> Result<()> {
-        let elapsed = current_slot
-            .checked_sub(self.last_update_slot)
-            .ok_or(LendingError::MathOverflow)?;
+    /// Advance the accumulation factor for the seconds elapsed since the last
+    /// accrual, and record `current_slot` as the slot of this refresh.
+    /// `new_factor = old_factor * (1 + rate_per_second * elapsed_seconds)`, a
+    /// single multiply per refresh that compounds across refreshes (Solend's
+    /// approach, on the wall clock rather than the slot count). The product
+    /// rounds up: every debt is principal times this factor, so a floored
+    /// factor would understate every borrower's debt.
+    ///
+    /// The timestamp is written by each block's leader. The runtime rejects a
+    /// block whose time goes backwards, but a timestamp at or before the stored
+    /// one is still treated as no time elapsed, and the stored stamp is left
+    /// where it is, so no second is ever charged twice or skipped.
+    pub fn accrue_interest(&mut self, current_slot: u64, current_timestamp: i64) -> Result<()> {
+        let elapsed = if current_timestamp > self.last_accrual_timestamp {
+            current_timestamp
+                .checked_sub(self.last_accrual_timestamp)
+                .ok_or(LendingError::MathOverflow)? as u128
+        } else {
+            0
+        };
 
         if elapsed > 0 && self.borrowed_principal > 0 {
             let borrowed_before = self.current_borrowed_amount()?;
-            let rate_per_slot = self.current_borrow_rate_per_slot()?;
-            let accrued = rate_per_slot
-                .checked_mul(elapsed as u128)
+            let rate_per_second = self.current_borrow_rate_per_second()?;
+            let accrued = rate_per_second
+                .checked_mul(elapsed)
                 .ok_or(LendingError::MathOverflow)?;
             let growth_factor = FIXED_POINT_SCALE
                 .checked_add(accrued)
                 .ok_or(LendingError::MathOverflow)?;
-            self.borrow_accumulation_factor = mul_div_floor(
+            self.borrow_accumulation_factor = mul_div_ceil(
                 self.borrow_accumulation_factor,
                 growth_factor,
                 FIXED_POINT_SCALE,
             )?;
 
             // Borrowers owe the full interest (the factor grew for all of it); the
-            // protocol keeps `reserve_factor_bps` of the newly accrued interest,
-            // and the remainder lifts the supplier exchange rate. Flooring the fee
-            // rounds the owner's cut down, in the suppliers' favour.
+            // program keeps `reserve_factor_bps` of the newly accrued interest,
+            // and the remainder lifts the supplier exchange rate. The fee rounds
+            // up, in the owner's favour: a fee is the program's cut and so rounds
+            // against the user, and the suppliers take what is left, so the two
+            // parts sum to the interest and never exceed it.
             let interest = self
                 .current_borrowed_amount()?
                 .saturating_sub(borrowed_before);
-            let fee = mul_div_floor(
+            let fee = mul_div_ceil(
                 interest as u128,
                 self.config.reserve_factor_bps as u128,
                 BPS_DENOMINATOR,
             )?;
-            self.accumulated_protocol_fees = self
-                .accumulated_protocol_fees
+            self.accumulated_program_fees = self
+                .accumulated_program_fees
                 .checked_add(u64::try_from(fee).map_err(|_| LendingError::MathOverflow)?)
                 .ok_or(LendingError::MathOverflow)?;
         }
 
+        if elapsed > 0 {
+            self.last_accrual_timestamp = current_timestamp;
+        }
         self.last_update_slot = current_slot;
         Ok(())
     }

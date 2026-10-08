@@ -1,8 +1,8 @@
 # Solana Order Book Exchange (Anchor)
 
 > [!NOTE]
-> This is the **Anchor v1** copy of this example, kept for programs staying on the
-> Anchor v1 LTS line. Every `anchor` command on this page needs the v1 CLI:
+> This is the **Anchor v1** copy of this example, on Anchor 1.2.0, the current
+> stable Anchor release. Every `anchor` command on this page needs the v1 CLI:
 > `avm install 1.2.0 && avm use 1.2.0`. The Anchor v2 version of this example is in
 > [`../anchor`](../anchor/).
 
@@ -74,7 +74,7 @@ call `settle_funds` to pull their balances out.
   (base vault, quote vault, fee vault, order book), and the pubkey
   that can withdraw accumulated fees.
 - An **OrderBook** account - two stores: bids sorted highest-first,
-  asks sorted lowest-first, each holding up to 1024 entries. Rather
+  asks sorted lowest-first, each holding up to 512 orders. Rather
   than a plain list of orders, each side uses a depth-bounded tree (a
   critbit trie) for fast lookup - see [Ensuring fast order matching performance](#ensuring-fast-order-matching-performance).
   Each entry stores enough to drive matching (price, quantity,
@@ -213,9 +213,9 @@ Maria's wallet signs. Five accounts are created:
 
 - `Market` PDA: type Program data, seeds `["market", NVDAx_mint, USDC_mint]`, state after `fee_bps=25`, `tick_size=1`, `is_active=true`; vault addresses recorded
 - `OrderBook`: type Zero-copy slab (~180 KB), seeds Client-allocated (not a PDA), state after Both critbit trees empty
-- `base_vault`: type Token account (NVDAx), seeds Authority = Market PDA, state after 0 NVDAx
-- `quote_vault`: type Token account (USDC), seeds Authority = Market PDA, state after 0 USDC
-- `fee_vault`: type Token account (USDC), seeds Authority = Market PDA, state after 0 USDC
+- `base_vault`: type Token account (NVDAx), seeds `["base_vault", market]`, authority Market PDA, state after 0 NVDAx
+- `quote_vault`: type Token account (USDC), seeds `["quote_vault", market]`, authority Market PDA, state after 0 USDC
+- `fee_vault`: type Token account (USDC), seeds `["fee_vault", market]`, authority Market PDA, state after 0 USDC
 
 **No tokens move.** Maria pays the SOL rent for all five accounts.
 
@@ -372,23 +372,25 @@ Alice's remaining 2-NVDAx [bid](https://www.investopedia.com/terms/b/bid.asp) st
 ### State / data accounts
 
 - `Market`: PDA yes, seeds `["market", base_mint, quote_mint]`, authority program, holds fee rate, tick size, min order size, base/quote mint pubkeys, vault pubkeys, order book pubkey, `authority` wallet (allowed to withdraw fees)
-- `OrderBook`: PDA no (client-allocated keypair), seeds n/a: too large (~180 KB) for an `init`/CPI PDA, so created via `create_account` (which needs a signing key a PDA lacks); tied to its market via `has_one`; authority program, holds two critbit trees (bids highest-first, asks lowest-first, 1024 leaves each), `next_order_id`
+- `OrderBook`: PDA no (client-allocated at a public key the client generates), seeds n/a: too large (~180 KB) for an `init`/CPI PDA, so created via `create_account` (which needs a signing key a PDA lacks); tied to its market via `has_one`; authority program, holds two critbit trees (bids highest-first, asks lowest-first, 512 orders each: every order after the first adds a leaf and an inner node to a 1024-node tree), `next_order_id`
 - `Order`: PDA yes, seeds `["order", market, order_id.to_le_bytes()]`, authority program, holds owner, side, price, original_quantity, filled_quantity, status, timestamp
 - `MarketUser`: PDA yes, seeds `["market_user", market, owner]`, authority program, holds `unsettled_base`, `unsettled_quote`, `open_orders: Vec<u64>` (max 20)
 
 ### Token accounts (owned by the Token Program, authority = Market PDA)
 
-- `base_vault`: PDA no (regular token account), authority Market PDA, mint base, holds bids' locked base IS NOT STORED HERE - only asks' locked base sits here pre-match, plus base owed to bid-takers waiting for `settle_funds`
-- `quote_vault`: PDA no, authority Market PDA, mint quote, holds bids' locked quote pre-match, plus quote owed to ask-takers and bid-makers waiting for settlement
-- `fee_vault`: PDA no, authority Market PDA, mint quote, holds taker fees accumulated across all fills; drained by `withdraw_fees`
+- `base_vault`: PDA yes, seeds `["base_vault", market]`, authority Market PDA, mint base, holds bids' locked base IS NOT STORED HERE - only asks' locked base sits here pre-match, plus base owed to bid-takers waiting for `settle_funds`
+- `quote_vault`: PDA yes, seeds `["quote_vault", market]`, authority Market PDA, mint quote, holds bids' locked quote pre-match, plus quote owed to ask-takers and bid-makers waiting for settlement
+- `fee_vault`: PDA yes, seeds `["fee_vault", market]`, authority Market PDA, mint quote, holds taker fees accumulated across all fills; drained by `withdraw_fees`
 
-Note: the **token vaults are not PDAs**. They are regular token
-accounts created with `init` in `initialize_market.rs`; their
-*authority* is the Market PDA, so only the program can move funds out.
-Their addresses are computed by the caller (e.g. generated Keypairs in
-the tests) and then written to `market.base_vault` / `quote_vault` /
-`fee_vault` for the program to validate them on later calls via
-`has_one = fee_vault` etc.
+Note: the **token vaults are PDAs of the market**, created with `init`
+in `initialize_market.rs` at seeds `["base_vault", market]`,
+`["quote_vault", market]` and `["fee_vault", market]`. Their *authority*
+is the Market PDA, so only the program can move funds out. Any client can
+derive them from the market's address. The market also records each
+address, and later instruction handlers validate the vaults they are
+passed with `has_one = fee_vault` etc., which is what stops the fee
+vault being passed where the quote vault belongs. The order book is the
+one market account that is not a PDA.
 
 ### Leaf layout in the `OrderBook` slab
 
@@ -496,7 +498,7 @@ this directly (`settle_funds_after_match_pays_out_both_unsettled_balances`).
 
 ## 3. Instruction lifecycle walkthrough
 
-The program has six instruction handlers. The order a user encounters
+The program has ten instruction handlers. The order a user encounters
 them is:
 
 1. `initialize_market` (market operator - once)
@@ -504,7 +506,11 @@ them is:
 3. `place_order` (a user - as many times as they want)
 4. `cancel_order` (a user - to remove a resting order)
 5. `settle_funds` (a user - to collect winnings)
-6. `withdraw_fees` (market authority - to collect protocol revenue)
+6. `withdraw_fees` (market authority - to collect program revenue)
+7. `pause_market` (market authority - to stop new orders)
+8. `resume_market` (market authority - to take orders again)
+9. `close_order` (a user - to reclaim a finished order's rent)
+10. `close_market_user` (a user - to reclaim their account's rent when done)
 
 For each, the shape is: who signs, what accounts go in, what PDAs get
 created, what token flows happen, what state mutates, what checks are
@@ -543,7 +549,9 @@ pub fn initialize_market(
   `#[account(zero)]`)
 - `base_mint`, `quote_mint` (read-only)
 - `base_vault`, `quote_vault`, `fee_vault` (all **init** as
-  `TokenAccount`s, authority = `market`)
+  `TokenAccount`s at seeds `["base_vault", market]`,
+  `["quote_vault", market]` and `["fee_vault", market]`,
+  authority = `market`)
 - `token_program`, `system_program`
 
 **Checks:**
@@ -559,10 +567,10 @@ the supplied parameters plus all the derived fields
 (`market.authority`, the vault pubkeys, `is_active = true`,
 `next_order_id = 1`).
 
-The vaults are regular token accounts, *not* PDAs - their
-addresses are chosen by the caller (typically fresh keypairs) and
-captured on the market's state so later instruction handlers can
-validate them.
+The vaults are PDAs of the market, so the caller derives their
+addresses rather than choosing them. The market's state records them
+too, so later instruction handlers can validate the vaults they are
+passed.
 
 ### 3.2 `initialize_market_user`
 
@@ -623,19 +631,33 @@ remaining_accounts[2*i]     = maker_order_pda (Order account)
 remaining_accounts[2*i + 1] = maker_user_account_pda (MarketUser)
 ```
 
+If the order will rest on a side that is already full, the side's
+worst-priced order follows the maker pairs, so the program can evict it
+(see the checks before resting, below):
+
+```
+remaining_accounts[2*fills]     = evicted_order_pda (Order account)
+remaining_accounts[2*fills + 1] = evicted_user_account_pda (MarketUser)
+```
+
+When the worst order is the caller's own, pass only the `Order`
+account: the caller's `MarketUser` is already `market_user`, and the
+program credits the refund there. The Anchor v2 copy has the same rule,
+because Anchor v2 refuses the same writable account twice.
+
 If the caller doesn't pass any pairs, the order is treated as
 pure-maker: whatever part of it is allowed by the book state becomes a
 resting order.
 
 **Checks (top of handler):**
 
-- `market.is_active` → `MarketPaused`
+- `market.is_active` (false after `pause_market`) → `MarketPaused`
 - `price > 0` → `InvalidPrice`
 - `price % tick_size == 0` → `InvalidTickSize`
 - `quantity >= min_order_size` → `BelowMinOrderSize`
 - `open_orders.len() < 20` (mirror of the max_len on the struct) →
   `TooManyOpenOrders`
-- `remaining_accounts.len() % 2 == 0` → `MissingMakerAccounts`
+- `remaining_accounts.len() >= 2 * fills` → `MissingMakerAccounts`
 
 **Checks (per maker pair, during planning):**
 
@@ -654,8 +676,15 @@ resting order.
 
 **Checks (before resting remainder):**
 
-- the taker's side of the book isn't at its 1024-leaf capacity →
-  `OrderBookFull`
+- If the taker's side already holds its 512 orders, the remainder
+  must beat that side's worst price (a higher bid or a lower ask;
+  equal is not better, because the resting order was there first) →
+  `OrderBookFull`. When it does, the worst order is **evicted**:
+  - The caller passed that order, and its owner's `MarketUser` →
+    `MissingEvictedAccounts`
+  - The passed order is the worst order on this market, and the
+    `MarketUser` belongs to its owner on this market →
+    `EvictedAccountMismatch`
 - Integer math throughout: every multiplication uses
   `checked_mul`; every addition on balances uses `checked_add`;
   every product of two `u64` money values is computed in `u128`
@@ -733,6 +762,14 @@ On `order_book`:
 - Taker's remainder (if any) inserted into the correct side in price
   order
 
+On an evicted order (only when the taker's side was full), exactly as
+if its owner had called `cancel_order`:
+
+- Its owner's `unsettled_quote += price * remaining_quantity` (bid) or
+  `unsettled_base += remaining_quantity` (ask)
+- Removed from the book and from its owner's `open_orders`
+- `status = Cancelled`
+
 On the caller's new `order`:
 
 - All fields populated
@@ -806,12 +843,12 @@ mint checks on token accounts, PDA seeds).
 Both transfers are CPIs to the Token program, signed by the
 `Market` PDA using seeds `["market", base_mint, quote_mint, bump]`.
 
-Order of operations is checks-effects-interactions: the
-`unsettled_*` counters are zeroed *before* the transfer CPIs, then
-the transfers run. Solana CPIs aren't reentrant in the EVM sense,
-but zeroing state first means no future token-program extension or
-transfer hook can observe stale unsettled balances mid-CPI and
-double-withdraw.
+The handler zeroes the `unsettled_*` counters and the transfers pay
+out the amounts they held. If a transfer fails, the whole transaction
+reverts, zeroing included. Neither the token program nor a transfer
+hook can call back into this program during the transfer: Solana's
+runtime rejects a call into a program already on the call stack with
+`ReentrancyNotAllowed`, unless the program is calling itself directly.
 
 **State changes:**
 
@@ -853,6 +890,117 @@ zero as a side effect of the transfer).
 
 ---
 
+### 3.7 `pause_market` and `resume_market`
+
+**Who calls them:** the market authority, when the market must stop
+taking orders (a bad price feed on the operator's side, a mint whose
+issuer has halted transfers, a bug under investigation) and when it
+may take them again.
+
+**Signers:** `authority`.
+
+**Accounts in (both):**
+
+- `market` (mut, `has_one = authority`)
+- `authority` (signer)
+
+**Checks:**
+
+- `authority.key() == market.authority` → `NotMarketAuthority`
+
+**Token movements:** none.
+
+**State changes:** `pause_market` sets `market.is_active = false`;
+`resume_market` sets it back to `true`.
+
+A pause stops new orders and nothing else. `place_order` is the only
+handler that reads `is_active`, so while the market is paused:
+
+- `place_order` → `MarketPaused`
+- `cancel_order` still cancels a resting order and credits its locked
+  tokens to the owner's unsettled balance
+- `settle_funds` still pays unsettled balances out of the vaults
+- `withdraw_fees` still empties the fee vault to the authority
+
+Let a pause stop deposits and trades, never withdrawals: every token
+a trader locked or was owed before the pause can still leave the
+vaults during it. The tests
+`paused_market_still_cancels_and_settles_a_resting_order` and
+`paused_market_still_pays_out_fills_and_withdraws_fees` run each exit
+on a paused market.
+
+---
+
+### 3.8 `close_order`
+
+**Who calls it:** the order's owner, once the order is finished, to get
+the account's rent back.
+
+**Signers:** `owner`.
+
+**Accounts in:**
+
+- `market`
+- `order` (mut, PDA seeds-checked via stored bump, closed to `owner`)
+- `owner` (signer, mut - receives the rent)
+
+**Checks:**
+
+- `order.owner == owner.key()` → `Unauthorized`
+- `order.status ∈ {Filled, Cancelled}` → `OrderNotClosable`
+
+**Token movements:** none. The order's rent (lamports) goes back to
+`owner`.
+
+**State changes:** the `Order` account is closed.
+
+Why only a finished order: a `Filled` or `Cancelled` order has already
+left every other structure that referred to it. The matching engine
+removes a fully filled maker's leaf from the slab and its id from the
+maker's `open_orders` in the same `place_order` call, and a taker order
+that fills in full never enters the slab; `cancel_order` (and the
+eviction path of `place_order`) removes the leaf and the id and credits
+the unfilled remainder to the owner's unsettled balance before stamping
+the order `Cancelled`. So closing the account leaves no dangling
+reference and loses no credit. An `Open` or `PartiallyFilled` order
+still has a leaf on the book and a lock in the vault; cancel it first.
+
+### 3.9 `close_market_user`
+
+**Who calls it:** the account's owner, when they are done with the
+market, to get the account's rent back. They can call
+`initialize_market_user` again later.
+
+**Signers:** `owner`.
+
+**Accounts in:**
+
+- `market`
+- `market_user` (mut, PDA seeds-checked via stored bump, closed to
+  `owner`)
+- `owner` (signer, mut - receives the rent)
+
+**Checks:**
+
+- `market_user.owner == owner.key()` → `Unauthorized`
+- `market_user.open_orders` is empty, `unsettled_base == 0` and
+  `unsettled_quote == 0` → `MarketUserNotClosable`
+
+**Token movements:** none. The account's rent goes back to `owner`.
+
+**State changes:** the `MarketUser` account is closed.
+
+The two conditions are the two ways the program still needs the
+account. An open order will be filled or cancelled against it, and
+either path credits the unsettled balance on this account. An unsettled
+balance is money the vault owes the owner that only `settle_funds`,
+reading this account, can pay out; closing the account would forfeit
+it. The PDA's seeds come from the owner the account itself records, so
+a signer who is not that owner is refused with `Unauthorized` rather
+than a seeds mismatch.
+
+---
+
 ## 4. The matching engine - step by step
 
 This is the heart of the program. Everything in `place_order` after
@@ -879,13 +1027,21 @@ The specific data structure used here is a
 [critbit tree](https://cr.yp.to/critbit.html) (short for *critical-bit
 tree*) - a compact binary radix trie where each internal node splits on
 the first bit where two keys disagree. Unlike a self-balancing BST it
-never rotates or recolours nodes; its depth is instead bounded by the
-*bit width of the key* rather than the number of orders, so it stays
-shallow no matter what order keys arrive in. This implementation is ported from
+never rotates or recolours nodes, so it does not stay balanced: asks at
+prices 2, 4, 8, ... each set a new highest price bit and add a level to
+the path to the cheapest ask. Its depth is bounded instead by the *bit
+width of the key*: the price fills the top 64 of the key's 128 bits, so
+prices alone can lengthen a path by at most 64 levels, and no path can
+exceed 128. `doubling_prices_build_the_deepest_path_prices_allow` builds
+that 64-level path, and
+`deepest_path_adds_little_compute_to_insert_fill_and_cancel` checks that
+inserting, filling, and canceling at the bottom of it each cost less than
+15,000 compute units more than on a shallow book, and stay inside the
+default 200,000-unit instruction budget. This implementation is ported from
 [Openbook v2](https://github.com/openbook-dex/openbook-v2);
-[Phoenix](https://github.com/Ellipsis-Labs/phoenix-v1) uses the same
-approach. Both are production Solana CLOBs worth reading alongside this
-example.
+[Phoenix](https://github.com/Ellipsis-Labs/phoenix-v1) keeps its book in a
+red-black tree, the self-balancing alternative. Both are production Solana
+CLOBs worth reading alongside this example.
 
 ### 4.1 The plan
 
@@ -1280,9 +1436,11 @@ From [`errors.rs`](programs/order-book/src/errors.rs):
 
 - `InvalidPrice`: `place_order` called with `price == 0`
 - `OrderNotFound`: `cancel_order` failed to locate the order in the book (sanity path)
-- `MarketPaused`: `place_order` on a market with `is_active = false` (no handler flips this today, but the field is there)
-- `Unauthorized`: `cancel_order` by someone other than the order owner
-- `OrderBookFull`: `place_order` remainder would push the taker's side past 1024 leaves
+- `MarketPaused`: `place_order` on a market `pause_market` has paused and `resume_market` has not reopened
+- `Unauthorized`: `cancel_order` or `close_order` by someone other than the order owner, or `close_market_user` by someone other than the account's owner
+- `OrderBookFull`: `place_order` remainder would rest on a side holding 512 orders without beating that side's worst price
+- `MissingEvictedAccounts`: A full side, and the worst resting order (with its owner's MarketUser) was not passed after the maker pairs
+- `EvictedAccountMismatch`: The order passed for eviction is not the side's worst, or the MarketUser passed is not its owner's
 - `TooManyOpenOrders`: User already has 20 open orders on this market
 - `InvalidTickSize`: `tick_size == 0` at init, or `price % tick_size != 0` on place
 - `BelowMinOrderSize`: `min_order_size == 0` at init, or `quantity < min_order_size` on place
@@ -1291,9 +1449,11 @@ From [`errors.rs`](programs/order-book/src/errors.rs):
 - `InvalidFeeBasisPoints`: `fee_basis_points > 10_000` at init
 - `InvalidFeeVault`: `market.fee_vault` on the struct does not match the passed `fee_vault` (Anchor `has_one`)
 - `MakerAccountMismatch`: Wrong number of maker accounts, wrong order, wrong market, or caller walked the book out of order
-- `MissingMakerAccounts`: `remaining_accounts.len()` not a multiple of 2
+- `MissingMakerAccounts`: Fewer remaining accounts than two per planned fill
 - `MakerOwnerMismatch`: Maker Order and MarketUser have different owners
-- `NotMarketAuthority`: `withdraw_fees` called by wrong signer
+- `NotMarketAuthority`: `withdraw_fees`, `pause_market` or `resume_market` signed by anyone but `market.authority`
+- `OrderNotClosable`: `close_order` on an Open or PartiallyFilled order, which still rests on the book
+- `MarketUserNotClosable`: `close_market_user` while the account lists an open order or holds an unsettled balance
 
 ### 6.2 Guarded design choices worth knowing
 
@@ -1342,6 +1502,11 @@ From [`errors.rs`](programs/order-book/src/errors.rs):
 
 - **`withdraw_fees` no-ops on empty.** Likewise.
 
+- **A pause stops new orders only.** `pause_market` clears
+  `is_active`, and `place_order` is the only handler that reads it.
+  Cancels, settlements and fee withdrawals never check the flag, so
+  nobody's tokens are locked in a paused market.
+
 - **Boxed InterfaceAccounts.** Several handlers use `Box<
   InterfaceAccount<...>>` for mint/token accounts. That's a BPF
   stack-size workaround - each `InterfaceAccount` is ~1 KB on the
@@ -1354,10 +1519,19 @@ From [`errors.rs`](programs/order-book/src/errors.rs):
   `fee_vault` account without re-checking its mint or authority.
 
 - **Book capacity check after matching.** The taker's remainder
-  check happens at the end. A bid that clears enough asks to free
-  up 3 slots can then rest its own 1-slot remainder even on a
-  previously-full book - matching the "liquidity-positive" spirit
-  of an order book.
+  check happens at the end. Matching removes orders from the other
+  side only, so a full side stays full; the remainder then rests only
+  by evicting that side's worst order.
+
+- **A full side evicts rather than refuses.** Each side holds 512
+  orders. Without eviction, anyone willing to lock the minimum order
+  size and pay rent 512 times could fill a side with orders far from
+  the spread and hold it, and every new order on that side would be
+  refused for as long as they liked. With eviction, an order that
+  beats the side's worst price removes that order and takes its slot,
+  so the orders that go are the ones least likely to fill, and the
+  market stays open at the prices that trade. The evicted order is
+  refunded the same way a cancel is, through `unsettled_*`.
 
 ### 6.3 Things this example does *not* do
 
@@ -1382,8 +1556,6 @@ A production order book would add:
   ATA at match time.
 - **Minimum-tick for quantities.** `min_order_size` is a floor, but
   there's no "round lot" constraint.
-- **Pause / admin / upgrade.** `is_active` exists but no handler
-  flips it.
 - **Oracle-aware price bands.** A taker bid 10 000× higher than the
   best ask will happily sweep the book.
 
@@ -1421,30 +1593,48 @@ anchor test --skip-local-validator
 Expected:
 
 ```
-running 23 tests
+running 41 tests
 test authority_can_withdraw_fees_after_match ... ok
+test better_order_evicts_the_worst_and_rests ... ok
 test cancel_and_settle_bid_refunds_full_quote ... ok
 test cancel_ask_credits_unsettled_base ... ok
 test cancel_order_rejects_non_owner ... ok
-test initialize_market_user_tracks_market_and_owner ... ok
+test deepest_path_adds_little_compute_to_insert_fill_and_cancel ... ok
+test doubling_prices_build_the_deepest_path_prices_allow ... ok
+test evicted_maker_settles_their_refund ... ok
+test eviction_rejects_missing_or_wrong_evicted_accounts ... ok
+test fee_rounds_up_when_gross_is_not_a_bps_multiple ... ok
 test fee_vault_receives_exactly_bps_of_taker_gross ... ok
+test full_side_cancel_of_the_last_scanned_order_fits_the_default_budget ... ok
+test full_side_refuses_an_order_no_better_than_its_worst ... ok
 test initialize_market_rejects_oversized_fee ... ok
+test initialize_market_rejects_zero_base_lot_size ... ok
+test initialize_market_rejects_zero_quote_lot_size ... ok
 test initialize_market_rejects_zero_tick_size ... ok
 test initialize_market_sets_market_and_order_book ... ok
-test place_ask_locks_base_in_vault ... ok
-test place_bid_locks_quote_in_vault ... ok
+test initialize_market_user_tracks_market_and_owner ... ok
+test only_the_market_authority_can_pause_or_resume ... ok
+test pause_market_refuses_new_orders_with_market_paused ... ok
+test paused_market_still_cancels_and_settles_a_resting_order ... ok
+test paused_market_still_pays_out_fills_and_withdraws_fees ... ok
+test place_ask_moves_base_into_vault ... ok
+test place_bid_moves_quote_into_vault ... ok
 test place_order_rejects_below_min_order_size ... ok
 test place_order_rejects_unaligned_tick ... ok
 test place_order_rejects_zero_price ... ok
 test resting_orders_at_same_price_fill_by_time_priority ... ok
+test resume_market_accepts_orders_again ... ok
 test settle_funds_after_match_pays_out_both_unsettled_balances ... ok
 test settle_funds_moves_unsettled_base_to_user ... ok
+test settle_funds_rejects_fee_vault_substituted_for_quote_vault ... ok
 test taker_ask_fully_crosses_best_bid ... ok
 test taker_bid_fully_crosses_best_ask ... ok
 test taker_bid_gets_price_improvement_from_resting_ask ... ok
 test taker_crosses_multiple_resting_orders_best_price_first ... ok
 test taker_partially_filled_remainder_rests_on_book ... ok
 test taker_partially_fills_resting_order_rest_stays_on_book ... ok
+test trader_can_evict_their_own_worst_order ... ok
+test withdraw_fees_rejects_a_non_authority_signer ... ok
 ```
 
 ### What each test exercises
@@ -1453,18 +1643,22 @@ test taker_partially_fills_resting_order_rest_stays_on_book ... ok
 
 - `initialize_market_sets_market_and_order_book`: PDA creation, vault setup, initial field values
 - `initialize_market_user_tracks_market_and_owner`: Per-user PDA derivation and zero-initialised counters
-- `place_bid_locks_quote_in_vault`: Fund lock on bid
-- `place_ask_locks_base_in_vault`: Fund lock on ask
+- `place_bid_moves_quote_into_vault`: Fund lock on bid
+- `place_ask_moves_base_into_vault`: Fund lock on ask
 - `settle_funds_moves_unsettled_base_to_user`: Vault → user ATA transfer via market PDA signer
 
-**Validation:**
+**Validation (each asserts the error code the refusal carries):**
 
-- `place_order_rejects_zero_price`: `price > 0`
-- `place_order_rejects_unaligned_tick`: `price % tick_size == 0`
-- `place_order_rejects_below_min_order_size`: `quantity >= min_order_size`
-- `cancel_order_rejects_non_owner`: Ownership check on cancel
-- `initialize_market_rejects_zero_tick_size`: Init constraint
-- `initialize_market_rejects_oversized_fee`: `fee_bps <= 10_000`
+- `place_order_rejects_zero_price`: `price > 0`, else `InvalidPrice`
+- `place_order_rejects_unaligned_tick`: `price % tick_size == 0`, else `InvalidTickSize`
+- `place_order_rejects_below_min_order_size`: `quantity >= min_order_size`, else `BelowMinOrderSize`
+- `cancel_order_rejects_non_owner`: A signer who does not own the order gets `Unauthorized`
+- `settle_funds_rejects_fee_vault_substituted_for_quote_vault`: The fee vault passed as `quote_vault` gets `InvalidQuoteVault`
+- `initialize_market_rejects_zero_tick_size`: `InvalidTickSize`
+- `initialize_market_rejects_zero_base_lot_size`: `InvalidBaseLotSize`
+- `initialize_market_rejects_zero_quote_lot_size`: `InvalidQuoteLotSize`
+- `initialize_market_rejects_oversized_fee`: `fee_bps <= 10_000`, else `InvalidFeeBasisPoints`
+- `withdraw_fees_rejects_a_non_authority_signer`: A trader signing `withdraw_fees` after a fill gets `NotMarketAuthority`, and the fee stays in the vault
 
 **Cancel + settle flow:**
 
@@ -1483,6 +1677,40 @@ test taker_partially_fills_resting_order_rest_stays_on_book ... ok
 - `fee_vault_receives_exactly_bps_of_taker_gross`: Fee math in a single batched CPI
 - `authority_can_withdraw_fees_after_match`: Fee drain after fills, authority-gated
 - `settle_funds_after_match_pays_out_both_unsettled_balances`: Both legs paid in one call
+
+**Tree depth:**
+
+- `doubling_prices_build_the_deepest_path_prices_allow`: Asks at 63 doubling prices plus two at price 1 make a 64-level path to the best ask
+- `deepest_path_adds_little_compute_to_insert_fill_and_cancel`: Insert, fill, and cancel at the bottom of that path stay within 15,000 compute units of a shallow book
+
+**Eviction (a full side, 512 bids):**
+
+- `full_side_refuses_an_order_no_better_than_its_worst`: A worse or equal bid gets `OrderBookFull`
+- `better_order_evicts_the_worst_and_rests`: The worst bid is Cancelled and refunded, the new bid rests, the side stays full
+- `evicted_maker_settles_their_refund`: The evicted owner's `settle_funds` pays out the refund
+- `eviction_rejects_missing_or_wrong_evicted_accounts`: No evicted order, a non-worst order, or the wrong owner's `MarketUser`
+- `trader_can_evict_their_own_worst_order`: Only the `Order` account is passed, and the caller's own `MarketUser` is credited
+- `full_side_cancel_of_the_last_scanned_order_fits_the_default_budget`: Canceling the bid found last among 512 stays inside the default 200,000-unit budget
+
+**Pause and resume:**
+
+- `pause_market_refuses_new_orders_with_market_paused`: An ask on a paused market gets `MarketPaused` and locks nothing
+- `paused_market_still_cancels_and_settles_a_resting_order`: An ask placed before the pause is cancelled and settled during it
+- `paused_market_still_pays_out_fills_and_withdraws_fees`: A maker settles a fill, and the authority withdraws the fee, during a pause
+- `resume_market_accepts_orders_again`: The ask refused during the pause rests after `resume_market`
+- `only_the_market_authority_can_pause_or_resume`: A trader signing either handler gets `NotMarketAuthority`, and the market's state does not change
+
+**Closing accounts:**
+
+- `close_order_returns_a_cancelled_orders_rent`: A cancelled ask's account is gone and the seller's balance rose by its rent (less the transaction fee); the unsettled credit and the vault are untouched
+- `close_order_returns_a_filled_orders_rent`: After a full cross, the maker's ask and the taker's bid each close to their own owner; the fills' credits stay on the `MarketUser` accounts
+- `close_order_refuses_a_resting_order`: An open ask gets `OrderNotClosable` and stays
+- `close_order_refuses_a_partially_filled_order`: A partially filled ask gets `OrderNotClosable` and stays
+- `close_order_refuses_a_non_owner`: The buyer signing for the seller's cancelled ask gets `Unauthorized`
+- `close_market_user_returns_rent_when_nothing_is_open_or_owed`: After place, cancel and settle, the account closes, the rent comes back, and `initialize_market_user` creates it again
+- `close_market_user_refuses_an_open_order`: An account listing a resting ask gets `MarketUserNotClosable`
+- `close_market_user_refuses_an_unsettled_balance`: An account owed a cancelled ask's refund gets `MarketUserNotClosable`
+- `close_market_user_refuses_a_non_owner`: The buyer signing for the seller's account gets `Unauthorized`
 
 ### CI note
 
@@ -1570,7 +1798,7 @@ Openbook v2 (`src/state/slab/`).
   in CU cost regardless of the taker's depth.
 
 - **Market-makers as CPI users.** Formalise the `remaining_accounts`
-  protocol so a market-making program can call `place_order` on
+  layout so a market-making program can call `place_order` on
   behalf of its users, pre-computing the crossings offchain and
   rewriting the book in one transaction.
 
@@ -1599,7 +1827,13 @@ finance/order-book/anchor/
     │   │   ├── place_order.rs        (matching engine lives here)
     │   │   ├── cancel_order.rs
     │   │   ├── settle_funds.rs
-    │   │   └── withdraw_fees.rs
+    │   │   ├── close_order.rs
+    │   │   ├── close_market_user.rs
+    │   │   └── admin/                (market-authority handlers)
+    │   │       ├── mod.rs
+    │   │       ├── withdraw_fees.rs
+    │   │       ├── pause_market.rs
+    │   │       └── resume_market.rs
     │   └── state/
     │       ├── mod.rs
     │       ├── market.rs

@@ -1,5 +1,6 @@
 use {
     anchor_lang::{
+        error::ErrorCode,
         solana_program::{instruction::Instruction, pubkey::Pubkey, system_program},
         InstructionData, ToAccountMetas,
     },
@@ -7,7 +8,8 @@ use {
     solana_keypair::Keypair,
     solana_kite::{
         create_associated_token_account, create_token_mint, create_wallet,
-        get_token_account_balance, mint_tokens_to_token_account, send_transaction_from_instructions,
+        get_token_account_balance, mint_tokens_to_token_account,
+        send_transaction_from_instructions,
     },
     solana_signer::Signer,
 };
@@ -23,6 +25,22 @@ fn ata_program_id() -> Pubkey {
         .parse()
         .unwrap()
 }
+
+// The story the tests tell: Alice offers 250 USDC (token A) and wants 1 TSLAx
+// (token B) for it, and Bob takes the offer. USDC has 6 decimals and TSLAx
+// has 8, so every amount below is in those minor units.
+const USDC_DECIMALS: u8 = 6;
+const TSLAX_DECIMALS: u8 = 8;
+const ONE_USDC: u64 = 10u64.pow(USDC_DECIMALS as u32);
+const ONE_TSLAX: u64 = 10u64.pow(TSLAX_DECIMALS as u32);
+const USDC_OFFERED: u64 = 250 * ONE_USDC;
+const TSLAX_WANTED: u64 = ONE_TSLAX;
+// What each side holds before the offer: both start with the standard
+// wallet of 1 SOL and 1,000 USDC, and Bob also holds 1 TSLAx.
+const ONE_SOL: u64 = 1_000_000_000;
+const ALICE_USDC: u64 = 1_000 * ONE_USDC;
+const BOB_USDC: u64 = 1_000 * ONE_USDC;
+const BOB_TSLAX: u64 = ONE_TSLAX;
 
 fn lamports(svm: &LiteSVM, address: &Pubkey) -> u64 {
     svm.get_account(address).map(|a| a.lamports).unwrap_or(0)
@@ -64,31 +82,28 @@ struct EscrowSetup {
 fn full_setup() -> EscrowSetup {
     let (mut svm, program_id, payer) = setup();
 
-    let alice = create_wallet(&mut svm, 10_000_000_000).unwrap();
-    let bob = create_wallet(&mut svm, 10_000_000_000).unwrap();
+    let alice = create_wallet(&mut svm, ONE_SOL).unwrap();
+    let bob = create_wallet(&mut svm, ONE_SOL).unwrap();
 
-    let decimals: u8 = 6;
-    let alice_amount: u64 = 1_000_000_000;
-    let bob_amount: u64 = 1_000_000_000;
-
-    // Create mints (payer is mint authority)
-    let mint_a = create_token_mint(&mut svm, &payer, decimals, None).unwrap();
-    let mint_b = create_token_mint(&mut svm, &payer, decimals, None).unwrap();
+    // Token A is USDC and token B is TSLAx; the payer is the mint authority
+    // of both.
+    let mint_a = create_token_mint(&mut svm, &payer, USDC_DECIMALS, None).unwrap();
+    let mint_b = create_token_mint(&mut svm, &payer, TSLAX_DECIMALS, None).unwrap();
 
     // Create ATAs
     let alice_ata_a =
         create_associated_token_account(&mut svm, &alice.pubkey(), &mint_a, &payer).unwrap();
     let alice_ata_b =
         create_associated_token_account(&mut svm, &alice.pubkey(), &mint_b, &payer).unwrap();
+    let bob_ata_a =
+        create_associated_token_account(&mut svm, &bob.pubkey(), &mint_a, &payer).unwrap();
     let bob_ata_b =
         create_associated_token_account(&mut svm, &bob.pubkey(), &mint_b, &payer).unwrap();
 
-    // bob_ata_a is derived but not pre-created (program uses init_if_needed)
-    let bob_ata_a = derive_ata(&bob.pubkey(), &mint_a);
-
-    // Mint tokens: Alice gets token A, Bob gets token B
-    mint_tokens_to_token_account(&mut svm, &mint_a, &alice_ata_a, alice_amount, &payer).unwrap();
-    mint_tokens_to_token_account(&mut svm, &mint_b, &bob_ata_b, bob_amount, &payer).unwrap();
+    // Both hold 1,000 USDC, and Bob holds the TSLAx.
+    mint_tokens_to_token_account(&mut svm, &mint_a, &alice_ata_a, ALICE_USDC, &payer).unwrap();
+    mint_tokens_to_token_account(&mut svm, &mint_a, &bob_ata_a, BOB_USDC, &payer).unwrap();
+    mint_tokens_to_token_account(&mut svm, &mint_b, &bob_ata_b, BOB_TSLAX, &payer).unwrap();
 
     EscrowSetup {
         svm,
@@ -110,8 +125,8 @@ fn test_make_offer() {
     let mut es = full_setup();
 
     let offer_id: u64 = 1;
-    let token_a_offered_amount: u64 = 1_000_000;
-    let token_b_wanted_amount: u64 = 1_000_000;
+    let token_a_offered_amount: u64 = USDC_OFFERED;
+    let token_b_wanted_amount: u64 = TSLAX_WANTED;
 
     // Derive offer PDA
     let (offer_pda, _bump) = Pubkey::find_program_address(
@@ -177,8 +192,8 @@ fn test_take_offer() {
     let mut es = full_setup();
 
     let offer_id: u64 = 2;
-    let token_a_offered_amount: u64 = 1_000_000;
-    let token_b_wanted_amount: u64 = 1_000_000;
+    let token_a_offered_amount: u64 = USDC_OFFERED;
+    let token_b_wanted_amount: u64 = TSLAX_WANTED;
 
     // Derive offer PDA
     let (offer_pda, _bump) = Pubkey::find_program_address(
@@ -240,7 +255,11 @@ fn test_take_offer() {
     // Step 2: Bob takes the offer
     let take_offer_ix = Instruction::new_with_bytes(
         es.program_id,
-        &escrow::instruction::TakeOffer {}.data(),
+        &escrow::instruction::TakeOffer {
+            minimum_token_a_out: token_a_offered_amount,
+            maximum_token_b_in: token_b_wanted_amount,
+        }
+        .data(),
         escrow::accounts::TakeOfferAccountConstraints {
             taker: es.bob.pubkey(),
             maker: es.alice.pubkey(),
@@ -266,16 +285,25 @@ fn test_take_offer() {
     )
     .unwrap();
 
-    // Verify Bob received token A from vault
+    // Verify Bob received the 250 USDC from the vault, ending at 1,250 USDC,
+    // and that his TSLAx is gone.
     assert_eq!(
         get_token_account_balance(&es.svm, &es.bob_ata_a).unwrap(),
-        token_a_offered_amount
+        BOB_USDC + token_a_offered_amount
+    );
+    assert_eq!(
+        get_token_account_balance(&es.svm, &es.bob_ata_b).unwrap(),
+        BOB_TSLAX - token_b_wanted_amount
     );
 
-    // Verify Alice received token B from Bob
+    // Verify Alice received the 1 TSLAx from Bob and is down the 250 USDC.
     assert_eq!(
         get_token_account_balance(&es.svm, &es.alice_ata_b).unwrap(),
         token_b_wanted_amount
+    );
+    assert_eq!(
+        get_token_account_balance(&es.svm, &es.alice_ata_a).unwrap(),
+        ALICE_USDC - token_a_offered_amount
     );
 
     // Verify vault is closed
@@ -291,17 +319,17 @@ fn test_take_offer() {
     );
 
     // Rent destinations: Alice (the maker) recovers the offer + vault rent in
-    // full. Bob (the taker) only paid the rent of his own new token-A ATA.
+    // full. Bob (the taker) already had his USDC account, so the take costs
+    // him no rent at all.
     assert_eq!(
         lamports(&es.svm, &es.alice.pubkey()),
         alice_lamports_before_make,
         "maker must recover the offer and vault rent after take_offer"
     );
-    let bob_ata_a_rent = lamports(&es.svm, &es.bob_ata_a);
     assert_eq!(
         lamports(&es.svm, &es.bob.pubkey()),
-        bob_lamports_before_take - bob_ata_a_rent,
-        "taker must only pay the rent of their own token-A ATA"
+        bob_lamports_before_take,
+        "taker must pay no rent when their USDC (token A) ATA already exists"
     );
 }
 
@@ -310,8 +338,8 @@ fn test_cancel_offer() {
     let mut es = full_setup();
 
     let offer_id: u64 = 3;
-    let token_a_offered_amount: u64 = 500_000;
-    let token_b_wanted_amount: u64 = 1_000_000;
+    let token_a_offered_amount: u64 = USDC_OFFERED;
+    let token_b_wanted_amount: u64 = TSLAX_WANTED;
 
     let (offer_pda, _bump) = Pubkey::find_program_address(
         &[
@@ -414,8 +442,8 @@ fn test_cancel_offer_rejects_non_maker() {
     let mut es = full_setup();
 
     let offer_id: u64 = 4;
-    let token_a_offered_amount: u64 = 500_000;
-    let token_b_wanted_amount: u64 = 1_000_000;
+    let token_a_offered_amount: u64 = USDC_OFFERED;
+    let token_b_wanted_amount: u64 = TSLAX_WANTED;
 
     let (offer_pda, _bump) = Pubkey::find_program_address(
         &[
@@ -459,17 +487,15 @@ fn test_cancel_offer_rejects_non_maker() {
     .unwrap();
 
     // Bob tries to cancel Alice's offer - the has_one = maker / signer + seeds
-    // constraints should reject this.
-    let bob_ata_a =
-        create_associated_token_account(&mut es.svm, &es.bob.pubkey(), &es.mint_a, &es.payer)
-            .unwrap();
+    // constraints should reject this. He names his own USDC account as the
+    // refund destination.
     let cancel_offer_ix = Instruction::new_with_bytes(
         es.program_id,
         &escrow::instruction::CancelOffer {}.data(),
         escrow::accounts::CancelOfferAccountConstraints {
             maker: es.bob.pubkey(),
             token_mint_a: es.mint_a,
-            maker_token_account_a: bob_ata_a,
+            maker_token_account_a: es.bob_ata_a,
             offer: offer_pda,
             vault,
             associated_token_program: ata_program_id(),
@@ -484,8 +510,316 @@ fn test_cancel_offer_rejects_non_maker() {
         &[&es.payer, &es.bob],
         &es.payer.pubkey(),
     );
+    // Bob passes himself as the maker, so the offer's seeds no longer derive
+    // its address: Anchor's seeds check fails before `has_one = maker` runs.
+    assert_fails_with_anchor_error(result, ErrorCode::ConstraintSeeds);
+}
+
+// Anchor numbers a program's errors from 6000 in declaration order, and a
+// failed transaction reports the number as `Custom(n)`. Matching it shows the
+// transaction failed for the check under test, not for some unrelated reason.
+fn assert_fails_with(
+    result: Result<(), solana_kite::SolanaKiteError>,
+    expected: escrow::error::EscrowError,
+) {
+    assert_fails_with_code(result, 6000 + expected as u32);
+}
+
+// The same check for one of Anchor's own constraint errors, whose numbers are
+// the `ErrorCode` discriminants.
+fn assert_fails_with_anchor_error(
+    result: Result<(), solana_kite::SolanaKiteError>,
+    expected: ErrorCode,
+) {
+    assert_fails_with_code(result, expected as u32);
+}
+
+fn assert_fails_with_code(result: Result<(), solana_kite::SolanaKiteError>, code: u32) {
+    let error = format!("{:?}", result.expect_err("transaction should have failed"));
     assert!(
-        result.is_err(),
-        "Bob must not be able to cancel Alice's offer"
+        error.contains(&format!("Custom({code})")),
+        "expected error {code}, got: {error}"
     );
+}
+
+// Alice sends `make_offer` for the given amounts and wanted token, and the
+// result is returned rather than unwrapped so a test can check the refusal.
+fn try_make_offer(
+    es: &mut EscrowSetup,
+    offer_id: u64,
+    token_a_offered_amount: u64,
+    token_b_wanted_amount: u64,
+    token_mint_b: Pubkey,
+    maker_token_account_b: Pubkey,
+) -> Result<(), solana_kite::SolanaKiteError> {
+    let (offer_pda, _bump) = Pubkey::find_program_address(
+        &[
+            b"offer",
+            es.alice.pubkey().as_ref(),
+            &offer_id.to_le_bytes(),
+        ],
+        &es.program_id,
+    );
+    let vault = derive_ata(&offer_pda, &es.mint_a);
+    let make_offer_ix = Instruction::new_with_bytes(
+        es.program_id,
+        &escrow::instruction::MakeOffer {
+            id: offer_id,
+            token_a_offered_amount,
+            token_b_wanted_amount,
+        }
+        .data(),
+        escrow::accounts::MakeOfferAccountConstraints {
+            maker: es.alice.pubkey(),
+            token_mint_a: es.mint_a,
+            token_mint_b,
+            maker_token_account_a: es.alice_ata_a,
+            maker_token_account_b,
+            offer: offer_pda,
+            vault,
+            associated_token_program: ata_program_id(),
+            token_program: token_program_id(),
+            system_program: system_program::id(),
+        }
+        .to_account_metas(None),
+    );
+    send_transaction_from_instructions(
+        &mut es.svm,
+        vec![make_offer_ix],
+        &[&es.payer, &es.alice],
+        &es.payer.pubkey(),
+    )
+}
+
+#[test]
+fn test_make_offer_rejects_zero_offered_amount() {
+    let mut es = full_setup();
+    let (mint_b, alice_ata_b) = (es.mint_b, es.alice_ata_b);
+    let alice_balance_before = get_token_account_balance(&es.svm, &es.alice_ata_a).unwrap();
+
+    let result = try_make_offer(&mut es, 5, 0, TSLAX_WANTED, mint_b, alice_ata_b);
+
+    assert_fails_with(result, escrow::error::EscrowError::ZeroAmount);
+    assert_eq!(
+        get_token_account_balance(&es.svm, &es.alice_ata_a).unwrap(),
+        alice_balance_before
+    );
+}
+
+#[test]
+fn test_make_offer_rejects_zero_wanted_amount() {
+    let mut es = full_setup();
+    let (mint_b, alice_ata_b) = (es.mint_b, es.alice_ata_b);
+    let alice_balance_before = get_token_account_balance(&es.svm, &es.alice_ata_a).unwrap();
+
+    let result = try_make_offer(&mut es, 6, USDC_OFFERED, 0, mint_b, alice_ata_b);
+
+    assert_fails_with(result, escrow::error::EscrowError::ZeroAmount);
+    assert_eq!(
+        get_token_account_balance(&es.svm, &es.alice_ata_a).unwrap(),
+        alice_balance_before
+    );
+}
+
+#[test]
+fn test_make_offer_rejects_same_mint() {
+    let mut es = full_setup();
+    // Alice asks for token A in return for token A, so her token-B account is
+    // her token-A account.
+    let (mint_a, alice_ata_a) = (es.mint_a, es.alice_ata_a);
+    let alice_balance_before = get_token_account_balance(&es.svm, &alice_ata_a).unwrap();
+
+    let result = try_make_offer(
+        &mut es,
+        7,
+        USDC_OFFERED,
+        2 * USDC_OFFERED,
+        mint_a,
+        alice_ata_a,
+    );
+
+    // Anchor refuses the same mutable account twice before the handler runs.
+    assert_fails_with_anchor_error(result, ErrorCode::ConstraintDuplicateMutableAccount);
+    assert_eq!(
+        get_token_account_balance(&es.svm, &alice_ata_a).unwrap(),
+        alice_balance_before
+    );
+}
+
+// Bob's `take_offer` for Alice's offer `offer_id`, signed for the given terms.
+fn take_offer_instruction(
+    es: &EscrowSetup,
+    offer_id: u64,
+    minimum_token_a_out: u64,
+    maximum_token_b_in: u64,
+) -> Instruction {
+    let (offer_pda, _bump) = Pubkey::find_program_address(
+        &[
+            b"offer",
+            es.alice.pubkey().as_ref(),
+            &offer_id.to_le_bytes(),
+        ],
+        &es.program_id,
+    );
+    let vault = derive_ata(&offer_pda, &es.mint_a);
+    Instruction::new_with_bytes(
+        es.program_id,
+        &escrow::instruction::TakeOffer {
+            minimum_token_a_out,
+            maximum_token_b_in,
+        }
+        .data(),
+        escrow::accounts::TakeOfferAccountConstraints {
+            taker: es.bob.pubkey(),
+            maker: es.alice.pubkey(),
+            token_mint_a: es.mint_a,
+            token_mint_b: es.mint_b,
+            taker_token_account_a: es.bob_ata_a,
+            taker_token_account_b: es.bob_ata_b,
+            maker_token_account_b: es.alice_ata_b,
+            offer: offer_pda,
+            vault,
+            associated_token_program: ata_program_id(),
+            token_program: token_program_id(),
+            system_program: system_program::id(),
+        }
+        .to_account_metas(None),
+    )
+}
+
+// Alice's `cancel_offer` for her offer `offer_id`, sent and unwrapped.
+fn cancel_offer(es: &mut EscrowSetup, offer_id: u64) {
+    let (offer_pda, _bump) = Pubkey::find_program_address(
+        &[
+            b"offer",
+            es.alice.pubkey().as_ref(),
+            &offer_id.to_le_bytes(),
+        ],
+        &es.program_id,
+    );
+    let vault = derive_ata(&offer_pda, &es.mint_a);
+    let cancel_offer_ix = Instruction::new_with_bytes(
+        es.program_id,
+        &escrow::instruction::CancelOffer {}.data(),
+        escrow::accounts::CancelOfferAccountConstraints {
+            maker: es.alice.pubkey(),
+            token_mint_a: es.mint_a,
+            maker_token_account_a: es.alice_ata_a,
+            offer: offer_pda,
+            vault,
+            associated_token_program: ata_program_id(),
+            token_program: token_program_id(),
+            system_program: system_program::id(),
+        }
+        .to_account_metas(None),
+    );
+    send_transaction_from_instructions(
+        &mut es.svm,
+        vec![cancel_offer_ix],
+        &[&es.payer, &es.alice],
+        &es.payer.pubkey(),
+    )
+    .unwrap();
+}
+
+// The bait and switch: Alice makes an offer, Bob signs a `take_offer` for its
+// terms, and before Bob's transaction lands Alice cancels and re-makes the
+// same id at the switched terms. The offer is at the same address, so Bob's
+// transaction reaches the new offer; it must fail with `OfferTermsChanged`
+// and leave Bob's tokens where they were.
+fn assert_switched_offer_refused(switched_a_offered: u64, switched_b_wanted: u64) {
+    let mut es = full_setup();
+    let (mint_b, alice_ata_b) = (es.mint_b, es.alice_ata_b);
+    let offer_id: u64 = 8;
+    let token_a_offered_amount: u64 = USDC_OFFERED;
+    let token_b_wanted_amount: u64 = TSLAX_WANTED;
+
+    try_make_offer(
+        &mut es,
+        offer_id,
+        token_a_offered_amount,
+        token_b_wanted_amount,
+        mint_b,
+        alice_ata_b,
+    )
+    .unwrap();
+
+    // Bob signs for the terms he saw.
+    let take_offer_ix =
+        take_offer_instruction(&es, offer_id, token_a_offered_amount, token_b_wanted_amount);
+
+    // Alice switches the offer before Bob's transaction lands.
+    cancel_offer(&mut es, offer_id);
+    try_make_offer(
+        &mut es,
+        offer_id,
+        switched_a_offered,
+        switched_b_wanted,
+        mint_b,
+        alice_ata_b,
+    )
+    .unwrap();
+
+    let bob_b_before = get_token_account_balance(&es.svm, &es.bob_ata_b).unwrap();
+    let alice_b_before = get_token_account_balance(&es.svm, &es.alice_ata_b).unwrap();
+    let vault = derive_ata(
+        &Pubkey::find_program_address(
+            &[
+                b"offer",
+                es.alice.pubkey().as_ref(),
+                &offer_id.to_le_bytes(),
+            ],
+            &es.program_id,
+        )
+        .0,
+        &es.mint_a,
+    );
+
+    let result = send_transaction_from_instructions(
+        &mut es.svm,
+        vec![take_offer_ix],
+        &[&es.payer, &es.bob],
+        &es.payer.pubkey(),
+    );
+
+    assert_fails_with(result, escrow::error::EscrowError::OfferTermsChanged);
+    // Bob still holds his 1 TSLAx and his 1,000 USDC (so he received no
+    // USDC), Alice's TSLAx account is still empty, and the switched offer's
+    // USDC is still in the vault.
+    assert_eq!(
+        get_token_account_balance(&es.svm, &es.bob_ata_b).unwrap(),
+        bob_b_before,
+        "the taker must not pay TSLAx (token B) for a switched offer"
+    );
+    assert_eq!(bob_b_before, BOB_TSLAX);
+    assert_eq!(
+        get_token_account_balance(&es.svm, &es.bob_ata_a).unwrap(),
+        BOB_USDC,
+        "the taker must receive no USDC (token A) from a switched offer"
+    );
+    assert_eq!(
+        get_token_account_balance(&es.svm, &es.alice_ata_b).unwrap(),
+        alice_b_before,
+        "the maker must receive no TSLAx (token B) from a switched offer"
+    );
+    assert_eq!(alice_b_before, 0);
+    assert_eq!(
+        get_token_account_balance(&es.svm, &vault).unwrap(),
+        switched_a_offered,
+        "the switched offer's USDC stays in the vault"
+    );
+}
+
+#[test]
+fn test_take_offer_rejects_switched_offer() {
+    // Alice re-makes the offer putting 1 USDC in the vault instead of 250,
+    // for the same 1 TSLAx.
+    assert_switched_offer_refused(ONE_USDC, TSLAX_WANTED);
+}
+
+#[test]
+fn test_take_offer_rejects_switched_offer_wanting_more_token_b() {
+    // Alice re-makes the offer asking for 2 TSLAx instead of 1, for the same
+    // 250 USDC.
+    assert_switched_offer_refused(USDC_OFFERED, 2 * TSLAX_WANTED);
 }

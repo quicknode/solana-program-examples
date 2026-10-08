@@ -1,8 +1,8 @@
 use quasar_lang::prelude::*;
 
 /// One options venue. Mirrors the Anchor `Market` field-for-field; see the
-/// Anchor sibling's README for what each field means. The three `*_locked` /
-/// `fees_owed` counters are the ledger of what each vault owes, asserted
+/// Anchor sibling's README for what each field means. The `*_owed` counters
+/// (`underlying_owed`, `quote_owed` and `fees_owed`) are the ledger of what each vault owes, asserted
 /// against the vault balances after every transfer.
 #[account(discriminator = 1, set_inner)]
 #[seeds(b"market", underlying_mint: Address, quote_mint: Address)]
@@ -14,10 +14,10 @@ pub struct Market {
     pub quote_vault: Address,
     /// Underlying minor units the vault owes: call writers' collateral, plus
     /// put holders' deliveries awaiting the writer's `collect_proceeds`.
-    pub underlying_locked: u64,
+    pub underlying_owed: u64,
     /// Quote minor units the vault owes: put writers' collateral, plus call
     /// holders' strike payments awaiting the writer's `collect_proceeds`.
-    pub quote_locked: u64,
+    pub quote_owed: u64,
     /// Quote minor units held for the admin, swept by `collect_fees`.
     pub fees_owed: u64,
     /// Fee charged on each premium, in basis points.
@@ -30,9 +30,8 @@ pub struct Market {
 /// One option. Mirrors the Anchor `OptionContract`; `kind` and `status`
 /// are `u8` (see `constants.rs`) because the account layout is zero-copy.
 ///
-/// Every amount the option ever moves is a product of two of its integers:
-/// `contracts * underlying_per_contract` of the underlying, and
-/// `contracts * strike_per_contract` of the quote token.
+/// The option stores the two amounts that change hands, so settlement does no
+/// arithmetic.
 #[account(discriminator = 2, set_inner)]
 #[seeds(b"option", market: Address, writer: Address, id: u64)]
 pub struct OptionContract {
@@ -41,9 +40,13 @@ pub struct OptionContract {
     pub writer: Address,
     /// The buyer, once there is one. All zeroes while listed.
     pub holder: Address,
-    pub contracts: u64,
-    pub underlying_per_contract: u64,
-    pub strike_per_contract: u64,
+    /// Underlying minor units the option covers: what a call writer posts and
+    /// a call holder receives, or a put holder delivers.
+    pub underlying_amount: u64,
+    /// Quote minor units paid for the underlying on exercise: what a put
+    /// writer posts and a put holder receives, or a call holder pays. The
+    /// strike for the whole option, as an amount rather than a price.
+    pub strike_amount: u64,
     pub premium: u64,
     /// Unix timestamp after which the holder can no longer exercise and the
     /// writer may reclaim the collateral. Wall-clock time because an option's

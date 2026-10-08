@@ -19,7 +19,10 @@ pub struct RemoveKeyAccountConstraints<'info> {
 
 // Invoke the remove_key instruction from spl_token_metadata_interface directly
 // There is not an anchor CpiContext for this instruction
-pub fn process_remove_key(context: Context<RemoveKeyAccountConstraints>, key: String) -> Result<()> {
+pub fn process_remove_key(
+    context: Context<RemoveKeyAccountConstraints>,
+    key: String,
+) -> Result<()> {
     invoke(
         &remove_key(
             &context.accounts.token_program.key(),    // token program id

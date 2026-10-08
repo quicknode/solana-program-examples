@@ -2,31 +2,34 @@
 //! Shared LiteSVM harness for the lending program tests.
 //!
 //! Sets up a lending market with reserves, funds users, and exposes one method
-//! per protocol action. Actions that read value (deposit/redeem/borrow/withdraw/
+//! per program instruction. Actions that read value (deposit/redeem/borrow/withdraw/
 //! liquidate) bundle the required `refresh_reserve` / `refresh_obligation`
 //! instructions into the same transaction, exactly as a real client must.
 
 use anchor_lang::{
-    solana_program::instruction::{AccountMeta, Instruction},
+    solana_program::{
+        instruction::{AccountMeta, Instruction},
+        system_instruction,
+    },
     system_program, AccountDeserialize, InstructionData, ToAccountMetas,
 };
 use anchor_spl::token::ID as TOKEN_PROGRAM_ID;
 use anchor_v2_testing::{Keypair, LiteSVM, Signer};
 use solana_kite::{
-    create_associated_token_account, create_token_mint, create_wallet, get_token_account_balance,
-    mint_tokens_to_token_account, send_transaction_from_instructions,
+    create_associated_token_account, create_token_mint, create_wallet, get_sol_balance,
+    get_token_account_balance, mint_tokens_to_token_account, send_transaction_from_instructions,
 };
 
 use lending::constants::{
-    LENDING_MARKET_SEED, LIQUIDITY_VAULT_SEED, OBLIGATION_SEED, OBLIGATION_SHARE_VAULT_SEED,
-    PRICE_FEED_SEED, RESERVE_SEED, SHARE_MINT_SEED,
+    BPS_DENOMINATOR, LENDING_MARKET_SEED, LIQUIDITY_VAULT_SEED, MINIMUM_SHARES, OBLIGATION_SEED,
+    OBLIGATION_SHARE_VAULT_SEED, PRICE_FEED_SEED, RESERVE_SEED, SHARE_MINT_SEED,
 };
 use lending::state::{Obligation, Reserve, ReserveConfig};
 
 pub use anchor_lang::prelude::Address;
 
 /// A FIXED_POINT_SCALE-scaled price exponent: prices are passed as
-/// `mantissa * 10^-18`, matching a Switchboard On-Demand feed's 1e18 result.
+/// `mantissa * 10^-18`, the same 18 decimals as `FIXED_POINT_SCALE`.
 pub const PRICE_EXPONENT: i32 = -18;
 
 pub fn dollars(whole: u64) -> i128 {
@@ -36,6 +39,24 @@ pub fn dollars(whole: u64) -> i128 {
 
 pub fn cents(amount: u64) -> i128 {
     (amount as i128) * 10_000_000_000_000_000
+}
+
+/// Basis points of the price a reserve accepts as a confidence band under
+/// `default_config`: 1%.
+pub const DEFAULT_MAX_CONFIDENCE_BPS: u16 = 100;
+
+/// A confidence band of 0.1% of the price, in the mantissa's units: a tenth
+/// of what `default_config` allows, so a price published with it is accepted.
+pub fn narrow_band(price_mantissa: i128) -> u64 {
+    u64::try_from(price_mantissa / 1_000).expect("band fits the feed's u64 confidence")
+}
+
+/// The widest confidence band `max_confidence_bps` lets a reserve value
+/// `price_mantissa` against: `price * max_confidence_bps / 10_000`, exact for
+/// the prices the tests use.
+pub fn widest_accepted_band(price_mantissa: i128, max_confidence_bps: u16) -> u64 {
+    let band = price_mantissa * max_confidence_bps as i128 / BPS_DENOMINATOR as i128;
+    u64::try_from(band).expect("band fits the feed's u64 confidence")
 }
 
 pub fn ata(owner: &Address, mint: &Address) -> Address {
@@ -176,9 +197,29 @@ impl Env {
         price_mantissa: i128,
         config: ReserveConfig,
     ) -> ReserveHandle {
+        self.try_add_reserve_to(market_owner, market, decimals, price_mantissa, config)
+            .unwrap()
+    }
+
+    /// Initialize a reserve with `config` and return the transaction result, so
+    /// a test can assert on the error `initialize_reserve` refuses it with.
+    pub fn try_add_reserve_to(
+        &mut self,
+        market_owner: &Keypair,
+        market: Address,
+        decimals: u8,
+        price_mantissa: i128,
+        config: ReserveConfig,
+    ) -> Result<ReserveHandle, String> {
         let env_owner = self.owner.insecure_clone();
         let mint = create_token_mint(&mut self.svm, &env_owner, decimals, None).unwrap();
-        self.set_price_for(market_owner, market, mint, price_mantissa);
+        self.set_price_for(
+            market_owner,
+            market,
+            mint,
+            price_mantissa,
+            narrow_band(price_mantissa),
+        );
 
         let reserve = pda(&[RESERVE_SEED, market.as_ref(), mint.as_ref()]);
         let share_mint = pda(&[SHARE_MINT_SEED, reserve.as_ref()]);
@@ -206,24 +247,48 @@ impl Env {
             vec![instruction],
             &[market_owner],
             &market_owner.pubkey(),
-        )
-        .unwrap();
+        )?;
 
-        ReserveHandle {
+        Ok(ReserveHandle {
             mint,
             decimals,
             reserve,
             share_mint,
             liquidity_vault,
             price_feed,
-        }
+        })
     }
 
-    /// Advance time so interest accrues and blockhashes differ.
+    pub fn current_timestamp(&self) -> i64 {
+        self.svm.get_sysvar::<solana_clock::Clock>().unix_timestamp
+    }
+
+    /// Advance the slot only, leaving the Clock's timestamp where it is. Price
+    /// freshness is counted in slots, so this ages prices; interest is counted
+    /// in seconds, so on its own this accrues none.
     pub fn warp_slots(&mut self, slots: u64) {
         let target = self.current_slot() + slots;
         self.svm.warp_to_slot(target);
         self.svm.expire_blockhash();
+    }
+
+    /// Move the Clock's timestamp by `seconds` (backwards when negative),
+    /// leaving the slot where it is. Interest accrues on this clock.
+    pub fn shift_timestamp(&mut self, seconds: i64) {
+        let mut clock = self.svm.get_sysvar::<solana_clock::Clock>();
+        clock.unix_timestamp += seconds;
+        self.svm.set_sysvar(&clock);
+        self.svm.expire_blockhash();
+    }
+
+    /// Let `seconds` of wall-clock time pass: the timestamp moves by `seconds`
+    /// and the slot by five a second, the network's 200 ms target, so prices
+    /// age as they would. Interest accrues for exactly `seconds`, however many
+    /// slots that turns out to be.
+    pub fn warp_seconds(&mut self, seconds: i64) {
+        let target = self.current_slot() + seconds as u64 * 5;
+        self.svm.warp_to_slot(target);
+        self.shift_timestamp(seconds);
     }
 
     /// Simulate a cluster restart at `slot`: prices stamped at or before it
@@ -242,10 +307,23 @@ impl Env {
         pda(&[PRICE_FEED_SEED, market.as_ref(), mint.as_ref()])
     }
 
+    /// Publish a price for `mint` in the default market with a narrow
+    /// confidence band, one the default config accepts.
     pub fn set_price(&mut self, mint: Address, price_mantissa: i128) {
+        self.set_price_with_confidence(mint, price_mantissa, narrow_band(price_mantissa));
+    }
+
+    /// Publish a price for `mint` in the default market with the given
+    /// confidence band, in the mantissa's units.
+    pub fn set_price_with_confidence(
+        &mut self,
+        mint: Address,
+        price_mantissa: i128,
+        confidence: u64,
+    ) {
         let owner = self.owner.insecure_clone();
         let market = self.market;
-        self.set_price_for(&owner, market, mint, price_mantissa);
+        self.set_price_for(&owner, market, mint, price_mantissa, confidence);
     }
 
     /// Publish a price for `mint` in `market`, signed by that market's `owner`.
@@ -255,6 +333,7 @@ impl Env {
         market: Address,
         mint: Address,
         price_mantissa: i128,
+        confidence: u64,
     ) {
         let price_feed = self.price_feed_address(market, mint);
         let instruction = Instruction {
@@ -270,13 +349,34 @@ impl Env {
             data: lending::instruction::SetPrice {
                 price_mantissa,
                 exponent: PRICE_EXPONENT,
+                confidence,
             }
             .data(),
         };
         send(&mut self.svm, vec![instruction], &[owner], &owner.pubkey()).unwrap();
     }
 
+    /// Add a reserve to the default market and open it: the market owner makes
+    /// the first deposit, `MINIMUM_SHARES + 1`, so the withheld minimum is in
+    /// place and every later deposit mints shares one-for-one until interest
+    /// accrues. The owner keeps the one share it is minted.
     pub fn add_reserve(
+        &mut self,
+        decimals: u8,
+        price_mantissa: i128,
+        config: ReserveConfig,
+    ) -> ReserveHandle {
+        let handle = self.add_empty_reserve(decimals, price_mantissa, config);
+        let owner = self.owner.insecure_clone();
+        let opening_deposit = MINIMUM_SHARES + 1;
+        self.fund(&owner, handle.mint, opening_deposit);
+        self.supply(&owner, &handle, opening_deposit);
+        handle
+    }
+
+    /// Add a reserve to the default market with no deposits, for tests of the
+    /// first deposit itself.
+    pub fn add_empty_reserve(
         &mut self,
         decimals: u8,
         price_mantissa: i128,
@@ -334,7 +434,7 @@ impl Env {
     }
 
     /// Supply liquidity to a reserve, receiving share tokens. Returns the user's
-    /// share-token account.
+    /// share-token account, which the first supply creates.
     pub fn try_supply(
         &mut self,
         user: &Keypair,
@@ -342,13 +442,16 @@ impl Env {
         amount: u64,
     ) -> Result<Address, String> {
         let user_liquidity = ata(&user.pubkey(), &handle.mint);
-        let user_share = create_associated_token_account(
-            &mut self.svm,
-            &user.pubkey(),
-            &handle.share_mint,
-            user,
-        )
-        .unwrap();
+        let user_share = ata(&user.pubkey(), &handle.share_mint);
+        if self.svm.get_account(&user_share).is_none() {
+            create_associated_token_account(
+                &mut self.svm,
+                &user.pubkey(),
+                &handle.share_mint,
+                user,
+            )
+            .unwrap();
+        }
 
         let deposit = Instruction {
             program_id: lending::id(),
@@ -617,28 +720,16 @@ impl Env {
         send(&mut self.svm, instructions, &[user], &user.pubkey()).unwrap();
     }
 
-    #[allow(clippy::too_many_arguments)]
-    pub fn try_withdraw_collateral(
-        &mut self,
+    fn withdraw_collateral_ix(
+        &self,
         user: &Keypair,
         obligation: Address,
-        deposit_reserves: &[&ReserveHandle],
-        borrow_reserves: &[&ReserveHandle],
         collateral: &ReserveHandle,
         share_amount: u64,
-    ) -> Result<(), String> {
+    ) -> Instruction {
         let user_share = ata(&user.pubkey(), &collateral.share_mint);
         let vault = self.obligation_share_vault(collateral, obligation);
-        let mut all: Vec<&ReserveHandle> = deposit_reserves.to_vec();
-        all.extend_from_slice(borrow_reserves);
-
-        let mut instructions = self.refresh_all_ix(&all);
-        instructions.push(self.refresh_obligation_ix(
-            obligation,
-            deposit_reserves,
-            borrow_reserves,
-        ));
-        instructions.push(Instruction {
+        Instruction {
             program_id: lending::id(),
             accounts: lending::accounts::WithdrawObligationCollateral {
                 obligation,
@@ -652,10 +743,91 @@ impl Env {
             }
             .to_account_metas(None),
             data: lending::instruction::WithdrawObligationCollateral { share_amount }.data(),
-        });
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn try_withdraw_collateral(
+        &mut self,
+        user: &Keypair,
+        obligation: Address,
+        deposit_reserves: &[&ReserveHandle],
+        borrow_reserves: &[&ReserveHandle],
+        collateral: &ReserveHandle,
+        share_amount: u64,
+    ) -> Result<(), String> {
+        let mut all: Vec<&ReserveHandle> = deposit_reserves.to_vec();
+        all.extend_from_slice(borrow_reserves);
+
+        let mut instructions = self.refresh_all_ix(&all);
+        instructions.push(self.refresh_obligation_ix(
+            obligation,
+            deposit_reserves,
+            borrow_reserves,
+        ));
+        instructions.push(self.withdraw_collateral_ix(user, obligation, collateral, share_amount));
         send(&mut self.svm, instructions, &[user], &user.pubkey())
     }
 
+    /// Send `withdraw_obligation_collateral` on its own, with no reserve or
+    /// obligation refresh in the transaction: what a debt-free borrower sends
+    /// when the price feed is stale or silent and a refresh would fail.
+    pub fn try_withdraw_collateral_without_refresh(
+        &mut self,
+        user: &Keypair,
+        obligation: Address,
+        collateral: &ReserveHandle,
+        share_amount: u64,
+    ) -> Result<(), String> {
+        let instruction = self.withdraw_collateral_ix(user, obligation, collateral, share_amount);
+        send(&mut self.svm, vec![instruction], &[user], &user.pubkey())
+    }
+
+    /// `signer` tries to close `obligation`, taking its rent.
+    pub fn try_close_obligation(
+        &mut self,
+        signer: &Keypair,
+        obligation: Address,
+    ) -> Result<(), String> {
+        let instruction = Instruction {
+            program_id: lending::id(),
+            accounts: lending::accounts::CloseObligation {
+                obligation,
+                owner: signer.pubkey(),
+            }
+            .to_account_metas(None),
+            data: lending::instruction::CloseObligation {}.data(),
+        };
+        send(
+            &mut self.svm,
+            vec![instruction],
+            &[signer],
+            &signer.pubkey(),
+        )
+    }
+
+    /// What one transaction with a single signer costs its fee payer, measured
+    /// by sending `payer` a zero-lamport transfer to themselves: nothing else
+    /// in that transaction moves lamports. A fresh blockhash first, so
+    /// repeated measurements are distinct transactions.
+    pub fn transaction_fee(&mut self, payer: &Keypair) -> u64 {
+        self.svm.expire_blockhash();
+        let before = self.sol_balance(payer.pubkey());
+        send(
+            &mut self.svm,
+            vec![system_instruction::transfer(
+                &payer.pubkey(),
+                &payer.pubkey(),
+                0,
+            )],
+            &[payer],
+            &payer.pubkey(),
+        )
+        .unwrap();
+        before - self.sol_balance(payer.pubkey())
+    }
+
+    #[allow(clippy::too_many_arguments)]
     #[allow(clippy::too_many_arguments)]
     pub fn try_liquidate(
         &mut self,
@@ -742,10 +914,10 @@ impl Env {
         send(&mut self.svm, instructions, &[payer], &payer.pubkey()).unwrap();
     }
 
-    /// Market owner collects accrued protocol fees from a reserve to their own
+    /// Market owner collects accrued program fees from a reserve to their own
     /// token account. Bundles `refresh_reserve` so fees are current. Returns the
     /// owner's fee-receiving token account.
-    pub fn collect_protocol_fees(&mut self, handle: &ReserveHandle) -> Address {
+    pub fn collect_program_fees(&mut self, handle: &ReserveHandle) -> Address {
         let owner = self.owner.insecure_clone();
         let owner_liquidity = ata(&owner.pubkey(), &handle.mint);
         if self.svm.get_account(&owner_liquidity).is_none() {
@@ -755,7 +927,7 @@ impl Env {
         let refresh = self.refresh_reserve_ix(handle);
         let collect = Instruction {
             program_id: lending::id(),
-            accounts: lending::accounts::CollectProtocolFees {
+            accounts: lending::accounts::CollectProgramFees {
                 lending_market: self.market,
                 owner: owner.pubkey(),
                 reserve: handle.reserve,
@@ -765,7 +937,7 @@ impl Env {
                 token_program: TOKEN_PROGRAM_ID,
             }
             .to_account_metas(None),
-            data: lending::instruction::CollectProtocolFees {}.data(),
+            data: lending::instruction::CollectProgramFees {}.data(),
         };
         send(
             &mut self.svm,
@@ -792,18 +964,50 @@ impl Env {
     pub fn token_balance(&self, token_account: Address) -> u64 {
         get_token_account_balance(&self.svm, &token_account).unwrap()
     }
+
+    pub fn sol_balance(&self, address: Address) -> u64 {
+        get_sol_balance(&self.svm, &address)
+    }
+
+    /// Send `amount` share tokens of `handle` from `from`'s account straight to
+    /// `to`, outside the program: a donation the program never recorded.
+    pub fn send_shares(
+        &mut self,
+        from: &Keypair,
+        handle: &ReserveHandle,
+        to: Address,
+        amount: u64,
+    ) {
+        let source = ata(&from.pubkey(), &handle.share_mint);
+        let instruction = anchor_spl::token::spl_token::instruction::transfer_checked(
+            &TOKEN_PROGRAM_ID,
+            &source,
+            &handle.share_mint,
+            &to,
+            &from.pubkey(),
+            &[],
+            amount,
+            handle.decimals,
+        )
+        .unwrap();
+        send(&mut self.svm, vec![instruction], &[from], &from.pubkey()).unwrap();
+    }
+
+    /// A closed account has no lamports and no data.
+    pub fn account_is_open(&self, address: Address) -> bool {
+        self.svm
+            .get_account(&address)
+            .is_some_and(|account| account.lamports > 0 && !account.data.is_empty())
+    }
 }
 
-/// A reasonable default reserve config: 75% LTV, 80% liquidation threshold,
-/// 5% bonus, 50% close factor, 10% reserve factor (protocol's cut of interest),
-/// kink at 80% utilization, 2%/20%/150% APR curve.
-/// Slots in a year, which is how a reserve turns an APR into a per-slot rate.
-/// 78_840_000 is a 400ms slot: 2.5 slots/second * 60 * 60 * 24 * 365. It is a
-/// test fixture, not a law: a deployment reads the slot time off the cluster it
-/// points at (two `getBlockTime` results a known number of slots apart) and
-/// updates the reserve when the protocol changes it.
-pub const SLOTS_PER_YEAR: u64 = 78_840_000;
+/// A tenth of a 365-day year, in seconds: long enough for interest to show.
+pub const TENTH_OF_A_YEAR: i64 = lending::constants::SECONDS_PER_YEAR as i64 / 10;
 
+/// A reasonable default reserve config: 75% LTV, 80% liquidation threshold,
+/// 5% bonus, 50% close factor, 10% reserve factor (program's cut of interest),
+/// kink at 80% utilization, 2%/20%/150% APR curve, and a 1% confidence limit
+/// on the price feed.
 pub fn default_config() -> ReserveConfig {
     ReserveConfig {
         loan_to_value_bps: 7_500,
@@ -815,6 +1019,6 @@ pub fn default_config() -> ReserveConfig {
         min_borrow_rate_bps: 200,
         optimal_borrow_rate_bps: 2_000,
         max_borrow_rate_bps: 15_000,
-        slots_per_year: SLOTS_PER_YEAR,
+        max_confidence_bps: DEFAULT_MAX_CONFIDENCE_BPS,
     }
 }

@@ -5,13 +5,15 @@ use quasar_lang::prelude::*;
 pub mod error;
 pub mod instructions;
 use instructions::*;
+pub mod liquidity;
 pub mod state;
 #[cfg(test)]
 mod tests;
 
 declare_id!("GahM6PrXesrBkHiGJ5no4EskLNnVBCaSwVKbM4UtzyK6");
 
-/// Minimum liquidity locked on first deposit to prevent manipulation.
+/// Minimum liquidity withheld from the creator's deposit in `initialize_pool`
+/// to prevent manipulation.
 pub const MINIMUM_LIQUIDITY: u64 = 100;
 /// Basis-points denominator (1 bp = 1/10_000). Fees and the admin's fee share
 /// are stored in basis points; dividing by this converts a bp value to a
@@ -45,13 +47,29 @@ pub struct PoolPda;
 #[seeds(b"liquidity", config: Address, mint_a: Address, mint_b: Address)]
 pub struct LiquidityMintPda;
 
+/// The pool's token A reserve, a PDA of the pool at seeds = [b"pool_a",
+/// pool_config], so any client can derive where a pool keeps its tokens
+/// without being told. `PoolConfig` also records the address, and every
+/// handler that touches the reserve checks it with `has_one(pool_a)`.
+#[derive(Seeds)]
+#[seeds(b"pool_a", pool_config: Address)]
+pub struct PoolAPda;
+
+/// The pool's token B reserve, at seeds = [b"pool_b", pool_config], recorded
+/// and checked as `pool_a` is.
+#[derive(Seeds)]
+#[seeds(b"pool_b", pool_config: Address)]
+pub struct PoolBPda;
+
 /// Simple constant-product AMM (token swap).
 ///
 /// Six instructions:
 /// 1. `initialize_config` - initialise the singleton AMM config (admin, fee,
 ///    admin share)
-/// 2. `initialize_pool` - create a liquidity pool for a token pair
-/// 3. `deposit_liquidity` - add liquidity and receive LP tokens
+/// 2. `initialize_pool` - create a liquidity pool for a token pair, funded
+///    and priced by its creator's first deposit
+/// 3. `deposit_liquidity` - add liquidity at the pool's price and receive LP
+///    tokens
 /// 4. `withdraw_liquidity` - burn LP tokens and receive pool tokens
 /// 5. `swap_tokens` - swap one token for another
 /// 6. `claim_admin_fees` - admin sweeps accumulated fee slice from a pool
@@ -69,8 +87,12 @@ mod quasar_token_swap {
     }
 
     #[instruction(discriminator = 1)]
-    pub fn initialize_pool(ctx: Ctx<InitializePoolAccountConstraints>) -> Result<(), ProgramError> {
-        instructions::handle_initialize_pool(&mut ctx.accounts)
+    pub fn initialize_pool(
+        ctx: Ctx<InitializePoolAccountConstraints>,
+        amount_a: u64,
+        amount_b: u64,
+    ) -> Result<(), ProgramError> {
+        instructions::handle_initialize_pool(&mut ctx.accounts, amount_a, amount_b, &ctx.bumps)
     }
 
     #[instruction(discriminator = 2)]

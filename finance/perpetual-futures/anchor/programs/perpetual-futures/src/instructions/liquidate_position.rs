@@ -17,40 +17,56 @@ pub fn handle_liquidate_position(
 
     let position = &context.accounts.position;
     let position_size = position.size;
+    let position_collateral = position.collateral;
     let settlement = settle_position(pool, position, price)?;
 
-    // Release the position's reserved liquidity now that it is closing.
-    pool.reserved_liquidity = pool
-        .reserved_liquidity
-        .checked_sub(position_size)
-        .ok_or(PerpError::MathOverflow)?;
-
     // Liquidatable only once equity has fallen to or below the maintenance
-    // margin. A healthy position can only be closed by its owner.
+    // margin, rounded up against the trader. A healthy position can only be
+    // closed by its owner.
     let maintenance = basis_points_of(position_size, pool.maintenance_margin_bps)?;
     require!(
         settlement.equity <= maintenance as i128,
         PerpError::PositionHealthy
     );
 
-    // The liquidator's reward comes out of whatever equity remains, capped so a
-    // position already past zero equity cannot pay out more than it has.
+    // The liquidator's reward comes out of whatever equity remains. Whatever
+    // part of the fee the equity cannot cover is forgiven: neither the
+    // insurance fund nor the liquidity providers pay it.
     let remaining_equity: u64 = settlement
         .equity
         .max(0)
         .try_into()
         .map_err(|_| PerpError::MathOverflow)?;
-    let liquidation_fee = basis_points_of(position.size, pool.liquidation_fee_bps)?;
+    let liquidation_fee = basis_points_of(position_size, pool.liquidation_fee_bps)?;
     let liquidator_payout = liquidation_fee.min(remaining_equity);
     let trader_refund = remaining_equity
         .checked_sub(liquidator_payout)
         .ok_or(PerpError::MathOverflow)?;
 
+    // A position whose equity is below zero lost more than its collateral. The
+    // insurance fund pays that deficit as far as it can, and the liquidity
+    // providers bear only the rest.
+    let deficit: u64 = settlement
+        .equity
+        .min(0)
+        .unsigned_abs()
+        .try_into()
+        .map_err(|_| PerpError::MathOverflow)?;
+    let insurance_payment = deficit.min(pool.insurance_fund);
+    pool.insurance_fund = pool
+        .insurance_fund
+        .checked_sub(insurance_payment)
+        .ok_or(PerpError::MathOverflow)?;
+
     // Everything the trader does not get back stays with the liquidity
     // providers. Derived from vault conservation: the pool keeps the position's
-    // collateral minus whatever is paid out as equity.
-    let liquidity_delta = (position.collateral as i128)
+    // collateral minus whatever is paid out as equity, and the insurance
+    // fund's payment toward the deficit moves, inside the vault, from
+    // `insurance_fund` to `liquidity`.
+    let liquidity_delta = (position_collateral as i128)
         .checked_sub(remaining_equity as i128)
+        .ok_or(PerpError::MathOverflow)?
+        .checked_add(insurance_payment as i128)
         .ok_or(PerpError::MathOverflow)?;
     let new_liquidity = (pool.liquidity as i128)
         .checked_add(liquidity_delta)

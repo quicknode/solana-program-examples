@@ -28,16 +28,23 @@ pub mod betting_market {
         )
     }
 
-    // Admin opens a new market and creates its pool vault.
+    // Admin creates a new market as a draft, fixes when betting closes, and
+    // creates its pool vault.
     pub fn initialize_event(
         context: &mut Context<InitializeEventAccountConstraints>,
         event_id: u64,
+        betting_closes_at: i64,
         description: String,
     ) -> Result<()> {
-        instructions::initialize_event::handle_initialize_event(context, event_id, description)
+        instructions::initialize_event::handle_initialize_event(
+            context,
+            event_id,
+            betting_closes_at,
+            description,
+        )
     }
 
-    // Admin adds a possible result. Only allowed before betting starts.
+    // Admin adds a possible result. Only allowed while the event is a draft.
     pub fn add_outcome(
         context: &mut Context<AddOutcomeAccountConstraints>,
         label: String,
@@ -45,12 +52,19 @@ pub mod betting_market {
         instructions::add_outcome::handle_add_outcome(context, label)
     }
 
-    // A bettor stakes tokens on one outcome. The stake joins the event's pool.
+    // Admin finalizes the outcome list and opens the market to bets. Needs at
+    // least two outcomes.
+    pub fn open_betting(context: &mut Context<OpenBettingAccountConstraints>) -> Result<()> {
+        instructions::open_betting::handle_open_betting(context)
+    }
+
+    // A bettor stakes tokens on one outcome, before betting closes. The stake
+    // joins the event's pool.
     pub fn place_bet(context: &mut Context<PlaceBetAccountConstraints>, amount: u64) -> Result<()> {
         instructions::place_bet::handle_place_bet(context, amount)
     }
 
-    // Admin resolves the market: takes the fee from the losing pool and records
+    // Admin resolves the market once betting has closed: takes the fee from the losing pool and records
     // the figures winners need to claim their share.
     pub fn settle_event(
         context: &mut Context<SettleEventAccountConstraints>,
@@ -60,25 +74,38 @@ pub mod betting_market {
     }
 
     // A winner withdraws their stake plus their pro-rata share of the losing
-    // pool. The Bet account closes and leaves the bettor's User index.
+    // pool. The Bet account closes.
     pub fn claim_winnings(context: &mut Context<ClaimWinningsAccountConstraints>) -> Result<()> {
         instructions::claim_winnings::handle_claim_winnings(context)
     }
 
     // A loser closes their worthless bet after settlement, reclaiming the
-    // Bet account's rent and freeing the slot in their User index.
+    // Bet account's rent.
     pub fn close_losing_bet(context: &mut Context<CloseLosingBetAccountConstraints>) -> Result<()> {
         instructions::close_losing_bet::handle_close_losing_bet(context)
     }
 
-    // Admin voids an unresolved market so bettors can be made whole.
+    // Admin voids a draft or unresolved market so bettors can be made whole.
     pub fn cancel_event(context: &mut Context<CancelEventAccountConstraints>) -> Result<()> {
         instructions::cancel_event::handle_cancel_event(context)
     }
 
     // After a cancellation, a bettor reclaims their exact stake. The Bet
-    // account closes and leaves the bettor's User index.
+    // account closes.
     pub fn claim_refund(context: &mut Context<ClaimRefundAccountConstraints>) -> Result<()> {
         instructions::claim_refund::handle_claim_refund(context)
+    }
+
+    // Admin closes one Outcome account of a settled or cancelled event once
+    // every Bet account of the event is closed. The rent returns to the admin.
+    pub fn close_outcome(context: &mut Context<CloseOutcomeAccountConstraints>) -> Result<()> {
+        instructions::close_outcome::handle_close_outcome(context)
+    }
+
+    // Admin closes a settled or cancelled event once its bets and outcomes are
+    // closed: the vault's remaining dust goes to the fee recipient, and the
+    // vault and Event account close, returning their rent to the admin.
+    pub fn close_event(context: &mut Context<CloseEventAccountConstraints>) -> Result<()> {
+        instructions::close_event::handle_close_event(context)
     }
 }

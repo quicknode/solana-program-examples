@@ -16,15 +16,15 @@ use crate::state::{Market, OptionContract, OptionKind, OptionStatus};
 pub struct OptionTerms {
     pub kind: OptionKind,
 
-    /// How many contracts the option holds. Bought and exercised as a whole.
-    pub contracts: u64,
+    /// Underlying minor units the option covers: what a call writer posts and
+    /// a call holder receives, or a put holder delivers (1 NVDAx = 100_000_000).
+    pub underlying_amount: u64,
 
-    /// Underlying minor units each contract is on (1 NVDAx = 1_000_000).
-    pub underlying_per_contract: u64,
-
-    /// Quote minor units each contract settles at: the strike as an amount
-    /// per contract rather than a price, so exercise needs no decimals math.
-    pub strike_per_contract: u64,
+    /// Quote minor units paid for the underlying on exercise: what a put
+    /// writer posts and a put holder receives, or a call holder pays. The
+    /// strike for the whole option, as an amount rather than a price, so
+    /// exercise needs no decimals math.
+    pub strike_amount: u64,
 
     /// Quote minor units the buyer pays the writer for the whole option.
     pub premium: u64,
@@ -44,17 +44,16 @@ pub fn handle_write_option(
 ) -> Result<()> {
     let OptionTerms {
         kind,
-        contracts,
-        underlying_per_contract,
-        strike_per_contract,
+        underlying_amount,
+        strike_amount,
         premium,
         expiry,
     } = terms;
-    // Every quantity is a multiplier in the settlement math, so a zero in any
-    // of them is an option that delivers nothing or costs nothing to exercise. A
-    // zero premium is a gift rather than a sale, and is refused as a mistake.
+    // A zero amount is an option that delivers nothing or costs nothing to
+    // exercise. A zero premium is a gift rather than a sale. Both are refused
+    // as mistakes.
     require!(
-        contracts > 0 && underlying_per_contract > 0 && strike_per_contract > 0 && premium > 0,
+        underlying_amount > 0 && strike_amount > 0 && premium > 0,
         OptionsError::InvalidParameter
     );
     // Written in words: the holder may exercise while now < expiry. An expiry
@@ -62,16 +61,7 @@ pub fn handle_write_option(
     let now = Clock::get()?.unix_timestamp;
     require!(expiry > now, OptionsError::ExpiryInPast);
 
-    // Both settlement amounts are computed here, at write time, so an option
-    // whose exercise would overflow is refused before anyone pays for it.
-    let underlying_total = contract_math::underlying_total(contracts, underlying_per_contract)
-        .ok_or(OptionsError::MathOverflow)?;
-    let strike_total = contract_math::strike_total(contracts, strike_per_contract)
-        .ok_or(OptionsError::MathOverflow)?;
-    let collateral = match kind {
-        OptionKind::Call => underlying_total,
-        OptionKind::Put => strike_total,
-    };
+    let collateral = contract_math::collateral_amount(kind, underlying_amount, strike_amount);
 
     // Effects before the transfer: record the option and what the vault now owes.
     let option = &mut context.accounts.option;
@@ -81,9 +71,8 @@ pub fn handle_write_option(
     option.holder = Pubkey::default();
     option.kind = kind;
     option.status = OptionStatus::Listed;
-    option.contracts = contracts;
-    option.underlying_per_contract = underlying_per_contract;
-    option.strike_per_contract = strike_per_contract;
+    option.underlying_amount = underlying_amount;
+    option.strike_amount = strike_amount;
     option.premium = premium;
     option.expiry = expiry;
     option.bump = context.bumps.option;
@@ -93,8 +82,8 @@ pub fn handle_write_option(
     let mut quote_after = context.accounts.quote_vault.amount;
     match kind {
         OptionKind::Call => {
-            market.underlying_locked = market
-                .underlying_locked
+            market.underlying_owed = market
+                .underlying_owed
                 .checked_add(collateral)
                 .ok_or(OptionsError::MathOverflow)?;
             underlying_after = underlying_after
@@ -102,8 +91,8 @@ pub fn handle_write_option(
                 .ok_or(OptionsError::MathOverflow)?;
         }
         OptionKind::Put => {
-            market.quote_locked = market
-                .quote_locked
+            market.quote_owed = market
+                .quote_owed
                 .checked_add(collateral)
                 .ok_or(OptionsError::MathOverflow)?;
             quote_after = quote_after
@@ -180,10 +169,14 @@ pub struct WriteOptionAccountConstraints<'info> {
     )]
     pub quote_vault: Box<InterfaceAccount<'info, TokenAccount>>,
 
-    // A call writer pays collateral from this account; a put writer's copy
-    // is only validated.
+    // A call writer pays collateral from this account. A put writer may never
+    // have held the underlying, so the account is created if needed, at the
+    // writer's expense; it is where `collect_proceeds` pays a put writer, and
+    // `cancel_option` and `reclaim_collateral` take it too. For an account
+    // that exists, the mint and authority constraints apply as before.
     #[account(
-        mut,
+        init_if_needed,
+        payer = writer,
         associated_token::mint = underlying_mint,
         associated_token::authority = writer,
         associated_token::token_program = token_program,

@@ -1,13 +1,10 @@
 use {
     anchor_lang::{
-        solana_program::{
-            instruction::Instruction,
-            pubkey::Pubkey,
-            system_program,
-        },
+        solana_program::{instruction::Instruction, pubkey::Pubkey, system_program},
         InstructionData, ToAccountMetas,
     },
     litesvm::LiteSVM,
+    solana_keypair::Keypair,
     solana_kite::{
         create_wallet, send_transaction_from_instructions,
         token_extensions::{
@@ -15,7 +12,6 @@ use {
         },
         transfer_hook::get_hook_accounts_address,
     },
-    solana_keypair::Keypair,
     solana_signer::Signer,
 };
 
@@ -49,8 +45,7 @@ fn test_initialize_extra_account_meta_list() {
     svm.expire_blockhash();
 
     // PDAs
-    let extra_account_meta_list =
-        get_hook_accounts_address(&mint, &program_id);
+    let extra_account_meta_list = get_hook_accounts_address(&mint, &program_id);
     let (counter_pda, _) = Pubkey::find_program_address(&[b"counter"], &program_id);
 
     // Step 2: Initialize ExtraAccountMetaList (also creates counter PDA)
@@ -66,7 +61,8 @@ fn test_initialize_extra_account_meta_list() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![init_extra_ix], &[&payer], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(&mut svm, vec![init_extra_ix], &[&payer], &payer.pubkey())
+        .unwrap();
 
     // Verify the ExtraAccountMetaList account was created
     let account = svm.get_account(&extra_account_meta_list);

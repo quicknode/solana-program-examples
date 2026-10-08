@@ -55,7 +55,7 @@ mod quasar_lending {
         min_borrow_rate_bps: u16,
         optimal_borrow_rate_bps: u16,
         max_borrow_rate_bps: u16,
-        slots_per_year: u64,
+        max_confidence_bps: u16,
     ) -> Result<(), ProgramError> {
         ctx.accounts.run(
             loan_to_value_bps,
@@ -67,7 +67,7 @@ mod quasar_lending {
             min_borrow_rate_bps,
             optimal_borrow_rate_bps,
             max_borrow_rate_bps,
-            slots_per_year,
+            max_confidence_bps,
             &ctx.bumps,
         )
     }
@@ -77,8 +77,10 @@ mod quasar_lending {
         ctx: Ctx<SetPrice>,
         price_mantissa: i128,
         exponent: i32,
+        confidence: u64,
     ) -> Result<(), ProgramError> {
-        ctx.accounts.run(price_mantissa, exponent, &ctx.bumps)
+        ctx.accounts
+            .run(price_mantissa, exponent, confidence, &ctx.bumps)
     }
 
     #[instruction(discriminator = 3)]
@@ -143,15 +145,12 @@ mod quasar_lending {
     }
 
     #[instruction(discriminator = 11)]
-    pub fn collect_protocol_fees(ctx: Ctx<CollectProtocolFees>) -> Result<(), ProgramError> {
+    pub fn collect_program_fees(ctx: Ctx<CollectProgramFees>) -> Result<(), ProgramError> {
         ctx.accounts.run()
     }
 
     #[instruction(discriminator = 12)]
-    pub fn update_slots_per_year(
-        ctx: Ctx<UpdateSlotsPerYear>,
-        slots_per_year: u64,
-    ) -> Result<(), ProgramError> {
-        ctx.accounts.run(slots_per_year)
+    pub fn close_obligation(ctx: Ctx<CloseObligation>) -> Result<(), ProgramError> {
+        ctx.accounts.run()
     }
 }

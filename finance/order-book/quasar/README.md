@@ -34,7 +34,7 @@ funds, and it moves them only along the place / cancel / settle paths below.
 ## Accounts and PDAs
 
 - `Market` (PDA, seeds `["market", base_mint, quote_mint]`): One trading pair. Stores config + vault addresses. Its PDA is the vaults' token authority.
-- `OrderBook` (at a public key the client generates, not a PDA): Two critbit slabs (bids + asks), ~180 KB. Zero-copy. Bound to its market by the market's stored `order_book`.
+- `OrderBook` (at a public key the client generates, not a PDA): Two critbit slabs (bids + asks), ~180 KB, each holding 512 orders: every order after the first adds a leaf and an inner node to a 1024-node tree. Zero-copy. Bound to its market by the market's stored `order_book`.
 - `MarketUser` (PDA, seeds `["market_user", market, owner]`): Per-user, per-market. Tracks open order ids and `unsettled_*` balances owed back to the user.
 - `Order` (PDA, seeds `["order", market, order_id]`): One order. `order_id` is the book's monotonic counter at placement time.
 - `base_vault` / `quote_vault` (token accounts, PDAs at seeds `["base_vault", market]` and `["quote_vault", market]`): Hold locked funds while orders are open. Market PDA is the authority.
@@ -56,7 +56,7 @@ raw_quote = quantity × price × quote_lot_size
 ```
 
 Choose `base_lot_size = 10^max(d_base − d_quote, 0)` and `quote_lot_size = 10^max(d_quote − d_base, 0)`. For
-NVDAx (9 decimals) / USDC (6 decimals): `base_lot_size = 1000`, `quote_lot_size = 1`, so `price = 100` means
+NVDAx (8 decimals) / USDC (6 decimals): `base_lot_size = 100`, `quote_lot_size = 1`, so `price = 100` means
 100 USDC-units per base lot and `tick_size = 1` is one atomic increment.
 
 ## Instruction lifecycle
@@ -67,11 +67,23 @@ NVDAx (9 decimals) / USDC (6 decimals): `base_lot_size = 1000`, `quote_lot_size 
 - `cancel_order`: Credit an open order's locked remainder back to the owner's `unsettled_*` and remove it from the book.
 - `settle_funds`: Move a user's `unsettled_*` balances out of the vaults into their token accounts.
 - `withdraw_fees`: Authority-only: drain the fee vault to the authority's token account.
+- `pause_market` / `resume_market`: Authority-only: clear and set `Market.is_active`. While it is clear, `place_order` is refused with `MarketPaused`; `cancel_order`, `settle_funds` and `withdraw_fees` do not read the flag, so a pause stops new orders and nothing else, and every token a trader locked or was owed before the pause can still leave the vaults during it.
+- `close_order`: Close a Filled or Cancelled order's account and return its rent to the owner, who signs. Both statuses have already left the slab and the owner's open-order list, and a cancel has already credited its refund, so nothing refers to the account. An Open or PartiallyFilled order gets `OrderNotClosable`: cancel it first.
+- `close_market_user`: Close the owner's `MarketUser` and return its rent, when `open_orders_len` is zero and both `unsettled_*` balances are zero (an open order would still credit it, and an unsettled balance is owed through it); otherwise `MarketUserNotClosable`. The owner can register again later. Both handlers refuse any signer but the owner with `Unauthorized`.
 
 `place_order` takes `side` (`0` = bid, `1` = ask), `price`, `quantity`, and `order_id`. The caller passes the
 resting maker orders to cross as **remaining accounts**, in pairs of `(maker_order, maker_market_user)`, in the
 book's price-time priority. `order_id` must equal the book's current `next_order_id` (the program verifies it),
 so the client derives the `Order` PDA deterministically.
+
+When the order will rest on a side that already holds its 512 orders, it must beat that side's worst price (a
+higher bid or a lower ask; equal is not better, because the resting order was there first), or it fails with
+`OrderBookFull`. When it does, the worst order is **evicted**: refunded to its owner's `unsettled_*` exactly as
+`cancel_order` would, removed from the book and its owner's open orders, and stamped `Cancelled`. The caller
+passes that order and its owner's `MarketUser` after the maker pairs, or only the order when it is their own.
+Without eviction, anyone willing to lock the minimum order size and pay rent 512 times could fill a side with
+orders far from the spread and keep every new order on that side out; with it, the orders that go are the ones
+least likely to fill.
 
 Fills never transfer tokens directly to the counterparty; they credit `unsettled_*` balances that each user
 drains later via `settle_funds`. This keeps the per-fill account footprint small (no maker ATAs in the fill
@@ -107,13 +119,18 @@ are all consequences of Quasar being zero-copy, `no_std`, and zero-allocation:
 
 - Every vault transfer out is signed by the **market PDA** via `invoke_signed`; only the deployed program can
   move locked funds.
-- `settle_funds` zeroes a user's `unsettled_*` **before** transferring (checks-effects-interactions), so no
-  token-hook re-entry could double-withdraw.
+- `settle_funds` zeroes a user's `unsettled_*` counters and pays out the amounts they held, so a second call has
+  nothing to pay.
 - `place_order` binds every market-owned account (`base_vault`, `quote_vault`, `fee_vault`, both mints, the
   order book) to the addresses stored on the `Market` PDA with `has_one`, so a caller can't substitute the fee
   vault for a user vault and drain fees.
-- Taker fees use **ceiling** division, rounding in the protocol's favor so many tiny fills can't leak a minor
+- Taker fees use **ceiling** division, rounding in the program's favor so many tiny fills can't leak a minor
   unit to the maker.
+- A full side **evicts its worst order** for a better one instead of refusing every new order, so filling the
+  book with far-off orders cannot shut a market (see the lifecycle section).
+- **A pause stops new orders only.** `pause_market` clears `is_active`, and `place_order` is the only handler
+  that reads it. Cancels, settlements and fee withdrawals never check the flag, so nobody's tokens are locked in
+  a paused market. Only the market authority can pause or resume (`NotMarketAuthority` otherwise).
 
 ## Building and testing
 
@@ -130,11 +147,19 @@ cargo test            # QuasarSVM integration tests (they load the compiled .so)
 [QuasarSVM](https://github.com/blueshift-gg/quasar-svm), an in-process SVM, via `include`/`fs::read`. The suite
 in `src/tests.rs` drives the full lifecycle (initialize a market, create users, rest an ask, cross it with a
 bid, settle both sides, and withdraw the fee), asserting onchain state, token balances, and fee accounting at
-each step, plus an authorization rejection.
+each step, plus an authorization rejection. Five eviction tests fill the bid side with 512 bids and check that a
+worse or equal bid is refused, a better bid evicts the worst and rests, the evicted owner settles their refund,
+wrong or missing evicted accounts are rejected, and a trader can evict their own worst order. Five pause tests
+check that a paused market refuses a new order with `MarketPaused` and locks nothing, still cancels and settles
+a resting order, still pays out a fill and withdraws the fee, takes orders again after `resume_market`, and
+refuses a trader signing either handler with `NotMarketAuthority`.
+Nine closing tests check that `close_order` returns a cancelled and a filled order's rent to its owner and
+refuses a resting order, a partially filled order and a non-owner, and that `close_market_user` returns an idle
+account's rent (and lets the owner register again) and refuses an account with an open order, one with an
+unsettled balance, and a non-owner.
 
 ## Extending
 
 - **Self-trade prevention:** reject or cancel-back when a taker would cross their own resting order.
 - **Post-only / IOC / FOK** order types by gating the rest-vs-cancel behaviour on a flag.
 - **Multiple fee tiers** keyed on the taker's `MarketUser`.
-- **Market pause/resume** by flipping `Market.is_active` from an authority-gated handler.

@@ -1,11 +1,14 @@
-//! Integer-only money math (no floats, no fixed-point crates), shared by the
+//! Integer-only arithmetic (no floats, no fixed-point crates), shared by the
 //! handlers. Ratios are scaled by `FIXED_POINT_SCALE`; conversions round in the
-//! protocol's favour.
+//! program's favour.
 
 use quasar_lang::prelude::*;
 
 use crate::{
-    constants::{BPS_DENOMINATOR, FIXED_POINT_SCALE, FIXED_POINT_SCALE_DECIMALS},
+    constants::{
+        BORROW_RATE_CEILING_BPS, BPS_DENOMINATOR, FIXED_POINT_SCALE, FIXED_POINT_SCALE_DECIMALS,
+        MINIMUM_SHARES, SECONDS_PER_YEAR,
+    },
     error::LendingError,
 };
 
@@ -101,13 +104,13 @@ pub fn value_to_amount(
 
 // --- reserve interest / share helpers (free functions over reserve fields) ---
 
-/// Live total debt owed to the pool, rounded up (protocol-favourable).
+/// Live total debt owed to the pool, rounded up (program-favourable).
 pub fn current_debt(borrowed_principal: u128, factor: u128) -> Result<u64, ProgramError> {
     let debt = mul_div_ceil(borrowed_principal, factor, FIXED_POINT_SCALE)?;
     u64::try_from(debt).map_err(|_| LendingError::MathOverflow.into())
 }
 
-/// Available liquidity plus live debt, before the protocol fee is removed. Used
+/// Available liquidity plus live debt, before the program fee is removed. Used
 /// for the utilization ratio (about how much of the pool is lent out).
 pub fn total_liquidity(
     available: u64,
@@ -119,20 +122,32 @@ pub fn total_liquidity(
         .ok_or(LendingError::MathOverflow.into())
 }
 
-/// What the share token is a claim on: gross liquidity minus the protocol fees
+/// What the share token is a claim on: gross liquidity minus the program fees
 /// owed to the owner, which belong to no supplier.
 pub fn net_total_liquidity(
     available: u64,
     borrowed_principal: u128,
     factor: u128,
-    protocol_fees: u64,
+    program_fees: u64,
 ) -> Result<u128, ProgramError> {
     total_liquidity(available, borrowed_principal, factor)?
-        .checked_sub(protocol_fees as u128)
+        .checked_sub(program_fees as u128)
         .ok_or(LendingError::MathOverflow.into())
 }
 
-/// Borrowed fraction of the pool in basis points (0..=10_000).
+/// The share count every conversion between shares and liquidity divides by:
+/// the outstanding supply plus the `MINIMUM_SHARES` withheld from the first
+/// deposit, which belong to nobody and so never redeem.
+pub fn total_shares(share_mint_supply: u64) -> Result<u128, ProgramError> {
+    (share_mint_supply as u128)
+        .checked_add(MINIMUM_SHARES as u128)
+        .ok_or(LendingError::MathOverflow.into())
+}
+
+/// Borrowed fraction of the pool in basis points (0..=10_000). Rounded up,
+/// because its only use is the borrow rate, and a floored utilization would
+/// charge the borrower a lower rate. It still never exceeds 10_000, since the
+/// debt is part of the total it is divided by.
 pub fn utilization_bps(
     available: u64,
     borrowed_principal: u128,
@@ -142,22 +157,25 @@ pub fn utilization_bps(
     if total == 0 {
         return Ok(0);
     }
-    mul_div_floor(
+    mul_div_ceil(
         current_debt(borrowed_principal, factor)? as u128,
         BPS_DENOMINATOR,
         total,
     )
 }
 
-/// Per-slot borrow rate (FIXED_POINT_SCALE-scaled) from the kinked curve.
-#[allow(clippy::too_many_arguments)]
-pub fn borrow_rate_per_slot(
+/// Per-second borrow rate (FIXED_POINT_SCALE-scaled) from the kinked curve.
+///
+/// Both divisions round up: the interpolated APR and the per-second rate
+/// derived from it. A rate is what the borrower is charged, so like the debt
+/// it rounds against the borrower. The interpolation still never leaves
+/// `[min, max]`, because the climbed amount is at most the range.
+pub fn borrow_rate_per_second(
     utilization: u128,
     optimal_utilization_bps: u16,
     min_rate_bps: u16,
     optimal_rate_bps: u16,
     max_rate_bps: u16,
-    slots_per_year: u64,
 ) -> Result<u128, ProgramError> {
     let optimal_utilization = optimal_utilization_bps as u128;
     let apr_bps = if utilization <= optimal_utilization {
@@ -165,7 +183,7 @@ pub fn borrow_rate_per_slot(
             .checked_sub(min_rate_bps as u128)
             .ok_or(LendingError::MathOverflow)?;
         (min_rate_bps as u128)
-            .checked_add(mul_div_floor(
+            .checked_add(mul_div_ceil(
                 range,
                 utilization,
                 optimal_utilization.max(1),
@@ -182,52 +200,50 @@ pub fn borrow_rate_per_slot(
             .checked_sub(optimal_utilization)
             .ok_or(LendingError::MathOverflow)?;
         (optimal_rate_bps as u128)
-            .checked_add(mul_div_floor(range, above, span.max(1))?)
+            .checked_add(mul_div_ceil(range, above, span.max(1))?)
             .ok_or(LendingError::MathOverflow)?
     };
-    let denominator = BPS_DENOMINATOR
-        .checked_mul(slots_per_year as u128)
+    // apr_bps / (BPS_DENOMINATOR * SECONDS_PER_YEAR), carried at FIXED_POINT_SCALE.
+    let per_year_denominator = BPS_DENOMINATOR
+        .checked_mul(SECONDS_PER_YEAR)
         .ok_or(LendingError::MathOverflow)?;
-    mul_div_floor(apr_bps, FIXED_POINT_SCALE, denominator)
+    mul_div_ceil(apr_bps, FIXED_POINT_SCALE, per_year_denominator)
 }
 
-/// Advance the accumulation factor for elapsed slots:
-/// `new_factor = factor * (1 + rate_per_slot * elapsed)`.
+/// Advance the accumulation factor for `elapsed_seconds`:
+/// `new_factor = factor * (1 + rate_per_second * elapsed_seconds)`, rounded up:
+/// every debt is principal times this factor, so a floored factor would
+/// understate every borrower's debt.
 #[allow(clippy::too_many_arguments)]
 pub fn accrue_factor(
     factor: u128,
     borrowed_principal: u128,
     available: u64,
-    last_update_slot: u64,
-    now: u64,
+    elapsed_seconds: u128,
     optimal_utilization_bps: u16,
     min_rate_bps: u16,
     optimal_rate_bps: u16,
     max_rate_bps: u16,
-    slots_per_year: u64,
 ) -> Result<u128, ProgramError> {
-    let elapsed = now
-        .checked_sub(last_update_slot)
-        .ok_or(LendingError::MathOverflow)?;
-    if elapsed == 0 || borrowed_principal == 0 {
+    if elapsed_seconds == 0 || borrowed_principal == 0 {
         return Ok(factor);
     }
     let utilization = utilization_bps(available, borrowed_principal, factor)?;
-    let rate = borrow_rate_per_slot(
+    let rate_per_second = borrow_rate_per_second(
         utilization,
         optimal_utilization_bps,
         min_rate_bps,
         optimal_rate_bps,
         max_rate_bps,
-        slots_per_year,
     )?;
     let growth = FIXED_POINT_SCALE
         .checked_add(
-            rate.checked_mul(elapsed as u128)
+            rate_per_second
+                .checked_mul(elapsed_seconds)
                 .ok_or(LendingError::MathOverflow)?,
         )
         .ok_or(LendingError::MathOverflow)?;
-    mul_div_floor(factor, growth, FIXED_POINT_SCALE)
+    mul_div_ceil(factor, growth, FIXED_POINT_SCALE)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -241,7 +257,7 @@ pub fn validate_config(
     min_borrow_rate_bps: u16,
     optimal_borrow_rate_bps: u16,
     max_borrow_rate_bps: u16,
-    slots_per_year: u64,
+    max_confidence_bps: u16,
 ) -> Result<(), ProgramError> {
     let within = |value: u16| (value as u128) <= BPS_DENOMINATOR;
     require!(
@@ -250,10 +266,16 @@ pub fn validate_config(
             && within(liquidation_bonus_bps)
             && within(close_factor_bps)
             && within(reserve_factor_bps)
-            && within(optimal_utilization_bps),
+            && within(optimal_utilization_bps)
+            && within(max_confidence_bps),
         LendingError::InvalidConfig
     );
+    // A zero close factor would make every liquidation a no-op.
     require!(close_factor_bps > 0, LendingError::InvalidConfig);
+    // A zero confidence limit admits only a price whose band is zero, which
+    // an oracle reports for no traded asset, so the reserve could never be
+    // valued and every obligation holding it would be frozen.
+    require!(max_confidence_bps > 0, LendingError::InvalidConfig);
     require!(
         optimal_utilization_bps > 0 && (optimal_utilization_bps as u128) < BPS_DENOMINATOR,
         LendingError::InvalidConfig
@@ -262,12 +284,28 @@ pub fn validate_config(
         loan_to_value_bps <= liquidation_threshold_bps,
         LendingError::InvalidConfig
     );
+    // A liquidation at the threshold must be able to pay its bonus out of the
+    // collateral: the debt is at most `threshold` of the collateral's value,
+    // and the liquidator takes that debt plus the bonus, so
+    // `threshold * (1 + bonus)` may not exceed 100%. Both fields are at most
+    // 10,000 here, so the product fits a u128 with room to spare.
+    require!(
+        (liquidation_threshold_bps as u128) * (BPS_DENOMINATOR + liquidation_bonus_bps as u128)
+            <= BPS_DENOMINATOR * BPS_DENOMINATOR,
+        LendingError::LiquidationBonusUnpayable
+    );
+    // No point on the rate curve may exceed the ceiling, so no reserve can be
+    // created charging an arbitrary rate.
+    require!(
+        min_borrow_rate_bps <= BORROW_RATE_CEILING_BPS
+            && optimal_borrow_rate_bps <= BORROW_RATE_CEILING_BPS
+            && max_borrow_rate_bps <= BORROW_RATE_CEILING_BPS,
+        LendingError::BorrowRateAboveCeiling
+    );
     require!(
         min_borrow_rate_bps <= optimal_borrow_rate_bps
             && optimal_borrow_rate_bps <= max_borrow_rate_bps,
         LendingError::InvalidConfig
     );
-    // Zero would divide by zero when converting the APR to a per-slot rate.
-    require!(slots_per_year > 0, LendingError::InvalidConfig);
     Ok(())
 }

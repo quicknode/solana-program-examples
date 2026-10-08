@@ -1,16 +1,21 @@
-//! Kani proof harnesses for the betting-market program (`finance/betting-market`).
+//! Kani harnesses for the betting-market program (`finance/betting-market`).
 //!
 //! Inspired by aeyakovenko/percolator, which uses the Kani model checker to
-//! prove the mathematical correctness of a DeFi engine's pure numeric core.
+//! check the arithmetic of a DeFi engine's pure numeric core. Kani marks a
+//! harness with `#[kani::proof]`, which is why the crate is `kani-proofs` and
+//! the harnesses are named `proof_*`; each one is a model check over every value
+//! of the inputs it declares.
 //!
 //! The program is a pari-mutuel betting market: every stake lands in one vault,
 //! and at settlement the losing pool (minus a fee) is split among the winners in
 //! proportion to their stake. The token movement goes through SPL CPIs Kani
 //! cannot symbolically execute, but the payout math (`settle_event`,
 //! `claim_winnings`) is pure integer arithmetic. This crate reproduces it
-//! faithfully and proves the two properties that matter: **solvency** (winners
+//! faithfully and checks the two properties that matter: **solvency** (winners
 //! can never collectively claim more than the vault holds) and that a winner is
-//! never paid less than their own stake.
+//! never paid less than their own stake. A small model of the event's
+//! lifecycle guards also checks that the outcome list is fixed before any money
+//! arrives and that the betting and settlement windows never overlap.
 //!
 //! The nonlinear harness uses bounded model checking (small symbolic inputs), as
 //! percolator does; the pro-rata identity is scale-invariant.
@@ -21,12 +26,14 @@
 pub const BPS_DENOMINATOR: u128 = 10_000;
 
 /// Settlement math from `handle_settle_event`: split the pool into the losing
-/// side, the fee (charged only on losers), and the distributable remainder.
-/// Returns `(losing_pool, fee, distributable_losing_pool)`. `None` on the
-/// underflow/overflow paths.
+/// side, the fee (charged only on losers, and rounded up:
+/// `ceil(losing_pool * fee_bps / 10_000)`), and the distributable remainder
+/// the winners share. Returns `(losing_pool, fee, distributable_losing_pool)`.
+/// `None` on the underflow/overflow paths.
 pub fn settle(total_pool: u64, winning_pool: u64, fee_bps: u16) -> Option<(u64, u64, u64)> {
     let losing_pool = total_pool.checked_sub(winning_pool)?;
-    let fee: u64 = ((losing_pool as u128) * (fee_bps as u128) / BPS_DENOMINATOR)
+    let fee: u64 = ((losing_pool as u128) * (fee_bps as u128))
+        .div_ceil(BPS_DENOMINATOR)
         .try_into()
         .ok()?;
     let distributable = losing_pool.checked_sub(fee)?;
@@ -51,8 +58,9 @@ pub fn winnings(stake: u64, distributable: u64, winning_pool: u64) -> Option<u64
 /// Settlement is well-formed for any pool where `winning_pool <= total_pool`
 /// (the invariant `place_bet` maintains: a single outcome's stakes are a subset
 /// of the whole pool): the fee never exceeds the losing pool (so `distributable`
-/// never underflows), and `winning + distributable + fee == total` — every base
-/// unit is accounted for.
+/// never underflows), the fee is the ceiling of `losing * fee_bps / 10_000` (it
+/// rounds in the program's favor, never the winners'), and
+/// `winning + distributable + fee == total` — every base unit is accounted for.
 #[cfg(kani)]
 #[kani::proof]
 #[kani::solver(cadical)]
@@ -71,6 +79,11 @@ fn proof_settlement_fee_and_split() {
 
     assert!(fee <= losing); // fee only ever a fraction of the losing pool
     assert_eq!(losing, total_pool - winning_pool);
+    // The fee is the ceiling: at least the exact fraction, and the smallest
+    // integer that is, so no more than one base unit above it.
+    let exact = losing as u128 * fee_bps as u128; // in units of 1/10_000
+    assert!(fee as u128 * BPS_DENOMINATOR >= exact);
+    assert!((fee as u128) * BPS_DENOMINATOR < exact + BPS_DENOMINATOR);
     // Conservation: nothing created or destroyed by settlement.
     assert_eq!(
         winning_pool as u128 + distributable as u128 + fee as u128,
@@ -178,6 +191,149 @@ fn proof_refund_conserves_pool() {
 }
 
 // ===========================================================================
+// 5. Lifecycle: the question is fixed before money arrives
+// ===========================================================================
+
+/// Mirrors `betting_is_open` in the program's `state/event.rs`.
+pub fn betting_is_open(now: i64, betting_closes_at: i64) -> bool {
+    now < betting_closes_at
+}
+
+/// Mirrors `may_settle` in the program's `state/event.rs`.
+pub fn may_settle(now: i64, betting_closes_at: i64) -> bool {
+    now >= betting_closes_at
+}
+
+/// `EventStatus` from the program.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Status {
+    Draft,
+    Open,
+    Settled,
+    Cancelled,
+}
+
+/// The fields of an `Event` the lifecycle guards read or write.
+#[derive(Clone, Copy, Debug)]
+pub struct EventModel {
+    pub status: Status,
+    pub outcome_count: u8,
+    pub total_pool: u64,
+    pub betting_closes_at: i64,
+}
+
+/// One handler call, with the guards its `require!`s enforce. Returns `None`
+/// where the handler rejects, leaving the event untouched.
+#[derive(Clone, Copy, Debug)]
+pub enum Action {
+    AddOutcome,
+    OpenBetting,
+    PlaceBet(u64),
+    Settle,
+    Cancel,
+}
+
+pub fn step(event: EventModel, action: Action, now: i64) -> Option<EventModel> {
+    let mut next = event;
+    match action {
+        Action::AddOutcome => {
+            if event.status != Status::Draft {
+                return None;
+            }
+            next.outcome_count = event.outcome_count.checked_add(1)?;
+        }
+        Action::OpenBetting => {
+            if event.status != Status::Draft
+                || event.outcome_count < 2
+                || !betting_is_open(now, event.betting_closes_at)
+            {
+                return None;
+            }
+            next.status = Status::Open;
+        }
+        Action::PlaceBet(amount) => {
+            if amount == 0
+                || event.status != Status::Open
+                || !betting_is_open(now, event.betting_closes_at)
+            {
+                return None;
+            }
+            next.total_pool = event.total_pool.checked_add(amount)?;
+        }
+        Action::Settle => {
+            if event.status != Status::Open || !may_settle(now, event.betting_closes_at) {
+                return None;
+            }
+            next.status = Status::Settled;
+        }
+        Action::Cancel => {
+            if event.status != Status::Draft && event.status != Status::Open {
+                return None;
+            }
+            next.status = Status::Cancelled;
+        }
+    }
+    Some(next)
+}
+
+#[cfg(kani)]
+fn any_action() -> Action {
+    match kani::any::<u8>() % 5 {
+        0 => Action::AddOutcome,
+        1 => Action::OpenBetting,
+        2 => Action::PlaceBet(kani::any()),
+        3 => Action::Settle,
+        _ => Action::Cancel,
+    }
+}
+
+/// At every instant exactly one of "a bet may land" and "the event may be
+/// settled" holds, so no bet can arrive once settlement is possible, and the
+/// admin cannot settle while the promised window is still open.
+#[cfg(kani)]
+#[kani::proof]
+fn proof_betting_and_settlement_windows_partition_time() {
+    let now: i64 = kani::any();
+    let betting_closes_at: i64 = kani::any();
+    assert!(betting_is_open(now, betting_closes_at) != may_settle(now, betting_closes_at));
+}
+
+/// Over any sequence of handler calls at any times, starting from the draft
+/// `initialize_event` creates:
+/// - the outcome list never changes once any money is in the pool;
+/// - every stake lands in a market with at least two outcomes;
+/// - no stake lands at or after the close time;
+/// - a settled event was settled at or after the close time.
+#[cfg(kani)]
+#[kani::proof]
+#[kani::unwind(7)]
+fn proof_outcomes_fixed_before_money_arrives() {
+    let mut event = EventModel {
+        status: Status::Draft,
+        outcome_count: 0,
+        total_pool: 0,
+        betting_closes_at: kani::any(),
+    };
+    for _ in 0..6 {
+        let action = any_action();
+        let now: i64 = kani::any();
+        if let Some(next) = step(event, action, now) {
+            if event.total_pool > 0 {
+                assert_eq!(next.outcome_count, event.outcome_count);
+            }
+            if let Action::PlaceBet(_) = action {
+                assert!(event.outcome_count >= 2);
+                assert!(now < event.betting_closes_at);
+            }
+            if next.status == Status::Settled && event.status != Status::Settled {
+                assert!(now >= event.betting_closes_at);
+            }
+            event = next;
+        }
+    }
+}
+
+// ===========================================================================
 // Plain unit tests (meaningful without Kani installed).
 // ===========================================================================
 
@@ -193,9 +349,46 @@ mod tests {
     }
 
     #[test]
+    fn settle_fee_rounds_up() {
+        // total 550, winning 300, 1% fee on the 250 losing pool: 2.5 rounds up
+        // to 3, and the winners share 247.
+        assert_eq!(settle(550, 300, 100).unwrap(), (250, 3, 247));
+        // 2% of 201 is 4.02: the fee is 5, never 4.
+        assert_eq!(settle(201, 0, 200).unwrap(), (201, 5, 196));
+        // A fee of 100% takes the whole losing pool and no more.
+        assert_eq!(settle(201, 1, 10_000).unwrap(), (200, 200, 0));
+        // No fee: nothing to round.
+        assert_eq!(settle(201, 1, 0).unwrap(), (200, 0, 200));
+    }
+
+    #[test]
     fn winnings_pro_rata() {
         // stake 100 of a 400 winning pool, distributable 588 -> floor(100*588/400)=147.
         assert_eq!(winnings(100, 588, 400).unwrap(), 147);
+    }
+
+    #[test]
+    fn a_bet_needs_an_opened_market_before_the_close() {
+        let draft = EventModel {
+            status: Status::Draft,
+            outcome_count: 0,
+            total_pool: 0,
+            betting_closes_at: 100,
+        };
+        assert!(step(draft, Action::PlaceBet(10), 0).is_none());
+        assert!(step(draft, Action::OpenBetting, 0).is_none());
+        let two = step(
+            step(draft, Action::AddOutcome, 0).unwrap(),
+            Action::AddOutcome,
+            0,
+        )
+        .unwrap();
+        let open = step(two, Action::OpenBetting, 0).unwrap();
+        assert!(step(open, Action::AddOutcome, 0).is_none());
+        assert!(step(open, Action::PlaceBet(10), 99).is_some());
+        assert!(step(open, Action::PlaceBet(10), 100).is_none());
+        assert!(step(open, Action::Settle, 99).is_none());
+        assert!(step(open, Action::Settle, 100).is_some());
     }
 
     #[test]

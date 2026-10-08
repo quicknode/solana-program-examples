@@ -29,16 +29,11 @@ pub enum OptionStatus {
     Exercised,
 }
 
-/// One option: `contracts` identical contracts, written by one
-/// writer, held by at most one holder. One PDA per (market, writer, id).
+/// One option, written by one writer, held by at most one holder. One PDA
+/// per (market, writer, id).
 ///
-/// Every amount the option ever moves is a product of two of its integers,
-/// so settlement never divides and never rounds:
-///
-/// - `contracts * underlying_per_contract` underlying minor units, which a
-///   call writer posts and a call holder receives (or a put holder delivers).
-/// - `contracts * strike_per_contract` quote minor units, which a put writer
-///   posts and a put holder receives (or a call holder pays).
+/// It stores the two amounts that change hands on exercise, so settlement
+/// neither multiplies, divides, nor rounds.
 #[account(borsh)]
 #[derive(InitSpace)]
 pub struct OptionContract {
@@ -56,15 +51,15 @@ pub struct OptionContract {
 
     pub status: OptionStatus,
 
-    /// How many contracts the option holds. Bought and exercised as a whole.
-    pub contracts: u64,
+    /// Underlying minor units the option covers: what a call writer posts and
+    /// a call holder receives, or a put holder delivers (1 NVDAx = 100_000_000).
+    pub underlying_amount: u64,
 
-    /// Underlying minor units each contract is on (1 NVDAx = 1_000_000).
-    pub underlying_per_contract: u64,
-
-    /// Quote minor units each contract settles at: the strike, per contract,
-    /// as an amount rather than a price, so exercise needs no decimals math.
-    pub strike_per_contract: u64,
+    /// Quote minor units paid for the underlying on exercise: what a put
+    /// writer posts and a put holder receives, or a call holder pays. The
+    /// strike for the whole option, as an amount rather than a price, so
+    /// exercise needs no decimals math.
+    pub strike_amount: u64,
 
     /// Quote minor units the buyer pays the writer for the whole option.
     pub premium: u64,

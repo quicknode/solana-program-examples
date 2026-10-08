@@ -23,8 +23,12 @@ pub fn handle_borrow_obligation_liquidity(
     context.accounts.obligation.require_refreshed()?;
     context.accounts.reserve.require_refreshed()?;
 
-    let price_scaled = context.accounts.price_feed.price_scaled(slot)?;
     let decimals = context.accounts.reserve.liquidity_decimals;
+    let max_confidence_bps = context.accounts.reserve.config.max_confidence_bps;
+    let price_scaled = context
+        .accounts
+        .price_feed
+        .price_scaled(slot, max_confidence_bps)?;
     let borrow_value = market_value(liquidity_amount, decimals, price_scaled, Rounding::Up)?;
 
     let projected_borrowed_value = context

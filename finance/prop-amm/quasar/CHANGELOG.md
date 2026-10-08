@@ -1,5 +1,64 @@
 # Changelog
 
+## Unreleased, 2026-10-07
+
+Add `close_market` (discriminator 5). The market account and its two vaults
+had no close handler, so the rent the operator paid for all three at
+`initialize_market` could never be recovered. The new handler is signed by the
+operator, under the same `has_one(operator)` constraint as
+`withdraw_inventory`; it refuses with the new `INVENTORY_NOT_EMPTY` (15) while
+either vault holds tokens (the operator withdraws first), closes both vaults
+with the market's own seeds, and closes the market account through
+`close(dest = operator)`, so all three rents return to the operator. Tested by
+`close_market_returns_all_three_rents` (rent back to the lamport, all three
+accounts closed), `close_market_refuses_while_a_vault_holds_tokens` (each
+vault on its own) and `close_market_rejects_non_operator`
+(`QuasarError::HasOneMismatch`).
+
+Four refusals had no test. `swap_rejects_non_positive_price` (a zero and a
+negative price), `swap_rejects_oracle_scale_mismatch` (a feed at scale 6 for a
+market pinned at 8), `swap_rejects_oracle_data_too_short` (a 20-byte feed
+account owned by the recorded program) and
+`swap_rejects_amount_that_rounds_to_zero` (a 1-minor-unit USDC buy) now
+assert `NON_POSITIVE_PRICE`, `ORACLE_SCALE_MISMATCH`, `ORACLE_DATA_TOO_SHORT`
+and `AMOUNT_ROUNDS_TO_ZERO`.
+
+## Unreleased, 2026-10-05
+
+The quasar-test suite mints NVDAx with 8 decimals, its real count, and USDC
+with 6, so the two mints no longer share a decimal count (`NVDAX_DECIMALS`,
+`ONE_NVDAX`, `USDC_DECIMALS`, `ONE_USDC`). The walkthrough amounts are the
+same: 5 NVDAx (`FIVE_NVDAX`, now 500,000,000 minor units) costs 825.825 USDC
+at the ask (`FIVE_NVDAX_AT_THE_ASK`) and sells for 824.175 at the bid
+(`FIVE_NVDAX_AT_THE_BID`), 850.85 at $170 and 829.125 at a 50 bps spread, all
+exact, because the ask and bid have three decimal places of a dollar and 5
+is a whole number of NVDAx at any decimal count. Every refusal test asserts
+its error code with `fails_with`: the program's codes for slippage,
+staleness, a pre-restart price, confidence, pause, zero amounts, inventory
+bounds and parameter bounds, and `QuasarError::HasOneMismatch` for the
+`has_one(operator)` constraint that refuses an imposter operator. No program
+source changed: the quote math reads both mints' decimals from the market and
+already rounds the ask up, the bid down and both outputs down.
+
+## 2026-10-04
+
+Check which program owns the price feed. `initialize_market` records the
+feed account's owning program on the new `Market.price_feed_program`, read
+from the account's owner at that moment, beside the feed address and scale it
+already pins. `read_oracle_price` now takes the feed account and that program
+rather than the feed's bytes, and refuses a feed account owned by any other
+with the new `PRICE_FEED_NOT_FROM_ORACLE` (14), before it decodes a byte, so
+`swap` no longer accepts any account laid out like a feed as a price. Tested
+by `swap_rejects_price_feed_from_another_program`, which rewrites the feed as
+a byte-identical copy owned by an unrelated program and then restores the
+owner.
+
+## 2026-09-23
+
+Documentation only: a production feed is now described as a Pyth
+`PriceUpdateV2` account, since the oracle network the test feed was modeled on
+has shut down.
+
 ## 2026-09-10
 
 The `Market` account now owns both vaults and signs their outgoing transfers

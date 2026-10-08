@@ -3,8 +3,7 @@ use anchor_spl::token_interface::{
     spl_pod::optional_keys::OptionalNonZeroPubkey,
     spl_token_2022::{
         extension::{
-            mint_close_authority::MintCloseAuthority, BaseStateWithExtensions,
-            StateWithExtensions,
+            mint_close_authority::MintCloseAuthority, BaseStateWithExtensions, StateWithExtensions,
         },
         state::Mint as MintState,
     },

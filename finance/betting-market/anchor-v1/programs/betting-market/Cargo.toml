@@ -20,7 +20,7 @@ custom-heap = []
 custom-panic = []
 
 [dependencies]
-# init-if-needed: place_bet and the lazy User index create accounts only on first use.
+# init-if-needed: place_bet creates the Bet account only on a bettor's first bet on an outcome.
 anchor-lang = { version = "1.2.0", features = ["init-if-needed"] }
 anchor-spl = "1.2.0"
 

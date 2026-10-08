@@ -40,10 +40,7 @@ pub struct MintTokenAccountConstraints<'info> {
 /// `amount` is in minor units (the raw integer the token program operates
 /// on). Clients convert from major units, e.g. 1 token with 9 decimals is
 /// `1 * 10u64.pow(9)` minor units.
-pub fn handle_mint_token(
-    context: Context<MintTokenAccountConstraints>,
-    amount: u64,
-) -> Result<()> {
+pub fn handle_mint_token(context: Context<MintTokenAccountConstraints>, amount: u64) -> Result<()> {
     msg!("Minting token to associated token account...");
     msg!("Mint: {}", &context.accounts.mint_account.key());
     msg!(

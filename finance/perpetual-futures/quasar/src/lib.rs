@@ -37,24 +37,30 @@ mod quasar_perpetual_futures {
     pub fn initialize_pool(
         ctx: Ctx<InitializePool>,
         oracle_scale: u32,
-        funding_rate_per_slot: u64,
+        funding_rate_per_second: u64,
         open_fee_bps: u16,
         close_fee_bps: u16,
-        max_leverage: u16,
+        initial_margin_bps: u16,
         maintenance_margin_bps: u16,
         liquidation_fee_bps: u16,
         max_confidence_bps: u16,
+        max_price_deviation_bps: u16,
+        insurance_fee_bps: u16,
+        profit_warmup_slots: u64,
     ) -> Result<(), ProgramError> {
         instructions::handle_initialize_pool(
             &mut ctx.accounts,
             oracle_scale,
-            funding_rate_per_slot,
+            funding_rate_per_second,
             open_fee_bps,
             close_fee_bps,
-            max_leverage,
+            initial_margin_bps,
             maintenance_margin_bps,
             liquidation_fee_bps,
             max_confidence_bps,
+            max_price_deviation_bps,
+            insurance_fee_bps,
+            profit_warmup_slots,
             &ctx.bumps,
         )
     }
@@ -123,11 +129,14 @@ mod quasar_perpetual_futures {
         instructions::handle_collect_fees(&mut ctx.accounts, &ctx.bumps)
     }
 
+    /// Read the oracle, credit the seconds since the previous read to the
+    /// price that read saw, record the current price for the next read, and
+    /// accrue funding up to now. Permissionless: after a genuine price move
+    /// takes the oracle outside the pool's band, anyone can call this
+    /// repeatedly as time passes to walk the average toward the new price until
+    /// trading resumes.
     #[instruction(discriminator = 7)]
-    pub fn set_funding_rate(
-        ctx: Ctx<SetFundingRate>,
-        funding_rate_per_slot: u64,
-    ) -> Result<(), ProgramError> {
-        instructions::handle_set_funding_rate(&mut ctx.accounts, funding_rate_per_slot)
+    pub fn update_price_average(ctx: Ctx<UpdatePriceAverage>) -> Result<(), ProgramError> {
+        instructions::handle_update_price_average(&mut ctx.accounts)
     }
 }

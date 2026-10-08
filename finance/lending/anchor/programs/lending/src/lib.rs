@@ -37,16 +37,17 @@ pub mod lending {
         instructions::handle_update_reserve_config(context, config)
     }
 
-    pub fn collect_protocol_fees(context: &mut Context<CollectProtocolFees>) -> Result<()> {
-        instructions::handle_collect_protocol_fees(context)
+    pub fn collect_program_fees(context: &mut Context<CollectProgramFees>) -> Result<()> {
+        instructions::handle_collect_program_fees(context)
     }
 
     pub fn set_price(
         context: &mut Context<SetPrice>,
         price_mantissa: i128,
         exponent: i32,
+        confidence: u64,
     ) -> Result<()> {
-        instructions::handle_set_price(context, price_mantissa, exponent)
+        instructions::handle_set_price(context, price_mantissa, exponent, confidence)
     }
 
     pub fn refresh_reserve(context: &mut Context<RefreshReserve>) -> Result<()> {
@@ -73,6 +74,10 @@ pub mod lending {
 
     pub fn refresh_obligation(context: &mut Context<RefreshObligation>) -> Result<()> {
         instructions::handle_refresh_obligation(context)
+    }
+
+    pub fn close_obligation(context: &mut Context<CloseObligation>) -> Result<()> {
+        instructions::handle_close_obligation(context)
     }
 
     pub fn deposit_obligation_collateral(

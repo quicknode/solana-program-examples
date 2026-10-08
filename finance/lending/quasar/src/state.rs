@@ -30,31 +30,36 @@ pub struct Reserve {
     pub price_feed: Address,
     pub available_liquidity: u64,
     pub share_mint_supply: u64,
-    /// Liquidity owed to the market owner: the protocol's cut of accrued
+    /// Liquidity owed to the market owner: the program's cut of accrued
     /// interest, carved out of total liquidity and withdrawn via
-    /// `collect_protocol_fees`.
-    pub accumulated_protocol_fees: u64,
+    /// `collect_program_fees`.
+    pub accumulated_program_fees: u64,
     pub borrowed_principal: u128,
     pub borrow_accumulation_factor: u128,
+    /// The slot of the last accrual. Every handler that reads the reserve's
+    /// value accrues it inline first, so this records when that last ran. It
+    /// is not the accrual clock.
     pub last_update_slot: u64,
-    /// Slots in a year: the divisor that turns the APR fields below into the
-    /// per-slot rate interest accrues at. This is the cluster's slot time
-    /// expressed as a count, so it is configuration rather than a constant. The
-    /// protocol lowers the slot time over time, and a value left behind here
-    /// charges borrowers at the wrong wall-clock rate while every other number
-    /// still reads correctly. The owner corrects it with `update_slots_per_year`.
-    pub slots_per_year: u64,
+    /// The Clock's `unix_timestamp` at the last accrual. Interest accrues for
+    /// the seconds since, so it follows wall-clock time whatever the slot
+    /// length is.
+    pub last_accrual_timestamp: i64,
     pub liquidity_decimals: u8,
     pub loan_to_value_bps: u16,
     pub liquidation_threshold_bps: u16,
     pub liquidation_bonus_bps: u16,
     pub close_factor_bps: u16,
-    /// Share of accrued borrow interest kept by the protocol (how the owner earns).
+    /// Share of accrued borrow interest kept by the program (how the owner earns).
     pub reserve_factor_bps: u16,
     pub optimal_utilization_bps: u16,
     pub min_borrow_rate_bps: u16,
     pub optimal_borrow_rate_bps: u16,
     pub max_borrow_rate_bps: u16,
+    /// Widest confidence band, as a fraction of the price, this reserve's
+    /// price feed may report and still be valued against. A wider band is
+    /// refused (`OracleConfidenceTooWide`), so no borrow, withdrawal or
+    /// liquidation is priced off a quote the oracle itself is unsure of.
+    pub max_confidence_bps: u16,
     pub bump: u8,
 }
 
@@ -72,11 +77,15 @@ pub struct Obligation {
     pub bump: u8,
 }
 
-/// Switchboard-On-Demand-shaped price feed. PDA: `["price_feed", market, mint]`
-/// — scoped to a market (not to any individual); only the market's `owner` may
-/// write it, so prices can't be squatted and each market prices its own assets.
+/// Oracle-shaped price feed: a mantissa, an exponent and a confidence band
+/// like Pyth's. PDA: `["price_feed", market, mint]` — scoped to a market (not
+/// to any individual); only the market's `owner` may write it, so prices
+/// can't be squatted and each market prices its own assets.
 /// `price = price_mantissa * 10^exponent`; freshness is checked in slots. In
-/// production this account would be the real Switchboard feed.
+/// production this account would be a Pyth `PriceUpdateV2`, mapped as
+/// `price_mantissa = price_message.price`, `exponent = price_message.exponent`,
+/// `confidence = price_message.conf` and `last_updated_slot = posted_slot`,
+/// after checking the update's `feed_id`.
 #[account(discriminator = 4, set_inner)]
 #[seeds(b"price_feed", market: Address, mint: Address)]
 pub struct PriceFeed {
@@ -84,6 +93,12 @@ pub struct PriceFeed {
     pub mint: Address,
     pub price_mantissa: i128,
     pub exponent: i32,
+    /// How far the publisher's price sources disagree, as half the width of
+    /// the interval around `price_mantissa`, in the mantissa's units (Pyth's
+    /// `conf`). A reserve refuses a price whose band is wider than its
+    /// `max_confidence_bps` of the price, so a market that has stopped
+    /// trading, or whose sources disagree, cannot be valued against.
+    pub confidence: u64,
     pub last_updated_slot: u64,
     pub bump: u8,
 }

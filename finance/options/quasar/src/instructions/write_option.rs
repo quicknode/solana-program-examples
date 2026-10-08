@@ -2,7 +2,7 @@ use {
     crate::{
         constants::STATUS_LISTED,
         errors::OptionsError,
-        instructions::shared::{add_locked, check_custody, require_valid_kind, Terms},
+        instructions::shared::{add_owed, check_custody, require_valid_kind, Terms},
         state::{Market, OptionContract, OptionContractInner},
     },
     quasar_lang::{prelude::*, sysvars::Sysvar as _},
@@ -15,9 +15,8 @@ use {
 pub struct WriteOptionArguments {
     pub id: u64,
     pub kind: u8,
-    pub contracts: u64,
-    pub underlying_per_contract: u64,
-    pub strike_per_contract: u64,
+    pub underlying_amount: u64,
+    pub strike_amount: u64,
     pub premium: u64,
     pub expiry: i64,
 }
@@ -47,15 +46,23 @@ pub struct WriteOptionAccountConstraints {
     pub underlying_vault: Account<Token>,
     #[account(mut)]
     pub quote_vault: Account<Token>,
-    /// A call writer pays collateral from this account; a put writer's copy
-    /// is only validated. Unlike the Anchor sibling, it must already exist.
-    #[account(mut)]
+    /// A call writer pays collateral from this account. A put writer may
+    /// never have held the underlying, so the account is created if needed,
+    /// at the writer's expense; it is where `collect_proceeds` pays a put
+    /// writer, and `cancel_option` and `reclaim_collateral` take it too.
+    #[account(
+        mut,
+        init(idempotent),
+        payer = writer,
+        associated_token(mint = underlying_mint, authority = writer, token_program = token_program),
+    )]
     pub writer_underlying: Account<Token>,
     /// A put writer pays collateral from this account, and every writer is
     /// paid their premium into it by `buy_option`. Must already exist.
     #[account(mut)]
     pub writer_quote: Account<Token>,
     pub token_program: Program<TokenProgram>,
+    pub associated_token_program: Program<AssociatedTokenProgram>,
     pub system_program: Program<SystemProgram>,
     pub rent: Sysvar<Rent>,
 }
@@ -71,14 +78,11 @@ pub fn handle_write_option(
     bumps: &WriteOptionAccountConstraintsBumps,
 ) -> Result<(), ProgramError> {
     require_valid_kind(arguments.kind)?;
-    // Every quantity is a multiplier in the settlement math, so a zero in any
-    // of them is an option that delivers nothing or costs nothing to exercise. A
-    // zero premium is a gift rather than a sale, and is refused as a mistake.
+    // A zero underlying amount is an option that delivers nothing, and a zero
+    // strike amount is one that costs nothing to exercise. A zero premium is a
+    // gift rather than a sale, and is refused as a mistake.
     require!(
-        arguments.contracts > 0
-            && arguments.underlying_per_contract > 0
-            && arguments.strike_per_contract > 0
-            && arguments.premium > 0,
+        arguments.underlying_amount > 0 && arguments.strike_amount > 0 && arguments.premium > 0,
         OptionsError::InvalidParameter
     );
     // Written in words: the holder may exercise while now < expiry. An expiry
@@ -88,15 +92,10 @@ pub fn handle_write_option(
 
     let terms = Terms {
         kind: arguments.kind,
-        contracts: arguments.contracts,
-        underlying_per_contract: arguments.underlying_per_contract,
-        strike_per_contract: arguments.strike_per_contract,
+        underlying_amount: arguments.underlying_amount,
+        strike_amount: arguments.strike_amount,
     };
-    // Both settlement amounts are computed here, at write time, so an option
-    // whose exercise would overflow is refused before anyone pays for it.
-    terms.underlying_total()?;
-    terms.strike_total()?;
-    let collateral = terms.collateral_amount()?;
+    let collateral = terms.collateral_amount();
 
     // Effects before the transfer: record the option and what the vault now owes.
     accounts.option.set_inner(OptionContractInner {
@@ -104,9 +103,8 @@ pub fn handle_write_option(
         market: *accounts.market.address(),
         writer: *accounts.writer.address(),
         holder: Address::default(),
-        contracts: arguments.contracts,
-        underlying_per_contract: arguments.underlying_per_contract,
-        strike_per_contract: arguments.strike_per_contract,
+        underlying_amount: arguments.underlying_amount,
+        strike_amount: arguments.strike_amount,
         premium: arguments.premium,
         expiry: arguments.expiry,
         kind: arguments.kind,
@@ -117,14 +115,14 @@ pub fn handle_write_option(
     let mut underlying_after = accounts.underlying_vault.amount();
     let mut quote_after = accounts.quote_vault.amount();
     if terms.is_call() {
-        add_locked(
-            &mut accounts.market.underlying_locked,
+        add_owed(
+            &mut accounts.market.underlying_owed,
             &mut underlying_after,
             collateral,
         )?;
     } else {
-        add_locked(
-            &mut accounts.market.quote_locked,
+        add_owed(
+            &mut accounts.market.quote_owed,
             &mut quote_after,
             collateral,
         )?;

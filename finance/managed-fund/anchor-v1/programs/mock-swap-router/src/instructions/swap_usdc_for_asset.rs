@@ -1,0 +1,120 @@
+use anchor_lang::prelude::*;
+use anchor_spl::{
+    associated_token::AssociatedToken,
+    token_interface::{
+        mint_to, transfer_checked, Mint, MintTo, TokenAccount, TokenInterface, TransferChecked,
+    },
+};
+
+use crate::error::RouterError;
+use crate::state::{AssetRate, RouterConfig};
+
+#[derive(Accounts)]
+pub struct SwapUsdcForAssetAccountConstraints<'info> {
+    /// The caller - e.g. the managed fund PDA (can be a signer or a PDA signer via CPI)
+    pub caller: Signer<'info>,
+
+    /// Owns the USDC treasury and is the mint authority of every asset the
+    /// router mints; signs the mint below with its own seeds.
+    #[account(
+        seeds = [b"router_config"],
+        bump = router_config.bump
+    )]
+    pub router_config: Account<'info, RouterConfig>,
+
+    #[account(
+        constraint = asset_rate.mint == asset_mint.key() @ RouterError::InvalidAssetMint
+    )]
+    pub asset_rate: Account<'info, AssetRate>,
+
+    pub usdc_mint: Box<InterfaceAccount<'info, Mint>>,
+
+    #[account(mut)]
+    pub asset_mint: Box<InterfaceAccount<'info, Mint>>,
+
+    /// Caller's USDC token account - USDC flows from here to the treasury
+    #[account(
+        mut,
+        associated_token::mint = usdc_mint,
+        associated_token::authority = caller,
+        associated_token::token_program = token_program
+    )]
+    pub caller_usdc_account: Box<InterfaceAccount<'info, TokenAccount>>,
+
+    /// Caller's asset token account - minted asset tokens land here
+    #[account(
+        mut,
+        associated_token::mint = asset_mint,
+        associated_token::authority = caller,
+        associated_token::token_program = token_program
+    )]
+    pub caller_asset_account: Box<InterfaceAccount<'info, TokenAccount>>,
+
+    /// Router's USDC treasury - receives the USDC payment
+    #[account(
+        mut,
+        associated_token::mint = usdc_mint,
+        associated_token::authority = router_config,
+        associated_token::token_program = token_program
+    )]
+    pub router_usdc_treasury: Box<InterfaceAccount<'info, TokenAccount>>,
+
+    pub associated_token_program: Program<'info, AssociatedToken>,
+    pub token_program: Interface<'info, TokenInterface>,
+    pub system_program: Program<'info, System>,
+}
+
+pub fn handle_swap_usdc_for_asset(
+    context: Context<SwapUsdcForAssetAccountConstraints>,
+    usdc_amount_in: u64,
+    minimum_asset_out: u64,
+) -> Result<()> {
+    let rate = context.accounts.asset_rate.usdc_per_token;
+    require!(rate > 0, RouterError::ZeroRate);
+
+    // asset_out = usdc_amount_in * 10^asset_decimals / rate  (u128 intermediate,
+    // caller gets the floor)
+    let one_token = 10u128
+        .checked_pow(context.accounts.asset_mint.decimals as u32)
+        .ok_or(RouterError::MathOverflow)?;
+    let asset_out: u64 = (usdc_amount_in as u128)
+        .checked_mul(one_token)
+        .ok_or(RouterError::MathOverflow)?
+        .checked_div(rate as u128)
+        .ok_or(RouterError::MathOverflow)?
+        .try_into()
+        .map_err(|_| RouterError::MathOverflow)?;
+
+    require!(
+        asset_out >= minimum_asset_out,
+        RouterError::SlippageExceeded
+    );
+
+    // Transfer USDC from caller to router treasury
+    let transfer_accounts = TransferChecked {
+        from: context.accounts.caller_usdc_account.to_account_info(),
+        mint: context.accounts.usdc_mint.to_account_info(),
+        to: context.accounts.router_usdc_treasury.to_account_info(),
+        authority: context.accounts.caller.to_account_info(),
+    };
+    let cpi_ctx = CpiContext::new(context.accounts.token_program.key(), transfer_accounts);
+    transfer_checked(cpi_ctx, usdc_amount_in, context.accounts.usdc_mint.decimals)?;
+
+    // Mint asset tokens to caller - router_config is the mint authority and signs
+    let router_config_bump = context.accounts.router_config.bump;
+    let signer_seeds: &[&[&[u8]]] = &[&[b"router_config", &[router_config_bump]]];
+
+    let mint_accounts = MintTo {
+        mint: context.accounts.asset_mint.to_account_info(),
+        to: context.accounts.caller_asset_account.to_account_info(),
+        authority: context.accounts.router_config.to_account_info(),
+    };
+    let cpi_ctx = CpiContext::new_with_signer(
+        context.accounts.token_program.key(),
+        mint_accounts,
+        signer_seeds,
+    );
+    mint_to(cpi_ctx, asset_out)?;
+
+    Ok(())
+}

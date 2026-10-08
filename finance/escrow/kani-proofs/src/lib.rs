@@ -1,21 +1,25 @@
-//! Kani proof harnesses for the Solana escrow program.
+//! Kani model-check harnesses for the Solana escrow program.
 //!
-//! Inspired by aeyakovenko/percolator, which uses Kani to prove the
-//! mathematical correctness of a risk engine's pure computational core.
+//! Inspired by aeyakovenko/percolator, which uses Kani to check the
+//! arithmetic of a risk engine's pure computational core.
 //!
 //! Kani is a bit-precise model checker: a `#[kani::proof]` harness explores
 //! *every* possible value of its `kani::any()` inputs and reports any input
 //! for which an `assert!` can fail (or for which arithmetic overflows, etc.).
+//! That is a model check, not a formal proof. Kani marks a harness with
+//! `#[kani::proof]`, which is why the crate is `kani-proofs` and the harnesses
+//! are named `proof_*`; each one is a model check.
 //!
-//! ## Why model instead of verifying the program crate directly
+//! ## Why model instead of checking the program crate directly
 //!
 //! The escrow program does almost no arithmetic itself: it hands the actual
 //! token movement to the SPL token program through cross-program invocations
 //! (`invoke` / `invoke_signed`). Those CPIs are opaque syscalls that Kani
 //! cannot symbolically execute, and the program types (`AccountInfo`, `Pubkey`,
 //! borsh buffers) are awkward to make symbolic. So — exactly like percolator,
-//! which verifies a self-contained library — we model the escrow's verifiable
-//! core as pure functions and prove the invariants the on-chain code relies on:
+//! which model-checks a self-contained library — we model the escrow's
+//! checkable core as pure functions and check the invariants the on-chain code
+//! relies on:
 //!
 //!   1. `token_transfer`     - faithful model of an SPL `transfer_checked`.
 //!   2. lamport closing       - models `utils::close_offer_account`.
@@ -23,7 +27,7 @@
 //!   4. seed round-trip       - the `id.to_le_bytes()` PDA seed math.
 //!
 //! Each model mirrors the real code's arithmetic and statement ordering so the
-//! proofs say something meaningful about the deployed program.
+//! model checks say something meaningful about the deployed program.
 
 #![cfg_attr(kani, allow(dead_code))]
 
@@ -102,7 +106,7 @@ fn proof_token_transfer_conserves() {
 //
 // This model preserves that ordering. Because the credit is computed before any
 // account is touched, the error path mutates nothing, so lamport conservation
-// holds with EQUALITY on every path (see proof below) — not merely "no inflation".
+// holds with EQUALITY on every path (see harness below) — not merely "no inflation".
 
 /// Lamport-overflow error, mirroring `EscrowError::ArithmeticOverflow`.
 #[derive(Debug, PartialEq, Eq)]
@@ -150,7 +154,7 @@ fn proof_close_offer_conserves_on_success() {
 /// meant conservation held only because of those *external* guarantees. The
 /// function now computes the credited balance before touching any account
 /// (`native/.../utils.rs`), so the error path mutates nothing and conservation
-/// holds with equality regardless of the result. This proof asserts exactly
+/// holds with equality regardless of the result. This harness asserts exactly
 /// that, with no precondition on the inputs.
 #[cfg(kani)]
 #[kani::proof]
@@ -178,7 +182,9 @@ fn proof_close_offer_conserves_lamports_unconditionally() {
 // take_offer: the atomic swap
 // ---------------------------------------------------------------------------
 //
-// take_offer performs two transfers:
+// take_offer first refuses the take (OfferTermsChanged) unless the vault holds
+// at least the taker's `minimum_token_a_out` and the offer wants no more than
+// the taker's `maximum_token_b_in`. It then performs two transfers:
 //   (B) taker -> maker  of `token_b_wanted_amount` of mint B
 //   (A) vault -> taker   of the vault's entire mint A balance
 // then re-reads balances and asserts (with checked_add) that each receiver
@@ -195,6 +201,9 @@ pub struct TakeBalances {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum TakeError {
+    /// The offer pays less token A, or wants more token B, than the taker
+    /// signed for (`EscrowError::OfferTermsChanged`).
+    OfferTermsChanged,
     Token(TokenError),
     /// The post-transfer conservation check itself overflowed
     /// (`EscrowError::ArithmeticOverflow`).
@@ -203,10 +212,20 @@ pub enum TakeError {
 
 /// Faithful model of the token movement + conservation checks in
 /// `take_offer::process`.
-pub fn take_offer(b: &mut TakeBalances, wanted_b: u64) -> Result<(), TakeError> {
+pub fn take_offer(
+    b: &mut TakeBalances,
+    wanted_b: u64,
+    minimum_token_a_out: u64,
+    maximum_token_b_in: u64,
+) -> Result<(), TakeError> {
     let taker_a_before = b.taker_a;
     let maker_b_before = b.maker_b;
     let vault_a = b.vault_a;
+
+    // The taker's terms are checked before any token moves.
+    if vault_a < minimum_token_a_out || wanted_b > maximum_token_b_in {
+        return Err(TakeError::OfferTermsChanged);
+    }
 
     // (B) taker pays the maker the wanted mint-B amount.
     token_transfer(&mut b.taker_b, &mut b.maker_b, wanted_b).map_err(TakeError::Token)?;
@@ -237,6 +256,8 @@ fn proof_take_offer_conserves_value() {
     let maker_b: u64 = kani::any();
     let vault_a: u64 = kani::any();
     let wanted_b: u64 = kani::any();
+    let minimum_token_a_out: u64 = kani::any();
+    let maximum_token_b_in: u64 = kani::any();
 
     let mut b = TakeBalances {
         taker_a,
@@ -247,7 +268,7 @@ fn proof_take_offer_conserves_value() {
     let total_a_before = taker_a as u128 + vault_a as u128;
     let total_b_before = taker_b as u128 + maker_b as u128;
 
-    if take_offer(&mut b, wanted_b).is_ok() {
+    if take_offer(&mut b, wanted_b, minimum_token_a_out, maximum_token_b_in).is_ok() {
         // Conservation across both mints: nothing minted, nothing burned.
         assert_eq!(b.taker_a as u128 + b.vault_a as u128, total_a_before);
         assert_eq!(b.taker_b as u128 + b.maker_b as u128, total_b_before);
@@ -260,6 +281,43 @@ fn proof_take_offer_conserves_value() {
     }
 }
 
+/// The taker's signed terms bind: a take either fails without moving a token,
+/// or the taker receives at least `minimum_token_a_out` of mint A and pays at
+/// most `maximum_token_b_in` of mint B. A maker who re-makes the offer at
+/// worse terms after the taker signed cannot make the take succeed.
+#[cfg(kani)]
+#[kani::proof]
+fn proof_take_offer_honors_taker_terms() {
+    let taker_a: u64 = kani::any();
+    let taker_b: u64 = kani::any();
+    let maker_b: u64 = kani::any();
+    let vault_a: u64 = kani::any();
+    let wanted_b: u64 = kani::any();
+    let minimum_token_a_out: u64 = kani::any();
+    let maximum_token_b_in: u64 = kani::any();
+
+    let mut b = TakeBalances {
+        taker_a,
+        taker_b,
+        maker_b,
+        vault_a,
+    };
+
+    match take_offer(&mut b, wanted_b, minimum_token_a_out, maximum_token_b_in) {
+        Ok(()) => {
+            assert!(b.taker_a - taker_a >= minimum_token_a_out);
+            assert!(taker_b - b.taker_b <= maximum_token_b_in);
+        }
+        Err(TakeError::OfferTermsChanged) => {
+            assert_eq!(b.taker_a, taker_a);
+            assert_eq!(b.taker_b, taker_b);
+            assert_eq!(b.maker_b, maker_b);
+            assert_eq!(b.vault_a, vault_a);
+        }
+        Err(_) => {}
+    }
+}
+
 /// FINDING (this harness PASSES, and that is the finding): the on-chain
 /// `checked_add` conservation guards in `take_offer` are unreachable defensive
 /// code. Their `ArithmeticOverflow` arm can never be taken, because the
@@ -268,7 +326,7 @@ fn proof_take_offer_conserves_value() {
 /// and `maker_b_before + wanted_b` fit in `u64` — otherwise the transfer would
 /// have failed first. So `.ok_or(ArithmeticOverflow)` and the subsequent
 /// `TokenConservationViolation` comparison are belt-and-suspenders checks that
-/// cannot fire. Kani proves this directly, without needing to assume any
+/// cannot fire. Kani checks this directly, without needing to assume any
 /// external SPL invariant (the model already encodes it).
 #[cfg(kani)]
 #[kani::proof]
@@ -278,6 +336,8 @@ fn proof_take_offer_guard_never_overflows() {
     let maker_b: u64 = kani::any();
     let vault_a: u64 = kani::any();
     let wanted_b: u64 = kani::any();
+    let minimum_token_a_out: u64 = kani::any();
+    let maximum_token_b_in: u64 = kani::any();
 
     let mut b = TakeBalances {
         taker_a,
@@ -286,7 +346,7 @@ fn proof_take_offer_guard_never_overflows() {
         vault_a,
     };
     assert_ne!(
-        take_offer(&mut b, wanted_b),
+        take_offer(&mut b, wanted_b, minimum_token_a_out, maximum_token_b_in),
         Err(TakeError::ConservationOverflow)
     );
 }
@@ -294,7 +354,7 @@ fn proof_take_offer_guard_never_overflows() {
 /// Companion to the finding above: once we assume the SPL invariant that a
 /// receiver's post-balance fits in `u64` (which is exactly the precondition
 /// under which the `transfer_checked` calls succeed), the `ConservationOverflow`
-/// arm is provably unreachable. This proof PASSES, confirming the guard is dead
+/// arm is unreachable for every input. This harness PASSES, confirming the guard is dead
 /// code rather than a real bug.
 #[cfg(kani)]
 #[kani::proof]
@@ -304,6 +364,8 @@ fn proof_take_offer_guard_dead_under_spl_invariant() {
     let maker_b: u64 = kani::any();
     let vault_a: u64 = kani::any();
     let wanted_b: u64 = kani::any();
+    let minimum_token_a_out: u64 = kani::any();
+    let maximum_token_b_in: u64 = kani::any();
 
     // SPL token invariant: a successful transfer means the receiver's resulting
     // balance fit in u64. That is precisely `before + amount <= u64::MAX`.
@@ -317,7 +379,7 @@ fn proof_take_offer_guard_dead_under_spl_invariant() {
         vault_a,
     };
     assert_ne!(
-        take_offer(&mut b, wanted_b),
+        take_offer(&mut b, wanted_b, minimum_token_a_out, maximum_token_b_in),
         Err(TakeError::ConservationOverflow)
     );
 }
@@ -467,11 +529,34 @@ mod tests {
             maker_b: 0,
             vault_a: 10,
         };
-        take_offer(&mut b, 7).unwrap();
+        take_offer(&mut b, 7, 10, 7).unwrap();
         assert_eq!(b.vault_a, 0);
         assert_eq!(b.taker_a, 10);
         assert_eq!(b.maker_b, 7);
         assert_eq!(b.taker_b, 43);
+    }
+
+    #[test]
+    fn take_offer_refuses_switched_terms() {
+        let before = TakeBalances {
+            taker_a: 0,
+            taker_b: 50,
+            maker_b: 0,
+            vault_a: 10,
+        };
+        // Less token A in the vault than the taker signed for.
+        let mut b = before;
+        assert_eq!(
+            take_offer(&mut b, 7, 11, 7),
+            Err(TakeError::OfferTermsChanged)
+        );
+        // More token B wanted than the taker signed for.
+        let mut b = before;
+        assert_eq!(
+            take_offer(&mut b, 8, 10, 7),
+            Err(TakeError::OfferTermsChanged)
+        );
+        assert_eq!((b.taker_a, b.taker_b, b.maker_b, b.vault_a), (0, 50, 0, 10));
     }
 
     #[test]

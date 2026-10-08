@@ -3,7 +3,7 @@ use {
         constants::{STATUS_EXERCISED, STATUS_HELD},
         errors::OptionsError,
         instructions::shared::{
-            add_locked, check_custody, may_exercise, sub_locked, transfer_from_vault, Terms,
+            add_owed, check_custody, may_exercise, sub_owed, transfer_from_vault, Terms,
         },
         state::{Market, OptionContract},
     },
@@ -69,12 +69,9 @@ pub fn handle_exercise_option(
 
     let terms = Terms {
         kind: accounts.option.kind,
-        contracts: accounts.option.contracts.get(),
-        underlying_per_contract: accounts.option.underlying_per_contract.get(),
-        strike_per_contract: accounts.option.strike_per_contract.get(),
+        underlying_amount: accounts.option.underlying_amount.get(),
+        strike_amount: accounts.option.strike_amount.get(),
     };
-    let underlying_total = terms.underlying_total()?;
-    let strike_total = terms.strike_total()?;
 
     // Effects: the option is exercised, and the vault now owes the writer the
     // payment instead of owing the holder the collateral.
@@ -82,26 +79,26 @@ pub fn handle_exercise_option(
     let mut underlying_after = accounts.underlying_vault.amount();
     let mut quote_after = accounts.quote_vault.amount();
     if terms.is_call() {
-        sub_locked(
-            &mut accounts.market.underlying_locked,
+        sub_owed(
+            &mut accounts.market.underlying_owed,
             &mut underlying_after,
-            underlying_total,
+            terms.underlying_amount,
         )?;
-        add_locked(
-            &mut accounts.market.quote_locked,
+        add_owed(
+            &mut accounts.market.quote_owed,
             &mut quote_after,
-            strike_total,
+            terms.strike_amount,
         )?;
     } else {
-        sub_locked(
-            &mut accounts.market.quote_locked,
+        sub_owed(
+            &mut accounts.market.quote_owed,
             &mut quote_after,
-            strike_total,
+            terms.strike_amount,
         )?;
-        add_locked(
-            &mut accounts.market.underlying_locked,
+        add_owed(
+            &mut accounts.market.underlying_owed,
             &mut underlying_after,
-            underlying_total,
+            terms.underlying_amount,
         )?;
     }
     check_custody(&accounts.market, underlying_after, quote_after)?;
@@ -115,7 +112,7 @@ pub fn handle_exercise_option(
                 &accounts.quote_mint,
                 &accounts.quote_vault,
                 &accounts.holder,
-                strike_total,
+                terms.strike_amount,
                 accounts.quote_mint.decimals(),
             )
             .invoke()?;
@@ -125,7 +122,7 @@ pub fn handle_exercise_option(
             &accounts.underlying_mint,
             &accounts.holder_underlying,
             &accounts.market,
-            underlying_total,
+            terms.underlying_amount,
         )
     } else {
         accounts
@@ -135,7 +132,7 @@ pub fn handle_exercise_option(
                 &accounts.underlying_mint,
                 &accounts.underlying_vault,
                 &accounts.holder,
-                underlying_total,
+                terms.underlying_amount,
                 accounts.underlying_mint.decimals(),
             )
             .invoke()?;
@@ -145,7 +142,7 @@ pub fn handle_exercise_option(
             &accounts.quote_mint,
             &accounts.holder_quote,
             &accounts.market,
-            strike_total,
+            terms.strike_amount,
         )
     }
 }
