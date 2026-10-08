@@ -197,6 +197,12 @@ Send SOL between two accounts.
 
 [⚓ Anchor v1](./basics/transfer-sol/anchor-v1) [⚓ Anchor v2](./basics/transfer-sol/anchor) [💫 Quasar](./basics/transfer-sol/quasar) [🤥 Pinocchio](./basics/transfer-sol/pinocchio) [🦀 Native](./basics/transfer-sol/native) [🧬 ASM](./basics/transfer-sol/asm)
 
+### Transaction v1
+
+Store a 3,000 byte document in one instruction using Solana's v1 transaction format, live on mainnet since September 2026: 4,096 bytes instead of 1,232, and a transaction config in the message in place of ComputeBudget instructions. The program needs no change for v1; the LiteSVM tests are what build the v1 transactions, and they show the config fields one by one.
+
+[⚓ Anchor v1](./basics/transaction-v1/anchor-v1)
+
 ### Pyth Price Feeds
 
 An **oracle** brings real-world market prices - a dollar, a stock, a token - [onchain](https://solana.com/docs/terminology#onchain), like a Bloomberg terminal feeding live quotes. [Pyth](https://pyth.network/) publishes low-latency prices from institutional sources, each in its own price feed account. This example reads a feed and logs its price, confidence interval, and exponent - the building block an AMM, lending market, or vault uses to value assets.
@@ -412,6 +418,10 @@ Yes. "Program" is Solana's term for what other chains call a smart contract: cod
 ### How do I build an escrow on Solana?
 
 Start with the [escrow example](./finance/escrow/anchor/), the best first finance program to learn: one state PDA, one vault, and three instruction handlers that swap two tokens atomically. There is also a [30-minute video walkthrough](https://www.youtube.com/watch?v=B5eBWWQfQuM) building it from scratch.
+
+### Do these examples work with Solana transaction v1?
+
+Yes. The v1 format (4,096 byte transactions, live on mainnet since epoch 1035 on 15 September 2026) changes how a client builds a transaction, not what a program sees, so every program here can be called through v1 as is. Every Anchor v1 example's tests send their transactions as v1, through a small `tests/transaction_v1` module, and the [transaction v1 example](./basics/transaction-v1/anchor-v1/) shows the config fields that replace ComputeBudget instructions. The Anchor v2 and Quasar tests still send legacy transactions, because their test harnesses run on virtual machines that predate v1.
 
 ### How do I test a Solana program without running a validator?
 

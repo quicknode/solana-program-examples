@@ -67,7 +67,7 @@ fn non_owner_cannot_write_market_price_feed() {
         }
         .data(),
     };
-    let result = solana_kite::send_transaction_from_instructions(
+    let result = common::transaction_v1::send_transaction_from_instructions(
         &mut env.svm,
         vec![instruction],
         &[&attacker],

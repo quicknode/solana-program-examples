@@ -1,3 +1,7 @@
+mod transaction_v1;
+
+use transaction_v1::send_transaction_from_instructions;
+
 use {
     anchor_lang::{
         solana_program::{
@@ -10,7 +14,7 @@ use {
     litesvm::LiteSVM,
     solana_keypair::Keypair,
     solana_kite::{
-        assert_token_account_balance, create_wallet, send_transaction_from_instructions,
+        assert_token_account_balance, create_wallet,
         token_extensions::{
             create_token_extensions_mint, mint_tokens_to_token_extensions_account,
             TOKEN_EXTENSIONS_PROGRAM_ID,

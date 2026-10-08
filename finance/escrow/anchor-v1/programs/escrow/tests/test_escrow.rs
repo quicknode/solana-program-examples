@@ -1,3 +1,7 @@
+mod transaction_v1;
+
+use transaction_v1::send_transaction_from_instructions;
+
 use {
     anchor_lang::{
         error::ErrorCode,
@@ -9,7 +13,6 @@ use {
     solana_kite::{
         create_associated_token_account, create_token_mint, create_wallet,
         get_token_account_balance, mint_tokens_to_token_account,
-        send_transaction_from_instructions,
     },
     solana_signer::Signer,
 };

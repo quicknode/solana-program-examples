@@ -1,3 +1,7 @@
+mod transaction_v1;
+
+use transaction_v1::send_transaction_from_instructions;
+
 use {
     anchor_lang::{
         prelude::Clock,
@@ -11,8 +15,7 @@ use {
     solana_keypair::Keypair,
     solana_kite::{
         create_associated_token_account, create_token_mint, create_wallet, get_sol_balance,
-        get_token_account_balance, mint_tokens_to_token_account,
-        send_transaction_from_instructions, SolanaKiteError,
+        get_token_account_balance, mint_tokens_to_token_account, SolanaKiteError,
     },
     solana_signer::Signer,
 };

@@ -4,6 +4,48 @@ All notable changes to this repository are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-10-08] - Anchor v1 tests send v1 transactions
+
+Solana's v1 transaction format (SIMD-0385) activated on mainnet beta at epoch 1035
+(15 September 2026). It raises the transaction size limit from 1,232 to 4,096 bytes
+and moves the compute budget out of ComputeBudget instructions and into the message.
+Programs need no change for it; the client that builds the transaction does.
+
+### Changed
+
+- Every Anchor v1 example's tests send v1 transactions. Each test directory gains a
+  `transaction_v1` module (identical in all 57 examples) whose
+  `send_transaction_from_instructions` takes the same arguments and returns the same
+  error type as `solana-kite`'s, so each test file changes one import and no call
+  site. Kite's version builds a legacy transaction. The six tests that build a
+  transaction by hand (to read logs, measure compute units or return the metadata)
+  use the module's `v1_transaction` instead.
+- A v1 transaction's unset limits are zero, not the legacy defaults, so the module
+  asks for exactly what a legacy transaction gets without ComputeBudget instructions:
+  200,000 compute units per instruction up to 1,400,000, and 64 MiB of loaded
+  account data. The programs under test see the budget they always did.
+- The test manifests name `solana-message` 4.2.4 and `solana-transaction` 4.1.5,
+  where the v1 types live. The three compression examples, which did not use kite,
+  add it for its error type, so the module is the same file everywhere.
+
+### Added
+
+- `basics/transaction-v1/anchor-v1`: a program that stores a 3,000 byte document in
+  one instruction, which only fits in a v1 transaction. Its tests measure the
+  transaction against both size limits, set each config field themselves, and show
+  that an unset field means zero rather than the default.
+
+### Note
+
+- Kite's token helpers (`create_token_mint`, `create_associated_token_account`,
+  `mint_tokens_to_token_account` and the token extension ones) send their setup
+  transactions through kite's own legacy builder, and still do. They switch when
+  kite's `send_transaction_from_instructions` builds v1; the module can then be
+  deleted and the imports pointed back at kite.
+- Anchor v2 and Quasar tests still send legacy transactions: `anchor-v2-testing`
+  pins LiteSVM 0.13.1 and `quasar-svm` is on a `solana-message` without the `v1`
+  module. Both predate v1.
+
 ## [2026-10-04] - Escrow: the taker signs the terms
 
 ### Fixed

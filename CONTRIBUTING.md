@@ -35,6 +35,10 @@ Run an example's tests with the command for its framework, from the framework di
 
 - **Anchor v2** (in `anchor/`): `anchor test` (runs `cargo test`, per the `[scripts]` table in `Anchor.toml`), with the v2 CLI: `cargo install anchor-cli --version 2.0.0-rc.1 --locked`.
 - **Anchor v1** (in `anchor-v1/`): the same `anchor test`, with the v1 CLI: `avm install 1.2.0 && avm use 1.2.0`. Selecting the wrong CLI is the usual cause of a confusing build failure in these directories.
+  Anchor v1 tests send v1 transactions (4,096 bytes, resource limits in the message). Import
+  `send_transaction_from_instructions` from the example's `tests/transaction_v1` module rather than from
+  `solana-kite`, whose version builds a legacy transaction; the two take the same arguments. A new example
+  copies that module from any other `anchor-v1/` example unchanged.
 - **Quasar:** `quasar test`.
 - **Native / Pinocchio:** `cargo test --manifest-path=./program/Cargo.toml` (build first with `cargo build-sbf --manifest-path=./program/Cargo.toml`).
 

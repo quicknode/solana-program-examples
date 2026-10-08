@@ -18,9 +18,13 @@ use litesvm::LiteSVM;
 use solana_keypair::Keypair;
 use solana_kite::{
     create_associated_token_account, create_token_mint, create_wallet, get_sol_balance,
-    get_token_account_balance, mint_tokens_to_token_account, send_transaction_from_instructions,
+    get_token_account_balance, mint_tokens_to_token_account,
 };
 use solana_signer::Signer;
+
+pub mod transaction_v1;
+
+use transaction_v1::send_transaction_from_instructions;
 
 use lending::constants::{
     BPS_DENOMINATOR, LENDING_MARKET_SEED, LIQUIDITY_VAULT_SEED, MINIMUM_SHARES, OBLIGATION_SEED,
