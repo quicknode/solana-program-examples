@@ -28,9 +28,9 @@ anchor-lang = "1.2.0"
 # size from the message's transaction config rather than from ComputeBudget
 # instructions.
 #
-# The other Anchor v1 examples build their transactions with `solana-kite`,
-# whose `send_transaction_from_instructions` builds a legacy transaction.
-# This example builds its v1 transactions by hand instead.
+# The other Anchor v1 examples send v1 transactions through their
+# `tests/transaction_v1` module with legacy-equivalent limits. This example
+# builds its own, to show each config field.
 litesvm = "0.16.0"
 borsh = "1.6.1"
 solana-keypair = "3.1"

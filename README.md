@@ -199,9 +199,9 @@ Send SOL between two accounts.
 
 ### Transaction v1
 
-Store a 3,000 byte document in one instruction using Solana's v1 transaction format, live on mainnet since September 2026: 4,096 bytes instead of 1,232, and a transaction config in the message in place of ComputeBudget instructions. The program needs no change for v1; the LiteSVM tests are what build the v1 transactions. See [docs/transaction-v1.md](./docs/transaction-v1.md) for what v1 changes and which tools support it.
+Store a 3,000 byte document in one instruction using Solana's v1 transaction format, live on mainnet since September 2026: 4,096 bytes instead of 1,232, and a transaction config in the message in place of ComputeBudget instructions. The program needs no change for v1; the LiteSVM tests are what build the v1 transactions, and they show the config fields one by one.
 
-[⚓ Anchor v2](./basics/transaction-v1/anchor) [⚓ Anchor v1](./basics/transaction-v1/anchor-v1) [🤥 Pinocchio](./basics/transaction-v1/pinocchio) [🦀 Native](./basics/transaction-v1/native)
+[⚓ Anchor v1](./basics/transaction-v1/anchor-v1)
 
 ### Pyth Price Feeds
 
@@ -421,7 +421,7 @@ Start with the [escrow example](./finance/escrow/anchor/), the best first financ
 
 ### Do these examples work with Solana transaction v1?
 
-Yes. The v1 format (4,096 byte transactions, live on mainnet since epoch 1035 on 15 September 2026) changes how a client builds a transaction, not what a program sees, so every program here can be called through v1 as is. The [transaction v1 example](./basics/transaction-v1/anchor/) sends v1 transactions from its LiteSVM tests and shows the config fields that replace ComputeBudget instructions. The other examples' tests still send legacy transactions: `solana-kite` builds those, and the Anchor v2, native and Pinocchio tests are held on a pre-v1 LiteSVM by Anchor's `anchor-v2-testing`. [docs/transaction-v1.md](./docs/transaction-v1.md) tracks the status of each tool.
+Yes. The v1 format (4,096 byte transactions, live on mainnet since epoch 1035 on 15 September 2026) changes how a client builds a transaction, not what a program sees, so every program here can be called through v1 as is. Every Anchor v1 example's tests send their transactions as v1, through a small `tests/transaction_v1` module, and the [transaction v1 example](./basics/transaction-v1/anchor-v1/) shows the config fields that replace ComputeBudget instructions. The Anchor v2 and Quasar tests still send legacy transactions, because their test harnesses run on virtual machines that predate v1.
 
 ### How do I test a Solana program without running a validator?
 

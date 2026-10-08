@@ -25,6 +25,10 @@
 //!     proof accounts fails with `VaultError::ProofLengthMismatch` instead
 //!     of panicking inside `split_at`
 
+mod transaction_v1;
+
+use transaction_v1::v1_transaction;
+
 use {
     borsh::BorshSerialize,
     cnft_vault::error::VaultError,
@@ -32,10 +36,8 @@ use {
     solana_instruction::{account_meta::AccountMeta, Instruction},
     solana_keccak_hasher::hashv,
     solana_keypair::Keypair,
-    solana_message::Message,
     solana_pubkey::{pubkey, Pubkey},
     solana_signer::Signer,
-    solana_transaction::Transaction,
 };
 
 // ---- Program IDs ----------------------------------------------------------
@@ -255,10 +257,7 @@ fn send(
     payer: &Keypair,
     signers: &[&Keypair],
 ) -> Result<(), Box<litesvm::types::FailedTransactionMetadata>> {
-    let msg = Message::new(&ixs, Some(&payer.pubkey()));
-    let blockhash = svm.latest_blockhash();
-    let mut tx = Transaction::new_unsigned(msg);
-    tx.sign(signers, blockhash);
+    let tx = v1_transaction(svm, &ixs, signers, &payer.pubkey());
     svm.send_transaction(tx).map(|_| ()).map_err(Box::new)
 }
 

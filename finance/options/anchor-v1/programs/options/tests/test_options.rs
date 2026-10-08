@@ -1,3 +1,7 @@
+mod transaction_v1;
+
+use transaction_v1::{send_transaction_from_instructions, v1_transaction};
+
 use {
     anchor_lang::{
         error::{ErrorCode as AnchorErrorCode, ERROR_CODE_OFFSET},
@@ -14,11 +18,8 @@ use {
     solana_kite::{
         create_associated_token_account, create_token_mint, create_wallet,
         get_token_account_balance, mint_tokens_to_token_account,
-        send_transaction_from_instructions,
     },
-    solana_message::Message,
     solana_signer::Signer,
-    solana_transaction::Transaction,
 };
 
 // The underlying is NVDAx (tokenized NVIDIA stock), which has 8 decimals,
@@ -350,9 +351,7 @@ impl Venue {
         instruction: Instruction,
         signer: &Keypair,
     ) -> Result<TransactionMetadata, String> {
-        let message = Message::new(&[instruction], Some(&signer.pubkey()));
-        let mut transaction = Transaction::new_unsigned(message);
-        transaction.sign(&[signer], self.svm.latest_blockhash());
+        let transaction = v1_transaction(&self.svm, &[instruction], &[signer], &signer.pubkey());
         self.svm
             .send_transaction(transaction)
             .map_err(|failed| format!("{:?}", failed.err))
@@ -986,7 +985,10 @@ fn test_put_writer_without_an_underlying_account_writes_and_cancels() {
 
     let option = venue.write_put(&carol);
     assert_eq!(venue.balance(&carol.underlying), 0);
-    assert_eq!(venue.balance(&carol.quote), STANDARD_USDC - PUT_STRIKE_AMOUNT);
+    assert_eq!(
+        venue.balance(&carol.quote),
+        STANDARD_USDC - PUT_STRIKE_AMOUNT
+    );
     let option_rent = venue.lamports(&option);
     let carol_lamports_before_cancel = venue.lamports(&carol.pubkey());
 

@@ -13,6 +13,10 @@
 //! `close_market_user` give a finished order's and an idle user's rent back
 //! to the owner, and refuse while anything still rests or is owed.
 
+mod transaction_v1;
+
+use transaction_v1::{send_transaction_from_instructions, v1_transaction};
+
 use {
     anchor_lang::{
         solana_program::{
@@ -27,7 +31,6 @@ use {
     solana_kite::{
         create_associated_token_account, create_token_mint, create_wallet, get_sol_balance,
         get_token_account_balance, mint_tokens_to_token_account,
-        send_transaction_from_instructions,
     },
     solana_signer::Signer,
 };
@@ -2340,12 +2343,7 @@ fn best_ask_depth(svm: &LiteSVM, order_book: &Pubkey) -> usize {
 
 // Send one instruction and return the compute units it used.
 fn send_and_measure(svm: &mut LiteSVM, instruction: Instruction, signer: &Keypair) -> u64 {
-    let transaction = solana_transaction::Transaction::new_signed_with_payer(
-        &[instruction],
-        Some(&signer.pubkey()),
-        &[signer],
-        svm.latest_blockhash(),
-    );
+    let transaction = v1_transaction(svm, &[instruction], &[signer], &signer.pubkey());
     svm.send_transaction(transaction)
         .unwrap()
         .compute_units_consumed

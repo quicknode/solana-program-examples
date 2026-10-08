@@ -19,6 +19,10 @@
 //! (the crate constant) rather than a hardcoded literal, so the test keeps
 //! working after the id is regenerated.
 
+mod transaction_v1;
+
+use transaction_v1::send_transaction_from_instructions;
+
 use {
     anchor_lang::{
         prelude::Pubkey, solana_program::system_program, InstructionData, ToAccountMetas,
@@ -26,7 +30,7 @@ use {
     litesvm::LiteSVM,
     solana_instruction::Instruction,
     solana_keypair::Keypair,
-    solana_kite::{create_wallet, get_pda_and_bump, send_transaction_from_instructions, Seed},
+    solana_kite::{create_wallet, get_pda_and_bump, Seed},
     solana_signer::Signer,
 };
 
