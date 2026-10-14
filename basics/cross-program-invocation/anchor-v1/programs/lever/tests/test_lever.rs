@@ -1,7 +1,3 @@
-mod transaction_v1;
-
-use transaction_v1::send_transaction_from_instructions;
-
 use {
     anchor_lang::{
         solana_program::{instruction::Instruction, system_program},
@@ -9,7 +5,7 @@ use {
     },
     litesvm::LiteSVM,
     solana_keypair::Keypair,
-    solana_kite::create_wallet,
+    solana_kite::{create_wallet, send_transaction_from_instructions},
     solana_signer::Signer,
 };
 
@@ -46,6 +42,7 @@ fn test_initialize_lever() {
         vec![instruction],
         &[&payer, &power_keypair],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -81,6 +78,7 @@ fn test_switch_power() {
         vec![init_ix],
         &[&payer, &power_keypair],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -97,7 +95,7 @@ fn test_switch_power() {
         .to_account_metas(None),
     );
     svm.expire_blockhash();
-    send_transaction_from_instructions(&mut svm, vec![switch_ix], &[&payer], &payer.pubkey())
+    send_transaction_from_instructions(&mut svm, vec![switch_ix], &[&payer], &payer.pubkey(), None)
         .unwrap();
 
     assert!(
@@ -118,8 +116,14 @@ fn test_switch_power() {
         .to_account_metas(None),
     );
     svm.expire_blockhash();
-    send_transaction_from_instructions(&mut svm, vec![switch_ix2], &[&payer], &payer.pubkey())
-        .unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        vec![switch_ix2],
+        &[&payer],
+        &payer.pubkey(),
+        None,
+    )
+    .unwrap();
 
     assert!(
         !read_power_is_on(&svm, &power_keypair.pubkey()),

@@ -1,14 +1,10 @@
-mod transaction_v1;
-
-use transaction_v1::send_transaction_from_instructions;
-
 use {
     anchor_lang::{
         solana_program::{instruction::Instruction, pubkey::Pubkey, system_program},
         InstructionData, ToAccountMetas,
     },
     litesvm::LiteSVM,
-    solana_kite::create_wallet,
+    solana_kite::{create_wallet, send_transaction_from_instructions},
     solana_signer::Signer,
 };
 
@@ -93,8 +89,14 @@ fn test_set_favorites() {
         .to_account_metas(None),
     );
 
-    send_transaction_from_instructions(&mut svm, vec![instruction], &[&payer], &payer.pubkey())
-        .unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        vec![instruction],
+        &[&payer],
+        &payer.pubkey(),
+        None,
+    )
+    .unwrap();
 
     let data = read_favorites(&svm, &pda);
     assert_eq!(data.number, 23);
@@ -127,8 +129,14 @@ fn test_update_favorites() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![instruction], &[&payer], &payer.pubkey())
-        .unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        vec![instruction],
+        &[&payer],
+        &payer.pubkey(),
+        None,
+    )
+    .unwrap();
 
     // Update favorites with new hobbies
     svm.expire_blockhash();
@@ -152,7 +160,7 @@ fn test_update_favorites() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![update_ix], &[&payer], &payer.pubkey())
+    send_transaction_from_instructions(&mut svm, vec![update_ix], &[&payer], &payer.pubkey(), None)
         .unwrap();
 
     let data = read_favorites(&svm, &pda);

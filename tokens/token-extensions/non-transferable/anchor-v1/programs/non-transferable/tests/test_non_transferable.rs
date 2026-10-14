@@ -1,7 +1,3 @@
-mod transaction_v1;
-
-use transaction_v1::send_transaction_from_instructions;
-
 use {
     anchor_lang::{
         solana_program::{instruction::Instruction, pubkey::Pubkey, system_program},
@@ -10,7 +6,7 @@ use {
     litesvm::LiteSVM,
     solana_keypair::Keypair,
     solana_kite::{
-        create_wallet,
+        create_wallet, send_transaction_from_instructions,
         token_extensions::{
             create_token_extensions_account, get_token_extensions_account_address,
             mint_tokens_to_token_extensions_account, transfer_checked_token_extensions,
@@ -53,6 +49,7 @@ fn test_create_non_transferable_mint_and_attempt_transfer() {
         vec![initialize_ix],
         &[&payer, &mint_keypair],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
     svm.expire_blockhash();
@@ -69,9 +66,14 @@ fn test_create_non_transferable_mint_and_attempt_transfer() {
 
     // Step 2: Create ATAs for sender and recipient
     let recipient = Keypair::new();
-    let source_ata =
-        create_token_extensions_account(&mut svm, &payer.pubkey(), &mint_keypair.pubkey(), &payer)
-            .unwrap();
+    let source_ata = create_token_extensions_account(
+        &mut svm,
+        &payer.pubkey(),
+        &mint_keypair.pubkey(),
+        &payer,
+        None,
+    )
+    .unwrap();
     svm.expire_blockhash();
 
     let dest_ata = create_token_extensions_account(
@@ -79,6 +81,7 @@ fn test_create_non_transferable_mint_and_attempt_transfer() {
         &recipient.pubkey(),
         &mint_keypair.pubkey(),
         &payer,
+        None,
     )
     .unwrap();
     svm.expire_blockhash();
@@ -90,6 +93,7 @@ fn test_create_non_transferable_mint_and_attempt_transfer() {
         &source_ata,
         1,
         &payer,
+        None,
     )
     .unwrap();
     svm.expire_blockhash();
@@ -104,6 +108,7 @@ fn test_create_non_transferable_mint_and_attempt_transfer() {
         1,
         2, // decimals
         &[],
+        None,
     );
     assert!(
         result.is_err(),

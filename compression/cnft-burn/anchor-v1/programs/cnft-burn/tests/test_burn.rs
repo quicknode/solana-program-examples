@@ -12,16 +12,14 @@
 //!   6. Call our program's `burn_cnft`, signed by `leaf_owner`, and assert the
 //!      transaction succeeds and a second burn fails (leaf already zeroed).
 
-mod transaction_v1;
-
-use transaction_v1::v1_transaction;
-
 use {
     borsh::BorshSerialize,
     litesvm::LiteSVM,
+    solana_compute_budget::compute_budget_limits::MAX_COMPUTE_UNIT_LIMIT,
     solana_instruction::{account_meta::AccountMeta, Instruction},
     solana_keccak_hasher::hashv,
     solana_keypair::Keypair,
+    solana_kite::{build_transaction_from_instructions, get_transaction_config},
     solana_pubkey::{pubkey, Pubkey},
     solana_signer::Signer,
 };
@@ -243,12 +241,21 @@ fn read_current_root(data: &[u8]) -> [u8; 32] {
 
 fn send(
     svm: &mut LiteSVM,
-    ixs: Vec<Instruction>,
+    instructions: Vec<Instruction>,
     payer: &Keypair,
     signers: &[&Keypair],
 ) -> Result<(), Box<litesvm::types::FailedTransactionMetadata>> {
-    let tx = v1_transaction(svm, &ixs, signers, &payer.pubkey());
-    svm.send_transaction(tx).map(|_| ()).map_err(Box::new)
+    let transaction = build_transaction_from_instructions(
+        svm,
+        &instructions,
+        signers,
+        &payer.pubkey(),
+        get_transaction_config(MAX_COMPUTE_UNIT_LIMIT),
+    )
+    .unwrap();
+    svm.send_transaction(transaction)
+        .map(|_| ())
+        .map_err(Box::new)
 }
 
 #[test]

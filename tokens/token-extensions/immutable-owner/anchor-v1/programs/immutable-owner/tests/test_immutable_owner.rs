@@ -1,7 +1,3 @@
-mod transaction_v1;
-
-use transaction_v1::send_transaction_from_instructions;
-
 use {
     anchor_lang::{
         solana_program::{
@@ -14,7 +10,7 @@ use {
     litesvm::LiteSVM,
     solana_keypair::Keypair,
     solana_kite::{
-        create_wallet,
+        create_wallet, send_transaction_from_instructions,
         token_extensions::{create_token_extensions_mint, TOKEN_EXTENSIONS_PROGRAM_ID},
     },
     solana_signer::Signer,
@@ -65,7 +61,7 @@ fn test_create_token_account_with_immutable_owner() {
     let token_keypair = Keypair::new();
 
     // Step 1: Create a Token Extensions mint with 2 decimals (no extensions needed on mint)
-    let mint = create_token_extensions_mint(&mut svm, &payer, 2, None, &[]).unwrap();
+    let mint = create_token_extensions_mint(&mut svm, &payer, 2, None, &[], None).unwrap();
     svm.expire_blockhash();
 
     // Step 2: Call program to create token account with ImmutableOwner extension
@@ -86,6 +82,7 @@ fn test_create_token_account_with_immutable_owner() {
         vec![initialize_ix],
         &[&payer, &token_keypair],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
     svm.expire_blockhash();
@@ -113,6 +110,7 @@ fn test_create_token_account_with_immutable_owner() {
         vec![set_authority_ix],
         &[&payer],
         &payer.pubkey(),
+        None,
     );
     assert!(
         result.is_err(),

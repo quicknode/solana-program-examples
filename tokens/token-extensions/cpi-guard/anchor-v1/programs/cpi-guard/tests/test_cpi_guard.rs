@@ -1,7 +1,3 @@
-mod transaction_v1;
-
-use transaction_v1::send_transaction_from_instructions;
-
 use {
     anchor_lang::{
         solana_program::{
@@ -14,7 +10,7 @@ use {
     litesvm::LiteSVM,
     solana_keypair::Keypair,
     solana_kite::{
-        assert_token_account_balance, create_wallet,
+        assert_token_account_balance, create_wallet, send_transaction_from_instructions,
         token_extensions::{
             create_token_extensions_mint, mint_tokens_to_token_extensions_account,
             TOKEN_EXTENSIONS_PROGRAM_ID,
@@ -119,7 +115,7 @@ fn test_cpi_guard_prevents_transfer_then_allows_after_disable() {
     let token_keypair = Keypair::new();
 
     // Step 1: Create a Token Extensions mint (no extensions needed on the mint itself)
-    let mint = create_token_extensions_mint(&mut svm, &payer, 2, None, &[]).unwrap();
+    let mint = create_token_extensions_mint(&mut svm, &payer, 2, None, &[], None).unwrap();
     svm.expire_blockhash();
 
     // Step 2: Create basic token account (needs explicit keypair for reallocate flow)
@@ -134,6 +130,7 @@ fn test_cpi_guard_prevents_transfer_then_allows_after_disable() {
         token_ixs,
         &[&payer, &token_keypair],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
     svm.expire_blockhash();
@@ -146,19 +143,32 @@ fn test_cpi_guard_prevents_transfer_then_allows_after_disable() {
         &payer.pubkey(),
         &[cpi_guard_extension_type],
     );
-    send_transaction_from_instructions(&mut svm, vec![reallocate_ix], &[&payer], &payer.pubkey())
-        .unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        vec![reallocate_ix],
+        &[&payer],
+        &payer.pubkey(),
+        None,
+    )
+    .unwrap();
     svm.expire_blockhash();
 
     // Step 4: Enable CPI Guard
     let enable_ix = enable_cpi_guard_instruction(&token_keypair.pubkey(), &payer.pubkey());
-    send_transaction_from_instructions(&mut svm, vec![enable_ix], &[&payer], &payer.pubkey())
+    send_transaction_from_instructions(&mut svm, vec![enable_ix], &[&payer], &payer.pubkey(), None)
         .unwrap();
     svm.expire_blockhash();
 
     // Step 5: Mint 1 token to the token account
-    mint_tokens_to_token_extensions_account(&mut svm, &mint, &token_keypair.pubkey(), 1, &payer)
-        .unwrap();
+    mint_tokens_to_token_extensions_account(
+        &mut svm,
+        &mint,
+        &token_keypair.pubkey(),
+        1,
+        &payer,
+        None,
+    )
+    .unwrap();
     svm.expire_blockhash();
 
     // Step 6: Try CPI transfer - should fail because CPI Guard is enabled
@@ -178,8 +188,13 @@ fn test_cpi_guard_prevents_transfer_then_allows_after_disable() {
         .to_account_metas(None),
     );
 
-    let result =
-        send_transaction_from_instructions(&mut svm, vec![transfer_ix], &[&payer], &payer.pubkey());
+    let result = send_transaction_from_instructions(
+        &mut svm,
+        vec![transfer_ix],
+        &[&payer],
+        &payer.pubkey(),
+        None,
+    );
     assert!(
         result.is_err(),
         "Transfer should fail when CPI Guard is enabled"
@@ -188,8 +203,14 @@ fn test_cpi_guard_prevents_transfer_then_allows_after_disable() {
 
     // Step 7: Disable CPI Guard
     let disable_ix = disable_cpi_guard_instruction(&token_keypair.pubkey(), &payer.pubkey());
-    send_transaction_from_instructions(&mut svm, vec![disable_ix], &[&payer], &payer.pubkey())
-        .unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        vec![disable_ix],
+        &[&payer],
+        &payer.pubkey(),
+        None,
+    )
+    .unwrap();
     svm.expire_blockhash();
 
     // Step 8: Transfer should now succeed
@@ -207,8 +228,14 @@ fn test_cpi_guard_prevents_transfer_then_allows_after_disable() {
         .to_account_metas(None),
     );
 
-    send_transaction_from_instructions(&mut svm, vec![transfer_ix2], &[&payer], &payer.pubkey())
-        .unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        vec![transfer_ix2],
+        &[&payer],
+        &payer.pubkey(),
+        None,
+    )
+    .unwrap();
 
     assert_token_account_balance(
         &svm,

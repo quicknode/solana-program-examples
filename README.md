@@ -421,7 +421,7 @@ Start with the [escrow example](./finance/escrow/anchor/), the best first financ
 
 ### Do these examples work with Solana transaction v1?
 
-Yes. The v1 format (4,096 byte transactions, live on mainnet since epoch 1035 on 15 September 2026) changes how a client builds a transaction, not what a program sees, so every program here can be called through v1 as is. Every Anchor v1 example's tests send their transactions as v1, through a small `tests/transaction_v1` module, and the [transaction v1 example](./basics/transaction-v1/anchor-v1/) shows the config fields that replace ComputeBudget instructions. The Anchor v2 and Quasar tests still send legacy transactions, because their test harnesses run on virtual machines that predate v1.
+Yes. The v1 format (4,096 byte transactions, live on mainnet since epoch 1035 on 15 September 2026) changes how a client builds a transaction, not what a program sees, so every program here can be called through v1 as is. Every Anchor v1 example's tests send their transactions as v1, through [solana-kite](https://crates.io/crates/solana-kite) 0.6, and the [transaction v1 example](./basics/transaction-v1/anchor-v1/) shows the config fields that replace ComputeBudget instructions. The Anchor v2 and Quasar tests still send legacy transactions, because their test harnesses run on virtual machines that predate v1.
 
 ### How do I test a Solana program without running a validator?
 

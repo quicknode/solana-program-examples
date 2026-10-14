@@ -1,7 +1,3 @@
-mod transaction_v1;
-
-use transaction_v1::send_transaction_from_instructions;
-
 use {
     anchor_lang::{
         solana_program::{
@@ -17,6 +13,7 @@ use {
     solana_kite::{
         create_associated_token_account, create_token_mint, create_wallet,
         get_token_account_balance, mint_tokens_to_token_account,
+        send_transaction_from_instructions,
     },
     solana_signer::Signer,
 };
@@ -242,9 +239,9 @@ fn setup_with_tsla_decimals(tsla_decimals: u8) -> TestContext {
     let payer = create_wallet(&mut svm, 100_000_000_000).unwrap();
     let manager = create_wallet(&mut svm, 10_000_000_000).unwrap();
 
-    let usdc_mint = create_token_mint(&mut svm, &payer, USDC_DECIMALS, None).unwrap();
-    let tsla_mint = create_token_mint(&mut svm, &payer, tsla_decimals, None).unwrap();
-    let nvda_mint = create_token_mint(&mut svm, &payer, ASSET_DECIMALS, None).unwrap();
+    let usdc_mint = create_token_mint(&mut svm, &payer, USDC_DECIMALS, None, None).unwrap();
+    let tsla_mint = create_token_mint(&mut svm, &payer, tsla_decimals, None, None).unwrap();
+    let nvda_mint = create_token_mint(&mut svm, &payer, ASSET_DECIMALS, None, None).unwrap();
 
     let (router_config_pda, _) =
         Pubkey::find_program_address(&[b"router_config"], &router_program_id);
@@ -261,7 +258,8 @@ fn setup_with_tsla_decimals(tsla_decimals: u8) -> TestContext {
             &[],
         )
         .unwrap();
-        send_transaction_from_instructions(&mut svm, vec![ix], &[&payer], &payer.pubkey()).unwrap();
+        send_transaction_from_instructions(&mut svm, vec![ix], &[&payer], &payer.pubkey(), None)
+            .unwrap();
     }
 
     let (fund_pda, _) = Pubkey::find_program_address(
@@ -308,8 +306,14 @@ fn setup_with_tsla_decimals(tsla_decimals: u8) -> TestContext {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![init_router_ix], &[&payer], &payer.pubkey())
-        .unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        vec![init_router_ix],
+        &[&payer],
+        &payer.pubkey(),
+        None,
+    )
+    .unwrap();
 
     for (mint, rate, rate_pda) in [
         (tsla_mint, TSLA_RATE, tsla_rate_pda),
@@ -335,7 +339,8 @@ fn setup_with_tsla_decimals(tsla_decimals: u8) -> TestContext {
             }
             .to_account_metas(None),
         );
-        send_transaction_from_instructions(&mut svm, vec![ix], &[&payer], &payer.pubkey()).unwrap();
+        send_transaction_from_instructions(&mut svm, vec![ix], &[&payer], &payer.pubkey(), None)
+            .unwrap();
     }
 
     mint_tokens_to_token_account(
@@ -344,6 +349,7 @@ fn setup_with_tsla_decimals(tsla_decimals: u8) -> TestContext {
         &router_usdc_treasury,
         10_000_000_000u64,
         &payer,
+        None,
     )
     .unwrap();
 
@@ -363,6 +369,7 @@ fn setup_with_tsla_decimals(tsla_decimals: u8) -> TestContext {
         vec![init_registry_ix],
         &[&payer],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -382,7 +389,8 @@ fn setup_with_tsla_decimals(tsla_decimals: u8) -> TestContext {
             }
             .to_account_metas(None),
         );
-        send_transaction_from_instructions(&mut svm, vec![ix], &[&payer], &payer.pubkey()).unwrap();
+        send_transaction_from_instructions(&mut svm, vec![ix], &[&payer], &payer.pubkey(), None)
+            .unwrap();
     }
 
     TestContext {
@@ -451,6 +459,7 @@ fn init_fund(ctx: &mut TestContext, fee_bps: u16, slippage_bps: u16, router: Pub
         vec![ix],
         &[&ctx.manager],
         &ctx.manager.pubkey(),
+        None,
     )
     .unwrap();
 }
@@ -486,6 +495,7 @@ fn add_asset(
         vec![ix],
         &[&ctx.manager],
         &ctx.manager.pubkey(),
+        None,
     )
 }
 
@@ -590,7 +600,8 @@ fn do_deposit(
 ) -> Pubkey {
     let remaining = deposit_remaining(ctx);
     let ix = deposit_instruction(ctx, user, usdc_amount, minimum_shares, remaining);
-    send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[user], &user.pubkey()).unwrap();
+    send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[user], &user.pubkey(), None)
+        .unwrap();
     derive_ata(&user.pubkey(), &ctx.share_mint_pda)
 }
 
@@ -603,7 +614,8 @@ fn do_deposit_tsla_only(
 ) -> Pubkey {
     let remaining = deposit_remaining_tsla(ctx);
     let ix = deposit_instruction(ctx, user, usdc_amount, minimum_shares, remaining);
-    send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[user], &user.pubkey()).unwrap();
+    send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[user], &user.pubkey(), None)
+        .unwrap();
     derive_ata(&user.pubkey(), &ctx.share_mint_pda)
 }
 
@@ -630,8 +642,14 @@ fn set_router_rate(ctx: &mut TestContext, mint: Pubkey, rate: u64, rate_pda: Pub
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[&ctx.payer], &ctx.payer.pubkey())
-        .unwrap();
+    send_transaction_from_instructions(
+        &mut ctx.svm,
+        vec![ix],
+        &[&ctx.payer],
+        &ctx.payer.pubkey(),
+        None,
+    )
+    .unwrap();
 }
 
 /// Move NVDAx's price: rewrite its Pyth feed and update the router rate to match.
@@ -662,6 +680,7 @@ fn set_weight(
         vec![ix],
         &[&ctx.manager],
         &ctx.manager.pubkey(),
+        None,
     )
 }
 
@@ -730,7 +749,8 @@ fn donate_usdc(ctx: &mut TestContext, donor: &Keypair, amount: u64) {
         amount,
     )
     .unwrap();
-    send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[donor], &donor.pubkey()).unwrap();
+    send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[donor], &donor.pubkey(), None)
+        .unwrap();
 }
 
 /// A holder's position valued in USDC minor units at the test's starting prices
@@ -807,7 +827,13 @@ fn try_rebalance(
 ) -> Result<(), solana_kite::SolanaKiteError> {
     let stranger = create_wallet(&mut ctx.svm, 1_000_000_000).unwrap();
     let ix = rebalance_instruction(ctx, &stranger, sell_index, buy_index);
-    send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[&stranger], &stranger.pubkey())
+    send_transaction_from_instructions(
+        &mut ctx.svm,
+        vec![ix],
+        &[&stranger],
+        &stranger.pubkey(),
+        None,
+    )
 }
 
 fn do_rebalance(ctx: &mut TestContext, sell_index: u8, buy_index: u8) {
@@ -884,22 +910,34 @@ fn do_collect_fees(ctx: &mut TestContext) -> Pubkey {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[&ctx.payer], &ctx.payer.pubkey())
-        .unwrap();
+    send_transaction_from_instructions(
+        &mut ctx.svm,
+        vec![ix],
+        &[&ctx.payer],
+        &ctx.payer.pubkey(),
+        None,
+    )
+    .unwrap();
     manager_share
 }
 
 fn fund_user(ctx: &mut TestContext, usdc_amount: u64) -> Keypair {
     let user = create_wallet(&mut ctx.svm, 10_000_000_000).unwrap();
-    let user_usdc =
-        create_associated_token_account(&mut ctx.svm, &user.pubkey(), &ctx.usdc_mint, &ctx.payer)
-            .unwrap();
+    let user_usdc = create_associated_token_account(
+        &mut ctx.svm,
+        &user.pubkey(),
+        &ctx.usdc_mint,
+        &ctx.payer,
+        None,
+    )
+    .unwrap();
     mint_tokens_to_token_account(
         &mut ctx.svm,
         &ctx.usdc_mint,
         &user_usdc,
         usdc_amount,
         &ctx.payer,
+        None,
     )
     .unwrap();
     user
@@ -935,7 +973,8 @@ fn test_add_asset_rejects_unapproved() {
     init_fund(&mut ctx, FEE_BPS, SLIPPAGE_BPS, router);
 
     // A mint that was never approved: its approved_asset PDA does not exist.
-    let rogue_mint = create_token_mint(&mut ctx.svm, &ctx.payer, ASSET_DECIMALS, None).unwrap();
+    let rogue_mint =
+        create_token_mint(&mut ctx.svm, &ctx.payer, ASSET_DECIMALS, None, None).unwrap();
     let (rogue_entry, _) = Pubkey::find_program_address(
         &[
             b"approved_asset",
@@ -974,7 +1013,7 @@ fn test_add_asset_rejects_weight_overflow() {
 /// arbitrary pubkey: callers that never value this asset (e.g. the cap boundary test)
 /// do not need a real feed account.
 fn create_and_approve_mint(ctx: &mut TestContext) -> (Pubkey, Pubkey) {
-    let mint = create_token_mint(&mut ctx.svm, &ctx.payer, ASSET_DECIMALS, None).unwrap();
+    let mint = create_token_mint(&mut ctx.svm, &ctx.payer, ASSET_DECIMALS, None, None).unwrap();
     let (entry, _) = Pubkey::find_program_address(
         &[b"approved_asset", ctx.registry_pda.as_ref(), mint.as_ref()],
         &ctx.fund_program_id,
@@ -994,8 +1033,14 @@ fn create_and_approve_mint(ctx: &mut TestContext) -> (Pubkey, Pubkey) {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[&ctx.payer], &ctx.payer.pubkey())
-        .unwrap();
+    send_transaction_from_instructions(
+        &mut ctx.svm,
+        vec![ix],
+        &[&ctx.payer],
+        &ctx.payer.pubkey(),
+        None,
+    )
+    .unwrap();
     (mint, entry)
 }
 
@@ -1058,6 +1103,7 @@ fn test_initialize_rejects_excessive_fee() {
         vec![ix],
         &[&ctx.manager],
         &ctx.manager.pubkey(),
+        None,
     );
     assert_program_error(
         r,
@@ -1098,6 +1144,7 @@ fn test_initialize_rejects_excessive_slippage() {
         vec![ix],
         &[&ctx.manager],
         &ctx.manager.pubkey(),
+        None,
     );
     assert_program_error(
         r,
@@ -1176,7 +1223,8 @@ fn test_deposit_rejects_underallocated() {
 
     let user = fund_user(&mut ctx, 10_000_000);
     let ix = deposit_instruction(&ctx, &user, 10_000_000, 1, deposit_remaining_tsla(&ctx));
-    let r = send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[&user], &user.pubkey());
+    let r =
+        send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[&user], &user.pubkey(), None);
     assert_program_error(
         r,
         FundError::FundNotFullyAllocated,
@@ -1213,7 +1261,8 @@ fn test_deposit_rejects_slippage() {
 
     let user = fund_user(&mut ctx, 10_000_000);
     let ix = deposit_instruction(&ctx, &user, 10_000_000, 1, deposit_remaining(&ctx));
-    let r = send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[&user], &user.pubkey());
+    let r =
+        send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[&user], &user.pubkey(), None);
     assert_router_error(
         r,
         RouterError::SlippageExceeded,
@@ -1234,7 +1283,8 @@ fn test_deposit_rejects_unregistered_router() {
 
     let user = fund_user(&mut ctx, 10_000_000);
     let ix = deposit_instruction(&ctx, &user, 10_000_000, 1, deposit_remaining(&ctx));
-    let r = send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[&user], &user.pubkey());
+    let r =
+        send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[&user], &user.pubkey(), None);
     assert_program_error(
         r,
         FundError::InvalidSwapRouter,
@@ -1276,7 +1326,7 @@ fn test_deposit_rejects_price_from_before_restart() {
 
     let ix = deposit_instruction(&ctx, &user, 10_000_000, 1, deposit_remaining(&ctx));
     assert_program_error(
-        send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[&user], &user.pubkey()),
+        send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[&user], &user.pubkey(), None),
         FundError::PricePredatesRestart,
         "a deposit priced before the restart must fail",
     );
@@ -1458,10 +1508,22 @@ fn test_withdraw() {
 
     // User needs token accounts for each asset paid in kind.
     let user_usdc = derive_ata(&user.pubkey(), &ctx.usdc_mint);
-    create_associated_token_account(&mut ctx.svm, &user.pubkey(), &ctx.tsla_mint, &ctx.payer)
-        .unwrap();
-    create_associated_token_account(&mut ctx.svm, &user.pubkey(), &ctx.nvda_mint, &ctx.payer)
-        .unwrap();
+    create_associated_token_account(
+        &mut ctx.svm,
+        &user.pubkey(),
+        &ctx.tsla_mint,
+        &ctx.payer,
+        None,
+    )
+    .unwrap();
+    create_associated_token_account(
+        &mut ctx.svm,
+        &user.pubkey(),
+        &ctx.nvda_mint,
+        &ctx.payer,
+        None,
+    )
+    .unwrap();
 
     let mut metas = managed_fund::accounts::WithdrawAccountConstraints {
         user: user.pubkey(),
@@ -1487,7 +1549,8 @@ fn test_withdraw() {
         .data(),
         metas,
     );
-    send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[&user], &user.pubkey()).unwrap();
+    send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[&user], &user.pubkey(), None)
+        .unwrap();
 
     // Sole holder withdraws everything in kind: all 0.016 TSLAx + 0.03333333
     // NVDAx, no USDC.
@@ -1512,10 +1575,22 @@ fn test_withdraw_rejects_slippage() {
     let shares = get_token_account_balance(&ctx.svm, &user_share).unwrap();
 
     let user_usdc = derive_ata(&user.pubkey(), &ctx.usdc_mint);
-    create_associated_token_account(&mut ctx.svm, &user.pubkey(), &ctx.tsla_mint, &ctx.payer)
-        .unwrap();
-    create_associated_token_account(&mut ctx.svm, &user.pubkey(), &ctx.nvda_mint, &ctx.payer)
-        .unwrap();
+    create_associated_token_account(
+        &mut ctx.svm,
+        &user.pubkey(),
+        &ctx.tsla_mint,
+        &ctx.payer,
+        None,
+    )
+    .unwrap();
+    create_associated_token_account(
+        &mut ctx.svm,
+        &user.pubkey(),
+        &ctx.nvda_mint,
+        &ctx.payer,
+        None,
+    )
+    .unwrap();
 
     let mut metas = managed_fund::accounts::WithdrawAccountConstraints {
         user: user.pubkey(),
@@ -1543,7 +1618,8 @@ fn test_withdraw_rejects_slippage() {
         .data(),
         metas,
     );
-    let r = send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[&user], &user.pubkey());
+    let r =
+        send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[&user], &user.pubkey(), None);
     assert_program_error(
         r,
         FundError::UsdcSlippage,
@@ -1561,7 +1637,8 @@ fn test_deposit_rejects_incomplete_assets() {
 
     // Only one asset's accounts supplied (5) for a two-asset fund (needs 10).
     let ix = deposit_instruction(&ctx, &user, amount, 1, deposit_remaining_tsla(&ctx));
-    let r = send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[&user], &user.pubkey());
+    let r =
+        send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[&user], &user.pubkey(), None);
     assert_program_error(
         r,
         FundError::IncompleteAssetAccounts,
@@ -1570,10 +1647,22 @@ fn test_deposit_rejects_incomplete_assets() {
 }
 
 fn do_withdraw(ctx: &mut TestContext, user: &Keypair, shares: u64, min_usdc_out: u64) {
-    create_associated_token_account(&mut ctx.svm, &user.pubkey(), &ctx.tsla_mint, &ctx.payer)
-        .unwrap();
-    create_associated_token_account(&mut ctx.svm, &user.pubkey(), &ctx.nvda_mint, &ctx.payer)
-        .unwrap();
+    create_associated_token_account(
+        &mut ctx.svm,
+        &user.pubkey(),
+        &ctx.tsla_mint,
+        &ctx.payer,
+        None,
+    )
+    .unwrap();
+    create_associated_token_account(
+        &mut ctx.svm,
+        &user.pubkey(),
+        &ctx.nvda_mint,
+        &ctx.payer,
+        None,
+    )
+    .unwrap();
     let user_usdc = derive_ata(&user.pubkey(), &ctx.usdc_mint);
     let user_share = derive_ata(&user.pubkey(), &ctx.share_mint_pda);
     let mut metas = managed_fund::accounts::WithdrawAccountConstraints {
@@ -1599,7 +1688,8 @@ fn do_withdraw(ctx: &mut TestContext, user: &Keypair, shares: u64, min_usdc_out:
         .data(),
         metas,
     );
-    send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[user], &user.pubkey()).unwrap();
+    send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[user], &user.pubkey(), None)
+        .unwrap();
 }
 
 #[test]
@@ -1616,7 +1706,8 @@ fn test_set_weight_retire() {
 
     let user = fund_user(&mut ctx, 100_000_000);
     let ix = deposit_instruction(&ctx, &user, 100_000_000, 1, deposit_remaining(&ctx));
-    let r = send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[&user], &user.pubkey());
+    let r =
+        send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[&user], &user.pubkey(), None);
     assert_program_error(
         r,
         FundError::FundNotFullyAllocated,
@@ -1678,6 +1769,7 @@ fn test_set_weight_rejects_non_manager() {
         vec![ix],
         &[&intruder],
         &intruder.pubkey(),
+        None,
     );
     // The manager is bound to the fund's stored `manager` by an Anchor
     // constraint, so the refusal is Anchor's, not one of the program's errors.
@@ -1861,6 +1953,7 @@ fn test_deposit_rejects_leg_that_buys_nothing() {
         vec![ix],
         &[&attacker],
         &attacker.pubkey(),
+        None,
     );
     let err = format!(
         "{:?}",
@@ -1896,7 +1989,8 @@ fn donate_token(
         amount,
     )
     .unwrap();
-    send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[donor], &donor.pubkey()).unwrap();
+    send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[donor], &donor.pubkey(), None)
+        .unwrap();
 }
 
 /// A fund sitting at its target weights has nothing to rebalance, in either
@@ -1981,7 +2075,7 @@ struct ExtraAsset {
 }
 
 fn create_routable_asset(ctx: &mut TestContext, price: i64, rate: u64) -> ExtraAsset {
-    let mint = create_token_mint(&mut ctx.svm, &ctx.payer, ASSET_DECIMALS, None).unwrap();
+    let mint = create_token_mint(&mut ctx.svm, &ctx.payer, ASSET_DECIMALS, None, None).unwrap();
     let ix = spl_token::instruction::set_authority(
         &spl_token::ID,
         &mint,
@@ -1991,8 +2085,14 @@ fn create_routable_asset(ctx: &mut TestContext, price: i64, rate: u64) -> ExtraA
         &[],
     )
     .unwrap();
-    send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[&ctx.payer], &ctx.payer.pubkey())
-        .unwrap();
+    send_transaction_from_instructions(
+        &mut ctx.svm,
+        vec![ix],
+        &[&ctx.payer],
+        &ctx.payer.pubkey(),
+        None,
+    )
+    .unwrap();
     let (rate_pda, _) =
         Pubkey::find_program_address(&[b"rate", mint.as_ref()], &ctx.router_program_id);
     set_router_rate(ctx, mint, rate, rate_pda);
@@ -2014,8 +2114,14 @@ fn create_routable_asset(ctx: &mut TestContext, price: i64, rate: u64) -> ExtraA
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[&ctx.payer], &ctx.payer.pubkey())
-        .unwrap();
+    send_transaction_from_instructions(
+        &mut ctx.svm,
+        vec![ix],
+        &[&ctx.payer],
+        &ctx.payer.pubkey(),
+        None,
+    )
+    .unwrap();
     let vault = derive_ata(&ctx.fund_pda, &mint);
     ExtraAsset {
         mint,
@@ -2052,7 +2158,8 @@ fn test_rebalance_refuses_buying_overweight_asset() {
     ));
     let alice = fund_user(&mut ctx, 1_000_000_000);
     let ix = deposit_instruction(&ctx, &alice, 1_000_000_000, 1, remaining.clone());
-    send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[&alice], &alice.pubkey()).unwrap();
+    send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[&alice], &alice.pubkey(), None)
+        .unwrap();
 
     // NVDAx and the third asset both rise 30%. NVDAx is about $520 of $1,180
     // against a $472 target; the third asset $260 against $236; TSLAx $400
@@ -2069,6 +2176,7 @@ fn test_rebalance_refuses_buying_overweight_asset() {
         vec![into_third],
         &[&stranger],
         &stranger.pubkey(),
+        None,
     );
     assert_program_error(
         r,
@@ -2083,6 +2191,7 @@ fn test_rebalance_refuses_buying_overweight_asset() {
         vec![into_itself],
         &[&stranger],
         &stranger.pubkey(),
+        None,
     );
     assert_program_error(
         r,
@@ -2097,6 +2206,7 @@ fn test_rebalance_refuses_buying_overweight_asset() {
         vec![into_tsla],
         &[&stranger],
         &stranger.pubkey(),
+        None,
     )
     .unwrap();
     assert!(read_fund(&ctx).asset_holdings[0] > 160_000_000);
@@ -2120,6 +2230,7 @@ fn test_rebalance_rejects_incomplete_assets() {
         vec![ix],
         &[&stranger],
         &stranger.pubkey(),
+        None,
     );
     assert_program_error(
         r,
@@ -2232,6 +2343,7 @@ fn test_initialize_rejects_threshold_out_of_range() {
             vec![ix],
             &[&ctx.manager],
             &ctx.manager.pubkey(),
+            None,
         );
         assert_program_error(
             r,
@@ -2337,7 +2449,7 @@ fn test_wide_confidence_price_rejected() {
     let bob = fund_user(&mut ctx, 480_000_000);
     let ix = deposit_instruction(&ctx, &bob, 480_000_000, 1, deposit_remaining(&ctx));
     assert_program_error(
-        send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[&bob], &bob.pubkey()),
+        send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[&bob], &bob.pubkey(), None),
         FundError::OracleConfidenceTooWide,
         "a deposit priced from a wide-confidence feed must fail",
     );
@@ -2389,7 +2501,7 @@ fn test_partially_verified_price_rejected() {
     write_partially_verified_price_feed(&mut ctx.svm, ctx.price_feed_nvda, NVDA_PRICE, 2);
     let ix = deposit_instruction(&ctx, &user, amount, amount, deposit_remaining(&ctx));
     assert_program_error(
-        send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[&user], &user.pubkey()),
+        send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[&user], &user.pubkey(), None),
         FundError::PriceNotFullyVerified,
         "a deposit priced from a partially verified update must fail",
     );

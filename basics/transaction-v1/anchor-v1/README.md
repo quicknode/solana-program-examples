@@ -41,7 +41,7 @@ Tests run in-process with [LiteSVM](https://www.anchor-lang.com/docs/testing/lit
 anchor test
 ```
 
-This runs `cargo test` as configured in `Anchor.toml`. LiteSVM 0.16.0 is the first release that executes v1 transactions, and this example builds its transactions by hand. Every other Anchor v1 example sends v1 transactions too, through its `tests/transaction_v1` module, which asks for the same limits a legacy transaction gets by default; this one sets each config field itself to show what they do. The suite covers:
+This runs `cargo test` as configured in `Anchor.toml`. LiteSVM 0.16.0 is the first release that executes v1 transactions, and this example builds its transactions by hand. Every other Anchor v1 example sends v1 transactions too, through [solana-kite](https://crates.io/crates/solana-kite) 0.6, which sets the compute unit and loaded-accounts data size limits for them; this one sets each config field itself to show what they do. The suite covers:
 
 - `stores_a_document_too_large_for_a_legacy_transaction`: a 3,000 byte document in a v1 transaction. The test measures the transaction on the wire (over 1,232 bytes, at most 4,096) and reads the document back from the PDA.
 - `a_legacy_transaction_still_works_for_a_small_document`: the same instruction with a 500 byte document, sent as a legacy transaction. The program did not change.

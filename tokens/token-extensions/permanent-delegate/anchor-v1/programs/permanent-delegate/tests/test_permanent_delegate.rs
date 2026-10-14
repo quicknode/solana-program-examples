@@ -1,7 +1,3 @@
-mod transaction_v1;
-
-use transaction_v1::send_transaction_from_instructions;
-
 use {
     anchor_lang::{
         solana_program::{
@@ -14,7 +10,7 @@ use {
     litesvm::LiteSVM,
     solana_keypair::Keypair,
     solana_kite::{
-        assert_token_account_balance, create_wallet,
+        assert_token_account_balance, create_wallet, send_transaction_from_instructions,
         token_extensions::{mint_tokens_to_token_extensions_account, TOKEN_EXTENSIONS_PROGRAM_ID},
     },
     solana_signer::Signer,
@@ -106,6 +102,7 @@ fn test_create_mint_with_permanent_delegate_and_burn() {
         vec![initialize_ix],
         &[&payer, &mint_keypair],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
     svm.expire_blockhash();
@@ -124,6 +121,7 @@ fn test_create_mint_with_permanent_delegate_and_burn() {
         create_ata_ixs,
         &[&payer, &token_account],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
     svm.expire_blockhash();
@@ -135,6 +133,7 @@ fn test_create_mint_with_permanent_delegate_and_burn() {
         &token_account.pubkey(),
         100,
         &payer,
+        None,
     )
     .unwrap();
     svm.expire_blockhash();
@@ -147,7 +146,7 @@ fn test_create_mint_with_permanent_delegate_and_burn() {
         100,
         2, // decimals
     );
-    send_transaction_from_instructions(&mut svm, vec![burn_ix], &[&payer], &payer.pubkey())
+    send_transaction_from_instructions(&mut svm, vec![burn_ix], &[&payer], &payer.pubkey(), None)
         .unwrap();
 
     assert_token_account_balance(

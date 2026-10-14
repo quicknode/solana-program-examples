@@ -1,7 +1,3 @@
-mod transaction_v1;
-
-use transaction_v1::send_transaction_from_instructions;
-
 use {
     anchor_lang::{
         solana_program::{instruction::Instruction, system_program},
@@ -10,7 +6,7 @@ use {
     borsh::BorshDeserialize,
     litesvm::LiteSVM,
     solana_keypair::Keypair,
-    solana_kite::create_wallet,
+    solana_kite::{create_wallet, send_transaction_from_instructions},
     solana_signer::Signer,
 };
 
@@ -65,6 +61,7 @@ fn test_create_system_account() {
         vec![instruction],
         &[&payer, &new_account],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
 

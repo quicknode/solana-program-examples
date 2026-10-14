@@ -13,20 +13,21 @@ Programs need no change for it; the client that builds the transaction does.
 
 ### Changed
 
-- Every Anchor v1 example's tests send v1 transactions. Each test directory gains a
-  `transaction_v1` module (identical in all 57 examples) whose
-  `send_transaction_from_instructions` takes the same arguments and returns the same
-  error type as `solana-kite`'s, so each test file changes one import and no call
-  site. Kite's version builds a legacy transaction. The six tests that build a
-  transaction by hand (to read logs, measure compute units or return the metadata)
-  use the module's `v1_transaction` instead.
-- A v1 transaction's unset limits are zero, not the legacy defaults, so the module
-  asks for exactly what a legacy transaction gets without ComputeBudget instructions:
-  200,000 compute units per instruction up to 1,400,000, and 64 MiB of loaded
-  account data. The programs under test see the budget they always did.
-- The test manifests name `solana-message` 4.2.4 and `solana-transaction` 4.1.5,
-  where the v1 types live. The three compression examples, which did not use kite,
-  add it for its error type, so the module is the same file everywhere.
+- Every Anchor v1 example's tests send v1 transactions, through `solana-kite` 0.6.0,
+  whose senders and token, Token Extensions and transfer hook helpers all build v1.
+  The manifests move from kite 0.5.0 to 0.6.0.
+- A v1 transaction's unset limits are zero, not the legacy defaults, so kite 0.6
+  sets the compute unit and loaded-accounts data size limits in every transaction it
+  builds. Its senders and helpers take a new last argument,
+  `compute_unit_limit: Option<u32>`, and every call here passes `None`: kite
+  simulates the transaction and sends it with the compute units the simulation used.
+- The six tests that build a transaction themselves (to read logs, measure compute
+  units or read a program error code) build it with kite's
+  `build_transaction_from_instructions` and `get_transaction_config`, with
+  `MAX_COMPUTE_UNIT_LIMIT` from `solana-compute-budget`, and send it through LiteSVM.
+  The three compression examples add kite for this. They, `hello-solana`, `options`
+  and `order-book` no longer use `solana-message` or `solana-transaction` directly,
+  and drop them from their manifests.
 
 ### Added
 
@@ -37,11 +38,6 @@ Programs need no change for it; the client that builds the transaction does.
 
 ### Note
 
-- Kite's token helpers (`create_token_mint`, `create_associated_token_account`,
-  `mint_tokens_to_token_account` and the token extension ones) send their setup
-  transactions through kite's own legacy builder, and still do. They switch when
-  kite's `send_transaction_from_instructions` builds v1; the module can then be
-  deleted and the imports pointed back at kite.
 - Anchor v2 and Quasar tests still send legacy transactions: `anchor-v2-testing`
   pins LiteSVM 0.13.1 and `quasar-svm` is on a `solana-message` without the `v1`
   module. Both predate v1.

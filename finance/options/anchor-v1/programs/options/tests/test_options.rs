@@ -1,7 +1,3 @@
-mod transaction_v1;
-
-use transaction_v1::{send_transaction_from_instructions, v1_transaction};
-
 use {
     anchor_lang::{
         error::{ErrorCode as AnchorErrorCode, ERROR_CODE_OFFSET},
@@ -14,10 +10,12 @@ use {
         instructions::write_option::OptionTerms,
         state::{Market as MarketState, OptionContract, OptionKind, OptionStatus},
     },
+    solana_compute_budget::compute_budget_limits::MAX_COMPUTE_UNIT_LIMIT,
     solana_keypair::Keypair,
     solana_kite::{
-        create_associated_token_account, create_token_mint, create_wallet,
-        get_token_account_balance, mint_tokens_to_token_account,
+        build_transaction_from_instructions, create_associated_token_account, create_token_mint,
+        create_wallet, get_token_account_balance, get_transaction_config,
+        mint_tokens_to_token_account, send_transaction_from_instructions,
     },
     solana_signer::Signer,
 };
@@ -163,11 +161,12 @@ impl Venue {
 
         let payer = create_wallet(&mut svm, 100_000_000_000).unwrap();
         let admin = create_wallet(&mut svm, 100_000_000_000).unwrap();
-        let underlying_mint = create_token_mint(&mut svm, &admin, NVDAX_DECIMALS, None).unwrap();
+        let underlying_mint =
+            create_token_mint(&mut svm, &admin, NVDAX_DECIMALS, None, None).unwrap();
         let quote_mint = if same_mint {
             underlying_mint
         } else {
-            create_token_mint(&mut svm, &admin, USDC_DECIMALS, None).unwrap()
+            create_token_mint(&mut svm, &admin, USDC_DECIMALS, None, None).unwrap()
         };
 
         let market = Pubkey::find_program_address(
@@ -200,6 +199,7 @@ impl Venue {
             vec![initialize_market],
             &[&admin],
             &admin.pubkey(),
+            None,
         )
         .map_err(|error| format!("{error:?}"))?;
 
@@ -292,6 +292,7 @@ impl Venue {
                 &keypair.pubkey(),
                 &self.underlying_mint,
                 &self.payer,
+                None,
             )
             .unwrap()
         } else {
@@ -302,6 +303,7 @@ impl Venue {
             &keypair.pubkey(),
             &self.quote_mint,
             &self.payer,
+            None,
         )
         .unwrap();
         if underlying > 0 {
@@ -311,6 +313,7 @@ impl Venue {
                 &underlying_account,
                 underlying,
                 &self.admin,
+                None,
             )
             .unwrap();
         }
@@ -321,6 +324,7 @@ impl Venue {
                 &quote_account,
                 quote,
                 &self.admin,
+                None,
             )
             .unwrap();
         }
@@ -351,7 +355,14 @@ impl Venue {
         instruction: Instruction,
         signer: &Keypair,
     ) -> Result<TransactionMetadata, String> {
-        let transaction = v1_transaction(&self.svm, &[instruction], &[signer], &signer.pubkey());
+        let transaction = build_transaction_from_instructions(
+            &self.svm,
+            &[instruction],
+            &[signer],
+            &signer.pubkey(),
+            get_transaction_config(MAX_COMPUTE_UNIT_LIMIT),
+        )
+        .unwrap();
         self.svm
             .send_transaction(transaction)
             .map_err(|failed| format!("{:?}", failed.err))
@@ -985,10 +996,7 @@ fn test_put_writer_without_an_underlying_account_writes_and_cancels() {
 
     let option = venue.write_put(&carol);
     assert_eq!(venue.balance(&carol.underlying), 0);
-    assert_eq!(
-        venue.balance(&carol.quote),
-        STANDARD_USDC - PUT_STRIKE_AMOUNT
-    );
+    assert_eq!(venue.balance(&carol.quote), STANDARD_USDC - PUT_STRIKE_AMOUNT);
     let option_rent = venue.lamports(&option);
     let carol_lamports_before_cancel = venue.lamports(&carol.pubkey());
 

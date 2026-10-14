@@ -1,7 +1,3 @@
-mod transaction_v1;
-
-use transaction_v1::send_transaction_from_instructions;
-
 use {
     anchor_lang::{
         solana_program::{instruction::Instruction, system_program},
@@ -10,7 +6,7 @@ use {
     borsh::BorshDeserialize,
     litesvm::LiteSVM,
     solana_keypair::Keypair,
-    solana_kite::create_wallet,
+    solana_kite::{create_wallet, send_transaction_from_instructions},
     solana_signer::Signer,
 };
 
@@ -57,6 +53,7 @@ fn test_initialize_counter() {
         vec![instruction],
         &[&payer, &counter_keypair],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -85,6 +82,7 @@ fn test_increment_counter() {
         vec![init_ix],
         &[&payer, &counter_keypair],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -97,7 +95,8 @@ fn test_increment_counter() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![inc_ix], &[&payer], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(&mut svm, vec![inc_ix], &[&payer], &payer.pubkey(), None)
+        .unwrap();
 
     let count = fetch_counter(&svm, &counter_keypair.pubkey());
     assert_eq!(count, 1, "Expected count to be 1");
@@ -124,6 +123,7 @@ fn test_increment_counter_again() {
         vec![init_ix],
         &[&payer, &counter_keypair],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -137,8 +137,14 @@ fn test_increment_counter_again() {
             }
             .to_account_metas(None),
         );
-        send_transaction_from_instructions(&mut svm, vec![inc_ix], &[&payer], &payer.pubkey())
-            .unwrap();
+        send_transaction_from_instructions(
+            &mut svm,
+            vec![inc_ix],
+            &[&payer],
+            &payer.pubkey(),
+            None,
+        )
+        .unwrap();
         svm.expire_blockhash();
     }
 

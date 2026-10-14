@@ -84,7 +84,7 @@ fn store_document(program_id: &Pubkey, payer: &Pubkey, document: &[u8]) -> (Inst
 /// Compile a v1 message and sign it. `try_compile_with_config` is the v1
 /// counterpart of `Message::new_with_blockhash`; the config rides in the
 /// message header, so there is no ComputeBudget instruction to append.
-fn v1_transaction(
+fn build_v1_transaction(
     svm: &LiteSVM,
     payer: &Keypair,
     instructions: &[Instruction],
@@ -105,10 +105,16 @@ fn wire_size(transaction: &VersionedTransaction) -> usize {
     wincode::serialize(transaction).unwrap().len()
 }
 
+/// The largest prime below 256: the byte pattern repeats every 251 bytes, a
+/// period no power-of-two offset lines up with.
+const SAMPLE_DOCUMENT_PATTERN_LENGTH: usize = 251;
+
 /// A document with a recognizable pattern, so a partial or shifted copy
 /// would not pass the equality check.
 fn sample_document(length: usize) -> Vec<u8> {
-    (0..length).map(|i| (i % 251) as u8).collect()
+    (0..length)
+        .map(|index| (index % SAMPLE_DOCUMENT_PATTERN_LENGTH) as u8)
+        .collect()
 }
 
 fn stored_document(svm: &LiteSVM, document_address: &Pubkey) -> Vec<u8> {
@@ -122,7 +128,7 @@ fn stores_a_document_too_large_for_a_legacy_transaction() {
     let document = sample_document(3_000);
     let (instruction, document_address) = store_document(&program_id, &payer.pubkey(), &document);
 
-    let transaction = v1_transaction(&svm, &payer, &[instruction], transaction_config());
+    let transaction = build_v1_transaction(&svm, &payer, &[instruction], transaction_config());
 
     // Over the legacy limit, under the v1 one. LiteSVM does not enforce either
     // (a validator's packet layer does), so the test checks the size itself.
@@ -175,7 +181,7 @@ fn the_transaction_config_replaces_compute_budget_instructions() {
     // A v1 priority fee is a total in lamports, not a price per compute unit.
     let priority_fee_lamports = 10_000;
     let config = transaction_config().with_priority_fee(priority_fee_lamports);
-    let transaction = v1_transaction(&svm, &payer, &[instruction], config);
+    let transaction = build_v1_transaction(&svm, &payer, &[instruction], config);
 
     // v1 moved the signatures to the end, so the first byte on the wire is the
     // message version rather than a signature count. 0x81 means v1.
@@ -200,7 +206,7 @@ fn unset_config_fields_mean_zero_not_the_default() {
 
     // No loaded-accounts data size limit: the transaction fails before any
     // program runs, because zero bytes of account data may be loaded.
-    let transaction = v1_transaction(
+    let transaction = build_v1_transaction(
         &svm,
         &payer,
         std::slice::from_ref(&instruction),
@@ -216,7 +222,7 @@ fn unset_config_fields_mean_zero_not_the_default() {
     // budget of zero and fails on its first instruction.
     let config = v1::TransactionConfig::empty()
         .with_loaded_accounts_data_size_limit(LOADED_ACCOUNTS_DATA_SIZE_LIMIT);
-    let transaction = v1_transaction(&svm, &payer, &[instruction], config);
+    let transaction = build_v1_transaction(&svm, &payer, &[instruction], config);
     let failure = svm.send_transaction(transaction).unwrap_err();
     assert!(matches!(
         failure.err,

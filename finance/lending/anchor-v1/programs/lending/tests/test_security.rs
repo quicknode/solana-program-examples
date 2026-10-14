@@ -67,11 +67,12 @@ fn non_owner_cannot_write_market_price_feed() {
         }
         .data(),
     };
-    let result = common::transaction_v1::send_transaction_from_instructions(
+    let result = solana_kite::send_transaction_from_instructions(
         &mut env.svm,
         vec![instruction],
         &[&attacker],
         &attacker.pubkey(),
+        None,
     );
     // `SetPrice` binds the signer with `has_one = owner` on the market, so
     // the refusal is Anchor's constraint error, not one of the program's.

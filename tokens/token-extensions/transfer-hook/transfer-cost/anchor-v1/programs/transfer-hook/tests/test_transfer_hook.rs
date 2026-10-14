@@ -1,7 +1,3 @@
-mod transaction_v1;
-
-use transaction_v1::send_transaction_from_instructions;
-
 use {
     anchor_lang::{
         solana_program::{instruction::Instruction, pubkey::Pubkey, system_program},
@@ -10,7 +6,7 @@ use {
     litesvm::LiteSVM,
     solana_keypair::Keypair,
     solana_kite::{
-        create_wallet,
+        create_wallet, send_transaction_from_instructions,
         token_extensions::{
             create_token_extensions_mint, MintExtension, TOKEN_EXTENSIONS_PROGRAM_ID,
         },
@@ -44,6 +40,7 @@ fn test_initialize_extra_account_meta_list() {
         &[MintExtension::TransferHook {
             program_id: program_id,
         }],
+        None,
     )
     .unwrap();
     svm.expire_blockhash();
@@ -65,8 +62,14 @@ fn test_initialize_extra_account_meta_list() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![init_extra_ix], &[&payer], &payer.pubkey())
-        .unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        vec![init_extra_ix],
+        &[&payer],
+        &payer.pubkey(),
+        None,
+    )
+    .unwrap();
 
     // Verify the ExtraAccountMetaList account was created
     let account = svm.get_account(&extra_account_meta_list);

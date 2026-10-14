@@ -13,10 +13,6 @@
 //! `close_market_user` give a finished order's and an idle user's rent back
 //! to the owner, and refuse while anything still rests or is owed.
 
-mod transaction_v1;
-
-use transaction_v1::{send_transaction_from_instructions, v1_transaction};
-
 use {
     anchor_lang::{
         solana_program::{
@@ -27,10 +23,12 @@ use {
         Discriminator, InstructionData, ToAccountMetas,
     },
     litesvm::LiteSVM,
+    solana_compute_budget::compute_budget_limits::MAX_COMPUTE_UNIT_LIMIT,
     solana_keypair::Keypair,
     solana_kite::{
-        create_associated_token_account, create_token_mint, create_wallet, get_sol_balance,
-        get_token_account_balance, mint_tokens_to_token_account,
+        build_transaction_from_instructions, create_associated_token_account, create_token_mint,
+        create_wallet, get_sol_balance, get_token_account_balance, get_transaction_config,
+        mint_tokens_to_token_account, send_transaction_from_instructions,
     },
     solana_signer::Signer,
 };
@@ -176,19 +174,23 @@ fn full_setup() -> Scenario {
     let buyer = create_wallet(&mut svm, 10_000_000_000).unwrap();
     let seller = create_wallet(&mut svm, 10_000_000_000).unwrap();
 
-    let base_mint = create_token_mint(&mut svm, &authority, BASE_DECIMALS, None).unwrap();
-    let quote_mint = create_token_mint(&mut svm, &authority, QUOTE_DECIMALS, None).unwrap();
+    let base_mint = create_token_mint(&mut svm, &authority, BASE_DECIMALS, None, None).unwrap();
+    let quote_mint = create_token_mint(&mut svm, &authority, QUOTE_DECIMALS, None, None).unwrap();
 
     // Create and fund every trader's ATAs up-front so individual tests do
     // not need to worry about mint/ATA side effects, only about order-book state.
     let buyer_base_ata =
-        create_associated_token_account(&mut svm, &buyer.pubkey(), &base_mint, &payer).unwrap();
+        create_associated_token_account(&mut svm, &buyer.pubkey(), &base_mint, &payer, None)
+            .unwrap();
     let buyer_quote_ata =
-        create_associated_token_account(&mut svm, &buyer.pubkey(), &quote_mint, &payer).unwrap();
+        create_associated_token_account(&mut svm, &buyer.pubkey(), &quote_mint, &payer, None)
+            .unwrap();
     let seller_base_ata =
-        create_associated_token_account(&mut svm, &seller.pubkey(), &base_mint, &payer).unwrap();
+        create_associated_token_account(&mut svm, &seller.pubkey(), &base_mint, &payer, None)
+            .unwrap();
     let seller_quote_ata =
-        create_associated_token_account(&mut svm, &seller.pubkey(), &quote_mint, &payer).unwrap();
+        create_associated_token_account(&mut svm, &seller.pubkey(), &quote_mint, &payer, None)
+            .unwrap();
 
     mint_tokens_to_token_account(
         &mut svm,
@@ -196,6 +198,7 @@ fn full_setup() -> Scenario {
         &seller_base_ata,
         TRADER_STARTING_BALANCE,
         &authority,
+        None,
     )
     .unwrap();
     mint_tokens_to_token_account(
@@ -204,6 +207,7 @@ fn full_setup() -> Scenario {
         &buyer_quote_ata,
         TRADER_STARTING_BALANCE,
         &authority,
+        None,
     )
     .unwrap();
 
@@ -540,6 +544,7 @@ fn initialize_market_and_users(sc: &mut Scenario) {
         vec![create_ix, init_ix],
         &[&sc.authority, &sc.order_book],
         &sc.authority.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -549,6 +554,7 @@ fn initialize_market_and_users(sc: &mut Scenario) {
         vec![buyer_ix],
         &[&sc.buyer],
         &sc.buyer.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -558,6 +564,7 @@ fn initialize_market_and_users(sc: &mut Scenario) {
         vec![seller_ix],
         &[&sc.seller],
         &sc.seller.pubkey(),
+        None,
     )
     .unwrap();
 }
@@ -584,6 +591,7 @@ fn initialize_market_sets_market_and_order_book() {
         vec![create_ix, ix],
         &[&sc.authority, &sc.order_book],
         &sc.authority.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -633,6 +641,7 @@ fn initialize_market_user_tracks_market_and_owner() {
         vec![create_ix, init_ix],
         &[&sc.authority, &sc.order_book],
         &sc.authority.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -642,6 +651,7 @@ fn initialize_market_user_tracks_market_and_owner() {
         vec![create_ix],
         &[&sc.buyer],
         &sc.buyer.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -670,8 +680,14 @@ fn place_bid_moves_quote_into_vault() {
         BID_PRICE,
         BID_QUANTITY,
     );
-    send_transaction_from_instructions(&mut sc.svm, vec![ix], &[&sc.buyer], &sc.buyer.pubkey())
-        .unwrap();
+    send_transaction_from_instructions(
+        &mut sc.svm,
+        vec![ix],
+        &[&sc.buyer],
+        &sc.buyer.pubkey(),
+        None,
+    )
+    .unwrap();
 
     // A bid locks price * quantity * quote_lot_size raw quote tokens.
     let locked_quote = BID_PRICE * BID_QUANTITY * QUOTE_LOT_SIZE;
@@ -715,8 +731,14 @@ fn place_ask_moves_base_into_vault() {
         ASK_PRICE,
         ASK_QUANTITY,
     );
-    send_transaction_from_instructions(&mut sc.svm, vec![ix], &[&sc.seller], &sc.seller.pubkey())
-        .unwrap();
+    send_transaction_from_instructions(
+        &mut sc.svm,
+        vec![ix],
+        &[&sc.seller],
+        &sc.seller.pubkey(),
+        None,
+    )
+    .unwrap();
 
     // An ask locks quantity * base_lot_size raw base tokens in the base vault.
     assert_eq!(
@@ -782,6 +804,7 @@ fn place_order_rejects_unaligned_tick() {
         vec![create_ix, init_ix],
         &[&sc.authority, &sc.order_book],
         &sc.authority.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -791,6 +814,7 @@ fn place_order_rejects_unaligned_tick() {
         vec![create_ix],
         &[&sc.buyer],
         &sc.buyer.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -837,6 +861,7 @@ fn place_order_rejects_below_min_order_size() {
         vec![create_ix, init_ix],
         &[&sc.authority, &sc.order_book],
         &sc.authority.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -846,6 +871,7 @@ fn place_order_rejects_below_min_order_size() {
         vec![create_ix],
         &[&sc.seller],
         &sc.seller.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -895,6 +921,7 @@ fn cancel_ask_credits_unsettled_base() {
         vec![place_ix],
         &[&sc.seller],
         &sc.seller.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -909,6 +936,7 @@ fn cancel_ask_credits_unsettled_base() {
         vec![cancel_ix],
         &[&sc.seller],
         &sc.seller.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -949,6 +977,7 @@ fn cancel_order_rejects_non_owner() {
         vec![place_ix],
         &[&sc.buyer],
         &sc.buyer.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -997,6 +1026,7 @@ fn settle_funds_moves_unsettled_base_to_user() {
         vec![place_ix, cancel_ix],
         &[&sc.seller],
         &sc.seller.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -1012,6 +1042,7 @@ fn settle_funds_moves_unsettled_base_to_user() {
         vec![settle_ix],
         &[&sc.seller],
         &sc.seller.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -1057,6 +1088,7 @@ fn cancel_and_settle_bid_refunds_full_quote() {
         vec![place_ix, cancel_ix, settle_ix],
         &[&sc.buyer],
         &sc.buyer.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -1106,6 +1138,7 @@ fn settle_funds_rejects_fee_vault_substituted_for_quote_vault() {
         vec![place_ix, cancel_ix],
         &[&sc.buyer],
         &sc.buyer.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -1340,6 +1373,7 @@ fn taker_bid_fully_crosses_best_ask() {
         vec![maker_ask_ix],
         &[&sc.seller],
         &sc.seller.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -1362,6 +1396,7 @@ fn taker_bid_fully_crosses_best_ask() {
         vec![taker_bid_ix],
         &[&sc.buyer],
         &sc.buyer.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -1417,6 +1452,7 @@ fn taker_ask_fully_crosses_best_bid() {
         vec![maker_bid_ix],
         &[&sc.buyer],
         &sc.buyer.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -1438,6 +1474,7 @@ fn taker_ask_fully_crosses_best_bid() {
         vec![taker_ask_ix],
         &[&sc.seller],
         &sc.seller.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -1483,6 +1520,7 @@ fn taker_partially_fills_resting_order_rest_stays_on_book() {
         vec![ask_ix],
         &[&sc.seller],
         &sc.seller.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -1499,8 +1537,14 @@ fn taker_partially_fills_resting_order_rest_stays_on_book() {
         TAKER_BID_QUANTITY,
         &[(MAKER_ASK_ID, sc.seller_market_user)],
     );
-    send_transaction_from_instructions(&mut sc.svm, vec![bid_ix], &[&sc.buyer], &sc.buyer.pubkey())
-        .unwrap();
+    send_transaction_from_instructions(
+        &mut sc.svm,
+        vec![bid_ix],
+        &[&sc.buyer],
+        &sc.buyer.pubkey(),
+        None,
+    )
+    .unwrap();
 
     // Maker order: still PartiallyFilled, filled_quantity == TAKER_BID_QUANTITY.
     let maker_order = order_pda(&sc.program_id, &sc.market, MAKER_ASK_ID);
@@ -1553,6 +1597,7 @@ fn taker_partially_filled_remainder_rests_on_book() {
         vec![ask_ix],
         &[&sc.seller],
         &sc.seller.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -1569,8 +1614,14 @@ fn taker_partially_filled_remainder_rests_on_book() {
         TAKER_BID_QUANTITY,
         &[(MAKER_ASK_ID, sc.seller_market_user)],
     );
-    send_transaction_from_instructions(&mut sc.svm, vec![bid_ix], &[&sc.buyer], &sc.buyer.pubkey())
-        .unwrap();
+    send_transaction_from_instructions(
+        &mut sc.svm,
+        vec![bid_ix],
+        &[&sc.buyer],
+        &sc.buyer.pubkey(),
+        None,
+    )
+    .unwrap();
 
     // Maker ask is fully filled.
     let maker_order = order_pda(&sc.program_id, &sc.market, MAKER_ASK_ID);
@@ -1633,6 +1684,7 @@ fn taker_crosses_multiple_resting_orders_best_price_first() {
         vec![ask_one_ix],
         &[&sc.seller],
         &sc.seller.pubkey(),
+        None,
     )
     .unwrap();
     let ask_two_ix = build_place_order_ix(
@@ -1651,6 +1703,7 @@ fn taker_crosses_multiple_resting_orders_best_price_first() {
         vec![ask_two_ix],
         &[&sc.seller],
         &sc.seller.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -1675,6 +1728,7 @@ fn taker_crosses_multiple_resting_orders_best_price_first() {
         vec![taker_ix],
         &[&sc.buyer],
         &sc.buyer.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -1725,6 +1779,7 @@ fn resting_orders_at_same_price_fill_by_time_priority() {
         &second_seller.pubkey(),
         &sc.base_mint,
         &sc.payer,
+        None,
     )
     .unwrap();
     let second_seller_quote_ata = create_associated_token_account(
@@ -1732,6 +1787,7 @@ fn resting_orders_at_same_price_fill_by_time_priority() {
         &second_seller.pubkey(),
         &sc.quote_mint,
         &sc.payer,
+        None,
     )
     .unwrap();
     mint_tokens_to_token_account(
@@ -1740,6 +1796,7 @@ fn resting_orders_at_same_price_fill_by_time_priority() {
         &second_seller_base_ata,
         TRADER_STARTING_BALANCE,
         &sc.authority,
+        None,
     )
     .unwrap();
     let second_seller_market_user =
@@ -1750,6 +1807,7 @@ fn resting_orders_at_same_price_fill_by_time_priority() {
         vec![__ix1],
         &[&second_seller],
         &second_seller.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -1775,6 +1833,7 @@ fn resting_orders_at_same_price_fill_by_time_priority() {
         vec![__ix2],
         &[&sc.seller],
         &sc.seller.pubkey(),
+        None,
     )
     .unwrap();
     // Seller 2 second in at the same price.
@@ -1794,6 +1853,7 @@ fn resting_orders_at_same_price_fill_by_time_priority() {
         vec![__ix3],
         &[&second_seller],
         &second_seller.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -1816,6 +1876,7 @@ fn resting_orders_at_same_price_fill_by_time_priority() {
         vec![taker_ix],
         &[&sc.buyer],
         &sc.buyer.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -1861,6 +1922,7 @@ fn taker_bid_gets_price_improvement_from_resting_ask() {
         vec![__ix4],
         &[&sc.seller],
         &sc.seller.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -1883,6 +1945,7 @@ fn taker_bid_gets_price_improvement_from_resting_ask() {
         vec![taker_ix],
         &[&sc.buyer],
         &sc.buyer.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -1935,6 +1998,7 @@ fn fee_rounds_up_when_gross_is_not_a_bps_multiple() {
         vec![maker_ix],
         &[&sc.seller],
         &sc.seller.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -1956,6 +2020,7 @@ fn fee_rounds_up_when_gross_is_not_a_bps_multiple() {
         vec![taker_ix],
         &[&sc.buyer],
         &sc.buyer.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -1997,6 +2062,7 @@ fn fee_vault_receives_exactly_bps_of_taker_gross() {
         vec![__ix5],
         &[&sc.seller],
         &sc.seller.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -2013,8 +2079,14 @@ fn fee_vault_receives_exactly_bps_of_taker_gross() {
         QUANTITY,
         &[(MAKER_ASK_ID, sc.seller_market_user)],
     );
-    send_transaction_from_instructions(&mut sc.svm, vec![__ix6], &[&sc.buyer], &sc.buyer.pubkey())
-        .unwrap();
+    send_transaction_from_instructions(
+        &mut sc.svm,
+        vec![__ix6],
+        &[&sc.buyer],
+        &sc.buyer.pubkey(),
+        None,
+    )
+    .unwrap();
 
     assert_eq!(
         get_token_account_balance(&sc.svm, &sc.fee_vault).unwrap(),
@@ -2034,6 +2106,7 @@ fn authority_can_withdraw_fees_after_match() {
         &sc.authority.pubkey(),
         &sc.quote_mint,
         &sc.payer,
+        None,
     )
     .unwrap();
 
@@ -2059,6 +2132,7 @@ fn authority_can_withdraw_fees_after_match() {
         vec![__ix7],
         &[&sc.seller],
         &sc.seller.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -2075,8 +2149,14 @@ fn authority_can_withdraw_fees_after_match() {
         QUANTITY,
         &[(MAKER_ASK_ID, sc.seller_market_user)],
     );
-    send_transaction_from_instructions(&mut sc.svm, vec![__ix8], &[&sc.buyer], &sc.buyer.pubkey())
-        .unwrap();
+    send_transaction_from_instructions(
+        &mut sc.svm,
+        vec![__ix8],
+        &[&sc.buyer],
+        &sc.buyer.pubkey(),
+        None,
+    )
+    .unwrap();
 
     assert_eq!(
         get_token_account_balance(&sc.svm, &sc.fee_vault).unwrap(),
@@ -2089,6 +2169,7 @@ fn authority_can_withdraw_fees_after_match() {
         vec![withdraw_ix],
         &[&sc.authority],
         &sc.authority.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -2133,6 +2214,7 @@ fn withdraw_fees_rejects_a_non_authority_signer() {
         vec![ask_ix],
         &[&sc.seller],
         &sc.seller.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -2149,8 +2231,14 @@ fn withdraw_fees_rejects_a_non_authority_signer() {
         QUANTITY,
         &[(MAKER_ASK_ID, sc.seller_market_user)],
     );
-    send_transaction_from_instructions(&mut sc.svm, vec![bid_ix], &[&sc.buyer], &sc.buyer.pubkey())
-        .unwrap();
+    send_transaction_from_instructions(
+        &mut sc.svm,
+        vec![bid_ix],
+        &[&sc.buyer],
+        &sc.buyer.pubkey(),
+        None,
+    )
+    .unwrap();
     assert_eq!(
         get_token_account_balance(&sc.svm, &sc.fee_vault).unwrap(),
         EXPECTED_FEE
@@ -2210,6 +2298,7 @@ fn settle_funds_after_match_pays_out_both_unsettled_balances() {
         vec![__ix9],
         &[&sc.seller],
         &sc.seller.pubkey(),
+        None,
     )
     .unwrap();
     const TAKER_BID_ID: u64 = 2;
@@ -2225,8 +2314,14 @@ fn settle_funds_after_match_pays_out_both_unsettled_balances() {
         QUANTITY,
         &[(MAKER_ASK_ID, sc.seller_market_user)],
     );
-    send_transaction_from_instructions(&mut sc.svm, vec![__ix10], &[&sc.buyer], &sc.buyer.pubkey())
-        .unwrap();
+    send_transaction_from_instructions(
+        &mut sc.svm,
+        vec![__ix10],
+        &[&sc.buyer],
+        &sc.buyer.pubkey(),
+        None,
+    )
+    .unwrap();
 
     // Settle both sides.
     let __ix11 = build_settle_funds_ix(
@@ -2236,8 +2331,14 @@ fn settle_funds_after_match_pays_out_both_unsettled_balances() {
         sc.buyer_base_ata,
         sc.buyer_quote_ata,
     );
-    send_transaction_from_instructions(&mut sc.svm, vec![__ix11], &[&sc.buyer], &sc.buyer.pubkey())
-        .unwrap();
+    send_transaction_from_instructions(
+        &mut sc.svm,
+        vec![__ix11],
+        &[&sc.buyer],
+        &sc.buyer.pubkey(),
+        None,
+    )
+    .unwrap();
     let __ix12 = build_settle_funds_ix(
         &sc,
         &sc.seller.pubkey(),
@@ -2250,6 +2351,7 @@ fn settle_funds_after_match_pays_out_both_unsettled_balances() {
         vec![__ix12],
         &[&sc.seller],
         &sc.seller.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -2343,7 +2445,14 @@ fn best_ask_depth(svm: &LiteSVM, order_book: &Pubkey) -> usize {
 
 // Send one instruction and return the compute units it used.
 fn send_and_measure(svm: &mut LiteSVM, instruction: Instruction, signer: &Keypair) -> u64 {
-    let transaction = v1_transaction(svm, &[instruction], &[signer], &signer.pubkey());
+    let transaction = build_transaction_from_instructions(
+        svm,
+        &[instruction],
+        &[signer],
+        &signer.pubkey(),
+        get_transaction_config(MAX_COMPUTE_UNIT_LIMIT),
+    )
+    .unwrap();
     svm.send_transaction(transaction)
         .unwrap()
         .compute_units_consumed
@@ -2368,18 +2477,29 @@ fn order_bump_search_units(program_id: &Pubkey, market: &Pubkey, order_id: u64) 
 // A fresh seller with base tokens and a market user account.
 fn add_funded_seller(sc: &mut Scenario) -> (Keypair, Pubkey, Pubkey, Pubkey) {
     let seller = create_wallet(&mut sc.svm, 10_000_000_000).unwrap();
-    let base_ata =
-        create_associated_token_account(&mut sc.svm, &seller.pubkey(), &sc.base_mint, &sc.payer)
-            .unwrap();
-    let quote_ata =
-        create_associated_token_account(&mut sc.svm, &seller.pubkey(), &sc.quote_mint, &sc.payer)
-            .unwrap();
+    let base_ata = create_associated_token_account(
+        &mut sc.svm,
+        &seller.pubkey(),
+        &sc.base_mint,
+        &sc.payer,
+        None,
+    )
+    .unwrap();
+    let quote_ata = create_associated_token_account(
+        &mut sc.svm,
+        &seller.pubkey(),
+        &sc.quote_mint,
+        &sc.payer,
+        None,
+    )
+    .unwrap();
     mint_tokens_to_token_account(
         &mut sc.svm,
         &sc.base_mint,
         &base_ata,
         TRADER_STARTING_BALANCE,
         &sc.authority,
+        None,
     )
     .unwrap();
     let market_user = market_user_pda(&sc.program_id, &sc.market, &seller.pubkey());
@@ -2389,6 +2509,7 @@ fn add_funded_seller(sc: &mut Scenario) -> (Keypair, Pubkey, Pubkey, Pubkey) {
         vec![instruction],
         &[&seller],
         &seller.pubkey(),
+        None,
     )
     .unwrap();
     (seller, base_ata, quote_ata, market_user)
@@ -2437,6 +2558,7 @@ fn run_probes_at_bottom_of_book(build_chain: bool) -> ProbeCosts {
                     vec![instruction],
                     &[&seller],
                     &seller.pubkey(),
+                    None,
                 )
                 .unwrap();
                 next_order_id += 1;
@@ -2578,7 +2700,7 @@ fn failure_text(
     payer: &Pubkey,
     must_fail: &str,
 ) -> String {
-    match send_transaction_from_instructions(svm, instructions, signers, payer) {
+    match send_transaction_from_instructions(svm, instructions, signers, payer, None) {
         Ok(_) => panic!("{must_fail}"),
         Err(error) => format!("{error:?}"),
     }
@@ -2603,23 +2725,40 @@ struct Trader {
 
 fn create_trader(sc: &mut Scenario) -> Trader {
     let keypair = create_wallet(&mut sc.svm, 10_000_000_000).unwrap();
-    let base_ata =
-        create_associated_token_account(&mut sc.svm, &keypair.pubkey(), &sc.base_mint, &sc.payer)
-            .unwrap();
-    let quote_ata =
-        create_associated_token_account(&mut sc.svm, &keypair.pubkey(), &sc.quote_mint, &sc.payer)
-            .unwrap();
+    let base_ata = create_associated_token_account(
+        &mut sc.svm,
+        &keypair.pubkey(),
+        &sc.base_mint,
+        &sc.payer,
+        None,
+    )
+    .unwrap();
+    let quote_ata = create_associated_token_account(
+        &mut sc.svm,
+        &keypair.pubkey(),
+        &sc.quote_mint,
+        &sc.payer,
+        None,
+    )
+    .unwrap();
     mint_tokens_to_token_account(
         &mut sc.svm,
         &sc.quote_mint,
         &quote_ata,
         TRADER_STARTING_BALANCE,
         &sc.authority,
+        None,
     )
     .unwrap();
     let init_ix = build_initialize_market_user_ix(sc, &keypair.pubkey());
-    send_transaction_from_instructions(&mut sc.svm, vec![init_ix], &[&keypair], &keypair.pubkey())
-        .unwrap();
+    send_transaction_from_instructions(
+        &mut sc.svm,
+        vec![init_ix],
+        &[&keypair],
+        &keypair.pubkey(),
+        None,
+    )
+    .unwrap();
     let market_user = market_user_pda(&sc.program_id, &sc.market, &keypair.pubkey());
     Trader {
         keypair,
@@ -2655,6 +2794,7 @@ fn fill_bid_side(sc: &mut Scenario) -> Vec<Trader> {
             vec![ix],
             &[&filler.keypair],
             &filler.keypair.pubkey(),
+            None,
         )
         .unwrap_or_else(|error| panic!("bid {order_id} should rest: {error:?}"));
     }
@@ -2686,6 +2826,7 @@ fn place_bid(
         vec![ix],
         &[&trader.keypair],
         &trader.keypair.pubkey(),
+        None,
     )
     .map_err(|error| format!("{error:?}"))
 }
@@ -2814,6 +2955,7 @@ fn evicted_maker_settles_their_refund() {
         vec![settle_ix],
         &[&evicted.keypair],
         &evicted.keypair.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -2917,6 +3059,7 @@ fn trader_can_evict_their_own_worst_order() {
         vec![ix],
         &[&owner.keypair],
         &owner.keypair.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -2982,7 +3125,7 @@ fn send_market_switch(
     instruction: Instruction,
     signer: &Keypair,
 ) -> Result<(), String> {
-    send_transaction_from_instructions(svm, vec![instruction], &[signer], &signer.pubkey())
+    send_transaction_from_instructions(svm, vec![instruction], &[signer], &signer.pubkey(), None)
         .map_err(|error| format!("{error:?}"))
 }
 
@@ -3000,8 +3143,14 @@ fn place_pause_ask(sc: &mut Scenario) -> Result<(), String> {
         PAUSE_PRICE,
         PAUSE_QUANTITY,
     );
-    send_transaction_from_instructions(&mut sc.svm, vec![ix], &[&sc.seller], &sc.seller.pubkey())
-        .map_err(|error| format!("{error:?}"))
+    send_transaction_from_instructions(
+        &mut sc.svm,
+        vec![ix],
+        &[&sc.seller],
+        &sc.seller.pubkey(),
+        None,
+    )
+    .map_err(|error| format!("{error:?}"))
 }
 
 #[test]
@@ -3062,6 +3211,7 @@ fn paused_market_still_cancels_and_settles_a_resting_order() {
         vec![cancel_ix, settle_ix],
         &[&sc.seller],
         &sc.seller.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -3090,6 +3240,7 @@ fn paused_market_still_pays_out_fills_and_withdraws_fees() {
         &sc.authority.pubkey(),
         &sc.quote_mint,
         &sc.payer,
+        None,
     )
     .unwrap();
 
@@ -3108,8 +3259,14 @@ fn paused_market_still_pays_out_fills_and_withdraws_fees() {
         PAUSE_QUANTITY,
         &[(PAUSE_ASK_ID, sc.seller_market_user)],
     );
-    send_transaction_from_instructions(&mut sc.svm, vec![bid_ix], &[&sc.buyer], &sc.buyer.pubkey())
-        .unwrap();
+    send_transaction_from_instructions(
+        &mut sc.svm,
+        vec![bid_ix],
+        &[&sc.buyer],
+        &sc.buyer.pubkey(),
+        None,
+    )
+    .unwrap();
     let expected_fee = fee_ceil(PAUSE_GROSS);
     assert_eq!(
         get_token_account_balance(&sc.svm, &sc.fee_vault).unwrap(),
@@ -3132,6 +3289,7 @@ fn paused_market_still_pays_out_fills_and_withdraws_fees() {
         vec![settle_ix],
         &[&sc.seller],
         &sc.seller.pubkey(),
+        None,
     )
     .unwrap();
     assert_eq!(
@@ -3146,6 +3304,7 @@ fn paused_market_still_pays_out_fills_and_withdraws_fees() {
         vec![withdraw_ix],
         &[&sc.authority],
         &sc.authority.pubkey(),
+        None,
     )
     .unwrap();
     assert_eq!(
@@ -3232,6 +3391,7 @@ fn only_the_market_authority_can_pause_or_resume() {
         vec![bid_ix],
         &[&sc.buyer],
         &sc.buyer.pubkey(),
+        None,
     )
     .map_err(|error| format!("{error:?}"))
     .expect_err("a paused market must not take an order");
@@ -3279,6 +3439,7 @@ fn transaction_fee(svm: &mut LiteSVM, wallet: &Keypair) -> u64 {
         vec![system_instruction::transfer(&address, &address, 0)],
         &[wallet],
         &address,
+        None,
     )
     .unwrap();
     before - get_sol_balance(svm, &address)
@@ -3302,6 +3463,7 @@ fn place_close_ask(sc: &mut Scenario) {
         vec![ask_ix],
         &[&sc.seller],
         &sc.seller.pubkey(),
+        None,
     )
     .unwrap();
 }
@@ -3322,8 +3484,14 @@ fn cross_close_ask(sc: &mut Scenario, quantity: u64) {
         quantity,
         &[(CLOSE_ASK_ID, sc.seller_market_user)],
     );
-    send_transaction_from_instructions(&mut sc.svm, vec![bid_ix], &[&sc.buyer], &sc.buyer.pubkey())
-        .unwrap();
+    send_transaction_from_instructions(
+        &mut sc.svm,
+        vec![bid_ix],
+        &[&sc.buyer],
+        &sc.buyer.pubkey(),
+        None,
+    )
+    .unwrap();
 }
 
 /// The seller cancels their ask, which credits its locked base to their
@@ -3336,6 +3504,7 @@ fn cancel_close_ask(sc: &mut Scenario) {
         vec![cancel_ix],
         &[&sc.seller],
         &sc.seller.pubkey(),
+        None,
     )
     .unwrap();
 }
@@ -3354,6 +3523,7 @@ fn settle_seller(sc: &mut Scenario) {
         vec![settle_ix],
         &[&sc.seller],
         &sc.seller.pubkey(),
+        None,
     )
     .unwrap();
 }
@@ -3371,7 +3541,8 @@ fn assert_close_returns_rent(
     let fee = transaction_fee(svm, owner);
     let before = get_sol_balance(svm, &owner.pubkey());
 
-    send_transaction_from_instructions(svm, vec![close_ix], &[owner], &owner.pubkey()).unwrap();
+    send_transaction_from_instructions(svm, vec![close_ix], &[owner], &owner.pubkey(), None)
+        .unwrap();
 
     assert!(!account_is_open(svm, account));
     assert_eq!(get_sol_balance(svm, &owner.pubkey()), before + rent - fee);
@@ -3520,6 +3691,7 @@ fn close_market_user_returns_rent_when_nothing_is_open_or_owed() {
         vec![reinit_ix],
         &[&sc.seller],
         &sc.seller.pubkey(),
+        None,
     )
     .unwrap();
     assert!(account_is_open(&sc.svm, &sc.seller_market_user));
@@ -3623,6 +3795,7 @@ fn evicted_order_and_its_owners_market_user_close_after_settling() {
             vec![cancel_ix],
             &[&evicted.keypair],
             &evicted.keypair.pubkey(),
+            None,
         )
         .unwrap();
     }
@@ -3638,6 +3811,7 @@ fn evicted_order_and_its_owners_market_user_close_after_settling() {
         vec![settle_ix],
         &[&evicted.keypair],
         &evicted.keypair.pubkey(),
+        None,
     )
     .unwrap();
     assert_eq!(read_open_order_count(&sc.svm, &evicted.market_user), 0);
