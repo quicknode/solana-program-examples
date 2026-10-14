@@ -1005,7 +1005,8 @@ fn buy_refuses_a_premium_account_the_writer_does_not_own(test: &mut Test) {
     let env = setup(test);
     write_call(test, &env);
     let terms = listed_terms(test, &env, &ALICE_P, CALL_ID);
-    let mut instruction: Instruction = buy_instruction(&env, &BOB_P, &ALICE_P, CALL_ID, terms).into();
+    let mut instruction: Instruction =
+        buy_instruction(&env, &BOB_P, &ALICE_P, CALL_ID, terms).into();
     // Account order matches the `#[derive(Accounts)]` struct: writer_quote is
     // the last account before the token program.
     let writer_quote_index = instruction
