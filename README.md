@@ -2,7 +2,7 @@
 
 ![Quicknode Solana Program Examples](assets/banner.png?v=1)
 
-_Solana program examples ('smart contracts') in Anchor 1, Anchor 2, Quasar, Pinocchio, native Rust, and sBPF assembly. Focused on financial software, plus the basics, tokens, Token Extensions, state compression, and more._
+_The most complete and actvely maintained set of Solana programs ('smart contracts') in Anchor 1, Anchor 2, Quasar and more. Focused on financial software, as well as single-use programs._
 
 Working, tested, up-to-date examples of common Solana programs (what other chains call smart contracts), maintained by [Quicknode](https://www.quicknode.com/chains/solana). Current as of September 2026 (see [CHANGELOG.md](./CHANGELOG.md)):
 
@@ -75,6 +75,8 @@ A **proprietary AMM**: a market-making firm funds a venue with its own capital a
 A managed investment fund onchain, the equivalent of a mutual fund. Investors deposit USDC for shares, a manager allocates the pool across a basket of assets (here, stocks like TSLAx and NVDAx), and each share's value tracks the fund's net asset value. The manager earns a management fee, and investors redeem a proportional slice of the underlying assets.
 
 [⚓ Anchor v1](./finance/managed-fund/anchor-v1) [⚓ Anchor v2](./finance/managed-fund/anchor) [💫 Quasar](./finance/managed-fund/quasar)
+
+🎬 Video: [Building a Managed Fund](https://www.youtube.com/watch?v=G7z7xsDyoRk)
 
 ### Betting Market
 
