@@ -40,7 +40,7 @@ solana-sysvar = "3"
 litesvm = "0.16.0"
 solana-signer = "3.0.0"
 solana-keypair = "3.0.1"
-solana-kite = "0.6.0"
+solana-kite = "0.6.1"
 borsh = "1.6.1"
 # The LiteSVM tests load the compiled mock oracle program; depending on the
 # crate here lets the tests reuse its instruction-argument types and program ID.

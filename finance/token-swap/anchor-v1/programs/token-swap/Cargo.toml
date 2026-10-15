@@ -30,7 +30,7 @@ anchor-spl = { version = "1.2.0", features = ["metadata", "spl-token-interface"]
 litesvm = "0.16.0"
 solana-signer = "3.0.0"
 solana-keypair = "3.0.1"
-solana-kite = "0.6.0"
+solana-kite = "0.6.1"
 borsh = "1.6.1"
 
 [lints.rust]
