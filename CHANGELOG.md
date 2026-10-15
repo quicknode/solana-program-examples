@@ -4,6 +4,20 @@ All notable changes to this repository are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-10-15] - Anchor v1 examples on Anchor 1.2.1
+
+Anchor 1.2.1 is a patch release of the v1 line. Its one change is an opt-in
+`solana-v4` feature on `anchor-lang` for building against the Solana v4 crates; no
+example turns it on, so no program or test source changed.
+
+### Changed
+
+- All 57 `anchor-v1/` examples move `anchor-lang` and `anchor-spl` from `1.2.0` to
+  `1.2.1`. Feature lists are unchanged.
+- The Anchor v1 workflow installs and caches `anchor-cli 1.2.1` instead of `1.2.0`.
+- Every `anchor-v1/` README, `CONTRIBUTING.md` and `docs/anchor-v2-migration.md`
+  name 1.2.1 as the v1 CLI to install.
+
 ## [2026-10-15] - solana-kite 0.6.1
 
 ### Changed

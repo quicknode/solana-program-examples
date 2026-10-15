@@ -13,7 +13,7 @@ See [CHANGELOG.md](./CHANGELOG.md) for release history. This file had no changel
 
 - Each example lives at `category/example-name/<framework>/`, e.g. `basics/counter/anchor/`.
 - Supported frameworks: `anchor`, `anchor-v1`, `quasar`, `pinocchio`, `native`, `asm`. Use the existing layout as a reference.
-- `anchor-v1/` is Anchor v1 (1.2.0), the current stable Anchor. `anchor/` is the same example
+- `anchor-v1/` is Anchor v1 (1.2.1), the current stable Anchor. `anchor/` is the same example
   on Anchor v2 (2.0.0-rc.1), the release candidate for the next major version, and is where new
   Anchor work starts; the v1 copy tracks its v2 counterpart. A change to what an example does (a new handler, a new check, a
   fix, a renamed field) goes into both copies, in the same pull request where practical, so a
@@ -34,7 +34,7 @@ See [CHANGELOG.md](./CHANGELOG.md) for release history. This file had no changel
 Run an example's tests with the command for its framework, from the framework directory (e.g. `basics/counter/anchor/`):
 
 - **Anchor v2** (in `anchor/`): `anchor test` (runs `cargo test`, per the `[scripts]` table in `Anchor.toml`), with the v2 CLI: `cargo install anchor-cli --version 2.0.0-rc.1 --locked`.
-- **Anchor v1** (in `anchor-v1/`): the same `anchor test`, with the v1 CLI: `avm install 1.2.0 && avm use 1.2.0`. Selecting the wrong CLI is the usual cause of a confusing build failure in these directories.
+- **Anchor v1** (in `anchor-v1/`): the same `anchor test`, with the v1 CLI: `avm install 1.2.1 && avm use 1.2.1`. Selecting the wrong CLI is the usual cause of a confusing build failure in these directories.
   Anchor v1 tests send v1 transactions (4,096 bytes, resource limits in the message) through
   `solana-kite` 0.6. Its senders take a last `compute_unit_limit: Option<u32>`: pass `None` and kite
   simulates the transaction and sends it with the compute units the simulation used. A test that needs the

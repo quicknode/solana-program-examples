@@ -21,8 +21,8 @@ custom-panic = []
 
 
 [dependencies]
-anchor-lang = "1.2.0"
-anchor-spl = { version = "1.2.0", features = ["metadata"] }
+anchor-lang = "1.2.1"
+anchor-spl = { version = "1.2.1", features = ["metadata"] }
 
 [dev-dependencies]
 litesvm = "0.16.0"
