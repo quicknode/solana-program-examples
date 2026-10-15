@@ -21,8 +21,8 @@ Each example is available in one or more of the following frameworks:
 - [🦀 Native Rust](https://docs.anza.xyz/) - vanilla Rust using Solana's native crates. Build with `cargo build-sbf --manifest-path=./program/Cargo.toml`, test with `cargo test --manifest-path=./program/Cargo.toml`.
 - [🧬 ASM](https://github.com/blueshift-gg/sbpf) - hand-written sBPF assembly built with the `sbpf` toolchain. Build with `sbpf build`, test with `cargo test`.
 
-> [!NOTE]
-> You don't need to write your own program for basic tasks like creating [accounts](https://solana.com/docs/terminology#account), transferring SOL, or minting tokens. These are handled by existing programs like the System Program and Token Program.
+- > [!NOTE]
+> Quicknode has recently released [Building Financial Software on Solana](htpps://solanabook.org), a comprehensive guide to creating financial products on the blockchain. The book can be [downloaded for free](https://solanabook.org), there's also a [paperback on Amazon](https://www.amazon.com/dp/B0HMJSSB95) and soon Barnes and Noble and independent booksellers.
 
 ## Getting started
 
