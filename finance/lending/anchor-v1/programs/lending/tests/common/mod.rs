@@ -84,7 +84,7 @@ fn send(
     signers: &[&Keypair],
     payer: &Pubkey,
 ) -> Result<(), String> {
-    send_transaction_from_instructions(svm, instructions, signers, payer)
+    send_transaction_from_instructions(svm, instructions, signers, payer, None)
         .map_err(|thrown| format!("{thrown:?}"))
 }
 
@@ -114,7 +114,7 @@ impl Env {
         svm.add_program(lending::id(), program_bytes).unwrap();
 
         let owner = create_wallet(&mut svm, 1_000_000_000_000).unwrap();
-        let quote_mint = create_token_mint(&mut svm, &owner, 6, None).unwrap();
+        let quote_mint = create_token_mint(&mut svm, &owner, 6, None, None).unwrap();
         // The market is seeded by its market_id index alone (no owner). Market 0.
         let market_id: u64 = 0;
         let market = pda(&[LENDING_MARKET_SEED, &market_id.to_le_bytes()]);
@@ -145,7 +145,7 @@ impl Env {
     /// exercise cross-market isolation.
     pub fn init_market_for(&mut self, market_owner: &Keypair) -> Pubkey {
         let env_owner = self.owner.insecure_clone();
-        let quote_mint = create_token_mint(&mut self.svm, &env_owner, 6, None).unwrap();
+        let quote_mint = create_token_mint(&mut self.svm, &env_owner, 6, None, None).unwrap();
         // A distinct id from the env's market 0, since the id is the market's
         // global identifier (the owner is not part of the seed).
         let market_id: u64 = 1;
@@ -197,7 +197,7 @@ impl Env {
         config: ReserveConfig,
     ) -> Result<ReserveHandle, String> {
         let env_owner = self.owner.insecure_clone();
-        let mint = create_token_mint(&mut self.svm, &env_owner, decimals, None).unwrap();
+        let mint = create_token_mint(&mut self.svm, &env_owner, decimals, None, None).unwrap();
         self.set_price_for(
             market_owner,
             market,
@@ -403,10 +403,18 @@ impl Env {
     pub fn fund(&mut self, user: &Keypair, mint: Pubkey, amount: u64) -> Pubkey {
         let owner = self.owner.insecure_clone();
         let token_account =
-            create_associated_token_account(&mut self.svm, &user.pubkey(), &mint, user).unwrap();
-        if amount > 0 {
-            mint_tokens_to_token_account(&mut self.svm, &mint, &token_account, amount, &owner)
+            create_associated_token_account(&mut self.svm, &user.pubkey(), &mint, user, None)
                 .unwrap();
+        if amount > 0 {
+            mint_tokens_to_token_account(
+                &mut self.svm,
+                &mint,
+                &token_account,
+                amount,
+                &owner,
+                None,
+            )
+            .unwrap();
         }
         token_account
     }
@@ -438,6 +446,7 @@ impl Env {
                 &user.pubkey(),
                 &handle.share_mint,
                 user,
+                None,
             )
             .unwrap();
         }
@@ -838,6 +847,7 @@ impl Env {
                 &liquidator.pubkey(),
                 &collateral.share_mint,
                 liquidator,
+                None,
             )
             .unwrap();
         }
@@ -910,8 +920,14 @@ impl Env {
         let owner = self.owner.insecure_clone();
         let owner_liquidity = ata(&owner.pubkey(), &handle.mint);
         if self.svm.get_account(&owner_liquidity).is_none() {
-            create_associated_token_account(&mut self.svm, &owner.pubkey(), &handle.mint, &owner)
-                .unwrap();
+            create_associated_token_account(
+                &mut self.svm,
+                &owner.pubkey(),
+                &handle.mint,
+                &owner,
+                None,
+            )
+            .unwrap();
         }
         let refresh = self.refresh_reserve_ix(handle);
         let collect = Instruction {

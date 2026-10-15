@@ -83,6 +83,7 @@ fn test_create_spl_token() {
         vec![instruction],
         &[&payer, &mint_keypair],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -137,6 +138,7 @@ fn test_create_nft() {
         vec![instruction],
         &[&payer, &mint_keypair],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
 

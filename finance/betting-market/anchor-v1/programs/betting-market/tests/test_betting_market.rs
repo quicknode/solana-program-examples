@@ -88,11 +88,12 @@ fn setup() -> Market {
         .unwrap();
 
     let admin = create_wallet(&mut svm, 100_000_000_000).unwrap();
-    let mint = create_token_mint(&mut svm, &admin, DECIMALS, None).unwrap();
+    let mint = create_token_mint(&mut svm, &admin, DECIMALS, None, None).unwrap();
 
     let fee_recipient = create_wallet(&mut svm, 10_000_000_000).unwrap();
     let fee_recipient_ata =
-        create_associated_token_account(&mut svm, &fee_recipient.pubkey(), &mint, &admin).unwrap();
+        create_associated_token_account(&mut svm, &fee_recipient.pubkey(), &mint, &admin, None)
+            .unwrap();
 
     Market {
         svm,
@@ -145,10 +146,18 @@ fn create_bettor(market: &mut Market, amount: u64) -> (Keypair, Pubkey) {
         &bettor.pubkey(),
         &market.mint,
         &market.admin,
+        None,
     )
     .unwrap();
-    mint_tokens_to_token_account(&mut market.svm, &market.mint, &ata, amount, &market.admin)
-        .unwrap();
+    mint_tokens_to_token_account(
+        &mut market.svm,
+        &market.mint,
+        &ata,
+        amount,
+        &market.admin,
+        None,
+    )
+    .unwrap();
     (bettor, ata)
 }
 
@@ -454,6 +463,7 @@ fn transaction_fee(market: &mut Market) -> u64 {
         vec![system_instruction::transfer(&admin, &admin, 0)],
         &[&market.admin],
         &admin,
+        None,
     )
     .unwrap();
     before - get_sol_balance(&market.svm, &admin)
@@ -485,6 +495,7 @@ fn close_outcomes_and_event(market: &mut Market, event_id: u64, outcome_count: u
             vec![close_outcome_ix(admin, event_id, index)],
             &[&market.admin],
             &admin,
+            None,
         )
         .unwrap();
         assert!(
@@ -514,6 +525,7 @@ fn close_outcomes_and_event(market: &mut Market, event_id: u64, outcome_count: u
         )],
         &[&market.admin],
         &admin,
+        None,
     )
     .unwrap();
     assert!(!account_is_open(market, &event));
@@ -546,6 +558,7 @@ fn init_config(market: &mut Market) {
         vec![initialize_config_ix(admin, mint, fee_recipient)],
         &[&market.admin],
         &admin,
+        None,
     )
     .unwrap();
 }
@@ -575,6 +588,7 @@ fn test_full_lifecycle() {
         ],
         &[&market.admin],
         &admin,
+        None,
     )
     .unwrap();
 
@@ -590,6 +604,7 @@ fn test_full_lifecycle() {
         )],
         &[&alice],
         &alice.pubkey(),
+        None,
     )
     .unwrap();
     send_transaction_from_instructions(
@@ -604,6 +619,7 @@ fn test_full_lifecycle() {
         )],
         &[&bob],
         &bob.pubkey(),
+        None,
     )
     .unwrap();
     send_transaction_from_instructions(
@@ -618,6 +634,7 @@ fn test_full_lifecycle() {
         )],
         &[&carol],
         &carol.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -651,6 +668,7 @@ fn test_full_lifecycle() {
         )],
         &[&market.admin],
         &admin,
+        None,
     )
     .unwrap();
     assert_eq!(
@@ -670,6 +688,7 @@ fn test_full_lifecycle() {
         )],
         &[&alice],
         &alice.pubkey(),
+        None,
     )
     .unwrap();
     send_transaction_from_instructions(
@@ -683,6 +702,7 @@ fn test_full_lifecycle() {
         )],
         &[&bob],
         &bob.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -720,6 +740,7 @@ fn test_full_lifecycle() {
         )],
         &[&carol],
         &carol.pubkey(),
+        None,
     );
     assert_fails_with(carol_claim, BettingError::NothingToClaim);
 
@@ -731,6 +752,7 @@ fn test_full_lifecycle() {
         vec![close_losing_bet_ix(&carol.pubkey(), event_id, 1)],
         &[&carol],
         &carol.pubkey(),
+        None,
     )
     .unwrap();
     assert!(!account_is_open(&market, &carol_bet));
@@ -755,6 +777,7 @@ fn test_only_admin_can_initialize_event() {
         )],
         &[&mallory],
         &mallory.pubkey(),
+        None,
     );
     assert_fails_with(result, BettingError::Unauthorized);
 
@@ -768,6 +791,7 @@ fn test_only_admin_can_initialize_event() {
         ],
         &[&market.admin],
         &admin,
+        None,
     )
     .unwrap();
     let unauthorized_outcome = send_transaction_from_instructions(
@@ -775,6 +799,7 @@ fn test_only_admin_can_initialize_event() {
         vec![add_outcome_ix(mallory.pubkey(), event_id, 2, "Late entry")],
         &[&mallory],
         &mallory.pubkey(),
+        None,
     );
     assert_fails_with(unauthorized_outcome, BettingError::Unauthorized);
     let unauthorized_open = send_transaction_from_instructions(
@@ -782,6 +807,7 @@ fn test_only_admin_can_initialize_event() {
         vec![open_betting_ix(mallory.pubkey(), event_id)],
         &[&mallory],
         &mallory.pubkey(),
+        None,
     );
     assert_fails_with(unauthorized_open, BettingError::Unauthorized);
 }
@@ -810,6 +836,7 @@ fn test_only_admin_can_settle_or_cancel_event() {
         vec![cancel_event_ix(mallory.pubkey(), event_id)],
         &[&mallory],
         &mallory.pubkey(),
+        None,
     );
     assert_fails_with(unauthorized_cancel, BettingError::Unauthorized);
 
@@ -827,6 +854,7 @@ fn test_only_admin_can_settle_or_cancel_event() {
         )],
         &[&mallory],
         &mallory.pubkey(),
+        None,
     );
     assert_fails_with(unauthorized_settle, BettingError::Unauthorized);
     assert!(read_event(&market, event_id).status == EventStatus::Open);
@@ -862,6 +890,7 @@ fn test_cannot_bet_after_settle() {
         ],
         &[&market.admin],
         &admin,
+        None,
     )
     .unwrap();
     send_transaction_from_instructions(
@@ -876,6 +905,7 @@ fn test_cannot_bet_after_settle() {
         )],
         &[&alice],
         &alice.pubkey(),
+        None,
     )
     .unwrap();
     // Betting has closed, so the event can be settled.
@@ -892,6 +922,7 @@ fn test_cannot_bet_after_settle() {
         )],
         &[&market.admin],
         &admin,
+        None,
     )
     .unwrap();
 
@@ -907,6 +938,7 @@ fn test_cannot_bet_after_settle() {
         )],
         &[&bob],
         &bob.pubkey(),
+        None,
     );
     assert_fails_with(late_bet, BettingError::EventNotOpen);
 }
@@ -933,6 +965,7 @@ fn test_double_claim_fails() {
         ],
         &[&market.admin],
         &admin,
+        None,
     )
     .unwrap();
     send_transaction_from_instructions(
@@ -947,6 +980,7 @@ fn test_double_claim_fails() {
         )],
         &[&alice],
         &alice.pubkey(),
+        None,
     )
     .unwrap();
     send_transaction_from_instructions(
@@ -961,6 +995,7 @@ fn test_double_claim_fails() {
         )],
         &[&carol],
         &carol.pubkey(),
+        None,
     )
     .unwrap();
     // Betting has closed, so the event can be settled.
@@ -977,6 +1012,7 @@ fn test_double_claim_fails() {
         )],
         &[&market.admin],
         &admin,
+        None,
     )
     .unwrap();
 
@@ -991,6 +1027,7 @@ fn test_double_claim_fails() {
         )],
         &[&alice],
         &alice.pubkey(),
+        None,
     )
     .unwrap();
     // A fresh blockhash so the second claim is a distinct transaction.
@@ -1006,6 +1043,7 @@ fn test_double_claim_fails() {
         )],
         &[&alice],
         &alice.pubkey(),
+        None,
     );
     // The first claim closed the Bet account (`close = bettor`), so the second
     // transaction passes an address with no lamports and no data. Anchor
@@ -1035,6 +1073,7 @@ fn test_settle_outcome_without_bets_fails() {
         ],
         &[&market.admin],
         &admin,
+        None,
     )
     .unwrap();
     // Everyone bets Horse A; Horse B has no bets.
@@ -1050,6 +1089,7 @@ fn test_settle_outcome_without_bets_fails() {
         )],
         &[&alice],
         &alice.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -1067,6 +1107,7 @@ fn test_settle_outcome_without_bets_fails() {
         )],
         &[&market.admin],
         &admin,
+        None,
     );
     assert_fails_with(result, BettingError::OutcomeHasNoBets);
 }
@@ -1091,6 +1132,7 @@ fn test_cancel_and_refund() {
         ],
         &[&market.admin],
         &admin,
+        None,
     )
     .unwrap();
     send_transaction_from_instructions(
@@ -1105,6 +1147,7 @@ fn test_cancel_and_refund() {
         )],
         &[&alice],
         &alice.pubkey(),
+        None,
     )
     .unwrap();
     send_transaction_from_instructions(
@@ -1119,6 +1162,7 @@ fn test_cancel_and_refund() {
         )],
         &[&carol],
         &carol.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -1127,6 +1171,7 @@ fn test_cancel_and_refund() {
         vec![cancel_event_ix(admin, event_id)],
         &[&market.admin],
         &admin,
+        None,
     )
     .unwrap();
 
@@ -1144,6 +1189,7 @@ fn test_cancel_and_refund() {
         )],
         &[&alice],
         &alice.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -1156,6 +1202,7 @@ fn test_cancel_and_refund() {
         vec![close_outcome_ix(admin, event_id, 0)],
         &[&market.admin],
         &admin,
+        None,
     );
     assert_fails_with(outcome_still_in_use, BettingError::BetsStillOpen);
     assert_eq!(read_event(&market, event_id).open_bets, 1);
@@ -1171,6 +1218,7 @@ fn test_cancel_and_refund() {
         )],
         &[&carol],
         &carol.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -1219,6 +1267,7 @@ fn test_close_losing_bet_only_after_settle_and_only_for_losers() {
         ],
         &[&market.admin],
         &admin,
+        None,
     )
     .unwrap();
     send_transaction_from_instructions(
@@ -1233,6 +1282,7 @@ fn test_close_losing_bet_only_after_settle_and_only_for_losers() {
         )],
         &[&alice],
         &alice.pubkey(),
+        None,
     )
     .unwrap();
     send_transaction_from_instructions(
@@ -1247,6 +1297,7 @@ fn test_close_losing_bet_only_after_settle_and_only_for_losers() {
         )],
         &[&carol],
         &carol.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -1256,6 +1307,7 @@ fn test_close_losing_bet_only_after_settle_and_only_for_losers() {
         vec![close_losing_bet_ix(&carol.pubkey(), event_id, 1)],
         &[&carol],
         &carol.pubkey(),
+        None,
     );
     assert_fails_with(premature_close, BettingError::EventNotSettled);
 
@@ -1273,6 +1325,7 @@ fn test_close_losing_bet_only_after_settle_and_only_for_losers() {
         )],
         &[&market.admin],
         &admin,
+        None,
     )
     .unwrap();
 
@@ -1282,6 +1335,7 @@ fn test_close_losing_bet_only_after_settle_and_only_for_losers() {
         vec![close_losing_bet_ix(&alice.pubkey(), event_id, 0)],
         &[&alice],
         &alice.pubkey(),
+        None,
     );
     assert_fails_with(winner_close, BettingError::BetWon);
     let alice_bet = bet_pda(&outcome_pda(&event_pda(event_id), 0), &alice.pubkey());
@@ -1295,6 +1349,7 @@ fn test_close_losing_bet_only_after_settle_and_only_for_losers() {
         vec![close_losing_bet_ix(&carol.pubkey(), event_id, 1)],
         &[&carol],
         &carol.pubkey(),
+        None,
     )
     .unwrap();
     let carol_bet = bet_pda(&outcome_pda(&event_pda(event_id), 1), &carol.pubkey());
@@ -1327,6 +1382,7 @@ fn test_no_cap_on_open_bets_per_wallet() {
         )],
         &[&market.admin],
         &admin,
+        None,
     )
     .unwrap();
     for index in 0..OUTCOME_COUNT {
@@ -1340,6 +1396,7 @@ fn test_no_cap_on_open_bets_per_wallet() {
             )],
             &[&market.admin],
             &admin,
+            None,
         )
         .unwrap();
     }
@@ -1348,6 +1405,7 @@ fn test_no_cap_on_open_bets_per_wallet() {
         vec![open_betting_ix(admin, wide_event_id)],
         &[&market.admin],
         &admin,
+        None,
     )
     .unwrap();
     send_transaction_from_instructions(
@@ -1360,6 +1418,7 @@ fn test_no_cap_on_open_bets_per_wallet() {
         ],
         &[&market.admin],
         &admin,
+        None,
     )
     .unwrap();
 
@@ -1376,6 +1435,7 @@ fn test_no_cap_on_open_bets_per_wallet() {
             )],
             &[&alice],
             &alice.pubkey(),
+            None,
         )
         .unwrap();
     }
@@ -1391,6 +1451,7 @@ fn test_no_cap_on_open_bets_per_wallet() {
         )],
         &[&alice],
         &alice.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -1432,6 +1493,7 @@ fn test_outcomes_lock_when_betting_opens() {
         ],
         &[&market.admin],
         &admin,
+        None,
     )
     .unwrap();
 
@@ -1448,6 +1510,7 @@ fn test_outcomes_lock_when_betting_opens() {
         )],
         &[&alice],
         &alice.pubkey(),
+        None,
     );
     assert_fails_with(early_bet, BettingError::EventNotOpen);
 
@@ -1460,6 +1523,7 @@ fn test_outcomes_lock_when_betting_opens() {
         ],
         &[&market.admin],
         &admin,
+        None,
     )
     .unwrap();
 
@@ -1469,6 +1533,7 @@ fn test_outcomes_lock_when_betting_opens() {
         vec![add_outcome_ix(admin, event_id, 2, "Late entry")],
         &[&market.admin],
         &admin,
+        None,
     );
     assert_fails_with(late_outcome, BettingError::EventNotDraft);
 
@@ -1478,6 +1543,7 @@ fn test_outcomes_lock_when_betting_opens() {
         vec![open_betting_ix(admin, event_id)],
         &[&market.admin],
         &admin,
+        None,
     );
     assert_fails_with(reopen, BettingError::EventNotDraft);
 }
@@ -1498,6 +1564,7 @@ fn test_open_betting_needs_two_outcomes() {
         ],
         &[&market.admin],
         &admin,
+        None,
     )
     .unwrap();
 
@@ -1506,6 +1573,7 @@ fn test_open_betting_needs_two_outcomes() {
         vec![open_betting_ix(admin, event_id)],
         &[&market.admin],
         &admin,
+        None,
     );
     assert_fails_with(result, BettingError::NotEnoughOutcomes);
 
@@ -1515,6 +1583,7 @@ fn test_open_betting_needs_two_outcomes() {
         vec![add_outcome_ix(admin, event_id, 1, "A second horse")],
         &[&market.admin],
         &admin,
+        None,
     )
     .unwrap();
     let mallory = create_wallet(&mut market.svm, 10_000_000_000).unwrap();
@@ -1523,6 +1592,7 @@ fn test_open_betting_needs_two_outcomes() {
         vec![open_betting_ix(mallory.pubkey(), event_id)],
         &[&mallory],
         &mallory.pubkey(),
+        None,
     );
     assert_fails_with(unauthorized, BettingError::Unauthorized);
 }
@@ -1552,6 +1622,7 @@ fn test_betting_closes_at_close_time() {
         ],
         &[&market.admin],
         &admin,
+        None,
     )
     .unwrap();
 
@@ -1569,6 +1640,7 @@ fn test_betting_closes_at_close_time() {
         )],
         &[&alice],
         &alice.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -1585,6 +1657,7 @@ fn test_betting_closes_at_close_time() {
         )],
         &[&market.admin],
         &admin,
+        None,
     );
     assert_fails_with(early_settle, BettingError::BettingStillOpen);
 
@@ -1602,6 +1675,7 @@ fn test_betting_closes_at_close_time() {
         )],
         &[&carol],
         &carol.pubkey(),
+        None,
     );
     assert_fails_with(late_bet, BettingError::BettingClosed);
 
@@ -1617,6 +1691,7 @@ fn test_betting_closes_at_close_time() {
         )],
         &[&market.admin],
         &admin,
+        None,
     )
     .unwrap();
 }
@@ -1639,6 +1714,7 @@ fn test_close_time_must_be_in_the_future() {
         )],
         &[&market.admin],
         &admin,
+        None,
     );
     assert_fails_with(result, BettingError::CloseTimeInPast);
 }
@@ -1658,6 +1734,7 @@ fn open_yes_no_market(market: &mut Market, event_id: u64, description: &str) {
         ],
         &[&market.admin],
         &admin,
+        None,
     )
     .unwrap();
 }
@@ -1683,6 +1760,7 @@ fn place_bet(
         )],
         &[bettor],
         &bettor.pubkey(),
+        None,
     )
     .unwrap();
 }
@@ -1706,6 +1784,7 @@ fn settle(market: &mut Market, event_id: u64, winning_outcome_index: u8) {
         )],
         &[&market.admin],
         &admin,
+        None,
     )
     .unwrap();
 }
@@ -1754,6 +1833,7 @@ fn test_close_event_pays_dust_to_fee_recipient_and_returns_rent() {
         vec![close_losing_bet_ix(&carol.pubkey(), event_id, 1)],
         &[&carol],
         &carol.pubkey(),
+        None,
     )
     .unwrap();
     assert_eq!(read_event(&market, event_id).open_bets, 2);
@@ -1769,6 +1849,7 @@ fn test_close_event_pays_dust_to_fee_recipient_and_returns_rent() {
             )],
             &[winner],
             &winner.pubkey(),
+            None,
         )
         .unwrap();
     }
@@ -1798,6 +1879,7 @@ fn test_close_event_pays_dust_to_fee_recipient_and_returns_rent() {
         )],
         &[&market.admin],
         &admin,
+        None,
     );
     assert_fails_with(outcomes_still_open, BettingError::OutcomesStillOpen);
 
@@ -1843,6 +1925,7 @@ fn test_close_event_refused_while_a_bet_is_open() {
         )],
         &[&alice],
         &alice.pubkey(),
+        None,
     )
     .unwrap();
     assert_eq!(read_event(&market, event_id).open_bets, 1);
@@ -1858,6 +1941,7 @@ fn test_close_event_refused_while_a_bet_is_open() {
         )],
         &[&market.admin],
         &admin,
+        None,
     );
     assert_fails_with(event_close, BettingError::BetsStillOpen);
     let outcome_close = send_transaction_from_instructions(
@@ -1865,6 +1949,7 @@ fn test_close_event_refused_while_a_bet_is_open() {
         vec![close_outcome_ix(admin, event_id, 1)],
         &[&market.admin],
         &admin,
+        None,
     );
     assert_fails_with(outcome_close, BettingError::BetsStillOpen);
 
@@ -1874,6 +1959,7 @@ fn test_close_event_refused_while_a_bet_is_open() {
         vec![close_losing_bet_ix(&carol.pubkey(), event_id, 1)],
         &[&carol],
         &carol.pubkey(),
+        None,
     )
     .unwrap();
     close_outcomes_and_event(&mut market, event_id, 2);
@@ -1900,6 +1986,7 @@ fn test_close_event_refused_while_event_is_open() {
         ],
         &[&market.admin],
         &admin,
+        None,
     )
     .unwrap();
 
@@ -1915,6 +2002,7 @@ fn test_close_event_refused_while_event_is_open() {
         )],
         &[&market.admin],
         &admin,
+        None,
     );
     assert_fails_with(draft_close, BettingError::EventNotFinished);
     let draft_outcome_close = send_transaction_from_instructions(
@@ -1922,6 +2010,7 @@ fn test_close_event_refused_while_event_is_open() {
         vec![close_outcome_ix(admin, event_id, 0)],
         &[&market.admin],
         &admin,
+        None,
     );
     assert_fails_with(draft_outcome_close, BettingError::EventNotFinished);
 
@@ -1932,6 +2021,7 @@ fn test_close_event_refused_while_event_is_open() {
         vec![open_betting_ix(admin, event_id)],
         &[&market.admin],
         &admin,
+        None,
     )
     .unwrap();
     market.svm.expire_blockhash();
@@ -1946,6 +2036,7 @@ fn test_close_event_refused_while_event_is_open() {
         )],
         &[&market.admin],
         &admin,
+        None,
     );
     assert_fails_with(open_close, BettingError::EventNotFinished);
 
@@ -1955,6 +2046,7 @@ fn test_close_event_refused_while_event_is_open() {
         vec![cancel_event_ix(admin, event_id)],
         &[&market.admin],
         &admin,
+        None,
     )
     .unwrap();
     let vault_balance_at_close = close_outcomes_and_event(&mut market, event_id, 2);
@@ -1987,6 +2079,7 @@ fn test_only_admin_can_close_outcomes_and_event() {
         )],
         &[&alice],
         &alice.pubkey(),
+        None,
     )
     .unwrap();
     send_transaction_from_instructions(
@@ -1994,6 +2087,7 @@ fn test_only_admin_can_close_outcomes_and_event() {
         vec![close_losing_bet_ix(&carol.pubkey(), event_id, 1)],
         &[&carol],
         &carol.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -2005,6 +2099,7 @@ fn test_only_admin_can_close_outcomes_and_event() {
         vec![close_outcome_ix(mallory.pubkey(), event_id, 0)],
         &[&mallory],
         &mallory.pubkey(),
+        None,
     );
     assert_fails_with(outcome_close, BettingError::Unauthorized);
     let event_close = send_transaction_from_instructions(
@@ -2018,6 +2113,7 @@ fn test_only_admin_can_close_outcomes_and_event() {
         )],
         &[&mallory],
         &mallory.pubkey(),
+        None,
     );
     assert_fails_with(event_close, BettingError::Unauthorized);
     let event = event_pda(event_id);

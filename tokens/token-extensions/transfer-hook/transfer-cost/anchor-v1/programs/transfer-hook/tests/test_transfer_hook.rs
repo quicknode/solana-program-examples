@@ -40,6 +40,7 @@ fn test_initialize_extra_account_meta_list() {
         &[MintExtension::TransferHook {
             program_id: program_id,
         }],
+        None,
     )
     .unwrap();
     svm.expire_blockhash();
@@ -61,8 +62,14 @@ fn test_initialize_extra_account_meta_list() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![init_extra_ix], &[&payer], &payer.pubkey())
-        .unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        vec![init_extra_ix],
+        &[&payer],
+        &payer.pubkey(),
+        None,
+    )
+    .unwrap();
 
     // Verify the ExtraAccountMetaList account was created
     let account = svm.get_account(&extra_account_meta_list);

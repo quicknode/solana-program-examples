@@ -48,6 +48,7 @@ fn test_transfer_switch() {
         &[MintExtension::TransferHook {
             program_id: program_id,
         }],
+        None,
     )
     .unwrap();
     svm.expire_blockhash();
@@ -57,14 +58,16 @@ fn test_transfer_switch() {
     // Step 2: Create token accounts and mint tokens
     let amount: u64 = 100 * 10u64.pow(decimals as u32);
     let source_ata =
-        create_token_extensions_account(&mut svm, &sender.pubkey(), &mint, &payer).unwrap();
+        create_token_extensions_account(&mut svm, &sender.pubkey(), &mint, &payer, None).unwrap();
     svm.expire_blockhash();
 
     let dest_ata =
-        create_token_extensions_account(&mut svm, &recipient.pubkey(), &mint, &payer).unwrap();
+        create_token_extensions_account(&mut svm, &recipient.pubkey(), &mint, &payer, None)
+            .unwrap();
     svm.expire_blockhash();
 
-    mint_tokens_to_token_extensions_account(&mut svm, &mint, &source_ata, amount, &payer).unwrap();
+    mint_tokens_to_token_extensions_account(&mut svm, &mint, &source_ata, amount, &payer, None)
+        .unwrap();
     svm.expire_blockhash();
 
     // Step 3: Configure admin
@@ -84,6 +87,7 @@ fn test_transfer_switch() {
         vec![configure_admin_ix],
         &[&payer],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
     svm.expire_blockhash();
@@ -100,8 +104,14 @@ fn test_transfer_switch() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![init_extra_ix], &[&payer], &payer.pubkey())
-        .unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        vec![init_extra_ix],
+        &[&payer],
+        &payer.pubkey(),
+        None,
+    )
+    .unwrap();
     svm.expire_blockhash();
 
     // Step 5: Turn transfers OFF for sender
@@ -117,8 +127,14 @@ fn test_transfer_switch() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![switch_off_ix], &[&payer], &payer.pubkey())
-        .unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        vec![switch_off_ix],
+        &[&payer],
+        &payer.pubkey(),
+        None,
+    )
+    .unwrap();
     svm.expire_blockhash();
 
     // Step 6: Try transfer - should FAIL (switch is off)
@@ -141,6 +157,7 @@ fn test_transfer_switch() {
         transfer_amount,
         decimals,
         &extra_accounts,
+        None,
     );
     assert!(result.is_err(), "Transfer should fail when switch is off");
     svm.expire_blockhash();
@@ -158,8 +175,14 @@ fn test_transfer_switch() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![switch_on_ix], &[&payer], &payer.pubkey())
-        .unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        vec![switch_on_ix],
+        &[&payer],
+        &payer.pubkey(),
+        None,
+    )
+    .unwrap();
     svm.expire_blockhash();
 
     // Step 8: Transfer - should SUCCEED (switch is on)
@@ -172,6 +195,7 @@ fn test_transfer_switch() {
         transfer_amount,
         decimals,
         &extra_accounts,
+        None,
     )
     .unwrap();
 }

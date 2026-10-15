@@ -87,23 +87,24 @@ fn full_setup() -> EscrowSetup {
 
     // Token A is USDC and token B is TSLAx; the payer is the mint authority
     // of both.
-    let mint_a = create_token_mint(&mut svm, &payer, USDC_DECIMALS, None).unwrap();
-    let mint_b = create_token_mint(&mut svm, &payer, TSLAX_DECIMALS, None).unwrap();
+    let mint_a = create_token_mint(&mut svm, &payer, USDC_DECIMALS, None, None).unwrap();
+    let mint_b = create_token_mint(&mut svm, &payer, TSLAX_DECIMALS, None, None).unwrap();
 
     // Create ATAs
     let alice_ata_a =
-        create_associated_token_account(&mut svm, &alice.pubkey(), &mint_a, &payer).unwrap();
+        create_associated_token_account(&mut svm, &alice.pubkey(), &mint_a, &payer, None).unwrap();
     let alice_ata_b =
-        create_associated_token_account(&mut svm, &alice.pubkey(), &mint_b, &payer).unwrap();
+        create_associated_token_account(&mut svm, &alice.pubkey(), &mint_b, &payer, None).unwrap();
     let bob_ata_a =
-        create_associated_token_account(&mut svm, &bob.pubkey(), &mint_a, &payer).unwrap();
+        create_associated_token_account(&mut svm, &bob.pubkey(), &mint_a, &payer, None).unwrap();
     let bob_ata_b =
-        create_associated_token_account(&mut svm, &bob.pubkey(), &mint_b, &payer).unwrap();
+        create_associated_token_account(&mut svm, &bob.pubkey(), &mint_b, &payer, None).unwrap();
 
     // Both hold 1,000 USDC, and Bob holds the TSLAx.
-    mint_tokens_to_token_account(&mut svm, &mint_a, &alice_ata_a, ALICE_USDC, &payer).unwrap();
-    mint_tokens_to_token_account(&mut svm, &mint_a, &bob_ata_a, BOB_USDC, &payer).unwrap();
-    mint_tokens_to_token_account(&mut svm, &mint_b, &bob_ata_b, BOB_TSLAX, &payer).unwrap();
+    mint_tokens_to_token_account(&mut svm, &mint_a, &alice_ata_a, ALICE_USDC, &payer, None)
+        .unwrap();
+    mint_tokens_to_token_account(&mut svm, &mint_a, &bob_ata_a, BOB_USDC, &payer, None).unwrap();
+    mint_tokens_to_token_account(&mut svm, &mint_b, &bob_ata_b, BOB_TSLAX, &payer, None).unwrap();
 
     EscrowSetup {
         svm,
@@ -169,6 +170,7 @@ fn test_make_offer() {
         vec![make_offer_ix],
         &[&es.payer, &es.alice],
         &es.payer.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -243,6 +245,7 @@ fn test_take_offer() {
         vec![make_offer_ix],
         &[&es.payer, &es.alice],
         &es.payer.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -282,6 +285,7 @@ fn test_take_offer() {
         vec![take_offer_ix],
         &[&es.payer, &es.bob],
         &es.payer.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -383,6 +387,7 @@ fn test_cancel_offer() {
         vec![make_offer_ix],
         &[&es.payer, &es.alice],
         &es.payer.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -412,6 +417,7 @@ fn test_cancel_offer() {
         vec![cancel_offer_ix],
         &[&es.payer, &es.alice],
         &es.payer.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -483,6 +489,7 @@ fn test_cancel_offer_rejects_non_maker() {
         vec![make_offer_ix],
         &[&es.payer, &es.alice],
         &es.payer.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -509,6 +516,7 @@ fn test_cancel_offer_rejects_non_maker() {
         vec![cancel_offer_ix],
         &[&es.payer, &es.bob],
         &es.payer.pubkey(),
+        None,
     );
     // Bob passes himself as the maker, so the offer's seeds no longer derive
     // its address: Anchor's seeds check fails before `has_one = maker` runs.
@@ -588,6 +596,7 @@ fn try_make_offer(
         vec![make_offer_ix],
         &[&es.payer, &es.alice],
         &es.payer.pubkey(),
+        None,
     )
 }
 
@@ -718,6 +727,7 @@ fn cancel_offer(es: &mut EscrowSetup, offer_id: u64) {
         vec![cancel_offer_ix],
         &[&es.payer, &es.alice],
         &es.payer.pubkey(),
+        None,
     )
     .unwrap();
 }
@@ -780,6 +790,7 @@ fn assert_switched_offer_refused(switched_a_offered: u64, switched_b_wanted: u64
         vec![take_offer_ix],
         &[&es.payer, &es.bob],
         &es.payer.pubkey(),
+        None,
     );
 
     assert_fails_with(result, escrow::error::EscrowError::OfferTermsChanged);

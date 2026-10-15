@@ -45,6 +45,7 @@ fn test_create_and_close_mint() {
         vec![initialize_ix],
         &[&payer, &mint_keypair],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -67,7 +68,7 @@ fn test_create_and_close_mint() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![close_ix], &[&payer], &payer.pubkey())
+    send_transaction_from_instructions(&mut svm, vec![close_ix], &[&payer], &payer.pubkey(), None)
         .unwrap();
 
     // Verify mint no longer exists (lamports returned to authority)
@@ -93,6 +94,7 @@ fn test_create_and_close_mint() {
         vec![initialize_ix2],
         &[&payer, &mint_keypair],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -123,8 +125,14 @@ fn test_create_and_close_mint() {
         ],
         data: vec![9], // CloseAccount
     };
-    send_transaction_from_instructions(&mut svm, vec![close_direct_ix], &[&payer], &payer.pubkey())
-        .unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        vec![close_direct_ix],
+        &[&payer],
+        &payer.pubkey(),
+        None,
+    )
+    .unwrap();
 
     // Verify mint is closed again
     let mint_account = svm.get_account(&mint_keypair.pubkey());

@@ -64,15 +64,21 @@ fn test_transfer_hook_hello_world() {
         vec![initialize_ix],
         &[&payer, &mint_keypair],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
     svm.expire_blockhash();
 
     // Step 2: Create token accounts and mint tokens
     let amount: u64 = 100 * 10u64.pow(decimals as u32);
-    let source_ata =
-        create_token_extensions_account(&mut svm, &payer.pubkey(), &mint_keypair.pubkey(), &payer)
-            .unwrap();
+    let source_ata = create_token_extensions_account(
+        &mut svm,
+        &payer.pubkey(),
+        &mint_keypair.pubkey(),
+        &payer,
+        None,
+    )
+    .unwrap();
     svm.expire_blockhash();
 
     let dest_ata = create_token_extensions_account(
@@ -80,6 +86,7 @@ fn test_transfer_hook_hello_world() {
         &recipient.pubkey(),
         &mint_keypair.pubkey(),
         &payer,
+        None,
     )
     .unwrap();
     svm.expire_blockhash();
@@ -90,6 +97,7 @@ fn test_transfer_hook_hello_world() {
         &source_ata,
         amount,
         &payer,
+        None,
     )
     .unwrap();
     svm.expire_blockhash();
@@ -108,8 +116,14 @@ fn test_transfer_hook_hello_world() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![init_extra_ix], &[&payer], &payer.pubkey())
-        .unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        vec![init_extra_ix],
+        &[&payer],
+        &payer.pubkey(),
+        None,
+    )
+    .unwrap();
     svm.expire_blockhash();
 
     // Step 4: Transfer with transfer hook
@@ -128,6 +142,7 @@ fn test_transfer_hook_hello_world() {
         transfer_amount,
         decimals,
         &extra_accounts,
+        None,
     )
     .unwrap();
     svm.expire_blockhash();
@@ -150,6 +165,7 @@ fn test_transfer_hook_hello_world() {
         vec![direct_hook_ix],
         &[&payer],
         &payer.pubkey(),
+        None,
     );
     assert!(
         result.is_err(),

@@ -59,6 +59,7 @@ fn raw_token_donation_does_not_inflate_exchange_rate() {
         &usdc.liquidity_vault,
         amount,
         &owner,
+        None,
     )
     .unwrap();
 

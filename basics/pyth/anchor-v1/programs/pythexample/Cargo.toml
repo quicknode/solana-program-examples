@@ -36,7 +36,7 @@ solana-keypair = "3.0.1"
 solana-account = "4.3.0"
 borsh = "1.6.1"
 sha2 = "0.10"
-solana-kite = "0.5.0"
+solana-kite = "0.6.0"
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }

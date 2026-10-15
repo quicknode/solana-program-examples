@@ -46,8 +46,14 @@ fn test_init_config_and_init_mint() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![init_config_ix], &[&payer], &payer.pubkey())
-        .unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        vec![init_config_ix],
+        &[&payer],
+        &payer.pubkey(),
+        None,
+    )
+    .unwrap();
     svm.expire_blockhash();
 
     // Step 2: Initialize mint with transfer hook and metadata
@@ -83,6 +89,7 @@ fn test_init_config_and_init_mint() {
         vec![init_mint_ix],
         &[&payer, &mint_keypair],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
 }

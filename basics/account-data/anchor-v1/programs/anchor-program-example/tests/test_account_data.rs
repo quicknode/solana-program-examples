@@ -52,6 +52,7 @@ fn test_create_address_info() {
         vec![instruction],
         &[&payer, &address_info_keypair],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
 

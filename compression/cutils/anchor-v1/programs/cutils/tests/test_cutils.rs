@@ -28,13 +28,13 @@
 use {
     borsh::BorshSerialize,
     litesvm::LiteSVM,
+    solana_compute_budget::compute_budget_limits::MAX_COMPUTE_UNIT_LIMIT,
     solana_instruction::{account_meta::AccountMeta, Instruction},
     solana_keccak_hasher::hashv,
     solana_keypair::Keypair,
-    solana_message::Message,
+    solana_kite::{build_transaction_from_instructions, get_transaction_config},
     solana_pubkey::{pubkey, Pubkey},
     solana_signer::Signer,
-    solana_transaction::Transaction,
 };
 
 // ---- Program IDs ----------------------------------------------------------
@@ -280,15 +280,21 @@ fn get_asset_id(tree: &Pubkey, nonce: u64) -> Pubkey {
 
 fn send(
     svm: &mut LiteSVM,
-    ixs: Vec<Instruction>,
+    instructions: Vec<Instruction>,
     payer: &Keypair,
     signers: &[&Keypair],
 ) -> Result<(), Box<litesvm::types::FailedTransactionMetadata>> {
-    let msg = Message::new(&ixs, Some(&payer.pubkey()));
-    let blockhash = svm.latest_blockhash();
-    let mut tx = Transaction::new_unsigned(msg);
-    tx.sign(signers, blockhash);
-    svm.send_transaction(tx).map(|_| ()).map_err(Box::new)
+    let transaction = build_transaction_from_instructions(
+        svm,
+        &instructions,
+        signers,
+        &payer.pubkey(),
+        get_transaction_config(MAX_COMPUTE_UNIT_LIMIT),
+    )
+    .unwrap();
+    svm.send_transaction(transaction)
+        .map(|_| ())
+        .map_err(Box::new)
 }
 
 fn metadata_pda(mint: &Pubkey) -> Pubkey {

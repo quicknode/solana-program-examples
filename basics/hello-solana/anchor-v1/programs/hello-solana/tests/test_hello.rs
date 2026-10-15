@@ -1,9 +1,9 @@
 use {
     anchor_lang::{solana_program::instruction::Instruction, InstructionData, ToAccountMetas},
     litesvm::LiteSVM,
-    solana_kite::create_wallet,
+    solana_compute_budget::compute_budget_limits::MAX_COMPUTE_UNIT_LIMIT,
+    solana_kite::{build_transaction_from_instructions, create_wallet, get_transaction_config},
     solana_signer::Signer,
-    solana_transaction::Transaction,
 };
 
 #[test]
@@ -22,13 +22,16 @@ fn test_say_hello() {
 
     // The program only logs; assert it emitted its greeting rather than merely
     // that the transaction landed. kite's send helper discards the metadata, so
-    // send through LiteSVM directly to read the logs.
-    let transaction = Transaction::new_signed_with_payer(
+    // build the transaction with kite and send it through LiteSVM directly to
+    // read the logs.
+    let transaction = build_transaction_from_instructions(
+        &svm,
         &[instruction],
-        Some(&payer.pubkey()),
         &[&payer],
-        svm.latest_blockhash(),
-    );
+        &payer.pubkey(),
+        get_transaction_config(MAX_COMPUTE_UNIT_LIMIT),
+    )
+    .unwrap();
     let metadata = svm.send_transaction(transaction).unwrap();
 
     assert!(

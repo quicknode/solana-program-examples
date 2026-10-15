@@ -42,6 +42,7 @@ fn test_initialize_lever() {
         vec![instruction],
         &[&payer, &power_keypair],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -77,6 +78,7 @@ fn test_switch_power() {
         vec![init_ix],
         &[&payer, &power_keypair],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -93,7 +95,7 @@ fn test_switch_power() {
         .to_account_metas(None),
     );
     svm.expire_blockhash();
-    send_transaction_from_instructions(&mut svm, vec![switch_ix], &[&payer], &payer.pubkey())
+    send_transaction_from_instructions(&mut svm, vec![switch_ix], &[&payer], &payer.pubkey(), None)
         .unwrap();
 
     assert!(
@@ -114,8 +116,14 @@ fn test_switch_power() {
         .to_account_metas(None),
     );
     svm.expire_blockhash();
-    send_transaction_from_instructions(&mut svm, vec![switch_ix2], &[&payer], &payer.pubkey())
-        .unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        vec![switch_ix2],
+        &[&payer],
+        &payer.pubkey(),
+        None,
+    )
+    .unwrap();
 
     assert!(
         !read_power_is_on(&svm, &power_keypair.pubkey()),

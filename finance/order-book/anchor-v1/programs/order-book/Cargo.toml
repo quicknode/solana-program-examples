@@ -35,11 +35,12 @@ static_assertions = "1.1"
 litesvm = "0.16.0"
 solana-signer = "3.0.0"
 solana-keypair = "3.0.1"
-solana-kite = "0.5.0"
-# The depth tests send transactions themselves to read the compute units
-# each one used, which solana-kite's helper does not return. Same versions
-# solana-kite builds against.
-solana-transaction = "4.1.5"
+solana-kite = "0.6.0"
+# The depth tests build transactions with solana-kite and send them through
+# LiteSVM themselves to read the compute units each one used, which
+# solana-kite's sender does not return. This crate names the compute unit
+# limit those transactions get; same version solana-kite 0.6 builds against.
+solana-compute-budget = "4.2"
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }

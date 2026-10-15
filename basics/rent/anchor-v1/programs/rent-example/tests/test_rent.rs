@@ -61,6 +61,7 @@ fn test_create_system_account() {
         vec![instruction],
         &[&payer, &new_account],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
 

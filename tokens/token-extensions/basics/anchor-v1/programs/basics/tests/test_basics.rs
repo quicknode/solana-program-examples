@@ -61,8 +61,14 @@ fn test_create_token_and_mint_and_transfer() {
         .to_account_metas(None),
     );
 
-    send_transaction_from_instructions(&mut svm, vec![create_token_ix], &[&payer], &payer.pubkey())
-        .unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        vec![create_token_ix],
+        &[&payer],
+        &payer.pubkey(),
+        None,
+    )
+    .unwrap();
 
     // Verify mint account exists
     let mint_account = svm.get_account(&mint).expect("Mint account should exist");
@@ -87,8 +93,14 @@ fn test_create_token_and_mint_and_transfer() {
         .to_account_metas(None),
     );
 
-    send_transaction_from_instructions(&mut svm, vec![create_ata_ix], &[&payer], &payer.pubkey())
-        .unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        vec![create_ata_ix],
+        &[&payer],
+        &payer.pubkey(),
+        None,
+    )
+    .unwrap();
 
     // Verify ATA exists
     let ata_account = svm.get_account(&payer_ata).expect("Payer ATA should exist");
@@ -114,8 +126,14 @@ fn test_create_token_and_mint_and_transfer() {
         .to_account_metas(None),
     );
 
-    send_transaction_from_instructions(&mut svm, vec![mint_token_ix], &[&payer], &payer.pubkey())
-        .unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        vec![mint_token_ix],
+        &[&payer],
+        &payer.pubkey(),
+        None,
+    )
+    .unwrap();
 
     assert_token_account_balance(
         &svm,
@@ -151,8 +169,14 @@ fn test_create_token_and_mint_and_transfer() {
         .to_account_metas(None),
     );
 
-    send_transaction_from_instructions(&mut svm, vec![transfer_ix], &[&payer], &payer.pubkey())
-        .unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        vec![transfer_ix],
+        &[&payer],
+        &payer.pubkey(),
+        None,
+    )
+    .unwrap();
 
     assert_token_account_balance(
         &svm,

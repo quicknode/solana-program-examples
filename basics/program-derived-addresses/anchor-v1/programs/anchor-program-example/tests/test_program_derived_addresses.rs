@@ -44,7 +44,7 @@ fn test_create_and_increment_page_visits() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![create_ix], &[&payer], &payer.pubkey())
+    send_transaction_from_instructions(&mut svm, vec![create_ix], &[&payer], &payer.pubkey(), None)
         .unwrap();
 
     // Verify initial state (page_visits = 0)
@@ -64,8 +64,14 @@ fn test_create_and_increment_page_visits() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![increment_ix], &[&payer], &payer.pubkey())
-        .unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        vec![increment_ix],
+        &[&payer],
+        &payer.pubkey(),
+        None,
+    )
+    .unwrap();
 
     // Verify page_visits = 1
     let account = svm.get_account(&page_visits_pda).expect("PDA should exist");
@@ -87,8 +93,14 @@ fn test_create_and_increment_page_visits() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![increment_ix2], &[&payer], &payer.pubkey())
-        .unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        vec![increment_ix2],
+        &[&payer],
+        &payer.pubkey(),
+        None,
+    )
+    .unwrap();
 
     // Verify page_visits = 2
     let account = svm.get_account(&page_visits_pda).expect("PDA should exist");

@@ -41,7 +41,7 @@ fn test_create_and_close_user() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![create_ix], &[&payer], &payer.pubkey())
+    send_transaction_from_instructions(&mut svm, vec![create_ix], &[&payer], &payer.pubkey(), None)
         .unwrap();
 
     // Verify account exists and has correct data
@@ -62,7 +62,7 @@ fn test_create_and_close_user() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![close_ix], &[&payer], &payer.pubkey())
+    send_transaction_from_instructions(&mut svm, vec![close_ix], &[&payer], &payer.pubkey(), None)
         .unwrap();
 
     // Verify account is closed

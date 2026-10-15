@@ -34,6 +34,7 @@ fn test_check_accounts() {
         vec![create_account_ix],
         &[&payer, &account_to_change],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -56,6 +57,7 @@ fn test_check_accounts() {
         vec![check_accounts_ix],
         &[&payer],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
 }

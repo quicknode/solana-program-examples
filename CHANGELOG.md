@@ -4,6 +4,47 @@ All notable changes to this repository are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-10-08] - Anchor v1 tests send v1 transactions
+
+Solana's v1 transaction format (SIMD-0385) activated on mainnet beta at epoch 1035
+(15 September 2026). It raises the transaction size limit from 1,232 to 4,096 bytes
+and moves the compute budget out of ComputeBudget instructions and into the message.
+Programs need no change for it; the client that builds the transaction does.
+
+### Changed
+
+- Every Anchor v1 example's tests send v1 transactions, through `solana-kite` 0.6.0,
+  whose senders and token, Token Extensions and transfer hook helpers all build v1.
+  The manifests move from kite 0.5.0 to 0.6.0.
+- A v1 transaction's unset limits are zero, not the legacy defaults, so kite 0.6
+  sets the compute unit and loaded-accounts data size limits in every transaction it
+  builds. Its senders and helpers take a new last argument,
+  `compute_unit_limit: Option<u32>`, and every call here passes `None`: kite
+  simulates the transaction and sends it with the compute units the simulation used.
+- The six tests that build a transaction themselves (to read logs, measure compute
+  units or read a program error code) build it with kite's
+  `build_transaction_from_instructions` and `get_transaction_config`, with
+  `MAX_COMPUTE_UNIT_LIMIT` from `solana-compute-budget`, and send it through LiteSVM.
+  The three compression examples add kite for this, and turn on `no-entrypoint` for
+  kite's `spl-token` and `spl-associated-token-account`, whose program entrypoints
+  otherwise clash with the example program's when the test binary links. They,
+  `hello-solana`, `options`
+  and `order-book` no longer use `solana-message` or `solana-transaction` directly,
+  and drop them from their manifests.
+
+### Added
+
+- `basics/transaction-v1/anchor-v1`: a program that stores a 3,000 byte document in
+  one instruction, which only fits in a v1 transaction. Its tests measure the
+  transaction against both size limits, set each config field themselves, and show
+  that an unset field means zero rather than the default.
+
+### Note
+
+- Anchor v2 and Quasar tests still send legacy transactions: `anchor-v2-testing`
+  pins LiteSVM 0.13.1 and `quasar-svm` is on a `solana-message` without the `v1`
+  module. Both predate v1.
+
 ## [2026-10-04] - Escrow: the taker signs the terms
 
 ### Fixed

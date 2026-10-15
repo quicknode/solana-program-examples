@@ -40,7 +40,7 @@ fn test_init_rent_vault() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![init_ix], &[&payer], &payer.pubkey())
+    send_transaction_from_instructions(&mut svm, vec![init_ix], &[&payer], &payer.pubkey(), None)
         .unwrap();
 
     // Verify the rent vault has the correct balance
@@ -75,7 +75,7 @@ fn test_create_new_account_from_rent_vault() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![init_ix], &[&payer], &payer.pubkey())
+    send_transaction_from_instructions(&mut svm, vec![init_ix], &[&payer], &payer.pubkey(), None)
         .unwrap();
 
     svm.expire_blockhash();
@@ -97,6 +97,7 @@ fn test_create_new_account_from_rent_vault() {
         vec![create_ix],
         &[&payer, &new_account],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
 

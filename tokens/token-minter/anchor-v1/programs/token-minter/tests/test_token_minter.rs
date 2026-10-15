@@ -105,6 +105,7 @@ fn test_create_token() {
         vec![create_ix],
         &[&payer, &mint_keypair],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -152,6 +153,7 @@ fn test_create_and_mint_tokens() {
         vec![create_ix],
         &[&payer, &mint_keypair],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -176,7 +178,7 @@ fn test_create_and_mint_tokens() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![mint_ix], &[&payer], &payer.pubkey())
+    send_transaction_from_instructions(&mut svm, vec![mint_ix], &[&payer], &payer.pubkey(), None)
         .unwrap();
 
     // Verify 100 tokens minted (in minor units)

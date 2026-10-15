@@ -52,6 +52,7 @@ fn test_metadata_full_flow() {
         vec![initialize_ix],
         &[&payer, &mint_keypair],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -81,8 +82,14 @@ fn test_metadata_full_flow() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![update_name_ix], &[&payer], &payer.pubkey())
-        .unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        vec![update_name_ix],
+        &[&payer],
+        &payer.pubkey(),
+        None,
+    )
+    .unwrap();
     svm.expire_blockhash();
 
     // Step 3: Add custom field
@@ -108,6 +115,7 @@ fn test_metadata_full_flow() {
         vec![add_custom_field_ix],
         &[&payer],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
     svm.expire_blockhash();
@@ -127,8 +135,14 @@ fn test_metadata_full_flow() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![remove_key_ix], &[&payer], &payer.pubkey())
-        .unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        vec![remove_key_ix],
+        &[&payer],
+        &payer.pubkey(),
+        None,
+    )
+    .unwrap();
     svm.expire_blockhash();
 
     // Step 5: Update authority to None
@@ -149,6 +163,7 @@ fn test_metadata_full_flow() {
         vec![update_authority_ix],
         &[&payer],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
     svm.expire_blockhash();
@@ -163,7 +178,7 @@ fn test_metadata_full_flow() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![emit_ix], &[&payer], &payer.pubkey())
+    send_transaction_from_instructions(&mut svm, vec![emit_ix], &[&payer], &payer.pubkey(), None)
         .unwrap();
 
     // Verify mint still exists after all operations

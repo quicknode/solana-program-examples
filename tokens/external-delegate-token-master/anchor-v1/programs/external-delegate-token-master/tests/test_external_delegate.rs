@@ -123,6 +123,7 @@ fn initialize_user_account(
         vec![init_instruction],
         &[authority, user_account],
         &authority.pubkey(),
+        None,
     )
     .unwrap();
 }
@@ -149,6 +150,7 @@ fn set_ethereum_address(
         vec![set_address_instruction],
         &[authority],
         &authority.pubkey(),
+        None,
     )
     .unwrap();
 }
@@ -183,21 +185,23 @@ fn setup_transfer_fixture() -> TransferFixture {
 
     let (user_pda, _bump) = Pubkey::find_program_address(&[user_account.as_ref()], &program_id);
 
-    let mint = create_token_mint(&mut svm, &authority, MINT_DECIMALS, None).unwrap();
+    let mint = create_token_mint(&mut svm, &authority, MINT_DECIMALS, None, None).unwrap();
     let user_pda_token_account =
-        create_associated_token_account(&mut svm, &user_pda, &mint, &authority).unwrap();
+        create_associated_token_account(&mut svm, &user_pda, &mint, &authority, None).unwrap();
     mint_tokens_to_token_account(
         &mut svm,
         &mint,
         &user_pda_token_account,
         MINT_AMOUNT,
         &authority,
+        None,
     )
     .unwrap();
 
     let recipient = Keypair::new();
     let recipient_token_account =
-        create_associated_token_account(&mut svm, &recipient.pubkey(), &mint, &authority).unwrap();
+        create_associated_token_account(&mut svm, &recipient.pubkey(), &mint, &authority, None)
+            .unwrap();
 
     TransferFixture {
         svm,
@@ -291,6 +295,7 @@ fn test_transfer_tokens_with_valid_signature_moves_tokens_and_increments_nonce()
         vec![transfer_instruction],
         &[&fixture.authority],
         &authority_pubkey,
+        None,
     )
     .unwrap();
 
@@ -334,6 +339,7 @@ fn test_transfer_tokens_replayed_signature_fails() {
         vec![transfer_instruction.clone()],
         &[&fixture.authority],
         &authority_pubkey,
+        None,
     )
     .unwrap();
 
@@ -345,6 +351,7 @@ fn test_transfer_tokens_replayed_signature_fails() {
         vec![transfer_instruction],
         &[&fixture.authority],
         &authority_pubkey,
+        None,
     );
     assert!(
         replay_result.is_err(),
@@ -390,6 +397,7 @@ fn test_transfer_tokens_signature_over_different_amount_fails() {
         vec![transfer_instruction],
         &[&fixture.authority],
         &authority_pubkey,
+        None,
     );
     assert!(
         result.is_err(),
@@ -417,6 +425,7 @@ fn test_transfer_tokens_signature_over_different_recipient_fails() {
         &attacker.pubkey(),
         &fixture.mint,
         &fixture.authority,
+        None,
     )
     .unwrap();
 
@@ -442,6 +451,7 @@ fn test_transfer_tokens_signature_over_different_recipient_fails() {
         vec![transfer_instruction],
         &[&fixture.authority],
         &authority_pubkey,
+        None,
     );
     assert!(
         result.is_err(),
@@ -482,6 +492,7 @@ fn test_transfer_tokens_wrong_solana_authority_fails() {
         vec![transfer_instruction],
         &[&mallory],
         &mallory_pubkey,
+        None,
     );
     assert!(
         result.is_err(),
@@ -520,6 +531,7 @@ fn test_authority_transfer() {
         vec![authority_transfer_instruction],
         &[&fixture.authority],
         &fixture.authority.pubkey(),
+        None,
     )
     .unwrap();
 

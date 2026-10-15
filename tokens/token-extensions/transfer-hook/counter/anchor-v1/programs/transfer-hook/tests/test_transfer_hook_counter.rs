@@ -67,6 +67,7 @@ fn test_transfer_hook_counter() {
         &[MintExtension::TransferHook {
             program_id: program_id,
         }],
+        None,
     )
     .unwrap();
     svm.expire_blockhash();
@@ -78,14 +79,16 @@ fn test_transfer_hook_counter() {
     let amount: u64 = 100 * 10u64.pow(decimals as u32);
 
     let source_ata =
-        create_token_extensions_account(&mut svm, &payer.pubkey(), &mint, &payer).unwrap();
+        create_token_extensions_account(&mut svm, &payer.pubkey(), &mint, &payer, None).unwrap();
     svm.expire_blockhash();
 
     let dest_ata =
-        create_token_extensions_account(&mut svm, &recipient.pubkey(), &mint, &payer).unwrap();
+        create_token_extensions_account(&mut svm, &recipient.pubkey(), &mint, &payer, None)
+            .unwrap();
     svm.expire_blockhash();
 
-    mint_tokens_to_token_extensions_account(&mut svm, &mint, &source_ata, amount, &payer).unwrap();
+    mint_tokens_to_token_extensions_account(&mut svm, &mint, &source_ata, amount, &payer, None)
+        .unwrap();
     svm.expire_blockhash();
 
     // Step 3: Initialize ExtraAccountMetaList (also creates counter PDA)
@@ -103,8 +106,14 @@ fn test_transfer_hook_counter() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![init_extra_ix], &[&payer], &payer.pubkey())
-        .unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        vec![init_extra_ix],
+        &[&payer],
+        &payer.pubkey(),
+        None,
+    )
+    .unwrap();
     svm.expire_blockhash();
 
     // Step 4: Transfer with hook (this triggers the counter increment)
@@ -127,6 +136,7 @@ fn test_transfer_hook_counter() {
         transfer_amount,
         decimals,
         &extra_accounts,
+        None,
     )
     .unwrap();
     svm.expire_blockhash();
@@ -154,6 +164,7 @@ fn test_transfer_hook_counter() {
         vec![direct_hook_ix],
         &[&payer],
         &payer.pubkey(),
+        None,
     );
     assert!(
         result.is_err(),

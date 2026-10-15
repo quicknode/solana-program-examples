@@ -80,6 +80,7 @@ fn test_default_account_state() {
         vec![initialize_ix],
         &[&payer, &mint_keypair],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
     svm.expire_blockhash();
@@ -101,6 +102,7 @@ fn test_default_account_state() {
         create_token1_ixs,
         &[&payer, &token1],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
     svm.expire_blockhash();
@@ -119,6 +121,7 @@ fn test_default_account_state() {
         &token1.pubkey(),
         1,
         &payer,
+        None,
     );
     assert!(result.is_err(), "Minting to a frozen account should fail");
     svm.expire_blockhash();
@@ -138,7 +141,7 @@ fn test_default_account_state() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![update_ix], &[&payer], &payer.pubkey())
+    send_transaction_from_instructions(&mut svm, vec![update_ix], &[&payer], &payer.pubkey(), None)
         .unwrap();
     svm.expire_blockhash();
 
@@ -155,6 +158,7 @@ fn test_default_account_state() {
         create_token2_ixs,
         &[&payer, &token2],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
     svm.expire_blockhash();
@@ -173,6 +177,7 @@ fn test_default_account_state() {
         &token2.pubkey(),
         1,
         &payer,
+        None,
     )
     .unwrap();
 

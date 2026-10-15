@@ -127,6 +127,7 @@ fn test_create_collection() {
         vec![instruction],
         &[&payer, &collection_keypair],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -195,6 +196,7 @@ fn test_mint_nft_to_collection() {
         vec![create_collection_ix],
         &[&payer, &collection_keypair],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -234,6 +236,7 @@ fn test_mint_nft_to_collection() {
         vec![mint_nft_ix],
         &[&payer, &nft_keypair],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -292,6 +295,7 @@ fn test_verify_collection() {
         vec![create_collection_ix],
         &[&payer, &collection_keypair],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -331,6 +335,7 @@ fn test_verify_collection() {
         vec![mint_nft_ix],
         &[&payer, &nft_keypair],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -354,7 +359,7 @@ fn test_verify_collection() {
         .to_account_metas(None),
     );
 
-    send_transaction_from_instructions(&mut svm, vec![verify_ix], &[&payer], &payer.pubkey())
+    send_transaction_from_instructions(&mut svm, vec![verify_ix], &[&payer], &payer.pubkey(), None)
         .unwrap();
 
     // Verify the metadata still exists after verification

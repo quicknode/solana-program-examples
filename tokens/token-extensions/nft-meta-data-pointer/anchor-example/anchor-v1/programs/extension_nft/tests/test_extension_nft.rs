@@ -169,6 +169,7 @@ fn test_init_player_mint_and_chop() {
         vec![init_player_ix(&program_id, &signer)],
         &[&payer],
         &signer,
+        None,
     )
     .expect("init_player should succeed");
 
@@ -188,6 +189,7 @@ fn test_init_player_mint_and_chop() {
         vec![mint_nft_ix(&program_id, &signer, &mint.pubkey())],
         &[&payer, &mint],
         &signer,
+        None,
     )
     .expect("mint_nft should succeed");
 
@@ -219,6 +221,7 @@ fn test_init_player_mint_and_chop() {
         vec![chop_tree_ix(&program_id, &signer, &mint.pubkey(), 1)],
         &[&payer],
         &signer,
+        None,
     )
     .expect("chop_tree should succeed");
 

@@ -53,6 +53,7 @@ fn test_initialize_counter() {
         vec![instruction],
         &[&payer, &counter_keypair],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -81,6 +82,7 @@ fn test_increment_counter() {
         vec![init_ix],
         &[&payer, &counter_keypair],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -93,7 +95,8 @@ fn test_increment_counter() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![inc_ix], &[&payer], &payer.pubkey()).unwrap();
+    send_transaction_from_instructions(&mut svm, vec![inc_ix], &[&payer], &payer.pubkey(), None)
+        .unwrap();
 
     let count = fetch_counter(&svm, &counter_keypair.pubkey());
     assert_eq!(count, 1, "Expected count to be 1");
@@ -120,6 +123,7 @@ fn test_increment_counter_again() {
         vec![init_ix],
         &[&payer, &counter_keypair],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -133,8 +137,14 @@ fn test_increment_counter_again() {
             }
             .to_account_metas(None),
         );
-        send_transaction_from_instructions(&mut svm, vec![inc_ix], &[&payer], &payer.pubkey())
-            .unwrap();
+        send_transaction_from_instructions(
+            &mut svm,
+            vec![inc_ix],
+            &[&payer],
+            &payer.pubkey(),
+            None,
+        )
+        .unwrap();
         svm.expire_blockhash();
     }
 

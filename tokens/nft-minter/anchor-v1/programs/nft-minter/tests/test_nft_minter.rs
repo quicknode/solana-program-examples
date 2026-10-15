@@ -116,6 +116,7 @@ fn test_mint_nft() {
         vec![instruction],
         &[&payer, &mint_keypair],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
 

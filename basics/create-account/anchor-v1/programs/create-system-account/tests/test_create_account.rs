@@ -35,6 +35,7 @@ fn test_create_the_account() {
         vec![instruction],
         &[&payer, &new_account],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
 

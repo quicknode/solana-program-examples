@@ -73,6 +73,7 @@ fn test_pull_lever_cpi() {
         vec![init_ix],
         &[&payer, &power_keypair],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -96,7 +97,7 @@ fn test_pull_lever_cpi() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![pull_ix], &[&payer], &payer.pubkey())
+    send_transaction_from_instructions(&mut svm, vec![pull_ix], &[&payer], &payer.pubkey(), None)
         .unwrap();
 
     // Verify power is now on
@@ -119,7 +120,7 @@ fn test_pull_lever_cpi() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![pull_ix2], &[&payer], &payer.pubkey())
+    send_transaction_from_instructions(&mut svm, vec![pull_ix2], &[&payer], &payer.pubkey(), None)
         .unwrap();
 
     // Verify power is now off again
