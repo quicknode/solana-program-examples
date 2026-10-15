@@ -35,7 +35,7 @@ spl-associated-token-account = { version = "8.0.0", features = ["no-entrypoint"]
 litesvm = "0.16.0"
 solana-signer = "3.0.0"
 solana-keypair = "3.0.1"
-solana-kite = "0.6.0"
+solana-kite = "0.6.1"
 # The suite builds each transaction with solana-kite and sends it through
 # LiteSVM itself rather than through solana-kite's sender, so it can read the
 # transaction's metadata back: the inner instructions say how many token

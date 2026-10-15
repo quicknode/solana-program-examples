@@ -25,7 +25,7 @@ anchor-lang = "1.2.0"
 [dev-dependencies]
 litesvm = "0.16.0"
 solana-signer = "3.0.0"
-solana-kite = "0.6.0"
+solana-kite = "0.6.1"
 # The named limit for the one transaction the test builds itself. Same version
 # solana-kite 0.6 builds against.
 solana-compute-budget = "4.2"

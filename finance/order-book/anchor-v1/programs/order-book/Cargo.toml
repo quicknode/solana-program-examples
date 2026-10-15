@@ -35,7 +35,7 @@ static_assertions = "1.1"
 litesvm = "0.16.0"
 solana-signer = "3.0.0"
 solana-keypair = "3.0.1"
-solana-kite = "0.6.0"
+solana-kite = "0.6.1"
 # The depth tests build transactions with solana-kite and send them through
 # LiteSVM themselves to read the compute units each one used, which
 # solana-kite's sender does not return. This crate names the compute unit

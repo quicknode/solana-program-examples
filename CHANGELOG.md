@@ -4,6 +4,20 @@ All notable changes to this repository are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-10-15] - solana-kite 0.6.1
+
+### Changed
+
+- The Anchor v1 tests move from `solana-kite` 0.6.0 to 0.6.1, which builds
+  `spl-token` and `spl-associated-token-account` with `no-entrypoint`. Under 0.6.0
+  each defined an `entrypoint` symbol that could clash with the example program's
+  when a test binary linked both, as `compression/cnft-vault`'s IDL build did.
+
+### Removed
+
+- The `spl-token` and `spl-associated-token-account` dev-dependencies the three
+  compression examples named only to turn on `no-entrypoint` for kite's copies.
+
 ## [2026-10-08] - Anchor v1 tests send v1 transactions
 
 Solana's v1 transaction format (SIMD-0385) activated on mainnet beta at epoch 1035
