@@ -1,9 +1,9 @@
 # Token Extensions - Transfer Fee (Anchor)
 
 > [!NOTE]
-> This is the **Anchor v1** copy of this example, on Anchor 1.2.0, the current
+> This is the **Anchor v1** copy of this example, on Anchor 1.2.1, the current
 > stable Anchor release. Every `anchor` command on this page needs the v1 CLI:
-> `avm install 1.2.0 && avm use 1.2.0`. The Anchor v2 version of this example is in
+> `avm install 1.2.1 && avm use 1.2.1`. The Anchor v2 version of this example is in
 > [`../anchor`](../anchor/).
 
 Charge a fee on each transfer configured at the mint level.

@@ -24,8 +24,8 @@ custom-panic = []
 # party's token account for the asset they are about to be paid in, so a call
 # holder who has never held the underlying needs no separate setup transaction.
 # The receiving party is always the payer, so nobody funds another's rent.
-anchor-lang = { version = "1.2.0", features = ["init-if-needed"] }
-anchor-spl = "1.2.0"
+anchor-lang = { version = "1.2.1", features = ["init-if-needed"] }
+anchor-spl = "1.2.1"
 # Declared only so Cargo feature-unification turns on `no-entrypoint`; without
 # these the test binary links two `entrypoint` symbols and fails to build.
 spl-token = { version = "9.0.0", features = ["no-entrypoint"] }

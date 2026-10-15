@@ -14,7 +14,7 @@ Working, tested, up-to-date examples of common Solana programs (what other chain
 
 Each example is available in one or more of the following frameworks:
 
-- [⚓ Anchor v1](https://www.anchor-lang.com/) - the most popular framework for Solana development, in its current major version. Lives in `anchor-v1/`. Install with `avm install 1.2.0 && avm use 1.2.0`, build with `anchor build`, test with `anchor test`.
+- [⚓ Anchor v1](https://www.anchor-lang.com/) - the most popular framework for Solana development, in its current major version. Lives in `anchor-v1/`. Install with `avm install 1.2.1 && avm use 1.2.1`, build with `anchor build`, test with `anchor test`.
 - [⚓ Anchor v2](https://www.anchor-lang.com/) - the next major version of Anchor, a ground-up rewrite that is not yet released. Lives in `anchor/`, alongside the v1 copy of the same example, and builds on the release candidate: install with `cargo install anchor-cli --version 2.0.0-rc.1 --locked`, then the same `anchor build` / `anchor test`.
 - [💫 Quasar](https://quasar-lang.com/docs) - a newer, more performant framework with Anchor-compatible ergonomics. Build with `quasar build`, test with `quasar test`.
 - [🤥 Pinocchio](https://github.com/anza-xyz/pinocchio) - a zero-copy, zero-allocation library for Solana programs. Build with `cargo build-sbf --manifest-path=./program/Cargo.toml`, test with `cargo test --manifest-path=./program/Cargo.toml`.

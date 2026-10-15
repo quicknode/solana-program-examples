@@ -1,9 +1,9 @@
 # Solana Managed Fund (Anchor)
 
 > [!NOTE]
-> This is the **Anchor v1** copy of this example, on Anchor 1.2.0, the current
+> This is the **Anchor v1** copy of this example, on Anchor 1.2.1, the current
 > stable Anchor release. Every `anchor` command on this page needs the v1 CLI:
-> `avm install 1.2.0 && avm use 1.2.0`. The Anchor v2 version of this example is in
+> `avm install 1.2.1 && avm use 1.2.1`. The Anchor v2 version of this example is in
 > [`../anchor`](../anchor/).
 
 A manager-run investment fund on Solana, the onchain equivalent of a mutual fund. Users deposit [USDC](https://www.investopedia.com/terms/u/usd-coin-usdc.asp) and receive shares representing proportional ownership of a portfolio of assets. The manager adds assets a curator has approved and sets their target weights; each deposit is deployed across those assets at its weights in the same transaction. The manager rebalances as prices drift, earns a fee, and depositors withdraw their proportional slice in kind when they choose.

@@ -20,8 +20,8 @@ custom-heap = []
 custom-panic = []
 
 [dependencies]
-anchor-lang = { version = "1.2.0", features = ["init-if-needed"] }
-anchor-spl = "1.2.0"
+anchor-lang = { version = "1.2.1", features = ["init-if-needed"] }
+anchor-spl = "1.2.1"
 # For the LastRestartSlot sysvar (not re-exported by anchor-lang): the oracle
 # rejects prices from before a cluster restart. Same major as the
 # solana-sysvar anchor-lang itself uses, so only one copy is compiled in.
