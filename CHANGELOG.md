@@ -25,7 +25,10 @@ Programs need no change for it; the client that builds the transaction does.
   units or read a program error code) build it with kite's
   `build_transaction_from_instructions` and `get_transaction_config`, with
   `MAX_COMPUTE_UNIT_LIMIT` from `solana-compute-budget`, and send it through LiteSVM.
-  The three compression examples add kite for this. They, `hello-solana`, `options`
+  The three compression examples add kite for this, and turn on `no-entrypoint` for
+  kite's `spl-token` and `spl-associated-token-account`, whose program entrypoints
+  otherwise clash with the example program's when the test binary links. They,
+  `hello-solana`, `options`
   and `order-book` no longer use `solana-message` or `solana-transaction` directly,
   and drop them from their manifests.
 

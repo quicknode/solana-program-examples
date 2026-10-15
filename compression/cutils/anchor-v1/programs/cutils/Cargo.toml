@@ -42,6 +42,13 @@ solana-signer = "3.0.0"
 # Builds each v1 transaction the tests send. They send it through LiteSVM
 # themselves to read the program error a failure carries.
 solana-kite = "0.6.0"
+# TODO: delete these two once solana-kite turns on `no-entrypoint` for them
+# itself. kite 0.6.0 builds both with their program entrypoints, which clash
+# with this program's `entrypoint` symbol when the test binary links (anchor's
+# IDL build failed with `duplicate symbol: entrypoint`). Naming the same
+# versions here turns the feature on through Cargo's feature unification.
+spl-token = { version = "9.0.0", features = ["no-entrypoint"] }
+spl-associated-token-account = { version = "8.0.0", features = ["no-entrypoint"] }
 # The named limit those transactions get. Same version solana-kite 0.6 builds
 # against.
 solana-compute-budget = "4.2"
