@@ -11,7 +11,7 @@ Each example is available in one or more of the following frameworks:
 - [⚓ Anchor v1](https://www.anchor-lang.com/) - the most popular framework for Solana development, in its current major version. Lives in `anchor-v1/`. Install with `avm install 1.2.1 && avm use 1.2.1`, build with `anchor build`, test with `anchor test`.
 - [⚓ Anchor v2](https://www.anchor-lang.com/) - the next major version of Anchor, a ground-up rewrite that is not yet released. Lives in `anchor/`, alongside the v1 copy of the same example, and builds on the release candidate: install with `cargo install anchor-cli --version 2.0.0-rc.1 --locked`, then the same `anchor build` / `anchor test`.
 - [💫 Quasar](https://quasar-lang.com/docs) - a newer, more performant framework with Anchor-compatible ergonomics. Build with `quasar build`, test with `quasar test`.
-- Some projects also have examples in [🤥 raw Pinocchio](https://github.com/anza-xyz/pinocchio) - a zero-copy, zero-allocation library for Solana programs. Build with `cargo build-sbf --manifest-path=./program/Cargo.toml`, test with `cargo test --manifest-path=./program/Cargo.toml`.
+- [🤥 Pinocchio](https://github.com/anza-xyz/pinocchio) - a zero-copy, zero-allocation library for Solana programs. Build with `cargo build-sbf --manifest-path=./program/Cargo.toml`, test with `cargo test --manifest-path=./program/Cargo.toml`.
 - [🦀 Native Rust](https://docs.anza.xyz/) - vanilla Rust using Solana's native crates. Build with `cargo build-sbf --manifest-path=./program/Cargo.toml`, test with `cargo test --manifest-path=./program/Cargo.toml`.
 - [🧬 ASM](https://github.com/blueshift-gg/sbpf) - hand-written sBPF assembly built with the `sbpf` toolchain. Build with `sbpf build`, test with `cargo test`.
 
