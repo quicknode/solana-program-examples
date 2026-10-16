@@ -4,12 +4,6 @@
 
 _The most complete and actvely maintained set of Solana programs ('smart contracts') in Anchor 1, Anchor 2, Quasar and more. Focused on financial software, as well as single-use programs._
 
-Working, tested, up-to-date examples of common Solana programs (what other chains call smart contracts), maintained by [Quicknode](https://www.quicknode.com/chains/solana). Current as of September 2026 (see [CHANGELOG.md](./CHANGELOG.md)):
-
-- Every example builds and passes CI on the latest Anchor 1, the Anchor 2 release candidate, and Quasar.
-- Every example uses the current multi-file program layout (one file per instruction handler, account type, etc).
-- Every example uses [LiteSVM](https://github.com/LiteSVM/litesvm) tests.
-
 [![Anchor v1](../../actions/workflows/anchor-v1.yml/badge.svg)](../../actions/workflows/anchor-v1.yml) [![Anchor v2](../../actions/workflows/anchor.yml/badge.svg)](../../actions/workflows/anchor.yml) [![Quasar](../../actions/workflows/quasar.yml/badge.svg)](../../actions/workflows/quasar.yml) [![Pinocchio](../../actions/workflows/pinocchio.yml/badge.svg)](../../actions/workflows/pinocchio.yml) [![Native](../../actions/workflows/native.yml/badge.svg)](../../actions/workflows/native.yml) [![ASM](../../actions/workflows/solana-asm.yml/badge.svg)](../../actions/workflows/solana-asm.yml)
 
 Each example is available in one or more of the following frameworks:
@@ -17,18 +11,18 @@ Each example is available in one or more of the following frameworks:
 - [⚓ Anchor v1](https://www.anchor-lang.com/) - the most popular framework for Solana development, in its current major version. Lives in `anchor-v1/`. Install with `avm install 1.2.1 && avm use 1.2.1`, build with `anchor build`, test with `anchor test`.
 - [⚓ Anchor v2](https://www.anchor-lang.com/) - the next major version of Anchor, a ground-up rewrite that is not yet released. Lives in `anchor/`, alongside the v1 copy of the same example, and builds on the release candidate: install with `cargo install anchor-cli --version 2.0.0-rc.1 --locked`, then the same `anchor build` / `anchor test`.
 - [💫 Quasar](https://quasar-lang.com/docs) - a newer, more performant framework with Anchor-compatible ergonomics. Build with `quasar build`, test with `quasar test`.
-- [🤥 Pinocchio](https://github.com/anza-xyz/pinocchio) - a zero-copy, zero-allocation library for Solana programs. Build with `cargo build-sbf --manifest-path=./program/Cargo.toml`, test with `cargo test --manifest-path=./program/Cargo.toml`.
+- Some projects also have examples in [🤥 raw Pinocchio](https://github.com/anza-xyz/pinocchio) - a zero-copy, zero-allocation library for Solana programs. Build with `cargo build-sbf --manifest-path=./program/Cargo.toml`, test with `cargo test --manifest-path=./program/Cargo.toml`.
 - [🦀 Native Rust](https://docs.anza.xyz/) - vanilla Rust using Solana's native crates. Build with `cargo build-sbf --manifest-path=./program/Cargo.toml`, test with `cargo test --manifest-path=./program/Cargo.toml`.
 - [🧬 ASM](https://github.com/blueshift-gg/sbpf) - hand-written sBPF assembly built with the `sbpf` toolchain. Build with `sbpf build`, test with `cargo test`.
 
-- > [!NOTE]
+> [!NOTE]
 > Quicknode has recently released [Building Financial Software on Solana](htpps://solanabook.org), a comprehensive guide to creating financial products on the blockchain. The book can be [downloaded for free](https://solanabook.org), there's also a [paperback on Amazon](https://www.amazon.com/dp/B0HMJSSB95) and soon Barnes and Noble and independent booksellers.
 
 ## Getting started
 
 You need [Rust](https://www.rust-lang.org/tools/install), [Solana CLI](https://docs.anza.xyz/cli/install), [Anchor](https://www.anchor-lang.com/docs/installation), and [pnpm](https://pnpm.io/installation) installed. Clone the repo and `cd` into any example directory, then run its tests with the command for that framework (shown above) - for an Anchor example, `anchor test`. `pnpm` is used for repo-wide formatting and linting, not for running an example's tests.
 
-To deploy to mainnet or devnet you'll need an RPC endpoint. [Quicknode](https://www.quicknode.com/chains/solana) provides free and paid Solana endpoints - create one and set it as your cluster in `Anchor.toml` or with `solana config set --url <your-endpoint>`.
+To deploy to mainnet or devnet you'll need an RPC endpoint. [Quicknode](https://www.quicknode.com/chains/solana) provides Solana endpoints - create one and set it as your cluster in `Anchor.toml` or with `solana config set --url <your-endpoint>`.
 
 ## Financial software ("DeFi")
 
