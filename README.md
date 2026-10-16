@@ -16,7 +16,7 @@ Each example is available in one or more of the following frameworks:
 - [🧬 ASM](https://github.com/blueshift-gg/sbpf) - hand-written sBPF assembly built with the `sbpf` toolchain. Build with `sbpf build`, test with `cargo test`.
 
 > [!NOTE]
-> Quicknode has recently released [Building Financial Software on Solana](https://solanabook.org), a comprehensive guide to creating financial products on the blockchain. The book can be [downloaded for free](https://solanabook.org), there's also a [paperback on Amazon](https://www.amazon.com/dp/B0HMJSSB95) and soon Barnes and Noble and independent booksellers.
+> Quicknode has recently released [Building Financial Software on Solana](https://solanabook.org), a comprehensive guide to creating financial products on the blockchain which covers how the "Finance" programs below work. The book can be [downloaded for free](https://solanabook.org), there's also a [paperback on Amazon](https://www.amazon.com/dp/B0HMJSSB95) and [Barnes and Noble](https://www.barnesandnoble.com/w/building-financial-software-on-solana-mike-maccana/1151680819) and independent booksellers.
 
 ## Getting started
 
