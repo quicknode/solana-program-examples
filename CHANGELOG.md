@@ -4,6 +4,20 @@ All notable changes to this repository are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-10-27] - Escrow web app
+
+### Added
+
+- `finance/escrow/app`, a browser frontend for the escrow program: browse the open offers with
+  filters and an affordability check, take one, make one, cancel your own, mint test tokens on a
+  test cluster, and read how the program works. Built with Next.js 16, Solana Kit 8 composed from
+  Kit plugins (`@solana/kit-plugin-wallet` for the wallet connection, `@solana/kit-plugin-rpc`),
+  and a Codama client generated from the program's IDL, with the book's typefaces and palette and
+  plain CSS. Unit tests check the client against the program's discriminators, layouts and PDA
+  seeds; end-to-end tests drive the app in Chromium against a mock cluster that checks every
+  escrow instruction's accounts against the program's constraints.
+- A TypeScript workflow job that type-checks, unit-tests, builds and end-to-end-tests the app.
+
 ## [2026-10-15] - Anchor v1 examples on Anchor 1.2.1
 
 Anchor 1.2.1 is a patch release of the v1 line. Its one change is an opt-in

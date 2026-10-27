@@ -49,3 +49,32 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm run typecheck
       - run: pnpm run verify
+
+  # The escrow web app. `test` checks its generated client against the
+  # program's discriminators, layouts and PDA seeds; `test:e2e` builds the app
+  # and drives it in Chromium against a mock cluster that checks every escrow
+  # instruction's accounts against the program's constraints.
+  escrow-app:
+    name: Escrow app
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: finance/escrow/app
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run typecheck
+      - run: pnpm run test
+      - run: pnpm run build
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm run test:e2e
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: escrow-app-e2e-failures
+          path: finance/escrow/app/tests/e2e/failures
+          if-no-files-found: ignore

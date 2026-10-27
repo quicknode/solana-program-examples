@@ -2,8 +2,10 @@
   "$schema": "https://biomejs.dev/schemas/2.4.12/schema.json",
   "files": {
     // Generated code (e.g. Codama clients) is excluded - it's not
-    // hand-maintained and gets overwritten on every regeneration.
-    "includes": ["**", "!**/Assets", "!**/generated"]
+    // hand-maintained and gets overwritten on every regeneration. So is
+    // Next.js build output (.next, and .next-e2e from the escrow app's
+    // end-to-end tests).
+    "includes": ["**", "!**/Assets", "!**/generated", "!**/.next", "!**/.next-e2e"]
   },
   "formatter": {
     // Matches more existing code,

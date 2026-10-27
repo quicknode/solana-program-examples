@@ -32,7 +32,7 @@ The programs are examples of common financial primitives on Solana. As well as t
 
 **Start here - the best first finance program to learn on Solana.** A neutral account that holds funds until both sides deliver, like a real-estate escrow or a lawyer's trust account. The maker deposits token A and names how much token B they want; when a taker supplies token B, the program swaps both in a single all-or-nothing transaction. This swap is the core idea behind every onchain exchange.
 
-[⚓ Anchor v1](./finance/escrow/anchor-v1) [⚓ Anchor v2](./finance/escrow/anchor) [💫 Quasar](./finance/escrow/quasar) [🦀 Native](./finance/escrow/native)
+[⚓ Anchor v1](./finance/escrow/anchor-v1) [⚓ Anchor v2](./finance/escrow/anchor) [💫 Quasar](./finance/escrow/quasar) [🦀 Native](./finance/escrow/native) [🌐 Web app](./finance/escrow/app)
 
 🎬 Video: [Build a Solana program (smart contract) in 30 minutes](https://www.youtube.com/watch?v=B5eBWWQfQuM)
 

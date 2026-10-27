@@ -1,0 +1,10 @@
+/.next/
+/out/
+/node_modules/
+next-env.d.ts
+*.tsbuildinfo
+.env*.local
+/.next-e2e/
+/tests/e2e/failures/
+# Written by `next dev` for coding agents; regenerated on every run.
+AGENTS.md

@@ -1,0 +1,6 @@
+# esbuild ships a postinstall script that only fetches a binary its Node API
+# can also resolve from its platform package, so the build step is declined.
+# `pnpm build` and `pnpm test:e2e` are verified to work with it off.
+allowBuilds:
+  esbuild: false
+  sharp: false
