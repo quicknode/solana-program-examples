@@ -1,4 +1,4 @@
-import { type Address, address } from "@solana/kit";
+import { type Address, address, isAddress } from "@solana/kit";
 import { ESCROW_PROGRAM_ADDRESS } from "../generated";
 
 // Every setting comes from a NEXT_PUBLIC_ environment variable, so one build
@@ -36,9 +36,19 @@ export const RPC_SUBSCRIPTIONS_URL: string | undefined = process.env.NEXT_PUBLIC
 
 // The address the program is deployed at. Defaults to the address in the IDL,
 // which is the address in the program's declare_id!.
-export const ESCROW_PROGRAM: Address = process.env.NEXT_PUBLIC_ESCROW_PROGRAM_ADDRESS
-  ? address(process.env.NEXT_PUBLIC_ESCROW_PROGRAM_ADDRESS)
-  : ESCROW_PROGRAM_ADDRESS;
+const readProgramAddress = (value: string | undefined): Address => {
+  if (value === undefined || value.trim() === "") {
+    return ESCROW_PROGRAM_ADDRESS;
+  }
+  if (!isAddress(value.trim())) {
+    throw new Error(
+      `NEXT_PUBLIC_ESCROW_PROGRAM_ADDRESS must be the program's address, the Program Id that anchor deploy prints, not "${value}"`,
+    );
+  }
+  return address(value.trim());
+};
+
+export const ESCROW_PROGRAM: Address = readProgramAddress(process.env.NEXT_PUBLIC_ESCROW_PROGRAM_ADDRESS);
 
 // The Wallet Standard chain a wallet must support to be offered.
 export const WALLET_CHAIN = `solana:${CLUSTER}` as const;
