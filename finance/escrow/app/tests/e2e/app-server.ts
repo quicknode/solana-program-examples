@@ -18,8 +18,10 @@ const run = (args: Array<string>, env: NodeJS.ProcessEnv) =>
 export const buildAndStartApp = async (rpcUrl: string, port: number): Promise<{ url: string; stop: () => void }> => {
   const env = {
     ...process.env,
-    NEXT_PUBLIC_CLUSTER: "localnet",
+    NEXT_PUBLIC_CLUSTER: "devnet",
     NEXT_PUBLIC_RPC_URL: rpcUrl,
+    // The mock cluster stands in for mainnet's SNS accounts too.
+    NEXT_PUBLIC_SNS_RPC_URL: rpcUrl,
     ESCROW_APP_DIST_DIR: E2E_DIST_DIR,
     NEXT_TELEMETRY_DISABLED: "1",
   };

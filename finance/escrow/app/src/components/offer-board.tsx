@@ -1,11 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
-import { useConnectedAddress, useOffers, useProgramDeployed, useWalletTokens } from "@/hooks/use-chain-data";
+import { useState } from "react";
+import {
+  useConnectedAddress,
+  useOffers,
+  useProgramDeployed,
+  useSolBalance,
+  useWalletTokens,
+} from "@/hooks/use-chain-data";
+import { spendableBalance } from "@/lib/balances";
 import { CLUSTER, ESCROW_PROGRAM } from "@/lib/config";
 import { describeTransactionError } from "@/lib/errors";
 import { type OfferListing, type OfferSort, sortOffers } from "@/lib/offers";
+import type { MintInfo } from "@/lib/tokens";
 import { useChainActivity } from "./chain-activity";
 import { OfferCard } from "./offer-card";
 
@@ -17,6 +25,7 @@ export const OfferBoard = () => {
   const offers = useOffers();
   const programDeployed = useProgramDeployed();
   const walletTokens = useWalletTokens();
+  const solBalance = useSolBalance();
   const viewer = useConnectedAddress();
   const { isLive } = useChainActivity();
 
@@ -26,16 +35,12 @@ export const OfferBoard = () => {
   const [onlyAffordable, setOnlyAffordable] = useState(false);
   const [hideOwn, setHideOwn] = useState(false);
 
-  const balances = useMemo(() => {
-    const byMint = new Map<string, bigint>();
-    for (const token of walletTokens.data ?? []) {
-      byMint.set(token.mint.address, token.amount);
-    }
-    return byMint;
-  }, [walletTokens.data]);
-
-  const balanceOf = (mintAddress: string): bigint | undefined =>
-    viewer && walletTokens.data ? (balances.get(mintAddress) ?? 0n) : undefined;
+  // How much of a token the viewer could pay with, counting SOL as SOL plus
+  // any wrapped SOL; undefined while there is no wallet to ask.
+  const balanceOf = (mint: MintInfo): bigint | undefined =>
+    viewer && walletTokens.data && solBalance.data !== undefined
+      ? spendableBalance(mint, walletTokens.data, solBalance.data)
+      : undefined;
 
   const allOffers = offers.data ?? [];
   const tokensOnOffer = uniqueMints(allOffers.map((offer) => offer.mintA));
@@ -52,7 +57,7 @@ export const OfferBoard = () => {
       if (hideOwn && offer.maker === viewer) {
         return false;
       }
-      if (onlyAffordable && (balanceOf(offer.mintB.address) ?? 0n) < offer.wantedAmount) {
+      if (onlyAffordable && (balanceOf(offer.mintB) ?? 0n) < offer.wantedAmount) {
         return false;
       }
       return true;
@@ -182,7 +187,7 @@ export const OfferBoard = () => {
       <ul className="offer-list">
         {visibleOffers.map((offer) => (
           <li key={offer.address}>
-            <OfferCard offer={offer} viewer={viewer} viewerBalanceOfB={balanceOf(offer.mintB.address)} />
+            <OfferCard offer={offer} viewer={viewer} viewerBalanceOfB={balanceOf(offer.mintB)} />
           </li>
         ))}
       </ul>

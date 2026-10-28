@@ -8,6 +8,7 @@ import {
 } from "@solana/kit";
 import { TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
 import { getMintDecoder, getTokenDecoder, TOKEN_2022_PROGRAM_ADDRESS } from "@solana-program/token-2022";
+import { NATIVE_MINT_ADDRESS, POPULAR_TOKENS } from "@/components/token-picker/popular-token-addresses";
 import { fetchAccounts, type RawAccount } from "./accounts";
 
 // What the app knows about a mint: which token program owns it (the escrow
@@ -25,15 +26,21 @@ export type MintInfo = {
   isNamed: boolean;
 };
 
-// Mints whose names the app knows without reading any metadata. A Token-2022
-// mint can carry its own name and symbol, and the test tokens this app mints
-// do, as do tokenized stocks like TSLAx; a classic token program mint keeps its name in a separate metadata
-// program the app does not read, so the common ones are listed here.
-const KNOWN_MINTS: Record<string, { symbol: string; name: string }> = {
-  EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v: { symbol: "USDC", name: "USD Coin" },
-  "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU": { symbol: "USDC", name: "USD Coin (devnet)" },
-  So11111111111111111111111111111111111111112: { symbol: "wSOL", name: "Wrapped SOL" },
-};
+// Mints whose names the app knows without reading any metadata: every token
+// in the popular-token list, on every cluster. A Token-2022 mint can carry its
+// own name and symbol, which then wins; a classic token program mint keeps its
+// name in a separate metadata program the app does not read. Each address,
+// and the page that proves it, is in popular-token-addresses.ts.
+const KNOWN_MINTS: Record<string, { symbol: string; name: string }> = Object.fromEntries(
+  Object.values(POPULAR_TOKENS)
+    .flat()
+    .map((token) => [token.address, { symbol: token.symbol, name: token.name }]),
+);
+
+// Whether a mint is the native mint, whose tokens are SOL held in a token
+// account. The app shows them as SOL and wraps and unwraps them for the user.
+export const isNativeSol = (mint: { address: string } | string): boolean =>
+  (typeof mint === "string" ? mint : mint.address) === NATIVE_MINT_ADDRESS;
 
 export const shortAddress = (value: string): string => `${value.slice(0, 4)}…${value.slice(-4)}`;
 

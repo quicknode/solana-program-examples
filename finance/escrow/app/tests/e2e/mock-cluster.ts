@@ -48,6 +48,9 @@ import { tokenAccount } from "../fixtures";
 // behavior is checked by its Rust tests, against the real compiled program.
 
 const COMPUTE_BUDGET_PROGRAM = "ComputeBudget111111111111111111111111111111";
+const ASSOCIATED_TOKEN_PROGRAM = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL";
+const TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+const NATIVE_MINT = "So11111111111111111111111111111111111111112";
 const SYSTEM_PROGRAM = "11111111111111111111111111111111";
 const UPGRADEABLE_LOADER = "BPFLoaderUpgradeab1e11111111111111111111111";
 
@@ -156,6 +159,38 @@ export const startMockCluster = async (
     accounts.set(address, { ...fresh, lamports: existing?.lamports ?? rentFor(fresh.data.length) });
   };
 
+  // Lamports: every account creation is paid for by someone, and every close
+  // pays its balance to someone, as on a real cluster.
+  const moveLamports = (from: Address, to: Address, amount: bigint) => {
+    const source = accounts.get(from);
+    if (!source || source.lamports < amount) {
+      throw new ProgramError(1, `${from} has too few lamports`);
+    }
+    accounts.set(from, { ...source, lamports: source.lamports - amount });
+    const destination = accounts.get(to) ?? {
+      owner: SYSTEM_PROGRAM as Address,
+      data: new Uint8Array(),
+      lamports: 0n,
+    };
+    accounts.set(to, { ...destination, lamports: destination.lamports + amount });
+  };
+
+  const closeAccount = (address: Address, destination: Address) => {
+    const account = accounts.get(address);
+    if (!account) {
+      throw new ProgramError(3012, `${address} does not exist`);
+    }
+    accounts.delete(address);
+    const receiver = accounts.get(destination) ?? {
+      owner: SYSTEM_PROGRAM as Address,
+      data: new Uint8Array(),
+      lamports: 0n,
+    };
+    accounts.set(destination, { ...receiver, lamports: receiver.lamports + account.lamports });
+  };
+
+  // A token transfer. Native-mint tokens are lamports, so moving them moves
+  // the lamports too.
   const transfer = (from: Address, to: Address, amount: bigint) => {
     const source = readToken(from);
     const destination = readToken(to);
@@ -168,6 +203,9 @@ export const startMockCluster = async (
     const program = accounts.get(from)?.owner as Address;
     writeTokenAmount(from, source.mint, source.owner, program, source.amount - amount);
     writeTokenAmount(to, destination.mint, destination.owner, program, destination.amount + amount);
+    if (source.mint === NATIVE_MINT) {
+      moveLamports(from, to, amount);
+    }
   };
 
   const requireAssociated = async (
@@ -192,10 +230,80 @@ export const startMockCluster = async (
     return getMintDecoder().decode(account.data);
   };
 
-  const createAssociatedIfMissing = (address: Address, mint: Address, owner: Address, tokenProgram: Address) => {
-    if (!accounts.has(address)) {
-      writeTokenAmount(address, mint, owner, tokenProgram, 0n);
+  const createAssociatedIfMissing = (
+    address: Address,
+    mint: Address,
+    owner: Address,
+    tokenProgram: Address,
+    payer: Address,
+  ) => {
+    if (accounts.has(address)) {
+      return;
     }
+    const fresh = tokenAccount(mint, owner, 0n, tokenProgram);
+    const rent = rentFor(fresh.data.length);
+    accounts.set(address, { ...fresh, lamports: 0n });
+    moveLamports(payer, address, rent);
+  };
+
+  // The System Program's transfer, the associated token account program's
+  // create and create-idempotent, and the token program's SyncNative and
+  // CloseAccount: the instructions a frontend puts around the escrow's to
+  // wrap and unwrap SOL.
+  const runSupportingInstruction = async (instruction: Instruction, signers: Set<string>): Promise<Array<Address>> => {
+    const data = instruction.data ?? new Uint8Array();
+    const metas = instruction.accounts ?? [];
+    const at = (index: number) => metas[index].address;
+    const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+
+    if (instruction.programAddress === SYSTEM_PROGRAM && view.getUint32(0, true) === 2) {
+      if (!signers.has(at(0))) {
+        throw new ProgramError(3010, "The transfer's source did not sign");
+      }
+      moveLamports(at(0), at(1), view.getBigUint64(4, true));
+      return [];
+    }
+
+    if (instruction.programAddress === ASSOCIATED_TOKEN_PROGRAM) {
+      const [payer, associated, owner, mint, , tokenProgram] = [0, 1, 2, 3, 4, 5].map(at);
+      await requireAssociated(associated, owner, mint, tokenProgram, "associated token account");
+      if (accounts.has(associated)) {
+        if (data[0] === 1) {
+          return [];
+        }
+        throw new ProgramError(0, "The associated token account already exists");
+      }
+      requireMint(mint, tokenProgram);
+      createAssociatedIfMissing(associated, mint, owner, tokenProgram, payer);
+      return [];
+    }
+
+    if (instruction.programAddress === TOKEN_PROGRAM && data[0] === 17) {
+      const account = readToken(at(0));
+      const stored = accounts.get(at(0));
+      if (!account || !stored || account.mint !== NATIVE_MINT) {
+        throw new ProgramError(19, "SyncNative needs a native-mint token account");
+      }
+      writeTokenAmount(at(0), account.mint, account.owner, TOKEN_PROGRAM as Address, stored.lamports - rentFor(165));
+      return [];
+    }
+
+    if (instruction.programAddress === TOKEN_PROGRAM && data[0] === 9) {
+      const account = readToken(at(0));
+      if (!account) {
+        throw new ProgramError(3012, "CloseAccount: no such account");
+      }
+      if (account.owner !== at(2) || !signers.has(at(2))) {
+        throw new ProgramError(4, "CloseAccount: the owner did not sign");
+      }
+      if (account.mint !== NATIVE_MINT && account.amount !== 0n) {
+        throw new ProgramError(11, "CloseAccount: a non-native account must be empty");
+      }
+      closeAccount(at(0), at(1));
+      return [];
+    }
+
+    throw new ProgramError(0, `The mock cluster does not run this ${instruction.programAddress} instruction`);
   };
 
   // The escrow program's three handlers, as their account constraints and
@@ -241,8 +349,8 @@ export const startMockCluster = async (
       if (data.tokenAOfferedAmount === 0n || data.tokenBWantedAmount === 0n) {
         throw new ProgramError(6000, "ZeroAmount");
       }
-      createAssociatedIfMissing(named.vault.address, named.tokenMintA.address, offer, tokenProgram);
-      createAssociatedIfMissing(named.makerTokenAccountB.address, named.tokenMintB.address, maker, tokenProgram);
+      createAssociatedIfMissing(named.vault.address, named.tokenMintA.address, offer, tokenProgram, maker);
+      createAssociatedIfMissing(named.makerTokenAccountB.address, named.tokenMintB.address, maker, tokenProgram, maker);
       transfer(named.makerTokenAccountA.address, named.vault.address, data.tokenAOfferedAmount);
       const [, bump] = await findOfferPda({ maker, id: data.id });
       const offerData = getOfferEncoder().encode({
@@ -253,7 +361,8 @@ export const startMockCluster = async (
         tokenBWantedAmount: data.tokenBWantedAmount,
         bump,
       });
-      accounts.set(offer, { owner: ESCROW_PROGRAM_ADDRESS, data: offerData, lamports: rentFor(offerData.length) });
+      accounts.set(offer, { owner: ESCROW_PROGRAM_ADDRESS, data: offerData, lamports: 0n });
+      moveLamports(maker, offer, rentFor(offerData.length));
       return [offer];
     }
 
@@ -308,11 +417,11 @@ export const startMockCluster = async (
       if (vault.amount < data.minimumTokenAOut || offer.tokenBWantedAmount > data.maximumTokenBIn) {
         throw new ProgramError(6001, "OfferTermsChanged");
       }
-      createAssociatedIfMissing(named.takerTokenAccountA.address, offer.tokenMintA, taker, tokenProgram);
+      createAssociatedIfMissing(named.takerTokenAccountA.address, offer.tokenMintA, taker, tokenProgram, taker);
       transfer(named.takerTokenAccountB.address, named.makerTokenAccountB.address, offer.tokenBWantedAmount);
       transfer(named.vault.address, named.takerTokenAccountA.address, vault.amount);
-      accounts.delete(named.vault.address);
-      accounts.delete(named.offer.address);
+      closeAccount(named.vault.address, offer.maker);
+      closeAccount(named.offer.address, offer.maker);
       return [named.offer.address];
     }
 
@@ -344,8 +453,8 @@ export const startMockCluster = async (
         throw new ProgramError(3012, "AccountNotInitialized: vault");
       }
       transfer(named.vault.address, named.makerTokenAccountA.address, vault.amount);
-      accounts.delete(named.vault.address);
-      accounts.delete(named.offer.address);
+      closeAccount(named.vault.address, offer.maker);
+      closeAccount(named.offer.address, offer.maker);
       return [named.offer.address];
     }
 
@@ -388,27 +497,26 @@ export const startMockCluster = async (
         if (instruction.programAddress === COMPUTE_BUDGET_PROGRAM) {
           continue;
         }
-        if (instruction.programAddress !== ESCROW_PROGRAM_ADDRESS) {
-          throw Object.assign(new ProgramError(0, `The mock cluster runs no ${instruction.programAddress}`), {
-            index,
-          });
-        }
-        logs.push(`Program ${ESCROW_PROGRAM_ADDRESS} invoke [1]`);
+        logs.push(`Program ${instruction.programAddress} invoke [1]`);
         try {
-          changed.push(...(await runEscrowInstruction(instruction, signers)));
+          changed.push(
+            ...(instruction.programAddress === ESCROW_PROGRAM_ADDRESS
+              ? await runEscrowInstruction(instruction, signers)
+              : await runSupportingInstruction(instruction, signers)),
+          );
         } catch (error) {
-          throw Object.assign(error as Error, { index });
+          throw Object.assign(error as Error, { index, programAddress: instruction.programAddress });
         }
-        logs.push(`Program ${ESCROW_PROGRAM_ADDRESS} success`);
+        logs.push(`Program ${instruction.programAddress} success`);
       }
     } catch (error) {
-      const failure = error as ProgramError & { index: number };
+      const failure = error as ProgramError & { index: number; programAddress: string };
       accounts.clear();
       for (const [address, account] of snapshot) {
         accounts.set(address, account);
       }
       logs.push(`Program log: AnchorError: ${failure.message}. Error Number: ${failure.code}.`);
-      logs.push(`Program ${ESCROW_PROGRAM_ADDRESS} failed: custom program error: 0x${failure.code.toString(16)}`);
+      logs.push(`Program ${failure.programAddress} failed: custom program error: 0x${failure.code.toString(16)}`);
       return { err: { InstructionError: [failure.index, { Custom: failure.code }] }, logs, signers, transaction };
     }
     if (!commit) {

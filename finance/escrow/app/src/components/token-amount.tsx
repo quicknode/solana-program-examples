@@ -1,5 +1,6 @@
 import { formatAmount } from "@/lib/amounts";
 import type { MintInfo } from "@/lib/tokens";
+import { TokenMark } from "./token-picker/token-mark";
 
 type TokenAmountProps = {
   amount: bigint;
@@ -20,6 +21,7 @@ export const TokenAmount = ({ amount, mint, size = "normal", moving = false }: T
   }
   return (
     <span className={classNames.join(" ")} title={`${mint.name} (${mint.address})`}>
+      {size === "large" ? <TokenMark mint={mint} /> : null}
       {formatAmount(amount, mint.decimals)} <span className="token-amount__symbol">{mint.symbol}</span>
     </span>
   );

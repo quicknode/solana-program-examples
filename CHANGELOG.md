@@ -4,6 +4,20 @@ All notable changes to this repository are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-10-28] - Escrow web app: popular tokens, SOL and .sol names
+
+### Added
+
+- The escrow app's Make page offers the cluster's popular tokens in one click, then anything already
+  traded or held, then **Other…** for any mint address. The list is
+  `finance/escrow/app/src/components/token-picker/popular-token-addresses.ts`, and every address in it
+  cites the issuer page that publishes it. The app offers only the addresses that are mints on the
+  connected cluster, and greys out a token that can't be paired with the one being given, with the
+  reason. `pnpm check-popular-tokens` checks the list against a cluster.
+- SOL is offered, paid and received as SOL: the app wraps it into, and unwraps it out of, the native
+  mint's token account in the same transactions, and offers to unwrap SOL a maker was paid.
+- The wallet button shows the wallet's primary SNS `.sol` name when it has one.
+
 ## [2026-10-27] - Escrow web app
 
 ### Added

@@ -8,8 +8,9 @@ import { useWalletConnection } from "@/hooks/use-wallet";
 import { formatAmount } from "@/lib/amounts";
 import { ESCROW_PROGRAM } from "@/lib/config";
 import { isReportableError } from "@/lib/errors";
-import { buildCancelOfferInstruction } from "@/lib/escrow-instructions";
+import { buildCancelOfferInstructions } from "@/lib/escrow-instructions";
 import type { OfferListing } from "@/lib/offers";
+import { isNativeSol } from "@/lib/tokens";
 import { TokenAmount } from "./token-amount";
 import { TransactionError } from "./transaction-notice";
 
@@ -40,8 +41,10 @@ export const CancelOfferPanel = ({ offer, onCancelled }: CancelOfferPanelProps) 
       <ul className="checklist">
         <li className="checklist__item checklist__item--info">
           <span>
-            <TokenAmount amount={offer.offeredAmount} mint={offer.mintA} moving /> comes back from the vault to your{" "}
-            {offer.mintA.symbol} account.
+            <TokenAmount amount={offer.offeredAmount} mint={offer.mintA} moving /> comes back from the vault
+            {isNativeSol(offer.mintA)
+              ? ", and the transaction unwraps it, so it lands in your wallet as plain SOL."
+              : ` to your ${offer.mintA.symbol} account.`}
           </span>
         </li>
         <li className="checklist__item checklist__item--info">
@@ -61,9 +64,9 @@ export const CancelOfferPanel = ({ offer, onCancelled }: CancelOfferPanelProps) 
             return;
           }
           try {
-            const signature = await cancel.dispatchAsync(async () => [
-              await buildCancelOfferInstruction(maker, offer, ESCROW_PROGRAM),
-            ]);
+            const signature = await cancel.dispatchAsync(() =>
+              buildCancelOfferInstructions(maker, offer, ESCROW_PROGRAM),
+            );
             onCancelled(signature);
           } catch {
             // The error is on cancel.error, shown below.

@@ -4,3 +4,12 @@
 allowBuilds:
   esbuild: false
   sharp: false
+
+# The SNS SDK asks for @solana-program/token 0.14, which imports a function
+# Solana Kit 8 no longer has. The four things the SDK uses from it
+# (findAssociatedTokenPda, ASSOCIATED_TOKEN_PROGRAM_ADDRESS,
+# getCreateAssociatedTokenIdempotentInstructionDataEncoder, getTokenCodec) are
+# unchanged in 0.18, the version the app already uses, so the SDK gets that.
+# Delete this once the SDK depends on a Kit 8 version of the token client.
+overrides:
+  "@solana-name-service/sns-sdk-kit>@solana-program/token": 0.18.0

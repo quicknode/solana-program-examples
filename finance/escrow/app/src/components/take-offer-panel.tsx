@@ -7,10 +7,12 @@ import { useEscrowRent } from "@/hooks/use-rent";
 import { useTransaction } from "@/hooks/use-transaction";
 import { useWalletConnection } from "@/hooks/use-wallet";
 import { formatAmount } from "@/lib/amounts";
+import { SOL_RESERVE_LAMPORTS, spendableBalance, wrappedSolBalance } from "@/lib/balances";
 import { ESCROW_PROGRAM } from "@/lib/config";
 import { isReportableError } from "@/lib/errors";
-import { buildTakeOfferInstruction } from "@/lib/escrow-instructions";
+import { buildTakeOfferInstructions } from "@/lib/escrow-instructions";
 import type { OfferListing } from "@/lib/offers";
+import { isNativeSol } from "@/lib/tokens";
 import { TokenAmount } from "./token-amount";
 import { TransactionError } from "./transaction-notice";
 
@@ -71,11 +73,13 @@ export const TakeOfferPanel = ({ offer, onTaken }: TakeOfferPanelProps) => {
     );
   }
 
-  const holdingOf = (mintAddress: string) => walletTokens.data?.find((token) => token.mint.address === mintAddress);
-  const holdingA = holdingOf(offer.mintA.address);
-  const holdingB = holdingOf(offer.mintB.address);
-  const balanceA = holdingA?.amount ?? 0n;
-  const balanceB = holdingB?.amount ?? 0n;
+  const holdingA = walletTokens.data.find((token) => token.mint.address === offer.mintA.address);
+  // Paying SOL draws on the wallet's SOL as well as any SOL already wrapped;
+  // receiving SOL lands in the wallet as SOL, since the transaction unwraps it.
+  const payingSol = isNativeSol(offer.mintB);
+  const receivingSol = isNativeSol(offer.mintA);
+  const balanceA = receivingSol ? solBalance.data + (holdingA?.amount ?? 0n) : (holdingA?.amount ?? 0n);
+  const balanceB = spendableBalance(offer.mintB, walletTokens.data, solBalance.data);
 
   // The taker pays rent for their own token-A account if take_offer has to
   // create it, and keeps that account afterwards.
@@ -83,7 +87,10 @@ export const TakeOfferPanel = ({ offer, onTaken }: TakeOfferPanelProps) => {
     offer.mintA.tokenProgram === TOKEN_2022_PROGRAM_ADDRESS
       ? rent.data?.token2022Account
       : rent.data?.classicTokenAccount;
-  const solNeeded = FEE_ALLOWANCE_LAMPORTS + (holdingA ? 0n : (tokenAccountRent ?? 0n));
+  // Paying SOL keeps a reserve back for fees and rent inside balanceB.
+  const solNeeded = payingSol
+    ? SOL_RESERVE_LAMPORTS
+    : FEE_ALLOWANCE_LAMPORTS + (holdingA || receivingSol ? 0n : (tokenAccountRent ?? 0n));
 
   const hasEnoughB = balanceB >= offer.wantedAmount;
   const hasEnoughSol = solBalance.data >= solNeeded;
@@ -107,18 +114,29 @@ export const TakeOfferPanel = ({ offer, onTaken }: TakeOfferPanelProps) => {
         <li className={`checklist__item checklist__item--${hasEnoughSol ? "pass" : "fail"}`}>
           <span>
             You hold {formatAmount(solBalance.data, SOL_DECIMALS)} SOL for the transaction fee
-            {holdingA ? "" : " and the new account's rent"}.
+            {holdingA || receivingSol ? "" : " and the new account's rent"}.
           </span>
         </li>
         <li className="checklist__item checklist__item--info">
           <span>
-            {holdingA
-              ? `The ${offer.mintA.symbol} lands in the ${offer.mintA.symbol} account you already have.`
-              : `You have no ${offer.mintA.symbol} account yet, so the transaction creates one for you. Its rent deposit${
-                  tokenAccountRent === undefined ? "" : ` of ${formatAmount(tokenAccountRent, SOL_DECIMALS)} SOL`
-                } stays in the account, which is yours to keep.`}
+            {receivingSol
+              ? "The SOL lands in your wallet as plain SOL: the transaction unwraps it as the last step."
+              : holdingA
+                ? `The ${offer.mintA.symbol} lands in the ${offer.mintA.symbol} account you already have.`
+                : `You have no ${offer.mintA.symbol} account yet, so the transaction creates one for you. Its rent deposit${
+                    tokenAccountRent === undefined ? "" : ` of ${formatAmount(tokenAccountRent, SOL_DECIMALS)} SOL`
+                  } stays in the account, which is yours to keep.`}
           </span>
         </li>
+        {payingSol ? (
+          <li className="checklist__item checklist__item--info">
+            <span>
+              The transaction wraps the SOL you pay into a token account first, since the escrow program moves tokens,
+              and closes that account again at the end.
+              {formatAmount(SOL_RESERVE_LAMPORTS, SOL_DECIMALS)} SOL of your balance stays back for fees.
+            </span>
+          </li>
+        ) : null}
         {canSign ? null : (
           <li className="checklist__item checklist__item--fail">
             <span>This wallet account can only be watched, not signed with. Connect one that can sign.</span>
@@ -172,9 +190,9 @@ export const TakeOfferPanel = ({ offer, onTaken }: TakeOfferPanelProps) => {
             return;
           }
           try {
-            const signature = await take.dispatchAsync(async () => [
-              await buildTakeOfferInstruction(taker, offer, ESCROW_PROGRAM),
-            ]);
+            const signature = await take.dispatchAsync(() =>
+              buildTakeOfferInstructions(taker, offer, ESCROW_PROGRAM, wrappedSolBalance(walletTokens.data ?? [])),
+            );
             onTaken(signature);
           } catch {
             // The error is on take.error, shown below.

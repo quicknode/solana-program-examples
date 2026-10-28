@@ -154,6 +154,11 @@ const HowItWorksPage = () => (
               so a taker never pays for an account that belongs to the maker.
             </li>
             <li>
+              SOL trades as a token, the native mint: lamports held in a token account. This site wraps your SOL into
+              that account when you offer or pay SOL, and unwraps it when you receive SOL or cancel, in the same
+              transaction, so you only ever see SOL.
+            </li>
+            <li>
               If the taker has no account for token A yet, <code>take_offer</code> creates one, paid for by the taker.
               It is the taker's account and stays theirs.
             </li>

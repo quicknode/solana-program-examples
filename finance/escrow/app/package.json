@@ -12,12 +12,15 @@
     "test": "tsx --test --test-reporter=spec tests/*.test.ts",
     "test:e2e": "tsx --test --test-reporter=spec --test-concurrency=1 tests/e2e/*.e2e.ts",
     "build-idl": "tsx scripts/build-idl.ts",
-    "generate-client": "tsx scripts/generate-client.ts"
+    "generate-client": "tsx scripts/generate-client.ts",
+    "check-popular-tokens": "tsx scripts/check-popular-tokens.ts"
   },
   "engines": {
     "node": ">=20.18.0"
   },
   "dependencies": {
+    "@solana-name-service/sns-sdk-kit": "1.0.1",
+    "@solana-program/system": "0.16.0",
     "@solana-program/token": "0.18.0",
     "@solana-program/token-2022": "0.20.0",
     "@solana/kit": "8.5.0",

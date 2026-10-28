@@ -4,10 +4,19 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  '@solana-name-service/sns-sdk-kit>@solana-program/token': 0.18.0
+
 importers:
 
   .:
     dependencies:
+      '@solana-name-service/sns-sdk-kit':
+        specifier: 1.0.1
+        version: 1.0.1(@solana/kit@8.5.0(typescript@7.0.2))
+      '@solana-program/system':
+        specifier: 0.16.0
+        version: 0.16.0(@solana/kit@8.5.0(typescript@7.0.2))
       '@solana-program/token':
         specifier: 0.18.0
         version: 0.18.0(@solana/kit@8.5.0(typescript@7.0.2))
@@ -467,6 +476,15 @@ packages:
   '@noble/hashes@2.4.0':
     resolution: {integrity: sha512-X5XaVWZIBCT7HHZGm5I7ZQXDwLG+bGXuSrMQAW+7Zvl87h1kmc1ZB1VSRJcpUfoUrGQp4Fkoxm5kZ+Ms+aW+eA==}
     engines: {node: '>= 20.19.0'}
+
+  '@scure/base@1.2.6':
+    resolution: {integrity: sha512-g/nm5FgUa//MCj1gV09zTJTaM6KBAHqLN907YVQqf7zC49+DcO4B1so4ZX07Ef10Twr6nuqYEH9GEggFXA4Fmg==}
+
+  '@solana-name-service/sns-sdk-kit@1.0.1':
+    resolution: {integrity: sha512-sapLZQQYH31KRaAwuxyRd9/WimMPzhRpg67kq46nWN0l9C9ztW0nHDZ2ysjFPatn7PGEnUVfGE5iPm9uy+AYsg==}
+    engines: {node: '>=24.0.0'}
+    peerDependencies:
+      '@solana/kit': ^6.9.0
 
   '@solana-program/record@0.6.0':
     resolution: {integrity: sha512-8NeDjYA8OVWiL7sZqURsYFPXoT/i1c2A1Wt4k5MOMEItehX8fUOj7uCspU85lC+so+tsEmJ09qO0t8vN8kk/ZQ==}
@@ -1150,6 +1168,9 @@ packages:
     engines: {node: '>=6.0.0'}
     hasBin: true
 
+  borsh@2.0.0:
+    resolution: {integrity: sha512-kc9+BgR3zz9+cjbwM8ODoUB4fs3X3I5A/HtX7LZKxCLaMrEeDFoBpnhZY//DTS1VZBSs6S5v46RZRbZjRFspEg==}
+
   call-bind-apply-helpers@1.0.2:
     resolution: {integrity: sha512-Sp1ablJ0ivDkSzjcaJdxEunN5/XvksFJ2sMBFfq6x0ryhQV/2b/KwFe21cMpmHtPOSij8K99/wSfoEuTObmuMQ==}
     engines: {node: '>= 0.4'}
@@ -1251,6 +1272,10 @@ packages:
     resolution: {integrity: sha512-T2UbfbBEF32wiepXIsMlTW9+dDYC6wMh/t/vYA4tuOMKqWz/n3vr1NFSxQiyP+zk2mXsoMA/i/7qV6LKut1t1A==}
     engines: {node: '>= 0.4'}
 
+  ipaddr.js@2.5.0:
+    resolution: {integrity: sha512-aq+t5NAc+cS6rZQQVWC2x98CPqGtKKTMDd4Gaodv0wShnItdKg/51djkGJ1hqH+Oy0ivDftCbSLCQob8zso01w==}
+    engines: {node: '>= 10'}
+
   isarray@2.0.5:
     resolution: {integrity: sha512-xHjhDr3cNBK0BzdUJSPXZntQUx/mwMS5Rw4A7lPJ90XGAO6ISP/ePDNuo0vhqOZU+UD5JoodwCAAoZQd3FeAKw==}
 
@@ -1324,6 +1349,10 @@ packages:
   prompts@2.4.2:
     resolution: {integrity: sha512-NxNv/kLguCA7p3jE8oL2aEBsrJWgAakBpgmgK6lpPWV+WuOmY6r2/zbAVnP+T8bQlA0nzHXSJSJW0Hq7ylaD2Q==}
     engines: {node: '>= 6'}
+
+  punycode@2.3.1:
+    resolution: {integrity: sha512-vYt7UD1U9Wg6138shLtLOvdAu+8DsC/ilFtEVHcH+wydcSpNE20AfSOduf6MkRFahL5FY7X1oU7nKVZFtfq8Fg==}
+    engines: {node: '>=6'}
 
   react-dom@19.3.1:
     resolution: {integrity: sha512-Y0bARz53lhEC1NMCASs0/j+faB/zqt3R8hpvg1e8+61ZVJ4UL0UdC4cBbXfZMcIuhrfgeILTLe+ZeBCavQPtKQ==}
@@ -1710,6 +1739,17 @@ snapshots:
     optional: true
 
   '@noble/hashes@2.4.0': {}
+
+  '@scure/base@1.2.6': {}
+
+  '@solana-name-service/sns-sdk-kit@1.0.1(@solana/kit@8.5.0(typescript@7.0.2))':
+    dependencies:
+      '@scure/base': 1.2.6
+      '@solana-program/token': 0.18.0(@solana/kit@8.5.0(typescript@7.0.2))
+      '@solana/kit': 8.5.0(typescript@7.0.2)
+      borsh: 2.0.0
+      ipaddr.js: 2.5.0
+      punycode: 2.3.1
 
   '@solana-program/record@0.6.0(@solana/kit@8.5.0(typescript@7.0.2))':
     dependencies:
@@ -2471,6 +2511,8 @@ snapshots:
 
   baseline-browser-mapping@2.11.33: {}
 
+  borsh@2.0.0: {}
+
   call-bind-apply-helpers@1.0.2:
     dependencies:
       es-errors: 1.3.0
@@ -2598,6 +2640,8 @@ snapshots:
     dependencies:
       function-bind: 1.1.2
 
+  ipaddr.js@2.5.0: {}
+
   isarray@2.0.5: {}
 
   json-stable-stringify@1.3.0:
@@ -2663,6 +2707,8 @@ snapshots:
     dependencies:
       kleur: 3.0.3
       sisteransi: 1.0.5
+
+  punycode@2.3.1: {}
 
   react-dom@19.3.1(react@19.3.1):
     dependencies:

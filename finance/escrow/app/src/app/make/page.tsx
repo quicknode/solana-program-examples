@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { GuidePanel } from "@/components/guide-panel";
 import { MakeOfferForm } from "@/components/make-offer-form";
+import { UnwrapSolNotice } from "@/components/unwrap-sol-notice";
 
 export const metadata: Metadata = { title: "Make an offer" };
 
@@ -14,7 +15,10 @@ const MakeOfferPage = () => (
       </p>
     </header>
     <div className="page-columns">
-      <MakeOfferForm />
+      <div className="offer-detail">
+        <UnwrapSolNotice />
+        <MakeOfferForm />
+      </div>
       <GuidePanel
         title="What making an offer does"
         steps={[

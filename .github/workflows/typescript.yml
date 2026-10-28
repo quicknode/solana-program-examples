@@ -54,6 +54,7 @@ jobs:
   # program's discriminators, layouts and PDA seeds; `test:e2e` builds the app
   # and drives it in Chromium against a mock cluster that checks every escrow
   # instruction's accounts against the program's constraints.
+  # Node 24: the SNS SDK the app uses declares node >= 24.
   escrow-app:
     name: Escrow app
     runs-on: ubuntu-latest
@@ -65,7 +66,7 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
       - run: pnpm install --frozen-lockfile
       - run: pnpm run typecheck
       - run: pnpm run test

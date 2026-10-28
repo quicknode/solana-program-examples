@@ -4,8 +4,12 @@ import { type Address, address } from "@solana/kit";
 import { useRequest } from "@solana/react";
 import { useCallback, useMemo } from "react";
 import { useRefreshOnChainChange } from "@/components/chain-activity";
-import { ESCROW_PROGRAM } from "@/lib/config";
+import { NATIVE_MINT_ADDRESS, POPULAR_TOKENS } from "@/components/token-picker/popular-token-addresses";
+import { fetchAccounts } from "@/lib/accounts";
+import { CLUSTER, ESCROW_PROGRAM } from "@/lib/config";
 import { fetchAllOffers, fetchOffer } from "@/lib/offers";
+import { lookupSolName } from "@/lib/sns";
+import { decodeMintInfo } from "@/lib/tokens";
 import { fetchWalletTokens } from "@/lib/wallet-tokens";
 import { useEscrowClient } from "./use-escrow-client";
 import { useWalletConnection } from "./use-wallet";
@@ -83,4 +87,51 @@ export const useSolBalance = () => {
   const request = useRequest(source);
   useRefreshOnChainChange(request.refresh);
   return request;
+};
+
+// The popular tokens for this cluster that really are mints here, in the
+// list's order, plus the native mint (SOL), which every cluster has. A listed
+// address with no mint behind it on this cluster is left out rather than
+// offered.
+export const usePopularMints = () => {
+  const client = useEscrowClient();
+  const source = useCallback(
+    async (abortSignal: AbortSignal) => {
+      const presets = POPULAR_TOKENS[CLUSTER];
+      const addresses = [...new Set([NATIVE_MINT_ADDRESS, ...presets.map((token) => token.address)])].map((value) =>
+        address(value),
+      );
+      const accounts = await fetchAccounts(client.rpc, addresses, abortSignal);
+      const mintInfoAt = (value: string) => decodeMintInfo(address(value), accounts.get(address(value)) ?? null);
+      return {
+        presets: presets.flatMap((token) => {
+          const mint = mintInfoAt(token.address);
+          return mint ? [{ token, mint }] : [];
+        }),
+        nativeMint: mintInfoAt(NATIVE_MINT_ADDRESS),
+      };
+    },
+    [client],
+  );
+  return useRequest(source);
+};
+
+// The connected wallet's .sol name, or null when it has none or the lookup
+// fails: a name is a nicety, and the address always stands in for it.
+export const useSolName = () => {
+  const owner = useConnectedAddress();
+  const source = useMemo(
+    () =>
+      owner
+        ? async () => {
+            try {
+              return await lookupSolName(owner);
+            } catch {
+              return null;
+            }
+          }
+        : null,
+    [owner],
+  );
+  return useRequest(source).data ?? null;
 };

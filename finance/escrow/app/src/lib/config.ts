@@ -34,6 +34,12 @@ export const RPC_URL: string = process.env.NEXT_PUBLIC_RPC_URL || DEFAULT_RPC_UR
 // plugin works out for itself.
 export const RPC_SUBSCRIPTIONS_URL: string | undefined = process.env.NEXT_PUBLIC_RPC_SUBSCRIPTIONS_URL || undefined;
 
+// SNS names (.sol) live on mainnet, whichever cluster the app trades on, so
+// looking up a wallet's name needs a mainnet RPC. On mainnet that is the app's
+// own RPC.
+export const SNS_RPC_URL: string =
+  process.env.NEXT_PUBLIC_SNS_RPC_URL || (CLUSTER === "mainnet" ? RPC_URL : DEFAULT_RPC_URLS.mainnet);
+
 // The address the program is deployed at. Defaults to the address in the IDL,
 // which is the address in the program's declare_id!.
 const readProgramAddress = (value: string | undefined): Address => {
