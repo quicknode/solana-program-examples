@@ -4,7 +4,7 @@ All notable changes to this repository are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [2026-10-28] - Escrow web app: popular tokens, SOL and .sol names
+## [2026-10-28] - Escrow web app: popular tokens, SOL and .sns names
 
 ### Added
 
@@ -16,7 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   reason. `pnpm check-popular-tokens` checks the list against a cluster.
 - SOL is offered, paid and received as SOL: the app wraps it into, and unwraps it out of, the native
   mint's token account in the same transactions, and offers to unwrap SOL a maker was paid.
-- The wallet button shows the wallet's primary SNS `.sol` name when it has one.
+- The wallet button shows the wallet's primary SNS `.sns` name when it has one.
 
 ## [2026-10-27] - Escrow web app
 

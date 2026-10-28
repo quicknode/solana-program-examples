@@ -108,12 +108,12 @@ describe("the escrow app", () => {
     assert.strictEqual(await page.locator(".status-tag").count(), 0, "no affordability without a wallet");
   });
 
-  test("connects the wallet, shows Bob's .sol name, and says which offers he can pay for", async () => {
+  test("connects the wallet, shows Bob's .sns name, and says which offers he can pay for", async () => {
     await page.getByRole("button", { name: "Connect wallet" }).click();
     await page.getByRole("button", { name: "Test Wallet" }).click();
     await page.getByText("Your offer").waitFor();
     // Bob's primary SNS name, in place of his address.
-    await page.getByRole("button", { name: "bob.sol" }).waitFor();
+    await page.getByRole("button", { name: "bob.sns" }).waitFor();
 
     const aliceCard = offerCards().filter({ hasText: "250 tUSDC" });
     await aliceCard.getByText("You can take this").waitFor();

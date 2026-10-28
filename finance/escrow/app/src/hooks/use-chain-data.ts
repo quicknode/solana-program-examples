@@ -8,7 +8,7 @@ import { NATIVE_MINT_ADDRESS, POPULAR_TOKENS } from "@/components/token-picker/p
 import { fetchAccounts } from "@/lib/accounts";
 import { CLUSTER, ESCROW_PROGRAM } from "@/lib/config";
 import { fetchAllOffers, fetchOffer } from "@/lib/offers";
-import { lookupSolName } from "@/lib/sns";
+import { lookupSnsName } from "@/lib/sns";
 import { decodeMintInfo } from "@/lib/tokens";
 import { fetchWalletTokens } from "@/lib/wallet-tokens";
 import { useEscrowClient } from "./use-escrow-client";
@@ -116,16 +116,16 @@ export const usePopularMints = () => {
   return useRequest(source);
 };
 
-// The connected wallet's .sol name, or null when it has none or the lookup
+// The connected wallet's .sns name, or null when it has none or the lookup
 // fails: a name is a nicety, and the address always stands in for it.
-export const useSolName = () => {
+export const useSnsName = () => {
   const owner = useConnectedAddress();
   const source = useMemo(
     () =>
       owner
         ? async () => {
             try {
-              return await lookupSolName(owner);
+              return await lookupSnsName(owner);
             } catch {
               return null;
             }

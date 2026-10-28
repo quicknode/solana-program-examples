@@ -4,7 +4,7 @@ import { type Address, lamports } from "@solana/kit";
 import { useConnect, useDisconnect, useWallets } from "@solana/kit-plugin-wallet/react";
 import { useAirdrop } from "@solana/react";
 import { useEffect, useId, useRef, useState } from "react";
-import { useConnectedAddress, useSolBalance, useSolName } from "@/hooks/use-chain-data";
+import { useConnectedAddress, useSnsName, useSolBalance } from "@/hooks/use-chain-data";
 import { useEscrowClient } from "@/hooks/use-escrow-client";
 import { useHydratedWalletStatus, useWalletConnection } from "@/hooks/use-wallet";
 import { formatAmount } from "@/lib/amounts";
@@ -27,7 +27,7 @@ export const WalletMenu = () => {
   const wallets = useWallets(client);
   const connected = useWalletConnection();
   const connectedAddress = useConnectedAddress();
-  const solName = useSolName();
+  const snsName = useSnsName();
   const connect = useConnect(client);
   const disconnect = useDisconnect(client);
   const [isOpen, setIsOpen] = useState(false);
@@ -75,7 +75,7 @@ export const WalletMenu = () => {
         aria-controls={panelId}
         onClick={() => setIsOpen(!isOpen)}
       >
-        {connectedAddress ? (solName ?? shortAddress(connectedAddress)) : "Connect wallet"}
+        {connectedAddress ? (snsName ?? shortAddress(connectedAddress)) : "Connect wallet"}
       </button>
       {isOpen ? (
         <div className="wallet-menu__panel" id={panelId}>
@@ -83,7 +83,7 @@ export const WalletMenu = () => {
             <ConnectedAccount
               walletName={connected.wallet.name}
               address={connectedAddress}
-              solName={solName}
+              snsName={snsName}
               onDisconnect={() => {
                 disconnect.dispatch();
                 setIsOpen(false);
@@ -141,11 +141,11 @@ export const WalletMenu = () => {
 type ConnectedAccountProps = {
   walletName: string;
   address: Address;
-  solName: string | null;
+  snsName: string | null;
   onDisconnect: () => void;
 };
 
-const ConnectedAccount = ({ walletName, address, solName, onDisconnect }: ConnectedAccountProps) => {
+const ConnectedAccount = ({ walletName, address, snsName, onDisconnect }: ConnectedAccountProps) => {
   const client = useEscrowClient();
   const balance = useSolBalance();
   const airdrop = useAirdrop(client);
@@ -154,7 +154,7 @@ const ConnectedAccount = ({ walletName, address, solName, onDisconnect }: Connec
   return (
     <div className="wallet-account">
       <span className="wallet-account__label">Connected with {walletName}</span>
-      {solName ? <span className="wallet-account__name">{solName}</span> : null}
+      {snsName ? <span className="wallet-account__name">{snsName}</span> : null}
       <AddressLink address={address} full />
       <span className="wallet-account__balance">
         {balance.data === undefined ? "…" : `${formatAmount(balance.data, SOL_DECIMALS)} SOL`}

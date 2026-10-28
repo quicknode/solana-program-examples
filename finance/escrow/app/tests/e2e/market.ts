@@ -163,16 +163,16 @@ export const buildMarket = async (): Promise<Market> => {
     lamports: 5n * ONE_SOL,
   });
 
-  await giveSolName(accounts, bob.address, "bob");
+  await giveSnsName(accounts, bob.address, "bob");
 
   return { accounts, bob, bobPrivateKey, offers };
 };
 
-// Make `name`.sol `owner`'s primary SNS name, with the three accounts the SNS
+// Make `name`.sns `owner`'s primary SNS name, with the three accounts the SNS
 // SDK reads to find it: the owner's primary-domain record pointing at the
 // domain, the domain's registry naming its owner, and the reverse-lookup
 // account holding the name's text.
-const giveSolName = async (accounts: Map<Address, MarketAccount>, owner: Address, name: string) => {
+const giveSnsName = async (accounts: Map<Address, MarketAccount>, owner: Address, name: string) => {
   const { domainAddress } = await getSnsDomainAddress({ domain: name });
   const addressBytes = (value: Address) => [...getAddressEncoder().encode(value)];
   const registryHeader = (registryOwner: Address) => [
