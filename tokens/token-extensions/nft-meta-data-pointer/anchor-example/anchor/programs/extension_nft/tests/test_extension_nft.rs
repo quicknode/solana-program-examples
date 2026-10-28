@@ -23,7 +23,7 @@ use {
     // `system_program` moved to the crate root in v2, and `Pubkey` is
     // compat-only: `Address` is the same 32-byte type.
     anchor_lang::{system_program, Address as Pubkey, InstructionData, ToAccountMetas},
-    anchor_v2_testing::{Keypair, LiteSVM, Signer},
+    anchor_v2_testing::{litesvm::LiteSVM, Keypair, Signer},
     solana_instruction::Instruction,
     solana_kite::{create_wallet, get_pda_and_bump, send_transaction_from_instructions, Seed},
 };
@@ -167,6 +167,7 @@ fn test_init_player_mint_and_chop() {
         vec![init_player_ix(&program_id, &signer)],
         &[&payer],
         &signer,
+        None,
     )
     .expect("init_player should succeed");
 
@@ -186,6 +187,7 @@ fn test_init_player_mint_and_chop() {
         vec![mint_nft_ix(&program_id, &signer, &mint.pubkey())],
         &[&payer, &mint],
         &signer,
+        None,
     )
     .expect("mint_nft should succeed");
 
@@ -217,6 +219,7 @@ fn test_init_player_mint_and_chop() {
         vec![chop_tree_ix(&program_id, &signer, &mint.pubkey(), 1)],
         &[&payer],
         &signer,
+        None,
     )
     .expect("chop_tree should succeed");
 

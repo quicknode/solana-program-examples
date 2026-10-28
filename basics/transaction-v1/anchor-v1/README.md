@@ -2,8 +2,8 @@
 
 > [!NOTE]
 > This example is on Anchor 1.2.1, the current stable Anchor release. Every `anchor`
-> command on this page needs the v1 CLI: `avm install 1.2.1 && avm use 1.2.1`. There is
-> no Anchor v2 copy yet: Anchor v2's test harness runs on a LiteSVM that predates v1.
+> command on this page needs the v1 CLI: `avm install 1.2.1 && avm use 1.2.1`. The
+> Anchor v2 version of this example is in [`../anchor`](../anchor/).
 
 A Solana transaction v1 example: a program that stores a 3,000 byte document in a single [instruction](https://solana.com/docs/references/terminology#instruction), which only fits inside the v1 [transaction](https://solana.com/docs/references/terminology#transaction) format (4,096 bytes, up from the 1,232 bytes of legacy and v0 transactions). Nothing in the program is specific to v1: an Anchor program reads its accounts and instruction data the same way whichever format carried them, and no Anchor change is needed to be called through v1. The tests are where v1 shows up, because the client builds the transaction.
 

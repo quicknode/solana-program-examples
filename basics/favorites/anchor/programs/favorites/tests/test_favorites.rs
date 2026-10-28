@@ -3,7 +3,7 @@ use {
         solana_program::instruction::Instruction, system_program, Address, InstructionData,
         ToAccountMetas,
     },
-    anchor_v2_testing::{LiteSVM, Signer},
+    anchor_v2_testing::{litesvm::LiteSVM, Signer},
     solana_kite::{create_wallet, send_transaction_from_instructions},
 };
 
@@ -88,8 +88,14 @@ fn test_set_favorites() {
         .to_account_metas(None),
     );
 
-    send_transaction_from_instructions(&mut svm, vec![instruction], &[&payer], &payer.pubkey())
-        .unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        vec![instruction],
+        &[&payer],
+        &payer.pubkey(),
+        None,
+    )
+    .unwrap();
 
     let data = read_favorites(&svm, &pda);
     assert_eq!(data.number, 23);
@@ -122,8 +128,14 @@ fn test_update_favorites() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![instruction], &[&payer], &payer.pubkey())
-        .unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        vec![instruction],
+        &[&payer],
+        &payer.pubkey(),
+        None,
+    )
+    .unwrap();
 
     // Update favorites with new hobbies
     svm.expire_blockhash();
@@ -147,7 +159,7 @@ fn test_update_favorites() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![update_ix], &[&payer], &payer.pubkey())
+    send_transaction_from_instructions(&mut svm, vec![update_ix], &[&payer], &payer.pubkey(), None)
         .unwrap();
 
     let data = read_favorites(&svm, &pda);

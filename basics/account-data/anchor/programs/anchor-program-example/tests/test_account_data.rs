@@ -2,7 +2,7 @@ use {
     anchor_lang::{
         solana_program::instruction::Instruction, system_program, InstructionData, ToAccountMetas,
     },
-    anchor_v2_testing::{Keypair, LiteSVM, Signer},
+    anchor_v2_testing::{Keypair, Signer},
     borsh::BorshDeserialize,
     solana_kite::{create_wallet, send_transaction_from_instructions},
 };
@@ -49,6 +49,7 @@ fn test_create_address_info() {
         vec![instruction],
         &[&payer, &address_info_keypair],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
 

@@ -3,7 +3,7 @@ use {
         solana_program::instruction::Instruction, system_program, Address, InstructionData,
         ToAccountMetas,
     },
-    anchor_v2_testing::{Keypair, LiteSVM, Signer},
+    anchor_v2_testing::{litesvm::LiteSVM, Keypair, Signer},
     solana_kite::{
         create_wallet, send_transaction_from_instructions,
         token_extensions::{
@@ -44,6 +44,7 @@ fn test_whitelist_transfer_hook() {
         &[MintExtension::TransferHook {
             program_id: program_id,
         }],
+        None,
     )
     .unwrap();
     svm.expire_blockhash();
@@ -53,14 +54,16 @@ fn test_whitelist_transfer_hook() {
     // Step 2: Create token accounts and mint tokens
     let amount: u64 = 100 * 10u64.pow(decimals as u32);
     let source_ata =
-        create_token_extensions_account(&mut svm, &payer.pubkey(), &mint, &payer).unwrap();
+        create_token_extensions_account(&mut svm, &payer.pubkey(), &mint, &payer, None).unwrap();
     svm.expire_blockhash();
 
     let dest_ata =
-        create_token_extensions_account(&mut svm, &recipient.pubkey(), &mint, &payer).unwrap();
+        create_token_extensions_account(&mut svm, &recipient.pubkey(), &mint, &payer, None)
+            .unwrap();
     svm.expire_blockhash();
 
-    mint_tokens_to_token_extensions_account(&mut svm, &mint, &source_ata, amount, &payer).unwrap();
+    mint_tokens_to_token_extensions_account(&mut svm, &mint, &source_ata, amount, &payer, None)
+        .unwrap();
     svm.expire_blockhash();
 
     // Step 3: Initialize ExtraAccountMetaList (also creates whitelist)
@@ -76,8 +79,14 @@ fn test_whitelist_transfer_hook() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![init_extra_ix], &[&payer], &payer.pubkey())
-        .unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        vec![init_extra_ix],
+        &[&payer],
+        &payer.pubkey(),
+        None,
+    )
+    .unwrap();
     svm.expire_blockhash();
 
     // Step 4: Add destination token account to whitelist
@@ -96,6 +105,7 @@ fn test_whitelist_transfer_hook() {
         vec![add_to_whitelist_ix],
         &[&payer],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
     svm.expire_blockhash();
@@ -120,6 +130,7 @@ fn test_whitelist_transfer_hook() {
         transfer_amount,
         decimals,
         &extra_accounts,
+        None,
     )
     .unwrap();
 }

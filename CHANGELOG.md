@@ -4,6 +4,58 @@ All notable changes to this repository are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-10-28] - Anchor v2 examples on Anchor 2.0.0-rc.2, sending v1 transactions
+
+Anchor 2.0.0-rc.2's test harness, `anchor-v2-testing`, runs on LiteSVM 0.18, which
+executes v1 transactions, and `solana-kite` 0.7.0 is built on the same LiteSVM line.
+Together they let the Anchor v2 tests send v1 transactions, as the Anchor v1 tests
+have since 2026-10-08. rc.2 needs `solana-instruction` 3.5, which LiteSVM 0.13.1's
+exact `=3.2.0` pin rules out, so every crate in the root workspace moves to
+LiteSVM 0.18 together.
+
+### Changed
+
+- All Anchor v2 examples move `anchor-lang` and `anchor-spl` from `2.0.0-rc.1` to
+  `2.0.0-rc.2`, `wincode` from 0.5 to 0.6, and `anchor-v2-testing` from revision
+  `3e38a121` to `a2066021`, the commit the `v2.0.0-rc.2` tag points at.
+- The Anchor v2 tests move from `solana-kite` 0.4.0 to 0.7.0, so they send v1
+  transactions. Kite's senders and helpers take a new last argument,
+  `compute_unit_limit: Option<u32>`, and every call passes `None`: kite simulates
+  the transaction and sends it with the compute units the simulation used.
+- `anchor-v2-testing` no longer re-exports `LiteSVM` at its root, so the tests
+  import `anchor_v2_testing::litesvm::LiteSVM`.
+- The three Anchor v2 tests that build a transaction themselves (`hello-solana`,
+  `options` and `order-book`, to read logs or measure compute units) build it with
+  kite's `build_transaction_from_instructions` and `get_transaction_config`, with
+  `MAX_COMPUTE_UNIT_LIMIT` from `solana-compute-budget`, as their Anchor v1 copies do.
+- The native, Pinocchio and ASM tests in the root workspace, and the standalone
+  `cross-program-invocation/native` and `escrow/native` workspaces, move from
+  LiteSVM 0.13.1 to 0.18.1, with `solana-transaction`, `solana-message`,
+  `solana-account` and `solana-pubkey` on the 4.x lines LiteSVM 0.18 uses. Their
+  tests still send legacy transactions.
+- The Anchor v2 workflow installs and caches `anchor-cli 2.0.0-rc.2`. Every Anchor
+  v2 README, `CONTRIBUTING.md` and `docs/anchor-v2-migration.md` name rc.2.
+
+### Added
+
+- `basics/transaction-v1/anchor`: the Anchor v2 copy of the transaction v1 example.
+
+### Removed
+
+- The `solana-address = ">=2.6, <2.7"` pin from the Anchor v2 manifests. rc.1 was
+  built against wincode 0.5 and solana-address 2.7 against 0.6; rc.2 is on 0.6 too.
+  The three compression examples keep a direct `solana-address` dependency for its
+  `borsh` feature.
+- The Anchor v2 workflow's workaround for anchor#4947, which skipped IDL generation
+  for nine projects whose enums rc.1 wrote into the IDL under the wrong key. rc.2
+  carries the fix.
+
+### Unchanged
+
+- `tokens/token-extensions/transfer-hook/block-list/pinocchio` and
+  `tools/shank-and-codama/native` stay on LiteSVM 0.13.1. Each is its own
+  workspace, and each pins its test stack to the generation of its generated client.
+
 ## [2026-10-15] - Anchor v1 examples on Anchor 1.2.1
 
 Anchor 1.2.1 is a patch release of the v1 line. Its one change is an opt-in

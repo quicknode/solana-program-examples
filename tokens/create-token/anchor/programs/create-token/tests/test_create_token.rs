@@ -3,7 +3,7 @@ use {
         solana_program::instruction::Instruction, system_program, Address, InstructionData,
         ToAccountMetas,
     },
-    anchor_v2_testing::{Keypair, LiteSVM, Signer},
+    anchor_v2_testing::{litesvm::LiteSVM, Keypair, Signer},
     solana_kite::{create_wallet, send_transaction_from_instructions},
 };
 
@@ -81,6 +81,7 @@ fn test_create_spl_token() {
         vec![instruction],
         &[&payer, &mint_keypair],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -135,6 +136,7 @@ fn test_create_nft() {
         vec![instruction],
         &[&payer, &mint_keypair],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
 

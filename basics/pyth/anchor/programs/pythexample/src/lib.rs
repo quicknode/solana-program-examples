@@ -59,7 +59,7 @@ pub struct ReadPriceAccountConstraints {
 // Pyth `PriceUpdateV2` account, vendored from `pyth-solana-receiver-sdk`.
 //
 // The SDK's current release (2.0.0, checked August 2026) builds against
-// `anchor-lang` 1.0.2, and this repository is on 2.0.0-rc.1, whose account
+// `anchor-lang` 1.0.2, and this repository is on 2.0.0-rc.2, whose account
 // wrappers are a different set of types. Importing the SDK's `PriceUpdateV2`
 // would pull a second `anchor-lang` into the graph.
 //

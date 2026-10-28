@@ -3,7 +3,7 @@ use {
         solana_program::{instruction::Instruction, rent::Rent},
         system_program, InstructionData, ToAccountMetas,
     },
-    anchor_v2_testing::{Keypair, LiteSVM, Signer},
+    anchor_v2_testing::{Keypair, Signer},
     solana_kite::{create_wallet, send_transaction_from_instructions},
 };
 
@@ -33,6 +33,7 @@ fn test_create_the_account() {
         vec![instruction],
         &[&payer, &new_account],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
 

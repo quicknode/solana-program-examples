@@ -2,7 +2,7 @@ use {
     anchor_lang::{
         solana_program::instruction::Instruction, Address, InstructionData, ToAccountMetas,
     },
-    anchor_v2_testing::{Keypair, LiteSVM, Signer},
+    anchor_v2_testing::{litesvm::LiteSVM, Keypair, Signer},
     pythexample::MAXIMUM_PRICE_AGE_SECONDS,
     // LiteSVM's get_sysvar wants the host-side Clock, not pinocchio's.
     solana_clock::Clock,
@@ -123,8 +123,14 @@ fn test_read_price() {
     set_clock_to_price_age(&mut svm, MAXIMUM_PRICE_AGE_SECONDS);
 
     let instruction = read_price_instruction(price_update_key.pubkey());
-    send_transaction_from_instructions(&mut svm, vec![instruction], &[&payer], &payer.pubkey())
-        .unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        vec![instruction],
+        &[&payer],
+        &payer.pubkey(),
+        None,
+    )
+    .unwrap();
 }
 
 #[test]
@@ -135,8 +141,13 @@ fn test_read_price_rejects_stale_price() {
     set_clock_to_price_age(&mut svm, MAXIMUM_PRICE_AGE_SECONDS + 1);
 
     let instruction = read_price_instruction(price_update_key.pubkey());
-    let result =
-        send_transaction_from_instructions(&mut svm, vec![instruction], &[&payer], &payer.pubkey());
+    let result = send_transaction_from_instructions(
+        &mut svm,
+        vec![instruction],
+        &[&payer],
+        &payer.pubkey(),
+        None,
+    );
     assert!(result.is_err(), "a stale price update must be rejected");
 }
 
@@ -151,8 +162,13 @@ fn test_read_price_rejects_wrong_owner() {
     set_clock_to_price_age(&mut svm, 0);
 
     let instruction = read_price_instruction(price_update_key.pubkey());
-    let result =
-        send_transaction_from_instructions(&mut svm, vec![instruction], &[&payer], &payer.pubkey());
+    let result = send_transaction_from_instructions(
+        &mut svm,
+        vec![instruction],
+        &[&payer],
+        &payer.pubkey(),
+        None,
+    );
     assert!(
         result.is_err(),
         "a price account not owned by the Pyth Receiver must be rejected"

@@ -9,7 +9,7 @@ _The most complete and actvely maintained set of Solana programs ('smart contrac
 Each example is available in one or more of the following frameworks:
 
 - [⚓ Anchor v1](https://www.anchor-lang.com/) - the most popular framework for Solana development, in its current major version. Lives in `anchor-v1/`. Install with `avm install 1.2.1 && avm use 1.2.1`, build with `anchor build`, test with `anchor test`.
-- [⚓ Anchor v2](https://www.anchor-lang.com/) - the next major version of Anchor, a ground-up rewrite that is not yet released. Lives in `anchor/`, alongside the v1 copy of the same example, and builds on the release candidate: install with `cargo install anchor-cli --version 2.0.0-rc.1 --locked`, then the same `anchor build` / `anchor test`.
+- [⚓ Anchor v2](https://www.anchor-lang.com/) - the next major version of Anchor, a ground-up rewrite that is not yet released. Lives in `anchor/`, alongside the v1 copy of the same example, and builds on the release candidate: install with `cargo install anchor-cli --version 2.0.0-rc.2 --locked`, then the same `anchor build` / `anchor test`.
 - [💫 Quasar](https://quasar-lang.com/docs) - a newer, more performant framework with Anchor-compatible ergonomics. Build with `quasar build`, test with `quasar test`.
 - [🤥 Pinocchio](https://github.com/anza-xyz/pinocchio) - a zero-copy, zero-allocation library for Solana programs. Build with `cargo build-sbf --manifest-path=./program/Cargo.toml`, test with `cargo test --manifest-path=./program/Cargo.toml`.
 - [🦀 Native Rust](https://docs.anza.xyz/) - vanilla Rust using Solana's native crates. Build with `cargo build-sbf --manifest-path=./program/Cargo.toml`, test with `cargo test --manifest-path=./program/Cargo.toml`.
@@ -195,7 +195,7 @@ Send SOL between two accounts.
 
 Store a 3,000 byte document in one instruction using Solana's v1 transaction format, live on mainnet since September 2026: 4,096 bytes instead of 1,232, and a transaction config in the message in place of ComputeBudget instructions. The program needs no change for v1; the LiteSVM tests are what build the v1 transactions, and they show the config fields one by one.
 
-[⚓ Anchor v1](./basics/transaction-v1/anchor-v1)
+[⚓ Anchor v1](./basics/transaction-v1/anchor-v1) [⚓ Anchor v2](./basics/transaction-v1/anchor)
 
 ### Pyth Price Feeds
 
@@ -415,7 +415,7 @@ Start with the [escrow example](./finance/escrow/anchor/), the best first financ
 
 ### Do these examples work with Solana transaction v1?
 
-Yes. The v1 format (4,096 byte transactions, live on mainnet since epoch 1035 on 15 September 2026) changes how a client builds a transaction, not what a program sees, so every program here can be called through v1 as is. Every Anchor v1 example's tests send their transactions as v1, through [solana-kite](https://crates.io/crates/solana-kite) 0.6, and the [transaction v1 example](./basics/transaction-v1/anchor-v1/) shows the config fields that replace ComputeBudget instructions. The Anchor v2 and Quasar tests still send legacy transactions, because their test harnesses run on virtual machines that predate v1.
+Yes. The v1 format (4,096 byte transactions, live on mainnet since epoch 1035 on 15 September 2026) changes how a client builds a transaction, not what a program sees, so every program here can be called through v1 as is. Every Anchor v1 and Anchor v2 example's tests send their transactions as v1, through [solana-kite](https://crates.io/crates/solana-kite) (0.6 for Anchor v1, 0.7 for Anchor v2), and the transaction v1 example ([Anchor v1](./basics/transaction-v1/anchor-v1/), [Anchor v2](./basics/transaction-v1/anchor/)) shows the config fields that replace ComputeBudget instructions. The Quasar tests send no transactions at all: their harness runs each instruction directly, so the transaction format never comes up.
 
 ### How do I test a Solana program without running a validator?
 

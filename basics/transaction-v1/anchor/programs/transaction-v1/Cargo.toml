@@ -1,0 +1,70 @@
+[package]
+name = "transaction-v1-anchor-program"
+version = "0.1.0"
+description = "Created with Anchor"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "transaction_v1_anchor_program"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+# Forwards to the harness so `anchor test --profile` can turn tracing on.
+profile = ["anchor-v2-testing/profile"]
+idl-build = ["anchor-lang/idl-build"]
+anchor-debug = []
+custom-heap = []
+custom-panic = []
+
+[dependencies]
+anchor-lang = "2.0.0-rc.2"
+# The `#[program]` macro expands to `wincode` paths for instruction-data
+# (de)serialization, so the crate has to be a direct dependency. The tests
+# also use it as the SDK's serializer: `wincode::serialize` on a
+# `VersionedTransaction` gives the exact bytes that would go over the wire,
+# which is how they measure transaction size.
+wincode = { version = "0.6", features = ["derive"] }
+
+[dev-dependencies]
+# Anchor v2's own LiteSVM harness. `svm()` is `LiteSVM::new()` until the
+# `profile` feature is on, when it also records the SBF register traces that
+# `anchor test --profile`, `anchor debugger` and `anchor coverage` read. Tests
+# that call `LiteSVM::new()` directly still pass but produce no traces, so
+# those three tools see nothing.
+#
+# It is published only from git: crates.io has no `anchor-v2-testing`. Pinned
+# to a revision rather than tracking `anchor-next`, so a CI run cannot change
+# behaviour because upstream moved between builds.
+#
+# Bump the rev deliberately, never automatically: `anchor-next` is where v2
+# development happens, so a later revision can carry breakage as easily as
+# fixes. When `anchor-v2-testing` reaches crates.io, drop the git source for
+# an ordinary version.
+#
+# This revision runs on LiteSVM 0.18, which executes v1 transactions: it reads
+# the compute unit limit, priority fee, loaded-accounts data size limit and
+# heap size from the message's transaction config rather than from
+# ComputeBudget instructions.
+anchor-v2-testing = { git = "https://github.com/otter-sec/anchor.git", rev = "a20660219882af5f199d56ea3f9326f387f89d8b" }
+borsh = "1.6.1"
+# The other Anchor v2 examples send v1 transactions through solana-kite 0.7.
+# This example builds its own, to show each config field.
+#
+# `solana_message::v1` (the v1 message, `TransactionConfig` and the 4,096
+# byte `MAX_TRANSACTION_SIZE`). The harness re-exports `VersionedMessage` but
+# not the `v1` module.
+solana-message = "4.5"
+solana-native-token = "3.0"
+# `PACKET_DATA_SIZE`, the 1,232 byte limit legacy and v0 transactions keep.
+solana-packet = "4.2"
+# The legacy `Transaction`, which the harness does not re-export.
+solana-transaction = "4.2"
+solana-transaction-error = "3.4"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }
