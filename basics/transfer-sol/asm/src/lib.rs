@@ -45,7 +45,7 @@ mod tests {
         );
 
         let res = svm.send_transaction(tx);
-        assert!(res.is_ok());
+        assert!(res.is_ok(), "{res:?}");
 
         let payer_balance_after = svm.get_balance(&payer.pubkey()).unwrap();
         let recipient_balance_after = svm.get_balance(&test_recipient1.pubkey()).unwrap_or(0);

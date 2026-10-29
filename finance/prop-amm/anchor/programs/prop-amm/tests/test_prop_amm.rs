@@ -966,9 +966,11 @@ fn test_swap_rejects_slippage() {
 fn test_swap_rejects_stale_price() {
     let mut market = Market::default_market();
     let (alice, _, _) = market.funded_trader(0, FIVE_NVDAX_AT_THE_ASK);
-    // The feed was last updated near slot 0; 200 slots later it is stale
-    // (the bound is 150 slots).
-    market.warp(200);
+    // The feed was last updated during setup; 200 slots later it is stale
+    // (the bound is 150 slots). The warp is relative because LiteSVM starts at
+    // a recent mainnet slot rather than slot 0.
+    let now = market.current_slot();
+    market.warp(now + 200);
     assert_fails_with(
         market.swap(&alice, Direction::BuyBase, FIVE_NVDAX_AT_THE_ASK, 0),
         PropAmmError::StalePrice,

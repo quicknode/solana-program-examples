@@ -69,7 +69,7 @@ pub struct ReadPriceAccountConstraints {
 // release targeting `anchor-lang` 2.x ships.
 // ---------------------------------------------------------------------------
 
-#[derive(Clone, Debug, PartialEq, Eq, wincode::SchemaRead, wincode::SchemaWrite)]
+#[derive(Clone, Debug, PartialEq, Eq, IdlType, wincode::SchemaRead, wincode::SchemaWrite)]
 pub enum VerificationLevel {
     /// Partially verified: only `num_signatures` of the Pyth guardian set's
     /// signatures were checked, fewer than its quorum of three of five.
@@ -78,7 +78,7 @@ pub enum VerificationLevel {
     Full,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, wincode::SchemaRead, wincode::SchemaWrite)]
+#[derive(Clone, Debug, PartialEq, Eq, IdlType, wincode::SchemaRead, wincode::SchemaWrite)]
 pub struct PriceFeedMessage {
     pub feed_id: [u8; 32],
     pub price: i64,
@@ -90,7 +90,7 @@ pub struct PriceFeedMessage {
     pub ema_conf: u64,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, wincode::SchemaRead, wincode::SchemaWrite)]
+#[derive(Clone, Debug, PartialEq, Eq, IdlType, wincode::SchemaRead, wincode::SchemaWrite)]
 pub struct PriceUpdateV2 {
     pub write_authority: Address,
     pub verification_level: VerificationLevel,

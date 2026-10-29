@@ -1102,8 +1102,11 @@ fn test_stale_price_rejected() {
     let collateral = 1_000 * ONE_USDC;
     let (trader, trader_collateral) = market.funded_trader(collateral);
 
-    // Move far past the staleness window without refreshing the feed.
-    market.warp(10_000);
+    // Move far past the staleness window without refreshing the feed. The warp
+    // is relative because LiteSVM starts at a recent mainnet slot rather than
+    // slot 0.
+    let now = market.current_slot();
+    market.warp(now + 10_000);
     assert_fails_with(
         market.open_position(
             &trader,

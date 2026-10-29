@@ -35,6 +35,19 @@ LiteSVM 0.18 together.
   tests still send legacy transactions.
 - The Anchor v2 workflow installs and caches `anchor-cli 2.0.0-rc.2`. Every Anchor
   v2 README, `CONTRIBUTING.md` and `docs/anchor-v2-migration.md` name rc.2.
+- Fixes for what LiteSVM 0.18 and rc.2 changed under the examples:
+  - `basics/transfer-sol/asm` finds its instruction data from the system program
+    account's data length instead of a fixed offset. Agave 4.3 renamed that builtin
+    from `system_program` to `solana_system_program`, and the longer name moved the
+    instruction data 8 bytes. `checking-accounts/asm` already worked this way.
+  - LiteSVM 0.18 starts at a recent mainnet slot instead of slot 0, so the
+    `prop-amm` and `perpetual-futures` stale-price tests warp relative to the
+    current slot.
+  - `create-account/anchor`'s test reads the rent-exempt minimum from LiteSVM, which
+    the program reads too, rather than the SDK's `Rent::default()`.
+  - With anchor#4947 fixed, `pyth` and `order-book` build an IDL again. rc.2 needs
+    `IdlType` on `pyth`'s vendored Pyth types and `IdlAccountType` in place of the
+    removed `IdlBuild` on `order-book`'s slab types.
 - `finance/managed-fund/anchor/app/src/idl/managed_fund.json` is regenerated with
   `anchor idl build` from rc.2. rc.2 no longer writes `pda` for accounts whose
   constraint names an explicit bump or an associated token, nor `address` for
