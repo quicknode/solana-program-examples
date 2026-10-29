@@ -35,10 +35,28 @@ LiteSVM 0.18 together.
   tests still send legacy transactions.
 - The Anchor v2 workflow installs and caches `anchor-cli 2.0.0-rc.2`. Every Anchor
   v2 README, `CONTRIBUTING.md` and `docs/anchor-v2-migration.md` name rc.2.
+- `finance/managed-fund/anchor/app/src/idl/managed_fund.json` is regenerated with
+  `anchor idl build` from rc.2. rc.2 no longer writes `pda` for accounts whose
+  constraint names an explicit bump or an associated token, nor `address` for
+  `swap_router_program`; the app passes every account explicitly with
+  `accountsStrict`, so it uses neither, and `pnpm verify` and `pnpm typecheck`
+  pass. `basics/cross-program-invocation/anchor/idls/lever.json` regenerates
+  unchanged.
+- The native token examples and the root workspace ask for `mpl-token-metadata`
+  `5.1.2-alpha.2` rather than exactly `=5.1.2-alpha.2`: a range that starts at the
+  pre-release still matches anchor-spl's exact pin. `finance/lending/quasar` asks
+  for `quasar-svm` `0.1.0` rather than `=0.1.0`, since quasar-test pins it exactly.
+  The resolved versions do not change.
 
 ### Added
 
 - `basics/transaction-v1/anchor`: the Anchor v2 copy of the transaction v1 example.
+- `solana-program-runtime = "~4.3"` and `solana-fee = "~4.3"` dev-dependencies in
+  every Anchor v2 crate and in `cross-program-invocation/native`. LiteSVM 0.18.1
+  asks for the Agave crates with `^4.3` ranges, so a fresh resolve picks Agave
+  4.4.0, released 2026-10-28, which LiteSVM 0.18.1 does not compile against. These
+  workspaces commit no lockfile, so every build resolves fresh. The two constraints
+  hold the Agave crates at 4.3 until a LiteSVM release builds against 4.4.
 
 ### Removed
 

@@ -68,7 +68,7 @@ client mirrors it call-for-call.
 ## Where the IDL comes from
 
 `src/idl/managed_fund.json` is generated from the program source with
-`anchor idl build` (Anchor 2.0.0-rc.1, the version CI installs) and committed. If you change
+`anchor idl build` (Anchor 2.0.0-rc.2, the version CI installs) and committed. If you change
 the program, regenerate it:
 
 ```sh

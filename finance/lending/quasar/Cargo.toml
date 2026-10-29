@@ -53,7 +53,7 @@ quasar-test = { git = "https://github.com/blueshift-gg/quasar", rev = "be60fca" 
 # scenarios drive the low-level QuasarSvm harness directly through
 # `svm.sysvars`. Same crates.io version quasar-test itself depends on, so the
 # two harnesses share types.
-quasar-svm = "=0.1.0"
+quasar-svm = "0.1.0"
 # For decoding/constructing raw SPL accounts in the low-level clock-warp
 # scenarios; matches quasar-svm 0.1.0's own spl-token major.
 spl-token = { version = "9", default-features = false, features = ["no-entrypoint"] }

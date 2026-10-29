@@ -45,6 +45,12 @@ anchor-spl = { version = "2.0.0-rc.2", features = ["metadata"] }
 # fixes. When `anchor-v2-testing` reaches crates.io, drop the git source for
 # an ordinary version.
 anchor-v2-testing = { git = "https://github.com/otter-sec/anchor.git", rev = "a20660219882af5f199d56ea3f9326f387f89d8b" }
+# LiteSVM 0.18.1 asks for the Agave crates with `^4.3` ranges but does not
+# compile against Agave 4.4.0. These two hold the Agave crates at 4.3; the rest
+# follow, because Agave pins its own crates to one another exactly. Remove both
+# once a LiteSVM release builds against Agave 4.4.
+solana-program-runtime = "~4.3"
+solana-fee = "~4.3"
 solana-kite = "0.7.0"
 borsh = "1.6.1"
 

@@ -10,7 +10,9 @@ dependencies = [
  "anchor-spl",
  "anchor-v2-testing",
  "borsh 1.7.0",
+ "solana-fee",
  "solana-kite",
+ "solana-program-runtime",
  "spl-discriminator 0.5.2",
  "spl-tlv-account-resolution 0.11.1",
  "spl-transfer-hook-interface 2.1.0",
@@ -24,7 +26,9 @@ dependencies = [
  "anchor-lang",
  "anchor-v2-testing",
  "borsh 1.7.0",
+ "solana-fee",
  "solana-kite",
+ "solana-program-runtime",
  "wincode",
 ]
 
@@ -241,7 +245,9 @@ dependencies = [
  "anchor-lang",
  "anchor-v2-testing",
  "borsh 1.7.0",
+ "solana-fee",
  "solana-kite",
+ "solana-program-runtime",
  "wincode",
 ]
 
@@ -610,7 +616,9 @@ dependencies = [
  "anchor-v2-testing",
  "borsh 1.7.0",
  "solana-clock 3.2.1",
+ "solana-fee",
  "solana-kite",
+ "solana-program-runtime",
  "spl-associated-token-account",
  "spl-token",
  "wincode",
@@ -892,7 +900,9 @@ version = "0.1.0"
 dependencies = [
  "anchor-lang",
  "anchor-v2-testing",
+ "solana-fee",
  "solana-kite",
+ "solana-program-runtime",
  "wincode",
 ]
 
@@ -950,7 +960,9 @@ dependencies = [
  "anchor-lang",
  "anchor-v2-testing",
  "borsh 1.7.0",
+ "solana-fee",
  "solana-kite",
+ "solana-program-runtime",
  "wincode",
 ]
 
@@ -1035,7 +1047,9 @@ version = "0.1.0"
 dependencies = [
  "anchor-lang",
  "anchor-v2-testing",
+ "solana-fee",
  "solana-kite",
+ "solana-program-runtime",
  "wincode",
 ]
 
@@ -1054,11 +1068,13 @@ dependencies = [
  "borsh 1.7.0",
  "solana-account 4.7.0",
  "solana-address 2.7.0",
+ "solana-fee",
  "solana-instruction 3.5.1",
  "solana-keccak-hasher 3.1.0",
  "solana-kite",
  "solana-message 4.6.0",
  "solana-native-token 3.0.0",
+ "solana-program-runtime",
  "solana-pubkey 4.3.0",
  "solana-transaction",
  "wincode",
@@ -1073,11 +1089,13 @@ dependencies = [
  "borsh 1.7.0",
  "solana-account 4.7.0",
  "solana-address 2.7.0",
+ "solana-fee",
  "solana-instruction 3.5.1",
  "solana-keccak-hasher 3.1.0",
  "solana-kite",
  "solana-message 4.6.0",
  "solana-native-token 3.0.0",
+ "solana-program-runtime",
  "solana-pubkey 4.3.0",
  "solana-transaction",
  "wincode",
@@ -1175,7 +1193,9 @@ dependencies = [
  "anchor-lang",
  "anchor-v2-testing",
  "borsh 1.7.0",
+ "solana-fee",
  "solana-kite",
+ "solana-program-runtime",
  "wincode",
 ]
 
@@ -1187,7 +1207,9 @@ dependencies = [
  "anchor-spl",
  "anchor-v2-testing",
  "borsh 1.7.0",
+ "solana-fee",
  "solana-kite",
+ "solana-program-runtime",
  "wincode",
 ]
 
@@ -1265,7 +1287,9 @@ version = "0.1.0"
 dependencies = [
  "anchor-lang",
  "anchor-v2-testing",
+ "solana-fee",
  "solana-kite",
+ "solana-program-runtime",
  "wincode",
 ]
 
@@ -1277,7 +1301,9 @@ dependencies = [
  "anchor-spl",
  "anchor-v2-testing",
  "borsh 1.7.0",
+ "solana-fee",
  "solana-kite",
+ "solana-program-runtime",
  "wincode",
 ]
 
@@ -1435,11 +1461,13 @@ dependencies = [
  "sha3",
  "solana-account 4.7.0",
  "solana-address 2.7.0",
+ "solana-fee",
  "solana-instruction 3.5.1",
  "solana-keccak-hasher 3.1.0",
  "solana-kite",
  "solana-message 4.6.0",
  "solana-native-token 3.0.0",
+ "solana-program-runtime",
  "solana-pubkey 4.3.0",
  "solana-transaction",
  "wincode",
@@ -1487,7 +1515,9 @@ dependencies = [
  "anchor-spl",
  "anchor-v2-testing",
  "borsh 1.7.0",
+ "solana-fee",
  "solana-kite",
+ "solana-program-runtime",
  "wincode",
 ]
 
@@ -1698,7 +1728,9 @@ dependencies = [
  "anchor-spl",
  "anchor-v2-testing",
  "borsh 1.7.0",
+ "solana-fee",
  "solana-kite",
+ "solana-program-runtime",
  "wincode",
 ]
 
@@ -1710,8 +1742,10 @@ dependencies = [
  "anchor-spl",
  "anchor-v2-testing",
  "borsh 1.7.0",
+ "solana-fee",
  "solana-instruction 3.5.1",
  "solana-kite",
+ "solana-program-runtime",
  "solana-pubkey 4.3.0",
  "wincode",
 ]
@@ -1726,7 +1760,9 @@ dependencies = [
  "borsh 1.7.0",
  "libsecp256k1 0.7.2",
  "sha3",
+ "solana-fee",
  "solana-kite",
+ "solana-program-runtime",
  "solana-secp256k1-recover 2.2.1",
  "wincode",
 ]
@@ -1737,7 +1773,9 @@ version = "0.1.0"
 dependencies = [
  "anchor-lang",
  "anchor-v2-testing",
+ "solana-fee",
  "solana-kite",
+ "solana-program-runtime",
  "wincode",
 ]
 
@@ -1882,7 +1920,9 @@ dependencies = [
  "anchor-v2-testing",
  "borsh 1.7.0",
  "solana-clock 3.2.1",
+ "solana-fee",
  "solana-kite",
+ "solana-program-runtime",
  "spl-associated-token-account",
  "spl-token",
  "wincode",
@@ -2004,7 +2044,9 @@ dependencies = [
  "anchor-spl",
  "anchor-v2-testing",
  "borsh 1.7.0",
+ "solana-fee",
  "solana-kite",
+ "solana-program-runtime",
  "wincode",
 ]
 
@@ -2038,7 +2080,9 @@ version = "0.1.0"
 dependencies = [
  "anchor-lang",
  "anchor-v2-testing",
+ "solana-fee",
  "solana-kite",
+ "solana-program-runtime",
  "wincode",
 ]
 
@@ -2093,7 +2137,9 @@ dependencies = [
  "anchor-lang",
  "anchor-v2-testing",
  "solana-compute-budget",
+ "solana-fee",
  "solana-kite",
+ "solana-program-runtime",
  "wincode",
 ]
 
@@ -2222,7 +2268,9 @@ dependencies = [
  "anchor-spl",
  "anchor-v2-testing",
  "borsh 1.7.0",
+ "solana-fee",
  "solana-kite",
+ "solana-program-runtime",
  "wincode",
 ]
 
@@ -2253,7 +2301,9 @@ dependencies = [
  "anchor-spl",
  "anchor-v2-testing",
  "borsh 1.7.0",
+ "solana-fee",
  "solana-kite",
+ "solana-program-runtime",
  "wincode",
 ]
 
@@ -2368,7 +2418,9 @@ dependencies = [
  "borsh 1.7.0",
  "pinocchio 0.11.2",
  "solana-clock 3.2.1",
+ "solana-fee",
  "solana-kite",
+ "solana-program-runtime",
  "solana-pubkey 4.3.0",
  "solana-sysvar 3.1.1",
  "wincode",
@@ -2380,7 +2432,9 @@ version = "0.1.0"
 dependencies = [
  "anchor-lang",
  "anchor-v2-testing",
+ "solana-fee",
  "solana-kite",
+ "solana-program-runtime",
  "wincode",
 ]
 
@@ -2609,7 +2663,9 @@ dependencies = [
  "pinocchio 0.11.2",
  "solana-account 4.7.0",
  "solana-clock 3.2.1",
+ "solana-fee",
  "solana-kite",
+ "solana-program-runtime",
  "solana-sysvar 3.1.1",
  "wincode",
 ]
@@ -2628,7 +2684,9 @@ dependencies = [
  "anchor-spl",
  "anchor-v2-testing",
  "borsh 1.7.0",
+ "solana-fee",
  "solana-kite",
+ "solana-program-runtime",
  "wincode",
 ]
 
@@ -2661,7 +2719,9 @@ dependencies = [
  "anchor-spl",
  "anchor-v2-testing",
  "borsh 1.7.0",
+ "solana-fee",
  "solana-kite",
+ "solana-program-runtime",
  "spl-token-metadata-interface",
  "spl-type-length-value 0.9.1",
  "wincode",
@@ -2675,7 +2735,9 @@ dependencies = [
  "anchor-spl",
  "anchor-v2-testing",
  "borsh 1.7.0",
+ "solana-fee",
  "solana-kite",
+ "solana-program-runtime",
  "wincode",
 ]
 
@@ -2687,7 +2749,9 @@ dependencies = [
  "anchor-spl",
  "anchor-v2-testing",
  "borsh 1.7.0",
+ "solana-fee",
  "solana-kite",
+ "solana-program-runtime",
  "wincode",
 ]
 
@@ -2744,7 +2808,9 @@ dependencies = [
  "anchor-spl",
  "anchor-v2-testing",
  "borsh 1.7.0",
+ "solana-fee",
  "solana-kite",
+ "solana-program-runtime",
  "wincode",
 ]
 
@@ -2785,7 +2851,9 @@ dependencies = [
  "anchor-spl",
  "anchor-v2-testing",
  "borsh 1.7.0",
+ "solana-fee",
  "solana-kite",
+ "solana-program-runtime",
  "wincode",
 ]
 
@@ -2894,7 +2962,9 @@ dependencies = [
  "litesvm",
  "solana-clock 3.2.1",
  "solana-compute-budget",
+ "solana-fee",
  "solana-kite",
+ "solana-program-runtime",
  "spl-associated-token-account",
  "spl-token",
  "wincode",
@@ -2909,7 +2979,9 @@ dependencies = [
  "anchor-v2-testing",
  "bytemuck",
  "solana-compute-budget",
+ "solana-fee",
  "solana-kite",
+ "solana-program-runtime",
  "static_assertions",
  "wincode",
 ]
@@ -2975,8 +3047,10 @@ dependencies = [
  "anchor-spl",
  "anchor-v2-testing",
  "borsh 1.7.0",
+ "solana-fee",
  "solana-kite",
  "solana-program-pack 3.1.0",
+ "solana-program-runtime",
  "wincode",
 ]
 
@@ -3006,7 +3080,9 @@ version = "0.1.0"
 dependencies = [
  "anchor-lang",
  "anchor-v2-testing",
+ "solana-fee",
  "solana-kite",
+ "solana-program-runtime",
  "wincode",
 ]
 
@@ -3057,7 +3133,9 @@ dependencies = [
  "anchor-spl",
  "anchor-v2-testing",
  "borsh 1.7.0",
+ "solana-fee",
  "solana-kite",
+ "solana-program-runtime",
  "wincode",
 ]
 
@@ -3072,7 +3150,9 @@ dependencies = [
  "mock_price_feed",
  "pinocchio 0.11.2",
  "solana-clock 3.2.1",
+ "solana-fee",
  "solana-kite",
+ "solana-program-runtime",
  "solana-sysvar 3.1.1",
  "spl-associated-token-account",
  "spl-token",
@@ -3293,7 +3373,9 @@ version = "0.1.0"
 dependencies = [
  "anchor-lang",
  "anchor-v2-testing",
+ "solana-fee",
  "solana-kite",
+ "solana-program-runtime",
  "wincode",
 ]
 
@@ -3383,7 +3465,9 @@ dependencies = [
  "anchor-lang",
  "anchor-v2-testing",
  "borsh 1.7.0",
+ "solana-fee",
  "solana-kite",
+ "solana-program-runtime",
  "wincode",
 ]
 
@@ -3398,7 +3482,9 @@ dependencies = [
  "mock_price_feed_prop_amm",
  "pinocchio 0.11.2",
  "solana-clock 3.2.1",
+ "solana-fee",
  "solana-kite",
+ "solana-program-runtime",
  "solana-sysvar 3.1.1",
  "spl-associated-token-account",
  "spl-token",
@@ -3416,7 +3502,9 @@ dependencies = [
  "sha2 0.10.9",
  "solana-account 4.7.0",
  "solana-clock 3.2.1",
+ "solana-fee",
  "solana-kite",
+ "solana-program-runtime",
  "wincode",
 ]
 
@@ -3668,7 +3756,9 @@ version = "0.1.0"
 dependencies = [
  "anchor-lang",
  "anchor-v2-testing",
+ "solana-fee",
  "solana-kite",
+ "solana-program-runtime",
  "wincode",
 ]
 
@@ -7219,7 +7309,9 @@ dependencies = [
  "anchor-spl",
  "anchor-v2-testing",
  "borsh 1.7.0",
+ "solana-fee",
  "solana-kite",
+ "solana-program-runtime",
  "wincode",
 ]
 
@@ -7334,7 +7426,9 @@ dependencies = [
  "anchor-spl",
  "anchor-v2-testing",
  "borsh 1.7.0",
+ "solana-fee",
  "solana-kite",
+ "solana-program-runtime",
  "wincode",
 ]
 
@@ -7433,7 +7527,9 @@ dependencies = [
  "anchor-spl",
  "anchor-v2-testing",
  "borsh 1.7.0",
+ "solana-fee",
  "solana-kite",
+ "solana-program-runtime",
  "wincode",
 ]
 
@@ -7503,9 +7599,11 @@ dependencies = [
  "anchor-lang",
  "anchor-v2-testing",
  "borsh 1.7.0",
+ "solana-fee",
  "solana-message 4.6.0",
  "solana-native-token 3.0.0",
  "solana-packet",
+ "solana-program-runtime",
  "solana-transaction",
  "solana-transaction-error 3.4.0",
  "wincode",
@@ -7519,7 +7617,9 @@ dependencies = [
  "anchor-spl",
  "anchor-v2-testing",
  "borsh 1.7.0",
+ "solana-fee",
  "solana-kite",
+ "solana-program-runtime",
  "wincode",
 ]
 
@@ -7531,7 +7631,9 @@ dependencies = [
  "anchor-spl",
  "anchor-v2-testing",
  "borsh 1.7.0",
+ "solana-fee",
  "solana-kite",
+ "solana-program-runtime",
  "spl-discriminator 0.4.1",
  "spl-tlv-account-resolution 0.9.0",
  "spl-transfer-hook-interface 0.9.0",
@@ -7546,7 +7648,9 @@ dependencies = [
  "anchor-spl",
  "anchor-v2-testing",
  "borsh 1.7.0",
+ "solana-fee",
  "solana-kite",
+ "solana-program-runtime",
  "spl-discriminator 0.4.1",
  "spl-tlv-account-resolution 0.9.0",
  "spl-transfer-hook-interface 0.9.0",
@@ -7561,7 +7665,9 @@ dependencies = [
  "anchor-spl",
  "anchor-v2-testing",
  "borsh 1.7.0",
+ "solana-fee",
  "solana-kite",
+ "solana-program-runtime",
  "spl-discriminator 0.4.1",
  "spl-tlv-account-resolution 0.9.0",
  "spl-transfer-hook-interface 0.9.0",
@@ -7576,7 +7682,9 @@ dependencies = [
  "anchor-spl",
  "anchor-v2-testing",
  "borsh 1.7.0",
+ "solana-fee",
  "solana-kite",
+ "solana-program-runtime",
  "spl-discriminator 0.5.2",
  "spl-tlv-account-resolution 0.11.1",
  "spl-transfer-hook-interface 2.1.0",
@@ -7591,7 +7699,9 @@ dependencies = [
  "anchor-spl",
  "anchor-v2-testing",
  "borsh 1.7.0",
+ "solana-fee",
  "solana-kite",
+ "solana-program-runtime",
  "spl-discriminator 0.4.1",
  "spl-tlv-account-resolution 0.9.0",
  "spl-transfer-hook-interface 0.9.0",
@@ -7604,7 +7714,9 @@ version = "0.1.0"
 dependencies = [
  "anchor-lang",
  "anchor-v2-testing",
+ "solana-fee",
  "solana-kite",
+ "solana-program-runtime",
  "wincode",
 ]
 
@@ -7647,7 +7759,9 @@ dependencies = [
  "anchor-spl",
  "anchor-v2-testing",
  "borsh 1.7.0",
+ "solana-fee",
  "solana-kite",
+ "solana-program-runtime",
  "spl-discriminator 0.4.1",
  "spl-tlv-account-resolution 0.9.0",
  "spl-transfer-hook-interface 0.9.0",
@@ -7662,7 +7776,9 @@ dependencies = [
  "anchor-spl",
  "anchor-v2-testing",
  "borsh 1.7.0",
+ "solana-fee",
  "solana-kite",
+ "solana-program-runtime",
  "wincode",
 ]
 
