@@ -2,7 +2,7 @@ use {
     anchor_lang::{
         solana_program::instruction::Instruction, system_program, InstructionData, ToAccountMetas,
     },
-    anchor_v2_testing::{Keypair, LiteSVM, Signer},
+    anchor_v2_testing::{litesvm::LiteSVM, Keypair, Signer},
     borsh::BorshDeserialize,
     solana_kite::{create_wallet, send_transaction_from_instructions},
 };
@@ -48,6 +48,7 @@ fn test_initialize() {
         vec![instruction],
         &[&payer, &message_keypair],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -88,6 +89,7 @@ fn test_update_grows() {
         vec![init_ix],
         &[&payer, &message_keypair],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -106,7 +108,7 @@ fn test_update_grows() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![update_ix], &[&payer], &payer.pubkey())
+    send_transaction_from_instructions(&mut svm, vec![update_ix], &[&payer], &payer.pubkey(), None)
         .unwrap();
 
     let msg_text = fetch_message(&svm, &message_keypair.pubkey());
@@ -145,6 +147,7 @@ fn test_update_shrinks() {
         vec![init_ix],
         &[&payer, &message_keypair],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -163,7 +166,7 @@ fn test_update_shrinks() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![update_ix], &[&payer], &payer.pubkey())
+    send_transaction_from_instructions(&mut svm, vec![update_ix], &[&payer], &payer.pubkey(), None)
         .unwrap();
 
     let msg_text = fetch_message(&svm, &message_keypair.pubkey());

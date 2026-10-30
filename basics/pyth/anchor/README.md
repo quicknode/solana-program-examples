@@ -2,7 +2,7 @@
 
 > [!NOTE]
 > This is the **Anchor v2** copy of this example. Every `anchor` command on this page
-> needs the v2 CLI: `cargo install anchor-cli --version 2.0.0-rc.1 --locked` (avm has
+> needs the v2 CLI: `cargo install anchor-cli --version 2.0.0-rc.2 --locked` (avm has
 > no prebuilt binary for this pre-release). The Anchor v1 version of this example is in
 > [`../anchor-v1`](../anchor-v1/).
 
@@ -13,7 +13,7 @@ See also: [Pyth overview](../README.md) and the [repository catalog](../../../RE
 > [!NOTE]
 > **This example vendors the `PriceUpdateV2` account type rather than importing `pyth-solana-receiver-sdk`.**
 >
-> The SDK's current release (2.0.0, checked August 2026) builds against `anchor-lang` 1.0.2, and this repository is on 2.0.0-rc.1, whose account wrappers are a different set of types. Importing the SDK's `PriceUpdateV2` would pull a second `anchor-lang` into the graph.
+> The SDK's current release (2.0.0, checked August 2026) builds against `anchor-lang` 1.0.2, and this repository is on 2.0.0-rc.2, whose account wrappers are a different set of types. Importing the SDK's `PriceUpdateV2` would pull a second `anchor-lang` into the graph.
 >
 > `programs/pythexample/src/lib.rs` mirrors the onchain layout instead: same fields in the same order, same 8-byte discriminator, owned by the Pyth Receiver program, so accounts written by Pyth deserialize unchanged. Import the SDK type once a release targeting `anchor-lang` 2.x ships.
 

@@ -4,7 +4,7 @@ use {
         system_program, AccountDeserialize, Address, Error as AnchorError,
         ErrorCode as AnchorErrorCode, InstructionData, ToAccountMetas,
     },
-    anchor_v2_testing::{Keypair, LiteSVM, Signer},
+    anchor_v2_testing::{litesvm::LiteSVM, Keypair, Signer},
     prop_amm::{
         errors::PropAmmError,
         instructions::initialize_market::MarketParameters,
@@ -145,8 +145,8 @@ impl Market {
 
         let payer = create_wallet(&mut svm, 100_000_000_000).unwrap();
         let operator = create_wallet(&mut svm, 100_000_000_000).unwrap();
-        let base_mint = create_token_mint(&mut svm, &operator, NVDAX_DECIMALS, None).unwrap();
-        let quote_mint = create_token_mint(&mut svm, &operator, USDC_DECIMALS, None).unwrap();
+        let base_mint = create_token_mint(&mut svm, &operator, NVDAX_DECIMALS, None, None).unwrap();
+        let quote_mint = create_token_mint(&mut svm, &operator, USDC_DECIMALS, None, None).unwrap();
 
         // Create the mock oracle feed as a fresh account owned by the mock
         // program; the operator is its update authority.
@@ -171,6 +171,7 @@ impl Market {
             vec![initialize_feed],
             &[&operator, &feed_keypair],
             &operator.pubkey(),
+            None,
         )
         .unwrap();
         let feed = feed_keypair.pubkey();
@@ -207,22 +208,29 @@ impl Market {
             vec![initialize_market],
             &[&operator],
             &operator.pubkey(),
+            None,
         )
         .map_err(|error| format!("{error:?}"))?;
 
         // Fund the operator's inventory accounts.
         let operator_base =
-            create_associated_token_account(&mut svm, &operator.pubkey(), &base_mint, &payer)
+            create_associated_token_account(&mut svm, &operator.pubkey(), &base_mint, &payer, None)
                 .unwrap();
-        let operator_quote =
-            create_associated_token_account(&mut svm, &operator.pubkey(), &quote_mint, &payer)
-                .unwrap();
+        let operator_quote = create_associated_token_account(
+            &mut svm,
+            &operator.pubkey(),
+            &quote_mint,
+            &payer,
+            None,
+        )
+        .unwrap();
         mint_tokens_to_token_account(
             &mut svm,
             &base_mint,
             &operator_base,
             10_000 * ONE_NVDAX,
             &operator,
+            None,
         )
         .unwrap();
         mint_tokens_to_token_account(
@@ -231,6 +239,7 @@ impl Market {
             &operator_quote,
             10_000_000 * ONE_USDC,
             &operator,
+            None,
         )
         .unwrap();
 
@@ -282,6 +291,7 @@ impl Market {
             vec![set_price],
             &[&self.operator],
             &self.operator.pubkey(),
+            None,
         )
         .unwrap();
     }
@@ -313,6 +323,7 @@ impl Market {
             &trader.pubkey(),
             &self.base_mint,
             &self.payer,
+            None,
         )
         .unwrap();
         let quote_account = create_associated_token_account(
@@ -320,6 +331,7 @@ impl Market {
             &trader.pubkey(),
             &self.quote_mint,
             &self.payer,
+            None,
         )
         .unwrap();
         if base > 0 {
@@ -329,6 +341,7 @@ impl Market {
                 &base_account,
                 base,
                 &self.operator,
+                None,
             )
             .unwrap();
         }
@@ -339,6 +352,7 @@ impl Market {
                 &quote_account,
                 quote,
                 &self.operator,
+                None,
             )
             .unwrap();
         }
@@ -404,6 +418,7 @@ impl Market {
             vec![instruction],
             &[signer],
             &signer.pubkey(),
+            None,
         )
         .map(|_| ())
         .map_err(|error| format!("{error:?}"))
@@ -439,6 +454,7 @@ impl Market {
             vec![instruction],
             &[signer],
             &signer.pubkey(),
+            None,
         )
         .map(|_| ())
         .map_err(|error| format!("{error:?}"))
@@ -487,6 +503,7 @@ impl Market {
             vec![instruction],
             &[trader],
             &trader.pubkey(),
+            None,
         )
         .map(|_| ())
         .map_err(|error| format!("{error:?}"))
@@ -523,6 +540,7 @@ impl Market {
             vec![instruction],
             &[&payer, signer],
             &payer.pubkey(),
+            None,
         )
         .map(|_| ())
         .map_err(|error| format!("{error:?}"))
@@ -566,6 +584,7 @@ impl Market {
             vec![transfer],
             &[sender],
             &sender.pubkey(),
+            None,
         )
         .expect("a plain token transfer into a vault should succeed");
     }
@@ -947,9 +966,11 @@ fn test_swap_rejects_slippage() {
 fn test_swap_rejects_stale_price() {
     let mut market = Market::default_market();
     let (alice, _, _) = market.funded_trader(0, FIVE_NVDAX_AT_THE_ASK);
-    // The feed was last updated near slot 0; 200 slots later it is stale
-    // (the bound is 150 slots).
-    market.warp(200);
+    // The feed was last updated during setup; 200 slots later it is stale
+    // (the bound is 150 slots). The warp is relative because LiteSVM starts at
+    // a recent mainnet slot rather than slot 0.
+    let now = market.current_slot();
+    market.warp(now + 200);
     assert_fails_with(
         market.swap(&alice, Direction::BuyBase, FIVE_NVDAX_AT_THE_ASK, 0),
         PropAmmError::StalePrice,

@@ -3,7 +3,7 @@ use {
         solana_program::instruction::Instruction, system_program, Address, InstructionData,
         ToAccountMetas,
     },
-    anchor_v2_testing::{LiteSVM, Signer},
+    anchor_v2_testing::Signer,
     solana_kite::{
         create_wallet, send_transaction_from_instructions,
         token_extensions::TOKEN_EXTENSIONS_PROGRAM_ID,
@@ -35,8 +35,14 @@ fn test_initialize_group() {
         .to_account_metas(None),
     );
 
-    send_transaction_from_instructions(&mut svm, vec![instruction], &[&payer], &payer.pubkey())
-        .unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        vec![instruction],
+        &[&payer],
+        &payer.pubkey(),
+        None,
+    )
+    .unwrap();
 
     // Verify mint was created with group pointer extension
     let mint_data = svm

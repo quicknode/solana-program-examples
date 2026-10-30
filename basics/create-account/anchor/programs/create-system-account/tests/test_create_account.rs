@@ -1,9 +1,8 @@
 use {
     anchor_lang::{
-        solana_program::{instruction::Instruction, rent::Rent},
-        system_program, InstructionData, ToAccountMetas,
+        solana_program::instruction::Instruction, system_program, InstructionData, ToAccountMetas,
     },
-    anchor_v2_testing::{Keypair, LiteSVM, Signer},
+    anchor_v2_testing::{Keypair, Signer},
     solana_kite::{create_wallet, send_transaction_from_instructions},
 };
 
@@ -33,11 +32,14 @@ fn test_create_the_account() {
         vec![instruction],
         &[&payer, &new_account],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
 
-    // Minimum balance for rent exemption for 0-data account
-    let lamports = Rent::default().minimum_balance(0);
+    // Minimum balance for rent exemption for a 0-data account, from the Rent
+    // sysvar the program reads rather than the SDK's default, which LiteSVM's
+    // rent no longer matches.
+    let lamports = svm.minimum_balance_for_rent_exemption(0);
 
     let account_info = svm.get_account(&new_account.pubkey()).unwrap();
     assert_eq!(account_info.lamports, lamports);

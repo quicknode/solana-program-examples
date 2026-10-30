@@ -19,12 +19,18 @@ cross-program-invocatio-native-lever = { path = "../lever", features = ["cpi"] }
 crate-type = ["cdylib", "lib"]
 
 [dev-dependencies]
-litesvm = "0.13.1"
+litesvm = "0.18.1"
+# LiteSVM 0.18.1 asks for the Agave crates with `^4.3` ranges but does not
+# compile against Agave 4.4.0. These two hold the Agave crates at 4.3; the rest
+# follow, because Agave pins its own crates to one another exactly. Remove both
+# once a LiteSVM release builds against Agave 4.4.
+solana-program-runtime = "~4.3"
+solana-fee = "~4.3"
 solana-instruction = "3.0.0"
 solana-keypair = "3.0.1"
 solana-native-token = "3.0.0"
-solana-pubkey = "3.0.0"
-solana-transaction = "3.0.1"
+solana-pubkey = "4.3"
+solana-transaction = "4.2"
 solana-system-interface = {version = "2.0.0", features = ["bincode"]}
 
 [lints.rust]

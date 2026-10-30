@@ -2,7 +2,7 @@ use {
     anchor_lang::{
         solana_program::instruction::Instruction, system_program, InstructionData, ToAccountMetas,
     },
-    anchor_v2_testing::{Keypair, LiteSVM, Signer},
+    anchor_v2_testing::{Keypair, Signer},
     solana_kite::{create_wallet, send_transaction_from_instructions},
 };
 
@@ -32,8 +32,14 @@ fn test_transfer_sol_with_cpi() {
         .to_account_metas(None),
     );
 
-    send_transaction_from_instructions(&mut svm, vec![instruction], &[&payer], &payer.pubkey())
-        .unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        vec![instruction],
+        &[&payer],
+        &payer.pubkey(),
+        None,
+    )
+    .unwrap();
 
     let recipient_balance = svm.get_balance(&recipient.pubkey()).unwrap();
     assert_eq!(recipient_balance, LAMPORTS_PER_SOL);
@@ -61,6 +67,7 @@ fn test_transfer_sol_with_program() {
         vec![create_account_ix],
         &[&payer, &payer_account],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -81,8 +88,14 @@ fn test_transfer_sol_with_program() {
         .to_account_metas(None),
     );
 
-    send_transaction_from_instructions(&mut svm, vec![instruction], &[&payer], &payer.pubkey())
-        .unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        vec![instruction],
+        &[&payer],
+        &payer.pubkey(),
+        None,
+    )
+    .unwrap();
 
     let recipient_balance = svm.get_balance(&recipient.pubkey()).unwrap();
     assert_eq!(recipient_balance, LAMPORTS_PER_SOL);
@@ -110,6 +123,7 @@ fn test_transfer_sol_with_program_rejects_insufficient_funds() {
         vec![create_account_ix],
         &[&payer, &program_owned_account],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -130,8 +144,13 @@ fn test_transfer_sol_with_program_rejects_insufficient_funds() {
         .to_account_metas(None),
     );
 
-    let result =
-        send_transaction_from_instructions(&mut svm, vec![instruction], &[&payer], &payer.pubkey());
+    let result = send_transaction_from_instructions(
+        &mut svm,
+        vec![instruction],
+        &[&payer],
+        &payer.pubkey(),
+        None,
+    );
     assert!(result.is_err(), "overdrawing the payer must fail");
 
     // Balances are untouched.

@@ -22,16 +22,11 @@ custom-panic = []
 profile = ["anchor-v2-testing/profile"]
 
 [dependencies]
-anchor-lang = { version = "2.0.0-rc.1", features = ["compat"] }
+anchor-lang = { version = "2.0.0-rc.2", features = ["compat"] }
 # The `#[program]` macro expands to `wincode` paths for instruction-data
 # (de)serialization, so the crate has to be a direct dependency.
-wincode = { version = "0.5", features = ["derive"] }
-# anchor-lang 2.0.0-rc.1 is built against wincode 0.5, but solana-address 2.7
-# moved to wincode 0.6. With both in the graph, `Address`'s wincode impls
-# belong to the version the account derives are not using and every
-# `SchemaRead`/`SchemaWrite` bound fails. 2.6.1 is the last 0.5-line release.
-solana-address = ">=2.6, <2.7"
-anchor-spl = "2.0.0-rc.1"
+wincode = { version = "0.6", features = ["derive"] }
+anchor-spl = "2.0.0-rc.2"
 # `fixed` removed: all financial math is now u128 + checked_*, matching how
 # production Solana AMMs (Orca, Raydium, Meteora, Saber) do it. Floats /
 # fixed-point types are not used for money in this program.
@@ -51,8 +46,14 @@ anchor-spl = "2.0.0-rc.1"
 # development happens, so a later revision can carry breakage as easily as
 # fixes. When `anchor-v2-testing` reaches crates.io, drop the git source for
 # an ordinary version.
-anchor-v2-testing = { git = "https://github.com/otter-sec/anchor.git", rev = "3e38a121b969d1a77230baeb0056baf5cc9b3c1a" }
-solana-kite = "0.4.0"
+anchor-v2-testing = { git = "https://github.com/otter-sec/anchor.git", rev = "a20660219882af5f199d56ea3f9326f387f89d8b" }
+# LiteSVM 0.18.1 asks for the Agave crates with `^4.3` ranges but does not
+# compile against Agave 4.4.0. These two hold the Agave crates at 4.3; the rest
+# follow, because Agave pins its own crates to one another exactly. Remove both
+# once a LiteSVM release builds against Agave 4.4.
+solana-program-runtime = "~4.3"
+solana-fee = "~4.3"
+solana-kite = "0.7.0"
 borsh = "1.6.1"
 
 [lints.rust]

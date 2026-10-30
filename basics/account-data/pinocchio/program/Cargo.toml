@@ -9,13 +9,13 @@ pinocchio-log.workspace = true
 pinocchio-system.workspace = true
 
 [dev-dependencies]
-litesvm = "0.13.1"
+litesvm = "0.18.1"
 solana-keypair = "3.0.1"
-solana-message = "4.0.0"
+solana-message = "4.5"
 solana-native-token = "3.0.0"
-solana-pubkey = "3.0.0"
+solana-pubkey = "4.3"
 solana-signer = "3.0.0"
-solana-transaction = "3.0.1"
+solana-transaction = "4.2"
 solana-system-interface.workspace = true
 
 [lib]

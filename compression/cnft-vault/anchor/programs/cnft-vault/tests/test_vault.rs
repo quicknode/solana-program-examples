@@ -26,7 +26,7 @@
 //!     of panicking inside `split_at`
 
 use {
-    anchor_v2_testing::{Keypair, LiteSVM, Signer},
+    anchor_v2_testing::{litesvm::LiteSVM, Keypair, Signer},
     borsh::BorshSerialize,
     cnft_vault::error::VaultError,
     solana_instruction::{account_meta::AccountMeta, Instruction},
@@ -336,6 +336,7 @@ fn setup_vault() -> VaultTestContext {
         vec![initialize_ix],
         &[&authority_keypair],
         &authority_keypair.pubkey(),
+        None,
     )
     .expect("initialize_vault should succeed");
 
@@ -398,6 +399,7 @@ fn create_tree_with_vault_cnft(context: &mut VaultTestContext) -> TreeWithVaultC
         vec![create_acc, create_tree_ix],
         &[&payer, &merkle_tree],
         &payer.pubkey(),
+        None,
     )
     .expect("create_tree_config should succeed");
 
@@ -443,8 +445,14 @@ fn create_tree_with_vault_cnft(context: &mut VaultTestContext) -> TreeWithVaultC
             d
         },
     };
-    send_transaction_from_instructions(&mut context.svm, vec![mint_ix], &[&payer], &payer.pubkey())
-        .expect("mint_v1 should succeed");
+    send_transaction_from_instructions(
+        &mut context.svm,
+        vec![mint_ix],
+        &[&payer],
+        &payer.pubkey(),
+        None,
+    )
+    .expect("mint_v1 should succeed");
 
     // Recompute data_hash and creator_hash exactly as Bubblegum does.
     let data_hash = hash_metadata(&metadata);
@@ -592,6 +600,7 @@ fn test_withdraw_cnft_by_authority() {
         vec![withdraw_ix.clone()],
         &[&authority],
         &authority.pubkey(),
+        None,
     )
     .expect("withdraw_cnft signed by the vault authority should succeed");
 
@@ -603,6 +612,7 @@ fn test_withdraw_cnft_by_authority() {
         vec![withdraw_ix],
         &[&authority],
         &authority.pubkey(),
+        None,
     );
     assert!(
         second.is_err(),
@@ -629,6 +639,7 @@ fn test_withdraw_cnft_rejected_for_non_authority() {
         vec![withdraw_ix],
         &[&attacker],
         &attacker.pubkey(),
+        None,
     );
     assert_custom_error(result, VaultError::InvalidWithdrawAuthority);
 }
@@ -656,6 +667,7 @@ fn test_withdraw_two_cnfts_by_authority() {
         vec![withdraw_ix],
         &[&authority],
         &authority.pubkey(),
+        None,
     )
     .expect("withdraw_two_cnfts signed by the vault authority should succeed");
 
@@ -668,6 +680,7 @@ fn test_withdraw_two_cnfts_by_authority() {
         vec![replay1],
         &[&authority],
         &authority.pubkey(),
+        None,
     );
     assert!(
         replay.is_err(),
@@ -704,6 +717,7 @@ fn test_withdraw_two_cnfts_rejects_out_of_range_proof_length() {
         vec![withdraw_ix],
         &[&authority],
         &authority.pubkey(),
+        None,
     );
     assert_custom_error(result, VaultError::ProofLengthMismatch);
 }
@@ -733,6 +747,7 @@ fn test_withdraw_two_cnfts_rejects_inconsistent_proof_lengths() {
         vec![withdraw_ix],
         &[&authority],
         &authority.pubkey(),
+        None,
     );
     assert_custom_error(result, VaultError::ProofLengthMismatch);
 }

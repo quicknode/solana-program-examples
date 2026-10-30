@@ -1,6 +1,6 @@
 use {
     anchor_lang::{solana_program::instruction::Instruction, InstructionData, ToAccountMetas},
-    anchor_v2_testing::{LiteSVM, Signer},
+    anchor_v2_testing::{litesvm::LiteSVM, Signer},
     solana_kite::{create_wallet, send_transaction_from_instructions},
 };
 
@@ -28,7 +28,7 @@ fn test_go_to_park() {
         .data(),
         processing_instructions::accounts::ParkAccountConstraints {}.to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![ix_short], &[&payer], &payer.pubkey())
+    send_transaction_from_instructions(&mut svm, vec![ix_short], &[&payer], &payer.pubkey(), None)
         .unwrap();
 
     svm.expire_blockhash();
@@ -43,6 +43,6 @@ fn test_go_to_park() {
         .data(),
         processing_instructions::accounts::ParkAccountConstraints {}.to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![ix_tall], &[&payer], &payer.pubkey())
+    send_transaction_from_instructions(&mut svm, vec![ix_tall], &[&payer], &payer.pubkey(), None)
         .unwrap();
 }

@@ -3,7 +3,7 @@ use {
         solana_program::instruction::Instruction, system_program, Address, InstructionData,
         ToAccountMetas,
     },
-    anchor_v2_testing::{Keypair, LiteSVM, Signer},
+    anchor_v2_testing::{litesvm::LiteSVM, Keypair, Signer},
     solana_kite::{
         create_wallet, send_transaction_from_instructions,
         token_extensions::{
@@ -47,6 +47,7 @@ fn test_create_non_transferable_mint_and_attempt_transfer() {
         vec![initialize_ix],
         &[&payer, &mint_keypair],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
     svm.expire_blockhash();
@@ -63,9 +64,14 @@ fn test_create_non_transferable_mint_and_attempt_transfer() {
 
     // Step 2: Create ATAs for sender and recipient
     let recipient = Keypair::new();
-    let source_ata =
-        create_token_extensions_account(&mut svm, &payer.pubkey(), &mint_keypair.pubkey(), &payer)
-            .unwrap();
+    let source_ata = create_token_extensions_account(
+        &mut svm,
+        &payer.pubkey(),
+        &mint_keypair.pubkey(),
+        &payer,
+        None,
+    )
+    .unwrap();
     svm.expire_blockhash();
 
     let dest_ata = create_token_extensions_account(
@@ -73,6 +79,7 @@ fn test_create_non_transferable_mint_and_attempt_transfer() {
         &recipient.pubkey(),
         &mint_keypair.pubkey(),
         &payer,
+        None,
     )
     .unwrap();
     svm.expire_blockhash();
@@ -84,6 +91,7 @@ fn test_create_non_transferable_mint_and_attempt_transfer() {
         &source_ata,
         1,
         &payer,
+        None,
     )
     .unwrap();
     svm.expire_blockhash();
@@ -98,6 +106,7 @@ fn test_create_non_transferable_mint_and_attempt_transfer() {
         1,
         2, // decimals
         &[],
+        None,
     );
     assert!(
         result.is_err(),
