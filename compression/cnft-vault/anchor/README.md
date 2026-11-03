@@ -39,7 +39,7 @@ cargo test
 
 The program ID declared in [`programs/cnft-vault/src/lib.rs`](programs/cnft-vault/src/lib.rs) is `Fd4iwpPWaCU8BNwGQGtvvrcvG4Tfizq3RgLm8YLBJX6D`. Whether this address is currently deployed on any cluster is not tracked in this repo - verify with `solana program show <id>` against the cluster you care about.
 
-To deploy your own copy, change the program ID in `lib.rs` and `Anchor.toml`, then run `anchor build && anchor deploy`.
+To deploy your own copy, change the program ID in `lib.rs` and `Anchor.toml`, then run `anchor build && anchor program deploy`.
 
 ## Limitations
 
