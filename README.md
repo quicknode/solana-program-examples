@@ -179,12 +179,6 @@ Calculate an account's size to determine the minimum rent-exempt balance.
 
 [⚓ Anchor v1](./basics/rent/anchor-v1) [⚓ Anchor v2](./basics/rent/anchor) [💫 Quasar](./basics/rent/quasar) [🤥 Pinocchio](./basics/rent/pinocchio) [🦀 Native](./basics/rent/native)
 
-### Repository Layout
-
-Structure a larger Solana program across multiple files and modules.
-
-[⚓ Anchor v1](./basics/repository-layout/anchor-v1) [⚓ Anchor v2](./basics/repository-layout/anchor) [💫 Quasar](./basics/repository-layout/quasar) [🦀 Native](./basics/repository-layout/native)
-
 ### Transfer SOL
 
 Send SOL between two accounts.

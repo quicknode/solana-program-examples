@@ -24,9 +24,9 @@ pub fn handle_pull_lever(
     //
     // The lever's switch_power instruction takes `String<50>`, which Quasar
     // serialises with a single-byte length prefix (matching every other
-    // Quasar program: account-data, close-account, rent, realloc,
-    // repository-layout). An earlier version of this builder used a u32
-    // length prefix, which sent a malformed payload on every CPI call.
+    // Quasar program: account-data, close-account, rent, realloc). An earlier
+    // version of this builder used a u32 length prefix, which sent a malformed
+    // payload on every CPI call.
     //
     // 128 bytes is enough for any reasonable name (max 50 + 1 + 1 = 52).
     let mut data = [0u8; 128];
