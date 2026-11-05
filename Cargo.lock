@@ -7565,6 +7565,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "transfer-hook-allow-list"
+version = "0.1.0"
+dependencies = [
+ "anchor-lang",
+ "anchor-spl",
+ "anchor-v2-testing",
+ "borsh 1.7.0",
+ "solana-fee",
+ "solana-kite",
+ "solana-program-runtime",
+ "spl-discriminator 0.4.1",
+ "spl-tlv-account-resolution 0.9.0",
+ "spl-transfer-hook-interface 0.9.0",
+ "wincode",
+]
+
+[[package]]
 name = "transfer-hook-counter"
 version = "0.1.0"
 dependencies = [
@@ -7612,23 +7629,6 @@ dependencies = [
  "spl-discriminator 0.5.2",
  "spl-tlv-account-resolution 0.11.1",
  "spl-transfer-hook-interface 2.1.0",
- "wincode",
-]
-
-[[package]]
-name = "transfer-hook-whitelist"
-version = "0.1.0"
-dependencies = [
- "anchor-lang",
- "anchor-spl",
- "anchor-v2-testing",
- "borsh 1.7.0",
- "solana-fee",
- "solana-kite",
- "solana-program-runtime",
- "spl-discriminator 0.4.1",
- "spl-tlv-account-resolution 0.9.0",
- "spl-transfer-hook-interface 0.9.0",
  "wincode",
 ]
 

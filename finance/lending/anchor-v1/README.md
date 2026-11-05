@@ -276,7 +276,7 @@ three limits protect the people already there:
   `token_interface`, so Token Extensions mints are accepted, but a transfer-fee
   extension would make the vault receive less than the recorded deposit and the
   accounting would overstate `available_liquidity`. Production lending programs
-  whitelist mints; a market owner here must only create reserves for tokens
+  keep an allow list of mints; a market owner here must only create reserves for tokens
   without transfer fees.
 - This is an example. Deploying any program that custodies funds calls for a
   professional security audit first.

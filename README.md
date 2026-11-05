@@ -345,6 +345,12 @@ Use token account owner data as seeds to derive extra accounts in a transfer hoo
 
 [⚓ Anchor v1](./tokens/token-extensions/transfer-hook/account-data-as-seed/anchor-v1) [⚓ Anchor v2](./tokens/token-extensions/transfer-hook/account-data-as-seed/anchor) [💫 Quasar](./tokens/token-extensions/transfer-hook/account-data-as-seed/quasar)
 
+### Transfer Hook - Allow List
+
+Only let tokens reach wallets on the mint's allow list. Each allowed wallet is its own account, so the list has no size limit.
+
+[⚓ Anchor v1](./tokens/token-extensions/transfer-hook/allow-list/anchor-v1) [⚓ Anchor v2](./tokens/token-extensions/transfer-hook/allow-list/anchor) [💫 Quasar](./tokens/token-extensions/transfer-hook/allow-list/quasar)
+
 ### Transfer Hook - Allow/Block List
 
 Restrict or allow token transfers using an onchain list managed by a list authority.
@@ -362,12 +368,6 @@ Charge an additional fee on every token transfer.
 Enable or disable token transfers with an onchain switch.
 
 [⚓ Anchor v1](./tokens/token-extensions/transfer-hook/transfer-switch/anchor-v1) [⚓ Anchor v2](./tokens/token-extensions/transfer-hook/transfer-switch/anchor) [💫 Quasar](./tokens/token-extensions/transfer-hook/transfer-switch/quasar)
-
-### Transfer Hook - Whitelist
-
-Restrict transfers so only whitelisted accounts can receive tokens.
-
-[⚓ Anchor v1](./tokens/token-extensions/transfer-hook/whitelist/anchor-v1) [⚓ Anchor v2](./tokens/token-extensions/transfer-hook/whitelist/anchor) [💫 Quasar](./tokens/token-extensions/transfer-hook/whitelist/quasar)
 
 ## Compression
 

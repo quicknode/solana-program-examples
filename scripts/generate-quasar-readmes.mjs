@@ -216,6 +216,12 @@ const examples = {
     purpose: "Allow/block list enforced by a transfer hook program.",
     concepts: ["Transfer hook", "List authority"],
   },
+  "tokens/token-extensions/transfer-hook/allow-list/quasar": {
+    title: "Transfer Hook - Allow List",
+    purpose:
+      "Only wallets on the mint's allow list may receive its tokens. Each allowed wallet is its own [PDA](https://solana.com/docs/terminology#program-derived-address-pda), so the list has no size limit.",
+    concepts: ["Transfer hook", "One account per allowed wallet", "Mint-authority-only setup"],
+  },
   "tokens/token-extensions/transfer-hook/counter/quasar": {
     title: "Transfer Hook - Counter",
     purpose: "Count transfers in hook-side state.",
@@ -235,11 +241,6 @@ const examples = {
     title: "Transfer Hook - Transfer Switch",
     purpose: "Globally enable or disable transfers.",
     concepts: ["Transfer hook", "Admin switch"],
-  },
-  "tokens/token-extensions/transfer-hook/whitelist/quasar": {
-    title: "Transfer Hook - Whitelist",
-    purpose: "Only whitelisted accounts may receive tokens.",
-    concepts: ["Transfer hook", "Whitelist PDA"],
   },
 };
 

@@ -4,6 +4,38 @@ All notable changes to this repository are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-11-05] - Transfer Hook - Whitelist becomes Transfer Hook - Allow List, with no size limit
+
+The whitelist example kept every allowed address in one account, capped at eleven,
+shared by every mint. Its setup instruction used `init_if_needed` and made whoever
+called it the list's authority, so anyone could take over the list by setting up a
+hook for a mint of their own. The example now lives at
+`tokens/token-extensions/transfer-hook/allow-list/`, and is rebuilt around one
+account per allowed wallet.
+
+### Changed
+
+- `whitelist/` is renamed `allow-list/`, in all three variants (Anchor v1, Anchor v2,
+  Quasar). The Anchor crate is `transfer-hook-allow-list` and the Quasar crate
+  `quasar-transfer-hook-allow-list`; the program ID is unchanged.
+- Each mint has its own **allow list** account, at a PDA with seeds `"allow_list"` and
+  the mint, holding the list's `authority`. Each allowed wallet has an **allowed
+  wallet** account, at a PDA with seeds `"allowed_wallet"`, the mint and the wallet,
+  so the list has no size limit.
+- `add_to_whitelist` is replaced by `allow_wallet`, and the new `disallow_wallet`
+  closes a wallet's account and returns its rent to the authority.
+- `initialize_extra_account_meta_list` now requires the mint authority's signature,
+  and creates the allow list with `init`, so only the issuer can set up a mint's list.
+- The hook checks the wallet that owns the destination token account, not the token
+  account's own address. Its one extra account is derived per transfer from the mint
+  and the destination token account's owner, and a transfer to a wallet without an
+  allowed wallet account fails with `RecipientNotAllowed` (Quasar: custom error 6000)
+  rather than a panic.
+- Tests cover allowing, disallowing, a wallet allowed for one mint only, fifty
+  allowed wallets, and the attempts to create a mint's allow list without its mint
+  authority, or to allow a wallet without the list's authority.
+- The lending and managed-fund docs say "allow list" for "whitelist".
+
 ## [2026-10-28] - Anchor v2 examples on Anchor 2.0.0-rc.2, sending v1 transactions
 
 Anchor 2.0.0-rc.2's test harness, `anchor-v2-testing`, runs on LiteSVM 0.18, which

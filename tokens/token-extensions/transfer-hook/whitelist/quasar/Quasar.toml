@@ -1,9 +1,0 @@
-[project]
-name = "quasar-transfer-hook-whitelist"
-
-[testing]
-command = { program = "cargo", args = ["test"] }
-
-[clients]
-path = "target/client"
-targets = ["rust"]
