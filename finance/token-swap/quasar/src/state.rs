@@ -55,11 +55,11 @@ pub struct PoolConfig {
     pub pool_a: Address,
     /// The pool's token B reserve, recorded and checked as `pool_a` is.
     pub pool_b: Address,
-    /// Admin's accumulated fee claim on token A, in base units. Sits
+    /// Admin's accumulated fee claim on token A, in minor units. Sits
     /// physically in `pool_a` but excluded from the LP curve and from
     /// LP-withdrawable amounts. Swept by `claim_admin_fees`.
     pub admin_fees_owed_a: u64,
-    /// Admin's accumulated fee claim on token B, in base units. Sits
+    /// Admin's accumulated fee claim on token B, in minor units. Sits
     /// physically in `pool_b` but excluded from the LP curve and from
     /// LP-withdrawable amounts. Swept by `claim_admin_fees`.
     pub admin_fees_owed_b: u64,
