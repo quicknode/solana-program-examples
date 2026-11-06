@@ -17,7 +17,7 @@ See also: [Realloc overview](../README.md) and the [repository catalog](../../..
 
 ## Setup
 
-From this directory (`basics/realloc/anchor/`):
+From this directory (`basics/resizing-accounts/anchor-v1/`):
 
 ```bash
 anchor build

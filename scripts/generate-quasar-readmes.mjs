@@ -70,7 +70,7 @@ const examples = {
     purpose: "Read a Pyth price feed and use oracle data in program logic.",
     concepts: ["Oracle accounts", "Price feed layout"],
   },
-  "basics/realloc/quasar": {
+  "basics/resizing-accounts/quasar": {
     title: "Realloc",
     purpose: "Grow or shrink account data when storage needs change.",
     concepts: ["Account reallocation", "Rent on resize"],
@@ -125,12 +125,12 @@ const examples = {
     purpose: "Token transfers authorized by an external secp256k1 signature.",
     concepts: ["Delegate approval", "Signature verification"],
   },
-  "tokens/nft-minter/quasar": {
+  "nft/minter/quasar": {
     title: "NFT Minter",
     purpose: "Mint an NFT from inside your program.",
     concepts: ["NFT mint", "Metadata CPI"],
   },
-  "tokens/nft-operations/quasar": {
+  "nft/operations/quasar": {
     title: "NFT Operations",
     purpose: "Collection mint, NFT mint, and collection verification via Metaplex.",
     concepts: ["Collection NFTs", "Verification CPI"],

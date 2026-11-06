@@ -1,4 +1,4 @@
-# Realloc (Anchor)
+# NFT Minter (Anchor)
 
 > [!NOTE]
 > This is the **Anchor v2** copy of this example. Every `anchor` command on this page
@@ -6,18 +6,18 @@
 > no prebuilt binary for this pre-release). The Anchor v1 version of this example is in
 > [`../anchor-v1`](../anchor-v1/).
 
-Grow or shrink account data when variable-length storage is required.
+Mint an NFT from inside your program using the Classic Token Program and Metaplex Token Metadata.
 
-See also: [Realloc overview](../README.md) and the [repository catalog](../../../README.md).
+See also: [Nft Minter overview](../README.md) and the [repository catalog](../../../README.md).
 
 ## Major concepts
 
-- Account reallocation
-- Rent adjustment on size change
+- NFT mint with 0 decimals
+- Metadata CPI
 
 ## Setup
 
-From this directory (`basics/realloc/anchor/`):
+From this directory (`nft/minter/anchor/`):
 
 ```bash
 anchor build

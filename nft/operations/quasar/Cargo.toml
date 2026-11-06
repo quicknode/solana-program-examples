@@ -1,5 +1,5 @@
 [package]
-name = "quasar-nft-minter"
+name = "quasar-nft-operations"
 version = "0.1.0"
 edition = "2021"
 
@@ -38,7 +38,7 @@ zeropod = "=0.3.3"
 quasar-spl = { git = "https://github.com/blueshift-gg/quasar", rev = "be60fca" }
 # Vendored: upstream removed the quasar-metadata crate before the 0.1.0
 # release with no replacement. See tokens/quasar-metadata/README.md.
-quasar-metadata = { path = "../../quasar-metadata" }
+quasar-metadata = { path = "../../../tokens/quasar-metadata" }
 solana-instruction = { version = "3.2.0" }
 
 [dev-dependencies]

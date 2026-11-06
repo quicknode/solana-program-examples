@@ -171,7 +171,7 @@ Store and retrieve state using PDAs as deterministic account addresses.
 
 Grow or shrink an account after it has been created, a process Solana calls **realloc** (reallocation): the account's data is resized and its rent-exempt balance topped up or refunded to match.
 
-[⚓ Anchor v1](./basics/realloc/anchor-v1) [⚓ Anchor v2](./basics/realloc/anchor) [💫 Quasar](./basics/realloc/quasar) [🤥 Pinocchio](./basics/realloc/pinocchio) [🦀 Native](./basics/realloc/native)
+[⚓ Anchor v1](./basics/resizing-accounts/anchor-v1) [⚓ Anchor v2](./basics/resizing-accounts/anchor) [💫 Quasar](./basics/resizing-accounts/quasar) [🤥 Pinocchio](./basics/resizing-accounts/pinocchio) [🦀 Native](./basics/resizing-accounts/native)
 
 ### Rent
 
@@ -357,19 +357,19 @@ Restrict transfers so only whitelisted accounts can receive tokens.
 
 Mint an NFT from inside your own program using the Token and Metaplex Token Metadata programs.
 
-[⚓ Anchor v1](./tokens/nft-minter/anchor-v1) [⚓ Anchor v2](./tokens/nft-minter/anchor) [💫 Quasar](./tokens/nft-minter/quasar) [🦀 Native](./tokens/nft-minter/native)
+[⚓ Anchor v1](./nft/minter/anchor-v1) [⚓ Anchor v2](./nft/minter/anchor) [💫 Quasar](./nft/minter/quasar) [🦀 Native](./nft/minter/native)
 
 ### NFT Operations
 
 Create an NFT collection, mint NFTs, and verify NFTs as part of a collection using Metaplex Token Metadata.
 
-[⚓ Anchor v1](./tokens/nft-operations/anchor-v1) [⚓ Anchor v2](./tokens/nft-operations/anchor) [💫 Quasar](./tokens/nft-operations/quasar)
+[⚓ Anchor v1](./nft/operations/anchor-v1) [⚓ Anchor v2](./nft/operations/anchor) [💫 Quasar](./nft/operations/quasar)
 
 ### NFT Metadata Pointer
 
 Create an NFT using the metadata pointer extension, storing onchain metadata (including custom fields) inside the mint.
 
-[⚓ Anchor v1](./tokens/token-extensions/nft-meta-data-pointer/anchor-example/anchor-v1) [⚓ Anchor v2](./tokens/token-extensions/nft-meta-data-pointer/anchor-example/anchor)
+[⚓ Anchor v1](./nft/metadata-pointer/anchor-v1) [⚓ Anchor v2](./nft/metadata-pointer/anchor)
 
 ## Compression
 
