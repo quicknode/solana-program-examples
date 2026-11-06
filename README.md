@@ -417,10 +417,6 @@ Yes. A v1 transaction can be 4,096 bytes rather than 1,232, so more instructions
 
 Use [LiteSVM](https://www.anchor-lang.com/docs/testing/litesvm): Rust integration tests that run the program in-process, orders of magnitude faster than `solana-test-validator`. Every example in this repository tests this way, and `anchor init` scaffolds it by default since Anchor 1.0.
 
-### What is the difference between Anchor, Quasar, Pinocchio, and native Rust?
-
-[Anchor](https://www.anchor-lang.com/) is the most popular Solana framework, generating account validation and serialization from declarative constraints. [Quasar](https://quasar-lang.com/docs) offers Anchor-like ergonomics with zero-copy, `no_std` performance and smaller binaries. [Pinocchio](https://github.com/anza-xyz/pinocchio) is a zero-allocation library for hand-rolled programs, and native Rust uses Solana's crates directly with no framework. Most examples here ship several variants of the same program so you can compare.
-
 ### What is the best way to learn Solana finance programming?
 
 Work through the [finance examples](#financial-software-defi) in order of complexity: [escrow](./finance/escrow/anchor/), then [token swap AMM](./finance/token-swap/anchor/), [order book](./finance/order-book/anchor/), [lending](./finance/lending/anchor/), and [perpetual futures](./finance/perpetual-futures/anchor/). Each README explains the financial mechanics in plain terms before the code.
