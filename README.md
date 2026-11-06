@@ -2,7 +2,7 @@
 
 ![Quicknode Solana Program Examples](assets/banner.png?v=1)
 
-_The most complete and actvely maintained set of Solana programs ('smart contracts') in Anchor 1, Anchor 2, Quasar and more. Focused on financial software, as well as single-use programs._
+_The largest actively maintained set of Solana programs ('smart contracts') on the internet._
 
 [![Anchor v1](../../actions/workflows/anchor-v1.yml/badge.svg)](../../actions/workflows/anchor-v1.yml) [![Anchor v2](../../actions/workflows/anchor.yml/badge.svg)](../../actions/workflows/anchor.yml) [![Quasar](../../actions/workflows/quasar.yml/badge.svg)](../../actions/workflows/quasar.yml) [![Pinocchio](../../actions/workflows/pinocchio.yml/badge.svg)](../../actions/workflows/pinocchio.yml) [![Native](../../actions/workflows/native.yml/badge.svg)](../../actions/workflows/native.yml) [![ASM](../../actions/workflows/solana-asm.yml/badge.svg)](../../actions/workflows/solana-asm.yml)
 
