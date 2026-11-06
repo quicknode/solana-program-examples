@@ -11,7 +11,7 @@ See also: [Realloc overview](../README.md) and the [repository catalog](../../..
 
 ## Setup
 
-From `basics/realloc/quasar/`:
+From `basics/resizing-accounts/quasar/`:
 
 ```bash
 quasar build

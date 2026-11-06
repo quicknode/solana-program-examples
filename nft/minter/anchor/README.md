@@ -17,7 +17,7 @@ See also: [Nft Minter overview](../README.md) and the [repository catalog](../..
 
 ## Setup
 
-From this directory (`tokens/nft-minter/anchor/`):
+From this directory (`nft/minter/anchor/`):
 
 ```bash
 anchor build

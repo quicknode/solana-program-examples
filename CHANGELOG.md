@@ -4,6 +4,22 @@ All notable changes to this repository are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-11-06] - NFT examples get their own folder; realloc becomes resizing-accounts
+
+### Changed
+
+- The NFT examples move out of `tokens/` into a top-level `nft/` folder, matching the
+  README's new NFTs section: `tokens/nft-minter` is now `nft/minter`,
+  `tokens/nft-operations` is now `nft/operations`, and
+  `tokens/token-extensions/nft-meta-data-pointer/anchor-example` is now
+  `nft/metadata-pointer`. The two Quasar NFT examples point their `quasar-metadata`
+  path dependency at `../../../tokens/quasar-metadata`, which stays where it is.
+- `basics/realloc` is now `basics/resizing-accounts`, under the README title
+  "Resizing Accounts". The crate names keep `realloc`, the operation the code performs.
+- Each old folder keeps only a `README.md` pointing to the new location.
+- The Anchor v1 READMEs of the moved examples name their own `anchor-v1/` directory
+  rather than the `anchor/` one they were copied from.
+
 ## [2026-10-28] - Anchor v2 examples on Anchor 2.0.0-rc.2, sending v1 transactions
 
 Anchor 2.0.0-rc.2's test harness, `anchor-v2-testing`, runs on LiteSVM 0.18, which

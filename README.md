@@ -2,7 +2,9 @@
 
 ![Quicknode Solana Program Examples](assets/banner.png?v=1)
 
-_The most complete and actvely maintained set of Solana programs ('smart contracts') in Anchor 1, Anchor 2, Quasar and more. Focused on financial software, as well as single-use programs._
+_The largest actively maintained set of Solana programs ('smart contracts') on the internet._
+
+**58 examples, 208 implementations across six frameworks, over 1,000 tests, and 71 Kani model checks.** The same program is written in several frameworks so you can compare them side by side, every example builds and passes its tests in CI, and the examples are kept on current versions of Anchor and Quasar.
 
 [![Anchor v1](../../actions/workflows/anchor-v1.yml/badge.svg)](../../actions/workflows/anchor-v1.yml) [![Anchor v2](../../actions/workflows/anchor.yml/badge.svg)](../../actions/workflows/anchor.yml) [![Quasar](../../actions/workflows/quasar.yml/badge.svg)](../../actions/workflows/quasar.yml) [![Pinocchio](../../actions/workflows/pinocchio.yml/badge.svg)](../../actions/workflows/pinocchio.yml) [![Native](../../actions/workflows/native.yml/badge.svg)](../../actions/workflows/native.yml) [![ASM](../../actions/workflows/solana-asm.yml/badge.svg)](../../actions/workflows/solana-asm.yml)
 
@@ -15,10 +17,17 @@ Each example is available in one or more of the following frameworks:
 - [🦀 Native Rust](https://docs.anza.xyz/) - vanilla Rust using Solana's native crates. Build with `cargo build-sbf --manifest-path=./program/Cargo.toml`, test with `cargo test --manifest-path=./program/Cargo.toml`.
 - [🧬 ASM](https://github.com/blueshift-gg/sbpf) - hand-written sBPF assembly built with the `sbpf` toolchain. Build with `sbpf build`, test with `cargo test`.
 
-> [!NOTE]
-> Quicknode has recently released [Building Financial Software on Solana](https://solanabook.org), a comprehensive guide to creating financial products on the blockchain which covers how the "Finance" programs below work. The book can be [downloaded for free](https://solanabook.org), there's also a [paperback on Amazon](https://www.amazon.com/dp/B0HMJSSB95) and [Barnes and Noble](https://www.barnesandnoble.com/w/building-financial-software-on-solana-mike-maccana/1151680819) and independent booksellers.
+## Learn how these programs work
+
+<a href="https://solanabook.org"><img src="assets/book-cover.png" alt="Building Financial Software on Solana, by Mike MacCana" width="240"></a>
+
+[Building Financial Software on Solana](https://solanabook.org) walks through every finance program here: the market design behind it, the attacks it defends against, and the code. [Download it free](https://solanabook.org), or buy the paperback from [Amazon](https://www.amazon.com/dp/B0HMJSSB95), [Barnes & Noble](https://www.barnesandnoble.com/w/building-financial-software-on-solana-mike-maccana/1151680819) and independent booksellers.
 
 ## Getting started
+
+The examples are grouped into [Financial software](#financial-software-defi), [Single concept examples](#single-concept-examples), [Tokens](#tokens), [Token Extensions](#token-extensions), [NFTs](#nfts), [Compression](#compression), and [Tools](#tools), followed by an [FAQ](#faq).
+
+New to Solana? Start with [Hello Solana](#hello-solana), then [Escrow](#escrow), the best first finance program.
 
 You need [Rust](https://www.rust-lang.org/tools/install), [Solana CLI](https://docs.anza.xyz/cli/install), [Anchor](https://www.anchor-lang.com/docs/installation), and [pnpm](https://pnpm.io/installation) installed. Clone the repo and `cd` into any example directory, then run its tests with the command for that framework (shown above) - for an Anchor example, `anchor test`. `pnpm` is used for repo-wide formatting and linting, not for running an example's tests.
 
@@ -34,6 +43,8 @@ The programs are examples of common financial primitives on Solana. As well as t
 
 [⚓ Anchor v1](./finance/escrow/anchor-v1) [⚓ Anchor v2](./finance/escrow/anchor) [💫 Quasar](./finance/escrow/quasar) [🦀 Native](./finance/escrow/native)
 
+📖 Book: Chapter 11, [*Escrow*](https://solanabook.org)
+
 🎬 Video: [Build a Solana program (smart contract) in 30 minutes](https://www.youtube.com/watch?v=B5eBWWQfQuM)
 
 ### Lending
@@ -42,11 +53,15 @@ A borrow/lend market like Solend or Kamino: suppliers deposit a token and receiv
 
 [⚓ Anchor v1](./finance/lending/anchor-v1) [⚓ Anchor v2](./finance/lending/anchor) [💫 Quasar](./finance/lending/quasar)
 
+📖 Book: Chapter 17, [*Lending and Borrowing*](https://solanabook.org)
+
 ### Order Book based Exchange
 
 A typical NYSE/NASDAQ-style order book-based exchange. Buyers post **bids** (the price they'll pay), sellers post **asks** (the price they'll accept), and a trade happens when a bid and an ask meet. The exchange operator collects fees from trading. Similar to popular Solana exchanges like Openbook and Phoenix.
 
 [⚓ Anchor v1](./finance/order-book/anchor-v1) [⚓ Anchor v2](./finance/order-book/anchor) [💫 Quasar](./finance/order-book/quasar)
+
+📖 Book: Chapter 14, [*The Order Book Exchange*](https://solanabook.org)
 
 🎬 Video: [How to make a crypto exchange on Solana](https://www.youtube.com/watch?v=ioFkpaKHXgg)
 
@@ -56,11 +71,15 @@ An exchange with no order book: swaps fill instantly against a shared liquidity 
 
 [⚓ Anchor v1](./finance/token-swap/anchor-v1) [⚓ Anchor v2](./finance/token-swap/anchor) [💫 Quasar](./finance/token-swap/quasar)
 
+📖 Book: Chapter 15, [*The Constant-Product AMM*](https://solanabook.org)
+
 ### Prop AMM
 
 A **proprietary AMM**: a market-making firm funds a venue with its own capital and quotes both sides of it, selling the base token at the oracle price plus a spread and buying it back at the oracle price minus the spread. No pricing curve, no liquidity providers, no pool shares: the operator is the only capital in the market, can re-quote or pull its quotes at will, and earns the spread instead of a fee. Because the price comes from an oracle rather than the pool's balances, trades have no price impact and nothing to sandwich. This is the design behind venues like Lifinity, SolFi, and HumidiFi, which fill most Solana swap volume through Jupiter routing.
 
 [⚓ Anchor v1](./finance/prop-amm/anchor-v1) [⚓ Anchor v2](./finance/prop-amm/anchor) [💫 Quasar](./finance/prop-amm/quasar)
+
+📖 Book: Chapter 16, [*The Prop AMM*](https://solanabook.org)
 
 ### Managed Fund
 
@@ -70,6 +89,8 @@ A managed investment fund onchain, the equivalent of a mutual fund. Investors de
 
 [⚓ Anchor v1](./finance/managed-fund/anchor-v1) [⚓ Anchor v2](./finance/managed-fund/anchor) [💫 Quasar](./finance/managed-fund/quasar)
 
+📖 Book: Chapter 18, [*The Managed Fund*](https://solanabook.org)
+
 🎬 Video: [Building a Managed Fund](https://www.youtube.com/watch?v=G7z7xsDyoRk)
 
 ### Betting Market
@@ -77,6 +98,8 @@ A managed investment fund onchain, the equivalent of a mutual fund. Investors de
 Parimutuel (pooled) prediction market - an admin opens an event with multiple outcomes, bettors stake tokens on an outcome, and at settlement the losing pool (minus a protocol fee) is split among winners in proportion to their stake.
 
 [⚓ Anchor v1](./finance/betting-market/anchor-v1) [⚓ Anchor v2](./finance/betting-market/anchor) [💫 Quasar](./finance/betting-market/quasar)
+
+📖 Book: Chapter 13, [*The Betting Market*](https://solanabook.org)
 
 🎬 Video: [How to build a PolyMarket/Kalshi style betting market on Solana](https://www.youtube.com/watch?v=jE3-IA1FBs0)
 
@@ -87,17 +110,23 @@ A fully collateralized, physically settled **options** venue. A writer posts the
 
 [⚓ Anchor v1](./finance/options/anchor-v1) [⚓ Anchor v2](./finance/options/anchor) [💫 Quasar](./finance/options/quasar)
 
+📖 Book: Chapter 19, [*Options*](https://solanabook.org)
+
 ### Perpetual Futures
 
 A perpetual futures exchange: a venue for making leveraged bets on an asset's price without ever owning the asset. Traders post collateral and open a **long** (betting the price rises) or **short** (betting it falls) sized up to several times their collateral; their profit or loss tracks the price move and is paid in the collateral token. Rather than matching buyers to sellers, every trade is against a shared **liquidity pool** that other users fund and that is the counterparty to all of it: the pool pays winners and keeps losers' collateral, and its providers earn the trading and funding fees in return. The price comes from an oracle, positions accrue a funding fee over time, and anyone can **liquidate** a position whose collateral can no longer cover its loss. This is the design behind venues like Jupiter Perpetuals and GMX.
 
 [⚓ Anchor v1](./finance/perpetual-futures/anchor-v1) [⚓ Anchor v2](./finance/perpetual-futures/anchor) [💫 Quasar](./finance/perpetual-futures/quasar)
 
+📖 Book: Chapter 20, [*Perpetual Futures*](https://solanabook.org)
+
 ### Fundraiser
 
 Onchain crowdfunding, like Kickstarter or GoFundMe. A creator sets a target amount in a chosen token, and contributors deposit into the fundraiser's account until the goal is reached.
 
 [⚓ Anchor v1](./finance/fundraiser/anchor-v1) [⚓ Anchor v2](./finance/fundraiser/anchor) [💫 Quasar](./finance/fundraiser/quasar)
+
+📖 Book: Chapter 12, [*The Fundraiser*](https://solanabook.org)
 
 ## Single concept examples
 
@@ -167,11 +196,11 @@ Store and retrieve state using PDAs as deterministic account addresses.
 
 [⚓ Anchor v1](./basics/program-derived-addresses/anchor-v1) [⚓ Anchor v2](./basics/program-derived-addresses/anchor) [💫 Quasar](./basics/program-derived-addresses/quasar) [🤥 Pinocchio](./basics/program-derived-addresses/pinocchio) [🦀 Native](./basics/program-derived-addresses/native)
 
-### Realloc
+### Resizing Accounts
 
-Handle accounts that need to grow or shrink in size.
+Grow or shrink an account after it has been created, a process Solana calls **realloc** (reallocation): the account's data is resized and its rent-exempt balance topped up or refunded to match.
 
-[⚓ Anchor v1](./basics/realloc/anchor-v1) [⚓ Anchor v2](./basics/realloc/anchor) [💫 Quasar](./basics/realloc/quasar) [🤥 Pinocchio](./basics/realloc/pinocchio) [🦀 Native](./basics/realloc/native)
+[⚓ Anchor v1](./basics/resizing-accounts/anchor-v1) [⚓ Anchor v2](./basics/resizing-accounts/anchor) [💫 Quasar](./basics/resizing-accounts/quasar) [🤥 Pinocchio](./basics/resizing-accounts/pinocchio) [🦀 Native](./basics/resizing-accounts/native)
 
 ### Rent
 
@@ -204,18 +233,6 @@ An **oracle** brings real-world market prices - a dollar, a stock, a token - [on
 Create a token mint with a symbol and icon.
 
 [⚓ Anchor v1](./tokens/create-token/anchor-v1) [⚓ Anchor v2](./tokens/create-token/anchor) [💫 Quasar](./tokens/create-token/quasar) [🦀 Native](./tokens/create-token/native)
-
-### Mint NFT
-
-Mint an NFT from inside your own program using the Token and Metaplex Token Metadata programs.
-
-[⚓ Anchor v1](./tokens/nft-minter/anchor-v1) [⚓ Anchor v2](./tokens/nft-minter/anchor) [💫 Quasar](./tokens/nft-minter/quasar) [🦀 Native](./tokens/nft-minter/native)
-
-### NFT Operations
-
-Create an NFT collection, mint NFTs, and verify NFTs as part of a collection using Metaplex Token Metadata.
-
-[⚓ Anchor v1](./tokens/nft-operations/anchor-v1) [⚓ Anchor v2](./tokens/nft-operations/anchor) [💫 Quasar](./tokens/nft-operations/quasar)
 
 ### Token Minter
 
@@ -291,12 +308,6 @@ Store metadata directly inside the token [mint account](https://solana.com/docs/
 
 [⚓ Anchor v1](./tokens/token-extensions/metadata/anchor-v1) [⚓ Anchor v2](./tokens/token-extensions/metadata/anchor)
 
-### NFT Metadata Pointer
-
-Create an NFT using the metadata pointer extension, storing onchain metadata (including custom fields) inside the mint.
-
-[⚓ Anchor v1](./tokens/token-extensions/nft-meta-data-pointer/anchor-example/anchor-v1) [⚓ Anchor v2](./tokens/token-extensions/nft-meta-data-pointer/anchor-example/anchor)
-
 ### Mint Close Authority
 
 Allow a designated account to close a token mint.
@@ -369,6 +380,26 @@ Restrict transfers so only whitelisted accounts can receive tokens.
 
 [⚓ Anchor v1](./tokens/token-extensions/transfer-hook/whitelist/anchor-v1) [⚓ Anchor v2](./tokens/token-extensions/transfer-hook/whitelist/anchor) [💫 Quasar](./tokens/token-extensions/transfer-hook/whitelist/quasar)
 
+## NFTs
+
+### Mint NFT
+
+Mint an NFT from inside your own program using the Token and Metaplex Token Metadata programs.
+
+[⚓ Anchor v1](./nft/minter/anchor-v1) [⚓ Anchor v2](./nft/minter/anchor) [💫 Quasar](./nft/minter/quasar) [🦀 Native](./nft/minter/native)
+
+### NFT Operations
+
+Create an NFT collection, mint NFTs, and verify NFTs as part of a collection using Metaplex Token Metadata.
+
+[⚓ Anchor v1](./nft/operations/anchor-v1) [⚓ Anchor v2](./nft/operations/anchor) [💫 Quasar](./nft/operations/quasar)
+
+### NFT Metadata Pointer
+
+Create an NFT using the metadata pointer extension, storing onchain metadata (including custom fields) inside the mint.
+
+[⚓ Anchor v1](./nft/metadata-pointer/anchor-v1) [⚓ Anchor v2](./nft/metadata-pointer/anchor)
+
 ## Compression
 
 ### cNFT Burn
@@ -409,15 +440,15 @@ Start with the [escrow example](./finance/escrow/anchor/), the best first financ
 
 ### Do these examples work with Solana transaction v1?
 
-Yes. The v1 format (4,096 byte transactions, live on mainnet since epoch 1035 on 15 September 2026) changes how a client builds a transaction, not what a program sees, so every program here can be called through v1 as is. Every Anchor v1 and Anchor v2 example's tests send their transactions as v1, through [solana-kite](https://crates.io/crates/solana-kite) (0.6 for Anchor v1, 0.7 for Anchor v2), and the transaction v1 example ([Anchor v1](./basics/transaction-v1/anchor-v1/), [Anchor v2](./basics/transaction-v1/anchor/)) shows the config fields that replace ComputeBudget instructions. The Quasar tests send no transactions at all: their harness runs each instruction directly, so the transaction format never comes up.
+Yes. A v1 transaction can be 4,096 bytes rather than 1,232, so more instructions fit in a single transaction instead of being split across several and bundled together. Every Anchor v1 and Anchor v2 example's tests send their transactions as v1, and the programs themselves read those transactions as is: programs don't need to change their format for transaction v1.
+
+### Is there a book that explains these programs?
+
+Yes. [Building Financial Software on Solana](https://solanabook.org) gives each finance program here its own chapter, covering the market design, the attacks it defends against, and the code, after a first part on Solana's building blocks and the concepts all financial software shares: integer arithmetic for money, oracles, and how attackers take funds. It is [free to download](https://solanabook.org) and in paperback from [Amazon](https://www.amazon.com/dp/B0HMJSSB95) and [Barnes & Noble](https://www.barnesandnoble.com/w/building-financial-software-on-solana-mike-maccana/1151680819).
 
 ### How do I test a Solana program without running a validator?
 
 Use [LiteSVM](https://www.anchor-lang.com/docs/testing/litesvm): Rust integration tests that run the program in-process, orders of magnitude faster than `solana-test-validator`. Every example in this repository tests this way, and `anchor init` scaffolds it by default since Anchor 1.0.
-
-### What is the difference between Anchor, Quasar, Pinocchio, and native Rust?
-
-[Anchor](https://www.anchor-lang.com/) is the most popular Solana framework, generating account validation and serialization from declarative constraints. [Quasar](https://quasar-lang.com/docs) offers Anchor-like ergonomics with zero-copy, `no_std` performance and smaller binaries. [Pinocchio](https://github.com/anza-xyz/pinocchio) is a zero-allocation library for hand-rolled programs, and native Rust uses Solana's crates directly with no framework. Most examples here ship several variants of the same program so you can compare.
 
 ### What is the best way to learn Solana finance programming?
 
@@ -425,7 +456,7 @@ Work through the [finance examples](#financial-software-defi) in order of comple
 
 ### Are these examples production-ready?
 
-They are teaching examples: every one builds and passes CI, and the finance programs additionally carry [Kani](https://github.com/model-checking/kani) model checks of their arithmetic. None are audited or deployed to mainnet, so treat them as reference implementations to learn from, not code to deploy as-is.
+They are teaching examples: every one builds and passes CI. Every finance program has tests that try the attacks it defends against, such as front-running a pool's creation or cancelling another trader's offer, and assert the program refuses them, and [Kani](https://github.com/model-checking/kani) model checks of its arithmetic. None are audited or deployed to mainnet, so treat them as reference implementations to learn from, not code to deploy as-is.
 
 ## Acknowledgements
 

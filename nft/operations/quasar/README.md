@@ -14,7 +14,7 @@ See also: the [repository catalog](../../../README.md).
 
 ## Setup
 
-From `tokens/nft-operations/quasar/`:
+From `nft/operations/quasar/`:
 
 ```bash
 quasar build
