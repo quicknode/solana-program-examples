@@ -40,4 +40,4 @@ The tests sign real transfer authorizations with a fixed secp256k1 key, send tra
 
 ## Usage
 
-Read the program source under `programs/` and `Anchor.toml` for the program ID. For deployment, use `anchor build && anchor deploy` against your target cluster.
+Read the program source under `programs/` and `Anchor.toml` for the program ID. For deployment, use `anchor build && anchor program deploy` against your target cluster.

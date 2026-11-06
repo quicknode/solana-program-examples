@@ -85,7 +85,7 @@ The example was scaffolded with `npx create-solana-game gamName`.
 If you want to start fresh:
 
 1. Install [Anchor](https://www.anchor-lang.com/docs/installation).
-2. `cd anchor`, then `anchor build` and `anchor deploy`.
+2. `cd anchor`, then `anchor build` and `anchor program deploy`.
 3. Copy the printed program ID into `lib.rs`, `Anchor.toml`, and `app/utils/anchor.ts`.
 4. Rebuild and redeploy.
 5. `cd app && pnpm install && pnpm dev` to run the client.

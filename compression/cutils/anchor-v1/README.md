@@ -32,7 +32,7 @@ cargo test
 
 The program ID declared in [`programs/cutils/src/lib.rs`](programs/cutils/src/lib.rs) is `BuFyrgRYzg2nPhqYrxZ7d9uYUs4VXtxH71U8EcoAfTQZ`. Whether this address is currently deployed on any cluster is not tracked in this repo - verify with `solana program show <id>` against the cluster you care about.
 
-To deploy your own copy, change the program ID in `lib.rs` and `Anchor.toml`, then run `anchor build && anchor deploy`.
+To deploy your own copy, change the program ID in `lib.rs` and `Anchor.toml`, then run `anchor build && anchor program deploy`.
 
 ## Limitations
 
