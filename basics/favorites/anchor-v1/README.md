@@ -31,4 +31,4 @@ LiteSVM tests in `programs/` assert that users cannot overwrite each other's sta
 
 ## Usage
 
-`anchor deploy` targets the cluster in `Anchor.toml`.
+`anchor program deploy` targets the cluster in `Anchor.toml`.
