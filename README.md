@@ -19,9 +19,11 @@ Each example is available in one or more of the following frameworks:
 
 ## Learn how these programs work
 
-<a href="https://solanabook.org"><img src="assets/book-cover.png" alt="Building Financial Software on Solana, by Mike MacCana" width="240"></a>
+<a href="https://solanabook.org"><img src="assets/book-cover.png" alt="Building Financial Software on Solana, by Mike MacCana" width="200" align="left"></a>
 
 [Building Financial Software on Solana](https://solanabook.org) walks through every finance program here: the market design behind it, the attacks it defends against, and the code. [Download it free](https://solanabook.org), or buy the paperback from [Amazon](https://www.amazon.com/dp/B0HMJSSB95), [Barnes & Noble](https://www.barnesandnoble.com/w/building-financial-software-on-solana-mike-maccana/1151680819) and independent booksellers.
+
+<br clear="left">
 
 ## Getting started
 
