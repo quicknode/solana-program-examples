@@ -167,9 +167,9 @@ Store and retrieve state using PDAs as deterministic account addresses.
 
 [⚓ Anchor v1](./basics/program-derived-addresses/anchor-v1) [⚓ Anchor v2](./basics/program-derived-addresses/anchor) [💫 Quasar](./basics/program-derived-addresses/quasar) [🤥 Pinocchio](./basics/program-derived-addresses/pinocchio) [🦀 Native](./basics/program-derived-addresses/native)
 
-### Realloc
+### Resizing Accounts
 
-Handle accounts that need to grow or shrink in size.
+Grow or shrink an account after it has been created, a process Solana calls **realloc** (reallocation): the account's data is resized and its rent-exempt balance topped up or refunded to match.
 
 [⚓ Anchor v1](./basics/realloc/anchor-v1) [⚓ Anchor v2](./basics/realloc/anchor) [💫 Quasar](./basics/realloc/quasar) [🤥 Pinocchio](./basics/realloc/pinocchio) [🦀 Native](./basics/realloc/native)
 
@@ -204,18 +204,6 @@ An **oracle** brings real-world market prices - a dollar, a stock, a token - [on
 Create a token mint with a symbol and icon.
 
 [⚓ Anchor v1](./tokens/create-token/anchor-v1) [⚓ Anchor v2](./tokens/create-token/anchor) [💫 Quasar](./tokens/create-token/quasar) [🦀 Native](./tokens/create-token/native)
-
-### Mint NFT
-
-Mint an NFT from inside your own program using the Token and Metaplex Token Metadata programs.
-
-[⚓ Anchor v1](./tokens/nft-minter/anchor-v1) [⚓ Anchor v2](./tokens/nft-minter/anchor) [💫 Quasar](./tokens/nft-minter/quasar) [🦀 Native](./tokens/nft-minter/native)
-
-### NFT Operations
-
-Create an NFT collection, mint NFTs, and verify NFTs as part of a collection using Metaplex Token Metadata.
-
-[⚓ Anchor v1](./tokens/nft-operations/anchor-v1) [⚓ Anchor v2](./tokens/nft-operations/anchor) [💫 Quasar](./tokens/nft-operations/quasar)
 
 ### Token Minter
 
@@ -291,12 +279,6 @@ Store metadata directly inside the token [mint account](https://solana.com/docs/
 
 [⚓ Anchor v1](./tokens/token-extensions/metadata/anchor-v1) [⚓ Anchor v2](./tokens/token-extensions/metadata/anchor)
 
-### NFT Metadata Pointer
-
-Create an NFT using the metadata pointer extension, storing onchain metadata (including custom fields) inside the mint.
-
-[⚓ Anchor v1](./tokens/token-extensions/nft-meta-data-pointer/anchor-example/anchor-v1) [⚓ Anchor v2](./tokens/token-extensions/nft-meta-data-pointer/anchor-example/anchor)
-
 ### Mint Close Authority
 
 Allow a designated account to close a token mint.
@@ -369,6 +351,26 @@ Restrict transfers so only whitelisted accounts can receive tokens.
 
 [⚓ Anchor v1](./tokens/token-extensions/transfer-hook/whitelist/anchor-v1) [⚓ Anchor v2](./tokens/token-extensions/transfer-hook/whitelist/anchor) [💫 Quasar](./tokens/token-extensions/transfer-hook/whitelist/quasar)
 
+## NFTs
+
+### Mint NFT
+
+Mint an NFT from inside your own program using the Token and Metaplex Token Metadata programs.
+
+[⚓ Anchor v1](./tokens/nft-minter/anchor-v1) [⚓ Anchor v2](./tokens/nft-minter/anchor) [💫 Quasar](./tokens/nft-minter/quasar) [🦀 Native](./tokens/nft-minter/native)
+
+### NFT Operations
+
+Create an NFT collection, mint NFTs, and verify NFTs as part of a collection using Metaplex Token Metadata.
+
+[⚓ Anchor v1](./tokens/nft-operations/anchor-v1) [⚓ Anchor v2](./tokens/nft-operations/anchor) [💫 Quasar](./tokens/nft-operations/quasar)
+
+### NFT Metadata Pointer
+
+Create an NFT using the metadata pointer extension, storing onchain metadata (including custom fields) inside the mint.
+
+[⚓ Anchor v1](./tokens/token-extensions/nft-meta-data-pointer/anchor-example/anchor-v1) [⚓ Anchor v2](./tokens/token-extensions/nft-meta-data-pointer/anchor-example/anchor)
+
 ## Compression
 
 ### cNFT Burn
@@ -409,7 +411,7 @@ Start with the [escrow example](./finance/escrow/anchor/), the best first financ
 
 ### Do these examples work with Solana transaction v1?
 
-Yes. The v1 format (4,096 byte transactions, live on mainnet since epoch 1035 on 15 September 2026) changes how a client builds a transaction, not what a program sees, so every program here can be called through v1 as is. Every Anchor v1 and Anchor v2 example's tests send their transactions as v1, through [solana-kite](https://crates.io/crates/solana-kite) (0.6 for Anchor v1, 0.7 for Anchor v2), and the transaction v1 example ([Anchor v1](./basics/transaction-v1/anchor-v1/), [Anchor v2](./basics/transaction-v1/anchor/)) shows the config fields that replace ComputeBudget instructions. The Quasar tests send no transactions at all: their harness runs each instruction directly, so the transaction format never comes up.
+Yes. A v1 transaction can be 4,096 bytes rather than 1,232, so more instructions fit in a single transaction instead of being split across several and bundled together. Every Anchor v1 and Anchor v2 example's tests send their transactions as v1, and the programs themselves read those transactions as is: programs don't need to change their format for transaction v1.
 
 ### How do I test a Solana program without running a validator?
 
