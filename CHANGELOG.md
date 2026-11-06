@@ -36,6 +36,14 @@ account per allowed wallet.
   authority, or to allow a wallet without the list's authority.
 - The lending and managed-fund docs say "allow list" for "whitelist".
 
+### Removed
+
+- `tokens/token-extensions/transfer-hook/block-list/`, a Pinocchio-only example with no
+  entry in the catalog. Allow/Block List covers the same one-account-per-blocked-wallet
+  design in its Block mode, in Anchor v1, Anchor v2 and Quasar.
+- `whitelist/` and `block-list/` each keep a `README.md` pointing to where the example
+  went.
+
 ## [2026-10-28] - Anchor v2 examples on Anchor 2.0.0-rc.2, sending v1 transactions
 
 Anchor 2.0.0-rc.2's test harness, `anchor-v2-testing`, runs on LiteSVM 0.18, which
