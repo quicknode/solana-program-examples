@@ -20,6 +20,8 @@ Each example is available in one or more of the following frameworks:
 
 ## Getting started
 
+The examples are grouped into [Financial software](#financial-software-defi), [Single concept examples](#single-concept-examples), [Tokens](#tokens), [Token Extensions](#token-extensions), [NFTs](#nfts), [Compression](#compression), and [Tools](#tools), followed by an [FAQ](#faq).
+
 You need [Rust](https://www.rust-lang.org/tools/install), [Solana CLI](https://docs.anza.xyz/cli/install), [Anchor](https://www.anchor-lang.com/docs/installation), and [pnpm](https://pnpm.io/installation) installed. Clone the repo and `cd` into any example directory, then run its tests with the command for that framework (shown above) - for an Anchor example, `anchor test`. `pnpm` is used for repo-wide formatting and linting, not for running an example's tests.
 
 To deploy to mainnet or devnet you'll need an RPC endpoint. [Quicknode](https://www.quicknode.com/chains/solana) provides Solana endpoints - create one and set it as your cluster in `Anchor.toml` or with `solana config set --url <your-endpoint>`.
