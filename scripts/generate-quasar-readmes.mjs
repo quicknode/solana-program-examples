@@ -80,11 +80,6 @@ const examples = {
     purpose: "Compute account size and minimum rent-exempt [lamports](https://solana.com/docs/terminology#lamport).",
     concepts: ["Rent-exempt balance", "Space planning"],
   },
-  "basics/repository-layout/quasar": {
-    title: "Repository Layout",
-    purpose: "Organize a program across modules (state, handlers, errors).",
-    concepts: ["Multi-file layout", "Separation of concerns"],
-  },
   "basics/transfer-sol/quasar": {
     title: "Transfer SOL",
     purpose: "Transfer native SOL via the System Program.",

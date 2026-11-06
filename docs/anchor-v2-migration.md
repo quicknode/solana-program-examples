@@ -1,4 +1,4 @@
-# Porting an Anchor program from v1 to v2.0.0-rc.1
+# Porting an Anchor program from v1 to v2.0.0-rc.2
 
 Anchor v2 is a ground-up rewrite, not a version bump. The crate is `no_std` and
 built on pinocchio, the account model is static-scoped, borsh is replaced by
@@ -11,14 +11,14 @@ it is the only rule here that the compiler will not catch for you.
 
 Every difference below has a worked example in this repository. Each Anchor example keeps
 both versions side by side: `<example>/anchor-v1/` is the program on 1.2.1 and
-`<example>/anchor/` is the same program on 2.0.0-rc.1, so diffing the two directories shows
+`<example>/anchor/` is the same program on 2.0.0-rc.2, so diffing the two directories shows
 any rule here applied to real code. Both are built and tested in CI, by the Anchor v1 and
 Anchor v2 workflows respectively.
 
 ## Manifest Changes Every Crate Needs
 
-- `anchor-lang` and `anchor-spl` both move from `1.2.1` to `2.0.0-rc.1`.
-- `wincode = { version = "0.5", features = ["derive"] }` is new.
+- `anchor-lang` and `anchor-spl` both move from `1.2.1` to `2.0.0-rc.2`.
+- `wincode = { version = "0.6", features = ["derive"] }` is new.
 - `features = ["init-if-needed"]` goes away. There is no such feature, and the
   constraint is always available.
 - `"anchor-spl/idl-build"` comes out of the `idl-build` feature list, because
@@ -28,19 +28,6 @@ Anchor v2 workflows respectively.
 
 Every program crate needs `wincode` as a **direct** dependency: the `#[program]`
 macro expands to `wincode` paths for instruction-data (de)serialization.
-
-Programs that put an `Address` in serialized state also need:
-
-```toml
-# anchor-lang 2.0.0-rc.1 is built against wincode 0.5, but solana-address 2.7
-# moved to wincode 0.6. With both in the graph, `Address`'s wincode impls belong
-# to the version the account derives are not using, and every `SchemaRead` /
-# `SchemaWrite` bound fails. 2.6.1 is the last release on the 0.5 line.
-solana-address = ">=2.6, <2.7"
-```
-
-Note the range: a bare `<2.7` lets cargo satisfy the requirement by reusing an
-older 1.x already in the graph, which does not fix anything.
 
 ## Renamed Accessors and Handler Signatures
 
@@ -443,6 +430,9 @@ answer is usually one of the first four rather than moving it to borsh.
 - `anchor test --profile`: per-test register-trace flamegraphs under
   `target/anchor-v2-profile/`.
 - `anchor-v2-testing`: wraps LiteSVM with optional register-trace capture.
+  It is published only from git, so the examples pin it to the revision the
+  `v2.0.0-rc.2` tag points at. It no longer re-exports `LiteSVM` at its root:
+  import `anchor_v2_testing::litesvm::LiteSVM`.
 
 ## Hand-Built CPIs Take Handles, Not Account Infos
 
@@ -541,8 +531,9 @@ driving `cargo-build-sbf` has to do the same.
 
 ## Toolchain Versions the Port Depends On
 
-CI installs the CLI with `avm install 2.0.0-rc.1`; it is a pre-release, so it
-has to be named explicitly rather than resolved as latest. A v2 CLI cannot build
+CI installs the CLI with `cargo install anchor-cli --version 2.0.0-rc.2 --locked`;
+it is a pre-release, so it has to be named explicitly rather than resolved as
+latest, and avm has no prebuilt binary for it. A v2 CLI cannot build
 v1 programs, so that pin can only move once every example is ported.
 
 `anchor idl build` compiles the test targets too, so the `.so` has to exist

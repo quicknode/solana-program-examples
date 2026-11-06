@@ -3,7 +3,7 @@ use {
         solana_program::instruction::Instruction, system_program, Address, InstructionData,
         ToAccountMetas,
     },
-    anchor_v2_testing::{Keypair, LiteSVM, Signer},
+    anchor_v2_testing::{litesvm::LiteSVM, Keypair, Signer},
     solana_kite::{
         create_wallet, send_transaction_from_instructions,
         token_extensions::TOKEN_EXTENSIONS_PROGRAM_ID,
@@ -44,8 +44,14 @@ fn test_init_config_and_init_mint() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![init_config_ix], &[&payer], &payer.pubkey())
-        .unwrap();
+    send_transaction_from_instructions(
+        &mut svm,
+        vec![init_config_ix],
+        &[&payer],
+        &payer.pubkey(),
+        None,
+    )
+    .unwrap();
     svm.expire_blockhash();
 
     // Step 2: Initialize mint with transfer hook and metadata
@@ -81,6 +87,7 @@ fn test_init_config_and_init_mint() {
         vec![init_mint_ix],
         &[&payer, &mint_keypair],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
 }

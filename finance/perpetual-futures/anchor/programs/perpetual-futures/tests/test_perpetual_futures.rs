@@ -3,7 +3,7 @@ use {
         solana_program::instruction::Instruction, system_program, AccountDeserialize, Address,
         Error as AnchorError, ErrorCode as AnchorErrorCode, InstructionData, ToAccountMetas,
     },
-    anchor_v2_testing::{Keypair, LiteSVM, Signer},
+    anchor_v2_testing::{litesvm::LiteSVM, Keypair, Signer},
     perpetual_futures::{
         errors::PerpError,
         instructions::{
@@ -161,7 +161,7 @@ impl Market {
 
         let payer = create_wallet(&mut svm, 100_000_000_000).unwrap();
         let admin = create_wallet(&mut svm, 100_000_000_000).unwrap();
-        let collateral_mint = create_token_mint(&mut svm, &admin, DECIMALS, None).unwrap();
+        let collateral_mint = create_token_mint(&mut svm, &admin, DECIMALS, None, None).unwrap();
 
         // Create the mock oracle feed as a fresh account owned by the mock
         // program; the admin is its update authority.
@@ -186,6 +186,7 @@ impl Market {
             vec![initialize_feed],
             &[&admin, &feed_keypair],
             &admin.pubkey(),
+            None,
         )
         .unwrap();
         let feed = feed_keypair.pubkey();
@@ -221,6 +222,7 @@ impl Market {
             vec![initialize_pool],
             &[&admin],
             &admin.pubkey(),
+            None,
         )
         .map_err(|error| format!("{error:?}"))?;
 
@@ -265,6 +267,7 @@ impl Market {
             vec![set_price],
             &[&self.admin],
             &self.admin.pubkey(),
+            None,
         )
         .unwrap();
     }
@@ -327,6 +330,7 @@ impl Market {
             &liquidator.pubkey(),
             &self.collateral_mint,
             &self.payer,
+            None,
         )
         .unwrap();
         (liquidator, liquidator_collateral)
@@ -359,6 +363,7 @@ impl Market {
             &trader.pubkey(),
             &self.collateral_mint,
             &self.payer,
+            None,
         )
         .unwrap();
         mint_tokens_to_token_account(
@@ -367,6 +372,7 @@ impl Market {
             &token_account,
             amount,
             &self.admin,
+            None,
         )
         .unwrap();
         (trader, token_account)
@@ -407,6 +413,7 @@ impl Market {
             vec![instruction],
             &[provider],
             &provider.pubkey(),
+            None,
         )
         .map_err(|error| format!("{error:?}"))
     }
@@ -446,6 +453,7 @@ impl Market {
             vec![instruction],
             &[provider],
             &provider.pubkey(),
+            None,
         )
         .map_err(|error| format!("{error:?}"))
     }
@@ -500,6 +508,7 @@ impl Market {
             vec![instruction],
             &[trader],
             &trader.pubkey(),
+            None,
         )
         .map_err(|error| format!("{error:?}"))
     }
@@ -534,6 +543,7 @@ impl Market {
             vec![instruction],
             &[trader],
             &trader.pubkey(),
+            None,
         )
         .map_err(|error| format!("{error:?}"))
     }
@@ -571,6 +581,7 @@ impl Market {
             vec![instruction],
             &[liquidator],
             &liquidator.pubkey(),
+            None,
         )
         .map_err(|error| format!("{error:?}"))
     }
@@ -597,6 +608,7 @@ impl Market {
             vec![instruction],
             &[authority],
             &authority.pubkey(),
+            None,
         )
         .map_err(|error| format!("{error:?}"))
     }
@@ -617,6 +629,7 @@ impl Market {
             vec![instruction],
             &[caller],
             &caller.pubkey(),
+            None,
         )
         .map_err(|error| format!("{error:?}"))
     }
@@ -1089,8 +1102,11 @@ fn test_stale_price_rejected() {
     let collateral = 1_000 * ONE_USDC;
     let (trader, trader_collateral) = market.funded_trader(collateral);
 
-    // Move far past the staleness window without refreshing the feed.
-    market.warp(10_000);
+    // Move far past the staleness window without refreshing the feed. The warp
+    // is relative because LiteSVM starts at a recent mainnet slot rather than
+    // slot 0.
+    let now = market.current_slot();
+    market.warp(now + 10_000);
     assert_fails_with(
         market.open_position(
             &trader,
@@ -1403,6 +1419,7 @@ fn test_liquidation_of_underwater_long() {
         &liquidator.pubkey(),
         &market.collateral_mint,
         &market.payer,
+        None,
     )
     .unwrap();
 
@@ -1438,6 +1455,7 @@ fn test_healthy_position_cannot_be_liquidated() {
         &liquidator.pubkey(),
         &market.collateral_mint,
         &market.payer,
+        None,
     )
     .unwrap();
 
@@ -1470,6 +1488,7 @@ fn test_collect_fees() {
         &admin.pubkey(),
         &market.collateral_mint,
         &market.payer,
+        None,
     )
     .unwrap();
     market.collect_fees(&admin).unwrap();
@@ -1509,6 +1528,7 @@ fn test_collect_fees_requires_authority() {
         &imposter.pubkey(),
         &market.collateral_mint,
         &market.payer,
+        None,
     )
     .unwrap();
     // The `authority` account is bound to `pool.authority` by an `address`

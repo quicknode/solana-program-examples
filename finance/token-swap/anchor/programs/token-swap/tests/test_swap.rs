@@ -5,7 +5,7 @@ use {
         solana_program::instruction::Instruction, system_program, Address, InstructionData,
         ToAccountMetas,
     },
-    anchor_v2_testing::{Keypair, LiteSVM, Signer},
+    anchor_v2_testing::{litesvm::LiteSVM, Keypair, Signer},
     solana_kite::{
         create_associated_token_account, create_token_mint, create_wallet,
         get_token_account_balance, mint_tokens_to_token_account,
@@ -68,8 +68,8 @@ fn setup() -> (LiteSVM, Address, Keypair) {
 /// Ensure mint_a < mint_b by pubkey ordering (the program may require this).
 fn ordered_mints(svm: &mut LiteSVM, authority: &Keypair, decimals: u8) -> (Address, Address) {
     loop {
-        let a = create_token_mint(svm, authority, decimals, None).unwrap();
-        let b = create_token_mint(svm, authority, decimals, None).unwrap();
+        let a = create_token_mint(svm, authority, decimals, None, None).unwrap();
+        let b = create_token_mint(svm, authority, decimals, None, None).unwrap();
         if a.as_ref() < b.as_ref() {
             return (a, b);
         }
@@ -156,14 +156,28 @@ fn setup_config_and_mints() -> TestSetup {
 
     // Create ATAs for admin and mint tokens
     let holder_account_a =
-        create_associated_token_account(&mut svm, &admin.pubkey(), &mint_a, &payer).unwrap();
+        create_associated_token_account(&mut svm, &admin.pubkey(), &mint_a, &payer, None).unwrap();
     let holder_account_b =
-        create_associated_token_account(&mut svm, &admin.pubkey(), &mint_b, &payer).unwrap();
+        create_associated_token_account(&mut svm, &admin.pubkey(), &mint_b, &payer, None).unwrap();
 
-    mint_tokens_to_token_account(&mut svm, &mint_a, &holder_account_a, minted_amount, &admin)
-        .unwrap();
-    mint_tokens_to_token_account(&mut svm, &mint_b, &holder_account_b, minted_amount, &admin)
-        .unwrap();
+    mint_tokens_to_token_account(
+        &mut svm,
+        &mint_a,
+        &holder_account_a,
+        minted_amount,
+        &admin,
+        None,
+    )
+    .unwrap();
+    mint_tokens_to_token_account(
+        &mut svm,
+        &mint_b,
+        &holder_account_b,
+        minted_amount,
+        &admin,
+        None,
+    )
+    .unwrap();
 
     // Create AMM
     let initialize_config_ix = Instruction::new_with_bytes(
@@ -186,6 +200,7 @@ fn setup_config_and_mints() -> TestSetup {
         vec![initialize_config_ix],
         &[&payer],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -241,6 +256,7 @@ fn send_initialize_pool(ts: &mut TestSetup, amount_a: u64, amount_b: u64) -> Res
         vec![ix],
         &[&ts.payer, &ts.admin],
         &ts.payer.pubkey(),
+        None,
     )
     .map(|_| ())
     .map_err(|e| format!("{e:?}"))
@@ -286,6 +302,7 @@ fn test_initialize_config() {
         vec![initialize_config_ix],
         &[&payer],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -413,13 +430,15 @@ struct Depositor {
 fn fund_depositor(ts: &mut TestSetup, amount_a: u64, amount_b: u64) -> Depositor {
     let wallet = create_wallet(&mut ts.svm, 10_000_000_000).unwrap();
     let token_a =
-        create_associated_token_account(&mut ts.svm, &wallet.pubkey(), &ts.mint_a, &ts.payer)
+        create_associated_token_account(&mut ts.svm, &wallet.pubkey(), &ts.mint_a, &ts.payer, None)
             .unwrap();
     let token_b =
-        create_associated_token_account(&mut ts.svm, &wallet.pubkey(), &ts.mint_b, &ts.payer)
+        create_associated_token_account(&mut ts.svm, &wallet.pubkey(), &ts.mint_b, &ts.payer, None)
             .unwrap();
-    mint_tokens_to_token_account(&mut ts.svm, &ts.mint_a, &token_a, amount_a, &ts.admin).unwrap();
-    mint_tokens_to_token_account(&mut ts.svm, &ts.mint_b, &token_b, amount_b, &ts.admin).unwrap();
+    mint_tokens_to_token_account(&mut ts.svm, &ts.mint_a, &token_a, amount_a, &ts.admin, None)
+        .unwrap();
+    mint_tokens_to_token_account(&mut ts.svm, &ts.mint_b, &token_b, amount_b, &ts.admin, None)
+        .unwrap();
     let lp_token = derive_ata(&wallet.pubkey(), &ts.liquidity_provider_mint);
     Depositor {
         wallet,
@@ -468,6 +487,7 @@ fn send_deposit_from(
         vec![ix],
         &[&ts.payer, &depositor.wallet],
         &ts.payer.pubkey(),
+        None,
     )
     .map(|_| ())
     .map_err(|e| format!("{e:?}"))
@@ -498,6 +518,7 @@ fn test_pool_creation_cannot_be_front_run() {
         &ts.holder_account_a,
         300 * one,
         &ts.admin,
+        None,
     )
     .unwrap();
     mint_tokens_to_token_account(
@@ -506,6 +527,7 @@ fn test_pool_creation_cannot_be_front_run() {
         &ts.holder_account_b,
         800 * one,
         &ts.admin,
+        None,
     )
     .unwrap();
     send_initialize_pool(&mut ts, 400 * one, 900 * one).expect("Maria opens the pool");
@@ -561,6 +583,7 @@ fn test_pool_creation_cannot_be_front_run() {
         &mallory.token_b,
         100 * one,
         &ts.admin,
+        None,
     )
     .unwrap();
     assert_error_code(
@@ -608,6 +631,7 @@ fn test_swap_a_to_b() {
         vec![swap_ix],
         &[&ts.payer, &ts.admin],
         &ts.payer.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -661,6 +685,7 @@ fn test_withdraw_liquidity() {
         vec![withdraw_ix],
         &[&ts.payer, &ts.admin],
         &ts.payer.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -722,6 +747,7 @@ fn swap_a_to_b(ts: &mut TestSetup, input_amount: u64) {
         vec![swap_ix],
         &[&ts.payer, &ts.admin],
         &ts.payer.pubkey(),
+        None,
     )
     .unwrap();
 }
@@ -752,6 +778,7 @@ fn test_claim_admin_fees() {
         vec![claim_ix_first],
         &[&ts.payer, &ts.admin],
         &ts.payer.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -793,6 +820,7 @@ fn test_claim_admin_fees() {
         vec![claim_ix_second],
         &[&ts.payer, &ts.admin],
         &ts.payer.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -832,6 +860,7 @@ fn test_claim_admin_fees() {
         vec![claim_ix_again],
         &[&ts.payer, &ts.admin],
         &ts.payer.pubkey(),
+        None,
     );
     assert_error_code(result, AmmError::NothingToClaim, "NothingToClaim");
 
@@ -853,12 +882,22 @@ fn test_claim_admin_fees_rejects_non_admin() {
 
     // Create a non-admin actor with their own ATAs and try to claim.
     let attacker = create_wallet(&mut ts.svm, 100_000_000_000).unwrap();
-    let attacker_token_a =
-        create_associated_token_account(&mut ts.svm, &attacker.pubkey(), &ts.mint_a, &ts.payer)
-            .unwrap();
-    let attacker_token_b =
-        create_associated_token_account(&mut ts.svm, &attacker.pubkey(), &ts.mint_b, &ts.payer)
-            .unwrap();
+    let attacker_token_a = create_associated_token_account(
+        &mut ts.svm,
+        &attacker.pubkey(),
+        &ts.mint_a,
+        &ts.payer,
+        None,
+    )
+    .unwrap();
+    let attacker_token_b = create_associated_token_account(
+        &mut ts.svm,
+        &attacker.pubkey(),
+        &ts.mint_b,
+        &ts.payer,
+        None,
+    )
+    .unwrap();
 
     let claim_ix = Instruction::new_with_bytes(
         ts.program_id,
@@ -885,6 +924,7 @@ fn test_claim_admin_fees_rejects_non_admin() {
         vec![claim_ix],
         &[&ts.payer, &attacker],
         &ts.payer.pubkey(),
+        None,
     );
     assert_custom_error(result, 2012, "ConstraintAddress");
 }
@@ -935,6 +975,7 @@ fn send_deposit(ts: &mut TestSetup, amount_a: u64, amount_b: u64) -> Result<(), 
         vec![ix],
         &[&ts.payer, &ts.admin],
         &ts.payer.pubkey(),
+        None,
     )
     .map(|_| ())
     .map_err(|e| format!("{e:?}"))
@@ -1091,6 +1132,7 @@ fn test_deposit_after_swap_uses_shifted_effective_ratio() {
         vec![swap_ix],
         &[&ts.payer, &ts.admin],
         &ts.payer.pubkey(),
+        None,
     )
     .expect("swap a→b");
 
@@ -1214,6 +1256,7 @@ fn test_lp_mint_proportional_to_share_of_pool() {
         vec![withdraw],
         &[&ts.payer, &ts.admin],
         &ts.payer.pubkey(),
+        None,
     )
     .expect("withdraw the second deposit's LP");
     let pool_a_after = get_token_account_balance(&ts.svm, &ts.pool_a).unwrap();
@@ -1303,8 +1346,24 @@ fn test_donation_cannot_round_a_later_deposit_to_zero() {
 
     // The donation: tokens sent straight to the vaults, no LP minted.
     let donation: u64 = 1_000_000;
-    mint_tokens_to_token_account(&mut ts.svm, &ts.mint_a, &ts.pool_a, donation, &ts.admin).unwrap();
-    mint_tokens_to_token_account(&mut ts.svm, &ts.mint_b, &ts.pool_b, donation, &ts.admin).unwrap();
+    mint_tokens_to_token_account(
+        &mut ts.svm,
+        &ts.mint_a,
+        &ts.pool_a,
+        donation,
+        &ts.admin,
+        None,
+    )
+    .unwrap();
+    mint_tokens_to_token_account(
+        &mut ts.svm,
+        &ts.mint_b,
+        &ts.pool_b,
+        donation,
+        &ts.admin,
+        None,
+    )
+    .unwrap();
 
     // The victim deposits exactly as much as was donated. Dividing by the
     // bare supply of 1 would mint 1_000_000 * 1 / 1_000_101 = 0 LP tokens.
@@ -1327,6 +1386,7 @@ fn test_donation_cannot_round_a_later_deposit_to_zero() {
         vec![attacker_exit],
         &[&ts.payer, &ts.admin],
         &ts.payer.pubkey(),
+        None,
     )
     .expect("attacker withdraws");
     let attacker_a_back =
@@ -1355,6 +1415,7 @@ fn test_deposit_after_every_lp_token_is_burned() {
         vec![withdraw_all],
         &[&ts.payer, &ts.admin],
         &ts.payer.pubkey(),
+        None,
     )
     .expect("withdraw everything");
     assert_eq!(get_token_account_balance(&ts.svm, &ts.pool_a).unwrap(), 100);
@@ -1488,6 +1549,7 @@ fn test_swap_reverts_when_output_below_min() {
         vec![baseline_ix],
         &[&ts.payer, &ts.admin],
         &ts.payer.pubkey(),
+        None,
     )
     .expect("baseline swap should succeed");
     let after_b = get_token_account_balance(&ts.svm, &ts.holder_account_b).unwrap();
@@ -1505,6 +1567,7 @@ fn test_swap_reverts_when_output_below_min() {
         vec![strict_ix],
         &[&ts.payer, &ts.admin],
         &ts.payer.pubkey(),
+        None,
     );
     assert_error_code(result, AmmError::SlippageExceeded, "SlippageExceeded");
 }
@@ -1536,6 +1599,7 @@ fn test_deposit_reverts_when_lp_below_min() {
         vec![strict_ix],
         &[&ts.payer, &ts.admin],
         &ts.payer.pubkey(),
+        None,
     );
     assert_error_code(result, AmmError::DepositBelowMinimum, "DepositBelowMinimum");
 
@@ -1546,6 +1610,7 @@ fn test_deposit_reverts_when_lp_below_min() {
         vec![ok_ix],
         &[&ts.payer, &ts.admin],
         &ts.payer.pubkey(),
+        None,
     )
     .expect("deposit at exact LP floor should succeed");
 }
@@ -1567,6 +1632,7 @@ fn test_withdraw_reverts_when_below_min() {
         vec![strict_ix],
         &[&ts.payer, &ts.admin],
         &ts.payer.pubkey(),
+        None,
     );
     assert_error_code(
         result,
@@ -1581,6 +1647,7 @@ fn test_withdraw_reverts_when_below_min() {
         vec![strict_ix_b],
         &[&ts.payer, &ts.admin],
         &ts.payer.pubkey(),
+        None,
     );
     assert_error_code(
         result_b,
@@ -1603,6 +1670,7 @@ fn test_swap_with_zero_min_output_still_succeeds() {
         vec![ix],
         &[&ts.payer, &ts.admin],
         &ts.payer.pubkey(),
+        None,
     )
     .expect("swap with min_output_amount=0 must succeed");
     let after_b = get_token_account_balance(&ts.svm, &ts.holder_account_b).unwrap();
@@ -1661,6 +1729,7 @@ fn test_swap_b_to_a_trader_pays_full_input() {
         vec![swap_ix],
         &[&ts.payer, &ts.admin],
         &ts.payer.pubkey(),
+        None,
     )
     .expect("B→A swap should succeed");
 
@@ -1708,6 +1777,7 @@ fn test_invariant_holds_after_b_to_a_swap() {
         vec![swap_ix],
         &[&ts.payer, &ts.admin],
         &ts.payer.pubkey(),
+        None,
     )
     .expect("B→A swap should succeed");
 

@@ -70,6 +70,7 @@ fn non_owner_cannot_write_market_price_feed() {
         vec![instruction],
         &[&attacker],
         &attacker.pubkey(),
+        None,
     );
     // `SetPrice` binds the signer with `address = lending_market.owner`, so
     // the refusal is Anchor's constraint error, not one of the program's;

@@ -2,7 +2,7 @@
 
 > [!NOTE]
 > This is the **Anchor v2** copy of this example. Every `anchor` command on this page
-> needs the v2 CLI: `cargo install anchor-cli --version 2.0.0-rc.1 --locked` (avm has
+> needs the v2 CLI: `cargo install anchor-cli --version 2.0.0-rc.2 --locked` (avm has
 > no prebuilt binary for this pre-release). The Anchor v1 version of this example is in
 > [`../anchor-v1`](../anchor-v1/).
 
@@ -299,7 +299,7 @@ on its own.
 
 ## Setup
 
-- Rust and the Solana toolchain (`cargo-build-sbf`), Anchor 2.0.0-rc.1, Solana 3.1.8.
+- Rust and the Solana toolchain (`cargo-build-sbf`), Anchor 2.0.0-rc.2, Solana 3.1.8.
 - This program has no client/JavaScript code; tests are Rust + LiteSVM.
 
 ## Testing

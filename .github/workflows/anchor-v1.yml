@@ -217,7 +217,7 @@ jobs:
             # Install the CLI from crates.io rather than through avm, matching the
             # Anchor v2 job. `cargo install --git ... avm` builds avm from the tip of
             # anchor's main branch, so what CI installs drifts with whatever landed
-            # there. 1.2.1 is an ordinary published release — unlike the 2.0.0-rc.1
+            # there. 1.2.1 is an ordinary published release — unlike the 2.0.0-rc.2
             # pre-release that forced the v2 job off avm — so the CLI comes straight
             # from the registry. --locked builds it against its own published lockfile
             # so the result does not drift with the registry either.

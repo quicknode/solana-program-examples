@@ -32,14 +32,14 @@ pub struct OrderTreeRoot {
 const_assert_eq!(std::mem::size_of::<OrderTreeRoot>(), 8);
 
 // These types are internal slab implementation details that don't need a
-// rich IDL representation. The default IdlBuild impls (create_type → None,
-// insert_types → no-op) satisfy anchor build's IDL generation without
-// exposing the raw slab internals to clients.
+// rich IDL representation. `IdlAccountType`'s defaults (no type definition, no
+// account entry) satisfy anchor build's IDL generation without exposing the
+// raw slab internals to clients.
 #[cfg(feature = "idl-build")]
-impl anchor_lang::IdlBuild for OrderTreeRoot {}
+impl anchor_lang::IdlAccountType for OrderTreeRoot {}
 
 #[cfg(feature = "idl-build")]
-impl anchor_lang::IdlBuild for OrderTreeNodes {}
+impl anchor_lang::IdlAccountType for OrderTreeNodes {}
 
 impl OrderTreeRoot {
     pub fn node(&self) -> Option<NodeHandle> {

@@ -205,25 +205,25 @@ jobs:
           path: |
             ~/.cargo/bin/anchor
           # Pinned to match the anchor-lang/anchor-spl crate version the programs depend on.
-          key: anchor-cli-crates-io-${{ runner.os }}-2.0.0-rc.1
-      - name: Install Anchor 2.0.0-rc.1
+          key: anchor-cli-crates-io-${{ runner.os }}-2.0.0-rc.2
+      - name: Install Anchor 2.0.0-rc.2
         run: |
           export PATH="$HOME/.cargo/bin:$PATH"
           # `anchor --version` can emit more than one line; read the first line only so
           # a multi-line value never reaches downstream parsing.
           current="$(anchor --version 2>/dev/null | head -n1 | awk '{print $2}' || true)"
-          if [ "$current" != "2.0.0-rc.1" ]; then
+          if [ "$current" != "2.0.0-rc.2" ]; then
             # Install the CLI from crates.io rather than through avm. avm has no
             # prebuilt binary for this pre-release (a plain `avm install` 404s), and
             # its --from-source path builds the CLI from the git tag, which is not
-            # the same code as the published anchor-lang 2.0.0-rc.1 the programs
+            # the same code as the published anchor-lang 2.0.0-rc.2 the programs
             # compile against: `anchor idl build` then emits a shim referencing
             # `anchor_lang::IdlBuild`, which that crate does not have, and writes
             # IDL JSON the parser rejects with "missing field `variants`".
             # Installing the CLI from crates.io keeps it and the library on one
             # published release. --locked builds it against its own published
             # lockfile so the result does not drift with the registry.
-            cargo install anchor-cli --version 2.0.0-rc.1 --locked --force
+            cargo install anchor-cli --version 2.0.0-rc.2 --locked --force
           fi
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
       - name: Install Surfpool
@@ -275,58 +275,8 @@ jobs:
               done
             fi
 
-            # TEMPORARY WORKAROUND - delete this block and the `$idl_flag` and
-            # `$test_flag` below once an Anchor release after 2.0.0-rc.1 is out.
-            #
-            # anchor-derive-accounts 2.0.0-rc.1 emits enum type definitions with
-            # the JSON key "fields" where the IDL spec requires "variants", so
-            # `anchor build` cannot parse the IDL it just generated and dies
-            # with `Error: missing field variants`. Every project below has
-            # an enum reachable from its IDL and hits it. Reproduce with any
-            # program containing `#[derive(IdlType)] pub enum E { A, B }`.
-            #
-            # Fixed upstream, unreleased at time of writing:
-            # https://github.com/otter-sec/anchor/pull/4947
-            #
-            # Patching just the derive crate to that fix is not an option: it
-            # requires solana-address 2.7, and these programs pin
-            # `>=2.6, <2.7` because anchor-lang 2.0.0-rc.1 is built against
-            # wincode 0.5 while solana-address 2.7 moved to 0.6.
-            #
-            # Skipping IDL generation costs nothing today: none of these
-            # projects consumes a generated IDL (no `idls/` directory, no
-            # `declare_program!`). The program is still compiled and its tests
-            # still run.
-            #
-            # The skip also means `anchor test` must not start a validator for
-            # these projects. Surfpool 1.6 deploys the program at startup
-            # through a runbook that reads `target/idl/<program>.json`, and with
-            # no IDL it exits with `Runbook execution failed` before any test
-            # runs. None of these projects needs a validator: each one's
-            # Anchor.toml runs `cargo test`, which tests against LiteSVM
-            # in-process.
-            case "$project" in
-              ./basics/pyth/anchor \
-              |./finance/betting-market/anchor \
-              |./finance/options/anchor \
-              |./finance/order-book/anchor \
-              |./finance/perpetual-futures/anchor \
-              |./finance/prop-amm/anchor \
-              |./tokens/token-extensions/default-account-state/anchor \
-              |./tokens/token-extensions/metadata/anchor \
-              |./tokens/token-extensions/transfer-hook/allow-block-list-token/anchor)
-                echo "::notice::skipping IDL generation for $project (anchor#4947)"
-                idl_flag="--no-idl"
-                test_flag="--skip-local-validator"
-                ;;
-              *)
-                idl_flag=""
-                test_flag=""
-                ;;
-            esac
-
             # Run anchor build
-            if ! anchor build $idl_flag; then
+            if ! anchor build; then
               echo "::error::anchor build failed for $project"
               echo "$project: anchor build failed" >> $GITHUB_WORKSPACE/failed_projects.txt
               rm -rf target node_modules
@@ -334,10 +284,8 @@ jobs:
               return 1
             fi
 
-            # Run anchor test. It regenerates the IDL too, so the skip above
-            # has to apply here as well or the projects it exempts fail at the
-            # test step instead of the build step.
-            if ! anchor test $idl_flag $test_flag; then
+            # Run anchor test
+            if ! anchor test; then
               echo "::error::anchor test failed for $project"
               echo "$project: anchor test failed" >> $GITHUB_WORKSPACE/failed_projects.txt
               rm -rf target node_modules

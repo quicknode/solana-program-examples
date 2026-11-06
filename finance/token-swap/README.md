@@ -17,7 +17,7 @@ The pool keeps `x * y = K` invariant: if `x` is the reserve of token A and `y` i
 - **Caller-supplied [slippage](https://www.investopedia.com/terms/s/slippage.asp) floors on every state-changing [instruction](https://solana.com/docs/terminology#instruction):** swaps revert with `SlippageExceeded` if the output falls below `min_output_amount`, deposits revert with `DepositBelowMinimum` if the LP mint amount falls below `minimum_lp_tokens_out`, withdrawals revert with `WithdrawalBelowMinimum` if either side falls below its floor.
 - **Defence-in-depth invariant check:** every swap re-verifies `effective_pool_a * effective_pool_b` doesn't decrease after the transfers, so a bug in the curve math fails the transaction instead of silently giving the trader too much.
 - All financial math in `u128` with checked arithmetic, matching how production Solana AMMs (Orca, Raydium, Meteora, Saber) do it.
-- Anchor 2.0.0-rc.1 Rust [program](https://solana.com/docs/terminology#program) with LiteSVM integration tests.
+- Anchor 2.0.0-rc.2 Rust [program](https://solana.com/docs/terminology#program) with LiteSVM integration tests.
 
 ## Why a CPAMM
 

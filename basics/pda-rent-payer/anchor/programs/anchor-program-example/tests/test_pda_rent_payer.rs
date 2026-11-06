@@ -3,7 +3,7 @@ use {
         solana_program::instruction::Instruction, system_program, Address, InstructionData,
         ToAccountMetas,
     },
-    anchor_v2_testing::{Keypair, LiteSVM, Signer},
+    anchor_v2_testing::{litesvm::LiteSVM, Keypair, Signer},
     solana_kite::{create_wallet, send_transaction_from_instructions},
 };
 
@@ -38,7 +38,7 @@ fn test_init_rent_vault() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![init_ix], &[&payer], &payer.pubkey())
+    send_transaction_from_instructions(&mut svm, vec![init_ix], &[&payer], &payer.pubkey(), None)
         .unwrap();
 
     // Verify the rent vault has the correct balance
@@ -73,7 +73,7 @@ fn test_create_new_account_from_rent_vault() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![init_ix], &[&payer], &payer.pubkey())
+    send_transaction_from_instructions(&mut svm, vec![init_ix], &[&payer], &payer.pubkey(), None)
         .unwrap();
 
     svm.expire_blockhash();
@@ -95,6 +95,7 @@ fn test_create_new_account_from_rent_vault() {
         vec![create_ix],
         &[&payer, &new_account],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
 

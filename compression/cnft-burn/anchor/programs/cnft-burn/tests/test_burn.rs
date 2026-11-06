@@ -13,7 +13,7 @@
 //!      transaction succeeds and a second burn fails (leaf already zeroed).
 
 use {
-    anchor_v2_testing::{Keypair, LiteSVM, Signer},
+    anchor_v2_testing::{Keypair, Signer},
     borsh::BorshSerialize,
     solana_instruction::{account_meta::AccountMeta, Instruction},
     solana_keccak_hasher::hashv,
@@ -316,6 +316,7 @@ fn test_burn_cnft() {
         vec![create_acc, create_tree_ix],
         &[&payer, &merkle_tree],
         &payer.pubkey(),
+        None,
     )
     .expect("create_tree_config should succeed");
 
@@ -360,7 +361,7 @@ fn test_burn_cnft() {
             d
         },
     };
-    send_transaction_from_instructions(&mut svm, vec![mint_ix], &[&payer], &payer.pubkey())
+    send_transaction_from_instructions(&mut svm, vec![mint_ix], &[&payer], &payer.pubkey(), None)
         .expect("mint_v1 should succeed");
 
     // Recompute data_hash and creator_hash exactly as Bubblegum does.
@@ -415,6 +416,7 @@ fn test_burn_cnft() {
         vec![burn_ix],
         &[&leaf_owner],
         &leaf_owner.pubkey(),
+        None,
     )
     .expect("burn_cnft should succeed");
 
@@ -430,6 +432,7 @@ fn test_burn_cnft() {
         vec![burn_ix2],
         &[&leaf_owner],
         &leaf_owner.pubkey(),
+        None,
     );
     assert!(
         second.is_err(),

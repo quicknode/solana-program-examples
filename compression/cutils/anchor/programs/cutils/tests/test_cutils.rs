@@ -26,7 +26,7 @@
 //!      fail.
 
 use {
-    anchor_v2_testing::{Keypair, LiteSVM, Signer},
+    anchor_v2_testing::{litesvm::LiteSVM, Keypair, Signer},
     borsh::BorshSerialize,
     solana_instruction::{account_meta::AccountMeta, Instruction},
     solana_keccak_hasher::hashv,
@@ -392,6 +392,7 @@ fn create_collection_nft(
         ],
         &[payer, &mint, &token_account, authority],
         &payer.pubkey(),
+        None,
     )
     .expect("collection mint setup should succeed");
 
@@ -454,6 +455,7 @@ fn create_collection_nft(
         vec![create_metadata, create_master_edition],
         &[payer, authority],
         &payer.pubkey(),
+        None,
     )
     .expect("collection metadata + master edition should succeed");
 
@@ -546,6 +548,7 @@ fn test_cutils_mint_and_verify() {
         vec![create_acc, create_tree_ix],
         &[&payer, &merkle_tree],
         &payer.pubkey(),
+        None,
     )
     .expect("create_tree_config should succeed");
 
@@ -592,7 +595,7 @@ fn test_cutils_mint_and_verify() {
         },
     };
 
-    send_transaction_from_instructions(&mut svm, vec![mint_ix], &[&payer], &payer.pubkey())
+    send_transaction_from_instructions(&mut svm, vec![mint_ix], &[&payer], &payer.pubkey(), None)
         .expect("cutils mint should succeed");
 
     // ---- Recompute the stored leaf's data_hash / creator_hash ---------------
@@ -696,6 +699,7 @@ fn test_cutils_mint_and_verify() {
         vec![build_verify(data_hash)],
         &[&leaf_owner],
         &leaf_owner.pubkey(),
+        None,
     )
     .expect("cutils verify should succeed for the minted leaf");
 
@@ -707,6 +711,7 @@ fn test_cutils_mint_and_verify() {
         vec![build_verify(bad)],
         &[&leaf_owner],
         &leaf_owner.pubkey(),
+        None,
     );
     assert!(
         bad_result.is_err(),

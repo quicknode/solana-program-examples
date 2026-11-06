@@ -3,7 +3,7 @@ use {
         solana_program::{instruction::Instruction, system_instruction},
         system_program, InstructionData, ToAccountMetas,
     },
-    anchor_v2_testing::{Keypair, LiteSVM, Signer},
+    anchor_v2_testing::{Keypair, Signer},
     solana_kite::{create_wallet, send_transaction_from_instructions},
 };
 
@@ -32,6 +32,7 @@ fn test_check_accounts() {
         vec![create_account_ix],
         &[&payer, &account_to_change],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
 
@@ -54,6 +55,7 @@ fn test_check_accounts() {
         vec![check_accounts_ix],
         &[&payer],
         &payer.pubkey(),
+        None,
     )
     .unwrap();
 }

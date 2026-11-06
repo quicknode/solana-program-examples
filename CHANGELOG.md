@@ -4,6 +4,89 @@ All notable changes to this repository are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-10-28] - Anchor v2 examples on Anchor 2.0.0-rc.2, sending v1 transactions
+
+Anchor 2.0.0-rc.2's test harness, `anchor-v2-testing`, runs on LiteSVM 0.18, which
+executes v1 transactions, and `solana-kite` 0.7.0 is built on the same LiteSVM line.
+Together they let the Anchor v2 tests send v1 transactions, as the Anchor v1 tests
+have since 2026-10-08. rc.2 needs `solana-instruction` 3.5, which LiteSVM 0.13.1's
+exact `=3.2.0` pin rules out, so every crate in the root workspace moves to
+LiteSVM 0.18 together.
+
+### Changed
+
+- All Anchor v2 examples move `anchor-lang` and `anchor-spl` from `2.0.0-rc.1` to
+  `2.0.0-rc.2`, `wincode` from 0.5 to 0.6, and `anchor-v2-testing` from revision
+  `3e38a121` to `a2066021`, the commit the `v2.0.0-rc.2` tag points at.
+- The Anchor v2 tests move from `solana-kite` 0.4.0 to 0.7.0, so they send v1
+  transactions. Kite's senders and helpers take a new last argument,
+  `compute_unit_limit: Option<u32>`, and every call passes `None`: kite simulates
+  the transaction and sends it with the compute units the simulation used.
+- `anchor-v2-testing` no longer re-exports `LiteSVM` at its root, so the tests
+  import `anchor_v2_testing::litesvm::LiteSVM`.
+- The three Anchor v2 tests that build a transaction themselves (`hello-solana`,
+  `options` and `order-book`, to read logs or measure compute units) build it with
+  kite's `build_transaction_from_instructions` and `get_transaction_config`, with
+  `MAX_COMPUTE_UNIT_LIMIT` from `solana-compute-budget`, as their Anchor v1 copies do.
+- The native, Pinocchio and ASM tests in the root workspace, and the standalone
+  `cross-program-invocation/native` and `escrow/native` workspaces, move from
+  LiteSVM 0.13.1 to 0.18.1, with `solana-transaction`, `solana-message`,
+  `solana-account` and `solana-pubkey` on the 4.x lines LiteSVM 0.18 uses. Their
+  tests still send legacy transactions.
+- The Anchor v2 workflow installs and caches `anchor-cli 2.0.0-rc.2`. Every Anchor
+  v2 README, `CONTRIBUTING.md` and `docs/anchor-v2-migration.md` name rc.2.
+- Fixes for what LiteSVM 0.18 and rc.2 changed under the examples:
+  - `basics/transfer-sol/asm` finds its instruction data from the system program
+    account's data length instead of a fixed offset. Agave 4.3 renamed that builtin
+    from `system_program` to `solana_system_program`, and the longer name moved the
+    instruction data 8 bytes. `checking-accounts/asm` already worked this way.
+  - LiteSVM 0.18 starts at a recent mainnet slot instead of slot 0, so the
+    `prop-amm` and `perpetual-futures` stale-price tests warp relative to the
+    current slot.
+  - `create-account/anchor`'s test reads the rent-exempt minimum from LiteSVM, which
+    the program reads too, rather than the SDK's `Rent::default()`.
+  - With anchor#4947 fixed, `pyth` and `order-book` build an IDL again. rc.2 needs
+    `IdlType` on `pyth`'s vendored Pyth types and `IdlAccountType` in place of the
+    removed `IdlBuild` on `order-book`'s slab types.
+- `finance/managed-fund/anchor/app/src/idl/managed_fund.json` is regenerated with
+  `anchor idl build` from rc.2. rc.2 no longer writes `pda` for accounts whose
+  constraint names an explicit bump or an associated token, nor `address` for
+  `swap_router_program`; the app passes every account explicitly with
+  `accountsStrict`, so it uses neither, and `pnpm verify` and `pnpm typecheck`
+  pass. `basics/cross-program-invocation/anchor/idls/lever.json` regenerates
+  unchanged.
+- The native token examples and the root workspace ask for `mpl-token-metadata`
+  `5.1.2-alpha.2` rather than exactly `=5.1.2-alpha.2`: a range that starts at the
+  pre-release still matches anchor-spl's exact pin. `finance/lending/quasar` asks
+  for `quasar-svm` `0.1.0` rather than `=0.1.0`, since quasar-test pins it exactly.
+  The resolved versions do not change.
+
+### Added
+
+- `basics/transaction-v1/anchor`: the Anchor v2 copy of the transaction v1 example.
+- `solana-program-runtime = "~4.3"` and `solana-fee = "~4.3"` dev-dependencies in
+  every Anchor v2 crate and in `cross-program-invocation/native`. LiteSVM 0.18.1
+  asks for the Agave crates with `^4.3` ranges, so a fresh resolve picks Agave
+  4.4.0, released 2026-10-28, which LiteSVM 0.18.1 does not compile against. These
+  workspaces commit no lockfile, so every build resolves fresh. The two constraints
+  hold the Agave crates at 4.3 until a LiteSVM release builds against 4.4.
+
+### Removed
+
+- The `solana-address = ">=2.6, <2.7"` pin from the Anchor v2 manifests. rc.1 was
+  built against wincode 0.5 and solana-address 2.7 against 0.6; rc.2 is on 0.6 too.
+  The three compression examples keep a direct `solana-address` dependency for its
+  `borsh` feature.
+- The Anchor v2 workflow's workaround for anchor#4947, which skipped IDL generation
+  for nine projects whose enums rc.1 wrote into the IDL under the wrong key. rc.2
+  carries the fix.
+
+### Unchanged
+
+- `tokens/token-extensions/transfer-hook/block-list/pinocchio` and
+  `tools/shank-and-codama/native` stay on LiteSVM 0.13.1. Each is its own
+  workspace, and each pins its test stack to the generation of its generated client.
+
 ## [2026-10-15] - Anchor v1 examples on Anchor 1.2.1
 
 Anchor 1.2.1 is a patch release of the v1 line. Its one change is an opt-in

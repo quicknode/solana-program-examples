@@ -201,7 +201,7 @@ jobs:
 
           # Install sbpf assembler from HEAD. HEAD emits SBPF v3 (0x03 OS-ABI)
           # ELF, which requires litesvm >= 0.13 (Agave 4.0) to load; the
-          # workspace pins litesvm 0.13.1. If a future sbpf change breaks
+          # workspace pins litesvm 0.18.1. If a future sbpf change breaks
           # loading, pin a revision here with --rev.
           #
           # The package name is required: the repository now also ships an

@@ -3,7 +3,7 @@ use {
         solana_program::instruction::Instruction, system_program, Address, InstructionData,
         ToAccountMetas,
     },
-    anchor_v2_testing::{Keypair, LiteSVM, Signer},
+    anchor_v2_testing::{litesvm::LiteSVM, Keypair, Signer},
     borsh::BorshDeserialize,
     fundraiser::{FundraiserError, SECONDS_TO_DAYS},
     // LiteSVM's get_sysvar wants the host-side Clock, not pinocchio's.
@@ -111,7 +111,7 @@ fn full_setup() -> FundraiserSetup {
     let maker = create_wallet(&mut svm, 10_000_000_000).unwrap();
 
     // The payer is the mint authority.
-    let mint = create_token_mint(&mut svm, &payer, MINT_DECIMALS, None).unwrap();
+    let mint = create_token_mint(&mut svm, &payer, MINT_DECIMALS, None, None).unwrap();
 
     let (fundraiser_pda, _bump) =
         Address::find_program_address(&[b"fundraiser", maker.pubkey().as_ref()], &program_id);
@@ -150,6 +150,7 @@ fn initialize_fundraiser(setup: &mut FundraiserSetup, amount: u64, duration: u16
         vec![initialize_instruction],
         &[&setup.maker],
         &setup.maker.pubkey(),
+        None,
     )
     .unwrap();
 }
@@ -164,6 +165,7 @@ fn create_funded_contributor(setup: &mut FundraiserSetup) -> (Keypair, Address, 
         &contributor.pubkey(),
         &setup.mint,
         &setup.payer,
+        None,
     )
     .unwrap();
 
@@ -173,6 +175,7 @@ fn create_funded_contributor(setup: &mut FundraiserSetup) -> (Keypair, Address, 
         &contributor_ata,
         CONTRIBUTOR_STARTING_BALANCE,
         &setup.payer,
+        None,
     )
     .unwrap();
 
@@ -317,6 +320,7 @@ fn contribute(
         vec![contribute_instruction],
         &[&contributor.keypair],
         &contributor.keypair.pubkey(),
+        None,
     )
     .map(|_| ())
     .map_err(|error| format!("{error:?}"))
@@ -360,6 +364,7 @@ fn refund(
         vec![refund_instruction],
         &[fee_payer],
         &fee_payer.pubkey(),
+        None,
     )
     .map(|_| ())
     .map_err(|error| format!("{error:?}"))
@@ -375,6 +380,7 @@ fn claim(setup: &mut FundraiserSetup) -> Result<Address, String> {
         vec![check_instruction],
         &[&maker],
         &maker.pubkey(),
+        None,
     )
     .map(|_| maker_ata)
     .map_err(|error| format!("{error:?}"))
@@ -397,6 +403,7 @@ fn close_contribution(
         vec![close_instruction],
         &[fee_payer],
         &fee_payer.pubkey(),
+        None,
     )
     .map(|_| ())
     .map_err(|error| format!("{error:?}"))
@@ -412,6 +419,7 @@ fn close_fundraiser(setup: &mut FundraiserSetup) -> Result<(), String> {
         vec![close_instruction],
         &[&maker],
         &maker.pubkey(),
+        None,
     )
     .map(|_| ())
     .map_err(|error| format!("{error:?}"))
@@ -516,6 +524,7 @@ fn test_initialize_below_minimum_target_fails() {
         vec![initialize_instruction],
         &[&setup.maker],
         &setup.maker.pubkey(),
+        None,
     )
     .map_err(|error| format!("{error:?}"));
     assert_error(result, FundraiserError::InvalidAmount);
@@ -763,6 +772,7 @@ fn test_second_claim_fails() {
         &setup.vault,
         ONE_TOKEN,
         &setup.payer,
+        None,
     )
     .unwrap();
     setup.svm.expire_blockhash();
@@ -807,6 +817,7 @@ fn test_check_contributions_ignores_direct_vault_donations() {
         &setup.vault,
         AMOUNT_TO_RAISE,
         &setup.payer,
+        None,
     )
     .unwrap();
 
@@ -1036,6 +1047,7 @@ fn test_reinitialize_with_open_contributions_fails() {
         vec![initialize_instruction],
         &[&setup.maker],
         &setup.maker.pubkey(),
+        None,
     )
     .map_err(|error| format!("{error:?}"));
     // `init` asks the System Program to allocate the fundraiser's address,
@@ -1140,6 +1152,7 @@ fn test_close_fundraiser_sweeps_direct_donations_to_maker() {
         &setup.vault,
         donation,
         &setup.payer,
+        None,
     )
     .unwrap();
 

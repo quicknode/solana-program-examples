@@ -20,20 +20,7 @@
         },
         {
           "name": "fund",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [102, 117, 110, 100]
-              },
-              {
-                "kind": "account",
-                "path": "fund.index",
-                "account": "Fund"
-              }
-            ]
-          }
+          "writable": true
         },
         {
           "name": "registry",
@@ -72,30 +59,7 @@
         {
           "name": "vault_asset",
           "docs": ["Fund-owned vault for this asset."],
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "account",
-                "path": "fund"
-              },
-              {
-                "kind": "account",
-                "path": "token_program"
-              },
-              {
-                "kind": "account",
-                "path": "asset_mint"
-              }
-            ],
-            "program": {
-              "kind": "const",
-              "value": [
-                140, 151, 37, 143, 78, 36, 137, 241, 187, 61, 16, 41, 20, 142, 13, 131, 11, 90, 19, 153, 218, 255, 16,
-                132, 4, 142, 123, 216, 219, 233, 248, 89
-              ]
-            }
-          }
+          "writable": true
         },
         {
           "name": "associated_token_program",
@@ -183,24 +147,12 @@
       "accounts": [
         {
           "name": "manager",
+          "docs": ["CHECK: manager is stored in fund; we only read their pubkey for derivation"],
           "relations": ["fund"]
         },
         {
           "name": "fund",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [102, 117, 110, 100]
-              },
-              {
-                "kind": "account",
-                "path": "fund.index",
-                "account": "Fund"
-              }
-            ]
-          }
+          "writable": true
         },
         {
           "name": "share_mint",
@@ -221,30 +173,7 @@
         {
           "name": "manager_share_account",
           "docs": ["Manager's share token account - receives fee shares"],
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "account",
-                "path": "manager"
-              },
-              {
-                "kind": "account",
-                "path": "token_program"
-              },
-              {
-                "kind": "account",
-                "path": "share_mint"
-              }
-            ],
-            "program": {
-              "kind": "const",
-              "value": [
-                140, 151, 37, 143, 78, 36, 137, 241, 187, 61, 16, 41, 20, 142, 13, 131, 11, 90, 19, 153, 218, 255, 16,
-                132, 4, 142, 123, 216, 219, 233, 248, 89
-              ]
-            }
-          }
+          "writable": true
         },
         {
           "name": "payer",
@@ -276,20 +205,7 @@
         },
         {
           "name": "fund",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [102, 117, 110, 100]
-              },
-              {
-                "kind": "account",
-                "path": "fund.index",
-                "account": "Fund"
-              }
-            ]
-          }
+          "writable": true
         },
         {
           "name": "share_mint",
@@ -313,96 +229,32 @@
         },
         {
           "name": "depositor_usdc_account",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "account",
-                "path": "depositor"
-              },
-              {
-                "kind": "account",
-                "path": "token_program"
-              },
-              {
-                "kind": "account",
-                "path": "usdc_mint"
-              }
-            ],
-            "program": {
-              "kind": "const",
-              "value": [
-                140, 151, 37, 143, 78, 36, 137, 241, 187, 61, 16, 41, 20, 142, 13, 131, 11, 90, 19, 153, 218, 255, 16,
-                132, 4, 142, 123, 216, 219, 233, 248, 89
-              ]
-            }
-          }
+          "writable": true
         },
         {
           "name": "depositor_share_account",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "account",
-                "path": "depositor"
-              },
-              {
-                "kind": "account",
-                "path": "token_program"
-              },
-              {
-                "kind": "account",
-                "path": "share_mint"
-              }
-            ],
-            "program": {
-              "kind": "const",
-              "value": [
-                140, 151, 37, 143, 78, 36, 137, 241, 187, 61, 16, 41, 20, 142, 13, 131, 11, 90, 19, 153, 218, 255, 16,
-                132, 4, 142, 123, 216, 219, 233, 248, 89
-              ]
-            }
-          }
+          "writable": true
         },
         {
           "name": "vault_usdc",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "account",
-                "path": "fund"
-              },
-              {
-                "kind": "account",
-                "path": "token_program"
-              },
-              {
-                "kind": "account",
-                "path": "usdc_mint"
-              }
-            ],
-            "program": {
-              "kind": "const",
-              "value": [
-                140, 151, 37, 143, 78, 36, 137, 241, 187, 61, 16, 41, 20, 142, 13, 131, 11, 90, 19, 153, 218, 255, 16,
-                132, 4, 142, 123, 216, 219, 233, 248, 89
-              ]
-            }
-          }
+          "writable": true
         },
         {
           "name": "router_config",
+          "docs": [
+            "CHECK: Router config PDA from the mock-swap-router program; it owns the",
+            "treasury and signs the router's token CPIs"
+          ],
           "writable": true
         },
         {
           "name": "router_usdc_treasury",
+          "docs": ["CHECK: Router USDC treasury ATA, owned by the router config account"],
           "writable": true
         },
         {
           "name": "swap_router_program",
-          "address": "SWPR8Rk3aq3DrDGLdaANq7xCMnXoUFUJWJJmCWxc8Jm"
+          "docs": ["CHECK: validated by the address constraint above"]
         },
         {
           "name": "associated_token_program",
@@ -426,42 +278,6 @@
           "type": "u64"
         }
       ]
-    },
-    {
-      "name": "initialize_registry",
-      "docs": [
-        "Create the curator record for an approved-asset set, owned by `authority`",
-        "(not a manager). The set itself lives in per-asset ApprovedAsset accounts."
-      ],
-      "discriminator": [189, 181, 20, 17, 174, 57, 249, 59],
-      "accounts": [
-        {
-          "name": "authority",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "registry",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [114, 101, 103, 105, 115, 116, 114, 121]
-              },
-              {
-                "kind": "account",
-                "path": "authority"
-              }
-            ]
-          }
-        },
-        {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
-        }
-      ],
-      "args": []
     },
     {
       "name": "initialize_fund",
@@ -518,30 +334,7 @@
         {
           "name": "vault_usdc",
           "docs": ["Vault's USDC token account - fund PDA is the authority"],
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "account",
-                "path": "fund"
-              },
-              {
-                "kind": "account",
-                "path": "token_program"
-              },
-              {
-                "kind": "account",
-                "path": "usdc_mint"
-              }
-            ],
-            "program": {
-              "kind": "const",
-              "value": [
-                140, 151, 37, 143, 78, 36, 137, 241, 187, 61, 16, 41, 20, 142, 13, 131, 11, 90, 19, 153, 218, 255, 16,
-                132, 4, 142, 123, 216, 219, 233, 248, 89
-              ]
-            }
-          }
+          "writable": true
         },
         {
           "name": "associated_token_program",
@@ -579,6 +372,42 @@
       ]
     },
     {
+      "name": "initialize_registry",
+      "docs": [
+        "Create the curator record for an approved-asset set, owned by `authority`",
+        "(not a manager). The set itself lives in per-asset ApprovedAsset accounts."
+      ],
+      "discriminator": [189, 181, 20, 17, 174, 57, 249, 59],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "registry",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [114, 101, 103, 105, 115, 116, 114, 121]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "rebalance",
       "docs": [
         "Sell an asset that has drifted above its target weight and buy one below",
@@ -598,20 +427,7 @@
         },
         {
           "name": "fund",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [102, 117, 110, 100]
-              },
-              {
-                "kind": "account",
-                "path": "fund.index",
-                "account": "Fund"
-              }
-            ]
-          }
+          "writable": true
         },
         {
           "name": "usdc_mint",
@@ -619,42 +435,21 @@
         },
         {
           "name": "vault_usdc",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "account",
-                "path": "fund"
-              },
-              {
-                "kind": "account",
-                "path": "token_program"
-              },
-              {
-                "kind": "account",
-                "path": "usdc_mint"
-              }
-            ],
-            "program": {
-              "kind": "const",
-              "value": [
-                140, 151, 37, 143, 78, 36, 137, 241, 187, 61, 16, 41, 20, 142, 13, 131, 11, 90, 19, 153, 218, 255, 16,
-                132, 4, 142, 123, 216, 219, 233, 248, 89
-              ]
-            }
-          }
+          "writable": true
         },
         {
           "name": "router_config",
+          "docs": ["CHECK: Router config PDA"],
           "writable": true
         },
         {
           "name": "router_usdc_treasury",
+          "docs": ["CHECK: Router USDC treasury ATA, owned by the router config account"],
           "writable": true
         },
         {
           "name": "swap_router_program",
-          "address": "SWPR8Rk3aq3DrDGLdaANq7xCMnXoUFUJWJJmCWxc8Jm"
+          "docs": ["CHECK: validated by the address constraint above"]
         },
         {
           "name": "associated_token_program",
@@ -691,20 +486,7 @@
         },
         {
           "name": "fund",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [102, 117, 110, 100]
-              },
-              {
-                "kind": "account",
-                "path": "fund.index",
-                "account": "Fund"
-              }
-            ]
-          }
+          "writable": true
         },
         {
           "name": "asset_config",
@@ -729,20 +511,7 @@
         },
         {
           "name": "fund",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [102, 117, 110, 100]
-              },
-              {
-                "kind": "account",
-                "path": "fund.index",
-                "account": "Fund"
-              }
-            ]
-          }
+          "writable": true
         },
         {
           "name": "share_mint",
@@ -766,84 +535,15 @@
         },
         {
           "name": "user_share_account",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "account",
-                "path": "user"
-              },
-              {
-                "kind": "account",
-                "path": "token_program"
-              },
-              {
-                "kind": "account",
-                "path": "share_mint"
-              }
-            ],
-            "program": {
-              "kind": "const",
-              "value": [
-                140, 151, 37, 143, 78, 36, 137, 241, 187, 61, 16, 41, 20, 142, 13, 131, 11, 90, 19, 153, 218, 255, 16,
-                132, 4, 142, 123, 216, 219, 233, 248, 89
-              ]
-            }
-          }
+          "writable": true
         },
         {
           "name": "user_usdc_account",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "account",
-                "path": "user"
-              },
-              {
-                "kind": "account",
-                "path": "token_program"
-              },
-              {
-                "kind": "account",
-                "path": "usdc_mint"
-              }
-            ],
-            "program": {
-              "kind": "const",
-              "value": [
-                140, 151, 37, 143, 78, 36, 137, 241, 187, 61, 16, 41, 20, 142, 13, 131, 11, 90, 19, 153, 218, 255, 16,
-                132, 4, 142, 123, 216, 219, 233, 248, 89
-              ]
-            }
-          }
+          "writable": true
         },
         {
           "name": "vault_usdc",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "account",
-                "path": "fund"
-              },
-              {
-                "kind": "account",
-                "path": "token_program"
-              },
-              {
-                "kind": "account",
-                "path": "usdc_mint"
-              }
-            ],
-            "program": {
-              "kind": "const",
-              "value": [
-                140, 151, 37, 143, 78, 36, 137, 241, 187, 61, 16, 41, 20, 142, 13, 131, 11, 90, 19, 153, 218, 255, 16,
-                132, 4, 142, 123, 216, 219, 233, 248, 89
-              ]
-            }
-          }
+          "writable": true
         },
         {
           "name": "associated_token_program",
@@ -879,12 +579,12 @@
       "discriminator": [57, 112, 247, 166, 247, 64, 140, 23]
     },
     {
-      "name": "Registry",
-      "discriminator": [47, 174, 110, 246, 184, 182, 252, 218]
-    },
-    {
       "name": "Fund",
       "discriminator": [62, 128, 183, 208, 91, 31, 212, 209]
+    },
+    {
+      "name": "Registry",
+      "discriminator": [47, 174, 110, 246, 184, 182, 252, 218]
     }
   ],
   "errors": [
@@ -1153,33 +853,6 @@
       }
     },
     {
-      "name": "Registry",
-      "docs": [
-        "The curator record at the root of an approved-asset set. This account holds no",
-        "list: it only names the authority allowed to approve assets under it. The set",
-        "itself is the collection of `ApprovedAsset` accounts derived from this registry,",
-        "and an asset counts as approved exactly when its `ApprovedAsset` account exists.",
-        "",
-        "The authority is deliberately not a fund manager: the curator vets which",
-        "real assets (and which official price feed) are safe, and a manager only",
-        "chooses among them. This is what stops a manager from listing a token they",
-        "mint themselves, or pairing a real mint with a feed they control."
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "authority",
-            "type": "pubkey"
-          },
-          {
-            "name": "bump",
-            "type": "u8"
-          }
-        ]
-      }
-    },
-    {
       "name": "Fund",
       "docs": [
         "One fund (basket). Its address is a PDA seeded by a caller-chosen index,",
@@ -1291,6 +964,33 @@
             "name": "total_weight_bps",
             "docs": ["Running sum of every asset's target weight, kept <= 10000."],
             "type": "u16"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Registry",
+      "docs": [
+        "The curator record at the root of an approved-asset set. This account holds no",
+        "list: it only names the authority allowed to approve assets under it. The set",
+        "itself is the collection of `ApprovedAsset` accounts derived from this registry,",
+        "and an asset counts as approved exactly when its `ApprovedAsset` account exists.",
+        "",
+        "The authority is deliberately not a fund manager: the curator vets which",
+        "real assets (and which official price feed) are safe, and a manager only",
+        "chooses among them. This is what stops a manager from listing a token they",
+        "mint themselves, or pairing a real mint with a feed they control."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "type": "pubkey"
           },
           {
             "name": "bump",

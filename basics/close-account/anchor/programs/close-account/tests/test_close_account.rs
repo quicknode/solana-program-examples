@@ -3,7 +3,7 @@ use {
         solana_program::instruction::Instruction, system_program, Address, InstructionData,
         ToAccountMetas,
     },
-    anchor_v2_testing::{Keypair, LiteSVM, Signer},
+    anchor_v2_testing::{litesvm::LiteSVM, Keypair, Signer},
     solana_kite::{create_wallet, send_transaction_from_instructions},
 };
 
@@ -39,7 +39,7 @@ fn test_create_and_close_user() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![create_ix], &[&payer], &payer.pubkey())
+    send_transaction_from_instructions(&mut svm, vec![create_ix], &[&payer], &payer.pubkey(), None)
         .unwrap();
 
     // Verify account exists and has correct data
@@ -60,7 +60,7 @@ fn test_create_and_close_user() {
         }
         .to_account_metas(None),
     );
-    send_transaction_from_instructions(&mut svm, vec![close_ix], &[&payer], &payer.pubkey())
+    send_transaction_from_instructions(&mut svm, vec![close_ix], &[&payer], &payer.pubkey(), None)
         .unwrap();
 
     // Verify account is closed
