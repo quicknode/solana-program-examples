@@ -34,7 +34,7 @@ A **multi-asset** fund built from single-asset vaults, transparently priced on-c
 
 Program instructions the frontend can surface:
 
-- **Registry / curator:** `initialize_registry`, `approve_asset` (whitelist of assets managers may use).
+- **Registry / curator:** `initialize_registry`, `approve_asset` (an allow list of assets managers may use).
 - **Manager:** `initialize_fund` (fee, slippage tolerance, and rebalance threshold, all fixed at creation), `add_asset`, `set_weight` (including set-to-zero to retire an asset), `collect_fees`.
 - **Anyone:** `rebalance(sell_index, buy_index)`. The program sizes the trade from oracle prices and target weights, and refuses unless the asset sold is over its target by at least the fund's threshold and the asset bought is under its own (`DriftBelowThreshold`, `NotUnderweight`).
 - **Depositor:** `deposit` (USDC → minted shares), `withdraw` (burn shares → in-kind slice of every vault).

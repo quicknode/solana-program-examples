@@ -118,11 +118,11 @@ members = [
     "tokens/token-extensions/transfer-fee/anchor/programs/transfer-fee",
     "tokens/token-extensions/transfer-hook/account-data-as-seed/anchor/programs/transfer-hook",
     "tokens/token-extensions/transfer-hook/allow-block-list-token/anchor/programs/abl-token",
+    "tokens/token-extensions/transfer-hook/allow-list/anchor/programs/transfer-hook",
     "tokens/token-extensions/transfer-hook/counter/anchor/programs/transfer-hook",
     "tokens/token-extensions/transfer-hook/hello-world/anchor/programs/transfer-hook",
     "tokens/token-extensions/transfer-hook/transfer-cost/anchor/programs/transfer-hook",
     "tokens/token-extensions/transfer-hook/transfer-switch/anchor/programs/transfer-switch",
-    "tokens/token-extensions/transfer-hook/whitelist/anchor/programs/transfer-hook",
 ]
 # A path dependency inside the workspace directory joins the workspace unless it
 # is excluded. Both of these are named `mock_price_feed`, so leaving them in
