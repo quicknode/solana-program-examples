@@ -11,7 +11,7 @@ See also: [Nft Minter overview](../README.md) and the [repository catalog](../..
 
 ## Setup
 
-From `tokens/nft-minter/quasar/`:
+From `nft/minter/quasar/`:
 
 ```bash
 quasar build

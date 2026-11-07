@@ -1,4 +1,4 @@
-# NFT Minter (Anchor)
+# Realloc (Anchor)
 
 > [!NOTE]
 > This is the **Anchor v1** copy of this example, on Anchor 1.2.1, the current
@@ -6,18 +6,18 @@
 > `avm install 1.2.1 && avm use 1.2.1`. The Anchor v2 version of this example is in
 > [`../anchor`](../anchor/).
 
-Mint an NFT from inside your program using the Classic Token Program and Metaplex Token Metadata.
+Grow or shrink account data when variable-length storage is required.
 
-See also: [Nft Minter overview](../README.md) and the [repository catalog](../../../README.md).
+See also: [Realloc overview](../README.md) and the [repository catalog](../../../README.md).
 
 ## Major concepts
 
-- NFT mint with 0 decimals
-- Metadata CPI
+- Account reallocation
+- Rent adjustment on size change
 
 ## Setup
 
-From this directory (`tokens/nft-minter/anchor/`):
+From this directory (`basics/resizing-accounts/anchor-v1/`):
 
 ```bash
 anchor build
@@ -37,4 +37,4 @@ This runs `cargo test` as configured in `Anchor.toml`. Tests call instruction ha
 
 ## Usage
 
-Read the program `programs/` source and `Anchor.toml` for deployed program IDs. For deployment, use `anchor build && anchor deploy` against your target cluster.
+Read the program `programs/` source and `Anchor.toml` for deployed program IDs. For deployment, use `anchor build && anchor program deploy` against your target cluster.

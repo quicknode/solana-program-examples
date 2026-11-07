@@ -1,10 +1,10 @@
 # Realloc (Anchor)
 
 > [!NOTE]
-> This is the **Anchor v1** copy of this example, on Anchor 1.2.1, the current
-> stable Anchor release. Every `anchor` command on this page needs the v1 CLI:
-> `avm install 1.2.1 && avm use 1.2.1`. The Anchor v2 version of this example is in
-> [`../anchor`](../anchor/).
+> This is the **Anchor v2** copy of this example. Every `anchor` command on this page
+> needs the v2 CLI: `cargo install anchor-cli --version 2.0.0-rc.2 --locked` (avm has
+> no prebuilt binary for this pre-release). The Anchor v1 version of this example is in
+> [`../anchor-v1`](../anchor-v1/).
 
 Grow or shrink account data when variable-length storage is required.
 
@@ -17,7 +17,7 @@ See also: [Realloc overview](../README.md) and the [repository catalog](../../..
 
 ## Setup
 
-From this directory (`basics/realloc/anchor/`):
+From this directory (`basics/resizing-accounts/anchor/`):
 
 ```bash
 anchor build
@@ -37,4 +37,4 @@ This runs `cargo test` as configured in `Anchor.toml`. Tests call instruction ha
 
 ## Usage
 
-Read the program `programs/` source and `Anchor.toml` for deployed program IDs. For deployment, use `anchor build && anchor deploy` against your target cluster.
+Read the program `programs/` source and `Anchor.toml` for deployed program IDs. For deployment, use `anchor build && anchor program deploy` against your target cluster.

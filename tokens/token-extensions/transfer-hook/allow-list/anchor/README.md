@@ -58,4 +58,4 @@ This runs `cargo test` as configured in `Anchor.toml`. The tests make real Token
 
 ## Usage
 
-Read the program `programs/` source and `Anchor.toml` for deployed program IDs. For deployment, use `anchor build && anchor deploy` against your target cluster.
+Read the program `programs/` source and `Anchor.toml` for deployed program IDs. For deployment, use `anchor build && anchor program deploy` against your target cluster.

@@ -38,4 +38,4 @@ This runs `cargo test` as configured in `Anchor.toml`. Tests call instruction ha
 
 ## Usage
 
-Read the program `programs/` source and `Anchor.toml` for deployed program IDs. For deployment, use `anchor build && anchor deploy` against your target cluster.
+Read the program `programs/` source and `Anchor.toml` for deployed program IDs. For deployment, use `anchor build && anchor program deploy` against your target cluster.
