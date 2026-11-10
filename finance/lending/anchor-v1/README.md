@@ -63,7 +63,7 @@ so a token donated directly to the vault cannot inflate the rate.
 
 That alone does not close the empty-pool inflation attack, because
 `total_liquidity` also counts interest owed on borrows, and a supplier can
-borrow. A lone supplier holding one share borrows a single base unit from their
+borrow. A lone supplier holding one share borrows a single minor unit from their
 own reserve; debt rounds up, so a second later it reads as two, and the share is
 worth two units without anything having been minted. Deposits and redemptions
 round in the pool's favor, so depositing the most that still mints one share

@@ -66,7 +66,7 @@ wallets, then exercise:
   (`fees_and_maintenance_requirement_round_up`), and `basis_points_of` at
   its boundaries
 - profit/loss floored toward negative infinity and funding rounded toward
-  positive infinity, so a fraction of a base unit always goes to the pool
+  positive infinity, so a fraction of a minor unit always goes to the pool
   (`position_pnl_rounds_against_the_trader`,
   `position_funding_rounds_against_the_trader`)
 - the pool valued rounding up for a deposit and down for a withdrawal, so

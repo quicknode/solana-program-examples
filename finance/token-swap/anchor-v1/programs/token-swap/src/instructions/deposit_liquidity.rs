@@ -71,7 +71,7 @@ pub fn handle_deposit_liquidity(
 
     // amount_b_required = amount_a * effective_pool_b / effective_pool_a.
     // Round down: this can only ever ask the depositor for *less* token B
-    // than perfect-ratio, which favours the pool by a sub-base-unit and
+    // than perfect-ratio, which favours the pool by a sub-minor-unit and
     // matches Uniswap V2.
     let amount_b_required = (amount_a as u128)
         .checked_mul(effective_pool_b as u128)
@@ -99,8 +99,8 @@ pub fn handle_deposit_liquidity(
 
     // After clamping, both sides must contribute something. If either side
     // rounds to zero the deposit is too small to register at the current
-    // ratio (e.g. a depositor offering 1 base unit of A against a pool where
-    // 1 A is worth less than 1 base unit of B). Fail rather than letting an
+    // ratio (e.g. a depositor offering 1 minor unit of A against a pool where
+    // 1 A is worth less than 1 minor unit of B). Fail rather than letting an
     // LP mint zero-priced shares.
     if amount_a == 0 || amount_b == 0 {
         return err!(AmmError::DepositAmountTooSmall);

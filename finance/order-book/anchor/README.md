@@ -1271,10 +1271,10 @@ program earned nothing (no fill means no fee).
 ## 5. Full-lifecycle worked examples
 
 Three scenarios with end-to-end numbers. Both mints are 6-decimal SPL
-tokens. 1 BASE = 1 000 000 base units; 1 QUOTE = 1 000 000 quote
-units. Where a number in the narrative looks like "price 900", read
-that as "900 quote units per 1 base unit" (so for a 1-full-BASE trade
-you'd move 900 * 1 000 000 quote units).
+tokens. 1 BASE = 1 000 000 BASE minor units; 1 QUOTE = 1 000 000 QUOTE
+minor units. Where a number in the narrative looks like "price 900", read
+that as "900 QUOTE minor units per 1 BASE minor unit" (so for a
+1-full-BASE trade you'd move 900 * 1 000 000 QUOTE minor units).
 
 Market configuration:
 - `fee_basis_points = 50` (0.5%)

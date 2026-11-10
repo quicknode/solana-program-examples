@@ -331,7 +331,7 @@ pub fn deposit_lp_amount(amount: u64, effective_reserve: u64, lp_supply: u64) ->
 }
 
 /// A deposit followed at once by a withdrawal of the LP tokens it minted
-/// returns at most what was deposited, and less than one base unit plus one
+/// returns at most what was deposited, and less than one minor unit plus one
 /// LP token's worth short of it. The upper bound means no round trip creates
 /// value; the lower bound means the depositor is minted the share they paid
 /// for. The lower bound holds only because deposit and withdraw divide by the
@@ -365,7 +365,7 @@ fn proof_deposit_withdraw_round_trip_is_fair() {
 
     // Never more than was put in.
     assert!(out <= amount);
-    // Short by less than one base unit plus one LP token's worth of reserve:
+    // Short by less than one minor unit plus one LP token's worth of reserve:
     // (out + 1) * (total + minted) + reserve > amount * (total + minted).
     let total_after = new_supply as u128 + MINIMUM_LIQUIDITY;
     assert!((out as u128 + 1) * total_after + reserve as u128 > amount as u128 * total_after);

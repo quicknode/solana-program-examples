@@ -2,7 +2,7 @@ use quasar_lang::prelude::*;
 
 /// One perpetual-futures market. Mirrors the Anchor `Pool` field-for-field; see
 /// the Anchor sibling's README for what each field means. Money fields are raw
-/// base units of the collateral token.
+/// minor units of the collateral token.
 /// The pool account owns the custody vault and is the liquidity-provider
 /// mint's authority; it signs vault transfers and mint/burn CPIs with its own
 /// seeds. There is no separate signing PDA.

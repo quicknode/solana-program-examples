@@ -47,7 +47,7 @@ pub fn handle_add_liquidity(
         // minimum's slice is still in `liquidity`, so the next deposit is
         // priced against it rather than bootstrapped.
         //
-        // The pool is valued rounding up, so a fraction of a base unit in the
+        // The pool is valued rounding up, so a fraction of a minor unit in the
         // traders' marked profit/loss raises the price of a share rather than
         // lowering it.
         let aum = liquidity_provider_aum(pool, price, Rounding::Up)?;

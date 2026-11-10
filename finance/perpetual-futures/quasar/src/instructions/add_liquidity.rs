@@ -79,7 +79,7 @@ pub fn handle_add_liquidity(
             accounts.pool.short_size_scaled.get(),
             price,
             // Rounded down, so the pool is valued high and a fraction of a
-            // base unit raises the price of a share rather than lowering it.
+            // minor unit raises the price of a share rather than lowering it.
             Rounding::Down,
         )?;
         let aum = (accounts.pool.liquidity.get() as i128)

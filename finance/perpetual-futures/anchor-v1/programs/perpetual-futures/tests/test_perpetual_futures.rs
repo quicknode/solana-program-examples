@@ -41,7 +41,7 @@ const HAIRCUT_PRECISION: u64 = 1_000_000_000;
 // carried in, so a position's funding is `size * rate * seconds / this`.
 const FUNDING_PRECISION: u64 = 1_000_000_000;
 // Collateral token has 6 decimals (like USDC), so one whole unit is 1_000_000
-// base units.
+// minor units.
 const ONE_USDC: u64 = 1_000_000;
 const DECIMALS: u8 = 6;
 
@@ -711,7 +711,7 @@ fn test_add_liquidity_first_deposit_withholds_minimum() {
     assert_eq!(shares, deposit - 1_000);
 }
 
-/// The first deposit must exceed the 1_000 withheld minimum: one base unit
+/// The first deposit must exceed the 1_000 withheld minimum: one minor unit
 /// short is refused, and one over mints a single share.
 #[test]
 fn test_first_deposit_below_minimum_fails() {
@@ -1832,12 +1832,12 @@ fn test_remove_liquidity_capped_at_liquidity() {
     market.assert_vault_matches_ledger();
 }
 /// `add_liquidity` values the pool rounding up. A $5,000 short entered at
-/// $100 and marked at $99.99999999 is worth 4,999,999,999.5 base units, so
-/// traders are up half a base unit. Rounded against the depositor that half
+/// $100 and marked at $99.99999999 is worth 4,999,999,999.5 minor units, so
+/// traders are up half a minor unit. Rounded against the depositor that half
 /// counts as nothing owed, assets-under-management stays at the pool's
 /// 100,000 USDC of liquidity, and a 100,000 USDC deposit is minted exactly
 /// 100,000 USDC of shares. Valuing the short at 4,999,999,999 would read the
-/// pool one base unit low and mint one share more.
+/// pool one minor unit low and mint one share more.
 #[test]
 fn test_add_liquidity_values_the_pool_rounding_up() {
     let mut market = Market::default_market();
@@ -1870,8 +1870,8 @@ fn test_add_liquidity_values_the_pool_rounding_up() {
 }
 
 /// `remove_liquidity` values the pool rounding down. A $5,000 long entered at
-/// $100 and marked at $100.00000001 is worth 5,000,000,000.5 base units, so
-/// traders are up half a base unit. Rounded against the withdrawing provider
+/// $100 and marked at $100.00000001 is worth 5,000,000,000.5 minor units, so
+/// traders are up half a minor unit. Rounded against the withdrawing provider
 /// that half counts as a whole unit owed, assets-under-management reads
 /// 99,999,999,999, and the provider's 99,999,999,000 shares of 100,000,000,000
 /// redeem 99,999,998,999.00000001, paid as 99,999,998,999. Valuing the long at
@@ -2133,13 +2133,13 @@ fn test_liquidation_of_bankrupt_position_charges_insurance_before_liquidity() {
 }
 
 /// Every fee rounds up, and so does the maintenance requirement, so none is
-/// a minor unit short in the trader's favour. A position one base unit over
+/// a minor unit short in the trader's favour. A position one minor unit over
 /// $5,000 pays $5.000001 to open and the same to close: 0.1% of it is
-/// 5,000,000.001 base units, rounded up to 5,000,001. The insurance fund's
+/// 5,000,000.001 minor units, rounded up to 5,000,001. The insurance fund's
 /// half of a fee rounds down, and the program takes the odd unit. The same
-/// position is liquidatable at an equity of 250,000,001 base units, the
+/// position is liquidatable at an equity of 250,000,001 minor units, the
 /// maintenance requirement 250,000,000.05 rounded up, where a requirement
-/// rounded down would have left it one base unit too healthy, and the
+/// rounded down would have left it one minor unit too healthy, and the
 /// liquidation fee is 50,000,001.
 #[test]
 fn test_fees_and_maintenance_requirement_round_up() {
@@ -2178,7 +2178,7 @@ fn test_fees_and_maintenance_requirement_round_up() {
     assert_eq!(pool.program_fees, 2 * 2_500_001);
 
     // The same position again, taken to an equity of exactly the rounded-up
-    // maintenance requirement: $85.10000005 loses it 744,999,997.65 base
+    // maintenance requirement: $85.10000005 loses it 744,999,997.65 minor
     // units, a loss of 744,999,998 once floored against the trader.
     // The open is byte-identical to the first, so it would carry the same
     // signature and be dropped as already processed without a new blockhash.
@@ -2204,7 +2204,7 @@ fn test_fees_and_maintenance_requirement_round_up() {
 }
 
 /// `basis_points_of` rounds up, so an amount that is not an exact multiple
-/// rounds to the next base unit and the smallest non-zero amount pays a whole
+/// rounds to the next minor unit and the smallest non-zero amount pays a whole
 /// unit; an exact multiple is unchanged. `basis_points_of_rounded_down`
 /// splits a fee the pool already holds, so it rounds the other way.
 #[test]
@@ -2226,8 +2226,8 @@ fn test_basis_points_of_rounds_up_and_the_insurance_split_rounds_down() {
 }
 
 /// `position_pnl` floors toward negative infinity rather than truncating
-/// toward zero. A position of 1,000 base units entered at 3 and marked at 2
-/// has lost 333.33 base units: truncation would book a loss of 333, floor
+/// toward zero. A position of 1,000 minor units entered at 3 and marked at 2
+/// has lost 333.33 minor units: truncation would book a loss of 333, floor
 /// books 334, so the fraction goes to the pool. A profit of 333.33 still
 /// books 333, the same as truncation, and a short is floored the same way.
 #[test]
@@ -2236,14 +2236,14 @@ fn test_position_pnl_rounds_against_the_trader() {
     assert_eq!(position_pnl(Side::Long, 1_000, 3, 4).unwrap(), 333);
     assert_eq!(position_pnl(Side::Short, 1_000, 3, 4).unwrap(), -334);
     assert_eq!(position_pnl(Side::Short, 1_000, 3, 2).unwrap(), 333);
-    // A whole number of base units is unchanged.
+    // A whole number of minor units is unchanged.
     assert_eq!(position_pnl(Side::Long, 1_000, 4, 2).unwrap(), -500);
 }
 
 /// `position_funding` rounds up, toward positive infinity, so a fraction of a
-/// base unit goes to the pool. A funding index that moves 1,500,000 (in
-/// `FUNDING_PRECISION` units of 10^9) on a position of 1,000 base units is
-/// 1.5 base units. A trader who pays is charged 2, where truncation would
+/// minor unit goes to the pool. A funding index that moves 1,500,000 (in
+/// `FUNDING_PRECISION` units of 10^9) on a position of 1,000 minor units is
+/// 1.5 minor units. A trader who pays is charged 2, where truncation would
 /// charge 1; a trader who is paid receives 1, the same as truncation. A short
 /// is rounded the same way as a long.
 #[test]
@@ -2266,7 +2266,7 @@ fn test_position_funding_rounds_against_the_trader() {
         position_funding(Side::Long, 1_000, 0, -1_500_000).unwrap(),
         -1
     );
-    // A whole number of base units is unchanged.
+    // A whole number of minor units is unchanged.
     assert_eq!(
         position_funding(Side::Long, 1_000, 0, 2_000_000).unwrap(),
         2

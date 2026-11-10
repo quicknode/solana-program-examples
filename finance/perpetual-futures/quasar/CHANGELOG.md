@@ -5,24 +5,24 @@
 Liquidity-provider shares are priced against the provider.
 `traders_unrealized_pnl` floored both sides' marked value, so the long side
 rounded traders' profit down and the short side rounded it up, and
-`add_liquidity` or `remove_liquidity` could round a base unit in the
+`add_liquidity` or `remove_liquidity` could round a minor unit in the
 provider's favour depending on the book. It now takes a `Rounding`:
 `add_liquidity` rounds traders' profit down and so values the pool rounding
 up, so a deposit is minted no more shares than it pays for, and
 `remove_liquidity` rounds the pool down, so a withdrawal is paid no more
 than its shares are worth. `haircut_ratio` rounds the traders' liability up,
-so a fraction of a base unit can only lower `h`. Tested by
+so a fraction of a minor unit can only lower `h`. Tested by
 `add_liquidity_values_the_pool_rounding_up` (a 100,000 USDC deposit against
-an open short marked half a base unit in profit mints 100,000,000,000
+an open short marked half a minor unit in profit mints 100,000,000,000
 shares, not 100,000,000,001) and
 `remove_liquidity_values_the_pool_rounding_down` (a provider withdrawing
-against an open long marked half a base unit in profit is paid
+against an open long marked half a minor unit in profit is paid
 99,999,998,999, not 99,999,999,000). No existing figure changes.
 
 Profit/loss and funding round against the trader. `position_pnl` and
 `position_funding` in `instructions/shared.rs` divided with truncation toward
-zero, so a fractional loss was booked a base unit small, and funding a trader
-owed was charged a base unit short. `position_pnl` now floors toward
+zero, so a fractional loss was booked a minor unit small, and funding a trader
+owed was charged a minor unit short. `position_pnl` now floors toward
 negative infinity, and `position_funding` applies the side's sign first and
 then rounds toward positive infinity, so funding the trader pays rounds up
 and funding the trader receives rounds down. The walkthrough's figures are exact and unchanged.
@@ -30,19 +30,19 @@ Tested by `position_pnl_rounds_against_the_trader` and
 `position_funding_rounds_against_the_trader`.
 `fees_and_maintenance_requirement_round_up` now liquidates at
 $85.10000005 instead of $85.10000004: the old price's loss of 744,999,998.15
-base units floors to 744,999,999, and the new one's 744,999,997.65 floors to
+minor units floors to 744,999,999, and the new one's 744,999,997.65 floors to
 744,999,998, so the position is still liquidated at an equity of exactly
 250,000,001.
 
 Every fee rounds up. `basis_points_of` in `instructions/shared.rs` rounds its
-result up to the next base unit, so the open, close and liquidation fees and
+result up to the next minor unit, so the open, close and liquidation fees and
 the maintenance requirement a position is liquidated at each round in the
 pool's favour: a fee is never a minor unit short, and a position is never a
 minor unit too healthy to liquidate. The insurance fund's cut of a fee the
 pool already holds is split by the new `basis_points_of_rounded_down`, and the
 program takes the remainder, so the two still add up to the whole fee. Tested
 by `fees_and_maintenance_requirement_round_up`, which opens, closes and
-liquidates a position one base unit over $5,000 and checks the 5,000,001-unit
+liquidates a position one minor unit over $5,000 and checks the 5,000,001-unit
 fees, the 2,500,000 / 2,500,001 insurance and program split, the liquidation
 at an equity of exactly 250,000,001 and the 50,000,001 liquidation fee, and by
 `basis_points_of_rounds_up_and_the_insurance_split_rounds_down` at the
@@ -71,7 +71,7 @@ recorded program.
 `funding_follows_seconds_not_slots` asserts the exact funding paid, `size *
 rate * seconds / FUNDING_PRECISION`, rather than that some was paid, and the
 new `first_deposit_below_minimum_fails` asserts `DEPOSIT_TOO_SMALL` by code one
-base unit under the withheld minimum and a single share minted one over it.
+minor unit under the withheld minimum and a single share minted one over it.
 
 ## 2026-10-01
 

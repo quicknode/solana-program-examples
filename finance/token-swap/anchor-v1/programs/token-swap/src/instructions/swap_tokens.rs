@@ -104,7 +104,7 @@ pub fn handle_swap_tokens(
     // u128 + checked: the numerator `taxed_input * reserve` can fill the
     // full u128 (both factors are u64). Multiply before divide to keep
     // precision. Floor on the divide is program-favouring (the pool keeps
-    // sub-base-unit rounding, the trader gets slightly less output) - same
+    // sub-minor-unit rounding, the trader gets slightly less output) - same
     // direction as Uniswap V2.
     let (this_reserve, other_reserve) = if input_is_token_a {
         (effective_pool_a, effective_pool_b)
@@ -134,7 +134,7 @@ pub fn handle_swap_tokens(
     // trivially even when the LP-claimable reserves shrunk.
     //
     // u128 + checked: each side is u64, so the product can fill the full
-    // u128. Raw `*` on u64 would overflow at ~1.8e19 base units.
+    // u128. Raw `*` on u64 would overflow at ~1.8e19 minor units.
     let invariant = (effective_pool_a as u128)
         .checked_mul(effective_pool_b as u128)
         .ok_or(AmmError::MathOverflow)?;

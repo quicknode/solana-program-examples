@@ -211,7 +211,7 @@ pub fn position_pnl(
     .ok_or_else(overflow)?;
     // Multiply before dividing to keep precision; `entry > 0` is guaranteed.
     // Floored toward negative infinity rather than truncated toward zero, so a
-    // loss that is not a whole base unit rounds up to the next one and a
+    // loss that is not a whole minor unit rounds up to the next one and a
     // profit rounds down: the trader's result is always the lower of the two.
     size.checked_mul(price_change)
         .ok_or_else(overflow)?
@@ -219,7 +219,7 @@ pub fn position_pnl(
         .ok_or_else(overflow)
 }
 
-/// Which way a valuation's fractional base unit goes.
+/// Which way a valuation's fractional minor unit goes.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Rounding {
     Down,
@@ -245,7 +245,7 @@ fn divide_rounding(
 /// pool's per-side accumulators. Positive means traders are collectively up.
 ///
 /// `rounding` is the direction of the result: `Up` rounds the long side's
-/// value up and the short side's value down, so a fraction of a base unit on
+/// value up and the short side's value down, so a fraction of a minor unit on
 /// either side counts as owed to traders; `Down` does the opposite. Callers
 /// choose the direction that goes against whoever is being priced:
 /// `add_liquidity` rounds this `Down` (the pool is valued high, so a deposit
@@ -321,7 +321,7 @@ pub fn haircut_ratio(
         pool.short_size.get(),
         pool.short_size_scaled.get(),
         price,
-        // Rounded up, so a fraction of a base unit counts as owed and can
+        // Rounded up, so a fraction of a minor unit counts as owed and can
         // only lower `h`.
         Rounding::Up,
     )?;
@@ -383,10 +383,10 @@ pub fn credit_fee(pool: &mut Account<Pool>, fee: u64) -> Result<(), ProgramError
     Ok(())
 }
 
-/// Funding a position owes since it opened, in collateral base units. Positive
+/// Funding a position owes since it opened, in collateral minor units. Positive
 /// means the trader pays the pool; negative means the pool pays the trader.
 ///
-/// Rounded up, toward positive infinity, so a fraction of a base unit always
+/// Rounded up, toward positive infinity, so a fraction of a minor unit always
 /// goes to the pool: funding the trader pays rounds up to the next whole unit
 /// and funding the trader receives rounds down. The side's sign is applied
 /// before dividing, so a short is rounded the same way as a long.

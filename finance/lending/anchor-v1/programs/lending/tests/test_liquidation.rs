@@ -84,7 +84,7 @@ fn unhealthy_obligation_liquidated_with_bonus_capped_by_close_factor() {
     )
     .unwrap();
 
-    // Exactly $350 (350M base units) was repaid — close-factor cap, not the full offer.
+    // Exactly $350 (350M minor units) was repaid — close-factor cap, not the full offer.
     assert_eq!(
         env.token_balance(liquidator_repay_account),
         1_000_000_000 - 350_000_000

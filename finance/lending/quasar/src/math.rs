@@ -70,7 +70,7 @@ pub fn price_mantissa_to_scaled(mantissa: u128, exponent: i32) -> Result<u128, P
     }
 }
 
-/// Quote-currency value (FIXED_POINT_SCALE-scaled) of `amount` base units of a
+/// Quote-currency value (FIXED_POINT_SCALE-scaled) of `amount` minor units of a
 /// token with `decimals`, given `price_scaled`.
 pub fn market_value(
     amount: u64,
@@ -86,7 +86,7 @@ pub fn market_value(
     )
 }
 
-/// Inverse of [`market_value`]: base units of a token worth `value_scaled`.
+/// Inverse of [`market_value`]: minor units of a token worth `value_scaled`.
 pub fn value_to_amount(
     value_scaled: u128,
     decimals: u8,

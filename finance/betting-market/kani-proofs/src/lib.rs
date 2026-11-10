@@ -60,7 +60,7 @@ pub fn winnings(stake: u64, distributable: u64, winning_pool: u64) -> Option<u64
 /// of the whole pool): the fee never exceeds the losing pool (so `distributable`
 /// never underflows), the fee is the ceiling of `losing * fee_bps / 10_000` (it
 /// rounds in the program's favor, never the winners'), and
-/// `winning + distributable + fee == total` — every base unit is accounted for.
+/// `winning + distributable + fee == total` — every minor unit is accounted for.
 #[cfg(kani)]
 #[kani::proof]
 #[kani::solver(cadical)]
@@ -80,7 +80,7 @@ fn proof_settlement_fee_and_split() {
     assert!(fee <= losing); // fee only ever a fraction of the losing pool
     assert_eq!(losing, total_pool - winning_pool);
     // The fee is the ceiling: at least the exact fraction, and the smallest
-    // integer that is, so no more than one base unit above it.
+    // integer that is, so no more than one minor unit above it.
     let exact = losing as u128 * fee_bps as u128; // in units of 1/10_000
     assert!(fee as u128 * BPS_DENOMINATOR >= exact);
     assert!((fee as u128) * BPS_DENOMINATOR < exact + BPS_DENOMINATOR);
