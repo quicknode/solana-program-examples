@@ -24,7 +24,7 @@ pub fn handle_remove_liquidity(
     let price = refresh_price_and_funding_within_band(pool, &context.accounts.oracle_feed)?;
 
     let lp_supply = context.accounts.lp_mint.supply;
-    // The pool is valued rounding down, so a fraction of a base unit in the
+    // The pool is valued rounding down, so a fraction of a minor unit in the
     // traders' marked profit/loss lowers what a share redeems for.
     let aum = liquidity_provider_aum(pool, price, Rounding::Down)?;
     require!(aum > 0, PerpError::PoolInsolvent);

@@ -28,11 +28,11 @@ pub struct Position {
 
     pub side: Side,
 
-    /// Collateral the trader posted, in collateral base units. Part of the
+    /// Collateral the trader posted, in collateral minor units. Part of the
     /// pool's `total_collateral` while the position is open.
     pub collateral: u64,
 
-    /// Notional position size, in collateral base units. `size / collateral` is
+    /// Notional position size, in collateral minor units. `size / collateral` is
     /// the leverage.
     pub size: u64,
 

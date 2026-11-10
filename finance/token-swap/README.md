@@ -88,7 +88,7 @@ Per-pool configuration / identity record. Identifies a single pool by which `Con
 - `config: Pubkey` - the parent `Config` account.
 - `mint_a: Pubkey` - mint of token A.
 - `mint_b: Pubkey` - mint of token B.
-- `admin_fees_owed_a: u64` - admin's accumulated fee claim on token A, in base units. Sits physically in `pool_a` but is excluded from the LP curve and from LP-withdrawable amounts. Swept by `claim_admin_fees`.
+- `admin_fees_owed_a: u64` - admin's accumulated fee claim on token A, in minor units. Sits physically in `pool_a` but is excluded from the LP curve and from LP-withdrawable amounts. Swept by `claim_admin_fees`.
 - `admin_fees_owed_b: u64` - same for token B.
 
 The admin's fees are tracked as *virtual* claims on the existing `pool_a` / `pool_b` reserves rather than as separate vaults. LP-facing math uses **effective reserves** = `pool_X.amount - admin_fees_owed_X` so the admin's owed slice doesn't grow LP [yield](https://www.investopedia.com/terms/y/yield.asp).
@@ -118,9 +118,9 @@ Transfers token A and token B from the depositor to the pool, then mints LP toke
   2. If `amount_b_required ≤ amount_b`, use `(amount_a, amount_b_required)` - the depositor offered enough B, so we take the full A and clamp B down.
   3. Otherwise, compute `amount_a_required = amount_b * effective_pool_a / effective_pool_b` and use `(amount_a_required, amount_b)` - B is the binding side, so we take the full B and clamp A down.
 - The LP amount is `min(amount_a * total / effective_pool_a, amount_b * total / effective_pool_b)` with `total = liquidity_provider_mint.supply + MINIMUM_LIQUIDITY`: the unminted floor counts as supply, exactly as it does in `withdraw_liquidity`, so a deposit is minted the share of the pool it can later redeem. Counting the floor on both sides is also what makes the donation (inflation) attack cost the attacker: to round a later deposit down to zero LP tokens, the attacker has to donate at least `MINIMUM_LIQUIDITY + 1` times that deposit, and the floor keeps its share of the donation.
-- All ratio math runs in `u128` with checked arithmetic. No floats are used for money; rounding is always toward the pool (the depositor never gets a sub-base-unit advantage).
+- All ratio math runs in `u128` with checked arithmetic. No floats are used for money; rounding is always toward the pool (the depositor never gets a sub-minor-unit advantage).
 - The ratio is computed on the **effective reserves** (`pool_X.amount - admin_fees_owed_X`). The admin's owed slice isn't LP-claimable capital, so it doesn't shift the deposit ratio.
-- If the clamp rounds one of the amounts down to zero (e.g. a depositor offering a sub-base-unit fraction against a thick pool), the handler reverts with `DepositAmountTooSmall` rather than minting LP shares against a zero contribution.
+- If the clamp rounds one of the amounts down to zero (e.g. a depositor offering a sub-minor-unit fraction against a thick pool), the handler reverts with `DepositAmountTooSmall` rather than minting LP shares against a zero contribution.
 - If either effective reserve is zero, the handler reverts with `EmptyPoolReserve` rather than let the depositor set the price. The state is not reachable (every pool opens with both reserves positive, a withdrawal leaves the floor's share behind, and a swap's output is always less than the reserve it comes from); the check is there so the ratio math never divides by zero if that ever stopped being true.
 - If the computed LP-token amount falls below `minimum_lp_tokens_out`, the handler reverts with `DepositBelowMinimum`. This is the depositor's slippage guard for cases where the pool ratio shifted between offchain quote time and tx landing.
 
@@ -140,7 +140,7 @@ Swaps a fixed `input_amount` of one token for as much of the other as possible (
 
 ### `withdraw_liquidity`
 
-Burns LP tokens and returns a proportional share of the **effective reserves** (`pool_X.amount - admin_fees_owed_X`) to the LP. The proportion is `amount / (liquidity_provider_mint.supply + MINIMUM_LIQUIDITY)`. The admin's owed slice physically remains in the vaults but is not distributed to exiting LPs - it's claimed separately via `claim_admin_fees`. All math is `u128` with checked arithmetic, multiplying before dividing; floor rounding leaves sub-base-unit dust with the pool (grows LP value for everyone still in).
+Burns LP tokens and returns a proportional share of the **effective reserves** (`pool_X.amount - admin_fees_owed_X`) to the LP. The proportion is `amount / (liquidity_provider_mint.supply + MINIMUM_LIQUIDITY)`. The admin's owed slice physically remains in the vaults but is not distributed to exiting LPs - it's claimed separately via `claim_admin_fees`. All math is `u128` with checked arithmetic, multiplying before dividing; floor rounding leaves sub-minor-unit dust with the pool (grows LP value for everyone still in).
 
 - `minimum_token_a_out` and `minimum_token_b_out` are the LP's per-side slippage floors. If either computed amount falls below its floor, the handler reverts with `WithdrawalBelowMinimum` *before* any tokens move. Pass `0` on either side to opt out. This protects LPs from withdrawing during a pool imbalance (e.g. a large swap landed just before this tx and skewed the mix).
 
@@ -202,8 +202,8 @@ Alice picks a 1:5 ratio so the NVDAx/USDC pool launches at ~5 USDC per NVDAx. Sh
 Math:
 
 - 20 NVDAx move from Alice's NVDAx account into `pool_a`, and 100 USDC from her USDC account into `pool_b`.
-- LP tokens minted to Alice: `sqrt(20 × 100) = sqrt(2000) ≈ 44.72`, minus the withheld `MINIMUM_LIQUIDITY = 100` floor (base units - negligible at major-unit scale).
-- Alice receives ~44.72 LP tokens. The 100 base-unit floor is never minted to anyone; its share of the reserves stays in the pool. Alice pays that cost as the price of opening the pool.
+- LP tokens minted to Alice: `sqrt(20 × 100) = sqrt(2000) ≈ 44.72`, minus the withheld `MINIMUM_LIQUIDITY = 100` floor (minor units - negligible at major-unit scale).
+- Alice receives ~44.72 LP tokens. The 100 minor-unit floor is never minted to anyone; its share of the reserves stays in the pool. Alice pays that cost as the price of opening the pool.
 
 NVDAx/USDC pool state: **20 NVDAx, 100 USDC**. Mid-price = 5. Alice owns 100% of withdrawable LP supply on this pool. Trading can start.
 
@@ -243,9 +243,9 @@ At the current 1:5 ratio, Bob deposits **100 NVDAx and 500 USDC**.
   - `token_a` - Bob's NVDAx ATA, `token_b` - Bob's USDC ATA
   - `payer` = Bob
   - token, ATA, system programs
-- **Args:** `amount_a = 100`, `amount_b = 500`, `minimum_lp_tokens_out = 223_000_000` (Bob quoted ~223.6 LP offchain and is unwilling to accept less than ~223.0 if the pool shifts before his tx lands; units here are LP base units at the LP mint's decimals)
+- **Args:** `amount_a = 100`, `amount_b = 500`, `minimum_lp_tokens_out = 223_000_000` (Bob quoted ~223.6 LP offchain and is unwilling to accept less than ~223.0 if the pool shifts before his tx lands; units here are LP minor units at the LP mint's decimals)
 
-Math: subsequent deposits get `min(amount_a / pool_a, amount_b / pool_b) × (current_lp_supply + MINIMUM_LIQUIDITY) = min(100/20, 500/100) × 44.72 ≈ 223.6` LP tokens (the 100 base-unit floor is too small to show at this precision).
+Math: subsequent deposits get `min(amount_a / pool_a, amount_b / pool_b) × (current_lp_supply + MINIMUM_LIQUIDITY) = min(100/20, 500/100) × 44.72 ≈ 223.6` LP tokens (the 100 minor-unit floor is too small to show at this precision).
 
 NVDAx/USDC pool state: **120 NVDAx, 600 USDC**. LP supply ~268.32. Bob owns ~83%, Alice ~17%.
 

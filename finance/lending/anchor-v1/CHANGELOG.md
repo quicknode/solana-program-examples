@@ -162,7 +162,7 @@ rather than bootstrapping it.
 
 Pricing shares against tracked `total_liquidity` stopped a vault donation, but
 `total_liquidity` includes interest owed on borrows. A lone supplier with one
-share could borrow a single base unit from their own reserve, let one second of
+share could borrow a single minor unit from their own reserve, let one second of
 interest round the debt up to two, and then ratchet the share price up about
 half again per round by depositing the most that still minted one share and
 redeeming it, leaving the rounding with their own share. On the default rate

@@ -8,7 +8,7 @@ use crate::errors::PerpError;
 use crate::state::{Pool, Position, Side};
 
 /// Result of removing a position from the pool's aggregates. All figures are in
-/// collateral base units; `equity` is what the trader's position is worth
+/// collateral minor units; `equity` is what the trader's position is worth
 /// before any close or liquidation fee.
 pub struct Settlement {
     pub profit_and_loss: i128,
@@ -118,7 +118,7 @@ pub fn scale_size(size: u64, entry_price: u64) -> Result<u128> {
         .ok_or(PerpError::MathOverflow.into())
 }
 
-/// Signed profit/loss of one position at `price`, in collateral base units.
+/// Signed profit/loss of one position at `price`, in collateral minor units.
 /// Longs profit when price rises, shorts when it falls.
 pub fn position_pnl(side: Side, size: u64, entry_price: u64, price: u64) -> Result<i128> {
     let size = size as i128;
@@ -133,7 +133,7 @@ pub fn position_pnl(side: Side, size: u64, entry_price: u64, price: u64) -> Resu
 
     // Multiply before dividing to keep precision; `entry > 0` is guaranteed.
     // Floored toward negative infinity rather than truncated toward zero, so a
-    // loss that is not a whole base unit rounds up to the next one and a
+    // loss that is not a whole minor unit rounds up to the next one and a
     // profit rounds down: the trader's result is always the lower of the two.
     size.checked_mul(price_change)
         .ok_or(PerpError::MathOverflow)?
@@ -141,7 +141,7 @@ pub fn position_pnl(side: Side, size: u64, entry_price: u64, price: u64) -> Resu
         .ok_or(PerpError::MathOverflow.into())
 }
 
-/// Which way a valuation's fractional base unit goes.
+/// Which way a valuation's fractional minor unit goes.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Rounding {
     Down,
@@ -170,7 +170,7 @@ fn divide_rounding(numerator: i128, denominator: i128, rounding: Rounding) -> Re
 /// Positive means traders are collectively up (and the pool is down).
 ///
 /// `rounding` is the direction of the result: `Up` rounds the long side's
-/// value up and the short side's value down, so a fraction of a base unit on
+/// value up and the short side's value down, so a fraction of a minor unit on
 /// either side counts as owed to traders; `Down` does the opposite. Callers
 /// choose the direction that goes against whoever is being priced.
 ///
@@ -252,7 +252,7 @@ pub fn liquidity_provider_aum(pool: &Pool, price: u64, rounding: Rounding) -> Re
 /// paid at most the pool's backing, and is never refused; when the liability is
 /// the larger, every other winner's fraction is unchanged.
 pub fn haircut_ratio(pool: &Pool, price: u64, closing_profit: i128) -> Result<u128> {
-    // Rounded up, so a fraction of a base unit counts as owed and can only
+    // Rounded up, so a fraction of a minor unit counts as owed and can only
     // lower `h`: no winner is paid more than the backing allows.
     let liability: u128 = traders_unrealized_pnl(pool, price, Rounding::Up)?
         .max(closing_profit)
@@ -315,10 +315,10 @@ pub fn credit_fee(pool: &mut Pool, fee: u64) -> Result<()> {
     Ok(())
 }
 
-/// Funding a position owes since it opened, in collateral base units. Positive
+/// Funding a position owes since it opened, in collateral minor units. Positive
 /// means the trader pays the pool; negative means the pool pays the trader.
 ///
-/// Rounded up, toward positive infinity, so a fraction of a base unit always
+/// Rounded up, toward positive infinity, so a fraction of a minor unit always
 /// goes to the pool: funding the trader pays rounds up to the next whole unit
 /// and funding the trader receives rounds down. The side's sign is applied
 /// before dividing, so a short is rounded the same way as a long.

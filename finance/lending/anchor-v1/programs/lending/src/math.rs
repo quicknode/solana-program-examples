@@ -5,7 +5,7 @@ use crate::errors::LendingError;
 
 /// Which way to break ties when a division truncates. Deposits/redeems and
 /// collateral valuations round the user's favourable quantity DOWN; debt and
-/// program-owed quantities round UP. The program never loses a base unit to
+/// program-owed quantities round UP. The program never loses a minor unit to
 /// rounding, so dust cannot be extracted by repeated round-trips.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Rounding {
@@ -50,7 +50,7 @@ fn mul_div(a: u128, b: u128, denominator: u128, rounding: Rounding) -> Result<u1
     }
 }
 
-/// Quote-currency value (in FIXED_POINT_SCALE-scaled units) of `amount` base
+/// Quote-currency value (in FIXED_POINT_SCALE-scaled units) of `amount` minor
 /// units of a token with `decimals`, given `price_scaled` from a price feed.
 ///
 /// `price_scaled` already carries the FIXED_POINT_SCALE factor (it is the real
@@ -66,7 +66,7 @@ pub fn market_value(
     mul_div(amount as u128, price_scaled, divisor, rounding)
 }
 
-/// Inverse of [`market_value`]: how many base units of a token with `decimals`
+/// Inverse of [`market_value`]: how many minor units of a token with `decimals`
 /// are worth `value_scaled` quote-currency value at `price_scaled`.
 pub fn value_to_amount(
     value_scaled: u128,

@@ -1174,7 +1174,7 @@ fn test_deposit_after_swap_uses_shifted_effective_ratio() {
     let holder_b_after = get_token_account_balance(&ts.svm, &ts.holder_account_b).unwrap();
 
     // The contract should have pulled exactly deposit_a (or deposit_a ± 1
-    // base unit because of integer division rounding) and the full deposit_b.
+    // minor unit because of integer division rounding) and the full deposit_b.
     let used_a = holder_a_before - holder_a_after;
     let used_b = holder_b_before - holder_b_after;
     assert_eq!(used_b, deposit_b, "amount_b should be fully used");
@@ -1197,8 +1197,8 @@ fn test_deposit_too_small_for_ratio_reverts() {
     let mut ts = setup_pool(4_000_000, 1_000_000);
 
     // Opened at 4M:1M (A is "cheaper" - 4 A per 1 B). To force amount_b to
-    // round down to zero, the depositor must offer < 4 base units of A
-    // (so amount_b_required = amount_a * 1M / 4M = 0). We offer 1 base unit
+    // round down to zero, the depositor must offer < 4 minor units of A
+    // (so amount_b_required = amount_a * 1M / 4M = 0). We offer 1 minor unit
     // of A and a large amount_b.
     assert_error_code(
         send_deposit(&mut ts, 1, 1_000_000),

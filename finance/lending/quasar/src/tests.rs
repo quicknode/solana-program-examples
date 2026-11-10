@@ -2414,7 +2414,7 @@ mod clock_warp {
     /// interest owed on borrows, and a supplier can borrow from their own
     /// reserve.
     ///
-    /// The attacker opens the reserve holding a single share, borrows one base
+    /// The attacker opens the reserve holding a single share, borrows one minor
     /// unit of it against collateral in another reserve, and lets one second
     /// pass. Debt is rounded up, so the one unit now reads as two and the lone
     /// share is worth two units without having minted anything. From there,
@@ -2454,7 +2454,7 @@ mod clock_warp {
             .assert_success();
         assert_eq!(world.tokens(ATTACKER_BORROW_SHARE), 2);
 
-        // Borrow one base unit against collateral in another reserve, and let a
+        // Borrow one minor unit against collateral in another reserve, and let a
         // second of interest round that debt up to two.
         world
             .deposit(

@@ -45,7 +45,7 @@ pub struct Reserve {
 
     pub liquidity_decimals: u8,
 
-    /// Base units sitting in `liquidity_vault`, available to borrow or redeem.
+    /// Minor units sitting in `liquidity_vault`, available to borrow or redeem.
     /// The program reads the pool size from this field, not the vault's token
     /// balance, so a raw token donation cannot move the exchange rate.
     pub available_liquidity: u64,

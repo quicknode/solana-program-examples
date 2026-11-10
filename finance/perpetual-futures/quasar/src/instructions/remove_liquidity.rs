@@ -70,7 +70,7 @@ pub fn handle_remove_liquidity(
         accounts.pool.short_size.get(),
         accounts.pool.short_size_scaled.get(),
         price,
-        // Rounded up, so the pool is valued low and a fraction of a base
+        // Rounded up, so the pool is valued low and a fraction of a minor
         // unit lowers what a share redeems for.
         Rounding::Up,
     )?;

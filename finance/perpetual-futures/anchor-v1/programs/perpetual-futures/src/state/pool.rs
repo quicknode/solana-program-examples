@@ -4,7 +4,7 @@ use anchor_lang::prelude::*;
 /// oracle feed. Liquidity providers fund the pool and are the counterparty to
 /// every trader; the pool absorbs trader profit and loss.
 ///
-/// Money fields are raw base units of the collateral token. The pool never
+/// Money fields are raw minor units of the collateral token. The pool never
 /// assumes decimals — `transfer_checked` carries them through every CPI.
 #[account]
 #[derive(InitSpace)]
@@ -33,7 +33,7 @@ pub struct Pool {
 
     pub lp_mint: Pubkey,
 
-    /// Liquidity-provider-owned assets, in collateral base units. Grows with
+    /// Liquidity-provider-owned assets, in collateral minor units. Grows with
     /// deposits, trader losses, fees-to-LPs; shrinks with withdrawals and
     /// trader profits. Trader collateral is tracked separately in
     /// `total_collateral` and is not part of this figure. Together with
@@ -57,7 +57,7 @@ pub struct Pool {
     pub insurance_fund: u64,
 
     /// Aggregate long open interest (sum of position `size`), in collateral
-    /// base units of notional.
+    /// minor units of notional.
     pub long_size: u128,
 
     pub short_size: u128,
