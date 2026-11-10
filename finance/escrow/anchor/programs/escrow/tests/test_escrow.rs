@@ -1,8 +1,9 @@
 use {
     anchor_lang::{
-        solana_program::instruction::Instruction, system_program, Address, ErrorCode,
-        InstructionData, ToAccountMetas,
+        solana_program::{instruction::Instruction, system_instruction},
+        system_program, Address, ErrorCode, InstructionData, ToAccountMetas,
     },
+    anchor_spl::token::{spl_token, TokenAccount},
     anchor_v2_testing::{litesvm::LiteSVM, Keypair, Signer},
     solana_kite::{
         create_associated_token_account, create_token_mint, create_wallet,
@@ -654,22 +655,49 @@ fn test_make_offer_rejects_same_mint() {
     );
 }
 
-// Bob's `take_offer` for Alice's offer `offer_id`, signed for the given terms.
-fn take_offer_instruction(
-    es: &EscrowSetup,
-    offer_id: u64,
-    minimum_token_a_out: u64,
-    maximum_token_b_in: u64,
-) -> Instruction {
-    let (offer_pda, _bump) = Address::find_program_address(
+// The address of Alice's offer `offer_id`.
+fn offer_address(es: &EscrowSetup, offer_id: u64) -> Address {
+    Address::find_program_address(
         &[
             b"offer",
             es.alice.pubkey().as_ref(),
             &offer_id.to_le_bytes(),
         ],
         &es.program_id,
-    );
-    let vault = derive_ata(&offer_pda, &es.mint_a);
+    )
+    .0
+}
+
+// The accounts Bob names to take Alice's offer `offer_id` honestly. An attack
+// test changes one or more of them before building the instruction.
+fn take_offer_accounts(
+    es: &EscrowSetup,
+    offer_id: u64,
+) -> escrow::accounts::TakeOfferAccountConstraints {
+    let offer_pda = offer_address(es, offer_id);
+    escrow::accounts::TakeOfferAccountConstraints {
+        taker: es.bob.pubkey(),
+        maker: es.alice.pubkey(),
+        token_mint_a: es.mint_a,
+        token_mint_b: es.mint_b,
+        taker_token_account_a: es.bob_ata_a,
+        taker_token_account_b: es.bob_ata_b,
+        maker_token_account_b: es.alice_ata_b,
+        offer: offer_pda,
+        vault: derive_ata(&offer_pda, &es.mint_a),
+        associated_token_program: ata_program_id(),
+        token_program: token_program_id(),
+        system_program: system_program::ID,
+    }
+}
+
+// Bob's `take_offer` naming `accounts`, signed for the given terms.
+fn take_offer_instruction_with_accounts(
+    es: &EscrowSetup,
+    accounts: escrow::accounts::TakeOfferAccountConstraints,
+    minimum_token_a_out: u64,
+    maximum_token_b_in: u64,
+) -> Instruction {
     Instruction::new_with_bytes(
         es.program_id,
         &escrow::instruction::TakeOffer {
@@ -677,21 +705,22 @@ fn take_offer_instruction(
             maximum_token_b_in,
         }
         .data(),
-        escrow::accounts::TakeOfferAccountConstraints {
-            taker: es.bob.pubkey(),
-            maker: es.alice.pubkey(),
-            token_mint_a: es.mint_a,
-            token_mint_b: es.mint_b,
-            taker_token_account_a: es.bob_ata_a,
-            taker_token_account_b: es.bob_ata_b,
-            maker_token_account_b: es.alice_ata_b,
-            offer: offer_pda,
-            vault,
-            associated_token_program: ata_program_id(),
-            token_program: token_program_id(),
-            system_program: system_program::ID,
-        }
-        .to_account_metas(None),
+        accounts.to_account_metas(None),
+    )
+}
+
+// Bob's `take_offer` for Alice's offer `offer_id`, signed for the given terms.
+fn take_offer_instruction(
+    es: &EscrowSetup,
+    offer_id: u64,
+    minimum_token_a_out: u64,
+    maximum_token_b_in: u64,
+) -> Instruction {
+    take_offer_instruction_with_accounts(
+        es,
+        take_offer_accounts(es, offer_id),
+        minimum_token_a_out,
+        maximum_token_b_in,
     )
 }
 
@@ -832,4 +861,238 @@ fn test_take_offer_rejects_switched_offer_wanting_more_token_b() {
     // Alice re-makes the offer asking for 2 TSLAx instead of 1, for the same
     // 250 USDC.
     assert_switched_offer_refused(USDC_OFFERED, 2 * TSLAX_WANTED);
+}
+// Every token balance a take could move, in token A and token B: the vault
+// named, Alice's two accounts, and Bob's two accounts.
+fn token_balances(es: &EscrowSetup, vault: &Address) -> [u64; 5] {
+    [
+        vault,
+        &es.alice_ata_a,
+        &es.alice_ata_b,
+        &es.bob_ata_a,
+        &es.bob_ata_b,
+    ]
+    .map(|address| get_token_account_balance(&es.svm, address).unwrap())
+}
+
+// Bob sends `take_offer`, signed for the offer's own terms, and the result is
+// returned rather than unwrapped so a test can check the refusal.
+fn try_take_offer(
+    es: &mut EscrowSetup,
+    accounts: escrow::accounts::TakeOfferAccountConstraints,
+) -> Result<(), solana_kite::SolanaKiteError> {
+    let take_offer_ix =
+        take_offer_instruction_with_accounts(es, accounts, USDC_OFFERED, TSLAX_WANTED);
+    send_transaction_from_instructions(
+        &mut es.svm,
+        vec![take_offer_ix],
+        &[&es.payer, &es.bob],
+        &es.payer.pubkey(),
+        None,
+    )
+}
+
+// A token account for `owner` at a fresh address rather than at the owner's
+// associated token account address, created through the System Program and
+// the Token program.
+fn create_token_account(es: &mut EscrowSetup, mint: &Address, owner: &Address) -> Address {
+    let token_account = Keypair::new();
+    let space = TokenAccount::LEN;
+    let create_account_ix = system_instruction::create_account(
+        &es.payer.pubkey(),
+        &token_account.pubkey(),
+        es.svm.minimum_balance_for_rent_exemption(space),
+        space as u64,
+        &token_program_id(),
+    );
+    let initialize_account_ix = spl_token::instruction::initialize_account3(
+        &token_program_id(),
+        &token_account.pubkey(),
+        mint,
+        owner,
+    )
+    .unwrap();
+    send_transaction_from_instructions(
+        &mut es.svm,
+        vec![create_account_ix, initialize_account_ix],
+        &[&es.payer, &token_account],
+        &es.payer.pubkey(),
+        None,
+    )
+    .unwrap();
+    token_account.pubkey()
+}
+
+#[test]
+fn test_take_offer_rejects_taker_account_as_maker_token_account_b() {
+    let mut es = full_setup();
+    let (mint_b, alice_ata_b) = (es.mint_b, es.alice_ata_b);
+    let offer_id: u64 = 9;
+    try_make_offer(
+        &mut es,
+        offer_id,
+        USDC_OFFERED,
+        TSLAX_WANTED,
+        mint_b,
+        alice_ata_b,
+    )
+    .unwrap();
+
+    // Bob names a second TSLAx account of his own as Alice's, so the 1 TSLAx
+    // he pays would come back to him and the 250 USDC would cost nothing. (His
+    // associated token account for TSLAx is already `taker_token_account_b`,
+    // and naming it twice is refused as a duplicate mutable account.)
+    let bob = es.bob.pubkey();
+    let bob_second_tslax_account = create_token_account(&mut es, &mint_b, &bob);
+    let mut accounts = take_offer_accounts(&es, offer_id);
+    accounts.maker_token_account_b = bob_second_tslax_account;
+    let vault = accounts.vault;
+    let balances_before = token_balances(&es, &vault);
+
+    let result = try_take_offer(&mut es, accounts);
+
+    // `associated_token::authority = maker` on `maker_token_account_b`
+    // refuses an account that is not Alice's associated token account for
+    // TSLAx. Anchor 2 reports that as `ConstraintAddress`.
+    assert_fails_with_anchor_error(result, ErrorCode::ConstraintAddress);
+    assert_eq!(
+        token_balances(&es, &vault),
+        balances_before,
+        "no tokens move when the maker's token B account is Bob's"
+    );
+    assert_eq!(
+        get_token_account_balance(&es.svm, &bob_second_tslax_account).unwrap(),
+        0,
+        "Bob's second TSLAx account receives nothing"
+    );
+}
+
+#[test]
+fn test_take_offer_rejects_vault_of_another_offer() {
+    let mut es = full_setup();
+    let (mint_b, alice_ata_b) = (es.mint_b, es.alice_ata_b);
+    // Alice has two offers open: 250 USDC for 1 TSLAx, and 500 USDC for
+    // 2 TSLAx.
+    let first_offer_id: u64 = 10;
+    let second_offer_id: u64 = 11;
+    try_make_offer(
+        &mut es,
+        first_offer_id,
+        USDC_OFFERED,
+        TSLAX_WANTED,
+        mint_b,
+        alice_ata_b,
+    )
+    .unwrap();
+    try_make_offer(
+        &mut es,
+        second_offer_id,
+        2 * USDC_OFFERED,
+        2 * TSLAX_WANTED,
+        mint_b,
+        alice_ata_b,
+    )
+    .unwrap();
+
+    // Bob takes the first offer, paying its 1 TSLAx, but names the second
+    // offer's vault so he would receive its 500 USDC.
+    let mut accounts = take_offer_accounts(&es, first_offer_id);
+    let first_vault = accounts.vault;
+    let second_vault = derive_ata(&offer_address(&es, second_offer_id), &es.mint_a);
+    accounts.vault = second_vault;
+    let balances_before = token_balances(&es, &first_vault);
+    let second_vault_before = get_token_account_balance(&es.svm, &second_vault).unwrap();
+
+    let result = try_take_offer(&mut es, accounts);
+
+    // `associated_token::authority = offer` on `vault` refuses a vault that
+    // is not the first offer's associated token account for USDC. Anchor 2
+    // reports that as `ConstraintAddress`.
+    assert_fails_with_anchor_error(result, ErrorCode::ConstraintAddress);
+    assert_eq!(
+        token_balances(&es, &first_vault),
+        balances_before,
+        "no tokens move when the vault belongs to another offer"
+    );
+    assert_eq!(
+        get_token_account_balance(&es.svm, &second_vault).unwrap(),
+        second_vault_before,
+        "the second offer's USDC stays in its vault"
+    );
+    assert_eq!(second_vault_before, 2 * USDC_OFFERED);
+}
+
+#[test]
+fn test_take_offer_rejects_worthless_token_mint_b() {
+    let mut es = full_setup();
+    let (mint_b, alice_ata_b) = (es.mint_b, es.alice_ata_b);
+    let offer_id: u64 = 12;
+    try_make_offer(
+        &mut es,
+        offer_id,
+        USDC_OFFERED,
+        TSLAX_WANTED,
+        mint_b,
+        alice_ata_b,
+    )
+    .unwrap();
+
+    // Bob creates his own mint at TSLAx's decimals, mints himself 1 of its
+    // tokens, and creates Alice's account for it, so every token account
+    // constraint on token B holds for his mint.
+    let worthless_mint =
+        create_token_mint(&mut es.svm, &es.bob, TSLAX_DECIMALS, None, None).unwrap();
+    let bob_worthless_ata = create_associated_token_account(
+        &mut es.svm,
+        &es.bob.pubkey(),
+        &worthless_mint,
+        &es.payer,
+        None,
+    )
+    .unwrap();
+    let alice_worthless_ata = create_associated_token_account(
+        &mut es.svm,
+        &es.alice.pubkey(),
+        &worthless_mint,
+        &es.payer,
+        None,
+    )
+    .unwrap();
+    mint_tokens_to_token_account(
+        &mut es.svm,
+        &worthless_mint,
+        &bob_worthless_ata,
+        TSLAX_WANTED,
+        &es.bob,
+        None,
+    )
+    .unwrap();
+
+    let mut accounts = take_offer_accounts(&es, offer_id);
+    accounts.token_mint_b = worthless_mint;
+    accounts.taker_token_account_b = bob_worthless_ata;
+    accounts.maker_token_account_b = alice_worthless_ata;
+    let vault = accounts.vault;
+    let balances_before = token_balances(&es, &vault);
+
+    let result = try_take_offer(&mut es, accounts);
+
+    // `address = offer.token_mint_b` on `token_mint_b` refuses a mint other
+    // than the one the offer stored.
+    assert_fails_with_anchor_error(result, ErrorCode::ConstraintAddress);
+    assert_eq!(
+        token_balances(&es, &vault),
+        balances_before,
+        "no tokens move when token B is Bob's own mint"
+    );
+    assert_eq!(
+        get_token_account_balance(&es.svm, &bob_worthless_ata).unwrap(),
+        TSLAX_WANTED,
+        "Bob keeps his worthless tokens"
+    );
+    assert_eq!(
+        get_token_account_balance(&es.svm, &alice_worthless_ata).unwrap(),
+        0,
+        "Alice receives none of Bob's worthless tokens"
+    );
 }
