@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased (2026-11-10)
+
+`inflating_shares_through_own_borrow_does_not_pay` now runs its attack. The
+borrow reserve used the default 10% reserve factor, which rounds its fee up, so
+the program took the attacker's one minor unit of interest as its fee: the share
+price never rose, the ratchet loop never moved it, and the test's assertions
+held without the attack happening. The borrow reserve now has a zero reserve
+factor, the attacker's best case, and the test asserts that the share price
+rises after the borrow and again after the round trips. With a 10% reserve
+factor the new assertion fails.
+
 ## Unreleased (2026-10-07)
 
 Round interest against the borrower. Every debt is `borrowed_principal`

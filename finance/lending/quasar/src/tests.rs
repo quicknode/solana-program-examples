@@ -1662,16 +1662,17 @@ mod clock_warp {
             vault: Pubkey,
             share: Pubkey,
             price: Pubkey,
+            reserve_factor_bps: u16,
         ) {
             // 75% LTV, 80% liquidation threshold, 5% bonus, 50% close factor,
-            // 10% reserve factor, kink 80%, 2% / 20% / 150% APR curve, and a
-            // 1% confidence limit on the price feed.
+            // the given reserve factor, kink 80%, 2% / 20% / 150% APR curve,
+            // and a 1% confidence limit on the price feed.
             let config: [u16; 10] = [
                 7_500,
                 8_000,
                 500,
                 5_000,
-                1_000,
+                reserve_factor_bps,
                 8_000,
                 200,
                 2_000,
@@ -1705,8 +1706,17 @@ mod clock_warp {
         }
 
         /// Create the market and both reserves with no deposits, for tests of
-        /// the first deposit itself.
+        /// the first deposit itself. Both reserves keep a 10% reserve factor.
         fn setup_empty_markets(&mut self) {
+            self.setup_empty_markets_with_borrow_reserve_factor(1_000);
+        }
+
+        /// As `setup_empty_markets`, with the borrow reserve keeping
+        /// `borrow_reserve_factor_bps` of interest as fees.
+        fn setup_empty_markets_with_borrow_reserve_factor(
+            &mut self,
+            borrow_reserve_factor_bps: u16,
+        ) {
             self.init_market();
             self.set_price(COLLATERAL_MINT, self.collateral_price, dollars(1));
             self.set_price(BORROW_MINT, self.borrow_price, dollars(1));
@@ -1716,6 +1726,7 @@ mod clock_warp {
                 self.collateral_vault,
                 self.collateral_share_mint,
                 self.collateral_price,
+                1_000,
             );
             self.initialize_reserve(
                 BORROW_MINT,
@@ -1723,6 +1734,7 @@ mod clock_warp {
                 self.borrow_vault,
                 self.borrow_share_mint,
                 self.borrow_price,
+                borrow_reserve_factor_bps,
             );
         }
 
@@ -2426,9 +2438,13 @@ mod clock_warp {
     /// instead a deposit just under two shares' worth mints one, and the
     /// attacker's share redeems half the pool.
     ///
-    /// The rate curve is the harness's usual one. Nothing about the attack
-    /// needs the market owner's cooperation or bad debt: the attacker repays
-    /// what they owe.
+    /// The rate curve is the harness's usual one, with the borrow reserve's
+    /// reserve factor at zero. A nonzero reserve factor rounds its fee up, so
+    /// the program would take the one unit of interest as its fee and the share
+    /// price would not move; zero is the attacker's best case. The test asserts
+    /// that the share price rises after the borrow and again after the round
+    /// trips, so the attack does run. Nothing about the attack needs the market
+    /// owner's cooperation or bad debt: the attacker repays what they owe.
     ///
     /// `MINIMUM_SHARES` counts as shares nobody holds in every share
     /// conversion, so the attacker's one share is 1 of 1_001 and whatever the
@@ -2437,7 +2453,7 @@ mod clock_warp {
     #[test]
     fn inflating_shares_through_own_borrow_does_not_pay() {
         let mut world = World::new();
-        world.setup_empty_markets();
+        world.setup_empty_markets_with_borrow_reserve_factor(0);
         world.open_collateral_reserve();
         let budget = world.tokens(ATTACKER_BORROW);
 
@@ -2486,6 +2502,10 @@ mod clock_warp {
         )
         .unwrap();
         assert_eq!(debt, 2);
+        // The extra unit of interest went to suppliers, so a share is now worth
+        // more than one minor unit.
+        let (after_borrow, shares) = world.borrow_reserve_totals();
+        assert!(after_borrow > shares);
 
         // Ratchet until one share is worth more than half the victim's deposit.
         let victim_deposit = world.tokens(VICTIM_BORROW);
@@ -2508,6 +2528,8 @@ mod clock_warp {
                 .redeem(ATTACKER, ATTACKER_BORROW, ATTACKER_BORROW_SHARE, 1)
                 .assert_success();
         }
+        // The round trips raised the share price further.
+        assert!(world.borrow_reserve_totals().0 > after_borrow);
 
         world
             .supply(VICTIM, VICTIM_BORROW, VICTIM_BORROW_SHARE, victim_deposit)

@@ -2,6 +2,7 @@ mod common;
 
 use common::{default_config, Env};
 use lending::constants::MINIMUM_SHARES;
+use lending::state::ReserveConfig;
 use solana_kite::mint_tokens_to_token_account;
 
 /// The first deposit mints shares one-for-one, less the `MINIMUM_SHARES`
@@ -133,8 +134,13 @@ fn sole_supplier_leaves_the_minimum_behind() {
 /// victim is not robbed outright; instead a deposit just under two shares'
 /// worth mints one, and the attacker's share redeems half the pool.
 ///
-/// The rate curve is the default one. Nothing about the attack needs the
-/// market owner's cooperation or bad debt: the attacker repays what they owe.
+/// The rate curve is the default one, with the reserve factor at zero. A
+/// nonzero reserve factor rounds its fee up, so the program would take the one
+/// unit of interest as its fee and the share price would not move; zero is the
+/// attacker's best case. The test asserts that the share price rises after the
+/// borrow and again after the round trips, so the attack does run. Nothing about
+/// the attack needs the market owner's cooperation or bad debt: the attacker
+/// repays what they owe.
 ///
 /// `MINIMUM_SHARES` counts as shares nobody holds in every share conversion,
 /// so the attacker's one share is 1 of 1_001 and whatever the rounding leaves
@@ -142,7 +148,11 @@ fn sole_supplier_leaves_the_minimum_behind() {
 #[test]
 fn inflating_shares_through_own_borrow_does_not_pay() {
     let mut env = Env::new();
-    let usdc = env.add_empty_reserve(6, common::dollars(1), default_config());
+    let no_reserve_factor = ReserveConfig {
+        reserve_factor_bps: 0,
+        ..default_config()
+    };
+    let usdc = env.add_empty_reserve(6, common::dollars(1), no_reserve_factor);
     let collateral = env.add_reserve(6, common::dollars(1), default_config());
 
     let attacker = env.create_user();
@@ -169,6 +179,10 @@ fn inflating_shares_through_own_borrow_does_not_pay() {
     env.warp_seconds(1);
     env.refresh_reserve_only(&attacker, &usdc);
     assert_eq!(env.reserve(&usdc).current_borrowed_amount().unwrap(), 2);
+    // The extra unit of interest went to suppliers, so a share is now worth
+    // more than one minor unit.
+    let after_borrow = env.reserve(&usdc).total_liquidity().unwrap();
+    assert!(after_borrow > env.reserve(&usdc).total_shares().unwrap());
 
     // Ratchet until one share is worth more than half the victim's deposit.
     let victim_deposit: u64 = 1_000_000_000;
@@ -185,6 +199,9 @@ fn inflating_shares_through_own_borrow_does_not_pay() {
         env.supply(&attacker, &usdc, deposit as u64);
         env.try_redeem(&attacker, &usdc, 1).unwrap();
     }
+
+    // The round trips raised the share price further.
+    assert!(env.reserve(&usdc).total_liquidity().unwrap() > after_borrow);
 
     let victim = env.create_user();
     let victim_liquidity = env.fund(&victim, usdc.mint, victim_deposit);
