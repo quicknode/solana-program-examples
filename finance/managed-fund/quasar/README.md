@@ -187,7 +187,20 @@ and rebalance are refused while withdraw still pays out, and that a band of
 exactly 1% is accepted. `test_collect_fees` checks a year's 1% fee on
 1,000,000,000 shares is 10,000,000 shares, exactly, and
 `test_collect_fees_rounds_up` that a day's fee, 27,397.26 shares, is minted as
-27,398. The two-asset tests mint TSLAx and NVDAx with eight decimals, as the
+27,398. `test_wrong_price_feed_rejected` passes TSLAx's feed in NVDAx's place
+and checks that deposit and rebalance fail with `InvalidPriceFeed`, as
+`test_truncated_price_feed_rejected` does for a price account cut off before
+its `posted_slot`; `test_non_positive_price_rejected` checks that a price of
+zero or below fails with `NegativePrice`, and `test_stale_price_rejected` that
+a price 61 seconds old fails with `StalePriceFeed` while one exactly 60 seconds
+old is accepted. A withdrawal naming another wallet's token account, or an
+account for another asset, fails with `InvalidRecipient`
+(`test_withdraw_rejects_recipient_owned_by_someone_else`,
+`test_withdraw_rejects_recipient_for_another_mint`), and so do a deposit and a
+fee collection minting shares to an account that is not the depositor's or the
+manager's (`test_deposit_rejects_share_account_owned_by_someone_else`,
+`test_collect_fees_rejects_share_account_owned_by_someone_else`). Each of these
+checks that no tokens or shares moved. The two-asset tests mint TSLAx and NVDAx with eight decimals, as the
 real tokens are, and USDC with six, so their basket amounts are in
 eight-decimal minor units. Every refusal test asserts the error code it fails
 with.
