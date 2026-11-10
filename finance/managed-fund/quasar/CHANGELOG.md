@@ -2,6 +2,16 @@
 
 ## Unreleased (2026-11-10)
 
+### Fixed
+
+- `withdraw` now checks that `user_usdc_account` belongs to the withdrawing
+  holder and holds USDC, failing with `InvalidRecipient` otherwise, as it
+  already did for each asset's recipient and as the Anchor versions do through
+  their associated token account constraints. Before, a holder could name
+  anyone's USDC account for the USDC leg. Tested by
+  `test_withdraw_rejects_usdc_recipient_owned_by_someone_else`, which fails
+  without the check.
+
 ### Added
 
 - Tests for the price-feed and recipient checks, which no test triggered. Each

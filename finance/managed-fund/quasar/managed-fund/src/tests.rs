@@ -1659,6 +1659,35 @@ fn test_withdraw_rejects_recipient_owned_by_someone_else(test: &mut Test) {
     assert_eq!(test.tokens(bob.tsla), 0);
 }
 
+/// The USDC leg of a withdrawal is paid to a USDC account that must belong to
+/// the holder whose shares are burned, as each asset leg is. Alice naming Bob's
+/// USDC account is refused with `InvalidRecipient`: no shares are burned and no
+/// tokens move. Named her own, the same withdrawal succeeds.
+#[quasar_test]
+fn test_withdraw_rejects_usdc_recipient_owned_by_someone_else(test: &mut Test) {
+    setup_full(test);
+    standard_fund(test);
+
+    let alice = fund_user(test, 900_000_000);
+    do_deposit(test, &alice, 900_000_000);
+    let bob = fund_user(test, 0);
+
+    let watched = [alice.share, alice.usdc, alice.tsla, alice.nvda, bob.usdc];
+    let before = balances(test, &watched);
+    let mut ix = withdraw_to(test, &alice, 900_000_000, alice.tsla, alice.nvda);
+    ix.user_usdc_account = bob.usdc;
+    test.send(ix).fails_with(FundError::InvalidRecipient);
+    assert_eq!(
+        balances(test, &watched),
+        before,
+        "no tokens or shares moved"
+    );
+
+    do_withdraw(test, &alice, 900_000_000);
+    assert_eq!(test.tokens(alice.share), 0);
+    assert_eq!(test.tokens(bob.usdc), 0);
+}
+
 /// Each asset's recipient must hold that asset. Alice naming her own NVDAx
 /// account for her TSLAx is refused with `InvalidRecipient`: no shares are
 /// burned and no tokens move.
