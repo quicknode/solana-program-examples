@@ -71,7 +71,7 @@ pub fn handle_add_asset(
 
     let index = fund.asset_count;
 
-    **context.accounts.asset_config = AssetConfig {
+    *context.accounts.asset_config = AssetConfig {
         fund: *fund.address(),
         index,
         mint: *context.accounts.asset_mint.address(),

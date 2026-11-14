@@ -205,16 +205,12 @@ pub fn handle_place_order(
         // v2 has no `Account::try_from`. `AnchorAccount::load_mut` is the
         // equivalent for a writable account reached through remaining_accounts,
         // and it is the only route to one: the derive cannot type a variable
-        // number of accounts.
-        //
-        // SAFETY: the obligation is that no other `&mut` to the same data is
-        // live. The trait method is unsafe because `Slab` bypasses the runtime
-        // borrow check; `BorshAccount` does not, taking its guard through
-        // `try_borrow_mut`, so an account already borrowed elsewhere in this
-        // handler yields `AccountBorrowFailed` instead of aliasing.
-        let mut maker_order = unsafe { BorshAccount::<Order>::load_mut(*maker_order_info) }?;
-        let mut maker_market_user =
-            unsafe { BorshAccount::<MarketUser>::load_mut(*maker_user_info) }?;
+        // number of accounts. `BorshAccount::load_mut` takes an exclusive
+        // borrow on the account's data, so an account already borrowed
+        // elsewhere in this handler yields `AccountBorrowFailed` instead of
+        // aliasing.
+        let mut maker_order = BorshAccount::<Order>::load_mut(*maker_order_info)?;
+        let mut maker_market_user = BorshAccount::<MarketUser>::load_mut(*maker_user_info)?;
 
         require!(
             maker_order.owner == maker_market_user.owner,
@@ -451,9 +447,9 @@ pub fn handle_place_order(
             .ok_or(ErrorCode::MissingEvictedAccounts)?;
         let market = &context.accounts.market;
 
-        // SAFETY: as for the maker accounts above. The evicted order is on
-        // the taker's own side, so it is never one of the maker orders.
-        let mut evicted_order = unsafe { BorshAccount::<Order>::load_mut(*evicted_order_info) }?;
+        // The evicted order is on the taker's own side, so it is never one of
+        // the maker orders loaded above.
+        let mut evicted_order = BorshAccount::<Order>::load_mut(*evicted_order_info)?;
         require!(
             evicted_order.order_id == worst.order_id && evicted_order.market == *market.address(),
             ErrorCode::EvictedAccountMismatch
@@ -470,7 +466,7 @@ pub fn handle_place_order(
                 .get(evicted_index + 1)
                 .ok_or(ErrorCode::MissingEvictedAccounts)?;
             let mut evicted_market_user =
-                unsafe { BorshAccount::<MarketUser>::load_mut(*evicted_user_info) }?;
+                BorshAccount::<MarketUser>::load_mut(*evicted_user_info)?;
             require!(
                 evicted_market_user.owner == evicted_order.owner
                     && evicted_market_user.market == *market.address(),

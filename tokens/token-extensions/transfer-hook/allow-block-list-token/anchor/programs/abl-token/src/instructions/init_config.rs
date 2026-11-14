@@ -20,7 +20,7 @@ pub struct InitConfigAccountConstraints {
 
 impl InitConfigAccountConstraints {
     pub fn init_config(&mut self, config_bump: u8) -> Result<()> {
-        **self.config = Config {
+        *self.config = Config {
             authority: *self.payer.address(),
             bump: config_bump,
         };

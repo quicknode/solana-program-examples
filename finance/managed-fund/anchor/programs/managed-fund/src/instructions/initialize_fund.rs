@@ -102,7 +102,7 @@ pub fn handle_initialize_fund(
 
     let clock = Clock::get()?;
 
-    **context.accounts.fund = Fund {
+    *context.accounts.fund = Fund {
         index,
         manager: *context.accounts.manager.address(),
         registry: *context.accounts.registry.address(),
