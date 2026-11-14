@@ -141,6 +141,36 @@ fn test_transfer_fee_full_flow() {
     .unwrap();
     svm.expire_blockhash();
 
+    // A harvest naming more than MAX_HARVEST_SOURCES token accounts is refused
+    // before any account is loaded. The recipient's account repeated is enough
+    // to reach the limit.
+    let too_many_harvest_ix =
+        Instruction::new_with_bytes(program_id, &transfer_fee::instruction::Harvest {}.data(), {
+            let mut metas = transfer_fee::accounts::HarvestAccountConstraints {
+                mint_account: mint_keypair.pubkey(),
+                token_program: TOKEN_EXTENSIONS_PROGRAM_ID,
+            }
+            .to_account_metas(None);
+            for _ in 0..=transfer_fee::MAX_HARVEST_SOURCES {
+                metas.push(AccountMeta::new(recipient_ata, false));
+            }
+            metas
+        });
+    let error = send_transaction_from_instructions(
+        &mut svm,
+        vec![too_many_harvest_ix],
+        &[&payer],
+        &payer.pubkey(),
+        None,
+    )
+    .expect_err("a harvest over MAX_HARVEST_SOURCES should be refused");
+    let expected = anchor_lang::Error::from(transfer_fee::TransferFeeError::TooManyHarvestSources);
+    assert!(
+        format!("{error:?}").contains(&format!("{expected:?}")),
+        "expected {expected:?}, got: {error:?}"
+    );
+    svm.expire_blockhash();
+
     // Step 5: Harvest transfer fees from recipient token account to mint
     let harvest_ix =
         Instruction::new_with_bytes(program_id, &transfer_fee::instruction::Harvest {}.data(), {

@@ -6,6 +6,7 @@
 use anchor_lang::prelude::*;
 
 pub mod instructions;
+pub mod owned_instruction;
 use instructions::*;
 
 declare_id!("C6qxH8n6mZxrrbtMtYWYSp8JR8vkQ55X1o4EBg7twnMv");

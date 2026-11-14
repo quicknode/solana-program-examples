@@ -14,6 +14,7 @@ See also: the [repository catalog](../../../../README.md).
 
 - Transfer fee extension
 - Fee withheld on transfer
+- `harvest` moves withheld fees from up to `MAX_HARVEST_SOURCES` (16) token accounts, passed as remaining accounts, into the mint. Anchor v2 builds each CPI's account list in a fixed-capacity buffer, and `harvest` sizes its `CpiContext` for the mint plus that many token accounts; more fail with `TooManyHarvestSources`.
 
 ## Setup
 

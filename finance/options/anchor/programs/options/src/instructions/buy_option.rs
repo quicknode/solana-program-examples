@@ -132,9 +132,10 @@ pub struct BuyOptionAccountConstraints {
     // Created by `write_option`, at the writer's expense, so the buyer never
     // pays rent on the writer's behalf. A writer buying their own option would
     // put this account and `buyer_quote`, both the same associated token
-    // account, in two mutable slots at once; Anchor refuses that with
-    // `ConstraintDuplicateMutableAccount` before any constraint or handler
-    // code runs, so a writer cannot pay themselves a premium.
+    // account, in two mutable slots at once. The second slot's exclusive
+    // borrow of the account's data fails with `AccountBorrowFailed` while
+    // the accounts load, before any handler code runs, so a writer cannot pay
+    // themselves a premium.
     #[account(
         mut,
         associated_token::mint = quote_mint,

@@ -11,11 +11,6 @@ use crate::{check_is_transferring, CounterAccount};
 // The first 4 accounts are the accounts required for token transfer (source, mint, destination, owner)
 // Remaining accounts are the extra accounts required from the ExtraAccountMetaList account
 // These accounts are provided via CPI to this program from the token2022 program
-//
-// InterfaceAccount used for source_token, destination_token, wsol_mint,
-// delegate_wsol_token_account, and sender_wsol_token_account to avoid exceeding
-// the 4096-byte BPF stack frame limit in try_accounts deserialization.
-// This struct has 12 accounts - without Box, the generated code uses ~4160 bytes of stack.
 #[derive(Accounts)]
 pub struct TransferHookAccountConstraints {
     #[account(token::mint = mint, token::authority = owner)]

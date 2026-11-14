@@ -624,7 +624,7 @@ pub fn place_order(
 - `order` (PDA, **init**, seeds
   `["order", market, next_order_id.to_le_bytes()]`)
 - `market_user` (mut, PDA seeds-checked)
-- `base_vault`, `quote_vault`, `fee_vault` (all mut, boxed)
+- `base_vault`, `quote_vault`, `fee_vault` (all mut)
 - `user_base_account`, `user_quote_account` (mut - the caller's ATAs)
 - `base_mint`, `quote_mint` (read-only)
 - `owner` (signer, mut)
@@ -831,10 +831,10 @@ zero, so it is safe to call on a heartbeat/cron.
 
 - `market` (mut)
 - `market_user` (mut)
-- `base_vault`, `quote_vault` (mut, boxed)
-- `user_base_account`, `user_quote_account` (mut, boxed - caller's
+- `base_vault`, `quote_vault` (mut)
+- `user_base_account`, `user_quote_account` (mut - caller's
   ATAs; caller must create them before calling)
-- `base_mint`, `quote_mint` (boxed, read-only)
+- `base_mint`, `quote_mint` (read-only)
 - `owner` (signer)
 - `token_program`
 
@@ -873,9 +873,9 @@ runtime rejects a call into a program already on the call stack with
 **Accounts in:**
 
 - `market` (mut, with `fee_vault` bound by `address = market.fee_vault`)
-- `fee_vault` (mut, boxed)
-- `authority_quote_account` (mut, boxed - destination)
-- `quote_mint` (boxed)
+- `fee_vault` (mut)
+- `authority_quote_account` (mut - destination)
+- `quote_mint`
 - `authority` (signer)
 - `token_program`
 
@@ -1514,12 +1514,6 @@ From [`errors.rs`](programs/order-book/src/errors.rs):
   `is_active`, and `place_order` is the only handler that reads it.
   Cancels, settlements and fee withdrawals never check the flag, so
   nobody's tokens are locked in a paused market.
-
-- **Boxed InterfaceAccounts.** Several handlers use `Box<
-  InterfaceAccount<...>>` for mint/token accounts. That's a BPF
-  stack-size workaround - each `InterfaceAccount` is ~1 KB on the
-  stack and the Solana VM gives handlers a tight budget. Don't
-  unbox these without testing the compute output size.
 
 - **Discriminator + `address`.** Every state account carries an 8-
   byte discriminator that Anchor checks, and `fee_vault` carries

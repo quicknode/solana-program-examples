@@ -588,8 +588,6 @@ pub struct PlaceOrderAccountConstraints {
     )]
     pub market_user: BorshAccount<MarketUser>,
 
-    // InterfaceAccount on the stack is ~1 KB each; with 7 of them this struct
-    // blows the 4 KB stack-offset limit on BPF. Boxing moves each to the heap.
     #[account(mut, address = market.base_vault @ ErrorCode::InvalidBaseVault)]
     pub base_vault: InterfaceAccount<TokenAccount>,
 

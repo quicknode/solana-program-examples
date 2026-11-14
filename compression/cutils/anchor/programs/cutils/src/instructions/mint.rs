@@ -2,11 +2,9 @@ use crate::bubblegum_types::{
     Collection, Creator, MetadataArgs, MintToCollectionV1InstructionArgs, TokenProgramVersion,
     TokenStandard, MINT_TO_COLLECTION_V1_DISCRIMINATOR,
 };
+use crate::owned_instruction::OwnedInstruction;
 use crate::*;
-use anchor_lang::solana_program::{
-    instruction::{AccountMeta, Instruction},
-    program::invoke,
-};
+use anchor_lang::solana_program::{instruction::AccountMeta, program::invoke};
 use borsh::BorshSerialize;
 
 #[derive(Accounts)]
@@ -175,7 +173,7 @@ pub fn handle_mint(
         false,
     ));
 
-    let instruction = Instruction {
+    let instruction = OwnedInstruction {
         program_id: MPL_BUBBLEGUM_ID,
         accounts,
         data,

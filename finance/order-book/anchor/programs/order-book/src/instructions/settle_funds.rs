@@ -98,8 +98,6 @@ pub struct SettleFundsAccountConstraints {
     )]
     pub market_user: BorshAccount<MarketUser>,
 
-    // Boxed for the same reason as in PlaceOrderAccountConstraints -
-    // InterfaceAccount is too large to keep on the BPF stack in bulk.
     #[account(mut, address = market.base_vault @ ErrorCode::InvalidBaseVault)]
     pub base_vault: InterfaceAccount<TokenAccount>,
 

@@ -14,6 +14,7 @@ See also: [Cross Program Invocation overview](../README.md) and the [repository 
 
 - Cross-program invocation (CPI)
 - Composing multiple programs in one transaction
+- `declare_program!` CPI functions write the instruction data into a fixed-capacity buffer the caller supplies onchain. `pull_lever` sizes its buffer for a name of up to `MAX_NAME_LEN` (32) bytes and refuses a longer one with `NameTooLong`.
 
 ## Setup
 

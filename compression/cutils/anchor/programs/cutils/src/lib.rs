@@ -3,6 +3,7 @@
 #![allow(clippy::diverging_sub_expression)]
 
 pub mod instructions;
+pub mod owned_instruction;
 pub use instructions::*;
 
 pub mod bubblegum_types;

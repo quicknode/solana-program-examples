@@ -1,11 +1,13 @@
 #![allow(clippy::diverging_sub_expression)]
 
 use anchor_lang::prelude::*;
-use anchor_lang::solana_program::instruction::{AccountMeta, Instruction};
+use anchor_lang::solana_program::instruction::AccountMeta;
 use borsh::BorshSerialize;
+use owned_instruction::OwnedInstruction;
 
 pub mod error;
 mod instructions;
+pub mod owned_instruction;
 pub mod state;
 use instructions::*;
 
@@ -59,7 +61,7 @@ pub fn build_transfer_instruction(
     system_program: Address,
     remaining_accounts: &[AccountMeta],
     args: TransferArgs,
-) -> Result<Instruction> {
+) -> Result<OwnedInstruction> {
     let mut accounts = Vec::with_capacity(8 + remaining_accounts.len());
     accounts.push(AccountMeta::new_readonly(tree_config, false));
     // leaf_owner is a signer (PDA signs via invoke_signed)
@@ -77,7 +79,7 @@ pub fn build_transfer_instruction(
     args.serialize(&mut data)
         .map_err(|_| ProgramError::InvalidInstructionData)?;
 
-    Ok(Instruction {
+    Ok(OwnedInstruction {
         program_id: MPL_BUBBLEGUM_ID,
         accounts,
         data,

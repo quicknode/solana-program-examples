@@ -67,7 +67,6 @@ pub struct WithdrawFeesAccountConstraints {
     #[account(mut)]
     pub market: BorshAccount<Market>,
 
-    // Boxed to keep the struct under the BPF stack limit (see PlaceOrderAccountConstraints).
     #[account(mut, address = market.fee_vault @ ErrorCode::InvalidFeeVault)]
     pub fee_vault: InterfaceAccount<TokenAccount>,
 

@@ -1,11 +1,8 @@
 use anchor_lang::prelude::*;
-use anchor_lang::solana_program::{
-    instruction::{AccountMeta, Instruction},
-    program::invoke,
-};
+use anchor_lang::solana_program::{instruction::AccountMeta, program::invoke};
 use borsh::BorshSerialize;
 
-use crate::{SPLCompression, MPL_BUBBLEGUM_ID};
+use crate::{owned_instruction::OwnedInstruction, SPLCompression, MPL_BUBBLEGUM_ID};
 
 /// Burn instruction discriminator from mpl-bubblegum
 const BURN_DISCRIMINATOR: [u8; 8] = [116, 110, 29, 56, 107, 219, 42, 93];
@@ -109,7 +106,7 @@ pub fn handle_burn_cnft(
         accounts.push(AccountMeta::new_readonly(*acc.address(), false));
     }
 
-    let instruction = Instruction {
+    let instruction = OwnedInstruction {
         program_id: MPL_BUBBLEGUM_ID,
         accounts,
         data,

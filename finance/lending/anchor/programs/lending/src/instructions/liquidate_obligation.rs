@@ -166,11 +166,6 @@ pub fn handle_liquidate_obligation(
     };
 
     // Interactions: liquidator repays, then receives the seized share tokens.
-    //
-    // These accounts are `Box`ed, and `Box`'s `AnchorAccount` impl does not
-    // override `cpi_handle_mut`, so that call would build a handle without
-    // releasing the wrapper's data borrow and the CPI would be rejected with
-    // `AccountBorrowFailed`. `to_cpi_handle_mut` forwards to the inner type.
     transfer_checked(
         CpiContext::<_, 4>::new(
             context.accounts.token_program.address(),
@@ -241,8 +236,6 @@ pub fn handle_liquidate_obligation(
     Ok(())
 }
 
-// Liquidation touches 13 accounts; every Account/InterfaceAccount is boxed so
-// account deserialization happens on the heap and stays within the BPF stack frame.
 #[derive(Accounts)]
 pub struct LiquidateObligation {
     #[account(mut)]

@@ -124,3 +124,80 @@ fn test_pull_lever_cpi() {
         "Power should be off after pulling lever again"
     );
 }
+
+/// A name of exactly `MAX_NAME_LEN` bytes reaches the lever program; one byte
+/// more is refused by `hand` with `NameTooLong` before the CPI, and the power
+/// switch is left where it was.
+#[test]
+fn test_pull_lever_name_length_limit() {
+    let hand_program_id = hand::id();
+    let lever_program_id = hand::lever::ID;
+
+    let mut svm = anchor_v2_testing::svm();
+    let hand_bytes = include_bytes!("../../../target/deploy/hand.so");
+    let lever_bytes = std::fs::read(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../target/deploy/lever.so"
+    ))
+    .expect("lever.so not found - run `anchor build` first");
+    svm.add_program(hand_program_id, hand_bytes).unwrap();
+    svm.add_program(lever_program_id, &lever_bytes).unwrap();
+    let payer = create_wallet(&mut svm, 10_000_000_000).unwrap();
+
+    let power_keypair = Keypair::new();
+    let init_ix =
+        build_lever_initialize_ix(lever_program_id, power_keypair.pubkey(), payer.pubkey());
+    send_transaction_from_instructions(
+        &mut svm,
+        vec![init_ix],
+        &[&payer, &power_keypair],
+        &payer.pubkey(),
+        None,
+    )
+    .unwrap();
+
+    let pull_ix = |name: String| {
+        Instruction::new_with_bytes(
+            hand_program_id,
+            &hand::instruction::PullLever { name }.data(),
+            hand::accounts::PullLeverAccountConstraints {
+                power: power_keypair.pubkey(),
+                lever_program: lever_program_id,
+            }
+            .to_account_metas(None),
+        )
+    };
+
+    svm.expire_blockhash();
+    send_transaction_from_instructions(
+        &mut svm,
+        vec![pull_ix("a".repeat(hand::MAX_NAME_LEN))],
+        &[&payer],
+        &payer.pubkey(),
+        None,
+    )
+    .unwrap();
+    assert!(
+        read_power_is_on(&svm, &power_keypair.pubkey()),
+        "a name of MAX_NAME_LEN bytes should switch the power on"
+    );
+
+    svm.expire_blockhash();
+    let error = send_transaction_from_instructions(
+        &mut svm,
+        vec![pull_ix("a".repeat(hand::MAX_NAME_LEN + 1))],
+        &[&payer],
+        &payer.pubkey(),
+        None,
+    )
+    .expect_err("a name longer than MAX_NAME_LEN should be refused");
+    let expected = anchor_lang::Error::from(hand::HandError::NameTooLong);
+    assert!(
+        format!("{error:?}").contains(&format!("{expected:?}")),
+        "expected {expected:?}, got: {error:?}"
+    );
+    assert!(
+        read_power_is_on(&svm, &power_keypair.pubkey()),
+        "a refused pull should leave the power on"
+    );
+}

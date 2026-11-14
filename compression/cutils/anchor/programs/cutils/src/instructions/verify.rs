@@ -1,6 +1,7 @@
 use crate::bubblegum_types::{get_asset_id, leaf_schema_v1_hash};
+use crate::owned_instruction::OwnedInstruction;
 use crate::*;
-use anchor_lang::solana_program::instruction::{AccountMeta, Instruction};
+use anchor_lang::solana_program::instruction::AccountMeta;
 
 #[derive(Accounts)]
 #[instruction(_params: VerifyParams)]
@@ -74,7 +75,7 @@ pub fn handle_verify(
     }
 
     anchor_lang::solana_program::program::invoke(
-        &Instruction {
+        &OwnedInstruction {
             program_id: *context.accounts.compression_program.address(),
             accounts,
             data,
