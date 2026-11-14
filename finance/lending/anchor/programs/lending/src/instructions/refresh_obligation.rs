@@ -31,7 +31,7 @@ pub fn handle_refresh_obligation(context: &mut Context<RefreshObligation>) -> Re
 
     for collateral in obligation.deposits.iter_mut() {
         let (reserve, price_scaled) = read_pair(
-            &accounts,
+            accounts,
             &mut cursor,
             collateral.reserve,
             lending_market,
@@ -74,7 +74,7 @@ pub fn handle_refresh_obligation(context: &mut Context<RefreshObligation>) -> Re
     let mut borrowed_value: u128 = 0;
     for borrow in obligation.borrows.iter_mut() {
         let (reserve, price_scaled) =
-            read_pair(&accounts, &mut cursor, borrow.reserve, lending_market, slot)?;
+            read_pair(accounts, &mut cursor, borrow.reserve, lending_market, slot)?;
 
         let debt = mul_div_ceil(
             borrow.borrowed_principal,
