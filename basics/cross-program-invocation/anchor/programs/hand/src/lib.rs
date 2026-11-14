@@ -42,7 +42,7 @@ pub mod hand {
             switch_power(cpi_ctx, &name, &mut data)?;
         }
         #[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
-        switch_power(cpi_ctx, &name)?;
+        switch_power(cpi_ctx, name)?;
         Ok(())
     }
 }
