@@ -465,8 +465,7 @@ pub fn handle_place_order(
             let evicted_user_info = maker_accounts
                 .get(evicted_index + 1)
                 .ok_or(ErrorCode::MissingEvictedAccounts)?;
-            let mut evicted_market_user =
-                BorshAccount::<MarketUser>::load_mut(*evicted_user_info)?;
+            let mut evicted_market_user = BorshAccount::<MarketUser>::load_mut(*evicted_user_info)?;
             require!(
                 evicted_market_user.owner == evicted_order.owner
                     && evicted_market_user.market == *market.address(),

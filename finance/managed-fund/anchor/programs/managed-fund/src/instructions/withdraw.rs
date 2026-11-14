@@ -203,7 +203,11 @@ pub fn handle_withdraw(
                 authority: CpiHandle::readonly(&fund_view),
             };
             transfer_checked(
-                CpiContext::<_, 4>::new_with_signer(token_program_key, transfer_accounts, signer_seeds),
+                CpiContext::<_, 4>::new_with_signer(
+                    token_program_key,
+                    transfer_accounts,
+                    signer_seeds,
+                ),
                 amount,
                 decimals,
             )?;

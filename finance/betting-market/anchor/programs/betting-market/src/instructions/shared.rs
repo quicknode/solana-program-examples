@@ -76,8 +76,11 @@ pub fn transfer_tokens_from_vault(
         to: to.cpi_handle_mut(),
         authority: CpiHandle::readonly(&event.view),
     };
-    let cpi_context =
-        CpiContext::<_, 4>::new_with_signer(token_program.address(), transfer_accounts, &signer_seeds);
+    let cpi_context = CpiContext::<_, 4>::new_with_signer(
+        token_program.address(),
+        transfer_accounts,
+        &signer_seeds,
+    );
     transfer_checked(cpi_context, amount, decimals)
 }
 

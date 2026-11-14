@@ -85,8 +85,11 @@ pub fn handle_mint_nft(
         to: accounts.destination.cpi_handle_mut(),
         authority: accounts.mint_authority.cpi_handle(),
     };
-    let cpi_ctx =
-        CpiContext::<_, 3>::new_with_signer(accounts.token_program.address(), cpi_accounts, signer_seeds);
+    let cpi_ctx = CpiContext::<_, 3>::new_with_signer(
+        accounts.token_program.address(),
+        cpi_accounts,
+        signer_seeds,
+    );
     mint_to(cpi_ctx, 1)?;
     msg!("NFT minted!");
 
