@@ -42,7 +42,7 @@ pub fn handle_collect_program_fees(context: &mut Context<CollectProgramFees>) ->
     // flushes the pending writes, and `reacquire_borrow_mut` re-reads them.
     context.accounts.reserve.release_borrow()?;
     transfer_checked(
-        CpiContext::new_with_signer(
+        CpiContext::<_, 4>::new_with_signer(
             context.accounts.token_program.address(),
             TransferChecked {
                 from: context.accounts.liquidity_vault.cpi_handle_mut(),

@@ -15,7 +15,7 @@ pub fn handler(
     amount: u64,
 ) -> Result<()> {
     system_program::transfer(
-        CpiContext::new(
+        CpiContext::<_, 2>::new(
             context.accounts.system_program.address(),
             system_program::Transfer {
                 from: context.accounts.payer.cpi_handle_mut(),

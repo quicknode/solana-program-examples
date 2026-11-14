@@ -24,7 +24,7 @@ pub fn handle_init_rent_vault(
     fund_lamports: u64,
 ) -> Result<()> {
     transfer(
-        CpiContext::new(
+        CpiContext::<_, 2>::new(
             context.accounts.system_program.address(),
             Transfer {
                 from: context.accounts.payer.cpi_handle_mut(),

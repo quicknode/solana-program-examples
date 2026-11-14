@@ -31,7 +31,7 @@ pub mod immutable_owner {
 
         // Invoke System Program to create new account with space for token account and extension data
         create_account(
-            CpiContext::new(
+            CpiContext::<_, 2>::new(
                 context.accounts.system_program.address(),
                 CreateAccount {
                     from: context.accounts.payer.cpi_handle_mut(),
@@ -44,7 +44,7 @@ pub mod immutable_owner {
         )?;
 
         // Initialize the token account with the immutable owner extension
-        immutable_owner_initialize(CpiContext::new(
+        immutable_owner_initialize(CpiContext::<_, 1>::new(
             context.accounts.token_program.address(),
             ImmutableOwnerInitialize {
                 token_account: context.accounts.token_account.cpi_handle_mut(),
@@ -52,7 +52,7 @@ pub mod immutable_owner {
         ))?;
 
         // Initialize the standard token account data
-        initialize_account3(CpiContext::new(
+        initialize_account3(CpiContext::<_, 3>::new(
             context.accounts.token_program.address(),
             InitializeAccount3 {
                 account: context.accounts.token_account.cpi_handle_mut(),

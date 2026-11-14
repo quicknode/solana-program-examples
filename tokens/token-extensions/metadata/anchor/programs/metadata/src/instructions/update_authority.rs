@@ -30,7 +30,7 @@ pub fn process_update_authority(
     // Change update authority. v2's struct drops the program-id and
     // new-authority slots: neither is passed as an account.
     token_metadata_update_authority(
-        CpiContext::new(
+        CpiContext::<_, 2>::new(
             context.accounts.token_program.address(),
             TokenMetadataUpdateAuthority {
                 metadata: context.accounts.mint_account.cpi_handle_mut(),

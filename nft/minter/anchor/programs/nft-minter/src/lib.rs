@@ -32,7 +32,7 @@ pub mod nft_minter {
         // Cross Program Invocation (CPI)
         // Invoking the mint_to instruction on the token program
         mint_to(
-            CpiContext::new(
+            CpiContext::<_, 3>::new(
                 context.accounts.token_program.address(),
                 MintTo {
                     mint: context.accounts.mint_account.cpi_handle_mut(),
@@ -47,7 +47,7 @@ pub mod nft_minter {
         // Cross Program Invocation (CPI)
         // Invoking the create_metadata_account_v3 instruction on the token metadata program
         create_metadata_accounts_v3(
-            CpiContext::new(
+            CpiContext::<_, 6>::new(
                 context.accounts.token_metadata_program.address(),
                 CreateMetadataAccountsV3 {
                     metadata: context.accounts.metadata_account.cpi_handle_mut(),
@@ -76,7 +76,7 @@ pub mod nft_minter {
         // Cross Program Invocation (CPI)
         // Invoking the create_master_edition_v3 instruction on the token metadata program
         create_master_edition_v3(
-            CpiContext::new(
+            CpiContext::<_, 8>::new(
                 context.accounts.token_metadata_program.address(),
                 CreateMasterEditionV3 {
                     edition: context.accounts.edition_account.cpi_handle_mut(),

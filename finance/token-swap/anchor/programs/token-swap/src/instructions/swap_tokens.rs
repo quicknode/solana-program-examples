@@ -182,7 +182,7 @@ pub fn handle_swap_tokens(
 
     if input_is_token_a {
         token_interface::transfer_checked(
-            CpiContext::new(
+            CpiContext::<_, 4>::new(
                 context.accounts.token_program.address(),
                 TransferChecked {
                     from: context.accounts.token_a.to_cpi_handle_mut(),
@@ -195,7 +195,7 @@ pub fn handle_swap_tokens(
             context.accounts.mint_a.decimals(),
         )?;
         token_interface::transfer_checked(
-            CpiContext::new_with_signer(
+            CpiContext::<_, 4>::new_with_signer(
                 context.accounts.token_program.address(),
                 TransferChecked {
                     from: context.accounts.pool_b.to_cpi_handle_mut(),
@@ -210,7 +210,7 @@ pub fn handle_swap_tokens(
         )?;
     } else {
         token_interface::transfer_checked(
-            CpiContext::new_with_signer(
+            CpiContext::<_, 4>::new_with_signer(
                 context.accounts.token_program.address(),
                 TransferChecked {
                     from: context.accounts.pool_a.to_cpi_handle_mut(),
@@ -224,7 +224,7 @@ pub fn handle_swap_tokens(
             context.accounts.mint_a.decimals(),
         )?;
         token_interface::transfer_checked(
-            CpiContext::new(
+            CpiContext::<_, 4>::new(
                 context.accounts.token_program.address(),
                 TransferChecked {
                     from: context.accounts.token_b.to_cpi_handle_mut(),

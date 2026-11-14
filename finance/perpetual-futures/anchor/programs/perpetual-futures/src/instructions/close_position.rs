@@ -112,7 +112,7 @@ pub fn handle_close_position(
     ];
     context.accounts.pool.release_borrow()?;
     transfer_checked(
-        CpiContext::new_with_signer(
+        CpiContext::<_, 4>::new_with_signer(
             context.accounts.token_program.address(),
             TransferChecked {
                 from: context.accounts.custody_vault.to_cpi_handle_mut(),

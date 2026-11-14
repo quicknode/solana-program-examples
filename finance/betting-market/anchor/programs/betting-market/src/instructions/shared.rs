@@ -24,7 +24,7 @@ pub fn transfer_tokens_to_vault(
         to: to.cpi_handle_mut(),
         authority: authority.cpi_handle(),
     };
-    let cpi_context = CpiContext::new(token_program.address(), transfer_accounts);
+    let cpi_context = CpiContext::<_, 4>::new(token_program.address(), transfer_accounts);
     transfer_checked(cpi_context, amount, decimals)
 }
 
@@ -77,7 +77,7 @@ pub fn transfer_tokens_from_vault(
         authority: CpiHandle::readonly(&event.view),
     };
     let cpi_context =
-        CpiContext::new_with_signer(token_program.address(), transfer_accounts, &signer_seeds);
+        CpiContext::<_, 4>::new_with_signer(token_program.address(), transfer_accounts, &signer_seeds);
     transfer_checked(cpi_context, amount, decimals)
 }
 
@@ -100,6 +100,6 @@ pub fn close_vault(
         authority: CpiHandle::readonly(&event.view),
     };
     let cpi_context =
-        CpiContext::new_with_signer(token_program.address(), close_accounts, &signer_seeds);
+        CpiContext::<_, 3>::new_with_signer(token_program.address(), close_accounts, &signer_seeds);
     close_account(cpi_context)
 }

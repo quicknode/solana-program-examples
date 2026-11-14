@@ -88,7 +88,7 @@ pub fn handler(context: &mut Context<TransferHookAccountConstraints>, amount: u6
     // Transfer WSOL from sender to delegate token account using delegate PDA
     // transfer lamports amount equal to token transfer amount
     transfer_checked(
-        CpiContext::new(
+        CpiContext::<_, 4>::new(
             context.accounts.token_program.address(),
             TransferChecked {
                 from: context.accounts.sender_wsol_token_account.cpi_handle_mut(),

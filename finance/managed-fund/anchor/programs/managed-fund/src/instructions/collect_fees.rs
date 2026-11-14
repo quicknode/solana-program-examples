@@ -102,7 +102,7 @@ pub fn handle_collect_fees(context: &mut Context<CollectFeesAccountConstraints>)
         to: context.accounts.manager_share_account.cpi_handle_mut(),
         authority: context.accounts.fund.to_cpi_handle(),
     };
-    let cpi_ctx = CpiContext::new_with_signer(
+    let cpi_ctx = CpiContext::<_, 3>::new_with_signer(
         context.accounts.token_program.address(),
         mint_accounts,
         signer_seeds,

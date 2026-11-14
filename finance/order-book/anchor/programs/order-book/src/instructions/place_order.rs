@@ -117,7 +117,7 @@ pub fn handle_place_order(
         };
 
     transfer_checked(
-        CpiContext::new(
+        CpiContext::<_, 4>::new(
             context.accounts.token_program.address(),
             TransferChecked {
                 from: source_account,
@@ -394,7 +394,7 @@ pub fn handle_place_order(
 
         context.accounts.market.release_borrow()?;
         transfer_checked(
-            CpiContext::new_with_signer(
+            CpiContext::<_, 4>::new_with_signer(
                 context.accounts.token_program.address(),
                 TransferChecked {
                     from: context.accounts.quote_vault.to_cpi_handle_mut(),

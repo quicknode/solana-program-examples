@@ -63,7 +63,7 @@ pub fn handler(context: &mut Context<InitializeAccountConstraints>) -> Result<()
 
     // Invoke System Program to create new account with space for mint and extension data
     create_account(
-        CpiContext::new(
+        CpiContext::<_, 2>::new(
             context.accounts.system_program.address(),
             CreateAccount {
                 from: context.accounts.payer.cpi_handle_mut(),
@@ -78,7 +78,7 @@ pub fn handler(context: &mut Context<InitializeAccountConstraints>) -> Result<()
     // Initialize the PermanentDelegate extension
     // This instruction must come before the instruction to initialize the mint data
     permanent_delegate_initialize(
-        CpiContext::new(
+        CpiContext::<_, 1>::new(
             context.accounts.token_program.address(),
             PermanentDelegateInitialize {
                 mint: context.accounts.mint_account.cpi_handle_mut(),
@@ -89,7 +89,7 @@ pub fn handler(context: &mut Context<InitializeAccountConstraints>) -> Result<()
 
     // Initialize the standard mint account data
     initialize_mint2(
-        CpiContext::new(
+        CpiContext::<_, 1>::new(
             context.accounts.token_program.address(),
             InitializeMint2 {
                 mint: context.accounts.mint_account.cpi_handle_mut(),

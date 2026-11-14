@@ -53,7 +53,7 @@ pub fn handle_mint_token(
 
     // Invoke the mint_to instruction on the token program
     mint_to(
-        CpiContext::new(
+        CpiContext::<_, 3>::new(
             context.accounts.token_program.address(),
             MintTo {
                 mint: context.accounts.mint_account.cpi_handle_mut(),

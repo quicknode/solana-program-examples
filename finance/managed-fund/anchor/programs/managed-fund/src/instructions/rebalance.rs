@@ -232,7 +232,7 @@ pub fn handle_rebalance(
         system_program: context.accounts.system_program.cpi_handle(),
     };
     mock_swap_router::cpi::swap_asset_for_usdc(
-        CpiContext::new_with_signer(
+        CpiContext::<_, 11>::new_with_signer(
             context.accounts.swap_router_program.address(),
             sell_cpi_accounts,
             signer_seeds,
@@ -289,7 +289,7 @@ pub fn handle_rebalance(
         system_program: context.accounts.system_program.cpi_handle(),
     };
     mock_swap_router::cpi::swap_usdc_for_asset(
-        CpiContext::new_with_signer(
+        CpiContext::<_, 11>::new_with_signer(
             context.accounts.swap_router_program.address(),
             buy_cpi_accounts,
             signer_seeds,

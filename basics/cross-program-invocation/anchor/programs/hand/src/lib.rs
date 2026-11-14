@@ -17,7 +17,7 @@ pub mod hand {
         context: &mut Context<PullLeverAccountConstraints>,
         name: String,
     ) -> Result<()> {
-        let cpi_ctx = CpiContext::new(
+        let cpi_ctx = CpiContext::<_, 1>::new(
             context.accounts.lever_program.address(),
             SwitchPower {
                 power: context.accounts.power.cpi_handle_mut(),

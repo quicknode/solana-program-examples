@@ -47,7 +47,7 @@ pub fn handler(context: &mut Context<InitializeAccountConstraints>, decimals: u8
 
     // Invoke System Program to create new account with space for mint and extension data
     create_account(
-        CpiContext::new(
+        CpiContext::<_, 2>::new(
             context.accounts.system_program.address(),
             CreateAccount {
                 from: context.accounts.payer.cpi_handle_mut(),
@@ -62,7 +62,7 @@ pub fn handler(context: &mut Context<InitializeAccountConstraints>, decimals: u8
     // Initialize the TransferHook extension, pointing at this program
     // This instruction must come before the instruction to initialize the mint data
     transfer_hook_initialize(
-        CpiContext::new(
+        CpiContext::<_, 1>::new(
             context.accounts.token_program.address(),
             TransferHookInitialize {
                 mint: context.accounts.mint_account.cpi_handle_mut(),
@@ -74,7 +74,7 @@ pub fn handler(context: &mut Context<InitializeAccountConstraints>, decimals: u8
 
     // Initialize the standard mint account data
     initialize_mint2(
-        CpiContext::new(
+        CpiContext::<_, 1>::new(
             context.accounts.token_program.address(),
             InitializeMint2 {
                 mint: context.accounts.mint_account.cpi_handle_mut(),

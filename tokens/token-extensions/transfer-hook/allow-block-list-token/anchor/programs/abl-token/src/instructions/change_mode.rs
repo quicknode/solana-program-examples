@@ -45,7 +45,7 @@ impl ChangeModeAccountConstraints {
             update_authority: self.authority.cpi_handle(),
         };
         let cpi_program = self.token_program.address();
-        let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
+        let cpi_ctx = CpiContext::<_, 2>::new(cpi_program, cpi_accounts);
 
         token_metadata_update_field(cpi_ctx, Field::Key("AB".to_string()), args.mode.to_string())?;
 
@@ -61,7 +61,7 @@ impl ChangeModeAccountConstraints {
                 update_authority: self.authority.cpi_handle(),
             };
             let cpi_program = self.token_program.address();
-            let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
+            let cpi_ctx = CpiContext::<_, 2>::new(cpi_program, cpi_accounts);
 
             token_metadata_update_field(
                 cpi_ctx,
@@ -76,7 +76,7 @@ impl ChangeModeAccountConstraints {
         let current = self.mint.account().lamports();
         if min_balance > current {
             transfer(
-                CpiContext::new(
+                CpiContext::<_, 2>::new(
                     self.system_program.address(),
                     Transfer {
                         from: self.authority.cpi_handle_mut(),

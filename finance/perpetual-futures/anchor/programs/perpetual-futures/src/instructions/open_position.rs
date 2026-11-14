@@ -106,7 +106,7 @@ pub fn handle_open_position(
     }
 
     transfer_checked(
-        CpiContext::new(
+        CpiContext::<_, 4>::new(
             context.accounts.token_program.address(),
             TransferChecked {
                 from: context.accounts.trader_collateral.to_cpi_handle_mut(),

@@ -38,7 +38,7 @@ pub fn transfer_from_signer(
     amount: u64,
 ) -> Result<()> {
     transfer_checked(
-        CpiContext::new(
+        CpiContext::<_, 4>::new(
             token_program.address(),
             TransferChecked {
                 from: from.to_cpi_handle_mut(),
@@ -80,7 +80,7 @@ pub fn transfer_from_vault(
     market.release_borrow()?;
     let market_view = *market.account();
     transfer_checked(
-        CpiContext::new_with_signer(
+        CpiContext::<_, 4>::new_with_signer(
             token_program.address(),
             TransferChecked {
                 from: vault.to_cpi_handle_mut(),

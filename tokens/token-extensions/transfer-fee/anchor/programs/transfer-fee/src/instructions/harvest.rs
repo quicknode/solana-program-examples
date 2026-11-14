@@ -42,13 +42,13 @@ pub fn process_harvest(context: &mut Context<HarvestAccountConstraints>) -> Resu
         .collect();
 
     harvest_withheld_tokens_to_mint(
-        CpiContext::new(
+        CpiContext::<_, 1>::new(
             context.accounts.token_program.address(),
             HarvestWithheldTokensToMint {
                 mint: context.accounts.mint_account.cpi_handle_mut(),
             },
         ),
-        sources, // token accounts to harvest from
+        &sources, // token accounts to harvest from
     )?;
     Ok(())
 }

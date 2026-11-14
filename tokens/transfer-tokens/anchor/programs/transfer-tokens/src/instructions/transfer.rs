@@ -63,7 +63,7 @@ pub fn handle_transfer_tokens(
 
     // Invoke the transfer_checked instruction on the token program
     transfer_checked(
-        CpiContext::new(
+        CpiContext::<_, 4>::new(
             context.accounts.token_program.address(),
             TransferChecked {
                 from: context.accounts.sender_token_account.cpi_handle_mut(),

@@ -44,7 +44,7 @@ pub fn handle_withdraw_fees(context: &mut Context<WithdrawFeesAccountConstraints
 
     context.accounts.market.release_borrow()?;
     transfer_checked(
-        CpiContext::new_with_signer(
+        CpiContext::<_, 4>::new_with_signer(
             context.accounts.token_program.address(),
             TransferChecked {
                 from: context.accounts.fee_vault.to_cpi_handle_mut(),

@@ -41,7 +41,7 @@ pub fn handler(
     };
 
     transfer_checked(
-        CpiContext::new_with_signer(
+        CpiContext::<_, 4>::new_with_signer(
             context.accounts.token_program.address(),
             transfer_accounts,
             &[&[

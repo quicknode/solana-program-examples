@@ -74,7 +74,7 @@ pub fn handle_add_liquidity(
         .ok_or(PerpError::MathOverflow)?;
 
     transfer_checked(
-        CpiContext::new(
+        CpiContext::<_, 4>::new(
             context.accounts.token_program.address(),
             TransferChecked {
                 from: context.accounts.provider_collateral.to_cpi_handle_mut(),
@@ -103,7 +103,7 @@ pub fn handle_add_liquidity(
     ];
     context.accounts.pool.release_borrow()?;
     mint_to(
-        CpiContext::new_with_signer(
+        CpiContext::<_, 3>::new_with_signer(
             context.accounts.token_program.address(),
             MintTo {
                 mint: context.accounts.lp_mint.to_cpi_handle_mut(),

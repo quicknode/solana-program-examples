@@ -19,7 +19,7 @@ pub fn handle_process_update_fee(
     maximum_fee: u64,
 ) -> Result<()> {
     transfer_fee_set(
-        CpiContext::new(
+        CpiContext::<_, 2>::new(
             context.accounts.token_program.address(),
             TransferFeeSetTransferFee {
                 mint: context.accounts.mint_account.cpi_handle_mut(),

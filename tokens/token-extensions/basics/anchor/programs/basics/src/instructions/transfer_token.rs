@@ -34,7 +34,7 @@ pub fn handler(context: &mut Context<TransferTokenAccountConstraints>, amount: u
         authority: context.accounts.signer.cpi_handle(),
     };
     let cpi_program = context.accounts.token_program.address();
-    let cpi_context = CpiContext::new(cpi_program, cpi_accounts);
+    let cpi_context = CpiContext::<_, 4>::new(cpi_program, cpi_accounts);
     token_interface::transfer_checked(cpi_context, amount, context.accounts.mint.decimals())?;
     msg!("Transfer Token");
     Ok(())

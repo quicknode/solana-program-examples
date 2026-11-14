@@ -28,7 +28,7 @@ pub fn handle_create_new_account(
 
     // Create the new account, transferring lamports from the rent vault to the new account
     create_account(
-        CpiContext::new(
+        CpiContext::<_, 2>::new(
             context.accounts.system_program.address(),
             CreateAccount {
                 from: context.accounts.rent_vault.cpi_handle_mut(), // From pubkey

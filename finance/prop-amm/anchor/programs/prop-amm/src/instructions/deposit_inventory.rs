@@ -19,7 +19,7 @@ pub fn handle_deposit_inventory(
 
     if base_amount > 0 {
         transfer_checked(
-            CpiContext::new(
+            CpiContext::<_, 4>::new(
                 context.accounts.token_program.address(),
                 TransferChecked {
                     from: context.accounts.operator_base.to_cpi_handle_mut(),
@@ -35,7 +35,7 @@ pub fn handle_deposit_inventory(
 
     if quote_amount > 0 {
         transfer_checked(
-            CpiContext::new(
+            CpiContext::<_, 4>::new(
                 context.accounts.token_program.address(),
                 TransferChecked {
                     from: context.accounts.operator_quote.to_cpi_handle_mut(),

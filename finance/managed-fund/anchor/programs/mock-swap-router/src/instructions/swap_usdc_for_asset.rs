@@ -97,7 +97,7 @@ pub fn handle_swap_usdc_for_asset(
         to: context.accounts.router_usdc_treasury.to_cpi_handle_mut(),
         authority: context.accounts.caller.cpi_handle(),
     };
-    let cpi_ctx = CpiContext::new(context.accounts.token_program.address(), transfer_accounts);
+    let cpi_ctx = CpiContext::<_, 4>::new(context.accounts.token_program.address(), transfer_accounts);
     transfer_checked(
         cpi_ctx,
         usdc_amount_in,
@@ -113,7 +113,7 @@ pub fn handle_swap_usdc_for_asset(
         to: context.accounts.caller_asset_account.to_cpi_handle_mut(),
         authority: context.accounts.router_config.to_cpi_handle(),
     };
-    let cpi_ctx = CpiContext::new_with_signer(
+    let cpi_ctx = CpiContext::<_, 3>::new_with_signer(
         context.accounts.token_program.address(),
         mint_accounts,
         signer_seeds,

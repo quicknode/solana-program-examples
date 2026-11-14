@@ -16,7 +16,7 @@ pub struct DisableAccountConstraints {
 }
 
 pub fn handler(context: &mut Context<DisableAccountConstraints>) -> Result<()> {
-    memo_transfer_disable(CpiContext::new(
+    memo_transfer_disable(CpiContext::<_, 2>::new(
         context.accounts.token_program.address(),
         MemoTransfer {
             account: context.accounts.token_account.cpi_handle_mut(),

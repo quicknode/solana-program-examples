@@ -69,7 +69,7 @@ pub fn handle_claim_admin_fees(
 
     if owed_a > 0 {
         token_interface::transfer_checked(
-            CpiContext::new_with_signer(
+            CpiContext::<_, 4>::new_with_signer(
                 context.accounts.token_program.address(),
                 TransferChecked {
                     from: context.accounts.pool_a.to_cpi_handle_mut(),
@@ -86,7 +86,7 @@ pub fn handle_claim_admin_fees(
 
     if owed_b > 0 {
         token_interface::transfer_checked(
-            CpiContext::new_with_signer(
+            CpiContext::<_, 4>::new_with_signer(
                 context.accounts.token_program.address(),
                 TransferChecked {
                     from: context.accounts.pool_b.to_cpi_handle_mut(),

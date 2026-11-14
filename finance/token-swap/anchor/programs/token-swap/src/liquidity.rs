@@ -104,7 +104,7 @@ pub fn deposit_and_mint_lp_tokens(
     lp_amount: u64,
 ) -> Result<()> {
     token_interface::transfer_checked(
-        CpiContext::new(
+        CpiContext::<_, 4>::new(
             accounts.token_program.address(),
             TransferChecked {
                 from: accounts.depositor_token_a.to_cpi_handle_mut(),
@@ -117,7 +117,7 @@ pub fn deposit_and_mint_lp_tokens(
         accounts.mint_a.decimals(),
     )?;
     token_interface::transfer_checked(
-        CpiContext::new(
+        CpiContext::<_, 4>::new(
             accounts.token_program.address(),
             TransferChecked {
                 from: accounts.depositor_token_b.to_cpi_handle_mut(),
@@ -147,7 +147,7 @@ pub fn deposit_and_mint_lp_tokens(
     pool_config.release_borrow()?;
 
     token_interface::mint_to(
-        CpiContext::new_with_signer(
+        CpiContext::<_, 3>::new_with_signer(
             accounts.token_program.address(),
             MintTo {
                 mint: accounts.liquidity_provider_mint.to_cpi_handle_mut(),

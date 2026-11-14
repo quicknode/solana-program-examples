@@ -20,7 +20,7 @@ pub struct UpdateRateAccountConstraints {
 
 pub fn handler(context: &mut Context<UpdateRateAccountConstraints>, rate: i16) -> Result<()> {
     interest_bearing_mint_update_rate(
-        CpiContext::new(
+        CpiContext::<_, 2>::new(
             context.accounts.token_program.address(),
             InterestBearingMintUpdateRate {
                 mint: context.accounts.mint_account.cpi_handle_mut(),

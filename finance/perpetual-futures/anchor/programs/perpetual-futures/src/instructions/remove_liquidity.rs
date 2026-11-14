@@ -65,7 +65,7 @@ pub fn handle_remove_liquidity(
         .ok_or(PerpError::MathOverflow)?;
 
     burn(
-        CpiContext::new(
+        CpiContext::<_, 3>::new(
             context.accounts.token_program.address(),
             Burn {
                 mint: context.accounts.lp_mint.to_cpi_handle_mut(),
@@ -92,7 +92,7 @@ pub fn handle_remove_liquidity(
     ];
     context.accounts.pool.release_borrow()?;
     transfer_checked(
-        CpiContext::new_with_signer(
+        CpiContext::<_, 4>::new_with_signer(
             context.accounts.token_program.address(),
             TransferChecked {
                 from: context.accounts.custody_vault.to_cpi_handle_mut(),

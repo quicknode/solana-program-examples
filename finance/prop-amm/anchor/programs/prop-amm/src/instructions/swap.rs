@@ -126,7 +126,7 @@ pub fn handle_swap(
     match direction {
         Direction::BuyBase => {
             transfer_checked(
-                CpiContext::new(
+                CpiContext::<_, 4>::new(
                     context.accounts.token_program.address(),
                     TransferChecked {
                         from: context.accounts.trader_quote.to_cpi_handle_mut(),
@@ -139,7 +139,7 @@ pub fn handle_swap(
                 context.accounts.quote_mint.decimals(),
             )?;
             transfer_checked(
-                CpiContext::new_with_signer(
+                CpiContext::<_, 4>::new_with_signer(
                     context.accounts.token_program.address(),
                     TransferChecked {
                         from: context.accounts.base_vault.to_cpi_handle_mut(),
@@ -155,7 +155,7 @@ pub fn handle_swap(
         }
         Direction::SellBase => {
             transfer_checked(
-                CpiContext::new(
+                CpiContext::<_, 4>::new(
                     context.accounts.token_program.address(),
                     TransferChecked {
                         from: context.accounts.trader_base.to_cpi_handle_mut(),
@@ -168,7 +168,7 @@ pub fn handle_swap(
                 context.accounts.base_mint.decimals(),
             )?;
             transfer_checked(
-                CpiContext::new_with_signer(
+                CpiContext::<_, 4>::new_with_signer(
                     context.accounts.token_program.address(),
                     TransferChecked {
                         from: context.accounts.quote_vault.to_cpi_handle_mut(),

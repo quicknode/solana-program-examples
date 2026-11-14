@@ -83,7 +83,7 @@ pub fn handle_withdraw_obligation_collateral(
     // flushes the pending writes, and `reacquire_borrow_mut` re-reads them.
     context.accounts.obligation.release_borrow()?;
     transfer_checked(
-        CpiContext::new_with_signer(
+        CpiContext::<_, 4>::new_with_signer(
             context.accounts.token_program.address(),
             TransferChecked {
                 from: context.accounts.obligation_share_vault.cpi_handle_mut(),
@@ -97,7 +97,7 @@ pub fn handle_withdraw_obligation_collateral(
         context.accounts.share_mint.decimals(),
     )?;
     if empties_vault {
-        close_account(CpiContext::new_with_signer(
+        close_account(CpiContext::<_, 3>::new_with_signer(
             context.accounts.token_program.address(),
             CloseAccount {
                 account: context.accounts.obligation_share_vault.cpi_handle_mut(),

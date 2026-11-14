@@ -117,7 +117,7 @@ pub fn handle_contribute(
         to: accounts.vault.cpi_handle_mut(),
         authority: accounts.contributor.cpi_handle(),
     };
-    let cpi_context = CpiContext::new(accounts.token_program.address(), cpi_accounts);
+    let cpi_context = CpiContext::<_, 4>::new(accounts.token_program.address(), cpi_accounts);
     transfer_checked(cpi_context, amount, accounts.mint_to_raise.decimals())?;
 
     Ok(())

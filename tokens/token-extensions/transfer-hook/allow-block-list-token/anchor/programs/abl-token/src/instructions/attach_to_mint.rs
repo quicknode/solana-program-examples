@@ -43,7 +43,7 @@ impl AttachToMintAccountConstraints {
             authority: self.payer.cpi_handle(),
         };
 
-        let context = CpiContext::new(self.token_program.address(), tx_hook_accs);
+        let context = CpiContext::<_, 2>::new(self.token_program.address(), tx_hook_accs);
 
         transfer_hook_update(context, Some(&crate::ID))?;
 

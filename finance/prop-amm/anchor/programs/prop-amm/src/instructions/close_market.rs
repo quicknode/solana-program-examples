@@ -44,7 +44,7 @@ pub fn handle_close_market(context: &mut Context<CloseMarketAccountConstraints>)
     context.accounts.market.release_borrow()?;
     let market_view = *context.accounts.market.account();
 
-    close_account(CpiContext::new_with_signer(
+    close_account(CpiContext::<_, 3>::new_with_signer(
         context.accounts.token_program.address(),
         CloseAccount {
             account: context.accounts.base_vault.to_cpi_handle_mut(),
@@ -54,7 +54,7 @@ pub fn handle_close_market(context: &mut Context<CloseMarketAccountConstraints>)
         &[market_seeds],
     ))?;
 
-    close_account(CpiContext::new_with_signer(
+    close_account(CpiContext::<_, 3>::new_with_signer(
         context.accounts.token_program.address(),
         CloseAccount {
             account: context.accounts.quote_vault.to_cpi_handle_mut(),

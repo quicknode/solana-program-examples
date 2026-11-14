@@ -117,7 +117,7 @@ pub fn handle_refund(accounts: &mut RefundAccountConstraints) -> Result<()> {
         maker_address.as_ref(),
         &[fundraiser_bump],
     ]];
-    let cpi_context = CpiContext::new_with_signer(
+    let cpi_context = CpiContext::<_, 4>::new_with_signer(
         accounts.token_program.address(),
         cpi_accounts,
         &signer_seeds,

@@ -54,7 +54,7 @@ pub fn handle_mint_nft(context: &mut Context<MintNftAccountConstraints>) -> Resu
     );
 
     system_program::create_account(
-        CpiContext::new(
+        CpiContext::<_, 2>::new(
             context.accounts.system_program.address(),
             system_program::CreateAccount {
                 from: context.accounts.signer.cpi_handle_mut(),
@@ -68,7 +68,7 @@ pub fn handle_mint_nft(context: &mut Context<MintNftAccountConstraints>) -> Resu
 
     // Assign the mint to the token program
     system_program::assign(
-        CpiContext::new(
+        CpiContext::<_, 1>::new(
             context.accounts.system_program.address(),
             system_program::Assign {
                 account_to_assign: context.accounts.mint.cpi_handle_mut(),
@@ -99,7 +99,7 @@ pub fn handle_mint_nft(context: &mut Context<MintNftAccountConstraints>) -> Resu
     )?;
 
     // Initialize the mint cpi
-    let mint_cpi_ix = CpiContext::new(
+    let mint_cpi_ix = CpiContext::<_, 1>::new(
         context.accounts.token_program.address(),
         token_2022::InitializeMint2 {
             mint: context.accounts.mint.cpi_handle_mut(),
@@ -158,7 +158,7 @@ pub fn handle_mint_nft(context: &mut Context<MintNftAccountConstraints>) -> Resu
     )?;
 
     // Create the associated token account
-    associated_token::create(CpiContext::new(
+    associated_token::create(CpiContext::<_, 6>::new(
         context.accounts.associated_token_program.address(),
         associated_token::Create {
             payer: context.accounts.signer.cpi_handle_mut(),
@@ -172,7 +172,7 @@ pub fn handle_mint_nft(context: &mut Context<MintNftAccountConstraints>) -> Resu
 
     // Mint one token to the associated token account of the player
     token_2022::mint_to(
-        CpiContext::new_with_signer(
+        CpiContext::<_, 3>::new_with_signer(
             context.accounts.token_program.address(),
             token_2022::MintTo {
                 mint: context.accounts.mint.cpi_handle_mut(),
@@ -186,7 +186,7 @@ pub fn handle_mint_nft(context: &mut Context<MintNftAccountConstraints>) -> Resu
 
     // Freeze the mint authority so no more tokens can be minted to make it an NFT
     token_2022::set_authority(
-        CpiContext::new_with_signer(
+        CpiContext::<_, 2>::new_with_signer(
             context.accounts.token_program.address(),
             token_2022::SetAuthority {
                 current_authority: CpiHandle::readonly(&nft_authority_view),

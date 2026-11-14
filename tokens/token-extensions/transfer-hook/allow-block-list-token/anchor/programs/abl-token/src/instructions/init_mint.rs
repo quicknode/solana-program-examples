@@ -68,7 +68,7 @@ impl InitMintAccountConstraints {
         let lamports = Rent::get()?.try_minimum_balance(mint_size)?;
 
         create_account(
-            CpiContext::new(
+            CpiContext::<_, 2>::new(
                 self.system_program.address(),
                 CreateAccount {
                     from: self.payer.cpi_handle_mut(),
@@ -81,7 +81,7 @@ impl InitMintAccountConstraints {
         )?;
 
         permanent_delegate_initialize(
-            CpiContext::new(
+            CpiContext::<_, 1>::new(
                 self.token_program.address(),
                 PermanentDelegateInitialize {
                     mint: self.mint.cpi_handle_mut(),
@@ -91,7 +91,7 @@ impl InitMintAccountConstraints {
         )?;
 
         transfer_hook_initialize(
-            CpiContext::new(
+            CpiContext::<_, 1>::new(
                 self.token_program.address(),
                 TransferHookInitialize {
                     mint: self.mint.cpi_handle_mut(),
@@ -103,7 +103,7 @@ impl InitMintAccountConstraints {
 
         // metadata is stored in the mint itself, so the pointer points at it
         metadata_pointer_initialize(
-            CpiContext::new(
+            CpiContext::<_, 1>::new(
                 self.token_program.address(),
                 MetadataPointerInitialize {
                     mint: self.mint.cpi_handle_mut(),
@@ -114,7 +114,7 @@ impl InitMintAccountConstraints {
         )?;
 
         initialize_mint2(
-            CpiContext::new(
+            CpiContext::<_, 1>::new(
                 self.token_program.address(),
                 InitializeMint2 {
                     mint: self.mint.cpi_handle_mut(),
@@ -139,14 +139,14 @@ impl InitMintAccountConstraints {
             mint: CpiHandle::readonly(&mint_view),
             mint_authority: CpiHandle::readonly(&payer_view),
         };
-        let cpi_ctx = CpiContext::new(self.token_program.address(), cpi_accounts);
+        let cpi_ctx = CpiContext::<_, 4>::new(self.token_program.address(), cpi_accounts);
         token_metadata_initialize(cpi_ctx, args.name, args.symbol, args.uri)?;
 
         let cpi_accounts = TokenMetadataUpdateField {
             metadata: self.mint.cpi_handle_mut(),
             update_authority: CpiHandle::readonly(&payer_view),
         };
-        let cpi_ctx = CpiContext::new(self.token_program.address(), cpi_accounts);
+        let cpi_ctx = CpiContext::<_, 2>::new(self.token_program.address(), cpi_accounts);
 
         token_metadata_update_field(cpi_ctx, Field::Key("AB".to_string()), args.mode.to_string())?;
 
@@ -155,7 +155,7 @@ impl InitMintAccountConstraints {
                 metadata: self.mint.cpi_handle_mut(),
                 update_authority: CpiHandle::readonly(&payer_view),
             };
-            let cpi_ctx = CpiContext::new(self.token_program.address(), cpi_accounts);
+            let cpi_ctx = CpiContext::<_, 2>::new(self.token_program.address(), cpi_accounts);
 
             token_metadata_update_field(
                 cpi_ctx,
@@ -170,7 +170,7 @@ impl InitMintAccountConstraints {
         let current = self.mint.account().lamports();
         if min_balance > current {
             transfer(
-                CpiContext::new(
+                CpiContext::<_, 2>::new(
                     self.system_program.address(),
                     Transfer {
                         from: self.payer.cpi_handle_mut(),

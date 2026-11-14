@@ -86,7 +86,7 @@ pub fn handle_mint_nft(
         authority: accounts.mint_authority.cpi_handle(),
     };
     let cpi_ctx =
-        CpiContext::new_with_signer(accounts.token_program.address(), cpi_accounts, signer_seeds);
+        CpiContext::<_, 3>::new_with_signer(accounts.token_program.address(), cpi_accounts, signer_seeds);
     mint_to(cpi_ctx, 1)?;
     msg!("NFT minted!");
 
@@ -101,7 +101,7 @@ pub fn handle_mint_nft(
     // relaxes the runtime borrow check that a hand-built
     // `CpiHandle::readonly(&copied_view)` would still trip.
     create_metadata_accounts_v3(
-        CpiContext::new_with_signer(
+        CpiContext::<_, 6>::new_with_signer(
             accounts.token_metadata_program.address(),
             CreateMetadataAccountsV3 {
                 metadata: accounts.metadata.cpi_handle_mut(),
@@ -131,7 +131,7 @@ pub fn handle_mint_nft(
     )?;
 
     create_master_edition_v3(
-        CpiContext::new_with_signer(
+        CpiContext::<_, 8>::new_with_signer(
             accounts.token_metadata_program.address(),
             CreateMasterEditionV3 {
                 edition: accounts.master_edition.cpi_handle_mut(),

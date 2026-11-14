@@ -58,7 +58,7 @@ pub fn handle_repay_obligation_liquidity(
     }
 
     transfer_checked(
-        CpiContext::new(
+        CpiContext::<_, 4>::new(
             context.accounts.token_program.address(),
             TransferChecked {
                 from: context.accounts.user_liquidity.cpi_handle_mut(),

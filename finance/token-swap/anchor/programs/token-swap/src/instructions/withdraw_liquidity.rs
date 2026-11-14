@@ -102,7 +102,7 @@ pub fn handle_withdraw_liquidity(
 
     // transfer_checked verifies the mint + decimals at the token program.
     token_interface::transfer_checked(
-        CpiContext::new_with_signer(
+        CpiContext::<_, 4>::new_with_signer(
             context.accounts.token_program.address(),
             TransferChecked {
                 from: context.accounts.pool_a.to_cpi_handle_mut(),
@@ -117,7 +117,7 @@ pub fn handle_withdraw_liquidity(
     )?;
 
     token_interface::transfer_checked(
-        CpiContext::new_with_signer(
+        CpiContext::<_, 4>::new_with_signer(
             context.accounts.token_program.address(),
             TransferChecked {
                 from: context.accounts.pool_b.to_cpi_handle_mut(),
@@ -134,7 +134,7 @@ pub fn handle_withdraw_liquidity(
     // Burn the liquidity tokens
     // It will fail if the amount is invalid
     token_interface::burn(
-        CpiContext::new(
+        CpiContext::<_, 3>::new(
             context.accounts.token_program.address(),
             Burn {
                 mint: context.accounts.liquidity_provider_mint.to_cpi_handle_mut(),

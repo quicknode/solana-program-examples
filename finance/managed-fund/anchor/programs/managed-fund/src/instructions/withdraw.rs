@@ -148,7 +148,7 @@ pub fn handle_withdraw(
         authority: context.accounts.user.cpi_handle(),
     };
     burn(
-        CpiContext::new(token_program_key, burn_accounts),
+        CpiContext::<_, 3>::new(token_program_key, burn_accounts),
         shares_to_burn,
     )?;
 
@@ -161,7 +161,7 @@ pub fn handle_withdraw(
             authority: CpiHandle::readonly(&fund_view),
         };
         transfer_checked(
-            CpiContext::new_with_signer(token_program_key, transfer_accounts, signer_seeds),
+            CpiContext::<_, 4>::new_with_signer(token_program_key, transfer_accounts, signer_seeds),
             amount_usdc,
             usdc_decimals,
         )?;
@@ -203,7 +203,7 @@ pub fn handle_withdraw(
                 authority: CpiHandle::readonly(&fund_view),
             };
             transfer_checked(
-                CpiContext::new_with_signer(token_program_key, transfer_accounts, signer_seeds),
+                CpiContext::<_, 4>::new_with_signer(token_program_key, transfer_accounts, signer_seeds),
                 amount,
                 decimals,
             )?;

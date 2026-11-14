@@ -19,7 +19,7 @@ pub fn handler(context: &mut Context<MintTokenAccountConstraints>, amount: u64) 
         authority: context.accounts.signer.cpi_handle(),
     };
     let cpi_program = context.accounts.token_program.address();
-    let cpi_context = CpiContext::new(cpi_program, cpi_accounts);
+    let cpi_context = CpiContext::<_, 3>::new(cpi_program, cpi_accounts);
     token_interface::mint_to(cpi_context, amount)?;
     msg!("Mint Token");
     Ok(())

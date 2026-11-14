@@ -95,7 +95,7 @@ pub fn handle_swap_asset_for_usdc(
         authority: context.accounts.caller.cpi_handle(),
     };
     burn(
-        CpiContext::new(context.accounts.token_program.address(), burn_accounts),
+        CpiContext::<_, 3>::new(context.accounts.token_program.address(), burn_accounts),
         asset_amount_in,
     )?;
 
@@ -110,7 +110,7 @@ pub fn handle_swap_asset_for_usdc(
         authority: context.accounts.router_config.to_cpi_handle(),
     };
     transfer_checked(
-        CpiContext::new_with_signer(
+        CpiContext::<_, 4>::new_with_signer(
             context.accounts.token_program.address(),
             transfer_accounts,
             signer_seeds,

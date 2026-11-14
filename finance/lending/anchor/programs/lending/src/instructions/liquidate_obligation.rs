@@ -172,7 +172,7 @@ pub fn handle_liquidate_obligation(
     // releasing the wrapper's data borrow and the CPI would be rejected with
     // `AccountBorrowFailed`. `to_cpi_handle_mut` forwards to the inner type.
     transfer_checked(
-        CpiContext::new(
+        CpiContext::<_, 4>::new(
             context.accounts.token_program.address(),
             TransferChecked {
                 from: context.accounts.liquidator_repay_source.to_cpi_handle_mut(),
@@ -198,7 +198,7 @@ pub fn handle_liquidate_obligation(
     // flushes the pending writes, and `reacquire_borrow_mut` re-reads them.
     context.accounts.obligation.release_borrow()?;
     transfer_checked(
-        CpiContext::new_with_signer(
+        CpiContext::<_, 4>::new_with_signer(
             context.accounts.token_program.address(),
             TransferChecked {
                 from: context
@@ -223,7 +223,7 @@ pub fn handle_liquidate_obligation(
         // view rather than two borrows of the same field.
         let mut destination_view = *context.accounts.obligation.account();
         let authority_view = *context.accounts.obligation.account();
-        close_account(CpiContext::new_with_signer(
+        close_account(CpiContext::<_, 3>::new_with_signer(
             context.accounts.token_program.address(),
             CloseAccount {
                 account: context

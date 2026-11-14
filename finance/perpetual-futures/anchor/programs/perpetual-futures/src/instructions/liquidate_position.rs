@@ -94,7 +94,7 @@ pub fn handle_liquidate_position(
 
     if liquidator_payout > 0 {
         transfer_checked(
-            CpiContext::new_with_signer(
+            CpiContext::<_, 4>::new_with_signer(
                 context.accounts.token_program.address(),
                 TransferChecked {
                     from: context.accounts.custody_vault.to_cpi_handle_mut(),
@@ -111,7 +111,7 @@ pub fn handle_liquidate_position(
 
     if trader_refund > 0 {
         transfer_checked(
-            CpiContext::new_with_signer(
+            CpiContext::<_, 4>::new_with_signer(
                 context.accounts.token_program.address(),
                 TransferChecked {
                     from: context.accounts.custody_vault.to_cpi_handle_mut(),

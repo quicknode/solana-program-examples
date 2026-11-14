@@ -43,7 +43,7 @@ pub fn handle_settle_funds(context: &mut Context<SettleFundsAccountConstraints>)
 
     if base_amount > 0 {
         transfer_checked(
-            CpiContext::new_with_signer(
+            CpiContext::<_, 4>::new_with_signer(
                 context.accounts.token_program.address(),
                 TransferChecked {
                     from: context.accounts.base_vault.to_cpi_handle_mut(),
@@ -60,7 +60,7 @@ pub fn handle_settle_funds(context: &mut Context<SettleFundsAccountConstraints>)
 
     if quote_amount > 0 {
         transfer_checked(
-            CpiContext::new_with_signer(
+            CpiContext::<_, 4>::new_with_signer(
                 context.accounts.token_program.address(),
                 TransferChecked {
                     from: context.accounts.quote_vault.to_cpi_handle_mut(),
