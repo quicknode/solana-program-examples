@@ -21,7 +21,7 @@ pub struct TransferTokenAccountConstraints {
     pub to_ata: InterfaceAccount<TokenAccount>,
     #[account(mut)]
     pub mint: InterfaceAccount<Mint>,
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
     pub system_program: Program<System>,
     pub associated_token_program: Program<AssociatedToken>,
 }

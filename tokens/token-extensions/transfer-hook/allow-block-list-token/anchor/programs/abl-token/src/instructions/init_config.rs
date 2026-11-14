@@ -13,7 +13,7 @@ pub struct InitConfigAccountConstraints {
         seeds = [CONFIG_SEED],
         bump,
     )]
-    pub config: Box<BorshAccount<Config>>,
+    pub config: BorshAccount<Config>,
 
     pub system_program: Program<System>,
 }

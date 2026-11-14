@@ -53,7 +53,7 @@ pub struct RefundAccountConstraints {
     )]
     pub vault: InterfaceAccount<TokenAccount>,
 
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
 
     pub system_program: Program<System>,
 }

@@ -120,17 +120,17 @@ pub struct RemoveLiquidityAccountConstraints {
         seeds = [POOL_SEED, pool.collateral_mint.as_ref(), pool.oracle_feed.as_ref()],
         bump = pool.bump,
     )]
-    pub pool: Box<BorshAccount<Pool>>,
+    pub pool: BorshAccount<Pool>,
 
     /// CHECK: validated by the `address = pool.oracle_feed` constraint below.
     #[account(address = pool.oracle_feed)]
     pub oracle_feed: UncheckedAccount,
 
     #[account(address = pool.collateral_mint)]
-    pub collateral_mint: Box<InterfaceAccount<Mint>>,
+    pub collateral_mint: InterfaceAccount<Mint>,
 
     #[account(mut, address = pool.lp_mint)]
-    pub lp_mint: Box<InterfaceAccount<Mint>>,
+    pub lp_mint: InterfaceAccount<Mint>,
 
     #[account(
         mut,
@@ -138,7 +138,7 @@ pub struct RemoveLiquidityAccountConstraints {
         bump,
         address = pool.custody_vault,
     )]
-    pub custody_vault: Box<InterfaceAccount<TokenAccount>>,
+    pub custody_vault: InterfaceAccount<TokenAccount>,
 
     #[account(
         mut,
@@ -146,7 +146,7 @@ pub struct RemoveLiquidityAccountConstraints {
         associated_token::authority = provider,
         associated_token::token_program = token_program,
     )]
-    pub provider_collateral: Box<InterfaceAccount<TokenAccount>>,
+    pub provider_collateral: InterfaceAccount<TokenAccount>,
 
     #[account(
         mut,
@@ -154,9 +154,9 @@ pub struct RemoveLiquidityAccountConstraints {
         associated_token::authority = provider,
         associated_token::token_program = token_program,
     )]
-    pub provider_lp: Box<InterfaceAccount<TokenAccount>>,
+    pub provider_lp: InterfaceAccount<TokenAccount>,
 
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
     pub associated_token_program: Program<AssociatedToken>,
     pub system_program: Program<System>,
 }

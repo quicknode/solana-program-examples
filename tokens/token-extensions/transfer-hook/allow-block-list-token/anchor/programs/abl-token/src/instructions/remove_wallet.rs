@@ -9,7 +9,7 @@ pub struct RemoveWalletAccountConstraints {
 
     #[account(seeds = [b"config"],
         bump = config.bump)]
-    pub config: Box<BorshAccount<Config>>,
+    pub config: BorshAccount<Config>,
 
     #[account(
         mut,

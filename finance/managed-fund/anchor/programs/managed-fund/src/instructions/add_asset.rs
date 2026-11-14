@@ -17,12 +17,12 @@ pub struct AddAssetAccountConstraints {
         seeds = [b"fund", fund.index.to_le_bytes()],
         bump = fund.bump,
     )]
-    pub fund: Box<BorshAccount<Fund>>,
+    pub fund: BorshAccount<Fund>,
 
     #[account(address = fund.registry @ FundError::InvalidRegistry)]
-    pub registry: Box<BorshAccount<Registry>>,
+    pub registry: BorshAccount<Registry>,
 
-    pub asset_mint: Box<InterfaceAccount<Mint>>,
+    pub asset_mint: InterfaceAccount<Mint>,
 
     /// Proof the mint is approved, and the source of its official price feed.
     /// Seeds tie it to this registry and this mint; existence means approved.
@@ -30,7 +30,7 @@ pub struct AddAssetAccountConstraints {
         seeds = [b"approved_asset", registry.address().as_ref(), asset_mint.address().as_ref()],
         bump = approved_asset.bump
     )]
-    pub approved_asset: Box<BorshAccount<ApprovedAsset>>,
+    pub approved_asset: BorshAccount<ApprovedAsset>,
 
     #[account(
         init,
@@ -39,7 +39,7 @@ pub struct AddAssetAccountConstraints {
         seeds = [b"asset", fund.address().as_ref(), &[fund.asset_count]],
         bump
     )]
-    pub asset_config: Box<BorshAccount<AssetConfig>>,
+    pub asset_config: BorshAccount<AssetConfig>,
 
     /// Fund-owned vault for this asset.
     #[account(
@@ -49,10 +49,10 @@ pub struct AddAssetAccountConstraints {
         associated_token::authority = fund,
         associated_token::token_program = token_program
     )]
-    pub vault_asset: Box<InterfaceAccount<TokenAccount>>,
+    pub vault_asset: InterfaceAccount<TokenAccount>,
 
     pub associated_token_program: Program<AssociatedToken>,
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
     pub system_program: Program<System>,
 }
 

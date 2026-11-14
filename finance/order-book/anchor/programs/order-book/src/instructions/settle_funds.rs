@@ -101,24 +101,24 @@ pub struct SettleFundsAccountConstraints {
     // Boxed for the same reason as in PlaceOrderAccountConstraints -
     // InterfaceAccount is too large to keep on the BPF stack in bulk.
     #[account(mut, address = market.base_vault @ ErrorCode::InvalidBaseVault)]
-    pub base_vault: Box<InterfaceAccount<TokenAccount>>,
+    pub base_vault: InterfaceAccount<TokenAccount>,
 
     #[account(mut, address = market.quote_vault @ ErrorCode::InvalidQuoteVault)]
-    pub quote_vault: Box<InterfaceAccount<TokenAccount>>,
+    pub quote_vault: InterfaceAccount<TokenAccount>,
 
     #[account(mut)]
-    pub user_base_account: Box<InterfaceAccount<TokenAccount>>,
+    pub user_base_account: InterfaceAccount<TokenAccount>,
 
     #[account(mut)]
-    pub user_quote_account: Box<InterfaceAccount<TokenAccount>>,
+    pub user_quote_account: InterfaceAccount<TokenAccount>,
 
     #[account(address = market.base_mint @ ErrorCode::InvalidBaseMint)]
-    pub base_mint: Box<InterfaceAccount<Mint>>,
+    pub base_mint: InterfaceAccount<Mint>,
 
     #[account(address = market.quote_mint @ ErrorCode::InvalidQuoteMint)]
-    pub quote_mint: Box<InterfaceAccount<Mint>>,
+    pub quote_mint: InterfaceAccount<Mint>,
 
     pub owner: Signer,
 
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
 }

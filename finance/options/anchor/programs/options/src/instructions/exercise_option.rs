@@ -142,20 +142,20 @@ pub struct ExerciseOptionAccountConstraints {
         bump = market.bump,
         address = option.market,
     )]
-    pub market: Box<BorshAccount<Market>>,
+    pub market: BorshAccount<Market>,
 
     #[account(
         mut,
         seeds = [OPTION_SEED, market.address().as_ref(), writer.address().as_ref(), option.id.to_le_bytes()],
         bump = option.bump,
     )]
-    pub option: Box<BorshAccount<OptionContract>>,
+    pub option: BorshAccount<OptionContract>,
 
     #[account(address = market.underlying_mint)]
-    pub underlying_mint: Box<InterfaceAccount<Mint>>,
+    pub underlying_mint: InterfaceAccount<Mint>,
 
     #[account(address = market.quote_mint)]
-    pub quote_mint: Box<InterfaceAccount<Mint>>,
+    pub quote_mint: InterfaceAccount<Mint>,
 
     #[account(
         mut,
@@ -163,7 +163,7 @@ pub struct ExerciseOptionAccountConstraints {
         bump,
         address = market.underlying_vault,
     )]
-    pub underlying_vault: Box<InterfaceAccount<TokenAccount>>,
+    pub underlying_vault: InterfaceAccount<TokenAccount>,
 
     #[account(
         mut,
@@ -171,7 +171,7 @@ pub struct ExerciseOptionAccountConstraints {
         bump,
         address = market.quote_vault,
     )]
-    pub quote_vault: Box<InterfaceAccount<TokenAccount>>,
+    pub quote_vault: InterfaceAccount<TokenAccount>,
 
     // A call holder receives into this account and may never have held the
     // underlying before, so it is created if needed, at the holder's expense.
@@ -182,7 +182,7 @@ pub struct ExerciseOptionAccountConstraints {
         associated_token::authority = holder,
         associated_token::token_program = token_program,
     )]
-    pub holder_underlying: Box<InterfaceAccount<TokenAccount>>,
+    pub holder_underlying: InterfaceAccount<TokenAccount>,
 
     #[account(
         init_if_needed,
@@ -191,9 +191,9 @@ pub struct ExerciseOptionAccountConstraints {
         associated_token::authority = holder,
         associated_token::token_program = token_program,
     )]
-    pub holder_quote: Box<InterfaceAccount<TokenAccount>>,
+    pub holder_quote: InterfaceAccount<TokenAccount>,
 
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
     pub associated_token_program: Program<AssociatedToken>,
     pub system_program: Program<System>,
 }

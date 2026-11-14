@@ -21,7 +21,7 @@ pub struct PlaceBetAccountConstraints {
     pub config: BorshAccount<Config>,
 
     #[account(mint::token_program = token_program, address = config.token_mint)]
-    pub token_mint: Box<InterfaceAccount<Mint>>,
+    pub token_mint: InterfaceAccount<Mint>,
 
     #[account(
         mut,
@@ -29,14 +29,14 @@ pub struct PlaceBetAccountConstraints {
         bump = event.bump,
         address = outcome.event,
     )]
-    pub event: Box<BorshAccount<Event>>,
+    pub event: BorshAccount<Event>,
 
     #[account(
         mut,
         seeds = [b"outcome", event.address().as_ref(), &[outcome.index]],
         bump = outcome.bump,
     )]
-    pub outcome: Box<BorshAccount<Outcome>>,
+    pub outcome: BorshAccount<Outcome>,
 
     #[account(
         mut,
@@ -44,7 +44,7 @@ pub struct PlaceBetAccountConstraints {
         associated_token::authority = bettor,
         associated_token::token_program = token_program,
     )]
-    pub bettor_token_account: Box<InterfaceAccount<TokenAccount>>,
+    pub bettor_token_account: InterfaceAccount<TokenAccount>,
 
     #[account(
         mut,
@@ -52,7 +52,7 @@ pub struct PlaceBetAccountConstraints {
         associated_token::authority = event,
         associated_token::token_program = token_program,
     )]
-    pub vault: Box<InterfaceAccount<TokenAccount>>,
+    pub vault: InterfaceAccount<TokenAccount>,
 
     #[account(
         init_if_needed,
@@ -61,10 +61,10 @@ pub struct PlaceBetAccountConstraints {
         seeds = [b"bet", outcome.address().as_ref(), bettor.address().as_ref()],
         bump
     )]
-    pub bet: Box<BorshAccount<Bet>>,
+    pub bet: BorshAccount<Bet>,
 
     pub associated_token_program: Program<AssociatedToken>,
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
     pub system_program: Program<System>,
 }
 

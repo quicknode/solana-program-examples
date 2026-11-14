@@ -14,7 +14,7 @@ pub fn transfer_tokens(
     amount: &u64,
     mint: &InterfaceAccount<Mint>,
     authority: AccountView,
-    token_program: &Interface<'static, TokenInterface>,
+    token_program: &Interface<TokenInterface>,
     owning_pda_seeds: Option<&[&[u8]]>,
 ) -> Result<()> {
     let decimals = mint.decimals();
@@ -43,7 +43,7 @@ pub fn close_token_account(
     token_account: &mut InterfaceAccount<TokenAccount>,
     mut destination: AccountView,
     authority: AccountView,
-    token_program: &Interface<'static, TokenInterface>,
+    token_program: &Interface<TokenInterface>,
     owning_pda_seeds: Option<&[&[u8]]>,
 ) -> Result<()> {
     let close_accounts = CloseAccount {

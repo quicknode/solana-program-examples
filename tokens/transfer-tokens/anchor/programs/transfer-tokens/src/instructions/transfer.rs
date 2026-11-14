@@ -33,7 +33,7 @@ pub struct TransferTokensAccountConstraints {
     )]
     pub recipient_token_account: InterfaceAccount<TokenAccount>,
 
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
     pub associated_token_program: Program<AssociatedToken>,
     pub system_program: Program<System>,
 }

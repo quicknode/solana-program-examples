@@ -82,5 +82,5 @@ pub struct CollectProgramFees {
     #[account(mut)]
     pub owner_liquidity: InterfaceAccount<TokenAccount>,
 
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
 }

@@ -96,5 +96,5 @@ pub struct RepayObligationLiquidity {
 
     pub repayer: Signer,
 
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
 }

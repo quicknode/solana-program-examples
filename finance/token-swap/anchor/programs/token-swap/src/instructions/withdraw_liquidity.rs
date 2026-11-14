@@ -181,13 +181,13 @@ pub struct WithdrawLiquidityAccountConstraints {
         ],
         bump,
     )]
-    pub liquidity_provider_mint: Box<InterfaceAccount<Mint>>,
+    pub liquidity_provider_mint: InterfaceAccount<Mint>,
 
     #[account(mut, address = pool_config.mint_a)]
-    pub mint_a: Box<InterfaceAccount<Mint>>,
+    pub mint_a: InterfaceAccount<Mint>,
 
     #[account(mut, address = pool_config.mint_b)]
-    pub mint_b: Box<InterfaceAccount<Mint>>,
+    pub mint_b: InterfaceAccount<Mint>,
 
     #[account(
         mut,
@@ -195,7 +195,7 @@ pub struct WithdrawLiquidityAccountConstraints {
         associated_token::authority = pool_config,
         associated_token::token_program = token_program,
     )]
-    pub pool_a: Box<InterfaceAccount<TokenAccount>>,
+    pub pool_a: InterfaceAccount<TokenAccount>,
 
     #[account(
         mut,
@@ -203,7 +203,7 @@ pub struct WithdrawLiquidityAccountConstraints {
         associated_token::authority = pool_config,
         associated_token::token_program = token_program,
     )]
-    pub pool_b: Box<InterfaceAccount<TokenAccount>>,
+    pub pool_b: InterfaceAccount<TokenAccount>,
 
     #[account(
         mut,
@@ -211,7 +211,7 @@ pub struct WithdrawLiquidityAccountConstraints {
         associated_token::authority = withdrawer,
         associated_token::token_program = token_program,
     )]
-    pub liquidity_provider_token: Box<InterfaceAccount<TokenAccount>>,
+    pub liquidity_provider_token: InterfaceAccount<TokenAccount>,
 
     #[account(
         init_if_needed,
@@ -220,7 +220,7 @@ pub struct WithdrawLiquidityAccountConstraints {
         associated_token::authority = withdrawer,
         associated_token::token_program = token_program,
     )]
-    pub token_a: Box<InterfaceAccount<TokenAccount>>,
+    pub token_a: InterfaceAccount<TokenAccount>,
 
     #[account(
         init_if_needed,
@@ -229,14 +229,14 @@ pub struct WithdrawLiquidityAccountConstraints {
         associated_token::authority = withdrawer,
         associated_token::token_program = token_program,
     )]
-    pub token_b: Box<InterfaceAccount<TokenAccount>>,
+    pub token_b: InterfaceAccount<TokenAccount>,
 
     /// The account paying for all rents
     #[account(mut)]
     pub payer: Signer,
 
     /// Solana ecosystem accounts
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
     pub associated_token_program: Program<AssociatedToken>,
     pub system_program: Program<System>,
 }

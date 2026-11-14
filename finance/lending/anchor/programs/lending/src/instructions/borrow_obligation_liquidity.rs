@@ -130,5 +130,5 @@ pub struct BorrowObligationLiquidity {
     #[account(mut)]
     pub user_liquidity: InterfaceAccount<TokenAccount>,
 
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
 }

@@ -27,10 +27,10 @@ pub struct SwapUsdcForAssetAccountConstraints {
     )]
     pub asset_rate: BorshAccount<AssetRate>,
 
-    pub usdc_mint: Box<InterfaceAccount<Mint>>,
+    pub usdc_mint: InterfaceAccount<Mint>,
 
     #[account(mut)]
-    pub asset_mint: Box<InterfaceAccount<Mint>>,
+    pub asset_mint: InterfaceAccount<Mint>,
 
     /// Caller's USDC token account - USDC flows from here to the treasury
     #[account(
@@ -39,7 +39,7 @@ pub struct SwapUsdcForAssetAccountConstraints {
         associated_token::authority = caller,
         associated_token::token_program = token_program
     )]
-    pub caller_usdc_account: Box<InterfaceAccount<TokenAccount>>,
+    pub caller_usdc_account: InterfaceAccount<TokenAccount>,
 
     /// Caller's asset token account - minted asset tokens land here
     #[account(
@@ -48,7 +48,7 @@ pub struct SwapUsdcForAssetAccountConstraints {
         associated_token::authority = caller,
         associated_token::token_program = token_program
     )]
-    pub caller_asset_account: Box<InterfaceAccount<TokenAccount>>,
+    pub caller_asset_account: InterfaceAccount<TokenAccount>,
 
     /// Router's USDC treasury - receives the USDC payment
     #[account(
@@ -57,10 +57,10 @@ pub struct SwapUsdcForAssetAccountConstraints {
         associated_token::authority = router_config,
         associated_token::token_program = token_program
     )]
-    pub router_usdc_treasury: Box<InterfaceAccount<TokenAccount>>,
+    pub router_usdc_treasury: InterfaceAccount<TokenAccount>,
 
     pub associated_token_program: Program<AssociatedToken>,
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
     pub system_program: Program<System>,
 }
 

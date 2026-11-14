@@ -20,17 +20,17 @@ pub struct WithdrawAccountConstraints {
         seeds = [b"fund", fund.index.to_le_bytes()],
         bump = fund.bump,
     )]
-    pub fund: Box<BorshAccount<Fund>>,
+    pub fund: BorshAccount<Fund>,
 
     #[account(
         mut,
         seeds = [b"share_mint", fund.address().as_ref()],
         bump
     )]
-    pub share_mint: Box<InterfaceAccount<Mint>>,
+    pub share_mint: InterfaceAccount<Mint>,
 
     #[account(address = fund.usdc_mint @ FundError::InvalidUsdcMint)]
-    pub usdc_mint: Box<InterfaceAccount<Mint>>,
+    pub usdc_mint: InterfaceAccount<Mint>,
 
     #[account(
         mut,
@@ -38,7 +38,7 @@ pub struct WithdrawAccountConstraints {
         associated_token::authority = user,
         associated_token::token_program = token_program
     )]
-    pub user_share_account: Box<InterfaceAccount<TokenAccount>>,
+    pub user_share_account: InterfaceAccount<TokenAccount>,
 
     #[account(
         init_if_needed,
@@ -47,7 +47,7 @@ pub struct WithdrawAccountConstraints {
         associated_token::authority = user,
         associated_token::token_program = token_program
     )]
-    pub user_usdc_account: Box<InterfaceAccount<TokenAccount>>,
+    pub user_usdc_account: InterfaceAccount<TokenAccount>,
 
     #[account(
         mut,
@@ -55,10 +55,10 @@ pub struct WithdrawAccountConstraints {
         associated_token::authority = fund,
         associated_token::token_program = token_program
     )]
-    pub vault_usdc: Box<InterfaceAccount<TokenAccount>>,
+    pub vault_usdc: InterfaceAccount<TokenAccount>,
 
     pub associated_token_program: Program<AssociatedToken>,
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
     pub system_program: Program<System>,
     // remaining_accounts: for each asset index 0..asset_count, in order:
     //   [asset_config, vault, mint, user_token_account]

@@ -9,7 +9,7 @@ pub struct MintTokenAccountConstraints {
     pub mint: InterfaceAccount<Mint>,
     #[account(mut)]
     pub receiver: InterfaceAccount<TokenAccount>,
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
 }
 
 pub fn handler(context: &mut Context<MintTokenAccountConstraints>, amount: u64) -> Result<()> {

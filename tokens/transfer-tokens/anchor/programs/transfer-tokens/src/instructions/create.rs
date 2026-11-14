@@ -34,7 +34,7 @@ pub struct CreateTokenAccountConstraints {
     )]
     pub metadata_account: UncheckedAccount,
 
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
     pub token_metadata_program: Program<Metadata>,
     pub system_program: Program<System>,
     pub rent: Sysvar<Rent>,

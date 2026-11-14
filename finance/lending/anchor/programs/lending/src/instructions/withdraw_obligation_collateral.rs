@@ -198,5 +198,5 @@ pub struct WithdrawObligationCollateral {
     #[account(mut)]
     pub user_share: InterfaceAccount<TokenAccount>,
 
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
 }

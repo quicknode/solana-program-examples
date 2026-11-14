@@ -54,7 +54,7 @@ pub struct ClaimRefundAccountConstraints {
     )]
     pub vault: InterfaceAccount<TokenAccount>,
 
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
 }
 
 pub fn handle_claim_refund(context: &mut Context<ClaimRefundAccountConstraints>) -> Result<()> {

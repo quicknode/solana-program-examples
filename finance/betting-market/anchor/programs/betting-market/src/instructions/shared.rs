@@ -15,7 +15,7 @@ pub fn transfer_tokens_to_vault(
     amount: u64,
     mint: &InterfaceAccount<Mint>,
     authority: &Signer,
-    token_program: &Interface<'static, TokenInterface>,
+    token_program: &Interface<TokenInterface>,
 ) -> Result<()> {
     let decimals = mint.decimals();
     let transfer_accounts = TransferChecked {
@@ -63,7 +63,7 @@ pub fn transfer_tokens_from_vault(
     amount: u64,
     mint: &InterfaceAccount<Mint>,
     event: &EventSigner,
-    token_program: &Interface<'static, TokenInterface>,
+    token_program: &Interface<TokenInterface>,
 ) -> Result<()> {
     let event_id_bytes = event.id.to_le_bytes();
     let seeds = &[b"event".as_ref(), event_id_bytes.as_ref(), &[event.bump]];
@@ -88,7 +88,7 @@ pub fn close_vault(
     vault: &mut InterfaceAccount<TokenAccount>,
     destination: &mut Signer,
     event: &EventSigner,
-    token_program: &Interface<'static, TokenInterface>,
+    token_program: &Interface<TokenInterface>,
 ) -> Result<()> {
     let event_id_bytes = event.id.to_le_bytes();
     let seeds = &[b"event".as_ref(), event_id_bytes.as_ref(), &[event.bump]];

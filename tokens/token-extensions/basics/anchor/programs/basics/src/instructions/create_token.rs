@@ -23,7 +23,7 @@ pub struct CreateTokenAccountConstraints {
     )]
     pub mint: InterfaceAccount<Mint>,
     pub system_program: Program<System>,
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
 }
 
 pub fn handler(

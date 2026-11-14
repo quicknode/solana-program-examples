@@ -19,7 +19,7 @@ pub struct AttachToMintAccountConstraints {
         mut,
         mint::token_program = token_program,
     )]
-    pub mint: Box<InterfaceAccount<Mint>>,
+    pub mint: InterfaceAccount<Mint>,
 
     #[account(
         init,

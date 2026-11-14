@@ -246,7 +246,7 @@ pub fn handle_liquidate_obligation(
 #[derive(Accounts)]
 pub struct LiquidateObligation {
     #[account(mut)]
-    pub obligation: Box<BorshAccount<Obligation>>,
+    pub obligation: BorshAccount<Obligation>,
 
     pub liquidator: Signer,
 
@@ -254,27 +254,27 @@ pub struct LiquidateObligation {
         mut,
         constraint = repay_reserve.lending_market == obligation.lending_market @ LendingError::MarketMismatch,
     )]
-    pub repay_reserve: Box<BorshAccount<Reserve>>,
+    pub repay_reserve: BorshAccount<Reserve>,
 
     #[account(
         constraint = collateral_reserve.lending_market == obligation.lending_market @ LendingError::MarketMismatch,
     )]
-    pub collateral_reserve: Box<BorshAccount<Reserve>>,
+    pub collateral_reserve: BorshAccount<Reserve>,
 
     #[account(address = repay_reserve.price_feed)]
-    pub repay_price_feed: Box<BorshAccount<PriceFeed>>,
+    pub repay_price_feed: BorshAccount<PriceFeed>,
 
     #[account(address = collateral_reserve.price_feed)]
-    pub collateral_price_feed: Box<BorshAccount<PriceFeed>>,
+    pub collateral_price_feed: BorshAccount<PriceFeed>,
 
     #[account(address = repay_reserve.liquidity_mint)]
-    pub repay_liquidity_mint: Box<InterfaceAccount<Mint>>,
+    pub repay_liquidity_mint: InterfaceAccount<Mint>,
 
     #[account(address = collateral_reserve.share_mint)]
-    pub collateral_share_mint: Box<InterfaceAccount<Mint>>,
+    pub collateral_share_mint: InterfaceAccount<Mint>,
 
     #[account(mut, address = repay_reserve.liquidity_vault)]
-    pub repay_liquidity_vault: Box<InterfaceAccount<TokenAccount>>,
+    pub repay_liquidity_vault: InterfaceAccount<TokenAccount>,
 
     #[account(
         mut,
@@ -283,13 +283,13 @@ pub struct LiquidateObligation {
         token::mint = collateral_share_mint,
         token::authority = obligation,
     )]
-    pub obligation_collateral_vault: Box<InterfaceAccount<TokenAccount>>,
+    pub obligation_collateral_vault: InterfaceAccount<TokenAccount>,
 
     #[account(mut)]
-    pub liquidator_repay_source: Box<InterfaceAccount<TokenAccount>>,
+    pub liquidator_repay_source: InterfaceAccount<TokenAccount>,
 
     #[account(mut)]
-    pub liquidator_collateral_dest: Box<InterfaceAccount<TokenAccount>>,
+    pub liquidator_collateral_dest: InterfaceAccount<TokenAccount>,
 
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
 }

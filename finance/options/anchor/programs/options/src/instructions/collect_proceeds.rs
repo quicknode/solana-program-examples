@@ -85,7 +85,7 @@ pub struct CollectProceedsAccountConstraints {
         bump = market.bump,
         address = option.market,
     )]
-    pub market: Box<BorshAccount<Market>>,
+    pub market: BorshAccount<Market>,
 
     #[account(
         mut,
@@ -93,13 +93,13 @@ pub struct CollectProceedsAccountConstraints {
         seeds = [OPTION_SEED, market.address().as_ref(), writer.address().as_ref(), option.id.to_le_bytes()],
         bump = option.bump,
     )]
-    pub option: Box<BorshAccount<OptionContract>>,
+    pub option: BorshAccount<OptionContract>,
 
     #[account(address = market.underlying_mint)]
-    pub underlying_mint: Box<InterfaceAccount<Mint>>,
+    pub underlying_mint: InterfaceAccount<Mint>,
 
     #[account(address = market.quote_mint)]
-    pub quote_mint: Box<InterfaceAccount<Mint>>,
+    pub quote_mint: InterfaceAccount<Mint>,
 
     #[account(
         mut,
@@ -107,7 +107,7 @@ pub struct CollectProceedsAccountConstraints {
         bump,
         address = market.underlying_vault,
     )]
-    pub underlying_vault: Box<InterfaceAccount<TokenAccount>>,
+    pub underlying_vault: InterfaceAccount<TokenAccount>,
 
     #[account(
         mut,
@@ -115,7 +115,7 @@ pub struct CollectProceedsAccountConstraints {
         bump,
         address = market.quote_vault,
     )]
-    pub quote_vault: Box<InterfaceAccount<TokenAccount>>,
+    pub quote_vault: InterfaceAccount<TokenAccount>,
 
     // A put writer is paid in the underlying, which they may never have held,
     // so the account is created if needed, at the writer's expense.
@@ -126,7 +126,7 @@ pub struct CollectProceedsAccountConstraints {
         associated_token::authority = writer,
         associated_token::token_program = token_program,
     )]
-    pub writer_underlying: Box<InterfaceAccount<TokenAccount>>,
+    pub writer_underlying: InterfaceAccount<TokenAccount>,
 
     #[account(
         mut,
@@ -134,9 +134,9 @@ pub struct CollectProceedsAccountConstraints {
         associated_token::authority = writer,
         associated_token::token_program = token_program,
     )]
-    pub writer_quote: Box<InterfaceAccount<TokenAccount>>,
+    pub writer_quote: InterfaceAccount<TokenAccount>,
 
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
     pub associated_token_program: Program<AssociatedToken>,
     pub system_program: Program<System>,
 }

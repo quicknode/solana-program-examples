@@ -141,7 +141,7 @@ pub struct ClosePositionAccountConstraints {
         bump = pool.bump,
         address = position.pool,
     )]
-    pub pool: Box<BorshAccount<Pool>>,
+    pub pool: BorshAccount<Pool>,
 
     #[account(
         mut,
@@ -149,14 +149,14 @@ pub struct ClosePositionAccountConstraints {
         seeds = [POSITION_SEED, pool.address().as_ref(), owner.address().as_ref(), position.side.as_seed()],
         bump = position.bump,
     )]
-    pub position: Box<BorshAccount<Position>>,
+    pub position: BorshAccount<Position>,
 
     /// CHECK: validated by the `address = pool.oracle_feed` constraint below.
     #[account(address = pool.oracle_feed)]
     pub oracle_feed: UncheckedAccount,
 
     #[account(address = pool.collateral_mint)]
-    pub collateral_mint: Box<InterfaceAccount<Mint>>,
+    pub collateral_mint: InterfaceAccount<Mint>,
 
     #[account(
         mut,
@@ -164,7 +164,7 @@ pub struct ClosePositionAccountConstraints {
         bump,
         address = pool.custody_vault,
     )]
-    pub custody_vault: Box<InterfaceAccount<TokenAccount>>,
+    pub custody_vault: InterfaceAccount<TokenAccount>,
 
     #[account(
         mut,
@@ -172,9 +172,9 @@ pub struct ClosePositionAccountConstraints {
         associated_token::authority = owner,
         associated_token::token_program = token_program,
     )]
-    pub trader_collateral: Box<InterfaceAccount<TokenAccount>>,
+    pub trader_collateral: InterfaceAccount<TokenAccount>,
 
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
     pub associated_token_program: Program<AssociatedToken>,
     pub system_program: Program<System>,
 }

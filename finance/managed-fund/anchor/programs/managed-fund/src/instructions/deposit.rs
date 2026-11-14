@@ -23,17 +23,17 @@ pub struct DepositAccountConstraints {
         seeds = [b"fund", fund.index.to_le_bytes()],
         bump = fund.bump,
     )]
-    pub fund: Box<BorshAccount<Fund>>,
+    pub fund: BorshAccount<Fund>,
 
     #[account(
         mut,
         seeds = [b"share_mint", fund.address().as_ref()],
         bump
     )]
-    pub share_mint: Box<InterfaceAccount<Mint>>,
+    pub share_mint: InterfaceAccount<Mint>,
 
     #[account(address = fund.usdc_mint @ FundError::InvalidUsdcMint)]
-    pub usdc_mint: Box<InterfaceAccount<Mint>>,
+    pub usdc_mint: InterfaceAccount<Mint>,
 
     #[account(
         mut,
@@ -41,7 +41,7 @@ pub struct DepositAccountConstraints {
         associated_token::authority = depositor,
         associated_token::token_program = token_program
     )]
-    pub depositor_usdc_account: Box<InterfaceAccount<TokenAccount>>,
+    pub depositor_usdc_account: InterfaceAccount<TokenAccount>,
 
     #[account(
         init_if_needed,
@@ -50,7 +50,7 @@ pub struct DepositAccountConstraints {
         associated_token::authority = depositor,
         associated_token::token_program = token_program
     )]
-    pub depositor_share_account: Box<InterfaceAccount<TokenAccount>>,
+    pub depositor_share_account: InterfaceAccount<TokenAccount>,
 
     #[account(
         mut,
@@ -58,7 +58,7 @@ pub struct DepositAccountConstraints {
         associated_token::authority = fund,
         associated_token::token_program = token_program
     )]
-    pub vault_usdc: Box<InterfaceAccount<TokenAccount>>,
+    pub vault_usdc: InterfaceAccount<TokenAccount>,
 
     /// CHECK: Router config PDA from the mock-swap-router program; it owns the
     /// treasury and signs the router's token CPIs
@@ -76,7 +76,7 @@ pub struct DepositAccountConstraints {
     pub swap_router_program: UncheckedAccount,
 
     pub associated_token_program: Program<AssociatedToken>,
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
     pub system_program: Program<System>,
     // remaining_accounts: for each asset index 0..asset_count, in order:
     //   [asset_config, vault, asset_mint, asset_rate, price_feed]

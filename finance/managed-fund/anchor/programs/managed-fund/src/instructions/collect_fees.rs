@@ -43,7 +43,7 @@ pub struct CollectFeesAccountConstraints {
     pub payer: Signer,
 
     pub associated_token_program: Program<AssociatedToken>,
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
     pub system_program: Program<System>,
 }
 

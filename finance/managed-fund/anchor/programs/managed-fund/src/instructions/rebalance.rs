@@ -27,10 +27,10 @@ pub struct RebalanceAccountConstraints {
         seeds = [b"fund", fund.index.to_le_bytes()],
         bump = fund.bump,
     )]
-    pub fund: Box<BorshAccount<Fund>>,
+    pub fund: BorshAccount<Fund>,
 
     #[account(address = fund.usdc_mint @ FundError::InvalidUsdcMint)]
-    pub usdc_mint: Box<InterfaceAccount<Mint>>,
+    pub usdc_mint: InterfaceAccount<Mint>,
 
     #[account(
         mut,
@@ -38,7 +38,7 @@ pub struct RebalanceAccountConstraints {
         associated_token::authority = fund,
         associated_token::token_program = token_program
     )]
-    pub vault_usdc: Box<InterfaceAccount<TokenAccount>>,
+    pub vault_usdc: InterfaceAccount<TokenAccount>,
 
     /// CHECK: Router config PDA
     #[account(mut)]
@@ -55,7 +55,7 @@ pub struct RebalanceAccountConstraints {
     pub swap_router_program: UncheckedAccount,
 
     pub associated_token_program: Program<AssociatedToken>,
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
     pub system_program: Program<System>,
     // remaining_accounts: for each asset index 0..asset_count, in order:
     //   [asset_config, vault, asset_mint, asset_rate, price_feed]

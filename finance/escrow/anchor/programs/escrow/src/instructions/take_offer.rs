@@ -30,7 +30,7 @@ pub struct TakeOfferAccountConstraints {
         associated_token::authority = taker,
         associated_token::token_program = token_program,
     )]
-    pub taker_token_account_a: Box<InterfaceAccount<TokenAccount>>,
+    pub taker_token_account_a: InterfaceAccount<TokenAccount>,
 
     #[account(
         mut,
@@ -38,7 +38,7 @@ pub struct TakeOfferAccountConstraints {
         associated_token::authority = taker,
         associated_token::token_program = token_program,
     )]
-    pub taker_token_account_b: Box<InterfaceAccount<TokenAccount>>,
+    pub taker_token_account_b: InterfaceAccount<TokenAccount>,
 
     // The maker's token-B ATA is initialized in make_offer, paid by the maker.
     #[account(
@@ -47,7 +47,7 @@ pub struct TakeOfferAccountConstraints {
         associated_token::authority = maker,
         associated_token::token_program = token_program,
     )]
-    pub maker_token_account_b: Box<InterfaceAccount<TokenAccount>>,
+    pub maker_token_account_b: InterfaceAccount<TokenAccount>,
 
     #[account(
         mut,
@@ -66,7 +66,7 @@ pub struct TakeOfferAccountConstraints {
     pub vault: InterfaceAccount<TokenAccount>,
 
     pub associated_token_program: Program<AssociatedToken>,
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
     pub system_program: Program<System>,
 }
 

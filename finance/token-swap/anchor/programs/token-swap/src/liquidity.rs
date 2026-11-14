@@ -69,7 +69,7 @@ pub fn initial_lp_amount(amount_a: u64, amount_b: u64) -> Result<u64> {
 /// `CpiHandleMut`, which borrows the wrapper mutably. `pool_config` is `&mut`
 /// too, because it has to hand back its data borrow while it signs.
 pub struct LiquidityDepositAccounts<'a> {
-    pub token_program: &'a Interface<'static, TokenInterface>,
+    pub token_program: &'a Interface<TokenInterface>,
     pub pool_config: &'a mut BorshAccount<PoolConfig>,
     pub mint_a: &'a InterfaceAccount<Mint>,
     pub mint_b: &'a InterfaceAccount<Mint>,

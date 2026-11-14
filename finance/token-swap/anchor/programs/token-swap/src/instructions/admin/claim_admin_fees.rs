@@ -130,10 +130,10 @@ pub struct ClaimAdminFeesAccountConstraints {
     pub pool_config: BorshAccount<PoolConfig>,
 
     #[account(address = pool_config.mint_a)]
-    pub mint_a: Box<InterfaceAccount<Mint>>,
+    pub mint_a: InterfaceAccount<Mint>,
 
     #[account(address = pool_config.mint_b)]
-    pub mint_b: Box<InterfaceAccount<Mint>>,
+    pub mint_b: InterfaceAccount<Mint>,
 
     /// The pool's token-A reserve, owned by `pool_config`. The admin's owed
     /// token-A fees are paid out of this account.
@@ -143,7 +143,7 @@ pub struct ClaimAdminFeesAccountConstraints {
         associated_token::authority = pool_config,
         associated_token::token_program = token_program,
     )]
-    pub pool_a: Box<InterfaceAccount<TokenAccount>>,
+    pub pool_a: InterfaceAccount<TokenAccount>,
 
     /// The pool's token-B reserve, owned by `pool_config`. The admin's owed
     /// token-B fees are paid out of this account.
@@ -153,7 +153,7 @@ pub struct ClaimAdminFeesAccountConstraints {
         associated_token::authority = pool_config,
         associated_token::token_program = token_program,
     )]
-    pub pool_b: Box<InterfaceAccount<TokenAccount>>,
+    pub pool_b: InterfaceAccount<TokenAccount>,
 
     /// Must match the address stored in `Config.admin` (enforced by
     /// `address = config.admin` above).
@@ -169,7 +169,7 @@ pub struct ClaimAdminFeesAccountConstraints {
         token::authority = admin,
         token::token_program = token_program,
     )]
-    pub admin_token_a: Box<InterfaceAccount<TokenAccount>>,
+    pub admin_token_a: InterfaceAccount<TokenAccount>,
 
     /// Admin's token-B receiving account. Same constraints as `admin_token_a`.
     #[account(
@@ -178,7 +178,7 @@ pub struct ClaimAdminFeesAccountConstraints {
         token::authority = admin,
         token::token_program = token_program,
     )]
-    pub admin_token_b: Box<InterfaceAccount<TokenAccount>>,
+    pub admin_token_b: InterfaceAccount<TokenAccount>,
 
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
 }

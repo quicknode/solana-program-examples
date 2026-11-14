@@ -54,7 +54,7 @@ pub struct ClaimWinningsAccountConstraints {
     )]
     pub vault: InterfaceAccount<TokenAccount>,
 
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
 }
 
 pub fn handle_claim_winnings(context: &mut Context<ClaimWinningsAccountConstraints>) -> Result<()> {

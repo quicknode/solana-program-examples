@@ -72,7 +72,7 @@ pub struct InitializePoolAccountConstraints {
         seeds = [CONFIG_SEED],
         bump,
     )]
-    pub config: Box<BorshAccount<Config>>,
+    pub config: BorshAccount<Config>,
 
     #[account(
         init,
@@ -86,7 +86,7 @@ pub struct InitializePoolAccountConstraints {
         bump,
         constraint = mint_a.address() < mint_b.address() @ AmmError::InvalidMintOrder,
     )]
-    pub pool_config: Box<BorshAccount<PoolConfig>>,
+    pub pool_config: BorshAccount<PoolConfig>,
 
     /// The LP mint. `pool_config` is its mint authority and signs every
     /// mint_to with its own seeds.
@@ -106,11 +106,11 @@ pub struct InitializePoolAccountConstraints {
         // init CPI is rejected with InvalidArgument.
         mint::token_program = token_program,
     )]
-    pub liquidity_provider_mint: Box<InterfaceAccount<Mint>>,
+    pub liquidity_provider_mint: InterfaceAccount<Mint>,
 
-    pub mint_a: Box<InterfaceAccount<Mint>>,
+    pub mint_a: InterfaceAccount<Mint>,
 
-    pub mint_b: Box<InterfaceAccount<Mint>>,
+    pub mint_b: InterfaceAccount<Mint>,
 
     /// The pool's token-A reserve: the associated token account of
     /// `pool_config`, which signs every transfer out of it.
@@ -121,7 +121,7 @@ pub struct InitializePoolAccountConstraints {
         associated_token::authority = pool_config,
         associated_token::token_program = token_program,
     )]
-    pub pool_a: Box<InterfaceAccount<TokenAccount>>,
+    pub pool_a: InterfaceAccount<TokenAccount>,
 
     /// The pool's token-B reserve, likewise owned by `pool_config`.
     #[account(
@@ -131,7 +131,7 @@ pub struct InitializePoolAccountConstraints {
         associated_token::authority = pool_config,
         associated_token::token_program = token_program,
     )]
-    pub pool_b: Box<InterfaceAccount<TokenAccount>>,
+    pub pool_b: InterfaceAccount<TokenAccount>,
 
     /// Makes the first deposit and receives the first LP tokens.
     pub creator: Signer,
@@ -142,7 +142,7 @@ pub struct InitializePoolAccountConstraints {
         associated_token::authority = creator,
         associated_token::token_program = token_program,
     )]
-    pub creator_token_a: Box<InterfaceAccount<TokenAccount>>,
+    pub creator_token_a: InterfaceAccount<TokenAccount>,
 
     #[account(
         mut,
@@ -150,7 +150,7 @@ pub struct InitializePoolAccountConstraints {
         associated_token::authority = creator,
         associated_token::token_program = token_program,
     )]
-    pub creator_token_b: Box<InterfaceAccount<TokenAccount>>,
+    pub creator_token_b: InterfaceAccount<TokenAccount>,
 
     /// The creator's LP token account, created here because the LP mint did
     /// not exist before this instruction.
@@ -161,14 +161,14 @@ pub struct InitializePoolAccountConstraints {
         associated_token::authority = creator,
         associated_token::token_program = token_program,
     )]
-    pub liquidity_provider_token: Box<InterfaceAccount<TokenAccount>>,
+    pub liquidity_provider_token: InterfaceAccount<TokenAccount>,
 
     /// The account paying for all rents
     #[account(mut)]
     pub payer: Signer,
 
     /// Solana ecosystem accounts
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
     pub associated_token_program: Program<AssociatedToken>,
     pub system_program: Program<System>,
 }

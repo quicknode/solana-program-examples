@@ -60,10 +60,10 @@ pub struct CollectFeesAccountConstraints {
         seeds = [POOL_SEED, pool.collateral_mint.as_ref(), pool.oracle_feed.as_ref()],
         bump = pool.bump,
     )]
-    pub pool: Box<BorshAccount<Pool>>,
+    pub pool: BorshAccount<Pool>,
 
     #[account(address = pool.collateral_mint)]
-    pub collateral_mint: Box<InterfaceAccount<Mint>>,
+    pub collateral_mint: InterfaceAccount<Mint>,
 
     #[account(
         mut,
@@ -71,7 +71,7 @@ pub struct CollectFeesAccountConstraints {
         bump,
         address = pool.custody_vault,
     )]
-    pub custody_vault: Box<InterfaceAccount<TokenAccount>>,
+    pub custody_vault: InterfaceAccount<TokenAccount>,
 
     #[account(
         init_if_needed,
@@ -80,9 +80,9 @@ pub struct CollectFeesAccountConstraints {
         associated_token::authority = authority,
         associated_token::token_program = token_program,
     )]
-    pub authority_collateral: Box<InterfaceAccount<TokenAccount>>,
+    pub authority_collateral: InterfaceAccount<TokenAccount>,
 
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
     pub associated_token_program: Program<AssociatedToken>,
     pub system_program: Program<System>,
 }

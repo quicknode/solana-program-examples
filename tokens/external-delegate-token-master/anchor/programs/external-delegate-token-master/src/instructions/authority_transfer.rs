@@ -26,7 +26,7 @@ pub struct AuthorityTransferAccountConstraints {
     )]
     pub user_pda: SystemAccount,
 
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
 }
 
 pub fn handler(

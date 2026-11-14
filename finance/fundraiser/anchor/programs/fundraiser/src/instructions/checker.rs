@@ -37,7 +37,7 @@ pub struct CheckContributionsAccountConstraints {
     )]
     pub maker_ata: InterfaceAccount<TokenAccount>,
 
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
 
     pub system_program: Program<System>,
 

@@ -596,32 +596,32 @@ pub struct PlaceOrderAccountConstraints {
     // InterfaceAccount on the stack is ~1 KB each; with 7 of them this struct
     // blows the 4 KB stack-offset limit on BPF. Boxing moves each to the heap.
     #[account(mut, address = market.base_vault @ ErrorCode::InvalidBaseVault)]
-    pub base_vault: Box<InterfaceAccount<TokenAccount>>,
+    pub base_vault: InterfaceAccount<TokenAccount>,
 
     #[account(mut, address = market.quote_vault @ ErrorCode::InvalidQuoteVault)]
-    pub quote_vault: Box<InterfaceAccount<TokenAccount>>,
+    pub quote_vault: InterfaceAccount<TokenAccount>,
 
     // Taker fees are routed here. Constrained via `address = market.fee_vault` on
     // `market` above so the program can trust it without re-checking.
     #[account(mut, address = market.fee_vault @ ErrorCode::InvalidFeeVault)]
-    pub fee_vault: Box<InterfaceAccount<TokenAccount>>,
+    pub fee_vault: InterfaceAccount<TokenAccount>,
 
     #[account(mut)]
-    pub user_base_account: Box<InterfaceAccount<TokenAccount>>,
+    pub user_base_account: InterfaceAccount<TokenAccount>,
 
     #[account(mut)]
-    pub user_quote_account: Box<InterfaceAccount<TokenAccount>>,
+    pub user_quote_account: InterfaceAccount<TokenAccount>,
 
     #[account(address = market.base_mint @ ErrorCode::InvalidBaseMint)]
-    pub base_mint: Box<InterfaceAccount<Mint>>,
+    pub base_mint: InterfaceAccount<Mint>,
 
     #[account(address = market.quote_mint @ ErrorCode::InvalidQuoteMint)]
-    pub quote_mint: Box<InterfaceAccount<Mint>>,
+    pub quote_mint: InterfaceAccount<Mint>,
 
     #[account(mut)]
     pub owner: Signer,
 
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
 
     pub system_program: Program<System>,
 }

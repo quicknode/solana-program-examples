@@ -101,17 +101,17 @@ pub struct BuyOptionAccountConstraints {
         bump = market.bump,
         address = option.market,
     )]
-    pub market: Box<BorshAccount<Market>>,
+    pub market: BorshAccount<Market>,
 
     #[account(
         mut,
         seeds = [OPTION_SEED, market.address().as_ref(), writer.address().as_ref(), option.id.to_le_bytes()],
         bump = option.bump,
     )]
-    pub option: Box<BorshAccount<OptionContract>>,
+    pub option: BorshAccount<OptionContract>,
 
     #[account(address = market.quote_mint)]
-    pub quote_mint: Box<InterfaceAccount<Mint>>,
+    pub quote_mint: InterfaceAccount<Mint>,
 
     #[account(
         mut,
@@ -119,7 +119,7 @@ pub struct BuyOptionAccountConstraints {
         bump,
         address = market.quote_vault,
     )]
-    pub quote_vault: Box<InterfaceAccount<TokenAccount>>,
+    pub quote_vault: InterfaceAccount<TokenAccount>,
 
     #[account(
         mut,
@@ -127,7 +127,7 @@ pub struct BuyOptionAccountConstraints {
         associated_token::authority = buyer,
         associated_token::token_program = token_program,
     )]
-    pub buyer_quote: Box<InterfaceAccount<TokenAccount>>,
+    pub buyer_quote: InterfaceAccount<TokenAccount>,
 
     // Created by `write_option`, at the writer's expense, so the buyer never
     // pays rent on the writer's behalf. A writer buying their own option would
@@ -141,7 +141,7 @@ pub struct BuyOptionAccountConstraints {
         associated_token::authority = writer,
         associated_token::token_program = token_program,
     )]
-    pub writer_quote: Box<InterfaceAccount<TokenAccount>>,
+    pub writer_quote: InterfaceAccount<TokenAccount>,
 
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
 }

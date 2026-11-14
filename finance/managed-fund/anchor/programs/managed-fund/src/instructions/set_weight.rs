@@ -13,13 +13,13 @@ pub struct SetWeightAccountConstraints {
         seeds = [b"fund", fund.index.to_le_bytes()],
         bump = fund.bump,
     )]
-    pub fund: Box<BorshAccount<Fund>>,
+    pub fund: BorshAccount<Fund>,
 
     #[account(
         mut,
         constraint = asset_config.fund == *fund.address() @ FundError::InvalidAssetAccount,
     )]
-    pub asset_config: Box<BorshAccount<AssetConfig>>,
+    pub asset_config: BorshAccount<AssetConfig>,
 }
 
 /// Change an asset's target weight. Setting it to zero retires the asset: deposits

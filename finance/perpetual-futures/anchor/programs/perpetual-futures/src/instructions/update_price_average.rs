@@ -22,7 +22,7 @@ pub struct UpdatePriceAverageAccountConstraints {
         seeds = [POOL_SEED, pool.collateral_mint.as_ref(), pool.oracle_feed.as_ref()],
         bump = pool.bump,
     )]
-    pub pool: Box<BorshAccount<Pool>>,
+    pub pool: BorshAccount<Pool>,
 
     /// CHECK: validated by the `address = pool.oracle_feed` constraint below.
     #[account(address = pool.oracle_feed)]

@@ -54,11 +54,11 @@ pub struct InitializeMarketAccountConstraints {
         seeds = [MARKET_SEED, underlying_mint.address().as_ref(), quote_mint.address().as_ref()],
         bump,
     )]
-    pub market: Box<BorshAccount<Market>>,
+    pub market: BorshAccount<Market>,
 
-    pub underlying_mint: Box<InterfaceAccount<Mint>>,
+    pub underlying_mint: InterfaceAccount<Mint>,
 
-    pub quote_mint: Box<InterfaceAccount<Mint>>,
+    pub quote_mint: InterfaceAccount<Mint>,
 
     // The market account is the token authority of both vaults: it signs
     // every transfer out of them with its own PDA seeds.
@@ -71,7 +71,7 @@ pub struct InitializeMarketAccountConstraints {
         token::authority = market,
         token::token_program = token_program,
     )]
-    pub underlying_vault: Box<InterfaceAccount<TokenAccount>>,
+    pub underlying_vault: InterfaceAccount<TokenAccount>,
 
     #[account(
         init,
@@ -82,8 +82,8 @@ pub struct InitializeMarketAccountConstraints {
         token::authority = market,
         token::token_program = token_program,
     )]
-    pub quote_vault: Box<InterfaceAccount<TokenAccount>>,
+    pub quote_vault: InterfaceAccount<TokenAccount>,
 
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
     pub system_program: Program<System>,
 }

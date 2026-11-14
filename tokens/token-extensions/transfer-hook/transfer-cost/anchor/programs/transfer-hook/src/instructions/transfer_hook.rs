@@ -12,23 +12,23 @@ use crate::{check_is_transferring, CounterAccount};
 // Remaining accounts are the extra accounts required from the ExtraAccountMetaList account
 // These accounts are provided via CPI to this program from the token2022 program
 //
-// Box<InterfaceAccount> used for source_token, destination_token, wsol_mint,
+// InterfaceAccount used for source_token, destination_token, wsol_mint,
 // delegate_wsol_token_account, and sender_wsol_token_account to avoid exceeding
 // the 4096-byte BPF stack frame limit in try_accounts deserialization.
 // This struct has 12 accounts - without Box, the generated code uses ~4160 bytes of stack.
 #[derive(Accounts)]
 pub struct TransferHookAccountConstraints {
     #[account(token::mint = mint, token::authority = owner)]
-    pub source_token: Box<InterfaceAccount<TokenAccount>>,
-    pub mint: Box<InterfaceAccount<Mint>>,
+    pub source_token: InterfaceAccount<TokenAccount>,
+    pub mint: InterfaceAccount<Mint>,
     #[account(token::mint = mint)]
-    pub destination_token: Box<InterfaceAccount<TokenAccount>>,
+    pub destination_token: InterfaceAccount<TokenAccount>,
     /// CHECK: source token account owner, can be SystemAccount or PDA owned by another program
     pub owner: UncheckedAccount,
     /// CHECK: ExtraAccountMetaList Account,
     #[account(seeds = [b"extra-account-metas", mint.address().as_ref()], bump)]
     pub extra_account_meta_list: UncheckedAccount,
-    pub wsol_mint: Box<InterfaceAccount<Mint>>,
+    pub wsol_mint: InterfaceAccount<Mint>,
     pub token_program: Program<Token>,
     pub associated_token_program: Program<AssociatedToken>,
     #[account(
@@ -42,13 +42,13 @@ pub struct TransferHookAccountConstraints {
         token::mint = wsol_mint,
         token::authority = delegate,
     )]
-    pub delegate_wsol_token_account: Box<InterfaceAccount<TokenAccount>>,
+    pub delegate_wsol_token_account: InterfaceAccount<TokenAccount>,
     #[account(
         mut,
         token::mint = wsol_mint,
         token::authority = owner,
     )]
-    pub sender_wsol_token_account: Box<InterfaceAccount<TokenAccount>>,
+    pub sender_wsol_token_account: InterfaceAccount<TokenAccount>,
     #[account(seeds = [b"counter"], bump)]
     pub counter_account: BorshAccount<CounterAccount>,
 }
