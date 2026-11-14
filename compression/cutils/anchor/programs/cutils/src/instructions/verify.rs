@@ -35,10 +35,10 @@ pub fn handle_verify(
     context: &mut Context<VerifyAccountConstraints>,
     params: &VerifyParams,
 ) -> Result<()> {
-    // `remaining_accounts()` walks the input cursor and hands back an owned
-    // vec, so take it once up front: the mutable borrow of `context` ends here
-    // and the proof accounts stay alive for the CPI below.
-    let proof_accounts = context.remaining_accounts()?;
+    // `remaining_accounts()` walks the input cursor and returns a slice that
+    // borrows the instruction's input rather than `context`, so the proof
+    // accounts stay usable for the CPI below.
+    let proof_accounts = context.remaining_accounts();
 
     let asset_id = get_asset_id(context.accounts.merkle_tree.address(), params.nonce);
     let leaf_hash = leaf_schema_v1_hash(

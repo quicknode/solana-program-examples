@@ -17,9 +17,10 @@ use crate::state::{Obligation, PriceFeed, Reserve};
 /// evaluated conservatively against the borrower.
 pub fn handle_refresh_obligation(context: &mut Context<RefreshObligation>) -> Result<()> {
     let slot = Clock::get()?.slot;
-    // `remaining_accounts()` takes `&mut context`, so collect it before the
-    // obligation's own mutable borrow starts. It hands back an owned vec.
-    let accounts = context.remaining_accounts()?;
+    // `remaining_accounts()` takes `&mut context`, so call it before the
+    // obligation's own mutable borrow starts. The slice it returns borrows the
+    // instruction's input, not `context`.
+    let accounts = context.remaining_accounts();
     let obligation = &mut context.accounts.obligation;
     let lending_market = obligation.lending_market;
     let mut cursor = 0usize;

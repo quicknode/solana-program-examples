@@ -57,9 +57,9 @@ pub fn handle_burn_cnft(
     nonce: u64,
     index: u32,
 ) -> Result<()> {
-    // `remaining_accounts()` walks the input cursor and returns an owned vec,
-    // so take it once up front and use the local everywhere below.
-    let proof_accounts = context.remaining_accounts()?;
+    // `remaining_accounts()` walks the input cursor once and caches where the
+    // remaining accounts start; the slice it returns holds the proof accounts.
+    let proof_accounts = context.remaining_accounts();
 
     // Build instruction data: discriminator + borsh-serialized args
     let args = BurnArgs {

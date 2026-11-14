@@ -4,6 +4,35 @@ All notable changes to this repository are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-11-14] - Anchor v2 examples on Anchor 2.0.0-rc.4
+
+Anchor 2.0.0-rc.3 replaced v2's duplicate mutable account check with the borrows each
+account wrapper takes on account data, removed the `unsafe(dup)` constraint, and made
+`Context::remaining_accounts()` infallible. 2.0.0-rc.4, released the same day as this
+entry, changes only the TypeScript client.
+
+### Changed
+
+- All 56 Anchor v2 examples move `anchor-lang` and `anchor-spl` from `2.0.0-rc.2` to
+  `2.0.0-rc.4`, and `anchor-v2-testing` from revision `a2066021` to `2cdb58ba`, the
+  commit the `v2.0.0-rc.4` tag points at. `wincode` stays on 0.6, which rc.4 also uses.
+- The Anchor v2 workflow installs and caches `anchor-cli 2.0.0-rc.4`. Every Anchor v2
+  README, `CONTRIBUTING.md`, the root `README.md` and `docs/anchor-v2-migration.md` name
+  rc.4.
+- `token-minter`'s and `transfer-tokens`' `mint`, and `transfer-switch`'s
+  `configure_admin`, mark the fields that may name the same account `#[account(mut)]`
+  instead of `#[account(unsafe(dup))]`. `Signer`, `SystemAccount` and `UncheckedAccount`
+  take no borrow on account data, so they may alias with no constraint.
+- The eleven calls to `remaining_accounts()` in `cnft-burn`, `cnft-vault`, `cutils`,
+  `lending`, `managed-fund`, `order-book` and `transfer-fee` drop the `?`. The method
+  returns `&[AccountView]`; `transfer-fee`'s `harvest` copies it with `.to_vec()` to
+  build `CpiHandleMut`s, which take `&mut AccountView`.
+- `docs/anchor-v2-migration.md` replaces "Duplicate Mutable Accounts Are Rejected" with
+  "Duplicate Accounts Fail Through Borrows", and describes `remaining_accounts()` as
+  rc.4 has it.
+- `basics/transaction-v1/anchor/README.md` states that `@anchor-lang/core` 2.0.0-rc.4
+  needs `@solana/kit` 8.5 or later and builds v1 transaction messages by default.
+
 ## [2026-11-07] - Transfer Hook - Whitelist becomes Transfer Hook - Allow List, with no size limit
 
 The whitelist example kept every allowed address in one account, capped at eleven,

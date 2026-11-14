@@ -121,7 +121,7 @@ pub fn handle_deposit(
     // matching index, makes it impossible to omit an asset and understate NAV.
     // Each asset is valued rounding up, so NAV is never understated and the
     // floored share count below rounds against the depositor, not the holders.
-    let remaining = context.remaining_accounts()?;
+    let remaining = context.remaining_accounts();
     require!(
         remaining.len() == asset_count * 5,
         FundError::IncompleteAssetAccounts

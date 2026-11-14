@@ -48,9 +48,9 @@ pub fn handle_place_order(
     price: u64,
     quantity: u64,
 ) -> Result<()> {
-    // `remaining_accounts()` takes `&mut context` and returns an owned vec, so
-    // collect it before anything borrows `context.accounts`.
-    let maker_accounts = context.remaining_accounts()?;
+    // `remaining_accounts()` takes `&mut context`, so call it before anything
+    // borrows `context.accounts`.
+    let maker_accounts = context.remaining_accounts();
 
     // `AccountView` is Copy, and a copy still points at the same
     // account. v2's typed handles make the aliasing a compile error.

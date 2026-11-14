@@ -1,4 +1,4 @@
-# Porting an Anchor program from v1 to v2.0.0-rc.2
+# Porting an Anchor program from v1 to v2.0.0-rc.4
 
 Anchor v2 is a ground-up rewrite, not a version bump. The crate is `no_std` and
 built on pinocchio, the account model is static-scoped, borsh is replaced by
@@ -11,13 +11,13 @@ it is the only rule here that the compiler will not catch for you.
 
 Every difference below has a worked example in this repository. Each Anchor example keeps
 both versions side by side: `<example>/anchor-v1/` is the program on 1.2.1 and
-`<example>/anchor/` is the same program on 2.0.0-rc.2, so diffing the two directories shows
+`<example>/anchor/` is the same program on 2.0.0-rc.4, so diffing the two directories shows
 any rule here applied to real code. Both are built and tested in CI, by the Anchor v1 and
 Anchor v2 workflows respectively.
 
 ## Manifest Changes Every Crate Needs
 
-- `anchor-lang` and `anchor-spl` both move from `1.2.1` to `2.0.0-rc.2`.
+- `anchor-lang` and `anchor-spl` both move from `1.2.1` to `2.0.0-rc.4`.
 - `wincode = { version = "0.6", features = ["derive"] }` is new.
 - `features = ["init-if-needed"]` goes away. There is no such feature, and the
   constraint is always available.
@@ -41,9 +41,11 @@ macro expands to `wincode` paths for instruction-data (de)serialization.
 - `.key()` and `.key` become `.address()`, which returns `&Address`.
   Dereference where a value is wanted.
 - `.to_account_info()` becomes `.cpi_handle()` or `.cpi_handle_mut()`.
-- `ctx.remaining_accounts` is now the method `ctx.remaining_accounts()?`. It is
-  fallible, takes `&mut self`, and returns an owned `Vec<AccountView>`, so call
-  it before anything borrows `ctx.accounts`.
+- `ctx.remaining_accounts` is now the method `ctx.remaining_accounts()`. It
+  takes `&mut self`, so call it before anything borrows `ctx.accounts`, and
+  returns `&[AccountView]`, a slice that borrows the instruction's input rather
+  than `ctx`. To build `CpiHandleMut`s over remaining accounts, copy the slice
+  with `.to_vec()`: `CpiHandleMut::writable` takes `&mut AccountView`.
 - `account.owner` is `account.owner()`. `Rent::minimum_balance` is
   `Rent::try_minimum_balance`.
 - `account.data.borrow()` is `account.account().try_borrow()?`.
@@ -175,8 +177,8 @@ constraint has to name a *sibling* field. The same goes for
 
 Where that idiom is the point of the example, build the account by hand
 (`create_account` + `initialize_mint2` / `initialize_account3`) rather than
-adding a second field for the same address, which would then trip v2's
-duplicate-mutable-account check. `initialize_mint2` and `initialize_account3`
+adding a second field for the same address, which would then fail with
+`AccountBorrowFailed` when both fields borrow the account's data. `initialize_mint2` and `initialize_account3`
 take the authority as an address, so nothing is lost.
 
 For a **data** account (`Account`, `BorshAccount`, `InterfaceAccount`) that
@@ -325,40 +327,46 @@ to invoke `pinocchio::default_allocator!()` and
 `pinocchio::default_panic_handler!()` itself: anchor only emits those on the
 path where it owns the entrypoint.
 
-## Duplicate Mutable Accounts Are Rejected
+## Duplicate Accounts Fail Through Borrows
 
-v2 rejects an account that appears in more than one declared slot when any of
-those slots is mutable, with `ConstraintDuplicateMutableAccount`, custom error
-2040. `#[account(unsafe(dup))]` opts a slot out; it implies `mut`, so it
-replaces the `mut` rather than joining it.
+v2 has no derive-level duplicate check and no `dup` constraint:
+`#[account(dup)]` and `#[account(unsafe(dup))]` are compile errors. Each
+account wrapper that reads account data takes a borrow on the account when it
+loads, and a conflicting second borrow fails with `AccountBorrowFailed`.
 
-The catch: the walker flags **both** indices of a duplicate, so marking only
-the second one still leaves the first intersecting the mutable mask. Every slot
-that can legitimately alias needs the constraint, including a `payer`.
+- Two mutable `Account<T>`, `BorshAccount<T>` or `InterfaceAccount<T>` fields
+  over one account fail.
+- A `mut` field and a read-only field over one account also fail, which v1
+  allowed.
+- Two read-only data fields over one account may share it.
+- `Signer`, `SystemAccount`, `UncheckedAccount` and `Program<T>` take no borrow,
+  so they alias freely, writable or not.
 
-Why the rule exists: v1 deserialized each `Account<T>` into an owned copy and
+The two `mint` instructions here rely on the last rule: minting to yourself
+makes `mint_authority` (a writable `Signer`, because it pays for the token
+account) and `recipient` (a `SystemAccount`) the same account, and the
+instruction runs with no extra constraint. `transfer-switch`'s
+`configure_admin` passes one address as both `admin` and `new_admin` the same
+way.
+
+Where two data fields legitimately alias, declare the second as
+`#[account(mut)] UncheckedAccount`. If the two addresses match, mutate the
+first field only. If they differ, call `BorshAccount::<T>::load_mut` on the
+second field's `AccountView`, call `exit()` on the result before it drops, and
+re-check the constraints the second field had (`has_one`, `seeds`, `address`,
+`constraint`), because a manual `load_mut` runs none of them.
+
+A read-only `Account<T>` passed as a writable account in a CPI also fails with
+`AccountBorrowFailed`. Mark it `#[account(mut)]`.
+
+Why aliasing data fields is refused: v1 deserialized each `Account<T>` into an owned copy and
 serialized it back at the end of the instruction. Two slots over one account
 meant two independent copies, and the second write-back silently clobbered the
 first, the classic self-transfer bug, where debiting one copy and crediting
 the other and writing both leaves the balance higher than it started. v2
 accounts are zero-copy views into the runtime's buffer, so two mutable wrappers
-over one account would be two `&mut` to the same bytes. Hence the loader
-rejects rather than warns.
-
-The `unsafe` is not decoration, so check two things before reaching for it:
-
-1. **That the accounts can actually alias.** If no caller ever passes the same
-   address twice, the constraint disables a live check for nothing. Leave it
-   off. `transfer-tokens`' `transfer` is this case: its test funds a fresh
-   `Keypair` as the recipient.
-2. **That the aliasing slots hold no deserialized state.** `Signer`,
-   `SystemAccount` and `UncheckedAccount` carry no copy to write back, so
-   there is no lost update to worry about. The two `mint` instructions here are
-   this case: minting to yourself makes `mint_authority` and `recipient` the
-   same `Signer`, and the duplication comes from the caller rather than the
-   program, so refusing it would make an ordinary mint fail with 2040. Two
-   aliasing `Account<T>` slots are what the check is *for*, and the fix there
-   is to restructure the accounts so only one of them exists.
+over one account would be two `&mut` to the same bytes, which the borrow
+each wrapper takes prevents.
 
 ## anchor-spl Moved Its Types and Dropped Its Features
 
@@ -431,7 +439,7 @@ answer is usually one of the first four rather than moving it to borsh.
   `target/anchor-v2-profile/`.
 - `anchor-v2-testing`: wraps LiteSVM with optional register-trace capture.
   It is published only from git, so the examples pin it to the revision the
-  `v2.0.0-rc.2` tag points at. It no longer re-exports `LiteSVM` at its root:
+  `v2.0.0-rc.4` tag points at. It no longer re-exports `LiteSVM` at its root:
   import `anchor_v2_testing::litesvm::LiteSVM`.
 
 ## Hand-Built CPIs Take Handles, Not Account Infos
@@ -531,7 +539,7 @@ driving `cargo-build-sbf` has to do the same.
 
 ## Toolchain Versions the Port Depends On
 
-CI installs the CLI with `cargo install anchor-cli --version 2.0.0-rc.2 --locked`;
+CI installs the CLI with `cargo install anchor-cli --version 2.0.0-rc.4 --locked`;
 it is a pre-release, so it has to be named explicitly rather than resolved as
 latest, and avm has no prebuilt binary for it. A v2 CLI cannot build
 v1 programs, so that pin can only move once every example is ported.

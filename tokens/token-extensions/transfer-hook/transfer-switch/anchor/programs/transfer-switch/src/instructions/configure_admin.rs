@@ -2,16 +2,15 @@ use {crate::state::AdminConfig, anchor_lang::prelude::*};
 
 #[derive(Accounts)]
 pub struct ConfigureAdminAccountConstraints {
-    // Bootstrapping the config passes the same key as both `admin` and
-    // `new_admin`, so the two slots legitimately alias. v2 rejects an account
-    // that appears twice while any of its slots is in the mutable mask, and it
-    // flags *both* indices, so both carry `unsafe(dup)`, which keeps them
-    // writable while taking them out of that mask.
-    #[account(unsafe(dup))]
+    // Bootstrapping the config passes the same address as both `admin` and
+    // `new_admin`. Anchor v2 catches aliasing through the borrow each account
+    // wrapper takes on the account's data, and `Signer` and `UncheckedAccount`
+    // take none, so the two fields may name the same account.
+    #[account(mut)]
     pub admin: Signer,
 
     /// CHECK: the new admin
-    #[account(unsafe(dup))]
+    #[account(mut)]
     pub new_admin: UncheckedAccount,
 
     /// To hold the address of the admin that controls switches

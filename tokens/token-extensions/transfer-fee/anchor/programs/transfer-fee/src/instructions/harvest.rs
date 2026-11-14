@@ -15,9 +15,10 @@ pub struct HarvestAccountConstraints {
 pub fn process_harvest(context: &mut Context<HarvestAccountConstraints>) -> Result<()> {
     // Using remaining accounts to allow for passing in an unknown number of token accounts to harvest from
     // Check that remaining accounts are token accounts for the mint to harvest to
-    // `remaining_accounts()` takes `&mut context` and hands back an owned vec,
-    // so collect it before anything borrows `context.accounts`.
-    let mut candidates = context.remaining_accounts()?;
+    // `remaining_accounts()` returns a shared slice, and `CpiHandleMut::writable`
+    // needs `&mut AccountView`, so copy the views into a vec the handles can
+    // borrow mutably. An `AccountView` copy still points at the same account.
+    let mut candidates = context.remaining_accounts().to_vec();
     let mint_address = *context.accounts.mint_account.address();
 
     // v2 has no `InterfaceAccount::try_from`; `AnchorAccount::load` is the

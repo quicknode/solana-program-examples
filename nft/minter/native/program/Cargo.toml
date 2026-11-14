@@ -10,7 +10,7 @@ solana-program.workspace = true
 solana-system-interface = { version = "2.0.0", features = ["bincode"] }
 spl-token-interface = "2.0.0"
 spl-associated-token-account-interface = "2.0.0"
-# anchor-spl 2.0.0-rc.2 depends on `=5.1.2-alpha.2`. A range starting at a
+# anchor-spl 2.0.0-rc.4 depends on `=5.1.2-alpha.2`. A range starting at a
 # stable release such as `^5.1.1` never matches a pre-release, so it and that
 # exact pin cannot both be satisfied in one lockfile. A range starting at the
 # pre-release itself can, which is what lets the anchor and native token

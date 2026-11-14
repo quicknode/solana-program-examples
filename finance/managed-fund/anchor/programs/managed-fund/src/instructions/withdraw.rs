@@ -83,7 +83,7 @@ pub fn handle_withdraw(
     let asset_count = context.accounts.fund.asset_count as usize;
 
     require!(
-        context.remaining_accounts()?.len() == asset_count * 4,
+        context.remaining_accounts().len() == asset_count * 4,
         FundError::IncompleteAssetAccounts
     );
 
@@ -125,9 +125,9 @@ pub fn handle_withdraw(
     let index_bytes = fund_index.to_le_bytes();
     let signer_seeds: &[&[&[u8]]] = &[&[b"fund", index_bytes.as_ref(), &[fund_bump]]];
 
-    // `remaining_accounts()` takes `&mut Context`, so collect it before the
+    // `remaining_accounts()` takes `&mut Context`, so call it before the
     // per-account views below borrow `context.accounts`.
-    let remaining = context.remaining_accounts()?;
+    let remaining = context.remaining_accounts();
 
     // `fund` signs the payouts below. It is a data account holding a live
     // borrow on its buffer, so release it across the CPIs and take it back

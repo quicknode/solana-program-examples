@@ -98,7 +98,7 @@ pub fn handle_rebalance(
         FundError::InvalidAssetAccount
     );
 
-    let remaining = context.remaining_accounts()?;
+    let remaining = context.remaining_accounts();
     require!(
         remaining.len() == asset_count * 5,
         FundError::IncompleteAssetAccounts

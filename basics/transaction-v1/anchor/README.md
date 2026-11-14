@@ -2,7 +2,7 @@
 
 > [!NOTE]
 > This is the **Anchor v2** copy of this example. Every `anchor` command on this page
-> needs the v2 CLI: `cargo install anchor-cli --version 2.0.0-rc.2 --locked` (avm has
+> needs the v2 CLI: `cargo install anchor-cli --version 2.0.0-rc.4 --locked` (avm has
 > no prebuilt binary for this pre-release). The Anchor v1 version of this example is in
 > [`../anchor-v1`](../anchor-v1/).
 
@@ -42,7 +42,7 @@ Tests run in-process with [LiteSVM](https://www.anchor-lang.com/docs/testing/lit
 anchor test
 ```
 
-This runs `cargo test` as configured in `Anchor.toml`. The tests run on Anchor v2's own harness, `anchor-v2-testing`, pinned to the revision of the `v2.0.0-rc.2` tag. That revision is the first on LiteSVM 0.18, which executes v1 transactions (LiteSVM 0.16.0 was the first release that could). This example builds its transactions by hand. Every other Anchor v2 example sends v1 transactions too, through [solana-kite](https://crates.io/crates/solana-kite) 0.7, which sets the compute unit and loaded-accounts data size limits for them; this one sets each config field itself to show what they do. The suite covers:
+This runs `cargo test` as configured in `Anchor.toml`. The tests run on Anchor v2's own harness, `anchor-v2-testing`, pinned to the revision of the `v2.0.0-rc.4` tag, which runs on LiteSVM 0.18. LiteSVM executes v1 transactions from 0.16.0 onwards. This example builds its transactions by hand. Every other Anchor v2 example sends v1 transactions too, through [solana-kite](https://crates.io/crates/solana-kite) 0.7, which sets the compute unit and loaded-accounts data size limits for them; this one sets each config field itself to show what they do. The suite covers:
 
 - `stores_a_document_too_large_for_a_legacy_transaction`: a 3,000 byte document in a v1 transaction. The test measures the transaction on the wire (over 1,232 bytes, at most 4,096) and reads the document back from the PDA.
 - `a_legacy_transaction_still_works_for_a_small_document`: the same instruction with a 500 byte document, sent as a legacy transaction. The program did not change.
@@ -53,4 +53,4 @@ LiteSVM does not enforce either size limit (a validator's packet layer does), wh
 
 ## Sending v1 transactions to a real cluster
 
-The v1 format is live on mainnet beta since epoch 1035 (15 September 2026), and on devnet and testnet, behind the `enable_tx_v1` feature gate (`txv1aq4pp281K9um3tnPgkfX8UqtFT6wcVW3hNezGLL`). Sending one needs Agave 4.2 or later client crates and, on the RPC side, `maxSupportedTransactionVersion: 1` on every `getTransaction`, `getBlock` and `blockSubscribe` call, plus `encoding: "base64"` when sending, since base58 encoding stops at 1,232 bytes. Anchor v2's TypeScript client (`@anchor-lang/core` 2.0.0-rc.2) is built on `@solana/kit` 8, the first release line that can build v1 transactions. A v1 transaction can also be built in Rust, as in the tests here.
+The v1 format is live on mainnet beta since epoch 1035 (15 September 2026), and on devnet and testnet, behind the `enable_tx_v1` feature gate (`txv1aq4pp281K9um3tnPgkfX8UqtFT6wcVW3hNezGLL`). Sending one needs Agave 4.2 or later client crates and, on the RPC side, `maxSupportedTransactionVersion: 1` on every `getTransaction`, `getBlock` and `blockSubscribe` call, plus `encoding: "base64"` when sending, since base58 encoding stops at 1,232 bytes. Anchor v2's TypeScript client (`@anchor-lang/core` 2.0.0-rc.4) needs `@solana/kit` 8.5 or later and builds v1 transaction messages by default; set `transactionVersion` on the provider, or call `.transactionVersion()` on a method, to send legacy or version 0 messages instead. A v1 transaction can also be built in Rust, as in the tests here.
