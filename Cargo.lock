@@ -176,9 +176,9 @@ checksum = "683d7910e743518b0e34f1186f92494becacb047c7b6bf616c96772180fef923"
 
 [[package]]
 name = "anchor-derive-accounts"
-version = "2.0.0-rc.2"
+version = "2.0.0-rc.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "18c5bd235119ae47e37190da06b9c0961a686aa9e31986ccab207b1234540e4f"
+checksum = "156f6978e0f35e8969455cf3cef5b197d9fa723d866a316c544f014bd79585ae"
 dependencies = [
  "anchor-lang-idl",
  "bs58",
@@ -193,9 +193,9 @@ dependencies = [
 
 [[package]]
 name = "anchor-lang"
-version = "2.0.0-rc.2"
+version = "2.0.0-rc.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "356811863224722c5eff648869b67ea8d769b0da8c4924cc38cc242ced617e38"
+checksum = "6874cc1fc71379f3f75d0854e70bd131a5337fbf9ce827e892eecc4d26bbc3df"
 dependencies = [
  "anchor-derive-accounts",
  "bytemuck",
@@ -253,9 +253,9 @@ dependencies = [
 
 [[package]]
 name = "anchor-spl"
-version = "2.0.0-rc.2"
+version = "2.0.0-rc.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "94269c342b12e11d285282d9fffca54e46b9abbac13708ccee9b6f1a2f27c6eb"
+checksum = "63d5a43ec6b40f0232948b5d9a62dd6551ccf4100c6ecf430f331ad6818839dd"
 dependencies = [
  "anchor-lang",
  "borsh 1.7.0",
@@ -278,9 +278,10 @@ dependencies = [
 [[package]]
 name = "anchor-v2-testing"
 version = "0.1.0"
-source = "git+https://github.com/otter-sec/anchor.git?rev=a20660219882af5f199d56ea3f9326f387f89d8b#a20660219882af5f199d56ea3f9326f387f89d8b"
+source = "git+https://github.com/otter-sec/anchor.git?rev=2cdb58ba8fd9139942ffe235ed5c5c01072138b8#2cdb58ba8fd9139942ffe235ed5c5c01072138b8"
 dependencies = [
  "litesvm",
+ "solana-fee",
  "solana-keypair",
  "solana-message 4.6.0",
  "solana-program-runtime",
