@@ -44,7 +44,7 @@ pub fn handle_withdraw_fees(context: &mut Context<WithdrawFeesAccountConstraints
 
     context.accounts.market.release_borrow()?;
     transfer_checked(
-        CpiContext::new_with_signer(
+        CpiContext::<_, 4>::new_with_signer(
             context.accounts.token_program.address(),
             TransferChecked {
                 from: context.accounts.fee_vault.to_cpi_handle_mut(),
@@ -67,16 +67,15 @@ pub struct WithdrawFeesAccountConstraints {
     #[account(mut)]
     pub market: BorshAccount<Market>,
 
-    // Boxed to keep the struct under the BPF stack limit (see PlaceOrderAccountConstraints).
     #[account(mut, address = market.fee_vault @ ErrorCode::InvalidFeeVault)]
-    pub fee_vault: Box<InterfaceAccount<TokenAccount>>,
+    pub fee_vault: InterfaceAccount<TokenAccount>,
 
     #[account(mut)]
-    pub authority_quote_account: Box<InterfaceAccount<TokenAccount>>,
+    pub authority_quote_account: InterfaceAccount<TokenAccount>,
 
-    pub quote_mint: Box<InterfaceAccount<Mint>>,
+    pub quote_mint: InterfaceAccount<Mint>,
 
     pub authority: Signer,
 
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
 }

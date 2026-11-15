@@ -86,7 +86,7 @@ pub fn handle_borrow_obligation_liquidity(
     // flushes the pending writes, and `reacquire_borrow_mut` re-reads them.
     context.accounts.reserve.release_borrow()?;
     transfer_checked(
-        CpiContext::new_with_signer(
+        CpiContext::<_, 4>::new_with_signer(
             context.accounts.token_program.address(),
             TransferChecked {
                 from: context.accounts.liquidity_vault.cpi_handle_mut(),
@@ -130,5 +130,5 @@ pub struct BorrowObligationLiquidity {
     #[account(mut)]
     pub user_liquidity: InterfaceAccount<TokenAccount>,
 
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
 }

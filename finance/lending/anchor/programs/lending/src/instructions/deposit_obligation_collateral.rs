@@ -28,7 +28,7 @@ pub fn handle_deposit_obligation_collateral(
     obligation.stale = true;
 
     transfer_checked(
-        CpiContext::new(
+        CpiContext::<_, 4>::new(
             context.accounts.token_program.address(),
             TransferChecked {
                 from: context.accounts.user_share.cpi_handle_mut(),
@@ -74,7 +74,7 @@ pub struct DepositObligationCollateral {
     #[account(mut)]
     pub user_share: InterfaceAccount<TokenAccount>,
 
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
 
     pub system_program: Program<System>,
 }

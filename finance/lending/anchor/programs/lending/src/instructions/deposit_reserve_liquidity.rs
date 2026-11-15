@@ -61,7 +61,7 @@ pub fn handle_deposit_reserve_liquidity(
         .ok_or(LendingError::MathOverflow)?;
 
     transfer_checked(
-        CpiContext::new(
+        CpiContext::<_, 4>::new(
             context.accounts.token_program.address(),
             TransferChecked {
                 from: context.accounts.user_liquidity.cpi_handle_mut(),
@@ -85,7 +85,7 @@ pub fn handle_deposit_reserve_liquidity(
     // flushes the pending writes, and `reacquire_borrow_mut` re-reads them.
     context.accounts.reserve.release_borrow()?;
     mint_to(
-        CpiContext::new_with_signer(
+        CpiContext::<_, 3>::new_with_signer(
             context.accounts.token_program.address(),
             MintTo {
                 mint: context.accounts.share_mint.cpi_handle_mut(),
@@ -123,5 +123,5 @@ pub struct DepositReserveLiquidity {
 
     pub owner: Signer,
 
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
 }

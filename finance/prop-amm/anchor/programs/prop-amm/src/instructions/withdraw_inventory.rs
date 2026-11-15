@@ -43,7 +43,7 @@ pub fn handle_withdraw_inventory(
 
     if base_amount > 0 {
         transfer_checked(
-            CpiContext::new_with_signer(
+            CpiContext::<_, 4>::new_with_signer(
                 context.accounts.token_program.address(),
                 TransferChecked {
                     from: context.accounts.base_vault.to_cpi_handle_mut(),
@@ -60,7 +60,7 @@ pub fn handle_withdraw_inventory(
 
     if quote_amount > 0 {
         transfer_checked(
-            CpiContext::new_with_signer(
+            CpiContext::<_, 4>::new_with_signer(
                 context.accounts.token_program.address(),
                 TransferChecked {
                     from: context.accounts.quote_vault.to_cpi_handle_mut(),
@@ -87,13 +87,13 @@ pub struct WithdrawInventoryAccountConstraints {
         seeds = [MARKET_SEED, market.base_mint.as_ref(), market.quote_mint.as_ref()],
         bump = market.bump,
     )]
-    pub market: Box<BorshAccount<Market>>,
+    pub market: BorshAccount<Market>,
 
     #[account(address = market.base_mint)]
-    pub base_mint: Box<InterfaceAccount<Mint>>,
+    pub base_mint: InterfaceAccount<Mint>,
 
     #[account(address = market.quote_mint)]
-    pub quote_mint: Box<InterfaceAccount<Mint>>,
+    pub quote_mint: InterfaceAccount<Mint>,
 
     #[account(
         mut,
@@ -101,7 +101,7 @@ pub struct WithdrawInventoryAccountConstraints {
         bump,
         address = market.base_vault,
     )]
-    pub base_vault: Box<InterfaceAccount<TokenAccount>>,
+    pub base_vault: InterfaceAccount<TokenAccount>,
 
     #[account(
         mut,
@@ -109,7 +109,7 @@ pub struct WithdrawInventoryAccountConstraints {
         bump,
         address = market.quote_vault,
     )]
-    pub quote_vault: Box<InterfaceAccount<TokenAccount>>,
+    pub quote_vault: InterfaceAccount<TokenAccount>,
 
     #[account(
         mut,
@@ -117,7 +117,7 @@ pub struct WithdrawInventoryAccountConstraints {
         associated_token::authority = operator,
         associated_token::token_program = token_program,
     )]
-    pub operator_base: Box<InterfaceAccount<TokenAccount>>,
+    pub operator_base: InterfaceAccount<TokenAccount>,
 
     #[account(
         mut,
@@ -125,7 +125,7 @@ pub struct WithdrawInventoryAccountConstraints {
         associated_token::authority = operator,
         associated_token::token_program = token_program,
     )]
-    pub operator_quote: Box<InterfaceAccount<TokenAccount>>,
+    pub operator_quote: InterfaceAccount<TokenAccount>,
 
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
 }

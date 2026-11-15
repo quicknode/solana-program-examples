@@ -28,13 +28,13 @@ profile = ["anchor-v2-testing/profile"]
 
 [dependencies]
 # interface-instructions feature was removed in Anchor 1.0 and does not exist in v2
-anchor-lang = "2.0.0-rc.2"
+anchor-lang = "2.0.0-rc.4"
 # The `#[program]` macro expands to `wincode` paths for instruction-data
 # (de)serialization, so the crate has to be a direct dependency.
 wincode = { version = "0.6", features = ["derive"] }
 # v2's anchor-spl has only `guardrails` (default) and `metadata`; the
 # Token-2022 modules are unconditional now.
-anchor-spl = "2.0.0-rc.2"
+anchor-spl = "2.0.0-rc.4"
 
 spl-tlv-account-resolution = "0.11.1"
 spl-transfer-hook-interface = { version = "2.1.0" }
@@ -55,7 +55,7 @@ spl-discriminator = "0.5.1"
 # development happens, so a later revision can carry breakage as easily as
 # fixes. When `anchor-v2-testing` reaches crates.io, drop the git source for
 # an ordinary version.
-anchor-v2-testing = { git = "https://github.com/otter-sec/anchor.git", rev = "a20660219882af5f199d56ea3f9326f387f89d8b" }
+anchor-v2-testing = { git = "https://github.com/otter-sec/anchor.git", rev = "2cdb58ba8fd9139942ffe235ed5c5c01072138b8" }
 # LiteSVM 0.18.1 asks for the Agave crates with `^4.3` ranges but does not
 # compile against Agave 4.4.0. These two hold the Agave crates at 4.3; the rest
 # follow, because Agave pins its own crates to one another exactly. Remove both

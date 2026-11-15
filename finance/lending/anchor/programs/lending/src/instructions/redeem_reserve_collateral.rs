@@ -47,7 +47,7 @@ pub fn handle_redeem_reserve_collateral(
         .ok_or(LendingError::MathOverflow)?;
 
     burn(
-        CpiContext::new(
+        CpiContext::<_, 3>::new(
             context.accounts.token_program.address(),
             Burn {
                 mint: context.accounts.share_mint.cpi_handle_mut(),
@@ -70,7 +70,7 @@ pub fn handle_redeem_reserve_collateral(
     // flushes the pending writes, and `reacquire_borrow_mut` re-reads them.
     context.accounts.reserve.release_borrow()?;
     transfer_checked(
-        CpiContext::new_with_signer(
+        CpiContext::<_, 4>::new_with_signer(
             context.accounts.token_program.address(),
             TransferChecked {
                 from: context.accounts.liquidity_vault.cpi_handle_mut(),
@@ -110,5 +110,5 @@ pub struct RedeemReserveCollateral {
 
     pub owner: Signer,
 
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
 }

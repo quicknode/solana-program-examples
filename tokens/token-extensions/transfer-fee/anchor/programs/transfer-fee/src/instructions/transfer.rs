@@ -65,7 +65,7 @@ pub fn handle_process_transfer(
     let decimals = context.accounts.mint_account.decimals();
 
     transfer_checked_with_fee(
-        CpiContext::new(
+        CpiContext::<_, 4>::new(
             context.accounts.token_program.address(),
             TransferCheckedWithFee {
                 source: context.accounts.sender_token_account.cpi_handle_mut(),

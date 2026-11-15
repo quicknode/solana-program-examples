@@ -48,9 +48,9 @@ pub fn handle_place_order(
     price: u64,
     quantity: u64,
 ) -> Result<()> {
-    // `remaining_accounts()` takes `&mut context` and returns an owned vec, so
-    // collect it before anything borrows `context.accounts`.
-    let maker_accounts = context.remaining_accounts()?;
+    // `remaining_accounts()` takes `&mut context`, so call it before anything
+    // borrows `context.accounts`.
+    let maker_accounts = context.remaining_accounts();
 
     // `AccountView` is Copy, and a copy still points at the same
     // account. v2's typed handles make the aliasing a compile error.
@@ -117,7 +117,7 @@ pub fn handle_place_order(
         };
 
     transfer_checked(
-        CpiContext::new(
+        CpiContext::<_, 4>::new(
             context.accounts.token_program.address(),
             TransferChecked {
                 from: source_account,
@@ -205,16 +205,12 @@ pub fn handle_place_order(
         // v2 has no `Account::try_from`. `AnchorAccount::load_mut` is the
         // equivalent for a writable account reached through remaining_accounts,
         // and it is the only route to one: the derive cannot type a variable
-        // number of accounts.
-        //
-        // SAFETY: the obligation is that no other `&mut` to the same data is
-        // live. The trait method is unsafe because `Slab` bypasses the runtime
-        // borrow check; `BorshAccount` does not, taking its guard through
-        // `try_borrow_mut`, so an account already borrowed elsewhere in this
-        // handler yields `AccountBorrowFailed` instead of aliasing.
-        let mut maker_order = unsafe { BorshAccount::<Order>::load_mut(*maker_order_info) }?;
-        let mut maker_market_user =
-            unsafe { BorshAccount::<MarketUser>::load_mut(*maker_user_info) }?;
+        // number of accounts. `BorshAccount::load_mut` takes an exclusive
+        // borrow on the account's data, so an account already borrowed
+        // elsewhere in this handler yields `AccountBorrowFailed` instead of
+        // aliasing.
+        let mut maker_order = BorshAccount::<Order>::load_mut(*maker_order_info)?;
+        let mut maker_market_user = BorshAccount::<MarketUser>::load_mut(*maker_user_info)?;
 
         require!(
             maker_order.owner == maker_market_user.owner,
@@ -394,7 +390,7 @@ pub fn handle_place_order(
 
         context.accounts.market.release_borrow()?;
         transfer_checked(
-            CpiContext::new_with_signer(
+            CpiContext::<_, 4>::new_with_signer(
                 context.accounts.token_program.address(),
                 TransferChecked {
                     from: context.accounts.quote_vault.to_cpi_handle_mut(),
@@ -451,9 +447,9 @@ pub fn handle_place_order(
             .ok_or(ErrorCode::MissingEvictedAccounts)?;
         let market = &context.accounts.market;
 
-        // SAFETY: as for the maker accounts above. The evicted order is on
-        // the taker's own side, so it is never one of the maker orders.
-        let mut evicted_order = unsafe { BorshAccount::<Order>::load_mut(*evicted_order_info) }?;
+        // The evicted order is on the taker's own side, so it is never one of
+        // the maker orders loaded above.
+        let mut evicted_order = BorshAccount::<Order>::load_mut(*evicted_order_info)?;
         require!(
             evicted_order.order_id == worst.order_id && evicted_order.market == *market.address(),
             ErrorCode::EvictedAccountMismatch
@@ -469,8 +465,7 @@ pub fn handle_place_order(
             let evicted_user_info = maker_accounts
                 .get(evicted_index + 1)
                 .ok_or(ErrorCode::MissingEvictedAccounts)?;
-            let mut evicted_market_user =
-                unsafe { BorshAccount::<MarketUser>::load_mut(*evicted_user_info) }?;
+            let mut evicted_market_user = BorshAccount::<MarketUser>::load_mut(*evicted_user_info)?;
             require!(
                 evicted_market_user.owner == evicted_order.owner
                     && evicted_market_user.market == *market.address(),
@@ -593,35 +588,33 @@ pub struct PlaceOrderAccountConstraints {
     )]
     pub market_user: BorshAccount<MarketUser>,
 
-    // InterfaceAccount on the stack is ~1 KB each; with 7 of them this struct
-    // blows the 4 KB stack-offset limit on BPF. Boxing moves each to the heap.
     #[account(mut, address = market.base_vault @ ErrorCode::InvalidBaseVault)]
-    pub base_vault: Box<InterfaceAccount<TokenAccount>>,
+    pub base_vault: InterfaceAccount<TokenAccount>,
 
     #[account(mut, address = market.quote_vault @ ErrorCode::InvalidQuoteVault)]
-    pub quote_vault: Box<InterfaceAccount<TokenAccount>>,
+    pub quote_vault: InterfaceAccount<TokenAccount>,
 
     // Taker fees are routed here. Constrained via `address = market.fee_vault` on
     // `market` above so the program can trust it without re-checking.
     #[account(mut, address = market.fee_vault @ ErrorCode::InvalidFeeVault)]
-    pub fee_vault: Box<InterfaceAccount<TokenAccount>>,
+    pub fee_vault: InterfaceAccount<TokenAccount>,
 
     #[account(mut)]
-    pub user_base_account: Box<InterfaceAccount<TokenAccount>>,
+    pub user_base_account: InterfaceAccount<TokenAccount>,
 
     #[account(mut)]
-    pub user_quote_account: Box<InterfaceAccount<TokenAccount>>,
+    pub user_quote_account: InterfaceAccount<TokenAccount>,
 
     #[account(address = market.base_mint @ ErrorCode::InvalidBaseMint)]
-    pub base_mint: Box<InterfaceAccount<Mint>>,
+    pub base_mint: InterfaceAccount<Mint>,
 
     #[account(address = market.quote_mint @ ErrorCode::InvalidQuoteMint)]
-    pub quote_mint: Box<InterfaceAccount<Mint>>,
+    pub quote_mint: InterfaceAccount<Mint>,
 
     #[account(mut)]
     pub owner: Signer,
 
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
 
     pub system_program: Program<System>,
 }

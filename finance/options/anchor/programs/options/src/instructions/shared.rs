@@ -30,7 +30,7 @@ pub fn check_custody(market: &Market, underlying_after: u64, quote_after: u64) -
 /// A signer-authorized transfer into one of the vaults, or from one party to
 /// another (the premium goes straight from buyer to writer).
 pub fn transfer_from_signer(
-    token_program: &Interface<'static, TokenInterface>,
+    token_program: &Interface<TokenInterface>,
     from: &mut InterfaceAccount<TokenAccount>,
     mint: &InterfaceAccount<Mint>,
     to: &mut InterfaceAccount<TokenAccount>,
@@ -38,7 +38,7 @@ pub fn transfer_from_signer(
     amount: u64,
 ) -> Result<()> {
     transfer_checked(
-        CpiContext::new(
+        CpiContext::<_, 4>::new(
             token_program.address(),
             TransferChecked {
                 from: from.to_cpi_handle_mut(),
@@ -60,7 +60,7 @@ pub fn transfer_from_signer(
 /// The caller must have finished mutating the market (it has: effects come
 /// before CPIs).
 pub fn transfer_from_vault(
-    token_program: &Interface<'static, TokenInterface>,
+    token_program: &Interface<TokenInterface>,
     vault: &mut InterfaceAccount<TokenAccount>,
     mint: &InterfaceAccount<Mint>,
     to: &mut InterfaceAccount<TokenAccount>,
@@ -80,7 +80,7 @@ pub fn transfer_from_vault(
     market.release_borrow()?;
     let market_view = *market.account();
     transfer_checked(
-        CpiContext::new_with_signer(
+        CpiContext::<_, 4>::new_with_signer(
             token_program.address(),
             TransferChecked {
                 from: vault.to_cpi_handle_mut(),

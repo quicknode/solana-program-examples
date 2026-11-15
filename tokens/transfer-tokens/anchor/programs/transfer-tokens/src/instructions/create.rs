@@ -34,7 +34,7 @@ pub struct CreateTokenAccountConstraints {
     )]
     pub metadata_account: UncheckedAccount,
 
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
     pub token_metadata_program: Program<Metadata>,
     pub system_program: Program<System>,
     pub rent: Sysvar<Rent>,
@@ -54,7 +54,7 @@ pub fn handle_create_token(
     // Cross Program Invocation (CPI)
     // Invoking the create_metadata_account_v3 instruction on the token metadata program
     create_metadata_accounts_v3(
-        CpiContext::new(
+        CpiContext::<_, 6>::new(
             context.accounts.token_metadata_program.address(),
             CreateMetadataAccountsV3 {
                 metadata: context.accounts.metadata_account.cpi_handle_mut(),

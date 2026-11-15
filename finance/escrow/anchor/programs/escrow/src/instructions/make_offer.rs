@@ -65,14 +65,14 @@ pub struct MakeOfferAccountConstraints {
     pub vault: InterfaceAccount<TokenAccount>,
 
     pub associated_token_program: Program<AssociatedToken>,
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
     pub system_program: Program<System>,
 }
 
 // Refuse an offer with nothing on one side. An offer of a token for a
 // different amount of itself never reaches this handler: the maker's token-A
-// and token-B accounts would be the same account, and Anchor refuses the same
-// mutable account twice with `ConstraintDuplicateMutableAccount`.
+// and token-B accounts would be the same account, and loading one mutable
+// account into two slots fails with `AccountBorrowFailed`.
 pub fn handle_validate_offer(
     token_a_offered_amount: u64,
     token_b_wanted_amount: u64,

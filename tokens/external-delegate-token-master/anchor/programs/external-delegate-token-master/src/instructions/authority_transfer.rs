@@ -26,7 +26,7 @@ pub struct AuthorityTransferAccountConstraints {
     )]
     pub user_pda: SystemAccount,
 
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
 }
 
 pub fn handler(
@@ -41,7 +41,7 @@ pub fn handler(
     };
 
     transfer_checked(
-        CpiContext::new_with_signer(
+        CpiContext::<_, 4>::new_with_signer(
             context.accounts.token_program.address(),
             transfer_accounts,
             &[&[

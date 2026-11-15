@@ -9,7 +9,7 @@ pub struct InitWalletAccountConstraints {
 
     #[account(seeds = [CONFIG_SEED],
         bump = config.bump)]
-    pub config: Box<BorshAccount<Config>>,
+    pub config: BorshAccount<Config>,
 
     pub wallet: SystemAccount,
 

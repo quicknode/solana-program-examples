@@ -62,7 +62,7 @@ pub fn handle_initialize_extra_account_metas_list(
     ]];
 
     create_account(
-        CpiContext::new(
+        CpiContext::<_, 2>::new(
             accounts.system_program.address(),
             CreateAccount {
                 from: accounts.payer.cpi_handle_mut(),

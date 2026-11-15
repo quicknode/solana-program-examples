@@ -78,7 +78,7 @@ pub fn process_update_field(
     if required_lamports > current_lamports {
         let lamport_difference = required_lamports - current_lamports;
         transfer(
-            CpiContext::new(
+            CpiContext::<_, 2>::new(
                 context.accounts.system_program.address(),
                 Transfer {
                     from: context.accounts.authority.cpi_handle_mut(),
@@ -95,7 +95,7 @@ pub fn process_update_field(
 
     // Update token metadata
     token_metadata_update_field(
-        CpiContext::new(
+        CpiContext::<_, 2>::new(
             context.accounts.token_program.address(),
             TokenMetadataUpdateField {
                 metadata: context.accounts.mint_account.cpi_handle_mut(),

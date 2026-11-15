@@ -29,7 +29,7 @@ pub mod rent_example {
         msg!("Lamports required: {}", lamports_required);
 
         system_program::create_account(
-            CpiContext::new(
+            CpiContext::<_, 2>::new(
                 context.accounts.system_program.address(),
                 system_program::CreateAccount {
                     from: context.accounts.payer.cpi_handle_mut(),

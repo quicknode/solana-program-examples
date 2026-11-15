@@ -646,8 +646,9 @@ fn test_make_offer_rejects_same_mint() {
         alice_ata_a,
     );
 
-    // Anchor refuses the same mutable account twice before the handler runs.
-    assert_fails_with_anchor_error(result, ErrorCode::ConstraintDuplicateMutableAccount);
+    // Loading the same mutable account into two slots takes a second
+    // exclusive borrow of its data, which fails before the handler runs.
+    assert_fails_with_program_error(result, &anchor_lang::Error::AccountBorrowFailed);
     assert_eq!(
         get_token_account_balance(&es.svm, &alice_ata_a).unwrap(),
         alice_balance_before

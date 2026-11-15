@@ -25,7 +25,7 @@ pub fn handler(context: &mut Context<CloseAccountConstraints>) -> Result<()> {
 
     // cpi to token extensions programs to close mint account
     // alternatively, this can also be done in the client
-    close_account(CpiContext::new(
+    close_account(CpiContext::<_, 3>::new(
         context.accounts.token_program.address(),
         CloseAccount {
             account: context.accounts.mint_account.cpi_handle_mut(),

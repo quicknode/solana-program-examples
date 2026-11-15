@@ -14,7 +14,7 @@ pub fn transfer_tokens(
     amount: &u64,
     mint: &InterfaceAccount<Mint>,
     authority: AccountView,
-    token_program: &Interface<'static, TokenInterface>,
+    token_program: &Interface<TokenInterface>,
     owning_pda_seeds: Option<&[&[u8]]>,
 ) -> Result<()> {
     let decimals = mint.decimals();
@@ -27,10 +27,12 @@ pub fn transfer_tokens(
 
     let signer_seeds = owning_pda_seeds.map(|seeds| [seeds]);
     let cpi_context = match signer_seeds.as_ref() {
-        Some(signer_seeds) => {
-            CpiContext::new_with_signer(token_program.address(), transfer_accounts, signer_seeds)
-        }
-        None => CpiContext::new(token_program.address(), transfer_accounts),
+        Some(signer_seeds) => CpiContext::<_, 4>::new_with_signer(
+            token_program.address(),
+            transfer_accounts,
+            signer_seeds,
+        ),
+        None => CpiContext::<_, 4>::new(token_program.address(), transfer_accounts),
     };
 
     transfer_checked(cpi_context, *amount, decimals)
@@ -43,7 +45,7 @@ pub fn close_token_account(
     token_account: &mut InterfaceAccount<TokenAccount>,
     mut destination: AccountView,
     authority: AccountView,
-    token_program: &Interface<'static, TokenInterface>,
+    token_program: &Interface<TokenInterface>,
     owning_pda_seeds: Option<&[&[u8]]>,
 ) -> Result<()> {
     let close_accounts = CloseAccount {
@@ -54,10 +56,12 @@ pub fn close_token_account(
 
     let signer_seeds = owning_pda_seeds.map(|seeds| [seeds]);
     let cpi_context = match signer_seeds.as_ref() {
-        Some(signer_seeds) => {
-            CpiContext::new_with_signer(token_program.address(), close_accounts, signer_seeds)
-        }
-        None => CpiContext::new(token_program.address(), close_accounts),
+        Some(signer_seeds) => CpiContext::<_, 3>::new_with_signer(
+            token_program.address(),
+            close_accounts,
+            signer_seeds,
+        ),
+        None => CpiContext::<_, 3>::new(token_program.address(), close_accounts),
     };
 
     close_account(cpi_context)

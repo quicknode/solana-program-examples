@@ -44,7 +44,7 @@ pub fn handle_verify_collection(
     let signer_seeds = &[&seeds[..]];
 
     verify_sized_collection_item(
-        CpiContext::new_with_signer(
+        CpiContext::<_, 6>::new_with_signer(
             accounts.token_metadata_program.address(),
             VerifySizedCollectionItem {
                 metadata: accounts.metadata.cpi_handle_mut(),

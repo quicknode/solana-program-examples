@@ -33,7 +33,7 @@ pub struct InitializeFundraiserAccountConstraints {
 
     pub system_program: Program<System>,
 
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
 
     pub associated_token_program: Program<AssociatedToken>,
 }

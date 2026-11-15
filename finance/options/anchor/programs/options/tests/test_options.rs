@@ -97,9 +97,8 @@ fn assert_fails_with<T>(result: Result<T, String>, expected: OptionsError) {
     assert_fails_with_code(result, code);
 }
 
-/// Anchor's own constraint errors (an `address =` mismatch, a duplicate
-/// mutable account) are numbered below the program's and reported the same
-/// way.
+/// Anchor's own constraint errors, such as an `address =` mismatch, are
+/// numbered below the program's and reported the same way.
 fn assert_fails_with_anchor_error<T>(result: Result<T, String>, expected: AnchorErrorCode) {
     let AnchorError::Custom(code) = AnchorError::from(expected) else {
         panic!("a constraint error converts to a custom code");
@@ -1298,18 +1297,21 @@ fn test_buy_option_succeeds_when_the_terms_match() {
 
 /// A writer cannot buy their own option. `buyer_quote` and `writer_quote`
 /// are each bound to their party's associated token account, so with Alice
-/// on both sides they are one account in two mutable slots, and Anchor's
-/// duplicate-mutable-account check refuses the instruction before any
-/// handler code runs. The option stays listed and no USDC moves.
+/// on both sides they are one account in two mutable slots. Loading the
+/// second slot takes a second exclusive borrow of the account's data, which
+/// fails with `AccountBorrowFailed` before any handler code runs. The option stays listed and no USDC moves.
 #[test]
 fn test_writer_cannot_buy_their_own_option() {
     let mut venue = Venue::new();
     let alice = venue.person(FIVE_NVDAX, STANDARD_USDC);
     let option = venue.write_call(&alice);
 
-    assert_fails_with_anchor_error(
-        venue.buy_option(&alice, &alice.pubkey(), &option),
-        AnchorErrorCode::ConstraintDuplicateMutableAccount,
+    let error = venue
+        .buy_option(&alice, &alice.pubkey(), &option)
+        .expect_err("a writer buying their own option should fail");
+    assert!(
+        error.contains("AccountBorrowFailed"),
+        "expected AccountBorrowFailed, got: {error}"
     );
     assert_eq!(venue.option_state(&option).status, OptionStatus::Listed);
     assert_eq!(venue.balance(&alice.quote), STANDARD_USDC);

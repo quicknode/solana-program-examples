@@ -27,10 +27,10 @@ pub struct SwapAssetForUsdcAccountConstraints {
     pub asset_rate: BorshAccount<AssetRate>,
 
     #[account(constraint = *usdc_mint.address() == router_config.usdc_mint @ RouterError::WrongUsdcMint)]
-    pub usdc_mint: Box<InterfaceAccount<Mint>>,
+    pub usdc_mint: InterfaceAccount<Mint>,
 
     #[account(mut)]
-    pub asset_mint: Box<InterfaceAccount<Mint>>,
+    pub asset_mint: InterfaceAccount<Mint>,
 
     /// Caller's asset token account - asset tokens are burned from here
     #[account(
@@ -39,7 +39,7 @@ pub struct SwapAssetForUsdcAccountConstraints {
         associated_token::authority = caller,
         associated_token::token_program = token_program
     )]
-    pub caller_asset_account: Box<InterfaceAccount<TokenAccount>>,
+    pub caller_asset_account: InterfaceAccount<TokenAccount>,
 
     /// Caller's USDC account - receives the USDC
     #[account(
@@ -48,7 +48,7 @@ pub struct SwapAssetForUsdcAccountConstraints {
         associated_token::authority = caller,
         associated_token::token_program = token_program
     )]
-    pub caller_usdc_account: Box<InterfaceAccount<TokenAccount>>,
+    pub caller_usdc_account: InterfaceAccount<TokenAccount>,
 
     /// Router's USDC treasury - sends the USDC
     #[account(
@@ -57,10 +57,10 @@ pub struct SwapAssetForUsdcAccountConstraints {
         associated_token::authority = router_config,
         associated_token::token_program = token_program
     )]
-    pub router_usdc_treasury: Box<InterfaceAccount<TokenAccount>>,
+    pub router_usdc_treasury: InterfaceAccount<TokenAccount>,
 
     pub associated_token_program: Program<AssociatedToken>,
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
     pub system_program: Program<System>,
 }
 
@@ -95,7 +95,7 @@ pub fn handle_swap_asset_for_usdc(
         authority: context.accounts.caller.cpi_handle(),
     };
     burn(
-        CpiContext::new(context.accounts.token_program.address(), burn_accounts),
+        CpiContext::<_, 3>::new(context.accounts.token_program.address(), burn_accounts),
         asset_amount_in,
     )?;
 
@@ -110,7 +110,7 @@ pub fn handle_swap_asset_for_usdc(
         authority: context.accounts.router_config.to_cpi_handle(),
     };
     transfer_checked(
-        CpiContext::new_with_signer(
+        CpiContext::<_, 4>::new_with_signer(
             context.accounts.token_program.address(),
             transfer_accounts,
             signer_seeds,

@@ -19,7 +19,7 @@ pub struct InitializeRouterAccountConstraints {
     )]
     pub router_config: BorshAccount<RouterConfig>,
 
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
     pub system_program: Program<System>,
 }
 

@@ -126,7 +126,7 @@ pub fn handle_swap(
     match direction {
         Direction::BuyBase => {
             transfer_checked(
-                CpiContext::new(
+                CpiContext::<_, 4>::new(
                     context.accounts.token_program.address(),
                     TransferChecked {
                         from: context.accounts.trader_quote.to_cpi_handle_mut(),
@@ -139,7 +139,7 @@ pub fn handle_swap(
                 context.accounts.quote_mint.decimals(),
             )?;
             transfer_checked(
-                CpiContext::new_with_signer(
+                CpiContext::<_, 4>::new_with_signer(
                     context.accounts.token_program.address(),
                     TransferChecked {
                         from: context.accounts.base_vault.to_cpi_handle_mut(),
@@ -155,7 +155,7 @@ pub fn handle_swap(
         }
         Direction::SellBase => {
             transfer_checked(
-                CpiContext::new(
+                CpiContext::<_, 4>::new(
                     context.accounts.token_program.address(),
                     TransferChecked {
                         from: context.accounts.trader_base.to_cpi_handle_mut(),
@@ -168,7 +168,7 @@ pub fn handle_swap(
                 context.accounts.base_mint.decimals(),
             )?;
             transfer_checked(
-                CpiContext::new_with_signer(
+                CpiContext::<_, 4>::new_with_signer(
                     context.accounts.token_program.address(),
                     TransferChecked {
                         from: context.accounts.quote_vault.to_cpi_handle_mut(),
@@ -196,17 +196,17 @@ pub struct SwapAccountConstraints {
         seeds = [MARKET_SEED, market.base_mint.as_ref(), market.quote_mint.as_ref()],
         bump = market.bump,
     )]
-    pub market: Box<BorshAccount<Market>>,
+    pub market: BorshAccount<Market>,
 
     /// CHECK: validated by the `address = market.oracle_feed` constraint below.
     #[account(address = market.oracle_feed)]
     pub oracle_feed: UncheckedAccount,
 
     #[account(address = market.base_mint)]
-    pub base_mint: Box<InterfaceAccount<Mint>>,
+    pub base_mint: InterfaceAccount<Mint>,
 
     #[account(address = market.quote_mint)]
-    pub quote_mint: Box<InterfaceAccount<Mint>>,
+    pub quote_mint: InterfaceAccount<Mint>,
 
     #[account(
         mut,
@@ -214,7 +214,7 @@ pub struct SwapAccountConstraints {
         bump,
         address = market.base_vault,
     )]
-    pub base_vault: Box<InterfaceAccount<TokenAccount>>,
+    pub base_vault: InterfaceAccount<TokenAccount>,
 
     #[account(
         mut,
@@ -222,7 +222,7 @@ pub struct SwapAccountConstraints {
         bump,
         address = market.quote_vault,
     )]
-    pub quote_vault: Box<InterfaceAccount<TokenAccount>>,
+    pub quote_vault: InterfaceAccount<TokenAccount>,
 
     #[account(
         init_if_needed,
@@ -231,7 +231,7 @@ pub struct SwapAccountConstraints {
         associated_token::authority = trader,
         associated_token::token_program = token_program,
     )]
-    pub trader_base: Box<InterfaceAccount<TokenAccount>>,
+    pub trader_base: InterfaceAccount<TokenAccount>,
 
     #[account(
         init_if_needed,
@@ -240,9 +240,9 @@ pub struct SwapAccountConstraints {
         associated_token::authority = trader,
         associated_token::token_program = token_program,
     )]
-    pub trader_quote: Box<InterfaceAccount<TokenAccount>>,
+    pub trader_quote: InterfaceAccount<TokenAccount>,
 
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
     pub associated_token_program: Program<AssociatedToken>,
     pub system_program: Program<System>,
 }

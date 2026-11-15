@@ -20,7 +20,7 @@ pub mod create_system_account {
         let lamports = Rent::get()?.try_minimum_balance(0)?;
 
         create_account(
-            CpiContext::new(
+            CpiContext::<_, 2>::new(
                 context.accounts.system_program.address(),
                 CreateAccount {
                     from: context.accounts.payer.cpi_handle_mut(), // From pubkey

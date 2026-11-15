@@ -51,14 +51,14 @@ pub struct CollectFeesAccountConstraints {
         seeds = [MARKET_SEED, market.underlying_mint.as_ref(), market.quote_mint.as_ref()],
         bump = market.bump,
     )]
-    pub market: Box<BorshAccount<Market>>,
+    pub market: BorshAccount<Market>,
 
     #[account(address = market.quote_mint)]
-    pub quote_mint: Box<InterfaceAccount<Mint>>,
+    pub quote_mint: InterfaceAccount<Mint>,
 
     // Read only, for the custody check: the invariant covers both vaults.
     #[account(address = market.underlying_vault)]
-    pub underlying_vault: Box<InterfaceAccount<TokenAccount>>,
+    pub underlying_vault: InterfaceAccount<TokenAccount>,
 
     #[account(
         mut,
@@ -66,7 +66,7 @@ pub struct CollectFeesAccountConstraints {
         bump,
         address = market.quote_vault,
     )]
-    pub quote_vault: Box<InterfaceAccount<TokenAccount>>,
+    pub quote_vault: InterfaceAccount<TokenAccount>,
 
     #[account(
         init_if_needed,
@@ -75,9 +75,9 @@ pub struct CollectFeesAccountConstraints {
         associated_token::authority = admin,
         associated_token::token_program = token_program,
     )]
-    pub admin_quote: Box<InterfaceAccount<TokenAccount>>,
+    pub admin_quote: InterfaceAccount<TokenAccount>,
 
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
     pub associated_token_program: Program<AssociatedToken>,
     pub system_program: Program<System>,
 }

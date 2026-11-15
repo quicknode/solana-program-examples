@@ -1,6 +1,9 @@
-use anchor_lang::prelude::*;
 use anchor_spl::token_interface::{
     harvest_withheld_tokens_to_mint, HarvestWithheldTokensToMint, Mint, Token2022, TokenAccount,
+};
+use {
+    crate::{TransferFeeError, MAX_HARVEST_SOURCES},
+    anchor_lang::prelude::*,
 };
 
 #[derive(Accounts)]
@@ -13,11 +16,16 @@ pub struct HarvestAccountConstraints {
 // transfer fees are stored directly on the recipient token account and must be "harvested"
 // "harvesting" transfers fees accumulated on token accounts to the mint account
 pub fn process_harvest(context: &mut Context<HarvestAccountConstraints>) -> Result<()> {
-    // Using remaining accounts to allow for passing in an unknown number of token accounts to harvest from
+    // Remaining accounts carry the token accounts to harvest from, up to MAX_HARVEST_SOURCES of them
     // Check that remaining accounts are token accounts for the mint to harvest to
-    // `remaining_accounts()` takes `&mut context` and hands back an owned vec,
-    // so collect it before anything borrows `context.accounts`.
-    let mut candidates = context.remaining_accounts()?;
+    // `remaining_accounts()` returns a shared slice, and `CpiHandleMut::writable`
+    // needs `&mut AccountView`, so copy the views into a vec the handles can
+    // borrow mutably. An `AccountView` copy still points at the same account.
+    let mut candidates = context.remaining_accounts().to_vec();
+    require!(
+        candidates.len() <= MAX_HARVEST_SOURCES,
+        TransferFeeError::TooManyHarvestSources
+    );
     let mint_address = *context.accounts.mint_account.address();
 
     // v2 has no `InterfaceAccount::try_from`; `AnchorAccount::load` is the
@@ -41,13 +49,13 @@ pub fn process_harvest(context: &mut Context<HarvestAccountConstraints>) -> Resu
         .collect();
 
     harvest_withheld_tokens_to_mint(
-        CpiContext::new(
+        CpiContext::<_, { 1 + MAX_HARVEST_SOURCES }>::new(
             context.accounts.token_program.address(),
             HarvestWithheldTokensToMint {
                 mint: context.accounts.mint_account.cpi_handle_mut(),
             },
         ),
-        sources, // token accounts to harvest from
+        &sources, // token accounts to harvest from
     )?;
     Ok(())
 }

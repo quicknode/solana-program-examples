@@ -41,7 +41,7 @@ pub fn process_initialize(
     let mint_address = *context.accounts.mint_account.address();
 
     create_account(
-        CpiContext::new(
+        CpiContext::<_, 2>::new(
             context.accounts.system_program.address(),
             CreateAccount {
                 from: context.accounts.payer.cpi_handle_mut(),
@@ -55,7 +55,7 @@ pub fn process_initialize(
 
     // The metadata lives in the mint account itself, so the pointer points at it.
     metadata_pointer_initialize(
-        CpiContext::new(
+        CpiContext::<_, 1>::new(
             context.accounts.token_program.address(),
             MetadataPointerInitialize {
                 mint: context.accounts.mint_account.cpi_handle_mut(),
@@ -66,7 +66,7 @@ pub fn process_initialize(
     )?;
 
     initialize_mint2(
-        CpiContext::new(
+        CpiContext::<_, 1>::new(
             context.accounts.token_program.address(),
             InitializeMint2 {
                 mint: context.accounts.mint_account.cpi_handle_mut(),
@@ -93,7 +93,7 @@ pub fn process_initialize(
 
     // Transfer additional lamports to mint account
     transfer(
-        CpiContext::new(
+        CpiContext::<_, 2>::new(
             context.accounts.system_program.address(),
             Transfer {
                 from: context.accounts.payer.cpi_handle_mut(),
@@ -110,7 +110,7 @@ pub fn process_initialize(
     let mint_view = *context.accounts.mint_account.account();
 
     token_metadata_initialize(
-        CpiContext::new(
+        CpiContext::<_, 4>::new(
             context.accounts.token_program.address(),
             TokenMetadataInitialize {
                 mint: CpiHandle::readonly(&mint_view),

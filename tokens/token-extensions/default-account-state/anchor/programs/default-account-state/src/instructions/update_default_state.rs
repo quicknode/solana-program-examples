@@ -28,7 +28,7 @@ pub fn handler(
     let account_state = account_state.to_spl_account_state();
 
     default_account_state_update(
-        CpiContext::new(
+        CpiContext::<_, 2>::new(
             context.accounts.token_program.address(),
             DefaultAccountStateUpdate {
                 mint: context.accounts.mint_account.cpi_handle_mut(),

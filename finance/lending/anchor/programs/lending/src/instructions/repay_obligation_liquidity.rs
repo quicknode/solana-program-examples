@@ -58,7 +58,7 @@ pub fn handle_repay_obligation_liquidity(
     }
 
     transfer_checked(
-        CpiContext::new(
+        CpiContext::<_, 4>::new(
             context.accounts.token_program.address(),
             TransferChecked {
                 from: context.accounts.user_liquidity.cpi_handle_mut(),
@@ -96,5 +96,5 @@ pub struct RepayObligationLiquidity {
 
     pub repayer: Signer,
 
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
 }

@@ -135,7 +135,7 @@ pub struct WriteOptionAccountConstraints {
         seeds = [MARKET_SEED, market.underlying_mint.as_ref(), market.quote_mint.as_ref()],
         bump = market.bump,
     )]
-    pub market: Box<BorshAccount<Market>>,
+    pub market: BorshAccount<Market>,
 
     #[account(
         init,
@@ -144,13 +144,13 @@ pub struct WriteOptionAccountConstraints {
         seeds = [OPTION_SEED, market.address().as_ref(), writer.address().as_ref(), _id.to_le_bytes()],
         bump,
     )]
-    pub option: Box<BorshAccount<OptionContract>>,
+    pub option: BorshAccount<OptionContract>,
 
     #[account(address = market.underlying_mint)]
-    pub underlying_mint: Box<InterfaceAccount<Mint>>,
+    pub underlying_mint: InterfaceAccount<Mint>,
 
     #[account(address = market.quote_mint)]
-    pub quote_mint: Box<InterfaceAccount<Mint>>,
+    pub quote_mint: InterfaceAccount<Mint>,
 
     #[account(
         mut,
@@ -158,7 +158,7 @@ pub struct WriteOptionAccountConstraints {
         bump,
         address = market.underlying_vault,
     )]
-    pub underlying_vault: Box<InterfaceAccount<TokenAccount>>,
+    pub underlying_vault: InterfaceAccount<TokenAccount>,
 
     #[account(
         mut,
@@ -166,7 +166,7 @@ pub struct WriteOptionAccountConstraints {
         bump,
         address = market.quote_vault,
     )]
-    pub quote_vault: Box<InterfaceAccount<TokenAccount>>,
+    pub quote_vault: InterfaceAccount<TokenAccount>,
 
     // A call writer pays collateral from this account. A put writer may never
     // have held the underlying, so the account is created if needed, at the
@@ -180,7 +180,7 @@ pub struct WriteOptionAccountConstraints {
         associated_token::authority = writer,
         associated_token::token_program = token_program,
     )]
-    pub writer_underlying: Box<InterfaceAccount<TokenAccount>>,
+    pub writer_underlying: InterfaceAccount<TokenAccount>,
 
     // A put writer pays collateral from this account, and every writer is
     // paid their premium into it by `buy_option`, which requires it to exist.
@@ -193,9 +193,9 @@ pub struct WriteOptionAccountConstraints {
         associated_token::authority = writer,
         associated_token::token_program = token_program,
     )]
-    pub writer_quote: Box<InterfaceAccount<TokenAccount>>,
+    pub writer_quote: InterfaceAccount<TokenAccount>,
 
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
     pub associated_token_program: Program<AssociatedToken>,
     pub system_program: Program<System>,
 }

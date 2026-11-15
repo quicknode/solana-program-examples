@@ -34,7 +34,7 @@ pub fn handler(context: &mut Context<InitializeAccountConstraints>) -> Result<()
 
     // Invoke System Program to create new account with space for token account and extension data
     create_account(
-        CpiContext::new(
+        CpiContext::<_, 2>::new(
             context.accounts.system_program.address(),
             CreateAccount {
                 from: context.accounts.payer.cpi_handle_mut(),
@@ -47,7 +47,7 @@ pub fn handler(context: &mut Context<InitializeAccountConstraints>) -> Result<()
     )?;
 
     // Initialize the standard token account data
-    initialize_account3(CpiContext::new(
+    initialize_account3(CpiContext::<_, 3>::new(
         context.accounts.token_program.address(),
         InitializeAccount3 {
             account: context.accounts.token_account.cpi_handle_mut(),
@@ -58,7 +58,7 @@ pub fn handler(context: &mut Context<InitializeAccountConstraints>) -> Result<()
 
     // Initialize the memo transfer extension
     // This instruction must come after the token account initialization
-    memo_transfer_initialize(CpiContext::new(
+    memo_transfer_initialize(CpiContext::<_, 2>::new(
         context.accounts.token_program.address(),
         MemoTransfer {
             account: context.accounts.token_account.cpi_handle_mut(),

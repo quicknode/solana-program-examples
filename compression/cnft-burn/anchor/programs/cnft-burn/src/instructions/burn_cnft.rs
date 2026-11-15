@@ -1,11 +1,8 @@
 use anchor_lang::prelude::*;
-use anchor_lang::solana_program::{
-    instruction::{AccountMeta, Instruction},
-    program::invoke,
-};
+use anchor_lang::solana_program::{instruction::AccountMeta, program::invoke};
 use borsh::BorshSerialize;
 
-use crate::{SPLCompression, MPL_BUBBLEGUM_ID};
+use crate::{owned_instruction::OwnedInstruction, SPLCompression, MPL_BUBBLEGUM_ID};
 
 /// Burn instruction discriminator from mpl-bubblegum
 const BURN_DISCRIMINATOR: [u8; 8] = [116, 110, 29, 56, 107, 219, 42, 93];
@@ -57,9 +54,9 @@ pub fn handle_burn_cnft(
     nonce: u64,
     index: u32,
 ) -> Result<()> {
-    // `remaining_accounts()` walks the input cursor and returns an owned vec,
-    // so take it once up front and use the local everywhere below.
-    let proof_accounts = context.remaining_accounts()?;
+    // `remaining_accounts()` walks the input cursor once and caches where the
+    // remaining accounts start; the slice it returns holds the proof accounts.
+    let proof_accounts = context.remaining_accounts();
 
     // Build instruction data: discriminator + borsh-serialized args
     let args = BurnArgs {
@@ -109,7 +106,7 @@ pub fn handle_burn_cnft(
         accounts.push(AccountMeta::new_readonly(*acc.address(), false));
     }
 
-    let instruction = Instruction {
+    let instruction = OwnedInstruction {
         program_id: MPL_BUBBLEGUM_ID,
         accounts,
         data,

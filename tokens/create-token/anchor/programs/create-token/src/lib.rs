@@ -38,7 +38,7 @@ pub mod create_token {
         let payer_view = *context.accounts.payer.account();
 
         create_metadata_accounts_v3(
-            CpiContext::new(
+            CpiContext::<_, 6>::new(
                 context.accounts.token_metadata_program.address(),
                 CreateMetadataAccountsV3 {
                     metadata: context.accounts.metadata_account.cpi_handle_mut(),

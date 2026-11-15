@@ -61,9 +61,10 @@ pub fn handler(
         context.accounts.merkle_tree.address()
     );
 
-    // `remaining_accounts()` returns an owned vec; take it once so the proof
-    // views stay alive for the CPI below.
-    let proof_accounts = context.remaining_accounts()?;
+    // `remaining_accounts()` returns a slice that borrows the instruction's
+    // input rather than `context`, so the proof accounts stay usable for the
+    // CPI below.
+    let proof_accounts = context.remaining_accounts();
 
     // Read the bump before the CPI handles take a mutable borrow of `vault`.
     let vault_bump = context.accounts.vault.bump;

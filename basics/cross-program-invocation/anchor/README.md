@@ -2,7 +2,7 @@
 
 > [!NOTE]
 > This is the **Anchor v2** copy of this example. Every `anchor` command on this page
-> needs the v2 CLI: `cargo install anchor-cli --version 2.0.0-rc.2 --locked` (avm has
+> needs the v2 CLI: `cargo install anchor-cli --version 2.0.0-rc.4 --locked` (avm has
 > no prebuilt binary for this pre-release). The Anchor v1 version of this example is in
 > [`../anchor-v1`](../anchor-v1/).
 
@@ -14,6 +14,7 @@ See also: [Cross Program Invocation overview](../README.md) and the [repository 
 
 - Cross-program invocation (CPI)
 - Composing multiple programs in one transaction
+- `declare_program!` CPI functions write the instruction data into a fixed-capacity buffer the caller supplies onchain. `pull_lever` sizes its buffer for a name of up to `MAX_NAME_LEN` (32) bytes and refuses a longer one with `NameTooLong`.
 
 ## Setup
 

@@ -4,6 +4,62 @@ All notable changes to this repository are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-11-14] - Anchor v2 examples on Anchor 2.0.0-rc.4
+
+Anchor 2.0.0-rc.3 replaced v2's duplicate mutable account check with the borrows each
+account wrapper takes on account data, removed the `unsafe(dup)` constraint, and made
+`Context::remaining_accounts()` infallible. 2.0.0-rc.4's changelog lists only TypeScript
+client changes, but it also ships anchor#5185, which takes heap-allocated types out of
+v2's public API: `Box` accounts are gone, CPI account lists and `declare_program!`
+instruction data go in fixed-capacity buffers the caller sizes, and onchain CPIs take a
+`CpiInstruction` rather than a `solana_instruction::Instruction`. anchor#4891 also drops
+`Interface`'s lifetime parameter.
+
+### Changed
+
+- All 56 Anchor v2 examples move `anchor-lang` and `anchor-spl` from `2.0.0-rc.2` to
+  `2.0.0-rc.4`, and `anchor-v2-testing` from revision `a2066021` to `2cdb58ba`, the
+  commit the `v2.0.0-rc.4` tag points at. `wincode` stays on 0.6, which rc.4 also uses.
+- The Anchor v2 workflow installs and caches `anchor-cli 2.0.0-rc.4`. Every Anchor v2
+  README, `CONTRIBUTING.md`, the root `README.md` and `docs/anchor-v2-migration.md` name
+  rc.4.
+- `token-minter`'s and `transfer-tokens`' `mint`, and `transfer-switch`'s
+  `configure_admin`, mark the fields that may name the same account `#[account(mut)]`
+  instead of `#[account(unsafe(dup))]`. `Signer`, `SystemAccount` and `UncheckedAccount`
+  take no borrow on account data, so they may alias with no constraint.
+- The eleven calls to `remaining_accounts()` in `cnft-burn`, `cnft-vault`, `cutils`,
+  `lending`, `managed-fund`, `order-book` and `transfer-fee` drop the `?`. The method
+  returns `&[AccountView]`; `transfer-fee`'s `harvest` copies it with `.to_vec()` to
+  build `CpiHandleMut`s, which take `&mut AccountView`.
+- The 245 `Box<...>` account fields across nine finance examples, `transfer-cost` and
+  `allow-block-list-token` are unboxed, and the comments and `order-book` README notes
+  that explained the boxing are removed. No Anchor v2 example exceeds the 4 KB stack
+  frame unboxed. The three `**context.accounts.x = ...` assignments become `*...`.
+- The 81 `Interface<'static, TokenInterface>` fields are `Interface<TokenInterface>`.
+- All 176 `CpiContext::new` and `CpiContext::new_with_signer` calls name their account
+  capacity, `CpiContext::<_, N>`, with `N` the number of accounts in the CPI's accounts
+  struct.
+- `transfer-fee`'s `harvest` takes at most `MAX_HARVEST_SOURCES` (16) token accounts and
+  sizes its `CpiContext` for the mint plus that many; more fail with the new
+  `TooManyHarvestSources` error, which `test_transfer_fee_full_flow` checks.
+- `cross-program-invocation`'s `hand` passes `switch_power` the `FixedVec` instruction-data
+  buffer the generated CPI function takes onchain, and refuses a `name` over
+  `MAX_NAME_LEN` (32) bytes with the new `NameTooLong` error.
+  `test_pull_lever_name_length_limit` tests a 32-byte and a 33-byte name.
+- `cnft-burn`, `cnft-vault` and `cutils` build their Bubblegum and account-compression
+  CPIs as a local `OwnedInstruction`, which implements `CpiInstruction`.
+- `order-book`'s `place_order` calls `BorshAccount::load_mut` without `unsafe`; the
+  method is safe in rc.4.
+- `escrow`'s `test_make_offer_rejects_same_mint` and `options`'
+  `test_writer_cannot_buy_their_own_option` expect `AccountBorrowFailed`, the error a
+  mutable account in two slots now fails with.
+- `docs/anchor-v2-migration.md` replaces "Duplicate Mutable Accounts Are Rejected" with
+  "Duplicate Accounts Fail Through Borrows", and covers unboxed accounts, `CpiContext`
+  capacities, `declare_program!` data buffers, `OwnedInstruction` and the safe
+  `load_mut`.
+- `basics/transaction-v1/anchor/README.md` states that `@anchor-lang/core` 2.0.0-rc.4
+  needs `@solana/kit` 8.5 or later and builds v1 transaction messages by default.
+
 ## [2026-11-07] - Transfer Hook - Whitelist becomes Transfer Hook - Allow List, with no size limit
 
 The whitelist example kept every allowed address in one account, capped at eleven,

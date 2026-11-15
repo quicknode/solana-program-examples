@@ -90,9 +90,10 @@ pub fn handler(
     // The proof lengths are client-supplied: bounds-check them against the
     // accounts actually provided before slicing, so adversarial input gets a
     // clean named error instead of a panic.
-    // `remaining_accounts()` returns an owned vec; take it once so the proof
-    // views stay alive for both CPIs below.
-    let proof_accounts = context.remaining_accounts()?;
+    // `remaining_accounts()` returns a slice that borrows the instruction's
+    // input rather than `context`, so the proof accounts stay usable for both
+    // CPIs below.
+    let proof_accounts = context.remaining_accounts();
 
     let proof_1_length = proof_1_length as usize;
     let proof_2_length = proof_2_length as usize;

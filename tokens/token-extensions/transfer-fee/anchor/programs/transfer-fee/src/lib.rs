@@ -5,6 +5,17 @@ use instructions::*;
 
 declare_id!("4evptdGtALCNT8uTxJhbWBRZpBE8w5oNtmgfSyfQu7td");
 
+/// The most token accounts one `harvest` instruction takes fees from. Anchor
+/// v2 builds each CPI's account list in a fixed-capacity buffer, sized by the
+/// `CpiContext` in `harvest` to the mint plus this many token accounts.
+pub const MAX_HARVEST_SOURCES: usize = 16;
+
+#[error_code]
+pub enum TransferFeeError {
+    #[msg("A harvest passed more than MAX_HARVEST_SOURCES token accounts")]
+    TooManyHarvestSources,
+}
+
 #[program]
 pub mod transfer_fee {
     use super::*;

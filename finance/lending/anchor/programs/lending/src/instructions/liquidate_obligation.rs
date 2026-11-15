@@ -166,13 +166,8 @@ pub fn handle_liquidate_obligation(
     };
 
     // Interactions: liquidator repays, then receives the seized share tokens.
-    //
-    // These accounts are `Box`ed, and `Box`'s `AnchorAccount` impl does not
-    // override `cpi_handle_mut`, so that call would build a handle without
-    // releasing the wrapper's data borrow and the CPI would be rejected with
-    // `AccountBorrowFailed`. `to_cpi_handle_mut` forwards to the inner type.
     transfer_checked(
-        CpiContext::new(
+        CpiContext::<_, 4>::new(
             context.accounts.token_program.address(),
             TransferChecked {
                 from: context.accounts.liquidator_repay_source.to_cpi_handle_mut(),
@@ -198,7 +193,7 @@ pub fn handle_liquidate_obligation(
     // flushes the pending writes, and `reacquire_borrow_mut` re-reads them.
     context.accounts.obligation.release_borrow()?;
     transfer_checked(
-        CpiContext::new_with_signer(
+        CpiContext::<_, 4>::new_with_signer(
             context.accounts.token_program.address(),
             TransferChecked {
                 from: context
@@ -223,7 +218,7 @@ pub fn handle_liquidate_obligation(
         // view rather than two borrows of the same field.
         let mut destination_view = *context.accounts.obligation.account();
         let authority_view = *context.accounts.obligation.account();
-        close_account(CpiContext::new_with_signer(
+        close_account(CpiContext::<_, 3>::new_with_signer(
             context.accounts.token_program.address(),
             CloseAccount {
                 account: context
@@ -241,12 +236,10 @@ pub fn handle_liquidate_obligation(
     Ok(())
 }
 
-// Liquidation touches 13 accounts; every Account/InterfaceAccount is boxed so
-// account deserialization happens on the heap and stays within the BPF stack frame.
 #[derive(Accounts)]
 pub struct LiquidateObligation {
     #[account(mut)]
-    pub obligation: Box<BorshAccount<Obligation>>,
+    pub obligation: BorshAccount<Obligation>,
 
     pub liquidator: Signer,
 
@@ -254,27 +247,27 @@ pub struct LiquidateObligation {
         mut,
         constraint = repay_reserve.lending_market == obligation.lending_market @ LendingError::MarketMismatch,
     )]
-    pub repay_reserve: Box<BorshAccount<Reserve>>,
+    pub repay_reserve: BorshAccount<Reserve>,
 
     #[account(
         constraint = collateral_reserve.lending_market == obligation.lending_market @ LendingError::MarketMismatch,
     )]
-    pub collateral_reserve: Box<BorshAccount<Reserve>>,
+    pub collateral_reserve: BorshAccount<Reserve>,
 
     #[account(address = repay_reserve.price_feed)]
-    pub repay_price_feed: Box<BorshAccount<PriceFeed>>,
+    pub repay_price_feed: BorshAccount<PriceFeed>,
 
     #[account(address = collateral_reserve.price_feed)]
-    pub collateral_price_feed: Box<BorshAccount<PriceFeed>>,
+    pub collateral_price_feed: BorshAccount<PriceFeed>,
 
     #[account(address = repay_reserve.liquidity_mint)]
-    pub repay_liquidity_mint: Box<InterfaceAccount<Mint>>,
+    pub repay_liquidity_mint: InterfaceAccount<Mint>,
 
     #[account(address = collateral_reserve.share_mint)]
-    pub collateral_share_mint: Box<InterfaceAccount<Mint>>,
+    pub collateral_share_mint: InterfaceAccount<Mint>,
 
     #[account(mut, address = repay_reserve.liquidity_vault)]
-    pub repay_liquidity_vault: Box<InterfaceAccount<TokenAccount>>,
+    pub repay_liquidity_vault: InterfaceAccount<TokenAccount>,
 
     #[account(
         mut,
@@ -283,13 +276,13 @@ pub struct LiquidateObligation {
         token::mint = collateral_share_mint,
         token::authority = obligation,
     )]
-    pub obligation_collateral_vault: Box<InterfaceAccount<TokenAccount>>,
+    pub obligation_collateral_vault: InterfaceAccount<TokenAccount>,
 
     #[account(mut)]
-    pub liquidator_repay_source: Box<InterfaceAccount<TokenAccount>>,
+    pub liquidator_repay_source: InterfaceAccount<TokenAccount>,
 
     #[account(mut)]
-    pub liquidator_collateral_dest: Box<InterfaceAccount<TokenAccount>>,
+    pub liquidator_collateral_dest: InterfaceAccount<TokenAccount>,
 
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
 }

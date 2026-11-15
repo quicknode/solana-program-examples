@@ -36,7 +36,7 @@ pub mod cpi_guard {
             let signer_seeds: &[&[&[u8]]] = &[&[b"pda", &[context.bumps.recipient_token_account]]];
 
             create_account(
-                CpiContext::new(
+                CpiContext::<_, 2>::new(
                     context.accounts.system_program.address(),
                     CreateAccount {
                         from: context.accounts.sender.cpi_handle_mut(),
@@ -50,7 +50,7 @@ pub mod cpi_guard {
             )?;
 
             let recipient_handle = context.accounts.recipient_token_account.cpi_handle_mut();
-            initialize_account3(CpiContext::new(
+            initialize_account3(CpiContext::<_, 3>::new(
                 context.accounts.token_program.address(),
                 InitializeAccount3 {
                     account: recipient_handle,
@@ -62,7 +62,7 @@ pub mod cpi_guard {
         }
 
         transfer_checked(
-            CpiContext::new(
+            CpiContext::<_, 4>::new(
                 context.accounts.token_program.address(),
                 TransferChecked {
                     from: context.accounts.sender_token_account.cpi_handle_mut(),

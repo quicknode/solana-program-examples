@@ -42,7 +42,7 @@ pub struct CloseFundraiserAccountConstraints {
     )]
     pub maker_ata: InterfaceAccount<TokenAccount>,
 
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
 
     pub system_program: Program<System>,
 
@@ -122,7 +122,7 @@ pub fn handle_close_fundraiser(accounts: &mut CloseFundraiserAccountConstraints)
             to: accounts.maker_ata.cpi_handle_mut(),
             authority: CpiHandle::readonly(&fundraiser_view),
         };
-        let transfer_context = CpiContext::new_with_signer(
+        let transfer_context = CpiContext::<_, 4>::new_with_signer(
             accounts.token_program.address(),
             transfer_accounts,
             &signer_seeds,
@@ -137,7 +137,7 @@ pub fn handle_close_fundraiser(accounts: &mut CloseFundraiserAccountConstraints)
         destination: accounts.maker.cpi_handle_mut(),
         authority: CpiHandle::readonly(&fundraiser_view),
     };
-    let close_context = CpiContext::new_with_signer(
+    let close_context = CpiContext::<_, 3>::new_with_signer(
         accounts.token_program.address(),
         close_accounts,
         &signer_seeds,

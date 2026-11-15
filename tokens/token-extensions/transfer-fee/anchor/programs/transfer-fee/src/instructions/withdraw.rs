@@ -18,7 +18,7 @@ pub struct WithdrawAccountConstraints {
 // transfer fees "harvested" to the mint account can then be withdraw by the withdraw authority
 // this transfers fees on the mint account to the specified token account
 pub fn handle_process_withdraw(context: &mut Context<WithdrawAccountConstraints>) -> Result<()> {
-    withdraw_withheld_tokens_from_mint(CpiContext::new(
+    withdraw_withheld_tokens_from_mint(CpiContext::<_, 3>::new(
         context.accounts.token_program.address(),
         WithdrawWithheldTokensFromMint {
             mint: context.accounts.mint_account.cpi_handle_mut(),

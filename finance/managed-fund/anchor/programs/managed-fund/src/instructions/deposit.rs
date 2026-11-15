@@ -23,17 +23,17 @@ pub struct DepositAccountConstraints {
         seeds = [b"fund", fund.index.to_le_bytes()],
         bump = fund.bump,
     )]
-    pub fund: Box<BorshAccount<Fund>>,
+    pub fund: BorshAccount<Fund>,
 
     #[account(
         mut,
         seeds = [b"share_mint", fund.address().as_ref()],
         bump
     )]
-    pub share_mint: Box<InterfaceAccount<Mint>>,
+    pub share_mint: InterfaceAccount<Mint>,
 
     #[account(address = fund.usdc_mint @ FundError::InvalidUsdcMint)]
-    pub usdc_mint: Box<InterfaceAccount<Mint>>,
+    pub usdc_mint: InterfaceAccount<Mint>,
 
     #[account(
         mut,
@@ -41,7 +41,7 @@ pub struct DepositAccountConstraints {
         associated_token::authority = depositor,
         associated_token::token_program = token_program
     )]
-    pub depositor_usdc_account: Box<InterfaceAccount<TokenAccount>>,
+    pub depositor_usdc_account: InterfaceAccount<TokenAccount>,
 
     #[account(
         init_if_needed,
@@ -50,7 +50,7 @@ pub struct DepositAccountConstraints {
         associated_token::authority = depositor,
         associated_token::token_program = token_program
     )]
-    pub depositor_share_account: Box<InterfaceAccount<TokenAccount>>,
+    pub depositor_share_account: InterfaceAccount<TokenAccount>,
 
     #[account(
         mut,
@@ -58,7 +58,7 @@ pub struct DepositAccountConstraints {
         associated_token::authority = fund,
         associated_token::token_program = token_program
     )]
-    pub vault_usdc: Box<InterfaceAccount<TokenAccount>>,
+    pub vault_usdc: InterfaceAccount<TokenAccount>,
 
     /// CHECK: Router config PDA from the mock-swap-router program; it owns the
     /// treasury and signs the router's token CPIs
@@ -76,7 +76,7 @@ pub struct DepositAccountConstraints {
     pub swap_router_program: UncheckedAccount,
 
     pub associated_token_program: Program<AssociatedToken>,
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
     pub system_program: Program<System>,
     // remaining_accounts: for each asset index 0..asset_count, in order:
     //   [asset_config, vault, asset_mint, asset_rate, price_feed]
@@ -121,7 +121,7 @@ pub fn handle_deposit(
     // matching index, makes it impossible to omit an asset and understate NAV.
     // Each asset is valued rounding up, so NAV is never understated and the
     // floored share count below rounds against the depositor, not the holders.
-    let remaining = context.remaining_accounts()?;
+    let remaining = context.remaining_accounts();
     require!(
         remaining.len() == asset_count * 5,
         FundError::IncompleteAssetAccounts
@@ -185,7 +185,8 @@ pub fn handle_deposit(
         to: context.accounts.vault_usdc.to_cpi_handle_mut(),
         authority: context.accounts.depositor.cpi_handle(),
     };
-    let cpi_ctx = CpiContext::new(context.accounts.token_program.address(), transfer_accounts);
+    let cpi_ctx =
+        CpiContext::<_, 4>::new(context.accounts.token_program.address(), transfer_accounts);
     transfer_checked(cpi_ctx, usdc_amount, usdc_decimals)?;
 
     let index_bytes = fund_index.to_le_bytes();
@@ -261,7 +262,7 @@ pub fn handle_deposit(
             token_program: context.accounts.token_program.cpi_handle(),
             system_program: context.accounts.system_program.cpi_handle(),
         };
-        let cpi_ctx = CpiContext::new_with_signer(
+        let cpi_ctx = CpiContext::<_, 11>::new_with_signer(
             context.accounts.swap_router_program.address(),
             cpi_accounts,
             signer_seeds,
@@ -292,7 +293,7 @@ pub fn handle_deposit(
         to: context.accounts.depositor_share_account.to_cpi_handle_mut(),
         authority: context.accounts.fund.to_cpi_handle(),
     };
-    let cpi_ctx = CpiContext::new_with_signer(
+    let cpi_ctx = CpiContext::<_, 3>::new_with_signer(
         context.accounts.token_program.address(),
         mint_accounts,
         signer_seeds,

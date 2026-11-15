@@ -19,7 +19,7 @@ pub struct AttachToMintAccountConstraints {
         mut,
         mint::token_program = token_program,
     )]
-    pub mint: Box<InterfaceAccount<Mint>>,
+    pub mint: InterfaceAccount<Mint>,
 
     #[account(
         init,
@@ -43,7 +43,7 @@ impl AttachToMintAccountConstraints {
             authority: self.payer.cpi_handle(),
         };
 
-        let context = CpiContext::new(self.token_program.address(), tx_hook_accs);
+        let context = CpiContext::<_, 2>::new(self.token_program.address(), tx_hook_accs);
 
         transfer_hook_update(context, Some(&crate::ID))?;
 

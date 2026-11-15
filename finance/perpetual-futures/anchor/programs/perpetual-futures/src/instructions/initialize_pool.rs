@@ -182,9 +182,9 @@ pub struct InitializePoolAccountConstraints {
         seeds = [POOL_SEED, collateral_mint.address().as_ref(), oracle_feed.address().as_ref()],
         bump,
     )]
-    pub pool: Box<BorshAccount<Pool>>,
+    pub pool: BorshAccount<Pool>,
 
-    pub collateral_mint: Box<InterfaceAccount<Mint>>,
+    pub collateral_mint: InterfaceAccount<Mint>,
 
     /// CHECK: The oracle feed account. Its key and its owning program are
     /// stored on the pool, and every read, including the one here that seeds
@@ -204,7 +204,7 @@ pub struct InitializePoolAccountConstraints {
         mint::authority = pool,
         mint::token_program = token_program,
     )]
-    pub lp_mint: Box<InterfaceAccount<Mint>>,
+    pub lp_mint: InterfaceAccount<Mint>,
 
     /// Custody vault for all collateral. The pool account owns it and signs
     /// every transfer out with its own seeds.
@@ -217,9 +217,9 @@ pub struct InitializePoolAccountConstraints {
         token::authority = pool,
         token::token_program = token_program,
     )]
-    pub custody_vault: Box<InterfaceAccount<TokenAccount>>,
+    pub custody_vault: InterfaceAccount<TokenAccount>,
 
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
     pub associated_token_program: Program<AssociatedToken>,
     pub system_program: Program<System>,
 }

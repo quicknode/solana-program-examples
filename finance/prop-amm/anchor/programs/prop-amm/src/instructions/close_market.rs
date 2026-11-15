@@ -44,7 +44,7 @@ pub fn handle_close_market(context: &mut Context<CloseMarketAccountConstraints>)
     context.accounts.market.release_borrow()?;
     let market_view = *context.accounts.market.account();
 
-    close_account(CpiContext::new_with_signer(
+    close_account(CpiContext::<_, 3>::new_with_signer(
         context.accounts.token_program.address(),
         CloseAccount {
             account: context.accounts.base_vault.to_cpi_handle_mut(),
@@ -54,7 +54,7 @@ pub fn handle_close_market(context: &mut Context<CloseMarketAccountConstraints>)
         &[market_seeds],
     ))?;
 
-    close_account(CpiContext::new_with_signer(
+    close_account(CpiContext::<_, 3>::new_with_signer(
         context.accounts.token_program.address(),
         CloseAccount {
             account: context.accounts.quote_vault.to_cpi_handle_mut(),
@@ -83,7 +83,7 @@ pub struct CloseMarketAccountConstraints {
         bump = market.bump,
         close = operator,
     )]
-    pub market: Box<BorshAccount<Market>>,
+    pub market: BorshAccount<Market>,
 
     #[account(
         mut,
@@ -91,7 +91,7 @@ pub struct CloseMarketAccountConstraints {
         bump,
         address = market.base_vault,
     )]
-    pub base_vault: Box<InterfaceAccount<TokenAccount>>,
+    pub base_vault: InterfaceAccount<TokenAccount>,
 
     #[account(
         mut,
@@ -99,7 +99,7 @@ pub struct CloseMarketAccountConstraints {
         bump,
         address = market.quote_vault,
     )]
-    pub quote_vault: Box<InterfaceAccount<TokenAccount>>,
+    pub quote_vault: InterfaceAccount<TokenAccount>,
 
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
 }

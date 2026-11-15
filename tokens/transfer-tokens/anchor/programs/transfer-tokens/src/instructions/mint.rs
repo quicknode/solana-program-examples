@@ -9,10 +9,11 @@ use {
 #[derive(Accounts)]
 pub struct MintTokenAccountConstraints {
     // The mint authority and the recipient may be the same account (minting or
-    // sending to yourself). v2 rejects an account that appears twice while any
-    // of its slots is in the mutable mask, and `unsafe(dup)` takes this one out
-    // of that mask while keeping it writable.
-    #[account(unsafe(dup))]
+    // sending to yourself). Anchor v2 catches aliasing through the borrow each
+    // account wrapper takes on the account's data, and `Signer` and
+    // `SystemAccount` take none, so the two fields may name the same account.
+    // `mint_authority` is writable because it pays for the token account.
+    #[account(mut)]
     pub mint_authority: Signer,
 
     pub recipient: SystemAccount,
@@ -29,7 +30,7 @@ pub struct MintTokenAccountConstraints {
     )]
     pub associated_token_account: InterfaceAccount<TokenAccount>,
 
-    pub token_program: Interface<'static, TokenInterface>,
+    pub token_program: Interface<TokenInterface>,
     pub associated_token_program: Program<AssociatedToken>,
     pub system_program: Program<System>,
 }
@@ -52,7 +53,7 @@ pub fn handle_mint_token(
 
     // Invoke the mint_to instruction on the token program
     mint_to(
-        CpiContext::new(
+        CpiContext::<_, 3>::new(
             context.accounts.token_program.address(),
             MintTo {
                 mint: context.accounts.mint_account.cpi_handle_mut(),

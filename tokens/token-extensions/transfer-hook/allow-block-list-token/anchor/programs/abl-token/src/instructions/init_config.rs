@@ -13,14 +13,14 @@ pub struct InitConfigAccountConstraints {
         seeds = [CONFIG_SEED],
         bump,
     )]
-    pub config: Box<BorshAccount<Config>>,
+    pub config: BorshAccount<Config>,
 
     pub system_program: Program<System>,
 }
 
 impl InitConfigAccountConstraints {
     pub fn init_config(&mut self, config_bump: u8) -> Result<()> {
-        **self.config = Config {
+        *self.config = Config {
             authority: *self.payer.address(),
             bump: config_bump,
         };
