@@ -194,10 +194,23 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: lts/*
+      # Fetched from the GitHub release rather than release.anza.xyz: that host
+      # has no usable artefact for parts of the 4.x line (the beta-channel notes
+      # in native.yml record a 404 for v4.0), and the release asset is a plain
+      # static URL, so this also avoids the GitHub API rate limiting that made
+      # the other workflows pin an exact version.
+      #
+      # 4.3.2 matches the Agave crate line the examples pin: LiteSVM 0.18.1
+      # resolves solana-* at ~4.3 (see the pins added in 3134c69b), so the
+      # toolchain that builds the .so is from the same era as the runtime that
+      # executes it. Bump this together with those crate pins.
       - name: Install Solana CLI
         run: |
-          sh -c "$(curl -sSfL https://release.anza.xyz/v3.1.14/install)"
-          echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+          curl -sSfL -o /tmp/solana-release.tar.bz2 \
+            https://github.com/anza-xyz/agave/releases/download/v4.3.2/solana-release-x86_64-unknown-linux-gnu.tar.bz2
+          mkdir -p "$HOME/.local/share/solana-release"
+          tar -xjf /tmp/solana-release.tar.bz2 -C "$HOME/.local/share/solana-release" --strip-components=1
+          echo "$HOME/.local/share/solana-release/bin" >> "$GITHUB_PATH"
       - name: Cache Anchor toolchain
         uses: actions/cache@v4
         with:
