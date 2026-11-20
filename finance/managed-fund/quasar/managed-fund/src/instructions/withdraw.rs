@@ -76,6 +76,19 @@ pub fn handle_withdraw(
     let fund_key = *accounts.fund.address();
     let user_key = *accounts.user.address();
 
+    // The USDC leg is paid to the withdrawing holder, as each asset leg is
+    // below.
+    require_keys_eq!(
+        accounts.user_usdc_account.owner,
+        user_key,
+        FundError::InvalidRecipient
+    );
+    require_keys_eq!(
+        accounts.user_usdc_account.mint,
+        *accounts.usdc_mint.address(),
+        FundError::InvalidRecipient
+    );
+
     let shares_u128 = shares_to_burn as u128;
     let total_u128 = total_shares as u128;
 

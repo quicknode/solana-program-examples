@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased (2026-11-10)
+
+### Added
+
+- **Tests for the price-feed and recipient checks.** No test triggered `InvalidPriceFeed`, `NegativePrice`, `StalePriceFeed` or `InvalidRecipient`. Each new test asserts the error and that no tokens or shares moved: `test_wrong_price_feed_rejected` passes TSLAx's fresh, fully verified feed in NVDAx's place and checks that a deposit and a rebalance both fail with `InvalidPriceFeed`, then that NVDAx's own feed gives `test_rebalance`'s trade; `test_truncated_price_feed_rejected` writes NVDAx's price account cut off at 125 bytes, before its `posted_slot`, and checks `InvalidPriceFeed`; `test_non_positive_price_rejected` checks that a price of zero and one of −$180 both fail with `NegativePrice`, and that at $180 again Bob's 480 USDC mints 480,000,000 shares; `test_stale_price_rejected` checks that a price 61 seconds old fails with `StalePriceFeed` and one exactly 60 seconds old is accepted; `test_withdraw_rejects_recipient_owned_by_someone_else` checks that Alice naming Bob's TSLAx account fails with `InvalidRecipient`, and `test_withdraw_rejects_recipient_for_another_mint` that naming her NVDAx account for her TSLAx does too. The tests gain `write_price_feed_account`, `withdraw_remaining_to`, `withdraw_instruction` and `balances` helpers. The program is unchanged.
+
 ## [Unreleased] - 2026-10-05
 
 ### Changed

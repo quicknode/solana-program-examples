@@ -22,7 +22,15 @@
 //! `test_wide_confidence_price_rejected` shows a feed whose confidence interval
 //! is past 1% of its price stops deposit and rebalance but not withdraw, and
 //! `test_collect_fees` and `test_collect_fees_rounds_up` mint the manager a
-//! year's fee exactly and a day's fee rounded up.
+//! year's fee exactly and a day's fee rounded up. The price-feed checks each
+//! have a test that asserts the error and that no tokens or shares move:
+//! `test_wrong_price_feed_rejected` (another asset's feed, in a deposit and a
+//! rebalance), `test_truncated_price_feed_rejected`,
+//! `test_non_positive_price_rejected` and `test_stale_price_rejected`. So do
+//! the recipient checks: `test_withdraw_rejects_recipient_owned_by_someone_else`,
+//! `test_withdraw_rejects_recipient_for_another_mint`,
+//! `test_deposit_rejects_share_account_owned_by_someone_else` and
+//! `test_collect_fees_rejects_share_account_owned_by_someone_else`.
 
 use {
     crate::{
@@ -145,6 +153,11 @@ fn write_price_feed_with_confidence(
     data[89..93].copy_from_slice(&exponent.to_le_bytes());
     data[93..101].copy_from_slice(&publish_time.to_le_bytes());
     data[125..133].copy_from_slice(&posted_slot.to_le_bytes());
+    write_price_feed_account(test, feed, data);
+}
+
+/// Store `data` as a Pyth price account at `feed`.
+fn write_price_feed_account(test: &mut Test, feed: Pubkey, data: Vec<u8>) {
     test.set_account(Account::new(feed, FEED_OWNER, 1_000_000, data));
 }
 
@@ -166,7 +179,7 @@ fn add_partially_verified_pyth_feed(
     data[90..94].copy_from_slice(&(-8i32).to_le_bytes());
     data[94..102].copy_from_slice(&publish_time.to_le_bytes());
     data[126..134].copy_from_slice(&1u64.to_le_bytes());
-    test.set_account(Account::new(PRICE_FEED, FEED_OWNER, 1_000_000, data));
+    write_price_feed_account(test, PRICE_FEED, data);
 }
 
 /// Pin the LastRestartSlot sysvar account, simulating a cluster restart at
@@ -863,16 +876,32 @@ fn do_deposit(test: &mut Test, user: &User, usdc_amount: u64) {
 
 /// Burn `shares` of the standard fund and take the payout in kind.
 fn do_withdraw(test: &mut Test, user: &User, shares: u64) {
+    let ix = withdraw_to(test, user, shares, user.tsla, user.nvda);
+    test.send(ix).succeeds();
+}
+
+/// A withdrawal of `shares` of the standard fund by `user`, paying TSLAx to
+/// `tsla_recipient` and NVDAx to `nvda_recipient`.
+fn withdraw_to(
+    test: &Test,
+    user: &User,
+    shares: u64,
+    tsla_recipient: Pubkey,
+    nvda_recipient: Pubkey,
+) -> WithdrawInstruction {
     let mut remaining_accounts = Vec::new();
-    for (index, mint, user_asset) in [(0, TSLA_MINT, user.tsla), (1, NVDA_MINT, user.nvda)] {
+    for (index, mint, recipient) in [
+        (0, TSLA_MINT, tsla_recipient),
+        (1, NVDA_MINT, nvda_recipient),
+    ] {
         remaining_accounts.extend([
             AccountMeta::new_readonly(asset_config_pda(test, index), false),
             AccountMeta::new(asset_vault_pda(test, index), false),
             AccountMeta::new_readonly(mint, false),
-            AccountMeta::new(user_asset, false),
+            AccountMeta::new(recipient, false),
         ]);
     }
-    test.send(WithdrawInstruction {
+    WithdrawInstruction {
         user: user.owner,
         fund_index_seed: FUND_INDEX,
         usdc_mint: USDC_MINT,
@@ -881,8 +910,7 @@ fn do_withdraw(test: &mut Test, user: &User, shares: u64) {
         shares_to_burn: shares,
         min_usdc_out: 0,
         remaining_accounts,
-    })
-    .succeeds();
+    }
 }
 
 /// Move NVDAx's price: rewrite its Pyth feed and update the router rate to match.
@@ -1449,4 +1477,297 @@ fn test_collect_fees_rounds_up(test: &mut Test) {
         .has_tokens(manager_share, 27_398);
     let fund = test.read::<Fund>(fund_pda(test));
     assert_eq!(u64::from(fund.total_shares), 1_000_027_398);
+}
+
+/// The balances a refused transaction must leave as they were: the fund's
+/// three vaults, the router's USDC treasury and `token_accounts`, then the
+/// fund's recorded share supply.
+fn balances(test: &Test, token_accounts: &[Pubkey]) -> Vec<u64> {
+    let mut accounts = vec![
+        usdc_vault_pda(test),
+        asset_vault_pda(test, 0),
+        asset_vault_pda(test, 1),
+        router_treasury_pda(),
+    ];
+    accounts.extend_from_slice(token_accounts);
+    let mut balances: Vec<u64> = accounts
+        .iter()
+        .map(|account| test.tokens(*account))
+        .collect();
+    balances.push(u64::from(test.read::<Fund>(fund_pda(test)).total_shares));
+    balances
+}
+
+/// Each asset is priced from the Pyth account the registry bound to it. A
+/// fresh, fully verified feed for another asset is refused with
+/// `InvalidPriceFeed`: with TSLAx's $250 feed in NVDAx's place, a deposit and
+/// a rebalance both fail and no tokens or shares move. With NVDAx's own feed
+/// the same rebalance makes `test_rebalance`'s trade.
+#[quasar_test]
+fn test_wrong_price_feed_rejected(test: &mut Test) {
+    setup_full(test);
+    standard_fund(test);
+
+    // Alice deposits 900 USDC: 1.44 TSLAx + 3.0 NVDAx at 40/60. NVDAx then
+    // rises to $200, so the fund has drifted and needs a rebalance.
+    let alice = fund_user(test, 900_000_000);
+    do_deposit(test, &alice, 900_000_000);
+    set_nvda_price(test, 20_000_000_000, 200_000_000);
+
+    // NVDAx's price feed is the fifth of its five accounts, the tenth overall.
+    let mut remaining = deposit_remaining(test);
+    remaining[9] = AccountMeta::new_readonly(TSLA_FEED, false);
+
+    let bob = fund_user(test, 480_000_000);
+    let before = balances(test, &[bob.usdc, bob.share]);
+    let ix = deposit_instruction(&bob, 480_000_000, remaining.clone());
+    test.send(ix).fails_with(FundError::InvalidPriceFeed);
+    let stranger = test.add(Wallet::new());
+    let ix = rebalance_instruction_with(stranger, 1, 0, remaining);
+    test.send(ix).fails_with(FundError::InvalidPriceFeed);
+    assert_eq!(
+        balances(test, &[bob.usdc, bob.share]),
+        before,
+        "no tokens or shares moved"
+    );
+
+    // With NVDAx's own feed the rebalance sells 0.12 NVDAx and buys 0.096 TSLAx.
+    do_rebalance(test, 1, 0);
+    let (_, holdings) = read_holdings(test);
+    assert_eq!(holdings[0], 153_600_000);
+    assert_eq!(holdings[1], 288_000_000);
+    assert_holdings_match_vaults(test);
+}
+
+/// A price account too short to hold a whole Pyth price update, here cut off
+/// before its eight-byte `posted_slot` at offset 125, is refused with
+/// `InvalidPriceFeed` and no tokens or shares move. Written whole again at the
+/// same price, the same deposit mints its shares.
+#[quasar_test]
+fn test_truncated_price_feed_rejected(test: &mut Test) {
+    setup_full(test);
+    standard_fund(test);
+
+    let amount = 1_000_000u64; // 1 USDC
+    let user = fund_user(test, amount);
+    let mut data = vec![0u8; 125];
+    data[40] = 1; // VerificationLevel::Full
+    data[73..81].copy_from_slice(&NVDA_PRICE.to_le_bytes());
+    data[89..93].copy_from_slice(&(-8i32).to_le_bytes());
+    data[93..101].copy_from_slice(&NOW.to_le_bytes());
+    write_price_feed_account(test, NVDA_FEED, data);
+
+    let before = balances(test, &[user.usdc, user.share]);
+    test.send(deposit_instruction(&user, amount, deposit_remaining(test)))
+        .fails_with(FundError::InvalidPriceFeed);
+    assert_eq!(
+        balances(test, &[user.usdc, user.share]),
+        before,
+        "no tokens or shares moved"
+    );
+
+    write_price_feed(test, NVDA_FEED, NVDA_PRICE, -8, NOW, 1);
+    do_deposit(test, &user, amount);
+    assert_eq!(test.tokens(user.share), amount);
+}
+
+/// Pyth reports a price as a signed integer. A price of zero values an asset at
+/// nothing, and a negative one below nothing, so Bob's deposit would be priced
+/// against a NAV missing Alice's NVDAx. Both are refused with `NegativePrice`
+/// and no tokens or shares move. At NVDAx's $180 again, Bob's 480 USDC buys
+/// 480,000,000 shares against Alice's 900 USDC and 900,000,000 shares.
+#[quasar_test]
+fn test_non_positive_price_rejected(test: &mut Test) {
+    setup_full(test);
+    standard_fund(test);
+
+    let alice = fund_user(test, 900_000_000);
+    do_deposit(test, &alice, 900_000_000);
+
+    let bob = fund_user(test, 480_000_000);
+    let before = balances(test, &[bob.usdc, bob.share]);
+    for price in [0, -NVDA_PRICE] {
+        write_price_feed(test, NVDA_FEED, price, -8, NOW, 1);
+        let ix = deposit_instruction(&bob, 480_000_000, deposit_remaining(test));
+        test.send(ix).fails_with(FundError::NegativePrice);
+    }
+    assert_eq!(
+        balances(test, &[bob.usdc, bob.share]),
+        before,
+        "no tokens or shares moved"
+    );
+
+    write_price_feed(test, NVDA_FEED, NVDA_PRICE, -8, NOW, 1);
+    do_deposit(test, &bob, 480_000_000);
+    assert_eq!(test.tokens(bob.share), 480_000_000);
+}
+
+/// A price published more than 60 seconds ago is refused with
+/// `StalePriceFeed` and no tokens or shares move. Both feeds were published at
+/// `NOW`: at 61 seconds past it the deposit fails, and at exactly 60 the same
+/// deposit mints its shares.
+#[quasar_test]
+fn test_stale_price_rejected(test: &mut Test) {
+    setup_full(test);
+    standard_fund(test);
+
+    let amount = 1_000_000u64; // 1 USDC
+    let user = fund_user(test, amount);
+    let before = balances(test, &[user.usdc, user.share]);
+
+    test.warp_to_timestamp(NOW + 61);
+    test.send(deposit_instruction(&user, amount, deposit_remaining(test)))
+        .fails_with(FundError::StalePriceFeed);
+    assert_eq!(
+        balances(test, &[user.usdc, user.share]),
+        before,
+        "no tokens or shares moved"
+    );
+
+    test.warp_to_timestamp(NOW + 60);
+    do_deposit(test, &user, amount);
+    assert_eq!(test.tokens(user.share), amount);
+}
+
+/// Withdraw pays each asset to a token account the caller names, and each must
+/// belong to the holder whose shares are burned. Alice naming Bob's TSLAx
+/// account for her TSLAx is refused with `InvalidRecipient`: no shares are
+/// burned and no tokens move. Named her own, the same withdrawal pays her
+/// 1.44 TSLAx and 3.0 NVDAx.
+#[quasar_test]
+fn test_withdraw_rejects_recipient_owned_by_someone_else(test: &mut Test) {
+    setup_full(test);
+    standard_fund(test);
+
+    let alice = fund_user(test, 900_000_000);
+    do_deposit(test, &alice, 900_000_000);
+    let bob = fund_user(test, 0);
+
+    let watched = [alice.share, alice.tsla, alice.nvda, bob.tsla];
+    let before = balances(test, &watched);
+    let ix = withdraw_to(test, &alice, 900_000_000, bob.tsla, alice.nvda);
+    test.send(ix).fails_with(FundError::InvalidRecipient);
+    assert_eq!(
+        balances(test, &watched),
+        before,
+        "no tokens or shares moved"
+    );
+
+    do_withdraw(test, &alice, 900_000_000);
+    assert_eq!(test.tokens(alice.tsla), 144_000_000);
+    assert_eq!(test.tokens(alice.nvda), 300_000_000);
+    assert_eq!(test.tokens(bob.tsla), 0);
+}
+
+/// The USDC leg of a withdrawal is paid to a USDC account that must belong to
+/// the holder whose shares are burned, as each asset leg is. Alice naming Bob's
+/// USDC account is refused with `InvalidRecipient`: no shares are burned and no
+/// tokens move. Named her own, the same withdrawal succeeds.
+#[quasar_test]
+fn test_withdraw_rejects_usdc_recipient_owned_by_someone_else(test: &mut Test) {
+    setup_full(test);
+    standard_fund(test);
+
+    let alice = fund_user(test, 900_000_000);
+    do_deposit(test, &alice, 900_000_000);
+    let bob = fund_user(test, 0);
+
+    let watched = [alice.share, alice.usdc, alice.tsla, alice.nvda, bob.usdc];
+    let before = balances(test, &watched);
+    let mut ix = withdraw_to(test, &alice, 900_000_000, alice.tsla, alice.nvda);
+    ix.user_usdc_account = bob.usdc;
+    test.send(ix).fails_with(FundError::InvalidRecipient);
+    assert_eq!(
+        balances(test, &watched),
+        before,
+        "no tokens or shares moved"
+    );
+
+    do_withdraw(test, &alice, 900_000_000);
+    assert_eq!(test.tokens(alice.share), 0);
+    assert_eq!(test.tokens(bob.usdc), 0);
+}
+
+/// Each asset's recipient must hold that asset. Alice naming her own NVDAx
+/// account for her TSLAx is refused with `InvalidRecipient`: no shares are
+/// burned and no tokens move.
+#[quasar_test]
+fn test_withdraw_rejects_recipient_for_another_mint(test: &mut Test) {
+    setup_full(test);
+    standard_fund(test);
+
+    let alice = fund_user(test, 900_000_000);
+    do_deposit(test, &alice, 900_000_000);
+
+    let watched = [alice.share, alice.tsla, alice.nvda];
+    let before = balances(test, &watched);
+    let ix = withdraw_to(test, &alice, 900_000_000, alice.nvda, alice.nvda);
+    test.send(ix).fails_with(FundError::InvalidRecipient);
+    assert_eq!(
+        balances(test, &watched),
+        before,
+        "no tokens or shares moved"
+    );
+}
+
+/// Deposit mints shares to the share account the depositor names, which must
+/// belong to the depositor. Bob naming Alice's share account is refused with
+/// `InvalidRecipient`: Alice gains no shares and no tokens move. Named his own,
+/// the same deposit mints Bob 480,000,000 shares.
+#[quasar_test]
+fn test_deposit_rejects_share_account_owned_by_someone_else(test: &mut Test) {
+    setup_full(test);
+    standard_fund(test);
+
+    let alice = fund_user(test, 900_000_000);
+    do_deposit(test, &alice, 900_000_000);
+    let bob = fund_user(test, 480_000_000);
+
+    let watched = [alice.share, bob.usdc, bob.share];
+    let before = balances(test, &watched);
+    let mut ix = deposit_instruction(&bob, 480_000_000, deposit_remaining(test));
+    ix.depositor_share_account = alice.share;
+    test.send(ix).fails_with(FundError::InvalidRecipient);
+    assert_eq!(
+        balances(test, &watched),
+        before,
+        "no tokens or shares moved"
+    );
+
+    do_deposit(test, &bob, 480_000_000);
+    assert_eq!(test.tokens(bob.share), 480_000_000);
+    assert_eq!(test.tokens(alice.share), 900_000_000);
+}
+
+/// The management fee is minted to a share account that must belong to the
+/// fund's manager, since anyone may send `collect_fees`. A share account
+/// belonging to Bob is refused with `InvalidRecipient` and no shares are
+/// minted. Named the manager's, the same collection mints a year's 1% fee,
+/// 10,000,000 shares.
+#[quasar_test]
+fn test_collect_fees_rejects_share_account_owned_by_someone_else(test: &mut Test) {
+    setup_full(test);
+    standard_fund(test);
+    let alice = fund_user(test, 1_000_000_000);
+    do_deposit(test, &alice, 1_000_000_000);
+    let bob = fund_user(test, 0);
+
+    test.warp_to_timestamp(NOW + SECONDS_PER_YEAR);
+    let (manager_share, instruction) = collect_fees(test);
+    let to_bob = CollectFeesInstruction {
+        manager_share_account: bob.share,
+        ..instruction
+    };
+    let before = balances(test, &[bob.share, manager_share]);
+    test.send(to_bob).fails_with(FundError::InvalidRecipient);
+    assert_eq!(
+        balances(test, &[bob.share, manager_share]),
+        before,
+        "no shares minted"
+    );
+
+    test.send(instruction)
+        .succeeds()
+        .has_tokens(manager_share, 10_000_000);
+    assert_eq!(test.tokens(bob.share), 0);
 }

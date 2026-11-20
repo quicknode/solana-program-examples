@@ -95,18 +95,7 @@ fn write_price_feed_with_confidence(
 ) {
     let data =
         build_mock_price_update_account(price, confidence, exponent, PUBLISH_TIME, posted_slot);
-    let rent = svm.minimum_balance_for_rent_exemption(data.len());
-    svm.set_account(
-        key,
-        SolanaAccount {
-            lamports: rent,
-            data,
-            owner: pyth_receiver_program_id(),
-            executable: false,
-            rent_epoch: 0,
-        },
-    )
-    .unwrap();
+    write_price_feed_account(svm, key, data);
 }
 
 /// Write a Pyth feed as a partially verified update, laid out as Pyth's
@@ -123,6 +112,11 @@ fn write_partially_verified_price_feed(
         build_mock_price_update_account(price, DEFAULT_CONFIDENCE, PYTH_EXPONENT, PUBLISH_TIME, 1);
     data[40] = 0;
     data.insert(41, num_signatures);
+    write_price_feed_account(svm, key, data);
+}
+
+/// Store `data` as a Pyth price account at `key`, owned by the Pyth receiver.
+fn write_price_feed_account(svm: &mut LiteSVM, key: Address, data: Vec<u8>) {
     let rent = svm.minimum_balance_for_rent_exemption(data.len());
     svm.set_account(
         key,
@@ -1485,15 +1479,30 @@ fn test_collect_fees_rounds_up() {
 }
 
 fn withdraw_remaining(ctx: &TestContext, user: &Address) -> Vec<AccountMeta> {
+    withdraw_remaining_to(
+        ctx,
+        derive_ata(user, &ctx.tsla_mint),
+        derive_ata(user, &ctx.nvda_mint),
+    )
+}
+
+/// A withdrawal's remaining accounts, in the order the handler reads:
+/// [asset_config, vault, mint, recipient] per asset, paying TSLAx to
+/// `tsla_recipient` and NVDAx to `nvda_recipient`.
+fn withdraw_remaining_to(
+    ctx: &TestContext,
+    tsla_recipient: Address,
+    nvda_recipient: Address,
+) -> Vec<AccountMeta> {
     vec![
         AccountMeta::new_readonly(ctx.asset_config(0), false),
         AccountMeta::new(ctx.vault_tsla, false),
         AccountMeta::new_readonly(ctx.tsla_mint, false),
-        AccountMeta::new(derive_ata(user, &ctx.tsla_mint), false),
+        AccountMeta::new(tsla_recipient, false),
         AccountMeta::new_readonly(ctx.asset_config(1), false),
         AccountMeta::new(ctx.vault_nvda, false),
         AccountMeta::new_readonly(ctx.nvda_mint, false),
-        AccountMeta::new(derive_ata(user, &ctx.nvda_mint), false),
+        AccountMeta::new(nvda_recipient, false),
     ]
 }
 
@@ -1665,23 +1674,36 @@ fn do_withdraw(ctx: &mut TestContext, user: &Keypair, shares: u64, min_usdc_out:
         None,
     )
     .unwrap();
-    let user_usdc = derive_ata(&user.pubkey(), &ctx.usdc_mint);
-    let user_share = derive_ata(&user.pubkey(), &ctx.share_mint_pda);
+    let remaining = withdraw_remaining(ctx, &user.pubkey());
+    let ix = withdraw_instruction(ctx, user, shares, min_usdc_out, remaining);
+    send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[user], &user.pubkey(), None)
+        .unwrap();
+}
+
+/// A withdrawal of `shares` by `user`, paid in kind to the recipients named in
+/// `remaining`.
+fn withdraw_instruction(
+    ctx: &TestContext,
+    user: &Keypair,
+    shares: u64,
+    min_usdc_out: u64,
+    remaining: Vec<AccountMeta>,
+) -> Instruction {
     let mut metas = managed_fund::accounts::WithdrawAccountConstraints {
         user: user.pubkey(),
         fund: ctx.fund_pda,
         share_mint: ctx.share_mint_pda,
         usdc_mint: ctx.usdc_mint,
-        user_share_account: user_share,
-        user_usdc_account: user_usdc,
+        user_share_account: derive_ata(&user.pubkey(), &ctx.share_mint_pda),
+        user_usdc_account: derive_ata(&user.pubkey(), &ctx.usdc_mint),
         vault_usdc: ctx.vault_usdc,
         associated_token_program: ata_program_id(),
         token_program: token_program_id(),
         system_program: system_program::ID,
     }
     .to_account_metas(None);
-    metas.extend(withdraw_remaining(ctx, &user.pubkey()));
-    let ix = Instruction::new_with_bytes(
+    metas.extend(remaining);
+    Instruction::new_with_bytes(
         ctx.fund_program_id,
         &managed_fund::instruction::Withdraw {
             shares_to_burn: shares,
@@ -1689,9 +1711,7 @@ fn do_withdraw(ctx: &mut TestContext, user: &Keypair, shares: u64, min_usdc_out:
         }
         .data(),
         metas,
-    );
-    send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[user], &user.pubkey(), None)
-        .unwrap();
+    )
 }
 
 #[test]
@@ -2529,4 +2549,333 @@ fn test_partially_verified_price_rejected() {
         333_333
     );
     assert_holdings_match_vaults(&ctx);
+}
+
+/// The balances a refused transaction must leave as they were: the fund's
+/// three vaults, the router's USDC treasury and `token_accounts`, each read as
+/// zero if it does not exist, then the fund's recorded share supply.
+fn balances(ctx: &TestContext, token_accounts: &[Address]) -> Vec<u64> {
+    let mut accounts = vec![
+        ctx.vault_usdc,
+        ctx.vault_tsla,
+        ctx.vault_nvda,
+        ctx.router_usdc_treasury,
+    ];
+    accounts.extend_from_slice(token_accounts);
+    let mut balances: Vec<u64> = accounts
+        .iter()
+        .map(|account| get_token_account_balance(&ctx.svm, account).unwrap_or(0))
+        .collect();
+    balances.push(read_fund(ctx).total_shares);
+    balances
+}
+
+/// Each asset is priced from the Pyth account the registry bound to it. A
+/// fresh, fully verified feed for another asset is refused with
+/// `InvalidPriceFeed`: with TSLAx's $250 feed in NVDAx's place, a deposit and
+/// a rebalance both fail and no tokens or shares move. With NVDAx's own feed
+/// the same rebalance makes `test_rebalance`'s trade.
+#[test]
+fn test_wrong_price_feed_rejected() {
+    let mut ctx = setup_full();
+    standard_fund(&mut ctx);
+
+    // Alice deposits 900 USDC: 1.44 TSLAx + 3.0 NVDAx at 40/60. NVDAx then
+    // rises to $200, so the fund has drifted and needs a rebalance.
+    let alice = fund_user(&mut ctx, 900_000_000);
+    do_deposit(&mut ctx, &alice, 900_000_000, 1);
+    set_nvda_price(&mut ctx, 20_000_000_000, 200_000_000);
+
+    // NVDAx's price feed is the fifth of its five accounts, the tenth overall.
+    let mut remaining = deposit_remaining(&ctx);
+    remaining[9] = AccountMeta::new_readonly(ctx.price_feed_tsla, false);
+
+    let bob = fund_user(&mut ctx, 480_000_000);
+    let bob_accounts = [
+        derive_ata(&bob.pubkey(), &ctx.usdc_mint),
+        derive_ata(&bob.pubkey(), &ctx.share_mint_pda),
+    ];
+    let before = balances(&ctx, &bob_accounts);
+
+    let ix = deposit_instruction(&ctx, &bob, 480_000_000, 1, remaining.clone());
+    assert_program_error(
+        send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[&bob], &bob.pubkey(), None),
+        FundError::InvalidPriceFeed,
+        "a deposit priced from another asset's feed must fail",
+    );
+    let stranger = create_wallet(&mut ctx.svm, 1_000_000_000).unwrap();
+    let ix = rebalance_instruction_with(&ctx, &stranger, 1, 0, remaining);
+    assert_program_error(
+        send_transaction_from_instructions(
+            &mut ctx.svm,
+            vec![ix],
+            &[&stranger],
+            &stranger.pubkey(),
+            None,
+        ),
+        FundError::InvalidPriceFeed,
+        "a rebalance priced from another asset's feed must fail",
+    );
+    assert_eq!(
+        balances(&ctx, &bob_accounts),
+        before,
+        "no tokens or shares moved"
+    );
+
+    // With NVDAx's own feed the rebalance sells 0.12 NVDAx and buys 0.096 TSLAx.
+    do_rebalance(&mut ctx, 1, 0);
+    assert_eq!(read_fund(&ctx).asset_holdings[0], 153_600_000);
+    assert_eq!(read_fund(&ctx).asset_holdings[1], 288_000_000);
+    assert_holdings_match_vaults(&ctx);
+}
+
+/// A price account too short to hold a whole Pyth price update, here cut off
+/// before its eight-byte `posted_slot` at offset 125, is refused with
+/// `InvalidPriceFeed` and no tokens or shares move. Written whole again at the
+/// same price, the same deposit mints its shares.
+#[test]
+fn test_truncated_price_feed_rejected() {
+    let mut ctx = setup_full();
+    standard_fund(&mut ctx);
+
+    let amount = 1_000_000u64; // 1 USDC
+    let user = fund_user(&mut ctx, amount);
+    let mut data = build_mock_price_update_account(
+        NVDA_PRICE,
+        DEFAULT_CONFIDENCE,
+        PYTH_EXPONENT,
+        PUBLISH_TIME,
+        1,
+    );
+    data.truncate(125);
+    write_price_feed_account(&mut ctx.svm, ctx.price_feed_nvda, data);
+
+    let user_accounts = [
+        derive_ata(&user.pubkey(), &ctx.usdc_mint),
+        derive_ata(&user.pubkey(), &ctx.share_mint_pda),
+    ];
+    let before = balances(&ctx, &user_accounts);
+    let ix = deposit_instruction(&ctx, &user, amount, amount, deposit_remaining(&ctx));
+    assert_program_error(
+        send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[&user], &user.pubkey(), None),
+        FundError::InvalidPriceFeed,
+        "a deposit priced from a truncated price account must fail",
+    );
+    assert_eq!(
+        balances(&ctx, &user_accounts),
+        before,
+        "no tokens or shares moved"
+    );
+
+    set_price_feed(&mut ctx.svm, ctx.price_feed_nvda, NVDA_PRICE);
+    ctx.svm.expire_blockhash();
+    let user_share = do_deposit(&mut ctx, &user, amount, amount);
+    assert_eq!(
+        get_token_account_balance(&ctx.svm, &user_share).unwrap(),
+        amount
+    );
+}
+
+/// Pyth reports a price as a signed integer. A price of zero values an asset at
+/// nothing, and a negative one below nothing, so Bob's deposit would be priced
+/// against a NAV missing Alice's NVDAx. Both are refused with `NegativePrice`
+/// and no tokens or shares move. At NVDAx's $180 again, Bob's 480 USDC buys
+/// 480,000,000 shares against Alice's 900 USDC and 900,000,000 shares.
+#[test]
+fn test_non_positive_price_rejected() {
+    let mut ctx = setup_full();
+    standard_fund(&mut ctx);
+
+    let alice = fund_user(&mut ctx, 900_000_000);
+    do_deposit(&mut ctx, &alice, 900_000_000, 1);
+
+    let bob = fund_user(&mut ctx, 480_000_000);
+    let bob_accounts = [
+        derive_ata(&bob.pubkey(), &ctx.usdc_mint),
+        derive_ata(&bob.pubkey(), &ctx.share_mint_pda),
+    ];
+    let before = balances(&ctx, &bob_accounts);
+    for price in [0, -NVDA_PRICE] {
+        set_price_feed(&mut ctx.svm, ctx.price_feed_nvda, price);
+        ctx.svm.expire_blockhash();
+        let ix = deposit_instruction(&ctx, &bob, 480_000_000, 1, deposit_remaining(&ctx));
+        assert_program_error(
+            send_transaction_from_instructions(
+                &mut ctx.svm,
+                vec![ix],
+                &[&bob],
+                &bob.pubkey(),
+                None,
+            ),
+            FundError::NegativePrice,
+            "a deposit priced from a price of zero or below must fail",
+        );
+    }
+    assert_eq!(
+        balances(&ctx, &bob_accounts),
+        before,
+        "no tokens or shares moved"
+    );
+
+    set_price_feed(&mut ctx.svm, ctx.price_feed_nvda, NVDA_PRICE);
+    ctx.svm.expire_blockhash();
+    let bob_share = do_deposit(&mut ctx, &bob, 480_000_000, 1);
+    assert_eq!(
+        get_token_account_balance(&ctx.svm, &bob_share).unwrap(),
+        480_000_000
+    );
+}
+
+/// A price published more than 60 seconds ago is refused with
+/// `StalePriceFeed` and no tokens or shares move. Both feeds were published at
+/// `PUBLISH_TIME`: at 61 seconds past it the deposit fails, and at exactly 60
+/// the same deposit mints its shares.
+#[test]
+fn test_stale_price_rejected() {
+    let mut ctx = setup_full();
+    standard_fund(&mut ctx);
+
+    let amount = 1_000_000u64; // 1 USDC
+    let user = fund_user(&mut ctx, amount);
+    let user_accounts = [
+        derive_ata(&user.pubkey(), &ctx.usdc_mint),
+        derive_ata(&user.pubkey(), &ctx.share_mint_pda),
+    ];
+    let before = balances(&ctx, &user_accounts);
+
+    advance_seconds(&mut ctx, 61);
+    let ix = deposit_instruction(&ctx, &user, amount, amount, deposit_remaining(&ctx));
+    assert_program_error(
+        send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[&user], &user.pubkey(), None),
+        FundError::StalePriceFeed,
+        "a deposit priced from a 61-second-old price must fail",
+    );
+    assert_eq!(
+        balances(&ctx, &user_accounts),
+        before,
+        "no tokens or shares moved"
+    );
+
+    advance_seconds(&mut ctx, 60);
+    ctx.svm.expire_blockhash();
+    let user_share = do_deposit(&mut ctx, &user, amount, amount);
+    assert_eq!(
+        get_token_account_balance(&ctx.svm, &user_share).unwrap(),
+        amount
+    );
+}
+
+/// Withdraw pays each asset to a token account the caller names, and each must
+/// belong to the holder whose shares are burned. Alice naming Bob's TSLAx
+/// account for her TSLAx is refused with `InvalidRecipient`: no shares are
+/// burned and no tokens move. Named her own, the same withdrawal pays her
+/// 1.44 TSLAx and 3.0 NVDAx.
+#[test]
+fn test_withdraw_rejects_recipient_owned_by_someone_else() {
+    let mut ctx = setup_full();
+    standard_fund(&mut ctx);
+
+    let alice = fund_user(&mut ctx, 900_000_000);
+    let alice_share = do_deposit(&mut ctx, &alice, 900_000_000, 1);
+    let alice_tsla = create_associated_token_account(
+        &mut ctx.svm,
+        &alice.pubkey(),
+        &ctx.tsla_mint,
+        &ctx.payer,
+        None,
+    )
+    .unwrap();
+    let alice_nvda = create_associated_token_account(
+        &mut ctx.svm,
+        &alice.pubkey(),
+        &ctx.nvda_mint,
+        &ctx.payer,
+        None,
+    )
+    .unwrap();
+    let bob = create_wallet(&mut ctx.svm, 1_000_000_000).unwrap();
+    let bob_tsla = create_associated_token_account(
+        &mut ctx.svm,
+        &bob.pubkey(),
+        &ctx.tsla_mint,
+        &ctx.payer,
+        None,
+    )
+    .unwrap();
+
+    let watched = [alice_share, alice_tsla, alice_nvda, bob_tsla];
+    let before = balances(&ctx, &watched);
+    let remaining = withdraw_remaining_to(&ctx, bob_tsla, alice_nvda);
+    let ix = withdraw_instruction(&ctx, &alice, 900_000_000, 0, remaining);
+    assert_program_error(
+        send_transaction_from_instructions(
+            &mut ctx.svm,
+            vec![ix],
+            &[&alice],
+            &alice.pubkey(),
+            None,
+        ),
+        FundError::InvalidRecipient,
+        "a withdrawal paying another wallet's token account must fail",
+    );
+    assert_eq!(
+        balances(&ctx, &watched),
+        before,
+        "no tokens or shares moved"
+    );
+
+    let remaining = withdraw_remaining(&ctx, &alice.pubkey());
+    let ix = withdraw_instruction(&ctx, &alice, 900_000_000, 0, remaining);
+    send_transaction_from_instructions(&mut ctx.svm, vec![ix], &[&alice], &alice.pubkey(), None)
+        .unwrap();
+    assert_eq!(
+        get_token_account_balance(&ctx.svm, &alice_tsla).unwrap(),
+        144_000_000
+    );
+    assert_eq!(
+        get_token_account_balance(&ctx.svm, &alice_nvda).unwrap(),
+        300_000_000
+    );
+    assert_eq!(get_token_account_balance(&ctx.svm, &bob_tsla).unwrap(), 0);
+}
+
+/// Each asset's recipient must hold that asset. Alice naming her own NVDAx
+/// account for her TSLAx is refused with `InvalidRecipient`: no shares are
+/// burned and no tokens move.
+#[test]
+fn test_withdraw_rejects_recipient_for_another_mint() {
+    let mut ctx = setup_full();
+    standard_fund(&mut ctx);
+
+    let alice = fund_user(&mut ctx, 900_000_000);
+    let alice_share = do_deposit(&mut ctx, &alice, 900_000_000, 1);
+    let alice_nvda = create_associated_token_account(
+        &mut ctx.svm,
+        &alice.pubkey(),
+        &ctx.nvda_mint,
+        &ctx.payer,
+        None,
+    )
+    .unwrap();
+
+    let watched = [alice_share, alice_nvda];
+    let before = balances(&ctx, &watched);
+    let remaining = withdraw_remaining_to(&ctx, alice_nvda, alice_nvda);
+    let ix = withdraw_instruction(&ctx, &alice, 900_000_000, 0, remaining);
+    assert_program_error(
+        send_transaction_from_instructions(
+            &mut ctx.svm,
+            vec![ix],
+            &[&alice],
+            &alice.pubkey(),
+            None,
+        ),
+        FundError::InvalidRecipient,
+        "a withdrawal paying TSLAx to an NVDAx account must fail",
+    );
+    assert_eq!(
+        balances(&ctx, &watched),
+        before,
+        "no tokens or shares moved"
+    );
 }
