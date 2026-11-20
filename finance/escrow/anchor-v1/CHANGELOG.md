@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased (2026-11-10)
+
+- Tests run the three wrong-account attacks on `take_offer`, and each asserts that no token moves. `test_take_offer_rejects_taker_account_as_maker_token_account_b`: Bob names a second TSLAx account of his own as Alice's, refused by `associated_token::authority = maker` with `ConstraintTokenOwner` (2015); naming his associated token account there is already refused as a duplicate mutable account. `test_take_offer_rejects_vault_of_another_offer`: with two of Alice's offers open, Bob takes the first and names the second's vault, refused by `associated_token::authority = offer` with `ConstraintTokenOwner`. `test_take_offer_rejects_worthless_token_mint_b`: Bob pays in a mint he created, refused by `has_one = token_mint_b` with `ConstraintHasOne` (2001).
+
 ## Unreleased, 2026-10-05
 
 - The tests tell the book's story the way the book does: token A is USDC, minted at 6 decimals, token B is TSLAx at 8, and Alice offers 250 USDC (`USDC_OFFERED`, 250,000,000 minor units) for 1 TSLAx (`TSLAX_WANTED`, 100,000,000 minor units), which Bob takes. Both start with the standard wallet of 1 SOL and 1,000 USDC, and Bob also holds 1 TSLAx, so the take leaves him at 1,250 USDC. The switched-offer tests re-make the offer at 1 USDC for the same 1 TSLAx, and at the same 250 USDC for 2 TSLAx. The take test asserts both sides' balances in both tokens. `test_cancel_offer_rejects_non_maker` asserts Anchor's `ConstraintHasOne` (2001), so every refusal test asserts its error code.

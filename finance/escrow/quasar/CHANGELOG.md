@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased (2026-11-10)
+
+### Added
+
+- Tests run the three wrong-account attacks on `take_offer`, and each
+  asserts that no token moves. Each is refused with
+  `QuasarError::HasOneMismatch` (3005).
+  `test_take_offer_rejects_taker_account_as_maker_token_account_b`: the
+  taker names a second TSLAx account of their own as the maker's, refused by
+  `has_one(maker_token_account_b)`.
+  `test_take_offer_rejects_vault_of_another_offer`: with two of the maker's
+  offers open, the taker takes the first and names the second's vault,
+  refused by `has_one(vault)`.
+  `test_take_offer_rejects_worthless_token_mint_b`: the taker pays in a mint
+  they created, refused by `has_one(token_mint_b)`.
+
 ## [Unreleased, 2026-10-05]
 
 ### Changed

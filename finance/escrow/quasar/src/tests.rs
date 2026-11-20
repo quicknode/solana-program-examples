@@ -27,8 +27,13 @@ const ATTACKER: Pubkey = Pubkey::new_from_array([10; 32]);
 const ATTACKER_TOKEN_ACCOUNT_A: Pubkey = Pubkey::new_from_array([11; 32]);
 const WRONG_MINT: Pubkey = Pubkey::new_from_array([12; 32]);
 const WRONG_VAULT: Pubkey = Pubkey::new_from_array([13; 32]);
+const TAKER_SECOND_TOKEN_ACCOUNT_B: Pubkey = Pubkey::new_from_array([14; 32]);
+const SECOND_VAULT: Pubkey = Pubkey::new_from_array([15; 32]);
+const WORTHLESS_MINT: Pubkey = Pubkey::new_from_array([16; 32]);
+const TAKER_WORTHLESS_TOKEN_ACCOUNT: Pubkey = Pubkey::new_from_array([17; 32]);
 
 const OFFER_ID: u64 = 7;
+const SECOND_OFFER_ID: u64 = 8;
 
 // The story the tests tell: the maker (Alice) offers 250 USDC (token A) and
 // wants 1 TSLAx (token B) for it, and the taker (Bob) takes the offer. USDC
@@ -449,4 +454,162 @@ fn test_take_offer_rejects_switched_offer_wanting_more_token_b(test: &mut Test) 
     // The maker re-makes the offer asking for 2 TSLAx instead of 1, for the
     // same 250 USDC.
     assert_switched_offer_refused(test, USDC_OFFERED, 2 * TSLAX_WANTED);
+}
+
+/// Every token balance a take could move, in token A and token B: the vault
+/// named, the maker's two accounts, and the taker's two accounts.
+fn token_balances(test: &mut Test, vault: Pubkey) -> [u64; 5] {
+    [
+        vault,
+        MAKER_TOKEN_ACCOUNT_A,
+        MAKER_TOKEN_ACCOUNT_B,
+        TAKER_TOKEN_ACCOUNT_A,
+        TAKER_TOKEN_ACCOUNT_B,
+    ]
+    .map(|address| test.tokens(address))
+}
+
+/// A maker with a live offer of 250 USDC for 1 TSLAx, made through
+/// `make_offer`, and a taker holding 1,000 USDC and 1 TSLAx.
+fn offer_made_and_taker_ready(test: &mut Test) {
+    maker_holding_token_a(test);
+    test.add(Wallet::new().at(TAKER));
+    taker_holding_usdc_and_tslax(test);
+    make_offer(test, USDC_OFFERED, TSLAX_WANTED, TSLAX_MINT).succeeds();
+}
+
+#[quasar_test]
+fn test_take_offer_rejects_taker_account_as_maker_token_account_b(test: &mut Test) {
+    offer_made_and_taker_ready(test);
+    // The taker names a second TSLAx account of their own as the maker's, so
+    // the 1 TSLAx they pay would come back to them and the 250 USDC would
+    // cost nothing.
+    test.add(TokenAccount::new(TSLAX_MINT, TAKER).at(TAKER_SECOND_TOKEN_ACCOUNT_B));
+    let balances_before = token_balances(test, VAULT);
+
+    // has_one(maker_token_account_b) refuses an account other than the one
+    // the offer stored at make time.
+    test.send(TakeOfferInstruction {
+        taker: TAKER,
+        offer_id_seed: OFFER_ID,
+        maker: MAKER,
+        token_mint_a: USDC_MINT,
+        token_mint_b: TSLAX_MINT,
+        taker_token_account_a: TAKER_TOKEN_ACCOUNT_A,
+        taker_token_account_b: TAKER_TOKEN_ACCOUNT_B,
+        maker_token_account_b: TAKER_SECOND_TOKEN_ACCOUNT_B,
+        vault: VAULT,
+        minimum_token_a_out: USDC_OFFERED,
+        maximum_token_b_in: TSLAX_WANTED,
+    })
+    .fails_with(QuasarError::HasOneMismatch);
+
+    assert_eq!(
+        token_balances(test, VAULT),
+        balances_before,
+        "no tokens move when the maker's token B account is the taker's"
+    );
+    assert_eq!(
+        test.tokens(TAKER_SECOND_TOKEN_ACCOUNT_B),
+        0,
+        "the taker's second TSLAx account receives nothing"
+    );
+}
+
+#[quasar_test]
+fn test_take_offer_rejects_vault_of_another_offer(test: &mut Test) {
+    // The maker has two offers open: 250 USDC for 1 TSLAx, and 500 USDC for
+    // 2 TSLAx.
+    offer_made_and_taker_ready(test);
+    test.send(MakeOfferInstruction {
+        maker: MAKER,
+        token_mint_a: USDC_MINT,
+        token_mint_b: TSLAX_MINT,
+        maker_token_account_a: MAKER_TOKEN_ACCOUNT_A,
+        maker_token_account_b: MAKER_TOKEN_ACCOUNT_B,
+        vault: SECOND_VAULT,
+        id: SECOND_OFFER_ID,
+        deposit: 2 * USDC_OFFERED,
+        receive: 2 * TSLAX_WANTED,
+    })
+    .succeeds();
+    let balances_before = token_balances(test, VAULT);
+
+    // The taker takes the first offer, paying its 1 TSLAx, but names the
+    // second offer's vault so they would receive its 500 USDC.
+    // has_one(vault) refuses a vault other than the one the first offer
+    // stored at make time.
+    test.send(TakeOfferInstruction {
+        taker: TAKER,
+        offer_id_seed: OFFER_ID,
+        maker: MAKER,
+        token_mint_a: USDC_MINT,
+        token_mint_b: TSLAX_MINT,
+        taker_token_account_a: TAKER_TOKEN_ACCOUNT_A,
+        taker_token_account_b: TAKER_TOKEN_ACCOUNT_B,
+        maker_token_account_b: MAKER_TOKEN_ACCOUNT_B,
+        vault: SECOND_VAULT,
+        minimum_token_a_out: USDC_OFFERED,
+        maximum_token_b_in: TSLAX_WANTED,
+    })
+    .fails_with(QuasarError::HasOneMismatch);
+
+    assert_eq!(
+        token_balances(test, VAULT),
+        balances_before,
+        "no tokens move when the vault belongs to another offer"
+    );
+    assert_eq!(
+        test.tokens(SECOND_VAULT),
+        2 * USDC_OFFERED,
+        "the second offer's USDC stays in its vault"
+    );
+}
+
+#[quasar_test]
+fn test_take_offer_rejects_worthless_token_mint_b(test: &mut Test) {
+    offer_made_and_taker_ready(test);
+    // The taker creates their own mint at TSLAx's decimals and holds 1 of its
+    // tokens. has_one(maker_token_account_b) holds the maker's side to the
+    // TSLAx account the offer stored, so the taker names that account.
+    test.add(
+        Mint::new(TAKER)
+            .at(WORTHLESS_MINT)
+            .supply(TSLAX_WANTED)
+            .decimals(TSLAX_DECIMALS),
+    );
+    test.add(
+        TokenAccount::new(WORTHLESS_MINT, TAKER)
+            .at(TAKER_WORTHLESS_TOKEN_ACCOUNT)
+            .amount(TSLAX_WANTED),
+    );
+    let balances_before = token_balances(test, VAULT);
+
+    // has_one(token_mint_b) refuses a mint other than the one the offer
+    // stored at make time.
+    test.send(TakeOfferInstruction {
+        taker: TAKER,
+        offer_id_seed: OFFER_ID,
+        maker: MAKER,
+        token_mint_a: USDC_MINT,
+        token_mint_b: WORTHLESS_MINT,
+        taker_token_account_a: TAKER_TOKEN_ACCOUNT_A,
+        taker_token_account_b: TAKER_WORTHLESS_TOKEN_ACCOUNT,
+        maker_token_account_b: MAKER_TOKEN_ACCOUNT_B,
+        vault: VAULT,
+        minimum_token_a_out: USDC_OFFERED,
+        maximum_token_b_in: TSLAX_WANTED,
+    })
+    .fails_with(QuasarError::HasOneMismatch);
+
+    assert_eq!(
+        token_balances(test, VAULT),
+        balances_before,
+        "no tokens move when token B is the taker's own mint"
+    );
+    assert_eq!(
+        test.tokens(TAKER_WORTHLESS_TOKEN_ACCOUNT),
+        TSLAX_WANTED,
+        "the taker keeps their worthless tokens"
+    );
 }
