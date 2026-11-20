@@ -155,7 +155,7 @@ pub fn handle_withdraw_liquidity(
 pub struct WithdrawLiquidityAccountConstraints {
     #[account(
         seeds = [CONFIG_SEED],
-        bump,
+        bump = config.bump,
     )]
     pub config: BorshAccount<Config>,
 
