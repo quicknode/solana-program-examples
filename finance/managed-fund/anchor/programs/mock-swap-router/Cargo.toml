@@ -27,7 +27,7 @@ wincode = { version = "0.6", features = ["derive"] }
 anchor-spl = "2.0.0-rc.4"
 
 [dev-dependencies]
-litesvm = "0.18.1"
+litesvm = "0.18.2"
 solana-signer = "3.0.0"
 solana-keypair = "3.0.1"
 solana-kite = "0.7.0"
