@@ -29,11 +29,11 @@ solana-sysvar = "3"
 mock-swap-router = { path = "../mock-swap-router", features = ["cpi"] }
 
 [dev-dependencies]
-litesvm = "0.16.0"
+litesvm = "0.18.2"
 solana-account = "4.3.0"
 solana-signer = "3.0.0"
 solana-keypair = "3.0.1"
-solana-kite = "0.6.1"
+solana-kite = "0.7.0"
 borsh = "1.6.1"
 
 [lints.rust]

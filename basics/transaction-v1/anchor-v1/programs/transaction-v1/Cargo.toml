@@ -30,7 +30,7 @@ anchor-lang = "1.2.1"
 #
 # The other Anchor v1 examples send v1 transactions through solana-kite 0.6.
 # This example builds its own, to show each config field.
-litesvm = "0.16.0"
+litesvm = "0.18.2"
 borsh = "1.6.1"
 solana-keypair = "3.1"
 # `solana_message::v1` (the v1 message, `TransactionConfig` and the 4,096
