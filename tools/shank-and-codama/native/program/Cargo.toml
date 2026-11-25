@@ -13,11 +13,17 @@ solana-system-interface = { version = "3", features = ["bincode"] }
 [dev-dependencies]
 car-rental-service-client = { path = "../clients/rust" }
 litesvm = "0.18.2"
-solana-account = "3.0"
-solana-instruction = "3.0"
-solana-keypair = "3.0"
-solana-pubkey = "3.0"
-solana-transaction = "3.0"
+# Host-side SDK crates, on the majors LiteSVM 0.18.2 itself uses. They are not
+# interchangeable across majors: `svm.set_account` takes the `Account` from
+# solana-account 4.x, and a 3.x `Account` is a different type to the compiler.
+# `Transaction::new_signed_with_payer` needs solana-transaction 4.x, where it
+# sits behind the `wincode` feature that solana-transaction enables for its own
+# serializer.
+solana-account = "4.3.0"
+solana-instruction = "3.0.0"
+solana-keypair = "3.0.1"
+solana-pubkey = "4.3"
+solana-transaction = "4.2"
 
 # This example is intentionally standalone (not part of the root workspace),
 # so it pins its own dependency versions and has its own Cargo.lock.
