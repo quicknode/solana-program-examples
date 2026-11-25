@@ -25,8 +25,8 @@ anchor-lang = "1.2.1"
 anchor-spl = "1.2.1"
 
 [dev-dependencies]
-litesvm = "0.16.0"
-solana-kite = "0.6.1"
+litesvm = "0.18.2"
+solana-kite = "0.7.0"
 solana-signer = "3.0.0"
 solana-keypair = "3.0.1"
 borsh = "1.6.1"

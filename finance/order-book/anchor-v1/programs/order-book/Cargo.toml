@@ -32,10 +32,10 @@ static_assertions = "1.1"
 [dev-dependencies]
 # Match the test stack used by finance/escrow and the other LiteSVM-based
 # Anchor examples so contributors can move between them without version drift.
-litesvm = "0.16.0"
+litesvm = "0.18.2"
 solana-signer = "3.0.0"
 solana-keypair = "3.0.1"
-solana-kite = "0.6.1"
+solana-kite = "0.7.0"
 # The depth tests build transactions with solana-kite and send them through
 # LiteSVM themselves to read the compute units each one used, which
 # solana-kite's sender does not return. This crate names the compute unit
