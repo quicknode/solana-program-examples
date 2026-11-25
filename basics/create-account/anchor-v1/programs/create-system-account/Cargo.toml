@@ -24,6 +24,9 @@ anchor-lang = "1.2.1"
 
 [dev-dependencies]
 litesvm = "0.18.2"
+# Host-side rent type for `svm.get_sysvar()`; anchor-lang's own `Rent` does not
+# implement LiteSVM's GetSysvar. Version tracks what litesvm 0.18.2 resolves.
+solana-rent = "4.4.0"
 solana-signer = "3.0.0"
 solana-keypair = "3.0.1"
 solana-kite = "0.7.0"
