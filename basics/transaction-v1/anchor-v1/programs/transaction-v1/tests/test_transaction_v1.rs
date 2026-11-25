@@ -29,10 +29,13 @@ const BASE_FEE_LAMPORTS: u64 = 5_000;
 /// limit unset means zero.
 const COMPUTE_UNIT_LIMIT: u32 = 50_000;
 
-/// The payer, the new account, the system program and the program itself
-/// together load well under 64 KiB. Like the compute unit limit, this defaults
-/// to zero when unset.
-const LOADED_ACCOUNTS_DATA_SIZE_LIMIT: u32 = 64 * 1024;
+/// The limit covers every byte of account data the transaction loads, and the
+/// program's own account is one of them: this program's `.so` is a little over
+/// 111 KiB, which dwarfs the payer, the new account and the system program put
+/// together. A limit that only covered the accounts the instruction names would
+/// reject the transaction before any program ran. Like the compute unit limit,
+/// this defaults to zero when unset.
+const LOADED_ACCOUNTS_DATA_SIZE_LIMIT: u32 = 256 * 1024;
 
 /// A v1 transaction's config carries the resource limits that legacy and v0
 /// transactions express with ComputeBudget program instructions. Every test
