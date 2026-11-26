@@ -195,16 +195,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: lts/*
-      # Fetched from the GitHub release rather than release.anza.xyz: that host
-      # has no usable artefact for parts of the 4.x line (the beta-channel notes
-      # in native.yml record a 404 for v4.0), and the release asset is a plain
-      # static URL, so this also avoids the GitHub API rate limiting that made
-      # the other workflows pin an exact version.
+      # Fetched from the GitHub release rather than release.anza.xyz, which has
+      # no usable artefact for parts of the 4.x line. The release asset is a
+      # plain static URL, so this also avoids the GitHub API rate limiting that
+      # made every workflow pin an exact version through setup-solana.
       #
-      # 4.3.2 matches the Agave crate line the examples pin: LiteSVM 0.18.1
-      # resolves solana-* at ~4.3 (see the pins added in 3134c69b), so the
-      # toolchain that builds the .so is from the same era as the runtime that
-      # executes it. Bump this together with those crate pins.
+      # 4.3.2 matches the Agave crate line the examples pin: LiteSVM 0.18.2
+      # resolves solana-* at ~4.3.2, so the toolchain that builds the .so is
+      # from the same era as the runtime that executes it. Bump this together
+      # with the litesvm version.
       - name: Install Solana CLI
         run: |
           curl -sSfL -o /tmp/solana-release.tar.bz2 \
