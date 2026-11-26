@@ -27,8 +27,8 @@ litesvm = "0.18.2"
 solana-signer = "3.0.0"
 solana-kite = "0.7.0"
 # The named limit for the one transaction the test builds itself. Same version
-# solana-kite 0.6 builds against.
-solana-compute-budget = "4.2"
+# solana-kite 0.7 builds against.
+solana-compute-budget = "4.3"
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }
