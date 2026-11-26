@@ -201,38 +201,34 @@ jobs:
 
           # Install sbpf assembler from HEAD. HEAD emits SBPF v3 (0x03 OS-ABI)
           # ELF, which requires litesvm >= 0.13 (Agave 4.0) to load; the
-          # workspace pins litesvm 0.18.1. If a future sbpf change breaks
+          # workspace pins litesvm 0.18.2. If a future sbpf change breaks
           # loading, pin a revision here with --rev.
           #
           # The package name is required: the repository now also ships an
           # `xtask` binary, and cargo refuses to guess between two binaries.
           cargo install --git https://github.com/blueshift-gg/sbpf.git sbpf
-      - name: Setup Solana Stable
-        uses: heyAyushh/setup-solana@v5.9
-        with:
-          # Pin an exact version rather than a tag like "stable", which setup-solana resolves via the GitHub API (can fail with 429).
-          solana-cli-version: 3.1.14
+      # Fetched from the GitHub release rather than release.anza.xyz, which has
+      # no usable artefact for parts of the 4.x line. The release asset is a
+      # plain static URL, so this also avoids the GitHub API rate limiting that
+      # made this workflow pin an exact version through setup-solana.
+      #
+      # 4.3.2 matches the Agave crate line the examples pin: LiteSVM 0.18.2
+      # resolves solana-* at ~4.3.2, so the toolchain that builds the .so is
+      # from the same era as the runtime that executes it. Bump this together
+      # with the litesvm version.
+      - name: Install Solana CLI
+        run: |
+          curl -sSfL -o /tmp/solana-release.tar.bz2 \
+            https://github.com/anza-xyz/agave/releases/download/v4.3.2/solana-release-x86_64-unknown-linux-gnu.tar.bz2
+          mkdir -p "$HOME/.local/share/solana-release"
+          tar -xjf /tmp/solana-release.tar.bz2 -C "$HOME/.local/share/solana-release" --strip-components=1
+          echo "$HOME/.local/share/solana-release/bin" >> "$GITHUB_PATH"
       - name: Build and Test with Stable
         run: |
           source build_and_test.sh
           solana -V
           rustc -V
           process_projects "stable"
-      # continue-on-error because the beta channel may not have a valid release
-      # (e.g. v4.0 returns 404 from release.anza.xyz). This is an upstream issue
-      # with heyAyushh/setup-solana — beta setup clears the stable install first.
-      - name: Setup Solana Beta
-        continue-on-error: true
-        uses: heyAyushh/setup-solana@v5.9
-        with:
-          solana-cli-version: beta
-      - name: Build and Test with Beta
-        continue-on-error: true
-        run: |
-          source build_and_test.sh
-          solana -V
-          rustc -V
-          process_projects "beta"
 
       - name: Set failed projects output
         id: set-failed
