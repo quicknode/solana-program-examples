@@ -36,7 +36,7 @@ Run an example's tests with the command for its framework, from the framework di
 - **Anchor v2** (in `anchor/`): `anchor test` (runs `cargo test`, per the `[scripts]` table in `Anchor.toml`), with the v2 CLI: `cargo install anchor-cli --version 2.0.0-rc.4 --locked`.
 - **Anchor v1** (in `anchor-v1/`): the same `anchor test`, with the v1 CLI: `avm install 1.2.1 && avm use 1.2.1`. Selecting the wrong CLI is the usual cause of a confusing build failure in these directories.
   Both Anchor copies' tests send v1 transactions (4,096 bytes, resource limits in the message)
-  through `solana-kite`: 0.6 for Anchor v1, 0.7 for Anchor v2. Its senders take a last `compute_unit_limit: Option<u32>`: pass `None` and kite
+  through `solana-kite` 0.7. Its senders take a last `compute_unit_limit: Option<u32>`: pass `None` and kite
   simulates the transaction and sends it with the compute units the simulation used. A test that needs the
   transaction's metadata (logs, compute units, a program error code) builds it with kite's
   `build_transaction_from_instructions` and sends it through LiteSVM itself. Kite rejects ComputeBudget
